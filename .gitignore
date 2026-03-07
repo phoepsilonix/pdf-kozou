@@ -1,0 +1,54 @@
+# ── Node.js ──────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.npm/
+
+# ── Rust / Cargo ──────────────────────────────────────────────────────────────
+target/
+src-tauri/target/
+Cargo.lock          # ライブラリクレートは除外 (アプリは残す場合もあり → 好みで)
+
+# ── Tauri ────────────────────────────────────────────────────────────────────
+src-tauri/gen/      # cargo tauri android/ios init が生成するコード
+.tauri/
+
+# ── Android ──────────────────────────────────────────────────────────────────
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/local.properties
+*.apk
+*.aab
+
+# ── iOS ──────────────────────────────────────────────────────────────────────
+src-tauri/gen/apple/build/
+*.ipa
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# ── ビルド成果物 ──────────────────────────────────────────────────────────────
+src-tauri/target/
+*.deb
+*.rpm
+*.AppImage
+*.dmg
+*.exe
+*.msi
+
+# ── 一時ファイル ──────────────────────────────────────────────────────────────
+*.tmp
+*.log
+pdfkozou_*.pdf
+
+# ── エディタ ─────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── 環境変数 ─────────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local

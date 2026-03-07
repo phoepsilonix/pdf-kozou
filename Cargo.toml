@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "pdf-kozou-core",
+    "src-tauri",
+]
+resolver = "2"
+
+# workspace 共通の依存バージョンを統一
+[workspace.dependencies]
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror  = "1"
+anyhow     = "1"
+tokio      = { version = "1", features = ["full"] }
+base64     = "0.22"
+image      = { version = "0.25", features = ["jpeg", "png"] }
+uuid       = { version = "1", features = ["v4"] }
+tempfile   = "3"
+tracing    = "0.1"

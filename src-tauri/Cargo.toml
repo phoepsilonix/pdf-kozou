@@ -1,0 +1,52 @@
+[package]
+name    = "pdf-kozou"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name       = "pdf_kozou_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "pdf-kozou"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri                = { version = "2" }
+tauri-plugin-fs      = "2"
+tauri-plugin-dialog  = "2"
+tauri-plugin-process = "2"
+tauri-plugin-shell   = "2"
+
+# workspace 共通
+serde      = { workspace = true }
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+anyhow     = { workspace = true }
+tokio      = { workspace = true }
+tracing    = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ── Linux デスクトップのみ ─────────────────────────────────────────────────────
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd     = { version = "0.14", default-features = false, features = ["gtk3"] }
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
+x11rb   = { version = "0.13", features = ["allow-unsafe-code", "randr"] }
+wayland-client        = "0.31"
+wayland-protocols     = { version = "0.31", features = ["client"] }
+wayland-protocols-wlr = { version = "0.2",  features = ["client"] }
+
+# ── Windows / macOS ───────────────────────────────────────────────────────────
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+rfd     = { version = "0.14" }
+arboard = { version = "3" }
+
+[profile.release]
+panic         = "abort"
+codegen-units = 1
+lto           = true
+opt-level     = "s"
+strip         = true

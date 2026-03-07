@@ -1,0 +1,39 @@
+[package]
+name    = "pdf-kozou-core"
+version = "0.1.0"
+edition = "2021"
+description = "PDF処理エンジン — MuPDF ベース CLI / sidecar"
+
+[[bin]]
+name = "pdf-kozou-core"
+path = "src/main.rs"
+
+[lib]
+name      = "pdf_kozou_core"
+crate-type = ["rlib"]
+
+[dependencies]
+# PDF処理 — MuPDF 静的リンク (依存はここだけ)
+# 0.6.0: MuPDF 1.27.0 ベース、GraftMap/insert_page API 整備済み
+mupdf = "0.6"
+
+# workspace 共通
+serde      = { workspace = true }
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+anyhow     = { workspace = true }
+base64     = { workspace = true }
+image      = { workspace = true }
+uuid       = { workspace = true }
+tempfile   = { workspace = true }
+tracing    = { workspace = true }
+
+# CLI 引数
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+panic         = "abort"
+codegen-units = 1
+lto           = true
+opt-level     = "s"
+strip         = true

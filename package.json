@@ -1,0 +1,31 @@
+{
+  "name": "pdf-kozou",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev":     "vite",
+    "build":   "tsc && vite build",
+    "preview": "vite preview",
+    "tauri":   "cargo tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api":            "^2",
+    "@tauri-apps/plugin-dialog":  "^2",
+    "@tauri-apps/plugin-fs":      "^2",
+    "@tauri-apps/plugin-shell":   "^2",
+    "konva":                      "^9",
+    "react-konva":                "^18",
+    "react":                      "^18",
+    "react-dom":                  "^18",
+    "zustand":                    "^4",
+    "pdfjs-dist":                 "^4"
+  },
+  "devDependencies": {
+    "@types/react":               "^18",
+    "@types/react-dom":           "^18",
+    "@vitejs/plugin-react":       "^4",
+    "typescript":                 "^5",
+    "vite":                       "^5"
+  }
+}
