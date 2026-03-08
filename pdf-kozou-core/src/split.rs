@@ -69,12 +69,16 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
             let dst_page = graft.graft_object(&src_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-            dst.insert_page(-1, &dst_page)
+            // mupdf 0.6: -1 は無効。現在のページ数 = 末尾に追加
+            let at = dst.page_count()
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            dst.insert_page(at, &dst_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
         }
 
         let mut opts = mupdf::pdf::PdfWriteOptions::default();
-        opts.set_compress(true).set_garbage_level(4);
+        // フォント保護: clean=false, sanitize=false (デフォルト), gc=2
+        opts.set_compress(true).set_compress_fonts(true).set_garbage_level(2);
         dst.save_with_options(out_path.to_str().unwrap(), opts)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 

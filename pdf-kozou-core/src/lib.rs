@@ -10,5 +10,9 @@ pub mod render;
 pub mod rotate;
 pub mod split;
 pub mod trim;
+// TODO: type3_filter は mupdf-sys + pdf_process_contents による
+//       Type3 完全対応実装時に再追加する
+#[allow(dead_code)]
+mod sys_probe;
 
 pub use error::{CoreError, Result};

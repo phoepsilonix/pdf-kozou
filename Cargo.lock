@@ -3310,6 +3310,7 @@ dependencies = [
  "clap",
  "image",
  "mupdf",
+ "mupdf-sys",
  "serde",
  "serde_json",
  "tempfile",

@@ -44,14 +44,18 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
             let dst_page = graft.graft_object(&src_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
-            dst.insert_page(-1, &dst_page)
+            // mupdf 0.6: -1 は無効。現在のページ数 = 末尾に追加
+            let at = dst.page_count()
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            dst.insert_page(at, &dst_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
         }
         total_pages += n;
     }
 
     let mut opts = mupdf::pdf::PdfWriteOptions::default();
-    opts.set_compress(true).set_garbage_level(4).set_linear(true);
+    // フォント保護: clean=false, sanitize=false (デフォルト), gc=2
+    opts.set_compress(true).set_compress_fonts(true).set_garbage_level(2);
     dst.save_with_options(&req.output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 

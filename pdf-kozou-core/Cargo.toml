@@ -15,7 +15,8 @@ crate-type = ["rlib"]
 [dependencies]
 # PDF処理 — MuPDF 静的リンク (依存はここだけ)
 # 0.6.0: MuPDF 1.27.0 ベース、GraftMap/insert_page API 整備済み
-mupdf = "0.6"
+mupdf     = "0.6"
+mupdf-sys = "0.6"
 
 # workspace 共通
 serde      = { workspace = true }
