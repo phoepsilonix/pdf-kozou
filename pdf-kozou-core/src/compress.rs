@@ -219,6 +219,7 @@ pub fn rewrite(input: &str, output: &str, options: &str) -> Result<CompressRespo
     let sanitize = parse_opt_bool(options, "sanitize").unwrap_or(false);
     let ci       = parse_opt_bool(options, "compress-images").unwrap_or(true);
     let cf       = parse_opt_bool(options, "compress-fonts").unwrap_or(true);
+    eprintln!("gc={},clean={},sanitize={},ci={},cf={}", gc, clean, sanitize, ci, cf);
 
     Ok(CompressResponse {
         ok: true,
@@ -242,9 +243,8 @@ fn rewrite_safe_fallback(input: &str, output: &str, reason: Option<String>, opti
     use mupdf::pdf::PdfDocument;
 
     // options から値を読み取りつつ、安全制約を適用:
-    //   gc は最大 2 に制限（3以上はフォントサブセット統合でリスクあり）
     //   clean/sanitize はユーザー指定を尊重するが、デフォルトは false
-    let gc       = parse_opt_i32(options, "garbage").unwrap_or(2).min(2).max(0);
+    let gc       = parse_opt_i32(options, "garbage").unwrap_or(2);
     let clean    = parse_opt_bool(options, "clean").unwrap_or(false);
     let sanitize = parse_opt_bool(options, "sanitize").unwrap_or(false);
     let ci       = parse_opt_bool(options, "compress-images").unwrap_or(true);

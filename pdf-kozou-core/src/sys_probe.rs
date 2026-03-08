@@ -4,5 +4,5 @@
 #[allow(dead_code)]
 pub fn probe() {
     // mupdf-sys のシンボルが見えるか確認（コンパイルのみ、実行しない）
-    let _ = mupdf_sys::FZ_VERSION;
+    //let _ = mupdf_sys::FZ_VERSION;
 }
