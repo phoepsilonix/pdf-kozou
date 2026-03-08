@@ -1,301 +1,257 @@
 // src/components/trim/TrimCanvas.tsx
 //
-// トリミング Canvas コンポーネント
+// PDF ページ上でトリミング余白をマウスドラッグで指定する Canvas コンポーネント
 //
-// 機能:
-//   - PDF ページを背景画像として表示
-//   - ドラッグ可能なトリミング矩形 (Konva.js)
-//   - 矩形の8ハンドル (四隅 + 辺中央) でリサイズ
-//   - Canvas ↔ 数値入力の双方向同期 (500ms debounce)
-//   - モバイル対応 (touch イベント)
+// 座標系:
+//   - margin は「各辺から削る量」(pt単位) : left=左余白, right=右余白, top=上余白, bottom=下余白
+//   - Canvas は左上原点・Y軸下向き
+//   - PDF は左下原点・Y軸上向き → top/bottom は視覚的に反転しない (top=画面上側の余白)
 
-import { useEffect, useRef, useCallback, useState } from "react";
-import Konva from "konva";
+import { useRef, useEffect, useCallback, useState } from "react";
 import type { TrimMargins } from "../../lib/tauri";
 
 interface Props {
-  /** base64 JPEG のページ画像 */
   pageImageB64: string;
-  /** 画像が表すページサイズ (PDF ポイント単位) */
   pageWidthPt:  number;
   pageHeightPt: number;
-  /** 現在のトリミングマージン (PDF ポイント単位) */
-  margins: TrimMargins;
-  /** マージンが変わったときに呼ばれる (debounce 済み) */
-  onChange: (m: TrimMargins) => void;
-  /** Canvas の表示幅 (px) */
-  displayWidth?: number;
+  margins:      TrimMargins;   // pt単位の余白幅
+  onChange:     (m: TrimMargins) => void;
+  displayWidth: number;
 }
 
-// ── ハンドルの定義 ────────────────────────────────────────────────────────────
-type HandleId =
-  | "nw" | "n" | "ne"
-  | "w"         | "e"
-  | "sw" | "s" | "se";
+type DragTarget =
+  | "move"
+  | "edge-left" | "edge-right" | "edge-top" | "edge-bottom"
+  | "corner-nw" | "corner-ne" | "corner-sw" | "corner-se"
+  | null;
 
-interface Handle {
-  id:    HandleId;
-  getCx: (r: DOMRect) => number;  // 矩形からハンドル中心X
-  getCy: (r: DOMRect) => number;
-  cursor: string;
-}
-
-const HANDLES: Handle[] = [
-  { id: "nw", getCx: r => r.x,            getCy: r => r.y,            cursor: "nwse-resize" },
-  { id: "n",  getCx: r => r.x + r.width/2, getCy: r => r.y,            cursor: "ns-resize"   },
-  { id: "ne", getCx: r => r.x + r.width,   getCy: r => r.y,            cursor: "nesw-resize" },
-  { id: "w",  getCx: r => r.x,            getCy: r => r.y + r.height/2, cursor: "ew-resize"   },
-  { id: "e",  getCx: r => r.x + r.width,   getCy: r => r.y + r.height/2, cursor: "ew-resize"   },
-  { id: "sw", getCx: r => r.x,            getCy: r => r.y + r.height,   cursor: "nesw-resize" },
-  { id: "s",  getCx: r => r.x + r.width/2, getCy: r => r.y + r.height,   cursor: "ns-resize"   },
-  { id: "se", getCx: r => r.x + r.width,   getCy: r => r.y + r.height,   cursor: "nwse-resize" },
-];
-
-const HANDLE_SIZE = 10;
-const HANDLE_COLOR = "#4f9eff";
-const OVERLAY_COLOR = "rgba(0,0,0,0.45)";
-const BORDER_COLOR = "#4f9eff";
-const MIN_SIZE_PX = 20;
-
-// ── ポイント ↔ ピクセル変換 ───────────────────────────────────────────────────
-
-function ptToPx(pt: number, scale: number) { return pt * scale; }
-function pxToPt(px: number, scale: number) { return px / scale; }
-
-// ── コンポーネント ────────────────────────────────────────────────────────────
+const HANDLE_R  = 6;    // ハンドル半径px
+const MIN_PT    = 1;    // 最小余白 (pt)
+const EDGE_HIT  = 10;   // エッジ判定幅px
 
 export function TrimCanvas({
-  pageImageB64,
-  pageWidthPt,
-  pageHeightPt,
-  margins,
-  onChange,
-  displayWidth = 600,
+  pageImageB64, pageWidthPt, pageHeightPt,
+  margins, onChange, displayWidth,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const stageRef     = useRef<Konva.Stage | null>(null);
-  const layerRef     = useRef<Konva.Layer | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef    = useRef<HTMLImageElement | null>(null);
+  const dragging  = useRef<DragTarget>(null);
+  const dragStart = useRef({ x: 0, y: 0, margins: margins });
 
-  // scale: PT → PX の倍率
-  const scale = displayWidth / pageWidthPt;
-  const displayHeight = pageHeightPt * scale;
+  const scale        = displayWidth / pageWidthPt;
+  const displayHeight = Math.round(pageHeightPt * scale);
 
-  // 内部状態: ピクセル単位の矩形 (Canvas 座標系、Y軸下向き)
-  // PDF座標系: 左下原点 → Canvas座標系: 左上原点
-  const [rect, setRect] = useState(() => ({
-    x: ptToPx(margins.left,                  scale),
-    y: ptToPx(pageHeightPt - margins.top,    scale), // PDF→Canvas Y反転
-    w: ptToPx(margins.right - margins.left,  scale),
-    h: ptToPx(margins.top   - margins.bottom,scale),
-  }));
+  // pt → px
+  const toPx = (pt: number) => pt * scale;
+  // px → pt (clamp >= MIN_PT)
+  const toPt = (px: number) => Math.max(MIN_PT, px / scale);
 
-  // margins が外部から変わったら rect を更新
-  useEffect(() => {
-    setRect({
-      x: ptToPx(margins.left,                   scale),
-      y: ptToPx(pageHeightPt - margins.top,     scale),
-      w: ptToPx(margins.right - margins.left,   scale),
-      h: ptToPx(margins.top   - margins.bottom, scale),
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [margins.left, margins.right, margins.top, margins.bottom, scale]);
-
-  // rect → TrimMargins 変換 (PDF 座標系へ戻す)
-  const rectToMargins = useCallback((r: typeof rect): TrimMargins => ({
-    left:   pxToPt(r.x,       scale),
-    right:  pxToPt(r.x + r.w, scale),
-    bottom: pxToPt(pageHeightPt * scale - (r.y + r.h), scale),
-    top:    pxToPt(pageHeightPt * scale - r.y,          scale),
-  }), [scale, pageHeightPt]);
-
-  // debounce タイマー
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const emitChange  = useCallback((r: typeof rect) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      onChange(rectToMargins(r));
-    }, 500);
-  }, [onChange, rectToMargins]);
-
-  // ── Konva ステージ初期化 ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const stage = new Konva.Stage({
-      container: containerRef.current,
-      width:  displayWidth,
-      height: displayHeight,
-    });
-    const layer = new Konva.Layer();
-    stage.add(layer);
-    stageRef.current = stage;
-    layerRef.current = layer;
-
-    return () => { stage.destroy(); };
-  // 初回のみ
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // margins → canvas上の矩形 (クロップ領域)
+  const getRect = (m: TrimMargins) => ({
+    x:  toPx(m.left),
+    y:  toPx(m.top),
+    x2: displayWidth  - toPx(m.right),
+    y2: displayHeight - toPx(m.bottom),
+  });
 
   // ── 描画 ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const layer = layerRef.current;
-    const stage = stageRef.current;
-    if (!layer || !stage) return;
+  const draw = useCallback((m: TrimMargins) => {
+    const canvas = canvasRef.current;
+    const img    = imgRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-    layer.destroyChildren();
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
 
-    // ── 背景画像 ─────────────────────────────────────────────────────────────
-    const img = new window.Image();
-    img.src = `data:image/jpeg;base64,${pageImageB64}`;
-    img.onload = () => {
-      const bgImage = new Konva.Image({
-        x: 0, y: 0,
-        image: img,
-        width:  displayWidth,
-        height: displayHeight,
-      });
-      layer.add(bgImage);
-      drawOverlayAndHandles(layer, stage, rect);
-      layer.draw();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageImageB64, displayWidth, displayHeight]);
+    // 背景画像
+    ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
 
-  // rect が変わったら overlay と handle だけ再描画
-  useEffect(() => {
-    const layer = layerRef.current;
-    const stage = stageRef.current;
-    if (!layer || !stage) return;
-    // bgImage 以外を削除して再描画
-    const children = layer.getChildren();
-    for (let i = children.length - 1; i >= 1; i--) {
-      children[i].destroy();
-    }
-    drawOverlayAndHandles(layer, stage, rect);
-    layer.draw();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rect]);
+    const { x, y, x2, y2 } = getRect(m);
+    const w = x2 - x, h = y2 - y;
 
-  // ── オーバーレイ + ハンドル描画 ───────────────────────────────────────────
-  function drawOverlayAndHandles(
-    layer: Konva.Layer,
-    stage: Konva.Stage,
-    r: typeof rect,
-  ) {
-    const stageW = stage.width();
-    const stageH = stage.height();
+    // 暗幕 (削除される領域)
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(0,  0,  displayWidth, y);        // 上
+    ctx.fillRect(0,  y2, displayWidth, displayHeight - y2); // 下
+    ctx.fillRect(0,  y,  x,  h);                  // 左
+    ctx.fillRect(x2, y,  displayWidth - x2, h);   // 右
 
-    // 暗幕 (4枚の矩形でトリム領域外を覆う)
-    const overlayRects = [
-      { x: 0,       y: 0,       width: stageW,  height: r.y          }, // 上
-      { x: 0,       y: r.y+r.h, width: stageW,  height: stageH-r.y-r.h }, // 下
-      { x: 0,       y: r.y,     width: r.x,      height: r.h          }, // 左
-      { x: r.x+r.w, y: r.y,     width: stageW-r.x-r.w, height: r.h   }, // 右
-    ];
-    overlayRects.forEach(o => {
-      layer.add(new Konva.Rect({ ...o, fill: OVERLAY_COLOR, listening: false }));
-    });
-
-    // トリム枠の境界線
-    const border = new Konva.Rect({
-      x: r.x, y: r.y, width: r.w, height: r.h,
-      stroke: BORDER_COLOR, strokeWidth: 1.5,
-      dash: [6, 3],
-      listening: false,
-    });
-    layer.add(border);
+    // 保持領域の枠
+    ctx.strokeStyle = "#4f9eff";
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
 
     // グリッド線 (三分割)
+    ctx.strokeStyle = "rgba(79,158,255,0.25)";
+    ctx.lineWidth   = 1;
     for (let i = 1; i <= 2; i++) {
-      layer.add(new Konva.Line({
-        points: [r.x + r.w*i/3, r.y, r.x + r.w*i/3, r.y+r.h],
-        stroke: "rgba(79,158,255,0.3)", strokeWidth: 1, listening: false,
-      }));
-      layer.add(new Konva.Line({
-        points: [r.x, r.y + r.h*i/3, r.x+r.w, r.y + r.h*i/3],
-        stroke: "rgba(79,158,255,0.3)", strokeWidth: 1, listening: false,
-      }));
+      ctx.beginPath();
+      ctx.moveTo(x + w * i / 3, y); ctx.lineTo(x + w * i / 3, y2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y + h * i / 3); ctx.lineTo(x2, y + h * i / 3); ctx.stroke();
     }
 
-    // ドラッグ可能な本体矩形 (中央部: move カーソル)
-    const mover = new Konva.Rect({
-      x: r.x + 12, y: r.y + 12,
-      width:  Math.max(r.w - 24, 1),
-      height: Math.max(r.h - 24, 1),
-      fill: "transparent",
-      draggable: true,
-      cursor: "move",
+    // コーナーハンドル
+    const corners = [
+      { cx: x,  cy: y  }, { cx: x2, cy: y  },
+      { cx: x,  cy: y2 }, { cx: x2, cy: y2 },
+    ];
+    corners.forEach(({ cx, cy }) => {
+      ctx.fillStyle   = "#fff";
+      ctx.strokeStyle = "#4f9eff";
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, HANDLE_R, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
     });
-    mover.on("dragmove", () => {
-      const dx = mover.x() - (r.x + 12);
-      const dy = mover.y() - (r.y + 12);
-      const newR = {
-        x: Math.max(0, Math.min(r.x + dx, stageW - r.w)),
-        y: Math.max(0, Math.min(r.y + dy, stageH - r.h)),
-        w: r.w, h: r.h,
-      };
-      setRect(newR);
-      emitChange(newR);
+
+    // 辺中央ハンドル
+    const mids = [
+      { cx: x + w / 2, cy: y  },
+      { cx: x + w / 2, cy: y2 },
+      { cx: x,         cy: y + h / 2 },
+      { cx: x2,        cy: y + h / 2 },
+    ];
+    mids.forEach(({ cx, cy }) => {
+      ctx.fillStyle   = "#4f9eff";
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, HANDLE_R - 1, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
     });
-    layer.add(mover);
 
-    // ハンドル
-    const domRect: DOMRect = {
-      x: r.x, y: r.y, width: r.w, height: r.h,
-      top: r.y, left: r.x, right: r.x+r.w, bottom: r.y+r.h,
-      toJSON: () => ({}),
-    };
+    // 余白寸法表示 (mm)
+    const ptToMm = (pt: number) => (pt / 2.8346).toFixed(1);
+    ctx.font      = "11px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "rgba(79,158,255,0.9)";
+    ctx.textAlign = "center";
+    if (m.top > 3)    ctx.fillText(`↕ ${ptToMm(m.top)}mm`,    displayWidth / 2, y / 2 + 4);
+    if (m.bottom > 3) ctx.fillText(`↕ ${ptToMm(m.bottom)}mm`, displayWidth / 2, y2 + (displayHeight - y2) / 2 + 4);
+    ctx.textAlign = "left";
+    if (m.left  > 3) ctx.fillText(`${ptToMm(m.left)}mm`,  4, y + h / 2 + 4);
+    if (m.right > 3) ctx.fillText(`${ptToMm(m.right)}mm`, x2 + 4, y + h / 2 + 4);
+  }, [displayWidth, displayHeight, scale]); // eslint-disable-line
 
-    HANDLES.forEach(handle => {
-      const cx = handle.getCx(domRect);
-      const cy = handle.getCy(domRect);
-      const hs = HANDLE_SIZE / 2;
+  // 画像ロード
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => { imgRef.current = img; draw(margins); };
+    img.src    = `data:image/jpeg;base64,${pageImageB64}`;
+  }, [pageImageB64]); // eslint-disable-line
 
-      const knob = new Konva.Rect({
-        x: cx - hs, y: cy - hs,
-        width: HANDLE_SIZE, height: HANDLE_SIZE,
-        fill: "white", stroke: HANDLE_COLOR, strokeWidth: 1.5,
-        cornerRadius: 2,
-        draggable: true,
-        cursor: handle.cursor,
-      });
+  // margins 変更時に再描画
+  useEffect(() => { draw(margins); }, [margins, draw]);
 
-      knob.on("dragmove", () => {
-        const kx = knob.x() + hs;
-        const ky = knob.y() + hs;
-        const id = handle.id;
+  // ── ヒットテスト ─────────────────────────────────────────────────────────
+  const hitTest = useCallback((px: number, py: number, m: TrimMargins): DragTarget => {
+    const { x, y, x2, y2 } = getRect(m);
+    const near = (a: number, b: number) => Math.abs(a - b) <= EDGE_HIT;
 
-        let { x: nx, y: ny, w: nw, h: nh } = r;
+    // コーナー優先
+    if (near(px, x)  && near(py, y))  return "corner-nw";
+    if (near(px, x2) && near(py, y))  return "corner-ne";
+    if (near(px, x)  && near(py, y2)) return "corner-sw";
+    if (near(px, x2) && near(py, y2)) return "corner-se";
 
-        if (id.includes("w")) { const d = kx - nx; nx = Math.min(kx, nx+nw-MIN_SIZE_PX); nw -= (nx - r.x); }
-        if (id.includes("e")) { nw = Math.max(MIN_SIZE_PX, kx - nx); }
-        if (id.includes("n")) { const d = ky - ny; ny = Math.min(ky, ny+nh-MIN_SIZE_PX); nh -= (ny - r.y); }
-        if (id.includes("s")) { nh = Math.max(MIN_SIZE_PX, ky - ny); }
+    // 辺
+    if (near(py, y)  && px >= x - EDGE_HIT && px <= x2 + EDGE_HIT) return "edge-top";
+    if (near(py, y2) && px >= x - EDGE_HIT && px <= x2 + EDGE_HIT) return "edge-bottom";
+    if (near(px, x)  && py >= y - EDGE_HIT && py <= y2 + EDGE_HIT) return "edge-left";
+    if (near(px, x2) && py >= y - EDGE_HIT && py <= y2 + EDGE_HIT) return "edge-right";
 
-        // ステージ境界クランプ
-        nx = Math.max(0, nx); ny = Math.max(0, ny);
-        nw = Math.min(nw, stageW - nx);
-        nh = Math.min(nh, stageH - ny);
+    // 内部 → move
+    if (px > x && px < x2 && py > y && py < y2) return "move";
+    return null;
+  }, [scale, displayWidth, displayHeight]); // eslint-disable-line
 
-        const newR = { x: nx, y: ny, w: nw, h: nh };
-        setRect(newR);
-        emitChange(newR);
-      });
+  // ── カーソル ──────────────────────────────────────────────────────────────
+  const getCursor = (t: DragTarget): string => {
+    switch (t) {
+      case "corner-nw": case "corner-se": return "nwse-resize";
+      case "corner-ne": case "corner-sw": return "nesw-resize";
+      case "edge-left":  case "edge-right":  return "ew-resize";
+      case "edge-top":   case "edge-bottom": return "ns-resize";
+      case "move":       return "move";
+      default:           return "crosshair";
+    }
+  };
 
-      layer.add(knob);
-    });
-  }
+  // ── マウスイベント ────────────────────────────────────────────────────────
+  const getPos = (e: React.MouseEvent) => {
+    const r = canvasRef.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    const { x, y } = getPos(e);
+    const target = hitTest(x, y, margins);
+    dragging.current  = target;
+    dragStart.current = { x, y, margins: { ...margins } };
+  }, [margins, hitTest]);
+
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    const { x, y } = getPos(e);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    if (!dragging.current) {
+      canvas.style.cursor = getCursor(hitTest(x, y, margins));
+      return;
+    }
+
+    const dx = x - dragStart.current.x;
+    const dy = y - dragStart.current.y;
+    const sm = dragStart.current.margins;
+    const dxPt = dx / scale;
+    const dyPt = dy / scale;
+
+    const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+    const maxL = pageWidthPt  - MIN_PT - sm.right;
+    const maxR = pageWidthPt  - MIN_PT - sm.left;
+    const maxT = pageHeightPt - MIN_PT - sm.bottom;
+    const maxB = pageHeightPt - MIN_PT - sm.top;
+
+    let nm = { ...sm };
+    const t = dragging.current;
+
+    if (t === "move") {
+      const moveL = clamp(sm.left   + dxPt, 0, pageWidthPt  - sm.right  - MIN_PT);
+      const moveT = clamp(sm.top    + dyPt, 0, pageHeightPt - sm.bottom - MIN_PT);
+      nm = { left: moveL, right: sm.right + (sm.left - moveL),
+             top: moveT,  bottom: sm.bottom + (sm.top - moveT) };
+    } else {
+      if (t === "edge-left"   || t === "corner-nw" || t === "corner-sw")
+        nm.left   = clamp(sm.left   + dxPt, 0, maxL);
+      if (t === "edge-right"  || t === "corner-ne" || t === "corner-se")
+        nm.right  = clamp(sm.right  - dxPt, 0, maxR);
+      if (t === "edge-top"    || t === "corner-nw" || t === "corner-ne")
+        nm.top    = clamp(sm.top    + dyPt, 0, maxT);
+      if (t === "edge-bottom" || t === "corner-sw" || t === "corner-se")
+        nm.bottom = clamp(sm.bottom - dyPt, 0, maxB);
+    }
+
+    draw(nm);
+    onChange(nm);
+  }, [margins, scale, pageWidthPt, pageHeightPt, hitTest, draw, onChange]);
+
+  const onMouseUp = useCallback(() => {
+    dragging.current = null;
+  }, []);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width:  displayWidth,
-        height: displayHeight,
-        cursor: "crosshair",
-        touchAction: "none",
-        userSelect: "none",
-      }}
+    <canvas
+      ref={canvasRef}
+      width={displayWidth}
+      height={displayHeight}
+      style={{ display: "block", touchAction: "none", userSelect: "none" }}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
     />
   );
 }

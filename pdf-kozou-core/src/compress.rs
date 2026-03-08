@@ -10,16 +10,18 @@
 //   - set_sanitize:       ストリームを再解釈・再構築する → デフォルト off
 //                         CIDフォント・Type3・サブセットフォントへの影響リスクあり
 //
-// Type3フォント対応方針:
-//   MuPDF の PDF デバイスは Type3 フォントを含むページをベクターのまま再描画できない。
-//   --rewrite 時に Type3 を検出した場合は、安全な通常圧縮（gc=2, clean=false）に
-//   自動フォールバックし、レスポンスに警告を返す。
+// 圧縮方式の選択:
+//   compress()  — PdfWriteOptions ベース。安全・高速。Type3/CIDフォント完全対応。
+//   rewrite()   — DocumentWriter + page.run() による再描画。TrueType のみ対応。
+//                 Type3/Type1/CIDフontを検出したら rewrite_safe_fallback() へ移行。
+//   font_subset_and_write() — mupdf-sys FFI で pdf_subset_fonts() を呼び出す高圧縮。
+//                             Type3 を含まないフォントのサブセット化に特化。
+//                             rewrite() の「TrueType のみ」制限を突破できる。
 //
-//   完全な画像化（ラスタライズ）は --rasterize オプションで明示的に指定する。
-//   これはページ全体が画像になり、テキスト選択・検索が失われることを意味する。
-//
-//   将来: mupdf-sys の unsafe FFI + pdf_process_contents を用いて
-//   Type3 グリフを画像 XObject に置き換えるベクター保持方式を実装予定。
+// フォールバック設計:
+//   rewrite() がフォールバックする際は RewriteFallbackParams を使い、
+//   CLI の --gc / --clean / --sanitize / --no-compress-* をそのまま引き継ぐ。
+//   旧実装のように rewrite_options 文字列をパースし直す方式は廃止した。
 
 use serde::{Deserialize, Serialize};
 use crate::error::{CoreError, Result};
@@ -164,90 +166,199 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     })
 }
 
-/// DocumentWriter を使った PDF 再書き出し（ベクター保持・高圧縮）
+/// rewrite フォールバック時に通常圧縮へ引き継ぐパラメータ。
 ///
-/// ⚠️ 以下のフォントを含む PDF は安全な通常圧縮（gc=2）にフォールバックする:
-///   - Type3 フォント: MuPDF PDF デバイスが再描画不可
-///   - CIDFontType2 (CJK TrueType): DocumentWriter が CIDFontType0 に変換してしまい文字化け
-pub fn rewrite(input: &str, output: &str, options: &str) -> Result<CompressResponse> {
-    use mupdf::DocumentWriter;
-
-    // Type3 / CIDFontType2 含有チェック
-    let unsafe_reason = detect_rewrite_unsafe_fonts(input);
-    if let Some(reason) = unsafe_reason {
-        eprintln!("[rewrite] unsafe font detected ({reason}) — falling back to safe compress");
-        return rewrite_safe_fallback(input, output, Some(reason), options);
-    }
-
-    let doc = mupdf::Document::open(input)
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-
-    let page_count = doc.page_count()
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-
-    let mut writer = DocumentWriter::new(output, "pdf", options)
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-
-    let identity = mupdf::Matrix::IDENTITY;
-
-    for i in 0..page_count {
-        let page = doc.load_page(i)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        let bounds = page.bounds()
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        let pdf_device = writer.begin_page(bounds)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        page.run(&pdf_device, &identity)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        writer.end_page(pdf_device)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-    }
-
-    drop(writer);
-
-    let input_bytes  = std::fs::metadata(input) .map(|m| m.len()).unwrap_or(0);
-    let output_bytes = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
-    let ratio = if input_bytes > 0 {
-        output_bytes as f64 / input_bytes as f64
-    } else {
-        1.0
-    };
-
-    // options 文字列から実際の設定値を読み取る
-    let gc       = parse_opt_i32(options, "garbage").unwrap_or(2);
-    let clean    = parse_opt_bool(options, "clean").unwrap_or(false);
-    let sanitize = parse_opt_bool(options, "sanitize").unwrap_or(false);
-    let ci       = parse_opt_bool(options, "compress-images").unwrap_or(true);
-    let cf       = parse_opt_bool(options, "compress-fonts").unwrap_or(true);
-
-    Ok(CompressResponse {
-        ok: true,
-        input_bytes,
-        output_bytes,
-        ratio,
-        params_used: CompressParamsUsed {
-            compress_images: ci,
-            compress_fonts:  cf,
-            garbage_level:   gc,
-            clean,
-            sanitize,
-            rewrite_fallback: false,
-        },
-        warning: size_increased_warning(input_bytes, output_bytes),
-    })
+/// `rewrite_options` (MuPDF option文字列) とは独立して、
+/// CLI の --gc / --clean / --sanitize / --no-compress-images / --no-compress-fonts
+/// を直接受け取る。これにより「rewriteが失敗しても同じCLI引数で圧縮できる」設計になる。
+#[derive(Debug, Default)]
+pub struct RewriteFallbackParams {
+    /// --gc N  (None = フォールバックデフォルト 2)
+    pub garbage_level:   Option<i32>,
+    /// --clean
+    pub clean:           bool,
+    /// --sanitize
+    pub sanitize:        bool,
+    /// --no-compress-images → false
+    pub compress_images: Option<bool>,
+    /// --no-compress-fonts → false
+    pub compress_fonts:  Option<bool>,
 }
 
-/// フォールバック圧縮（gc=2, clean=false）
-fn rewrite_safe_fallback(input: &str, output: &str, reason: Option<String>, options: &str) -> Result<CompressResponse> {
+/// DocumentWriter を使った PDF 再書き出し（ベクター保持・高圧縮）
+///
+/// # 処理の優先順位
+///
+/// 1. **TrueType のみ含む PDF** — DocumentWriter + page.run() で再描画。
+///    最高品質のベクター保持と高圧縮を実現。
+///
+/// 2. **Type1 / CIDFontType0/2 / Type0 を含む PDF（Type3 を除く）** —
+///    `font_subset::subset_and_write()` (mupdf-sys FFI) で処理。
+///    pdf_subset_fonts() + pdf_write_document() でフォントを縮小しつつ安全に書き出す。
+///    DocumentWriter の「TrueType しか通せない」制限を回避できる。
+///
+/// 3. **Type3 フォントを含む PDF** — `rewrite_safe_fallback()` で通常圧縮。
+///    Type3 グリフは MuPDF の pdf_subset_fonts() も扱えないため、
+///    ユーザー指定の gc / sanitize / clean でそのまま処理する。
+///
+/// `options` は DocumentWriter に渡す MuPDF オプション文字列（パス 1 のみ使用）。
+/// `fallback` はパス 2/3 でフォールバックする際の CLI 由来パラメータ。
+pub fn rewrite(
+    input:    &str,
+    output:   &str,
+    options:  &str,
+    fallback: &RewriteFallbackParams,
+) -> Result<CompressResponse> {
+    use mupdf::DocumentWriter;
+
+    // フォント種別を分析
+    let unsafe_fonts = detect_rewrite_unsafe_fonts(input);
+
+    match unsafe_fonts {
+        None => {
+            // パス 1: TrueType のみ — DocumentWriter + page.run() で再描画
+            let doc = mupdf::Document::open(input)
+                .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+            let page_count = doc.page_count()
+                .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+            let mut writer = DocumentWriter::new(output, "pdf", options)
+                .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+            let identity = mupdf::Matrix::IDENTITY;
+
+            for i in 0..page_count {
+                let page = doc.load_page(i)
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+                let bounds = page.bounds()
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+                let pdf_device = writer.begin_page(bounds)
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+                page.run(&pdf_device, &identity)
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+                writer.end_page(pdf_device)
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+            }
+
+            drop(writer);
+
+            let input_bytes  = std::fs::metadata(input) .map(|m| m.len()).unwrap_or(0);
+            let output_bytes = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+            let ratio = if input_bytes > 0 {
+                output_bytes as f64 / input_bytes as f64
+            } else {
+                1.0
+            };
+
+            let gc       = parse_rewrite_opt_i32(options, "garbage").unwrap_or(2);
+            let clean    = parse_rewrite_opt_bool(options, "clean").unwrap_or(false);
+            let sanitize = parse_rewrite_opt_bool(options, "sanitize").unwrap_or(false);
+            let ci       = parse_rewrite_opt_bool(options, "compress-images").unwrap_or(true);
+            let cf       = parse_rewrite_opt_bool(options, "compress-fonts").unwrap_or(true);
+
+            Ok(CompressResponse {
+                ok: true,
+                input_bytes,
+                output_bytes,
+                ratio,
+                params_used: CompressParamsUsed {
+                    compress_images: ci,
+                    compress_fonts:  cf,
+                    garbage_level:   gc,
+                    clean,
+                    sanitize,
+                    rewrite_fallback: false,
+                },
+                warning: size_increased_warning(input_bytes, output_bytes),
+            })
+        }
+
+        Some(reason) if !reason.contains("Type3") => {
+            // パス 2: Type1 / CIDFont / Type0 を含むが Type3 はない
+            // → mupdf-sys FFI の pdf_subset_fonts() + pdf_write_document() で処理
+            eprintln!("[rewrite] non-TrueType font ({reason}) — using font_subset FFI path");
+
+            let gc       = fallback.garbage_level  .unwrap_or(2);
+            let clean    = fallback.clean;
+            let sanitize = fallback.sanitize;
+            let ci       = fallback.compress_images.unwrap_or(true);
+            let cf       = fallback.compress_fonts .unwrap_or(true);
+
+            let result = crate::font_subset::subset_and_write(
+                input, output, gc, clean, sanitize, ci, cf,
+            )?;
+
+            let ratio = if result.input_bytes > 0 {
+                result.output_bytes as f64 / result.input_bytes as f64
+            } else {
+                1.0
+            };
+
+            let mut warning_parts: Vec<String> = vec![
+                format!("{reason} のため、pdf_subset_fonts パスを使用しました。"),
+            ];
+            if result.fell_back {
+                warning_parts.push(format!(
+                    "gc={} に制限しました（指定値={gc}）。",
+                    result.effective_gc,
+                ));
+            }
+            if let Some(s) = size_increased_warning(result.input_bytes, result.output_bytes) {
+                warning_parts.push(s);
+            }
+
+            Ok(CompressResponse {
+                ok: true,
+                input_bytes:  result.input_bytes,
+                output_bytes: result.output_bytes,
+                ratio,
+                params_used: CompressParamsUsed {
+                    compress_images: ci,
+                    compress_fonts:  cf,
+                    garbage_level:   result.effective_gc,
+                    clean:           result.effective_clean,
+                    sanitize:        result.effective_sanitize,
+                    rewrite_fallback: result.fell_back,
+                },
+                warning: Some(warning_parts.join(" ")),
+            })
+        }
+
+        Some(reason) => {
+            // パス 3: Type3 フォントを含む — 通常圧縮（ユーザー指定パラメータをそのまま使用）
+            eprintln!("[rewrite] Type3 font detected ({reason}) — falling back to safe compress");
+            rewrite_safe_fallback(input, output, Some(reason), fallback)
+        }
+    }
+}
+
+/// フォールバック圧縮: CLI引数 (RewriteFallbackParams) を直接使って通常圧縮する。
+///
+/// `rewrite_options` 文字列に頼らないため、CLIの --gc / --clean / --sanitize 等が
+/// 確実に反映される。gc の強制制限は行わず、ユーザー指定を尊重する（警告を付加）。
+fn rewrite_safe_fallback(
+    input:    &str,
+    output:   &str,
+    reason:   Option<String>,
+    p:        &RewriteFallbackParams,
+) -> Result<CompressResponse> {
     use mupdf::pdf::PdfDocument;
 
-    // options から値を読み取りつつ、安全制約を適用:
-    //   clean/sanitize はユーザー指定を尊重するが、デフォルトは false
-    let gc       = parse_opt_i32(options, "garbage").unwrap_or(2);
-    let clean    = parse_opt_bool(options, "clean").unwrap_or(false);
-    let sanitize = parse_opt_bool(options, "sanitize").unwrap_or(false);
-    let ci       = parse_opt_bool(options, "compress-images").unwrap_or(true);
-    let cf       = parse_opt_bool(options, "compress-fonts").unwrap_or(true);
+    // フォールバックデフォルト: gc=2, clean=false, sanitize=false
+    // ユーザーが明示的に指定した値はすべて尊重する
+    let gc       = p.garbage_level  .unwrap_or(2);
+    let clean    = p.clean;
+    let sanitize = p.sanitize;
+    let ci       = p.compress_images.unwrap_or(true);
+    let cf       = p.compress_fonts .unwrap_or(true);
+
+    // gc >= 3 かつ Type1/Type3 フォント含有時は追加警告を付加するが処理は続行する
+    let gc_warning = if gc >= 3 {
+        Some("gc=3以上はフォントサブセット統合が発生する可能性があります。".to_string())
+    } else {
+        None
+    };
 
     let doc = PdfDocument::open(input)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
@@ -271,6 +382,25 @@ fn rewrite_safe_fallback(input: &str, output: &str, reason: Option<String>, opti
         1.0
     };
 
+    let warning = {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(r) = reason.as_deref() {
+            parts.push(format!("{r} のため、通常圧縮を使用します。"));
+        } else {
+            parts.push("通常圧縮を使用します。".to_string());
+        }
+        if let Some(w) = gc_warning {
+            parts.push(w);
+        }
+        if output_bytes > input_bytes {
+            parts.push(format!(
+                "ファイルサイズが元より大きくなりました（{input_bytes} → {output_bytes} バイト）。\
+                 元のファイルの使用を推奨します。"
+            ));
+        }
+        Some(parts.join(" "))
+    };
+
     Ok(CompressResponse {
         ok: true,
         input_bytes,
@@ -284,21 +414,7 @@ fn rewrite_safe_fallback(input: &str, output: &str, reason: Option<String>, opti
             sanitize,
             rewrite_fallback: true,
         },
-        warning: {
-            let base = match reason.as_deref() {
-                Some(r) => format!("{} のため、通常圧縮を使用します。", r),
-                None    => "通常圧縮を使用します。".to_string(),
-            };
-            let mut w = base;
-            if output_bytes > input_bytes {
-                w.push_str(&format!(
-                    " ファイルサイズが元より大きくなりました（{} → {} バイト）。\
-                     元のファイルの使用を推奨します。",
-                    input_bytes, output_bytes
-                ));
-            }
-            Some(w)
-        },
+        warning,
     })
 }
 
@@ -493,7 +609,7 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
 
 /// options文字列 "key=val,key2=val2" から整数値を取得
 /// キーのハイフン・アンダーバーは同一視する（compress-images == compress_images）
-fn parse_opt_i32(options: &str, key: &str) -> Option<i32> {
+pub fn parse_rewrite_opt_i32(options: &str, key: &str) -> Option<i32> {
     let key_norm = key.replace('-', "_");
     options.split(',')
         .find(|s| {
@@ -506,7 +622,7 @@ fn parse_opt_i32(options: &str, key: &str) -> Option<i32> {
 
 /// options文字列から bool を取得（yes/no/true/false）
 /// キーのハイフン・アンダーバーは同一視する
-fn parse_opt_bool(options: &str, key: &str) -> Option<bool> {
+pub fn parse_rewrite_opt_bool(options: &str, key: &str) -> Option<bool> {
     let key_norm = key.replace('-', "_");
     options.split(',')
         .find(|s| {

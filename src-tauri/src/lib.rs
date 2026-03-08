@@ -34,6 +34,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             core::get_pdf_info,
             core::render_page,
+            core::get_tmp_path,
+            core::get_default_save_dir,
             core::trim_pdf,
             core::compress_pdf,
             core::split_pdf,
@@ -43,6 +45,7 @@ pub fn run() {
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
             platform_cmd::pick_save_file,
+            platform_cmd::pick_save_file_in,
             platform_cmd::pick_output_dir,
         ])
         .run(tauri::generate_context!())

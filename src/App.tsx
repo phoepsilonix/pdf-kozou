@@ -1,15 +1,15 @@
 // src/App.tsx
 import { useState, useCallback, useEffect } from "react";
 import { TrimPage }    from "./pages/TrimPage";
+import { CompressPage } from "./pages/CompressPage";
 import { usePdfStore } from "./store/usePdfStore";
 import { getPdfInfo, pickOpenFile, type PdfInfo } from "./lib/tauri";
 
-// ── CSS アニメーション (グローバル) ──────────────────────────────────────────
 const GLOBAL_CSS = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #0a0c10; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
   input[type=number]:focus { border-color: #4f9eff !important; }
   ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -18,16 +18,14 @@ const GLOBAL_CSS = `
   button:hover:not(:disabled) { filter: brightness(1.15); }
 `;
 
-// ── ページ型 ──────────────────────────────────────────────────────────────────
-type Page = "home" | "trim";
+export type ToolPage = "trim" | "compress" | "merge" | "split" | "rotate";
 
 export default function App() {
-  const [page, setPage]         = useState<Page>("home");
-  const [isDragging, setDragging] = useState(false);
+  const [activeTool, setActiveTool] = useState<ToolPage | null>(null);
+  const [isDragging, setDragging]   = useState(false);
 
   const { filePath, pdfInfo, setFile, setError, lastError } = usePdfStore();
 
-  // ── グローバルスタイル注入 ─────────────────────────────────────────────────
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = GLOBAL_CSS;
@@ -35,247 +33,222 @@ export default function App() {
     return () => { document.head.removeChild(style); };
   }, []);
 
-  // ── PDF を開く ─────────────────────────────────────────────────────────────
-  const openPdf = useCallback(async (path: string) => {
+  const openPdf = useCallback(async (path: string, tool: ToolPage = "trim") => {
     try {
       const info = await getPdfInfo(path);
       setFile(path, info);
-      setPage("trim");  // 最初はトリミング画面へ
-    } catch (e) {
-      setError(String(e));
-    }
+      setActiveTool(tool);
+    } catch (e) { setError(String(e)); }
   }, [setFile, setError]);
 
-  // ── ファイルダイアログ ─────────────────────────────────────────────────────
-  const handleOpenDialog = useCallback(async () => {
+  const handleOpenDialog = useCallback(async (tool: ToolPage) => {
     const path = await pickOpenFile();
-    if (path) await openPdf(path);
+    if (path) await openPdf(path, tool);
   }, [openPdf]);
 
-  // ── ドラッグ&ドロップ ─────────────────────────────────────────────────────
-  const handleDragOver  = (e: React.DragEvent) => { e.preventDefault(); setDragging(true); };
-  const handleDragLeave = () => setDragging(false);
   const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
+    e.preventDefault(); setDragging(false);
     const file = e.dataTransfer.files[0];
     if (file?.name.endsWith(".pdf")) {
-      // Tauri では file.path が使える
       const path = (file as { path?: string }).path ?? file.name;
-      await openPdf(path);
+      await openPdf(path, "trim");
     }
   }, [openPdf]);
 
-  // ── ページルーティング ─────────────────────────────────────────────────────
-  if (page === "trim" && filePath && pdfInfo) {
+  // ── ツール画面 ─────────────────────────────────────────────────────────────
+  if (activeTool && filePath && pdfInfo) {
     return (
-      <>
-        {/* ナビバー */}
-        <nav style={navStyles.bar}>
-          <button style={navStyles.backBtn} onClick={() => setPage("home")}>
-            ← ホーム
-          </button>
-          <span style={navStyles.filename}>
-            {filePath.split(/[/\\]/).pop()}
-          </span>
-          <span style={navStyles.pageTag}>トリミング</span>
-        </nav>
-        <div style={{ paddingTop: 40 }}>
-          <TrimPage filePath={filePath} pdfInfo={pdfInfo} />
-        </div>
-      </>
+      <ToolShell
+        filePath={filePath}
+        pdfInfo={pdfInfo}
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+        onHome={() => setActiveTool(null)}
+        onOpenFile={(tool) => handleOpenDialog(tool)}
+      />
     );
   }
 
   // ── ホーム画面 ─────────────────────────────────────────────────────────────
   return (
     <div
-      style={{
-        ...homeStyles.root,
-        ...(isDragging ? homeStyles.dragging : {}),
-      }}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
+      style={{ ...home.root, ...(isDragging ? home.dragging : {}) }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
-      {/* ロゴ */}
-      <div style={homeStyles.logo}>
-        <span style={homeStyles.logoJa}>PDF</span>
-        <span style={homeStyles.logoKozou}>小僧</span>
+      <div style={home.logo}>
+        <span style={home.logoJa}>PDF</span>
+        <span style={home.logoKozou}>小僧</span>
       </div>
-      <p style={homeStyles.tagline}>Pure Rust • MuPDF • オフライン完全動作</p>
+      <p style={home.tagline}>Pure Rust · MuPDF · オフライン完全動作</p>
 
-      {/* ドロップゾーン */}
-      <button style={homeStyles.dropZone} onClick={handleOpenDialog}>
-        <div style={homeStyles.dropIcon}>⧉</div>
-        <div style={homeStyles.dropMain}>
-          PDFをドロップ、またはクリックして開く
-        </div>
-        <div style={homeStyles.dropSub}>
-          .pdf ファイル対応
-        </div>
-      </button>
-
-      {/* 機能一覧 (将来的に各機能へのナビになる) */}
-      <div style={homeStyles.features}>
-        {FEATURES.map(f => (
-          <div key={f.label} style={homeStyles.feature}>
-            <span style={homeStyles.featureIcon}>{f.icon}</span>
-            <span style={homeStyles.featureLabel}>{f.label}</span>
-          </div>
+      <div style={home.grid}>
+        {TOOLS.map(t => (
+          <button key={t.id} style={home.card} onClick={() => handleOpenDialog(t.id as ToolPage)}>
+            <span style={home.cardIcon}>{t.icon}</span>
+            <span style={home.cardLabel}>{t.label}</span>
+            <span style={home.cardDesc}>{t.desc}</span>
+          </button>
         ))}
       </div>
 
-      {/* エラー表示 */}
-      {lastError && (
-        <div style={homeStyles.error}>{lastError}</div>
-      )}
+      <p style={home.drop}>または PDF をここにドロップ</p>
+      {lastError && <div style={home.error}>{lastError}</div>}
     </div>
   );
 }
 
-const FEATURES = [
-  { icon: "✂", label: "トリミング" },
-  { icon: "⊕", label: "結合" },
-  { icon: "⊗", label: "分割" },
-  { icon: "↻", label: "回転" },
-  { icon: "⊙", label: "圧縮" },
-  { icon: "T", label: "OCR" },
-  { icon: "🔒", label: "保護" },
-  { icon: "⬚", label: "変換" },
+// ── ツールシェル (ナビバー + ツール切替) ──────────────────────────────────────
+
+interface ToolShellProps {
+  filePath:    string;
+  pdfInfo:     PdfInfo;
+  activeTool:  ToolPage;
+  onToolChange:(t: ToolPage) => void;
+  onHome:      () => void;
+  onOpenFile:  (t: ToolPage) => void;
+}
+
+function ToolShell({ filePath, pdfInfo, activeTool, onToolChange, onHome, onOpenFile }: ToolShellProps) {
+  const filename = filePath.split(/[/\\]/).pop() ?? "";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#0a0c10" }}>
+      {/* ナビバー */}
+      <nav style={nav.bar}>
+        <button style={nav.homeBtn} onClick={onHome} title="ホームへ戻る">
+          <span style={nav.homeLogo}>PDF<span style={{ color: "#4f9eff" }}>小僧</span></span>
+        </button>
+
+        <div style={nav.divider} />
+
+        {/* ファイル名 */}
+        <span style={nav.filename} title={filePath}>{filename}</span>
+
+        <div style={{ flex: 1 }} />
+
+        {/* ツールタブ */}
+        {TOOLS.map(t => (
+          <button
+            key={t.id}
+            style={{ ...nav.tab, ...(activeTool === t.id ? nav.tabActive : {}) }}
+            onClick={() => onToolChange(t.id as ToolPage)}
+            disabled={!t.implemented}
+            title={t.implemented ? t.label : `${t.label}（未実装）`}
+          >
+            <span>{t.icon}</span>
+            <span style={nav.tabLabel}>{t.label}</span>
+          </button>
+        ))}
+
+        <div style={nav.divider} />
+
+        {/* 別ファイルを開く */}
+        <button style={nav.openBtn} onClick={() => onOpenFile(activeTool)}>
+          開く…
+        </button>
+      </nav>
+
+      {/* ツール本体 */}
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        {activeTool === "trim" && (
+          <TrimPage filePath={filePath} pdfInfo={pdfInfo} />
+        )}
+        {activeTool === "compress" && (
+          <CompressPage filePath={filePath} pdfInfo={pdfInfo} />
+        )}
+        {activeTool !== "trim" && activeTool !== "compress" && (
+          <NotImplemented label={TOOLS.find(t => t.id === activeTool)?.label ?? ""} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NotImplemented({ label }: { label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#3a4050", fontFamily: "monospace", fontSize: 14 }}>
+      {label} — 実装中
+    </div>
+  );
+}
+
+// ── ツール定義 ──────────────────────────────────────────────────────────────
+
+const TOOLS = [
+  { id: "trim",     icon: "✂",  label: "トリミング", desc: "余白をカット",     implemented: true  },
+  { id: "compress", icon: "⊙",  label: "圧縮",       desc: "ファイルを軽量化", implemented: true  },
+  { id: "merge",    icon: "⊕",  label: "結合",       desc: "複数PDFを合体",   implemented: false },
+  { id: "split",    icon: "⊗",  label: "分割",       desc: "ページを分割",     implemented: false },
+  { id: "rotate",   icon: "↻",  label: "回転",       desc: "ページを回転",     implemented: false },
 ];
 
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
-const navStyles: Record<string, React.CSSProperties> = {
-  bar: {
-    position:       "fixed",
-    top:            0,
-    left:           0,
-    right:          0,
-    height:         40,
-    display:        "flex",
-    alignItems:     "center",
-    gap:            12,
-    padding:        "0 16px",
-    background:     "#0d1017",
-    borderBottom:   "1px solid #1a1d24",
-    zIndex:         100,
-    fontFamily:     "'JetBrains Mono', monospace",
+const home: Record<string, React.CSSProperties> = {
+  root: {
+    minHeight: "100vh", display: "flex", flexDirection: "column",
+    alignItems: "center", justifyContent: "center", gap: 32,
+    background: "#0a0c10", color: "#e8eaf0",
+    fontFamily: "'JetBrains Mono', 'Noto Sans JP', monospace",
+    padding: 40, transition: "background 0.2s",
   },
-  backBtn: {
-    background:   "transparent",
-    border:       "none",
-    color:        "#5a6070",
-    cursor:       "pointer",
-    fontSize:     12,
-    padding:      "4px 8px",
-    borderRadius: 4,
-    fontFamily:   "inherit",
+  dragging: { background: "#0d1a2d", outline: "2px dashed #4f9eff", outlineOffset: "-16px" },
+  logo:     { display: "flex", alignItems: "baseline", gap: 4 },
+  logoJa:   { fontSize: 52, fontWeight: 800, color: "#e8eaf0", letterSpacing: "-0.02em" },
+  logoKozou:{ fontSize: 48, fontWeight: 400, color: "#4f9eff", letterSpacing: "0.04em" },
+  tagline:  { margin: 0, fontSize: 11, color: "#3a4050", letterSpacing: "0.12em", textTransform: "uppercase" },
+  grid: {
+    display: "grid", gridTemplateColumns: "repeat(5, 140px)", gap: 12,
   },
-  filename: {
-    flex:       1,
-    fontSize:   12,
-    color:      "#4a5060",
-    overflow:   "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+  card: {
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+    padding: "20px 12px", background: "#0d1017",
+    border: "1px solid #1a1d24", borderRadius: 12,
+    cursor: "pointer", color: "#e8eaf0",
+    fontFamily: "inherit", transition: "all 0.15s",
   },
-  pageTag: {
-    fontSize:     10,
-    padding:      "2px 8px",
-    background:   "#1a3a5c",
-    border:       "1px solid #4f9eff",
-    borderRadius: 10,
-    color:        "#4f9eff",
-    letterSpacing: "0.08em",
+  cardIcon:  { fontSize: 28, color: "#2a3a50" },
+  cardLabel: { fontSize: 13, fontWeight: 600, color: "#8a9090" },
+  cardDesc:  { fontSize: 10, color: "#3a4050", textAlign: "center" },
+  drop:      { margin: 0, fontSize: 11, color: "#2a3040" },
+  error: {
+    padding: "10px 20px", background: "#2a0d0d",
+    border: "1px solid #5a1a1a", borderRadius: 8,
+    color: "#ff6060", fontSize: 12, maxWidth: 400, textAlign: "center",
   },
 };
 
-const homeStyles: Record<string, React.CSSProperties> = {
-  root: {
-    minHeight:      "100vh",
-    display:        "flex",
-    flexDirection:  "column",
-    alignItems:     "center",
-    justifyContent: "center",
-    gap:            32,
-    background:     "#0a0c10",
-    color:          "#e8eaf0",
-    fontFamily:     "'JetBrains Mono', 'Noto Sans JP', monospace",
-    padding:        40,
-    transition:     "background 0.2s",
+const nav: Record<string, React.CSSProperties> = {
+  bar: {
+    display: "flex", alignItems: "center", gap: 8,
+    padding: "0 12px", height: 44,
+    background: "#0d1017", borderBottom: "1px solid #1a1d24",
+    flexShrink: 0,
+    fontFamily: "'JetBrains Mono', monospace",
   },
-  dragging: {
-    background: "#0d1a2d",
-    outline:    "2px dashed #4f9eff",
-    outlineOffset: "-16px",
+  homeBtn: {
+    background: "transparent", border: "none",
+    cursor: "pointer", padding: "4px 8px", borderRadius: 6,
+    fontFamily: "inherit",
   },
-  logo: { display: "flex", alignItems: "baseline", gap: 4 },
-  logoJa: {
-    fontSize:     52,
-    fontWeight:   800,
-    color:        "#e8eaf0",
-    letterSpacing: "-0.02em",
+  homeLogo:  { fontSize: 15, fontWeight: 700, color: "#e8eaf0", letterSpacing: "-0.01em" },
+  divider:   { width: 1, height: 20, background: "#1a1d24", margin: "0 4px" },
+  filename:  { fontSize: 11, color: "#4a5060", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tab: {
+    display: "flex", alignItems: "center", gap: 5,
+    padding: "5px 10px", background: "transparent",
+    border: "1px solid transparent", borderRadius: 6,
+    cursor: "pointer", color: "#4a5060",
+    fontFamily: "inherit", fontSize: 12, transition: "all 0.12s",
   },
-  logoKozou: {
-    fontSize:     48,
-    fontWeight:   400,
-    color:        "#4f9eff",
-    letterSpacing: "0.04em",
-  },
-  tagline: {
-    margin:       0,
-    fontSize:     11,
-    color:        "#3a4050",
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-  },
-  dropZone: {
-    display:        "flex",
-    flexDirection:  "column",
-    alignItems:     "center",
-    gap:            10,
-    padding:        "40px 80px",
-    background:     "#0d1017",
-    border:         "1px dashed #2a2e38",
-    borderRadius:   16,
-    cursor:         "pointer",
-    transition:     "all 0.2s",
-    fontFamily:     "inherit",
-    color:          "inherit",
-  },
-  dropIcon:  { fontSize: 40, color: "#2a3040" },
-  dropMain:  { fontSize: 15, color: "#8a9090" },
-  dropSub:   { fontSize: 11, color: "#3a4050" },
-  features: {
-    display:   "flex",
-    flexWrap:  "wrap",
-    gap:       12,
-    maxWidth:  480,
-    justifyContent: "center",
-  },
-  feature: {
-    display:      "flex",
-    flexDirection: "column",
-    alignItems:   "center",
-    gap:          4,
-    padding:      "10px 14px",
-    background:   "#0d1017",
-    borderRadius: 8,
-    border:       "1px solid #1a1d24",
-    minWidth:     60,
-  },
-  featureIcon:  { fontSize: 18, color: "#2a3a50" },
-  featureLabel: { fontSize: 10, color: "#3a4050", letterSpacing: "0.06em" },
-  error: {
-    padding:      "10px 20px",
-    background:   "#2a0d0d",
-    border:       "1px solid #5a1a1a",
-    borderRadius: 8,
-    color:        "#ff6060",
-    fontSize:     12,
-    maxWidth:     400,
-    textAlign:    "center",
+  tabActive: { background: "#0d1a2d", borderColor: "#4f9eff", color: "#4f9eff" },
+  tabLabel:  { fontSize: 11 },
+  openBtn: {
+    padding: "5px 12px", background: "transparent",
+    border: "1px solid #2a2e38", borderRadius: 6,
+    color: "#5a6070", cursor: "pointer",
+    fontFamily: "inherit", fontSize: 11,
   },
 };

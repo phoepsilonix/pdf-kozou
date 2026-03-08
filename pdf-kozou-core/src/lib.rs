@@ -3,6 +3,7 @@
 
 pub mod compress;
 pub mod error;
+pub mod font_subset;
 pub mod info;
 pub mod merge;
 pub mod pixmap;
@@ -10,8 +11,8 @@ pub mod render;
 pub mod rotate;
 pub mod split;
 pub mod trim;
-// TODO: type3_filter は mupdf-sys + pdf_process_contents による
-//       Type3 完全対応実装時に再追加する
+
+// 開発用: mupdf-sys シンボル探索（本実装前に削除予定）
 #[allow(dead_code)]
 mod sys_probe;
 

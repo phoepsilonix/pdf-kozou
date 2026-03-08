@@ -1,15 +1,13 @@
 // src/components/trim/TrimControls.tsx
-//
-// トリミング数値入力パネル
-// Canvas の TrimCanvas と双方向同期する
+// 余白指定パネル: 上下左右それぞれ「何mm削るか」を指定
 
 import { useCallback } from "react";
 import type { TrimMargins, PageSelection } from "../../lib/tauri";
 
 interface Props {
-  margins:    TrimMargins;
-  pageW:      number;  // ページ幅 (pt) — 入力値の上限
-  pageH:      number;
+  margins:    TrimMargins;  // pt単位の余白幅
+  pageW:      number;       // ページ幅 pt
+  pageH:      number;       // ページ高さ pt
   pages:      PageSelection;
   onMargins:  (m: TrimMargins) => void;
   onPages:    (p: PageSelection) => void;
@@ -18,26 +16,16 @@ interface Props {
   processing: boolean;
 }
 
-// ── 単位変換ヘルパー ──────────────────────────────────────────────────────────
-const PT_PER_MM = 2.8346;
-const ptToMm  = (pt: number) => (pt / PT_PER_MM).toFixed(1);
-const mmToPt  = (mm: number) => mm * PT_PER_MM;
+const PT_TO_MM = 1 / 2.8346;
+const MM_TO_PT = 2.8346;
 
-// ── フィールド定義 ────────────────────────────────────────────────────────────
-type FieldKey = "left" | "right" | "top" | "bottom";
+const toMm  = (pt: number)  => +(pt * PT_TO_MM).toFixed(1);
+const toPt  = (mm: number)  => mm * MM_TO_PT;
 
-interface Field {
-  key:   FieldKey;
-  label: string;
-  icon:  string;
-  max:   (pageW: number, pageH: number) => number;
-}
-
-const FIELDS: Field[] = [
-  { key: "left",   label: "左",   icon: "←", max: (w) => w },
-  { key: "right",  label: "右",   icon: "→", max: (w) => w },
-  { key: "top",    label: "上",   icon: "↑", max: (_, h) => h },
-  { key: "bottom", label: "下",   icon: "↓", max: (_, h) => h },
+const PAGE_OPTS: { label: string; value: PageSelection }[] = [
+  { label: "全ページ",   value: { type: "All" } },
+  { label: "偶数ページ", value: { type: "Even" } },
+  { label: "奇数ページ", value: { type: "Odd" } },
 ];
 
 export function TrimControls({
@@ -45,259 +33,158 @@ export function TrimControls({
   onMargins, onPages, onApply, onReset, processing,
 }: Props) {
 
-  const handleMm = useCallback((key: FieldKey, mmStr: string) => {
-    const mm = parseFloat(mmStr);
-    if (isNaN(mm)) return;
-    const pt = mmToPt(mm);
-    onMargins({ ...margins, [key]: pt });
+  const set = useCallback((key: keyof TrimMargins, mm: number) => {
+    onMargins({ ...margins, [key]: toPt(Math.max(0, mm)) });
   }, [margins, onMargins]);
 
-  const pageOptions: { label: string; value: PageSelection }[] = [
-    { label: "全ページ",   value: { type: "All" } },
-    { label: "偶数ページ", value: { type: "Even" } },
-    { label: "奇数ページ", value: { type: "Odd" } },
-  ];
+  const trimW  = toMm(pageW  - margins.left - margins.right);
+  const trimH  = toMm(pageH  - margins.top  - margins.bottom);
+  const origW  = toMm(pageW);
+  const origH  = toMm(pageH);
 
   return (
-    <div style={styles.panel}>
-      {/* ── ページ選択 ─────────────────────────────────────────────────────── */}
-      <section style={styles.section}>
-        <h3 style={styles.sectionTitle}>適用ページ</h3>
-        <div style={styles.chipRow}>
-          {pageOptions.map(opt => (
-            <button
-              key={opt.label}
-              style={{
-                ...styles.chip,
-                ...(pages.type === opt.value.type ? styles.chipActive : {}),
-              }}
-              onClick={() => onPages(opt.value)}
-            >
-              {opt.label}
-            </button>
+    <div style={s.panel}>
+      {/* 余白指定 */}
+      <section style={s.section}>
+        <h3 style={s.heading}>削る余白 (mm)</h3>
+        <div style={s.cross}>
+          {/* 上 */}
+          <div style={s.crossTop}>
+            <MmField label="上" value={toMm(margins.top)}
+              max={toMm(pageH - margins.bottom - MM_TO_PT)}
+              onChange={v => set("top", v)} />
+          </div>
+          {/* 左・中央・右 */}
+          <div style={s.crossMid}>
+            <MmField label="左" value={toMm(margins.left)}
+              max={toMm(pageW - margins.right - MM_TO_PT)}
+              onChange={v => set("left", v)} />
+            <div style={s.pageBox}>
+              <span style={s.pageSize}>{origW} × {origH}</span>
+              <span style={s.pageUnit}>mm (元サイズ)</span>
+              <span style={s.arrow}>↓</span>
+              <span style={{ ...s.pageSize, color: "#4f9eff" }}>{trimW} × {trimH}</span>
+              <span style={s.pageUnit}>mm (トリム後)</span>
+            </div>
+            <MmField label="右" value={toMm(margins.right)}
+              max={toMm(pageW - margins.left - MM_TO_PT)}
+              onChange={v => set("right", v)} />
+          </div>
+          {/* 下 */}
+          <div style={s.crossBot}>
+            <MmField label="下" value={toMm(margins.bottom)}
+              max={toMm(pageH - margins.top - MM_TO_PT)}
+              onChange={v => set("bottom", v)} />
+          </div>
+        </div>
+      </section>
+
+      {/* 適用ページ */}
+      <section style={s.section}>
+        <h3 style={s.heading}>適用ページ</h3>
+        <div style={s.chips}>
+          {PAGE_OPTS.map(o => (
+            <button key={o.label}
+              style={{ ...s.chip, ...(pages.type === o.value.type ? s.chipOn : {}) }}
+              onClick={() => onPages(o.value)}
+            >{o.label}</button>
           ))}
         </div>
       </section>
 
-      {/* ── マージン入力 (mm) ─────────────────────────────────────────────── */}
-      <section style={styles.section}>
-        <h3 style={styles.sectionTitle}>トリミング位置 (mm)</h3>
-
-        {/* 上 */}
-        <div style={styles.crossLayout}>
-          <div style={styles.crossTop}>
-            <MmInput
-              icon="↑" label="上"
-              value={parseFloat(ptToMm(margins.top))}
-              max={parseFloat(ptToMm(pageH))}
-              onChange={v => handleMm("top", String(v))}
-            />
-          </div>
-          <div style={styles.crossMiddle}>
-            <MmInput
-              icon="←" label="左"
-              value={parseFloat(ptToMm(margins.left))}
-              max={parseFloat(ptToMm(pageW))}
-              onChange={v => handleMm("left", String(v))}
-            />
-            {/* ページサイズ表示 */}
-            <div style={styles.pageSize}>
-              <span style={styles.pageSizeText}>
-                {ptToMm(pageW)} × {ptToMm(pageH)} mm
-              </span>
-              <span style={styles.pageSizeUnit}>ページサイズ</span>
-            </div>
-            <MmInput
-              icon="→" label="右"
-              value={parseFloat(ptToMm(margins.right))}
-              max={parseFloat(ptToMm(pageW))}
-              onChange={v => handleMm("right", String(v))}
-            />
-          </div>
-          <div style={styles.crossBottom}>
-            <MmInput
-              icon="↓" label="下"
-              value={parseFloat(ptToMm(margins.bottom))}
-              max={parseFloat(ptToMm(pageH))}
-              onChange={v => handleMm("bottom", String(v))}
-            />
-          </div>
-        </div>
-
-        {/* ── 現在のトリム領域サイズ ──────────────────────────────────────── */}
-        <div style={styles.resultBox}>
-          <span style={styles.resultLabel}>トリム後サイズ</span>
-          <span style={styles.resultValue}>
-            {ptToMm(margins.right - margins.left)} ×{" "}
-            {ptToMm(margins.top   - margins.bottom)} mm
-          </span>
-        </div>
-      </section>
-
-      {/* ── アクション ────────────────────────────────────────────────────── */}
-      <section style={styles.actionRow}>
-        <button style={styles.btnSecondary} onClick={onReset} disabled={processing}>
+      {/* アクション */}
+      <section style={s.actions}>
+        <button style={s.btnReset} onClick={onReset} disabled={processing}>
           リセット
         </button>
         <button
-          style={{ ...styles.btnPrimary, ...(processing ? styles.btnDisabled : {}) }}
-          onClick={onApply}
-          disabled={processing}
+          style={{ ...s.btnApply, ...(processing ? s.btnDisabled : {}) }}
+          onClick={onApply} disabled={processing}
         >
-          {processing ? "処理中…" : "トリミング実行"}
+          {processing ? "処理中…" : "プレビュー →"}
         </button>
       </section>
+
+      {/* ヒント */}
+      <p style={s.hint}>
+        💡 プレビュー画像の枠をドラッグして余白を調整できます
+      </p>
     </div>
   );
 }
 
-// ── 数値入力サブコンポーネント ────────────────────────────────────────────────
+// ── 数値入力サブコンポーネント ─────────────────────────────────────────────────
 
-interface MmInputProps {
-  icon:     string;
-  label:    string;
-  value:    number;
-  max:      number;
-  onChange: (v: number) => void;
-}
-
-function MmInput({ icon, label, value, max, onChange }: MmInputProps) {
+function MmField({ label, value, max, onChange }: {
+  label: string; value: number; max: number; onChange: (v: number) => void;
+}) {
   return (
-    <div style={styles.inputWrapper}>
-      <label style={styles.inputLabel}>{icon} {label}</label>
+    <div style={s.field}>
+      <label style={s.fieldLabel}>{label}</label>
       <input
-        type="number"
-        style={styles.input}
-        value={value}
-        min={0}
-        max={max}
-        step={0.1}
+        type="number" style={s.input}
+        value={value} min={0} max={max} step={0.5}
         onChange={e => onChange(parseFloat(e.target.value) || 0)}
       />
-      <span style={styles.inputUnit}>mm</span>
+      <span style={s.unit}>mm</span>
     </div>
   );
 }
 
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
-const styles: Record<string, React.CSSProperties> = {
+const s: Record<string, React.CSSProperties> = {
   panel: {
-    display:        "flex",
-    flexDirection:  "column",
-    gap:            20,
-    padding:        "20px 16px",
-    background:     "#111318",
-    borderRadius:   12,
-    color:          "#e8eaf0",
-    fontFamily:     "'JetBrains Mono', 'Fira Code', monospace",
-    fontSize:       13,
-    minWidth:       240,
+    display: "flex", flexDirection: "column", gap: 20,
+    padding: "18px 14px",
+    background: "#0d1017", color: "#e8eaf0",
+    fontFamily: "'JetBrains Mono','Noto Sans JP',monospace",
+    fontSize: 13, height: "100%", overflowY: "auto",
   },
-  section: { display: "flex", flexDirection: "column", gap: 12 },
-  sectionTitle: {
-    margin: 0, fontSize: 11,
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-    color: "#5a6070",
-  },
-  chipRow:   { display: "flex", gap: 6 },
-  chip: {
-    padding:      "5px 12px",
-    borderRadius: 20,
-    border:       "1px solid #2a2e38",
-    background:   "#1a1d24",
-    color:        "#7a8090",
-    cursor:       "pointer",
-    fontSize:     12,
-    transition:   "all 0.15s",
-  },
-  chipActive: {
-    background: "#1a3a5c",
-    borderColor: "#4f9eff",
-    color: "#4f9eff",
-  },
-  crossLayout: {
-    display:       "flex",
-    flexDirection: "column",
-    alignItems:    "center",
-    gap:           8,
-  },
-  crossTop:    { display: "flex", justifyContent: "center" },
-  crossMiddle: { display: "flex", alignItems: "center", gap: 12 },
-  crossBottom: { display: "flex", justifyContent: "center" },
-  pageSize: {
-    display:       "flex",
-    flexDirection: "column",
-    alignItems:    "center",
-    gap:           2,
-    minWidth:      80,
-  },
-  pageSizeText: { fontSize: 11, color: "#4a5060" },
-  pageSizeUnit: { fontSize: 10, color: "#3a4050" },
-  inputWrapper: {
-    display:       "flex",
-    flexDirection: "column",
-    alignItems:    "center",
-    gap:           3,
-  },
-  inputLabel: { fontSize: 10, color: "#5a6070" },
+  section: { display: "flex", flexDirection: "column", gap: 10 },
+  heading: { margin: 0, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#5a6070" },
+
+  cross:    { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
+  crossTop: { display: "flex", justifyContent: "center" },
+  crossMid: { display: "flex", alignItems: "center", gap: 10 },
+  crossBot: { display: "flex", justifyContent: "center" },
+
+  pageBox:  { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 90 },
+  pageSize: { fontSize: 11, color: "#5a6070" },
+  pageUnit: { fontSize: 9, color: "#3a4050" },
+  arrow:    { fontSize: 12, color: "#2a3040" },
+
+  field:      { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 },
+  fieldLabel: { fontSize: 10, color: "#5a6070" },
   input: {
-    width:        "72px",
-    padding:      "6px 8px",
-    background:   "#1a1d24",
-    border:       "1px solid #2a2e38",
-    borderRadius: 6,
-    color:        "#e8eaf0",
-    fontSize:     13,
-    textAlign:    "center",
-    outline:      "none",
-    fontFamily:   "inherit",
+    width: 68, padding: "5px 6px",
+    background: "#1a1d24", border: "1px solid #2a2e38", borderRadius: 6,
+    color: "#e8eaf0", fontSize: 13, textAlign: "center",
+    outline: "none", fontFamily: "inherit",
   },
-  inputUnit: { fontSize: 10, color: "#3a4050" },
-  resultBox: {
-    display:        "flex",
-    justifyContent: "space-between",
-    alignItems:     "center",
-    padding:        "8px 12px",
-    background:     "#0d1117",
-    borderRadius:   6,
-    border:         "1px solid #2a2e38",
+  unit: { fontSize: 9, color: "#3a4050" },
+
+  chips: { display: "flex", gap: 5 },
+  chip: {
+    padding: "4px 10px", borderRadius: 16,
+    border: "1px solid #2a2e38", background: "#1a1d24",
+    color: "#7a8090", cursor: "pointer", fontSize: 11,
+    fontFamily: "inherit", transition: "all 0.12s",
   },
-  resultLabel: { fontSize: 11, color: "#5a6070" },
-  resultValue: { fontSize: 13, color: "#4f9eff", fontWeight: 600 },
-  actionRow: {
-    display: "flex",
-    gap: 8,
-    marginTop: 4,
+  chipOn: { background: "#1a3a5c", borderColor: "#4f9eff", color: "#4f9eff" },
+
+  actions: { display: "flex", gap: 8 },
+  btnReset: {
+    padding: "9px 12px", background: "transparent",
+    border: "1px solid #2a2e38", borderRadius: 7,
+    color: "#5a6070", cursor: "pointer", fontFamily: "inherit", fontSize: 12,
   },
-  btnPrimary: {
-    flex:         1,
-    padding:      "10px 0",
-    background:   "#1a4a8a",
-    border:       "1px solid #4f9eff",
-    borderRadius: 8,
-    color:        "#4f9eff",
-    fontSize:     13,
-    fontWeight:   600,
-    cursor:       "pointer",
-    fontFamily:   "inherit",
-    letterSpacing: "0.04em",
-    transition:   "all 0.15s",
+  btnApply: {
+    flex: 1, padding: "9px 0",
+    background: "#1a4a8a", border: "1px solid #4f9eff", borderRadius: 7,
+    color: "#4f9eff", fontWeight: 600, cursor: "pointer",
+    fontFamily: "inherit", fontSize: 13, letterSpacing: "0.03em",
   },
-  btnSecondary: {
-    padding:      "10px 16px",
-    background:   "transparent",
-    border:       "1px solid #2a2e38",
-    borderRadius: 8,
-    color:        "#5a6070",
-    fontSize:     13,
-    cursor:       "pointer",
-    fontFamily:   "inherit",
-    transition:   "all 0.15s",
-  },
-  btnDisabled: {
-    opacity: 0.4,
-    cursor:  "not-allowed",
-  },
+  btnDisabled: { opacity: 0.4, cursor: "not-allowed" },
+  hint: { margin: 0, fontSize: 10, color: "#3a4050", lineHeight: 1.6 },
 };

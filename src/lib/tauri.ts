@@ -1,5 +1,5 @@
 // src/lib/tauri.ts
-// Tauri バックエンドコマンドの TypeScript 型定義
+// Tauri バックエンドコマンドの TypeScript ラッパー
 
 import { invoke } from "@tauri-apps/api/core";
 
@@ -17,17 +17,17 @@ export interface PdfInfo {
   pdf_version: string;
   encrypted:   boolean;
   linearized:  boolean;
-  pages:       PageBounds[];  // 全ページのサイズ
+  pages:       PageBounds[];
 }
 
-// ── トリミング ────────────────────────────────────────────────────────────────
+// ── トリミング型 ──────────────────────────────────────────────────────────────
 
 /** PDF ポイント単位のトリミングマージン */
 export interface TrimMargins {
-  left:   number;
-  right:  number;  // 右端の絶対座標 (pt)
-  bottom: number;
-  top:    number;  // 上端の絶対座標 (pt)
+  left:   number;  // pt
+  right:  number;  // pt
+  bottom: number;  // pt
+  top:    number;  // pt
 }
 
 export type PageSelection =
@@ -35,15 +35,6 @@ export type PageSelection =
   | { type: "Even" }
   | { type: "Odd" }
   | { type: "Range"; pages: number[] };
-
-export interface TrimPreviewResult {
-  /** base64 エンコードされた JPEG 画像 */
-  image_b64: string;
-  width_px:  number;
-  height_px: number;
-  /** プレビュー画像上でのトリミング矩形 (ピクセル) */
-  crop_rect: { x: number; y: number; w: number; h: number };
-}
 
 // ── ファイルダイアログ ────────────────────────────────────────────────────────
 
@@ -65,26 +56,29 @@ export async function getPdfInfo(path: string): Promise<PdfInfo> {
   return invoke<PdfInfo>("get_pdf_info", { path });
 }
 
-// ── ページレンダリング (プレビュー用) ─────────────────────────────────────────
+// ── ページレンダリング ────────────────────────────────────────────────────────
+// core.rs: render_page(path: String, page: i32, dpi: u32, format, quality) -> Value
+// レスポンス (RenderResponse): { ok, image_b64, format, width_px, height_px, ... }
 
 export async function renderPage(
   path: string,
-  pageIndex: number,
-  dpi: number,
+  page: number,   // 0-indexed
+  dpi:  number,
 ): Promise<string> {  // base64 JPEG
-  return invoke<string>("render_page", { path, pageIndex, dpi });
+  const resp = await invoke<{ image_b64: string }>("render_page", {
+    path,
+    page,
+    dpi,
+    format:  "jpeg",
+    quality: 85,
+  });
+  return resp.image_b64;
 }
 
 // ── トリミング ────────────────────────────────────────────────────────────────
-
-export async function trimPreview(
-  path:      string,
-  pageIndex: number,
-  margins:   TrimMargins,
-  dpi:       number,
-): Promise<TrimPreviewResult> {
-  return invoke<TrimPreviewResult>("trim_preview", { path, pageIndex, margins, dpi });
-}
+// core.rs: trim_pdf(request: Value) -> call_core_json("trim", request)
+// TrimRequest: { input, output, margins: { left, right, bottom, top }, unit, pages }
+// ★ margins は pt 単位で渡し、unit: "pt" を指定する
 
 export async function trimPdf(
   inputPath:  string,
@@ -92,7 +86,22 @@ export async function trimPdf(
   margins:    TrimMargins,
   pages:      PageSelection,
 ): Promise<void> {
-  return invoke<void>("trim_pdf", { inputPath, outputPath, margins, pages });
+  await invoke("trim_pdf", {
+    request: {
+      input:   inputPath,
+      output:  outputPath,
+      margins: {
+        left:   margins.left,
+        right:  margins.right,
+        bottom: margins.bottom,
+        top:    margins.top,
+      },
+      unit:  "pt",
+      // Rust の TrimRequest.pages は Option<PageSelection>
+      // All の場合は null (= 全ページ), それ以外はそのまま渡す
+      pages: pages.type === "All" ? null : pages,
+    },
+  });
 }
 
 // ── スクリーン情報 ────────────────────────────────────────────────────────────
@@ -106,4 +115,83 @@ export interface ScreenInfo {
 
 export async function getScreenInfo(): Promise<ScreenInfo> {
   return invoke<ScreenInfo>("get_screen_info");
+}
+
+// ── 回転 ──────────────────────────────────────────────────────────────────────
+// core.rs: rotate_pdf(request: Value) -> call_core_json("rotate", request)
+// RotateRequest: { input, output, rotations: [{ page, angle }] }
+
+export interface PageRotation {
+  page:  number;  // 1始まり
+  angle: number;  // 0 | 90 | 180 | 270
+}
+
+export async function rotatePdf(
+  inputPath:  string,
+  outputPath: string,
+  rotations:  PageRotation[],
+): Promise<void> {
+  await invoke("rotate_pdf", {
+    request: {
+      input:     inputPath,
+      output:    outputPath,
+      rotations,
+    },
+  });
+}
+
+// ── 圧縮 ──────────────────────────────────────────────────────────────────────
+// CompressRequest: { input, output, preset?, compress_images?, compress_fonts?,
+//                   garbage_level?, clean?, sanitize? }
+// CompressResponse: { ok, input_bytes, output_bytes, ratio, params_used, warning? }
+
+export type CompressPreset = "light" | "standard" | "aggressive" | "maximum";
+
+export interface CompressRequest {
+  preset?:          CompressPreset;
+  compress_images?: boolean;
+  compress_fonts?:  boolean;
+  garbage_level?:   number;
+  clean?:           boolean;
+  sanitize?:        boolean;
+}
+
+export interface CompressResponse {
+  ok:           boolean;
+  input_bytes:  number;
+  output_bytes: number;
+  ratio:        number;
+  params_used:  {
+    compress_images: boolean;
+    compress_fonts:  boolean;
+    garbage_level:   number;
+    clean:           boolean;
+    sanitize:        boolean;
+    rewrite_fallback?: boolean;
+  };
+  warning?: string;
+}
+
+export async function compressPdf(
+  inputPath:  string,
+  outputPath: string,
+  opts:       CompressRequest,
+): Promise<CompressResponse> {
+  return invoke<CompressResponse>("compress_pdf", {
+    request: {
+      input:  inputPath,
+      output: outputPath,
+      ...opts,
+    },
+  });
+}
+
+// ── ユーティリティ ────────────────────────────────────────────────────────────
+
+export async function getDefaultSaveDir(): Promise<string> {
+  return invoke<string>("get_default_save_dir");
+}
+
+export async function getTmpPath(filename: string): Promise<string> {
+  return invoke<string>("get_tmp_path", { filename });
 }

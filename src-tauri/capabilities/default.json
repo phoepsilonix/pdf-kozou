@@ -13,9 +13,9 @@
     "fs:allow-read-file",
     "fs:allow-write-file",
     "fs:allow-read-dir",
-    "fs:allow-create-dir",
+    "fs:allow-mkdir",
     "fs:allow-exists",
-    "fs:allow-remove-file",
+    "fs:allow-remove",
     "fs:allow-rename",
     "shell:default",
     "process:default"

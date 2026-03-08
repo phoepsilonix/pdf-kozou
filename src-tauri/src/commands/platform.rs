@@ -51,6 +51,16 @@ pub async fn pick_open_files() -> Result<Vec<String>, String> {
     Ok(paths.iter().map(|p| p.display().to_string()).collect())
 }
 
+/// 保存先ダイアログ (初期ディレクトリ指定付き)
+#[tauri::command]
+pub async fn pick_save_file_in(
+    default_name: String,
+    initial_dir:  Option<String>,
+) -> Result<Option<String>, String> {
+    let path = platform::save_pdf_dialog_in(&default_name, initial_dir.as_deref()).await;
+    Ok(path.map(|p| p.display().to_string()))
+}
+
 /// 保存先ダイアログ
 #[tauri::command]
 pub async fn pick_save_file(default_name: String) -> Result<Option<String>, String> {

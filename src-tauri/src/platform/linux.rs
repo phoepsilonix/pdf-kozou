@@ -108,14 +108,24 @@ pub async fn open_pdfs_dialog() -> Vec<PathBuf> {
 /// 保存先ダイアログ
 pub async fn save_pdf_dialog(default_name: &str) -> Option<PathBuf> {
     use rfd::AsyncFileDialog;
-
     AsyncFileDialog::new()
         .set_title("保存先を選択")
         .set_file_name(default_name)
         .add_filter("PDF", &["pdf"])
-        .save_file()
-        .await
+        .save_file().await
         .map(|f| f.path().to_path_buf())
+}
+
+pub async fn save_pdf_dialog_in(default_name: &str, initial_dir: Option<&str>) -> Option<PathBuf> {
+    use rfd::AsyncFileDialog;
+    let mut dlg = AsyncFileDialog::new()
+        .set_title("保存先を選択")
+        .set_file_name(default_name)
+        .add_filter("PDF", &["pdf"]);
+    if let Some(dir) = initial_dir {
+        dlg = dlg.set_directory(dir);
+    }
+    dlg.save_file().await.map(|f| f.path().to_path_buf())
 }
 
 /// 出力ディレクトリ選択ダイアログ

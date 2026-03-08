@@ -30,6 +30,9 @@ tokio      = { workspace = true }
 tracing    = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# OS 標準の既知フォルダパス取得 (Linux=XDG, macOS=NSFileManager, Windows=SHGetKnownFolderPath)
+dirs = "5"
+
 # ── Linux デスクトップのみ ─────────────────────────────────────────────────────
 [target.'cfg(target_os = "linux")'.dependencies]
 rfd     = { version = "0.14", default-features = false, features = ["gtk3"] }

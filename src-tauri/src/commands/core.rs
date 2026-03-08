@@ -72,12 +72,14 @@ pub async fn render_page(
     format:  Option<String>,
     quality: Option<u8>,
 ) -> Result<Value> {
-    let mut args = vec![
+    // --page は 1始まり、page 引数は 0始まりなので +1 する
+    let page_1based = page + 1;
+    let args = vec![
         "render".into(), path,
-        "--page".into(),   page.to_string(),
-        "--dpi".into(),    dpi.to_string(),
-        "--format".into(), format.unwrap_or_else(|| "jpeg".into()),
-        "--quality".into(), quality.unwrap_or(85).to_string(),
+        "--page".into(),    page_1based.to_string(),
+        "--dpi".into(),     dpi.to_string(),
+        "--format".into(),  format.unwrap_or_else(|| "jpeg".into()),
+        "--quality".into(),  quality.unwrap_or(85).to_string(),
     ];
     call_core(args).await
 }
@@ -107,6 +109,34 @@ pub async fn rotate_pdf(request: Value) -> Result<Value> {
     call_core_json("rotate", request).await
 }
 
+
+/// デフォルト保存ディレクトリを返す
+///
+/// `dirs` クレートが OS 標準 API を使って取得する:
+///   - Linux   : XDG user-dirs (`~/.config/user-dirs.dirs` / xdg-user-dirs)
+///   - macOS   : `NSFileManager` の `documentDirectory`
+///   - Windows : `SHGetKnownFolderPath` (FOLDERID_Documents)
+///
+/// 優先順位: Documents → Downloads → home → temp
+#[tauri::command]
+pub async fn get_default_save_dir() -> Result<String> {
+    // dirs::document_dir() は各 OS の標準ドキュメントフォルダを返す
+    // (言語・ユーザー設定に関わらず正しいパスが得られる)
+    let path = dirs::document_dir()
+        .filter(|p| p.exists())
+        .or_else(|| dirs::download_dir().filter(|p| p.exists()))
+        .or_else(|| dirs::home_dir())
+        .unwrap_or_else(std::env::temp_dir);
+
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
+pub async fn get_tmp_path(filename: String) -> Result<String> {
+    let mut path = std::env::temp_dir();
+    path.push(filename);
+    Ok(path.display().to_string())
+}
 /// JSON モードで core を呼ぶ (stdin 経由)
 async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
     payload["cmd"] = serde_json::Value::String(cmd.to_string());
@@ -134,6 +164,23 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
         .map_err(|e| Error::Core(e.to_string()))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if !output.status.success() {
+        return Err(Error::Core(format!(
+            "core error (exit {}): {}\n{}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim(),
+            stdout.trim(),
+        )));
+    }
+
+    if stdout.trim().is_empty() {
+        return Err(Error::Core(format!(
+            "core returned empty output. stderr: {}", stderr.trim()
+        )));
+    }
+
     serde_json::from_str(stdout.trim())
-        .map_err(|e| Error::Core(format!("JSON parse: {e}")))
+        .map_err(|e| Error::Core(format!("JSON parse: {e}\nraw: {stdout}")))
 }

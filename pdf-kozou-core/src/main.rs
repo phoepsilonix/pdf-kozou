@@ -323,7 +323,29 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let resp = if rewrite {
                 let opts = rewrite_options.as_deref()
                     .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
-                pdf_kozou_core::compress::rewrite(&input, &output, opts)?
+                // フォールバック時のパラメータ優先順位:
+                //   1. 明示的な CLI フラグ (--gc / --clean / --sanitize / --no-compress-*)
+                //   2. --rewrite-options 文字列から parse（rewrite 失敗時でも同じ設定で圧縮）
+                //   3. デフォルト値
+                let fallback = {
+                    use pdf_kozou_core::compress::{RewriteFallbackParams, parse_rewrite_opt_i32, parse_rewrite_opt_bool};
+                    RewriteFallbackParams {
+                        garbage_level: gc.or_else(|| parse_rewrite_opt_i32(opts, "garbage")),
+                        clean:    clean    || parse_rewrite_opt_bool(opts, "clean")   .unwrap_or(false),
+                        sanitize: sanitize || parse_rewrite_opt_bool(opts, "sanitize").unwrap_or(false),
+                        compress_images: if no_compress_images {
+                            Some(false)
+                        } else {
+                            parse_rewrite_opt_bool(opts, "compress-images")
+                        },
+                        compress_fonts: if no_compress_fonts {
+                            Some(false)
+                        } else {
+                            parse_rewrite_opt_bool(opts, "compress-fonts")
+                        },
+                    }
+                };
+                pdf_kozou_core::compress::rewrite(&input, &output, opts, &fallback)?
             } else {
                 use pdf_kozou_core::compress::CompressPreset;
                 let preset = match preset.as_str() {
@@ -469,6 +491,18 @@ fn dispatch_json(line: &str) -> String {
                     rewrite: bool,
                     #[serde(default)]
                     rewrite_options: Option<String>,
+                    // フォールバック時のパラメータ (JSON API 用)
+                    // CLI の --gc / --clean / --sanitize / --no-compress-* に相当
+                    #[serde(default)]
+                    fallback_gc: Option<i32>,
+                    #[serde(default)]
+                    fallback_clean: bool,
+                    #[serde(default)]
+                    fallback_sanitize: bool,
+                    #[serde(default)]
+                    fallback_compress_images: Option<bool>,
+                    #[serde(default)]
+                    fallback_compress_fonts: Option<bool>,
                     #[serde(flatten)]
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
@@ -476,7 +510,23 @@ fn dispatch_json(line: &str) -> String {
                 let resp = if r.rewrite {
                     let opts = r.rewrite_options.as_deref()
                         .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
-                    pdf_kozou_core::compress::rewrite(&r.inner.input, &r.inner.output, opts)?
+                    // 優先順位: 明示的な fallback_* フィールド > rewrite_options 文字列 > デフォルト
+                    let fallback = {
+                        use pdf_kozou_core::compress::{RewriteFallbackParams, parse_rewrite_opt_i32, parse_rewrite_opt_bool};
+                        RewriteFallbackParams {
+                            garbage_level: r.fallback_gc
+                                .or_else(|| parse_rewrite_opt_i32(opts, "garbage")),
+                            clean:    r.fallback_clean
+                                || parse_rewrite_opt_bool(opts, "clean").unwrap_or(false),
+                            sanitize: r.fallback_sanitize
+                                || parse_rewrite_opt_bool(opts, "sanitize").unwrap_or(false),
+                            compress_images: r.fallback_compress_images
+                                .or_else(|| parse_rewrite_opt_bool(opts, "compress-images")),
+                            compress_fonts: r.fallback_compress_fonts
+                                .or_else(|| parse_rewrite_opt_bool(opts, "compress-fonts")),
+                        }
+                    };
+                    pdf_kozou_core::compress::rewrite(&r.inner.input, &r.inner.output, opts, &fallback)?
                 } else {
                     pdf_kozou_core::compress::compress(&r.inner)?
                 };
