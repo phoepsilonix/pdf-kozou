@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c1f28"/>
+      <stop offset="100%" stop-color="#141720"/>
+    </linearGradient>
+    <linearGradient id="docg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#eef6f0"/>
+      <stop offset="100%" stop-color="#d0e8d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="100" fill="url(#bg4)"/>
+
+  <!-- メインドキュメント -->
+  <rect x="112" y="80" width="220" height="285" rx="14" fill="url(#docg)"/>
+  <!-- 折り角 -->
+  <polygon points="282,80 332,130 282,130" fill="#5dd68a" opacity="0.75"/>
+  <polygon points="282,80 332,130 282,130" fill="#98d8a8" opacity="0.4"/>
+  <!-- PDFバッジ -->
+  <rect x="126" y="100" width="110" height="46" rx="10" fill="#cc3030"/>
+  <text x="181" y="133" text-anchor="middle" font-family="Arial Black,sans-serif"
+        font-size="30" font-weight="900" fill="white" letter-spacing="1">PDF</text>
+  <!-- ページ線 -->
+  <line x1="134" y1="175" x2="290" y2="175" stroke="#5dd68a" stroke-width="5.5" stroke-linecap="round"/>
+  <line x1="134" y1="203" x2="282" y2="203" stroke="#5dd68a" stroke-width="5.5" stroke-linecap="round"/>
+  <line x1="134" y1="231" x2="270" y2="231" stroke="#5dd68a" stroke-width="5.5" stroke-linecap="round"/>
+  <line x1="134" y1="259" x2="278" y2="259" stroke="#5dd68a" stroke-width="5.5" stroke-linecap="round"/>
+  <line x1="134" y1="287" x2="260" y2="287" stroke="#5dd68a" stroke-width="4"   stroke-linecap="round"/>
+  <line x1="134" y1="312" x2="268" y2="312" stroke="#5dd68a" stroke-width="4"   stroke-linecap="round" opacity="0.7"/>
+
+  <!-- 右下: ツールアイコン群 (職人の道具) -->
+  <!-- はさみ -->
+  <g transform="translate(360,310)">
+    <circle cx="-14" cy="-14" r="13" fill="none" stroke="#5dd68a" stroke-width="5"/>
+    <circle cx="14"  cy="-14" r="13" fill="none" stroke="#5dd68a" stroke-width="5"/>
+    <line x1="-5" y1="-4" x2="36" y2="50" stroke="#5dd68a" stroke-width="5" stroke-linecap="round"/>
+    <line x1="5"  y1="-4" x2="-36" y2="50" stroke="#5dd68a" stroke-width="5" stroke-linecap="round"/>
+  </g>
+
+  <!-- 小僧バッジ (右上) -->
+  <circle cx="390" cy="138" r="72" fill="#161d18" stroke="#5dd68a" stroke-width="4.5"/>
+  <!-- 頭巾 -->
+  <ellipse cx="390" cy="109" rx="32" ry="13" fill="#3d8a50"/>
+  <rect x="366" y="98" width="48" height="26" rx="8" fill="#2d7040"/>
+  <!-- 顔 -->
+  <ellipse cx="390" cy="137" rx="27" ry="24" fill="#f0c880"/>
+  <!-- 目 -->
+  <circle cx="381" cy="131" r="4.5" fill="#1a1a1a"/>
+  <circle cx="399" cy="131" r="4.5" fill="#1a1a1a"/>
+  <!-- 笑顔 -->
+  <path d="M381 145 Q390 155 399 145" stroke="#b07040" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <!-- 小僧 -->
+  <text x="390" y="195" text-anchor="middle" font-family="serif" font-size="17"
+        fill="#5dd68a" letter-spacing="3">小僧</text>
+
+  <!-- 下部アプリ名 -->
+  <text x="256" y="430" text-anchor="middle" font-family="serif"
+        font-size="40" font-weight="bold" fill="#5dd68a" letter-spacing="10">PDF小僧</text>
+  <text x="256" y="465" text-anchor="middle" font-family="monospace"
+        font-size="18" fill="#3d6040">v1.0.0</text>
+
+  <rect width="512" height="512" rx="100" fill="none" stroke="#5dd68a" stroke-width="5" opacity="0.35"/>
+</svg>

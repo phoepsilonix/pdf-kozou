@@ -11,7 +11,9 @@ import { ViewerPage }      from "./pages/ViewerPage";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo }    from "./lib/tauri";
 import { invoke }          from "@tauri-apps/api/core";
-import { C, F }            from "./lib/theme";
+import { C, F, setTheme, loadThemeId, getTheme } from "./lib/theme";
+import { ThemeSwitcher }   from "./components/ThemeSwitcher";
+import type { ThemeId }    from "./lib/themes";
 
 const GLOBAL_CSS = `
   * { box-sizing: border-box; }
@@ -48,14 +50,23 @@ export default function App() {
   const [activeTool, setActiveTool] = useState<ToolId|null>(null);
   const [toolFiles,  setToolFiles]  = useState<FileEntry[]>([]);
   const [dragOver,   setDragOver]   = useState(false);
+  const [themeId,    setThemeId]    = useState<ThemeId>(loadThemeId);
   const dragCounter = useRef(0);
+
+  const handleThemeChange = useCallback((id: ThemeId) => {
+    setTheme(id);
+    setThemeId(id);
+    // グローバルCSSのbody背景色を更新
+    document.body.style.background = getTheme().bg;
+  }, []);
 
   useEffect(() => {
     const el = document.createElement("style");
     el.textContent = GLOBAL_CSS;
     document.head.appendChild(el);
+    document.body.style.background = getTheme().bg;
     return () => { document.head.removeChild(el); };
-  }, []);
+  }, [themeId]);
 
   useEffect(() => {
     const ul = listen<string[]>("open-pdf-files", e => handleAddPaths(e.payload));
@@ -125,17 +136,18 @@ export default function App() {
   if (activeTool) {
     const isBatch = toolFiles.length > 1;
     return (
-      <ToolShell
+      <ToolShell key={themeId}
         activeTool={activeTool} toolFiles={toolFiles}
         filePath={filePath??""} pdfInfo={pdfInfo??{page_count:0,pages:[]}}
         onHome={handleHome} onOpenMore={handlePickFiles}
         onToolChange={handleToolChange} isBatch={isBatch}
+        themeId={themeId} onThemeChange={handleThemeChange}
       />
     );
   }
 
   return (
-    <div style={{...s.root,...(dragOver?s.rootDrag:{})}}
+    <div key={themeId} style={{...s.root,...(dragOver?s.rootDrag:{})}}
       onDragOver={e=>e.preventDefault()}
       onDragEnter={e=>{e.preventDefault();dragCounter.current++;setDragOver(true);}}
       onDragLeave={()=>{if(--dragCounter.current<=0){setDragOver(false);dragCounter.current=0;}}}
@@ -144,6 +156,9 @@ export default function App() {
       <header style={s.header}>
         <span style={s.logo}>PDF<span style={{color:C.accent}}>小僧</span></span>
         <span style={s.tagline}>Pure Rust · MuPDF · オフライン完全動作</span>
+        <div style={{position:"absolute",top:16,right:20}}>
+          <ThemeSwitcher currentId={themeId} onChange={handleThemeChange}/>
+        </div>
       </header>
 
       <div style={s.listCard}>
@@ -253,9 +268,10 @@ function FileRow({ entry, index, onToggle, onRemove, onDragReorder }: {
 
 // ── ToolShell ────────────────────────────────────────────────────────────────
 
-function ToolShell({ activeTool, toolFiles, filePath, pdfInfo, onHome, onOpenMore, onToolChange, isBatch }: {
+function ToolShell({ activeTool, toolFiles, filePath, pdfInfo, onHome, onOpenMore, onToolChange, isBatch, themeId, onThemeChange }: {
   activeTool:ToolId; toolFiles:FileEntry[]; filePath:string; pdfInfo:PdfInfo;
   onHome:()=>void; onOpenMore:()=>void; onToolChange:(t:ToolId)=>void; isBatch:boolean;
+  themeId:ThemeId; onThemeChange:(id:ThemeId)=>void;
 }) {
   const filename = filePath.split(/[/\\]/).pop()??"";
   const batchFiles = isBatch ? toolFiles : undefined;
@@ -281,6 +297,7 @@ function ToolShell({ activeTool, toolFiles, filePath, pdfInfo, onHome, onOpenMor
         ))}
         <div style={sh.div}/>
         <button style={sh.openBtn} onClick={onOpenMore}>開く…</button>
+        <ThemeSwitcher currentId={themeId} onChange={onThemeChange}/>
       </nav>
 
       <div style={{flex:1,overflow:"hidden"}}>

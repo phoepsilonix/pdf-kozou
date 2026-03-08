@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#19221c"/>
+      <stop offset="100%" stop-color="#0d1610"/>
+    </linearGradient>
+    <linearGradient id="blade" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c8e0d0"/>
+      <stop offset="100%" stop-color="#80a898"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f4eed8"/>
+      <stop offset="100%" stop-color="#e4d8b8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="100" fill="url(#bg2)"/>
+
+  <!-- 巻物 (傾けて後ろに) -->
+  <g transform="rotate(-12,256,256) translate(-20,10)">
+    <rect x="140" y="130" width="170" height="230" rx="8" fill="url(#paper)"/>
+    <rect x="130" y="122" width="190" height="24" rx="12" fill="#8b6020"/>
+    <rect x="130" y="358" width="190" height="24" rx="12" fill="#8b6020"/>
+    <text x="225" y="272" text-anchor="middle" font-family="serif" font-size="46"
+          font-weight="bold" fill="#b83030" letter-spacing="-1">PDF</text>
+    <line x1="158" y1="300" x2="292" y2="300" stroke="#8a7040" stroke-width="2.5" opacity="0.5"/>
+    <line x1="158" y1="320" x2="285" y2="320" stroke="#8a7040" stroke-width="2.5" opacity="0.5"/>
+  </g>
+
+  <!-- 鑿 (のみ) — 職人の道具 -->
+  <g transform="rotate(28,256,256) translate(60,-30)">
+    <!-- 柄 -->
+    <rect x="244" y="88" width="36" height="80" rx="10" fill="#7a5020"/>
+    <rect x="240" y="80" width="44" height="18" rx="6" fill="#5a3810"/>
+    <!-- 刃部 -->
+    <rect x="248" y="168" width="28" height="170" rx="4" fill="url(#blade)"/>
+    <!-- 刃先 -->
+    <polygon points="248,338 276,338 268,374 256,380 244,374 236,338" fill="#90b8a0"/>
+    <!-- 光沢 -->
+    <line x1="256" y1="200" x2="256" y2="335" stroke="white" stroke-width="2" opacity="0.35"/>
+  </g>
+
+  <!-- 小僧バッジ (右下) -->
+  <circle cx="384" cy="384" r="68" fill="#19221c" stroke="#5dd68a" stroke-width="4"/>
+  <!-- 頭巾 -->
+  <ellipse cx="384" cy="358" rx="28" ry="11" fill="#3d8a50"/>
+  <rect cx="364" y="350" width="40" height="22" rx="6" fill="#2d7040"/>
+  <rect x="364" y="350" width="40" height="22" rx="6" fill="#2d7040"/>
+  <!-- 顔 -->
+  <ellipse cx="384" cy="378" rx="22" ry="20" fill="#f0c880"/>
+  <circle cx="376" cy="374" r="3" fill="#1a1a1a"/>
+  <circle cx="392" cy="374" r="3" fill="#1a1a1a"/>
+  <path d="M376 386 Q384 393 392 386" stroke="#b07040" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- 小僧文字 -->
+  <text x="384" y="432" text-anchor="middle" font-family="serif" font-size="16"
+        fill="#5dd68a" letter-spacing="2">小僧</text>
+
+  <rect width="512" height="512" rx="100" fill="none" stroke="#5dd68a" stroke-width="5" opacity="0.3"/>
+</svg>

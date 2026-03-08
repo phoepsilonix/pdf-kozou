@@ -236,8 +236,18 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               <PRow label="GCレベル"     val={String(p.garbage_level)}/>
               <PRow label="画像圧縮"     val={p.compress_images?"あり":"なし"}/>
               <PRow label="フォント圧縮" val={p.compress_fonts?"あり":"なし"}/>
+              <PRow label="フォントサブセット化" val={
+                (p as any).font_subset
+                  ? <span style={{color:C.accent}}>✓ 実行 (未使用グリフ除去)</span>
+                  : (p as any).subset_skipped
+                    ? <span style={{color:C.warn}}>Type3フォントのためスキップ</span>
+                    : "スキップ"
+              }/>
               <PRow label="sanitize"    val={p.sanitize?"あり":"なし"}/>
-              {p.rewrite_fallback && <div style={c.warnBox}>⚠ Type3フォント → フォールバック</div>}
+              {(p as any).subset_skipped && !(p as any).font_subset &&
+                <div style={c.infoBox}>ℹ Type3フォント保護のためサブセット化をスキップしました。テキストは維持されています。</div>}
+              {(p as any).rewrite_fallback &&
+                <div style={c.warnBox}>⚠ Type3フォント → フォールバック</div>}
             </div>
             {result.warning && <div style={c.warnBox}>{result.warning}</div>}
 
@@ -384,6 +394,7 @@ const c: Record<string, React.CSSProperties> = {
   paramsBox:    {padding:"12px 14px",background:C.bgCard,borderRadius:8,border:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:2},
   paramsHd:     {fontSize:10,color:C.textDim,letterSpacing:"0.1em",textTransform:"uppercase" as const,marginBottom:6},
   warnBox:      {padding:"8px 12px",background:C.warnBg,border:`1px solid ${C.warnBd}`,borderRadius:6,color:C.warn,fontSize:12},
+  infoBox:      {padding:"8px 12px",background:C.accentBg,border:`1px solid ${C.accentBd}`,borderRadius:6,color:C.textSub,fontSize:12},
 
   // 保存選択ボックス（目立つUI）
   saveChoiceBox:  {marginTop:"auto",background:C.bgCard,border:`1px solid ${C.borderHi}`,borderRadius:12,padding:"16px",display:"flex",flexDirection:"column",gap:10},

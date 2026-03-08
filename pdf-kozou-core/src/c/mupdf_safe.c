@@ -4,10 +4,11 @@
  * MuPDF の fz_try/fz_catch (setjmp/longjmp ベース) を Rust FFI 境界の
  * 内側で完結させる薄いラッパー。
  *
- * fz_new_context はヘッダ内のマクロ:
- *   #define fz_new_context(alloc, locks, max_store) \
- *       fz_new_context_imp(alloc, locks, max_store, FZ_VERSION)
- * C 側から呼べばマクロが展開されるため問題なし。
+ * pdf_subset_fonts: 使われていないフォントグリフデータを除去する。
+ *   - 埋め込みアウトラインフォント (TrueType/CFF/Type1) のサブセット化
+ *   - テキスト選択・コピー・検索・拡大縮小の品質は完全に維持
+ *   - Type3 フォントは対象外 (グリフが手書きPDFコンテンツのため)
+ *   - ビットマップフォントは変換せず (PDF優位性維持)
  */
 
 #include "mupdf/fitz.h"
@@ -36,9 +37,6 @@ static void set_err(FfiResult *r, const char *msg) {
 
 /* ------------------------------------------------------------------ */
 /* kozou_fz_new_context                                                */
-/* fz_new_context マクロ (→ fz_new_context_imp + FZ_VERSION) を C 側  */
-/* から展開する。Rust からは fz_new_context_imp を直接呼べるが          */
-/* FZ_VERSION が bindgen でブロックされているためこのラッパーを使う。  */
 /* ------------------------------------------------------------------ */
 fz_context *kozou_fz_new_context(void)
 {
@@ -91,6 +89,44 @@ pdf_document *kozou_pdf_document_from_fz_document(
 }
 
 /* ------------------------------------------------------------------ */
+/* kozou_pdf_subset_fonts                                              */
+/*                                                                     */
+/* 使われていないフォントグリフデータを除去する。                      */
+/* pdf_subset_fonts() は MuPDF 1.18+ で利用可能。                     */
+/*                                                                     */
+/* 引数:                                                               */
+/*   ctx      - MuPDF コンテキスト                                    */
+/*   pdf      - 対象 PDF ドキュメント                                 */
+/*   page_count - ドキュメントの総ページ数 (pdf_count_pages の結果)  */
+/*   result   - 成功/失敗を返す FfiResult                             */
+/*                                                                     */
+/* 動作:                                                               */
+/*   pdf_subset_fonts は全ページの文字使用状況を解析し、              */
+/*   使われていないグリフをフォントストリームから除去する。           */
+/*   アウトライン (ベクター) データは保持される。                     */
+/*   テキスト選択・検索・コピー機能は引き続き動作する。              */
+/* ------------------------------------------------------------------ */
+void kozou_pdf_subset_fonts(
+    fz_context   *ctx,
+    pdf_document *pdf,
+    int           page_count,
+    FfiResult    *result)
+{
+    fz_try(ctx) {
+        /*
+         * pdf_subset_fonts の第3引数 (page_range) は
+         * 対象ページ範囲の fz_range 配列。NULL を渡すと全ページが対象。
+         * 第4引数は fz_range の個数 (0 = 全ページ)。
+         */
+        pdf_subset_fonts(ctx, pdf, page_count, NULL);
+        set_ok(result);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* kozou_pdf_save_document                                             */
 /* ------------------------------------------------------------------ */
 void kozou_pdf_save_document(
@@ -111,9 +147,29 @@ void kozou_pdf_save_document(
 
 /* ------------------------------------------------------------------ */
 /* kozou_pdf_default_write_options                                     */
-/* pdf_default_write_options は extern static なので C 経由でコピー   */
 /* ------------------------------------------------------------------ */
 void kozou_pdf_default_write_options(pdf_write_options *out)
 {
     *out = pdf_default_write_options;
+}
+
+/* ------------------------------------------------------------------ */
+/* kozou_pdf_count_pages                                               */
+/* pdf_count_pages を fz_try/catch でラップ                           */
+/* ------------------------------------------------------------------ */
+int kozou_pdf_count_pages(
+    fz_context   *ctx,
+    pdf_document *pdf,
+    FfiResult    *result)
+{
+    int count = 0;
+    fz_try(ctx) {
+        count = pdf_count_pages(ctx, pdf);
+        set_ok(result);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+        count = -1;
+    }
+    return count;
 }
