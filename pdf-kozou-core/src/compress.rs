@@ -219,7 +219,6 @@ pub fn rewrite(input: &str, output: &str, options: &str) -> Result<CompressRespo
     let sanitize = parse_opt_bool(options, "sanitize").unwrap_or(false);
     let ci       = parse_opt_bool(options, "compress-images").unwrap_or(true);
     let cf       = parse_opt_bool(options, "compress-fonts").unwrap_or(true);
-    eprintln!("gc={},clean={},sanitize={},ci={},cf={}", gc, clean, sanitize, ci, cf);
 
     Ok(CompressResponse {
         ok: true,
