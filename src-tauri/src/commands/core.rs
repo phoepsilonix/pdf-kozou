@@ -109,6 +109,83 @@ pub async fn rotate_pdf(request: Value) -> Result<Value> {
     call_core_json("rotate", request).await
 }
 
+/// 全ページを画像ファイルとして出力する
+///
+/// render CLI の `--out-dir` に渡すだけで全ページ一括変換される。
+/// `pdf-kozou-core render <path> --out-dir <dir> [--dpi N] [--format jpeg|png]
+///   [--quality N] [--name-prefix PREFIX]`
+///
+/// render --out-dir は処理が終わっても JSON を stdout に出さない (空)。
+/// 代わりにページ数を先に info コマンドで取得し、コアが生成するファイル名
+/// (`{prefix}_{0001..}.{ext}`) を Rust 側で組み立てて返す。
+#[tauri::command]
+pub async fn export_images(
+    path:        String,
+    out_dir:     String,
+    format:      Option<String>,
+    dpi:         Option<u32>,
+    quality:     Option<u8>,
+    name_prefix: Option<String>,
+) -> Result<Value> {
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    let fmt     = format.unwrap_or_else(|| "jpeg".into());
+    let dpi_val = dpi.unwrap_or(150);
+    let prefix  = name_prefix.unwrap_or_else(|| "page".into());
+    let ext     = if fmt == "png" { "png" } else { "jpg" };
+
+    // ① ページ数を先に取得 (info コマンド、JSON を返す)
+    let info = call_core(vec!["info".into(), path.clone()]).await?;
+    let page_count = info["page_count"].as_i64()
+        .ok_or_else(|| Error::Core("page_count not found in info response".into()))?;
+
+    // ② 出力先ディレクトリを作成
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|e| Error::Core(format!("mkdir {out_dir}: {e}")))?;
+
+    // ③ render --out-dir で全ページ一括変換
+    //    このコマンドは stdout に何も出力しない (exit 0 = 成功)
+    let mut args: Vec<String> = vec![
+        "render".into(),
+        path.clone(),
+        "--out-dir".into(),     out_dir.clone(),
+        "--dpi".into(),         dpi_val.to_string(),
+        "--format".into(),      fmt.clone(),
+        "--name-prefix".into(), prefix.clone(),
+    ];
+    if let Some(q) = quality {
+        args.push("--quality".into());
+        args.push(q.to_string());
+    }
+
+    let output = tokio::process::Command::new(core_bin_path())
+        .args(&args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| Error::Core(format!("spawn: {e}")))?
+        .wait_with_output().await
+        .map_err(|e| Error::Core(e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Error::Core(format!("render: {}", stderr.trim())));
+    }
+
+    // ④ コアが生成するファイル名規則: {prefix}_{0001}.{ext} (start_number=1)
+    let files: Vec<String> = (1..=page_count)
+        .map(|n| {
+            PathBuf::from(&out_dir)
+                .join(format!("{prefix}_{n:04}.{ext}"))
+                .display()
+                .to_string()
+        })
+        .collect();
+
+    Ok(json!({ "ok": true, "files": files }))
+}
+
 
 /// デフォルト保存ディレクトリを返す
 ///
@@ -136,6 +213,15 @@ pub async fn get_tmp_path(filename: String) -> Result<String> {
     let mut path = std::env::temp_dir();
     path.push(filename);
     Ok(path.display().to_string())
+}
+
+/// ファイルのメタ情報（サイズ）を返す
+#[tauri::command]
+pub async fn get_file_stat(path: String) -> Result<Value> {
+    use serde_json::json;
+    let meta = std::fs::metadata(&path)
+        .map_err(|e| Error::Core(format!("stat {path}: {e}")))?;
+    Ok(json!({ "size": meta.len() }))
 }
 /// JSON モードで core を呼ぶ (stdin 経由)
 async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {

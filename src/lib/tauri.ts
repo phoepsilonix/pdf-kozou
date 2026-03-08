@@ -235,3 +235,30 @@ export async function mergePdf(
     request: { inputs, output: outputPath },
   });
 }
+
+// ── 画像変換 ──────────────────────────────────────────────────────────────────
+
+export type ImageFormat = "jpeg" | "png";
+
+export interface ExportImagesResponse {
+  ok:    boolean;
+  files: string[];
+}
+
+export async function exportImages(
+  path:        string,
+  outDir:      string,
+  format:      ImageFormat,
+  dpi:         number,
+  quality?:    number,
+  namePrefix?: string,
+): Promise<ExportImagesResponse> {
+  return invoke<ExportImagesResponse>("export_images", {
+    path, outDir, format, dpi,
+    quality:    quality    ?? null,
+    namePrefix: namePrefix ?? null,
+  });
+}
+
+// ── 回転 (tauri.ts 既存の rotatePdf は PageRotation[] 形式) ──────────────────
+// rotate_pdf コマンドは invoke("rotate_pdf", { request: { input, output, angle?, rotations? } })
