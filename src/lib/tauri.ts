@@ -195,3 +195,43 @@ export async function getDefaultSaveDir(): Promise<string> {
 export async function getTmpPath(filename: string): Promise<string> {
   return invoke<string>("get_tmp_path", { filename });
 }
+
+// ── 分割 ──────────────────────────────────────────────────────────────────────
+
+export type SplitMode =
+  | { type: "AllPages" }
+  | { type: "EveryN"; n: number }
+  | { type: "Ranges"; ranges: [number, number][] };
+
+export interface SplitResponse {
+  ok:    boolean;
+  files: string[];
+}
+
+export async function splitPdf(
+  inputPath: string,
+  outDir:    string,
+  mode:      SplitMode,
+  prefix?:   string,
+): Promise<SplitResponse> {
+  return invoke<SplitResponse>("split_pdf", {
+    request: { input: inputPath, out_dir: outDir, mode, prefix: prefix ?? null },
+  });
+}
+
+// ── 結合 ──────────────────────────────────────────────────────────────────────
+
+export interface MergeResponse {
+  ok:           boolean;
+  page_count:   number;
+  output_bytes: number;
+}
+
+export async function mergePdf(
+  inputs:     string[],
+  outputPath: string,
+): Promise<MergeResponse> {
+  return invoke<MergeResponse>("merge_pdf", {
+    request: { inputs, output: outputPath },
+  });
+}

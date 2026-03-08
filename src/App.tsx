@@ -2,6 +2,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { TrimPage }    from "./pages/TrimPage";
 import { CompressPage } from "./pages/CompressPage";
+import { SplitPage }    from "./pages/SplitPage";
+import { MergePage }    from "./pages/MergePage";
 import { usePdfStore } from "./store/usePdfStore";
 import { getPdfInfo, pickOpenFile, type PdfInfo } from "./lib/tauri";
 
@@ -56,6 +58,19 @@ export default function App() {
   }, [openPdf]);
 
   // ── ツール画面 ─────────────────────────────────────────────────────────────
+  // merge はファイル不要でアクセス可能
+  if (activeTool === "merge") {
+    return (
+      <ToolShell
+        filePath={filePath ?? ""}
+        pdfInfo={pdfInfo ?? { page_count: 0, pages: [] }}
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+        onHome={() => setActiveTool(null)}
+        onOpenFile={(tool) => handleOpenDialog(tool)}
+      />
+    );
+  }
   if (activeTool && filePath && pdfInfo) {
     return (
       <ToolShell
@@ -85,7 +100,10 @@ export default function App() {
 
       <div style={home.grid}>
         {TOOLS.map(t => (
-          <button key={t.id} style={home.card} onClick={() => handleOpenDialog(t.id as ToolPage)}>
+          <button key={t.id} style={home.card}
+            onClick={() => t.id === "merge"
+              ? setActiveTool("merge")
+              : handleOpenDialog(t.id as ToolPage)}>
             <span style={home.cardIcon}>{t.icon}</span>
             <span style={home.cardLabel}>{t.label}</span>
             <span style={home.cardDesc}>{t.desc}</span>
@@ -158,7 +176,14 @@ function ToolShell({ filePath, pdfInfo, activeTool, onToolChange, onHome, onOpen
         {activeTool === "compress" && (
           <CompressPage filePath={filePath} pdfInfo={pdfInfo} />
         )}
-        {activeTool !== "trim" && activeTool !== "compress" && (
+        {activeTool === "split" && (
+          <SplitPage filePath={filePath} pdfInfo={pdfInfo} />
+        )}
+        {activeTool === "merge" && (
+          <MergePage />
+        )}
+        {activeTool !== "trim" && activeTool !== "compress" &&
+         activeTool !== "split" && activeTool !== "merge" && (
           <NotImplemented label={TOOLS.find(t => t.id === activeTool)?.label ?? ""} />
         )}
       </div>
@@ -179,8 +204,8 @@ function NotImplemented({ label }: { label: string }) {
 const TOOLS = [
   { id: "trim",     icon: "✂",  label: "トリミング", desc: "余白をカット",     implemented: true  },
   { id: "compress", icon: "⊙",  label: "圧縮",       desc: "ファイルを軽量化", implemented: true  },
-  { id: "merge",    icon: "⊕",  label: "結合",       desc: "複数PDFを合体",   implemented: false },
-  { id: "split",    icon: "⊗",  label: "分割",       desc: "ページを分割",     implemented: false },
+  { id: "merge",    icon: "⊕",  label: "結合",       desc: "複数PDFを合体",   implemented: true  },
+  { id: "split",    icon: "⊗",  label: "分割",       desc: "ページを分割",     implemented: true  },
   { id: "rotate",   icon: "↻",  label: "回転",       desc: "ページを回転",     implemented: false },
 ];
 
