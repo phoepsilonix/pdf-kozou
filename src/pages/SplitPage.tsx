@@ -294,11 +294,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {modeId === "every" && (
             <>
               <div style={s.secLabel}>N枚の数</div>
+              {isBatch && (
+                <div style={s.batchRangeNote}>全ファイルに同じN枚設定を適用します</div>
+              )}
               <div style={s.numRow}>
                 <button style={s.stepBtn} onClick={() => setEveryN(v=>Math.max(1,v-1))}>−</button>
-                <input type="number" style={s.numInput} value={everyN} min={1} max={total}
+                <input type="number" style={s.numInput} value={everyN} min={1} max={isBatch?999:total}
                   onChange={e => setEveryN(Math.max(1,parseInt(e.target.value)||1))} />
-                <button style={s.stepBtn} onClick={() => setEveryN(v=>Math.min(total,v+1))}>＋</button>
+                <button style={s.stepBtn} onClick={() => setEveryN(v=>v+1)}>＋</button>
                 <span style={s.numLabel}>ページで1ファイル</span>
               </div>
             </>
@@ -310,15 +313,13 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               {ranges.map((rng,i) => (
                 <div key={i} style={s.rangeRow}>
                   <span style={s.rangeIdx}>#{i+1}</span>
+                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.max(1,x[0]-1),x[1]]:x))}>◀</button>
                   <input type="number" style={s.rangeInput} value={rng[0]} min={1} max={total}
-                    onChange={e => setRanges(r=>r.map((x,j)=>j===i?[parseInt(e.target.value)||1,x[1]]:x))} />
+                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[parseInt(e.target.value)||1,x[1]]:x))} />
                   <span style={s.rangeSep}>〜</span>
                   <input type="number" style={s.rangeInput} value={rng[1]} min={1} max={total}
-                    onChange={e => setRanges(r=>r.map((x,j)=>j===i?[x[0],parseInt(e.target.value)||1]:x))} />
-                  <div style={s.rangeSteps}>
-                    <button style={s.stepBtn} onClick={() => setRanges(r=>r.map((x,j)=>j===i?[Math.max(1,x[0]-1),x[1]]:x))}>−</button>
-                    <button style={s.stepBtn} onClick={() => setRanges(r=>r.map((x,j)=>j===i?[Math.min(x[1],x[0]+1),x[1]]:x))}>＋</button>
-                  </div>
+                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[x[0],parseInt(e.target.value)||1]:x))} />
+                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],Math.min(total,x[1]+1)]:x))}>▶</button>
                   {ranges.length > 1 && (
                     <button style={s.delBtn} onClick={()=>setRanges(r=>r.filter((_,j)=>j!==i))}>✕</button>
                   )}
@@ -329,9 +330,25 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           )}
 
           {modeId === "ranges" && isBatch && (
-            <div style={s.batchRangeNote}>
-              バッチモードでは範囲指定は各ファイルの全ページに自動適用されます
-            </div>
+            <>
+              <div style={s.batchRangeNote}>
+                ⚠ バッチ時: 各ファイルのページ数に合わせて範囲を自動クリップします
+              </div>
+              {ranges.map((rng,i) => (
+                <div key={i} style={s.rangeRow}>
+                  <span style={s.rangeIdx}>#{i+1}</span>
+                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.max(1,x[0]-1),x[1]]:x))}>◀</button>
+                  <input type="number" style={s.rangeInput} value={rng[0]} min={1}
+                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[parseInt(e.target.value)||1,x[1]]:x))} />
+                  <span style={s.rangeSep}>〜</span>
+                  <input type="number" style={s.rangeInput} value={rng[1]} min={1}
+                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[x[0],parseInt(e.target.value)||1]:x))} />
+                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],x[1]+1]:x))}>▶</button>
+                  {ranges.length>1 && <button style={s.delBtn} onClick={()=>setRanges(r=>r.filter((_,j)=>j!==i))}>✕</button>}
+                </div>
+              ))}
+              <button style={s.addBtn} onClick={()=>setRanges(r=>[...r,[1,99]])}>＋ 範囲を追加</button>
+            </>
           )}
 
           <div style={s.secLabel}>ファイル名プレフィックス</div>
@@ -442,18 +459,19 @@ const s: Record<string, React.CSSProperties> = {
   modeDesc:  { fontSize:11, color:C.textSub },
 
   numRow:    { display:"flex", alignItems:"center", gap:7 },
-  stepBtn:   { width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:6, cursor:"pointer", fontSize:17, color:C.text, fontFamily:F, flexShrink:0 },
-  numInput:  { width:68, padding:"6px 0", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.text, fontSize:16, fontFamily:F, textAlign:"center" as const },
+  stepBtn:   { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, cursor:"pointer", fontSize:22, color:C.text, fontFamily:F, flexShrink:0 },
+  numInput:  { width:80, padding:"8px 0", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, color:C.text, fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
   numLabel:  { fontSize:12, color:C.textSub },
 
-  rangeRow:    { display:"flex", alignItems:"center", gap:5, flexWrap:"wrap" as const },
+  rangeRow:    { display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" as const },
   rangeIdx:    { fontSize:11, color:C.textDim, width:24, flexShrink:0 },
-  rangeInput:  { width:60, padding:"6px 4px", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.text, fontSize:14, fontFamily:F, textAlign:"center" as const },
-  rangeSep:    { fontSize:13, color:C.textDim },
+  rangeInput:  { width:80, padding:"8px 4px", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, color:C.text, fontSize:26, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
+  rangeSep:    { fontSize:14, color:C.textDim },
+  rangeArrow:  { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, cursor:"pointer", fontSize:22, color:C.text, fontFamily:F },
   rangeSteps:  { display:"flex", gap:3 },
-  delBtn:      { background:"transparent", border:"none", color:C.textDim, cursor:"pointer", fontSize:13, padding:"2px 5px", fontFamily:F },
-  addBtn:      { padding:"7px 12px", background:"transparent", border:`1px dashed ${C.borderHi}`, borderRadius:6, color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:F },
-  batchRangeNote: { padding:"10px 12px", background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:7, fontSize:12, color:C.textSub, lineHeight:1.6 },
+  delBtn:      { width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"transparent", border:"none", color:C.textDim, cursor:"pointer", fontSize:14, padding:0, fontFamily:F },
+  addBtn:      { padding:"8px 14px", background:"transparent", border:`1px dashed ${C.borderHi}`, borderRadius:6, color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:F },
+  batchRangeNote: { padding:"9px 11px", background:"#1a2a1a", border:`1px solid #3a5a2a`, borderRadius:7, fontSize:11, color:C.textSub, lineHeight:1.6 },
 
   prefixRow:  { display:"flex", alignItems:"center", gap:6 },
   textInput:  { flex:1, padding:"7px 9px", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.text, fontSize:13, fontFamily:F },
@@ -479,11 +497,11 @@ const s: Record<string, React.CSSProperties> = {
 
   // バッチファイルリスト
   batchFileList: { flex:1, overflowY:"auto", display:"flex", flexDirection:"column", gap:0 },
-  batchFileItem: { display:"flex", alignItems:"center", gap:12, padding:"10px 16px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", transition:"background 0.1s" },
+  batchFileItem: { display:"flex", alignItems:"center", gap:14, padding:"12px 16px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", transition:"background 0.1s" },
   batchFileItemOn: { background:C.accentBg, borderLeft:`3px solid ${C.accent}` },
-  batchThumb:    { width:52, height:74, objectFit:"cover" as const, borderRadius:3, flexShrink:0 },
-  batchThumbPh:  { width:52, height:74, background:C.border, borderRadius:3, flexShrink:0 },
-  batchFileInfo: { flex:1, display:"flex", flexDirection:"column", gap:3, minWidth:0 },
+  batchThumb:    { width:72, height:102, objectFit:"cover" as const, borderRadius:4, flexShrink:0 },
+  batchThumbPh:  { width:72, height:102, background:C.border, borderRadius:4, flexShrink:0 },
+  batchFileInfo: { flex:1, display:"flex", flexDirection:"column", gap:5, minWidth:0 },
   batchFileName: { fontSize:13, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
   batchFileMeta: { fontSize:11, color:C.textSub },
 

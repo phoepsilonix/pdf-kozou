@@ -1,82 +1,277 @@
 // src/pages/TrimPage.tsx
-// フロー: [設定・Canvas操作] → [処理中] → [結果確認] → [保存 or 続けて圧縮]
-
 import { useEffect, useState, useCallback } from "react";
 import { invoke }          from "@tauri-apps/api/core";
 import { TrimCanvas }      from "../components/trim/TrimCanvas";
 import { TrimControls }    from "../components/trim/TrimControls";
 import { CompressPage }    from "./CompressPage";
-import { usePdfStore }     from "../store/usePdfStore";
+import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { useSaveDialog }   from "../hooks/useSaveDialog";
-import {
-  renderPage, trimPdf,
-  type TrimMargins, type PdfInfo,
-} from "../lib/tauri";
+import { renderPage, trimPdf, getPdfInfo, type TrimMargins, type PdfInfo } from "../lib/tauri";
+import { C, F } from "../lib/theme";
 
-interface Props { filePath: string; pdfInfo: PdfInfo; }
+interface Props {
+  filePath:    string;
+  pdfInfo:     PdfInfo;
+  batchFiles?: FileEntry[];
+}
 
 const PREVIEW_DPI = 72;
 const RESULT_DPI  = 96;
-const THUMB_DPI   = 36;
+const THUMB_DPI   = 40;
 const CANVAS_W    = 520;
 
-type Phase = "edit" | "processing" | "result" | "error" | "compress";
+type Phase = "edit" | "processing" | "result" | "error" | "compress" | "batchResult";
+const zero = (): TrimMargins => ({ left:0, right:0, top:0, bottom:0 });
 
-const zero = (): TrimMargins => ({ left: 0, right: 0, top: 0, bottom: 0 });
+export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
+  const isBatch = (batchFiles?.length ?? 0) > 1;
+  if (isBatch) return <TrimPageBatch files={batchFiles!} firstPdfInfo={pdfInfo} />;
+  return <TrimPageSingle filePath={filePath} pdfInfo={pdfInfo} />;
+}
 
-export function TrimPage({ filePath, pdfInfo }: Props) {
-  const {
-    trimMargins, trimPages,
-    setTrimMargins, setTrimPages,
-    previewPage, setPreviewPage,
-    setError,
-  } = usePdfStore();
+// ── バッチトリム ──────────────────────────────────────────────────────────────
+function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInfo:PdfInfo }) {
+  const { setError } = usePdfStore();
+  const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
+  const [trimPages,   setTrimPages]   = useState<any>({ type:"All" });
+  const [outDir,      setOutDir]      = useState("");
+  const [phase,       setPhase]       = useState<"edit"|"processing"|"result">("edit");
+  const [progress,    setProgress]    = useState<{ current:number; done:{f:string}[]; errors:{f:string;msg:string}[] }>
+    ({ current:0, done:[], errors:[] });
+  const [previewIdx,  setPreviewIdx]  = useState(0);
+  const [batchThumbs, setBatchThumbs] = useState<(string|undefined)[]>([]);
+  const [previewPage, setPreviewPage] = useState(0);
+  const [pageImage,   setPageImage]   = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setBatchThumbs(new Array(files.length).fill(undefined));
+    (async () => {
+      for (let i=0; i<files.length; i++) {
+        try {
+          const b64 = await renderPage(files[i].path, 0, 56);
+          if (cancelled) return;
+          setBatchThumbs(p => { const a=[...p]; a[i]=b64; return a; });
+        } catch {}
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [files]);
+
+  useEffect(() => {
+    const path = files[previewIdx]?.path;
+    if (!path) return;
+    let cancelled = false;
+    setPageImage("");
+    renderPage(path, previewPage, PREVIEW_DPI)
+      .then(b64 => { if (!cancelled) setPageImage(b64); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [files, previewIdx, previewPage]);
+
+  const pickDir = useCallback(async () => {
+    const dir = await invoke<string|null>("pick_output_dir").catch(()=>null);
+    if (dir) setOutDir(dir);
+  }, []);
+
+  const handleExecute = useCallback(async () => {
+    if (!outDir) { await pickDir(); return; }
+    setPhase("processing");
+    const prog = { current:0, done:[] as any[], errors:[] as any[] };
+    setProgress({...prog});
+    for (let i=0; i<files.length; i++) {
+      const f = files[i];
+      prog.current = i+1;
+      setProgress({...prog});
+      try {
+        const out = `${outDir}/${f.filename.replace(/\.pdf$/i,"")}_trimmed.pdf`;
+        await trimPdf(f.path, out, trimMargins, trimPages);
+        prog.done.push({ f:f.filename });
+      } catch (e) {
+        prog.errors.push({ f:f.filename, msg:String(e) });
+      }
+      setProgress({...prog});
+    }
+    setPhase("result");
+  }, [files, outDir, trimMargins, trimPages, pickDir]);
+
+  // 処理中
+  if (phase === "processing") {
+    const pct = progress.current / files.length * 100;
+    return (
+      <div style={b.center}>
+        <div style={b.title}>トリミング中… {progress.current}/{files.length}</div>
+        <div style={b.barWrap}><div style={{...b.bar, width:`${pct}%`}}/></div>
+        <div style={b.log}>
+          {progress.done.map((d,i)=>(
+            <div key={i} style={b.logRow}>
+              <span style={{color:C.accent}}>✓</span>
+              <span style={b.logFile}>{d.f}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 完了
+  if (phase === "result") {
+    return (
+      <div style={b.center}>
+        <span style={{fontSize:56,color:progress.errors.length?C.warn:C.accent}}>
+          {progress.errors.length?"⚠":"✓"}
+        </span>
+        <div style={b.title}>バッチトリミング完了 — {progress.done.length}件</div>
+        <div style={{fontSize:12,color:C.textSub}}>{outDir}</div>
+        <div style={b.log}>
+          {progress.done.map((d,i)=>(
+            <div key={i} style={b.logRow}><span style={{color:C.accent}}>✓</span><span style={b.logFile}>{d.f}</span></div>
+          ))}
+          {progress.errors.map((e,i)=>(
+            <div key={`e${i}`} style={{...b.logRow,background:C.errBg,borderColor:C.errBd}}>
+              <span style={{color:C.err}}>✕</span>
+              <span style={b.logFile}>{e.f}</span>
+              <span style={{fontSize:10,color:C.err,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.msg}</span>
+            </div>
+          ))}
+        </div>
+        <button style={b.backBtn} onClick={()=>setPhase("edit")}>← 設定に戻る</button>
+      </div>
+    );
+  }
+
+  const curFile  = files[previewIdx];
+  const curPages = curFile?.pageCount ?? 1;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%",background:C.bg,color:C.text,fontFamily:F,overflow:"hidden"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 20px",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
+        <span style={{fontSize:16,fontWeight:700}}>トリミング — {files.length}件バッチ</span>
+        <span style={{fontSize:13,color:C.textSub}}>同じ余白設定を全ファイルに適用</span>
+      </div>
+
+      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+        {/* 左: ファイル一覧 */}
+        <div style={{width:172,flexShrink:0,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"8px 12px",fontSize:11,color:C.textDim,borderBottom:`1px solid ${C.border}`,background:C.bgCard}}>
+            プレビュー対象
+          </div>
+          <div style={{flex:1,overflowY:"auto"}}>
+            {files.map((f,i) => (
+              <button key={f.id}
+                style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",background:i===previewIdx?C.accentBg:"transparent",border:"none",borderBottom:`1px solid ${C.border}`,cursor:"pointer",fontFamily:F,width:"100%",textAlign:"left" as const, borderLeft: i===previewIdx?`3px solid ${C.accent}`:"3px solid transparent"}}
+                onClick={()=>{setPreviewIdx(i);setPreviewPage(0);}}>
+                {batchThumbs[i]
+                  ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={{width:36,height:50,objectFit:"cover" as const,borderRadius:3,flexShrink:0}} alt=""/>
+                  : <div style={{width:36,height:50,background:C.border,borderRadius:3,flexShrink:0}}/>}
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
+                  <span style={{fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.filename}</span>
+                  <span style={{fontSize:10,color:C.textSub}}>{f.pageCount}ページ</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 中: キャンバス */}
+        <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column",alignItems:"center",padding:"20px 12px",gap:12}}>
+          {pageImage ? (
+            <TrimCanvas
+              pageImageB64={pageImage}
+              pageWidthPt={595} pageHeightPt={842}
+              margins={trimMargins}
+              onChange={setTrimMargins}
+              displayWidth={CANVAS_W}
+            />
+          ) : (
+            <div style={{width:CANVAS_W,height:400,background:C.bgCard,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:C.textDim}}>
+              読み込み中…
+            </div>
+          )}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,justifyContent:"center"}}>
+            {Array.from({length:Math.min(curPages,8)},(_,i)=>(
+              <button key={i}
+                style={{padding:"5px 10px",background:i===previewPage?C.accentBg:C.bgCard,border:`1px solid ${i===previewPage?C.accent:C.border}`,borderRadius:5,color:i===previewPage?C.accent:C.textSub,cursor:"pointer",fontSize:13,fontFamily:F}}
+                onClick={()=>setPreviewPage(i)}>
+                p.{i+1}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 右: コントロール + フォルダ出力 */}
+        <div style={{width:290,flexShrink:0,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{flex:1,overflow:"auto"}}>
+            <TrimControls
+              margins={trimMargins} pageW={595} pageH={842}
+              pages={trimPages}
+              onMargins={setTrimMargins}
+              onPages={setTrimPages}
+              onApply={()=>{}} onReset={()=>setTrimMargins(zero())}
+              processing={false}
+            />
+          </div>
+          <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:10,flexShrink:0}}>
+            <div style={{fontSize:12,color:C.textDim}}>出力フォルダ</div>
+            <div style={{display:"flex",gap:7}}>
+              <div style={{flex:1,padding:"8px 10px",background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                {outDir||"（未選択）"}
+              </div>
+              <button style={{padding:"8px 13px",background:C.bgCard,border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.text,cursor:"pointer",fontSize:12,fontFamily:F,flexShrink:0}}
+                onClick={pickDir}>参照…</button>
+            </div>
+            <button
+              style={{padding:"13px 0",background:outDir?C.accentBg:C.bgCard,border:`1px solid ${outDir?C.accentBd:C.border}`,borderRadius:8,color:outDir?C.accent:C.textDim,cursor:"pointer",fontWeight:700,fontSize:15,fontFamily:F}}
+              onClick={handleExecute}>
+              {outDir ? `✂ ${files.length}件まとめてトリミング` : "📁 出力先を選択して実行"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 単体トリム ────────────────────────────────────────────────────────────────
+function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInfo }) {
+  const { trimMargins, trimPages, setTrimMargins, setTrimPages, previewPage, setPreviewPage, setError } = usePdfStore();
   const { pickSave } = useSaveDialog();
 
   const [phase,        setPhase]        = useState<Phase>("edit");
-  const [pageImage,    setPageImage]    = useState<string>("");
-  const [thumbImages,  setThumbImages]  = useState<(string | undefined)[]>([]);
+  const [pageImage,    setPageImage]    = useState("");
+  const [thumbImages,  setThumbImages]  = useState<(string|undefined)[]>([]);
   const [resultImages, setResultImages] = useState<string[]>([]);
-  const [trimmedTmp,   setTrimmedTmp]   = useState<string>("");
+  const [trimmedTmp,   setTrimmedTmp]   = useState("");
   const [isSaving,     setIsSaving]     = useState(false);
-  const [errMsg,       setErrMsg]       = useState<string>("");
+  const [errMsg,       setErrMsg]       = useState("");
 
   const currentPage = pdfInfo.pages[previewPage] ?? pdfInfo.pages[0];
   const pageW = currentPage?.w ?? 595;
   const pageH = currentPage?.h ?? 842;
 
-  // ── ファイル変更時リセット ────────────────────────────────────────────
   useEffect(() => {
-    setPhase("edit");
-    setResultImages([]);
-    setErrMsg("");
-    setTrimmedTmp("");
-    setTrimMargins(zero());
+    setPhase("edit"); setResultImages([]); setErrMsg(""); setTrimmedTmp(""); setTrimMargins(zero());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath]);
 
-  // ── プレビューページ画像 ─────────────────────────────────────────────
   useEffect(() => {
     if (phase !== "edit") return;
     let cancelled = false;
     setPageImage("");
-    renderPage(filePath, previewPage, PREVIEW_DPI)
-      .then(b64 => { if (!cancelled) setPageImage(b64); })
-      .catch(e  => setError(String(e)));
+    renderPage(filePath, previewPage, PREVIEW_DPI).then(b64 => { if (!cancelled) setPageImage(b64); }).catch(e => setError(String(e)));
     return () => { cancelled = true; };
   }, [filePath, previewPage, phase, setError]);
 
-  // ── サムネイル逐次取得 ───────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     setThumbImages([]);
     (async () => {
-      for (let i = 0; i < pdfInfo.page_count; i++) {
+      for (let i=0; i<pdfInfo.page_count; i++) {
         try {
           const b64 = await renderPage(filePath, i, THUMB_DPI);
           if (cancelled) return;
-          setThumbImages(prev => { const a = [...prev]; a[i] = b64; return a; });
-        } catch { /* skip */ }
+          setThumbImages(prev => { const a=[...prev]; a[i]=b64; return a; });
+        } catch {}
       }
     })();
     return () => { cancelled = true; };
@@ -84,213 +279,140 @@ export function TrimPage({ filePath, pdfInfo }: Props) {
   }, [filePath, pdfInfo.page_count]);
 
   const handlePageSelect = useCallback((idx: number) => {
-    setPreviewPage(idx);
-    setTrimMargins(zero());
+    setPreviewPage(idx); setTrimMargins(zero());
   }, [setPreviewPage, setTrimMargins]);
 
-  // ── 実行 → 一時ファイル → プレビュー ────────────────────────────────
   const handleExecute = useCallback(async () => {
-    setPhase("processing");
-    setErrMsg("");
+    setPhase("processing"); setErrMsg("");
     try {
-      const tmp = await invoke<string>("get_tmp_path", { filename: "kozou_trim_preview.pdf" });
+      const tmp = await invoke<string>("get_tmp_path", { filename:"kozou_trim_preview.pdf" });
       await trimPdf(filePath, tmp, trimMargins, trimPages);
-
       const previews: string[] = [];
-      const maxP = Math.min(pdfInfo.page_count, 4);
-      for (let i = 0; i < maxP; i++) {
-        try { previews.push(await renderPage(tmp, i, RESULT_DPI)); }
-        catch { previews.push(""); }
+      for (let i=0; i<Math.min(pdfInfo.page_count,4); i++) {
+        try { previews.push(await renderPage(tmp, i, RESULT_DPI)); } catch { previews.push(""); }
       }
-      setResultImages(previews);
-      setTrimmedTmp(tmp);
-      setPhase("result");
+      setResultImages(previews); setTrimmedTmp(tmp); setPhase("result");
     } catch (e) {
-      const msg = String(e);
-      setErrMsg(msg);
-      setPhase("error");
-      setError(msg);
+      const msg = String(e); setErrMsg(msg); setPhase("error"); setError(msg);
     }
   }, [filePath, trimMargins, trimPages, pdfInfo.page_count, setError]);
 
-  // ── 保存 ────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i, "") ?? "file";
+    const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
     const savePath = await pickSave(`${base}_trimmed.pdf`);
     if (!savePath) return;
     setIsSaving(true);
-    try {
-      await trimPdf(filePath, savePath, trimMargins, trimPages);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setIsSaving(false);
-    }
+    try { await trimPdf(filePath, savePath, trimMargins, trimPages); }
+    catch (e) { setError(String(e)); }
+    finally { setIsSaving(false); }
   }, [filePath, trimMargins, trimPages, pickSave, setError]);
 
-  const handleBack = useCallback(() => {
-    setPhase("edit");
-    setResultImages([]);
-    setErrMsg("");
-  }, []);
+  if (phase === "processing") return (
+    <div style={s.center}>
+      <div style={s.spinner}/>
+      <span style={s.centSub}>トリミング + プレビュー生成中…</span>
+    </div>
+  );
 
-  // ── 処理中 ──────────────────────────────────────────────────────────
-  if (phase === "processing") {
-    return (
-      <div style={s.center}>
-        <div style={s.spinner} />
-        <span style={s.centSub}>トリミング + プレビュー生成中…</span>
-      </div>
-    );
-  }
+  if (phase === "error") return (
+    <div style={s.center}>
+      <span style={{fontSize:40,color:C.err}}>✕</span>
+      <span style={{fontSize:16,fontWeight:700,color:C.err}}>エラー</span>
+      <pre style={s.errMsg}>{errMsg}</pre>
+      <button style={s.errBtn} onClick={()=>{setPhase("edit");setErrMsg("");}}>← 設定に戻る</button>
+    </div>
+  );
 
-  // ── エラー ──────────────────────────────────────────────────────────
-  if (phase === "error") {
-    return (
-      <div style={s.center}>
-        <span style={s.errIcon}>✕</span>
-        <span style={s.errTitle}>エラーが発生しました</span>
-        <pre style={s.errMsg}>{errMsg}</pre>
-        <button style={s.errBtn} onClick={() => { setPhase("edit"); setErrMsg(""); }}>
-          ← 設定に戻る
-        </button>
-      </div>
-    );
-  }
+  if (phase === "compress") return (
+    <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={trimmedTmp||undefined} onDone={()=>setPhase("result")}/>
+  );
 
-  // ── 続けて圧縮 ──────────────────────────────────────────────────────
-  if (phase === "compress") {
-    return (
-      <CompressPage
-        filePath={filePath}
-        pdfInfo={pdfInfo}
-        sourceFile={trimmedTmp || undefined}
-        onDone={() => setPhase("result")}
-      />
-    );
-  }
+  if (phase === "result") return (
+    <ResultView images={resultImages} pageCount={pdfInfo.page_count}
+      onSave={handleSave} onBack={()=>{setPhase("edit");setResultImages([]);setErrMsg("");}}
+      onCompress={()=>setPhase("compress")} isSaving={isSaving}/>
+  );
 
-  // ── 結果確認 ────────────────────────────────────────────────────────
-  if (phase === "result") {
-    return (
-      <ResultView
-        images={resultImages}
-        pageCount={pdfInfo.page_count}
-        onSave={handleSave}
-        onBack={handleBack}
-        onCompress={() => setPhase("compress")}
-        isSaving={isSaving}
-      />
-    );
-  }
-
-  // ── 編集フェーズ ─────────────────────────────────────────────────────
   return (
     <div style={s.root}>
-      {/* サムネイルサイドバー */}
       <aside style={s.sidebar}>
         <div style={s.sbHead}>
           <span style={s.sbTitle}>ページ</span>
           <span style={s.sbCount}>{pdfInfo.page_count}枚</span>
         </div>
         <div style={s.thumbList}>
-          {Array.from({ length: pdfInfo.page_count }, (_, i) => (
-            <button key={i}
-              style={{ ...s.thumb, ...(previewPage === i ? s.thumbOn : {}) }}
-              onClick={() => handlePageSelect(i)}
-            >
+          {Array.from({length:pdfInfo.page_count}, (_,i) => (
+            <button key={i} style={{...s.thumb,...(previewPage===i?s.thumbOn:{})}} onClick={()=>handlePageSelect(i)}>
               {thumbImages[i]
-                ? <img src={`data:image/jpeg;base64,${thumbImages[i]}`} style={s.thumbImg} alt="" />
-                : <div style={s.thumbPh} />}
-              <span style={s.thumbN}>{i + 1}</span>
+                ? <img src={`data:image/jpeg;base64,${thumbImages[i]}`} style={s.thumbImg} alt=""/>
+                : <div style={s.thumbPh}/>}
+              <span style={s.thumbN}>{i+1}</span>
             </button>
           ))}
         </div>
       </aside>
 
-      {/* キャンバスエリア */}
       <main style={s.main}>
         <div style={s.mainHead}>
           <span style={s.mainTitle}>トリミング設定</span>
-          <span style={s.pageInd}>{previewPage + 1} / {pdfInfo.page_count} ページ</span>
-          <span style={s.dpiNote}>{PREVIEW_DPI} dpi</span>
+          <span style={s.pageInd}>{previewPage+1} / {pdfInfo.page_count} ページ</span>
         </div>
         <div style={s.canvasWrap}>
           {pageImage
-            ? <TrimCanvas
-                pageImageB64={pageImage}
-                pageWidthPt={pageW} pageHeightPt={pageH}
-                margins={trimMargins}
-                onChange={setTrimMargins}
-                displayWidth={CANVAS_W}
-              />
-            : <div style={{ ...s.ph, width: CANVAS_W, height: Math.round(CANVAS_W * pageH / pageW) }}>
-                <div style={s.spinner} />
+            ? <TrimCanvas pageImageB64={pageImage} pageWidthPt={pageW} pageHeightPt={pageH}
+                margins={trimMargins} onChange={setTrimMargins} displayWidth={CANVAS_W}/>
+            : <div style={{...s.ph, width:CANVAS_W, height:Math.round(CANVAS_W*pageH/pageW)}}>
+                <div style={s.spinner}/>
                 <span style={s.centSub}>読み込み中…</span>
               </div>}
         </div>
       </main>
 
-      {/* 右パネル */}
       <aside style={s.panel}>
-        <TrimControls
-          margins={trimMargins} pageW={pageW} pageH={pageH}
-          pages={trimPages}
-          onMargins={setTrimMargins}
-          onPages={setTrimPages}
-          onApply={handleExecute}
-          onReset={() => setTrimMargins(zero())}
-          processing={false}
-        />
+        <TrimControls margins={trimMargins} pageW={pageW} pageH={pageH} pages={trimPages}
+          onMargins={setTrimMargins} onPages={setTrimPages}
+          onApply={handleExecute} onReset={()=>setTrimMargins(zero())} processing={false}/>
       </aside>
     </div>
   );
 }
 
-// ── 結果ビュー ───────────────────────────────────────────────────────────────
-
+// ── 結果ビュー ────────────────────────────────────────────────────────────────
 function ResultView({ images, pageCount, onSave, onBack, onCompress, isSaving }: {
-  images:     string[];
-  pageCount:  number;
-  onSave:     () => void;
-  onBack:     () => void;
-  onCompress: () => void;
-  isSaving:   boolean;
+  images:string[]; pageCount:number; onSave:()=>void; onBack:()=>void; onCompress:()=>void; isSaving:boolean;
 }) {
   return (
     <div style={r.root}>
       <div style={r.header}>
         <button style={r.btnBack} onClick={onBack}>← 設定に戻る</button>
         <span style={r.title}>トリミング結果確認</span>
-        <span style={r.sub}>{pageCount} ページ（先頭 {images.length} ページ表示）</span>
-        <div style={{ flex: 1 }} />
+        <span style={r.sub}>{pageCount}ページ（先頭{images.length}ページ表示）</span>
+        <div style={{flex:1}}/>
         <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button>
-        <button style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
-          onClick={onSave} disabled={isSaving}>
-          {isSaving ? "保存中…" : "💾 PDFを保存"}
+        <button style={{...r.btnSave,...(isSaving?r.dis:{})}} onClick={onSave} disabled={isSaving}>
+          {isSaving?"保存中…":"💾 PDFを保存"}
         </button>
       </div>
 
       <div style={r.gallery}>
-        {images.map((b64, i) => (
+        {images.map((b64,i) => (
           <div key={i} style={r.card}>
-            <span style={r.pageN}>{i + 1} ページ</span>
+            <span style={r.pageN}>{i+1} ページ</span>
             {b64
-              ? <img src={`data:image/jpeg;base64,${b64}`} style={r.img} alt="" />
+              ? <img src={`data:image/jpeg;base64,${b64}`} style={r.img} alt=""/>
               : <div style={r.imgPh}>プレビュー失敗</div>}
           </div>
         ))}
         {pageCount > images.length && (
-          <div style={r.more}>… 他 {pageCount - images.length} ページ</div>
+          <div style={r.more}>… 他 {pageCount-images.length} ページ</div>
         )}
       </div>
 
       <div style={r.footer}>
         <button style={r.btnBack} onClick={onBack}>← 設定に戻る</button>
         <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button>
-        <button style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
-          onClick={onSave} disabled={isSaving}>
-          {isSaving ? "保存中…" : "💾 PDFを保存"}
+        <button style={{...r.btnSave,...(isSaving?r.dis:{})}} onClick={onSave} disabled={isSaving}>
+          {isSaving?"保存中…":"💾 PDFを保存"}
         </button>
       </div>
     </div>
@@ -299,54 +421,60 @@ function ResultView({ images, pageCount, onSave, onBack, onCompress, isSaving }:
 
 // ── スタイル ─────────────────────────────────────────────────────────────────
 
-const F = "'JetBrains Mono','Noto Sans JP',monospace";
-
 const s: Record<string, React.CSSProperties> = {
-  root:    { display:"flex", height:"100%", background:"#0a0c10", color:"#e8eaf0", fontFamily:F, overflow:"hidden" },
-  center:  { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:18, background:"#0a0c10" },
-  spinner: { width:30, height:30, border:"3px solid #1a2030", borderTop:"3px solid #4f9eff", borderRadius:"50%", animation:"spin 0.8s linear infinite" },
-  centSub: { color:"#5a6070", fontSize:12 },
+  root:    { display:"flex", height:"100%", background:C.bg, color:C.text, fontFamily:F, overflow:"hidden" },
+  center:  { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:18, background:C.bg },
+  spinner: { width:32, height:32, border:`3px solid ${C.border}`, borderTop:`3px solid ${C.accent}`, borderRadius:"50%", animation:"spin 0.8s linear infinite" },
+  centSub: { color:C.textSub, fontSize:13 },
 
-  sidebar:  { width:106, flexShrink:0, display:"flex", flexDirection:"column", background:"#0d1017", borderRight:"1px solid #1a1d24", overflow:"hidden" },
-  sbHead:   { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 8px 6px", borderBottom:"1px solid #1a1d24" },
-  sbTitle:  { fontSize:9, color:"#5a6070", letterSpacing:"0.1em", textTransform:"uppercase" },
-  sbCount:  { fontSize:9, color:"#3a4050" },
-  thumbList:{ flex:1, overflowY:"auto", padding:"5px 4px", display:"flex", flexDirection:"column", gap:4 },
-  thumb:    { display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"4px 3px", borderRadius:5, border:"1px solid transparent", background:"transparent", cursor:"pointer", transition:"all 0.12s" },
-  thumbOn:  { borderColor:"#4f9eff", background:"#0d1a2d" },
-  thumbImg: { width:70, height:"auto", borderRadius:2, display:"block" },
-  thumbPh:  { width:70, height:96, background:"#111520", borderRadius:2 },
-  thumbN:   { fontSize:9, color:"#3a4050" },
+  sidebar:  { width:114, flexShrink:0, display:"flex", flexDirection:"column", background:C.bgCard, borderRight:`1px solid ${C.border}`, overflow:"hidden" },
+  sbHead:   { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 10px 7px", borderBottom:`1px solid ${C.border}` },
+  sbTitle:  { fontSize:10, color:C.textDim, letterSpacing:"0.1em", textTransform:"uppercase" },
+  sbCount:  { fontSize:10, color:C.textDim },
+  thumbList:{ flex:1, overflowY:"auto", padding:"6px 5px", display:"flex", flexDirection:"column", gap:5 },
+  thumb:    { display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"5px 4px", borderRadius:6, border:"1px solid transparent", background:"transparent", cursor:"pointer", transition:"all 0.12s" },
+  thumbOn:  { borderColor:C.accent, background:C.accentBg },
+  thumbImg: { width:74, height:"auto", borderRadius:2, display:"block" },
+  thumbPh:  { width:74, height:100, background:C.border, borderRadius:2 },
+  thumbN:   { fontSize:10, color:C.textDim },
 
-  main:      { flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"14px 18px", gap:10 },
-  mainHead:  { display:"flex", alignItems:"center", gap:10 },
-  mainTitle: { fontSize:13, fontWeight:600, color:"#c8cad8" },
-  pageInd:   { fontSize:10, color:"#4a5060" },
-  dpiNote:   { fontSize:9, color:"#2a3040", marginLeft:"auto" },
+  main:      { flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"16px 20px", gap:12 },
+  mainHead:  { display:"flex", alignItems:"center", gap:12 },
+  mainTitle: { fontSize:15, fontWeight:600, color:C.text },
+  pageInd:   { fontSize:12, color:C.textSub },
   canvasWrap:{ flex:1, overflow:"auto", display:"flex", alignItems:"flex-start", justifyContent:"center" },
-  ph:        { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:"#0d1017", borderRadius:8, gap:12 },
-  panel:     { width:268, flexShrink:0, borderLeft:"1px solid #1a1d24", overflow:"hidden" },
+  ph:        { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:C.bgCard, borderRadius:8, gap:12 },
+  panel:     { width:280, flexShrink:0, borderLeft:`1px solid ${C.border}`, overflow:"hidden" },
 
-  errIcon:  { fontSize:36, color:"#ff4444" },
-  errTitle: { fontSize:14, fontWeight:600, color:"#ff6060" },
-  errMsg:   { fontSize:11, color:"#cc4444", background:"#1a0808", border:"1px solid #3a1212", borderRadius:6, padding:"12px 16px", maxWidth:480, whiteSpace:"pre-wrap", wordBreak:"break-all" },
-  errBtn:   { padding:"8px 20px", background:"transparent", border:"1px solid #3a2020", borderRadius:7, color:"#cc4444", cursor:"pointer", fontSize:13, fontFamily:F },
+  errMsg: { fontSize:12, color:C.err, background:C.errBg, border:`1px solid ${C.errBd}`, borderRadius:6, padding:"12px 16px", maxWidth:480, whiteSpace:"pre-wrap", wordBreak:"break-all" },
+  errBtn: { padding:"8px 22px", background:"transparent", border:`1px solid ${C.errBd}`, borderRadius:7, color:C.err, cursor:"pointer", fontSize:13, fontFamily:F },
 };
 
 const r: Record<string, React.CSSProperties> = {
-  root:       { display:"flex", flexDirection:"column", height:"100%", background:"#0a0c10", color:"#e8eaf0", fontFamily:F },
-  header:     { display:"flex", alignItems:"center", gap:10, padding:"10px 18px", borderBottom:"1px solid #1a1d24", flexShrink:0 },
-  btnBack:    { padding:"5px 12px", background:"transparent", border:"1px solid #2a2e38", borderRadius:6, color:"#5a6070", cursor:"pointer", fontSize:11, fontFamily:F },
-  btnCompress:{ padding:"7px 16px", background:"#1a2a4a", border:"1px solid #3a6aaa", borderRadius:7, color:"#6aafff", fontWeight:600, cursor:"pointer", fontSize:12, fontFamily:F },
-  btnSave:    { padding:"8px 20px", background:"#1a4a8a", border:"1px solid #4f9eff", borderRadius:7, color:"#4f9eff", fontWeight:700, cursor:"pointer", fontSize:13, fontFamily:F },
+  root:       { display:"flex", flexDirection:"column", height:"100%", background:C.bg, color:C.text, fontFamily:F },
+  header:     { display:"flex", alignItems:"center", gap:10, padding:"12px 20px", borderBottom:`1px solid ${C.border}`, flexShrink:0 },
+  btnBack:    { padding:"6px 14px", background:"transparent", border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.textSub, cursor:"pointer", fontSize:13, fontFamily:F },
+  btnCompress:{ padding:"8px 18px", background:C.accentBg, border:`1px solid ${C.accentBd}`, borderRadius:7, color:C.accent, fontWeight:600, cursor:"pointer", fontSize:13, fontFamily:F },
+  btnSave:    { padding:"9px 22px", background:C.accentBg, border:`2px solid ${C.accentBd}`, borderRadius:7, color:C.accent, fontWeight:700, cursor:"pointer", fontSize:14, fontFamily:F },
   dis:        { opacity:0.4, cursor:"not-allowed" },
-  title:      { fontSize:14, fontWeight:600, color:"#c8cad8" },
-  sub:        { fontSize:10, color:"#4a5060" },
+  title:      { fontSize:15, fontWeight:600, color:C.text },
+  sub:        { fontSize:12, color:C.textSub },
   gallery:    { flex:1, overflowY:"auto", display:"flex", flexWrap:"wrap", gap:20, padding:24, alignContent:"flex-start", justifyContent:"center" },
-  card:       { display:"flex", flexDirection:"column", alignItems:"center", gap:8, background:"#0d1017", border:"1px solid #1a1d24", borderRadius:8, padding:12 },
-  pageN:      { fontSize:10, color:"#5a6070" },
-  img:        { maxWidth:280, maxHeight:380, display:"block", borderRadius:4 },
-  imgPh:      { width:200, height:260, background:"#111520", borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center", color:"#3a4050", fontSize:11 },
-  more:       { display:"flex", alignItems:"center", justifyContent:"center", color:"#3a4050", fontSize:12, padding:"30px 20px" },
-  footer:     { display:"flex", justifyContent:"flex-end", gap:10, padding:"10px 18px", borderTop:"1px solid #1a1d24", flexShrink:0 },
+  card:       { display:"flex", flexDirection:"column", alignItems:"center", gap:8, background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:9, padding:14 },
+  pageN:      { fontSize:11, color:C.textSub },
+  img:        { maxWidth:290, maxHeight:390, display:"block", borderRadius:4 },
+  imgPh:      { width:200, height:260, background:C.bgHover, borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center", color:C.textDim, fontSize:12 },
+  more:       { display:"flex", alignItems:"center", justifyContent:"center", color:C.textDim, fontSize:13, padding:"30px 20px" },
+  footer:     { display:"flex", justifyContent:"flex-end", gap:10, padding:"12px 20px", borderTop:`1px solid ${C.border}`, flexShrink:0 },
+};
+
+const b: Record<string, React.CSSProperties> = {
+  center:  { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:14, background:C.bg, padding:32 },
+  title:   { fontSize:17, fontWeight:700, color:C.text },
+  barWrap: { width:"100%", maxWidth:460, height:8, background:C.border, borderRadius:4, overflow:"hidden" },
+  bar:     { height:"100%", background:C.accent, borderRadius:4, transition:"width 0.3s" },
+  log:     { width:"100%", maxWidth:460, display:"flex", flexDirection:"column", gap:5, maxHeight:300, overflowY:"auto" },
+  logRow:  { display:"flex", alignItems:"center", gap:9, padding:"6px 10px", background:C.bgCard, borderRadius:6, border:`1px solid ${C.border}` },
+  logFile: { flex:1, fontSize:12, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  backBtn: { padding:"9px 26px", background:"transparent", border:`1px solid ${C.borderHi}`, borderRadius:7, color:C.textSub, cursor:"pointer", fontSize:13, fontFamily:F, marginTop:8 },
 };

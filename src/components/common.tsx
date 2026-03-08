@@ -87,7 +87,7 @@ export function ThumbCard({ b64, pageNum, width=80, selected=false,
         ? <img src={`data:image/jpeg;base64,${b64}`}
                style={{ width, height:h, objectFit:"cover", borderRadius:3, display:"block" }} alt="" />
         : <div style={{ width, height:h, background:C.border, borderRadius:3 }} />}
-      <span style={{ fontSize:11, color: selected ? C.accent : C.textDim }}>{pageNum}</span>
+      <span style={{ fontSize:13, color: selected ? C.accent : C.textDim }}>{pageNum}</span>
     </button>
   );
 }

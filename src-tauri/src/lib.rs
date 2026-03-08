@@ -4,7 +4,6 @@ mod error;
 mod platform;
 
 use commands::{core, platform as platform_cmd};
-use tauri::Emitter;
 
 #[cfg(desktop)]
 pub fn setup_platform() {
