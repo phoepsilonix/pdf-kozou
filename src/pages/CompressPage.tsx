@@ -127,7 +127,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   }, [batchFiles, preset, outDir, pickDir]);
 
   // ═══════════════════════════════════ RENDER ══════════════════════════
-  const bg = C.bg;
+  const bg = var(--c-bg);
 
   // 処理中（単体）
   if (phase==="processing" && !isBatch) return (
@@ -145,7 +145,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       <div style={c.bpCurFile}>{batchProg.curFile}</div>
       <div style={c.bpLog}>
         {batchProg.done.map((d,i)=>(
-          <div key={i} style={c.bpRow}><span style={{color:C.accent}}>✓</span>
+          <div key={i} style={c.bpRow}><span style={{color:var(--c-accent)}}>✓</span>
             <span style={c.bpFile}>{d.file}</span>
             <span style={c.bpPct}>−{d.pct}%</span></div>
         ))}
@@ -156,8 +156,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   // エラー
   if (phase==="error") return (
     <div style={c.center}>
-      <span style={{fontSize:38,color:C.err}}>✕</span>
-      <span style={{fontSize:16,fontWeight:700,color:C.err}}>エラー</span>
+      <span style={{fontSize:38,color:var(--c-err)}}>✕</span>
+      <span style={{fontSize:16,fontWeight:700,color:var(--c-err)}}>エラー</span>
       <pre style={c.errPre}>{errMsg}</pre>
       <button style={c.btnBack} onClick={()=>{setPhase("edit");setErrMsg("");}}>← 戻る</button>
     </div>
@@ -166,7 +166,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   // バッチ結果
   if (phase==="batchResult" && batchProg) return (
     <div style={c.center}>
-      <span style={{fontSize:52,color:batchProg.errors.length?C.warn:C.accent}}>
+      <span style={{fontSize:52,color:batchProg.errors.length?var(--c-warn):var(--c-accent)}}>
         {batchProg.errors.length?"⚠":"✓"}
       </span>
       <div style={c.bpTitle}>
@@ -176,15 +176,15 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       <div style={c.bpOutDir}>{outDir}</div>
       <div style={c.bpLog}>
         {batchProg.done.map((d,i)=>(
-          <div key={i} style={c.bpRow}><span style={{color:C.accent}}>✓</span>
+          <div key={i} style={c.bpRow}><span style={{color:var(--c-accent)}}>✓</span>
             <span style={c.bpFile}>{d.file}</span>
             <span style={c.bpPct}>−{d.pct}%</span></div>
         ))}
         {batchProg.errors.map((e,i)=>(
-          <div key={`e${i}`} style={{...c.bpRow,background:C.errBg,borderColor:C.errBd}}>
-            <span style={{color:C.err}}>✕</span>
+          <div key={`e${i}`} style={{...c.bpRow,background:var(--c-errBg),borderColor:var(--c-errBd)}}>
+            <span style={{color:var(--c-err)}}>✕</span>
             <span style={c.bpFile}>{e.file}</span>
-            <span style={{fontSize:11,color:C.err,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.msg}</span>
+            <span style={{fontSize:11,color:var(--c-err),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.msg}</span>
           </div>
         ))}
       </div>
@@ -203,7 +203,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       <div style={c.root}>
         {/* ヘッダー */}
         <div style={c.header}>
-          <button style={c.btnBack} onClick={()=>setPhase("edit")}>← 設定に戻る</button>
+          <button style={c.btnBack} onClick={e=>{ setPhase("edit"); (e.currentTarget as HTMLButtonElement).blur(); }}>← 設定に戻る</button>
           <span style={c.title}>圧縮プレビュー結果</span>
           <div style={{flex:1}}/>
           {onDone && <button style={c.btnSkip} onClick={onDone}>スキップ</button>}
@@ -226,7 +226,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             </div>
             <div style={c.statRow}>
               <StatCard label="元のサイズ" val={`${inMB} MB`}/>
-              <span style={{fontSize:22,color:C.textDim}}>→</span>
+              <span style={{fontSize:22,color:var(--c-textDim)}}>→</span>
               <StatCard label="圧縮後" val={`${outMB} MB`} accent/>
             </div>
 
@@ -238,9 +238,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               <PRow label="フォント圧縮" val={p.compress_fonts?"あり":"なし"}/>
               <PRow label="フォントサブセット化" val={
                 (p as any).font_subset
-                  ? <span style={{color:C.accent}}>✓ 実行 (未使用グリフ除去)</span>
+                  ? <span style={{color:var(--c-accent)}}>✓ 実行 (未使用グリフ除去)</span>
                   : (p as any).subset_skipped
-                    ? <span style={{color:C.warn}}>Type3フォントのためスキップ</span>
+                    ? <span style={{color:var(--c-warn)}}>Type3フォントのためスキップ</span>
                     : "スキップ"
               }/>
               <PRow label="sanitize"    val={p.sanitize?"あり":"なし"}/>
@@ -268,7 +268,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                   <span style={c.saveBtnSub}>{inMB}MB そのまま</span>
                 </button>
               </div>
-              {saving && <span style={{fontSize:12,color:C.textSub,textAlign:"center" as const}}>保存中…</span>}
+              {saving && <span style={{fontSize:12,color:var(--c-textSub),textAlign:"center" as const}}>保存中…</span>}
             </div>
           </div>
         </div>
@@ -291,7 +291,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
       <div style={c.presetGrid}>
         {PRESETS.map(p => (
-          <button key={p.id} onClick={()=>setPreset(p.id)}
+          <button key={p.id} onClick={e=>{ setPreset(p.id); (e.currentTarget as HTMLButtonElement).blur(); }}
             style={{...c.card, ...(preset===p.id?{borderColor:p.color,background:p.color+"22"}:{})}}>
             <span style={c.cardIcon}>{p.icon}</span>
             <span style={c.cardLabel}>{p.label}</span>
@@ -334,89 +334,89 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 function StatCard({ label, val, accent }: { label:string; val:string; accent?:boolean }) {
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-      <span style={{fontSize:12,color:C.textDim}}>{label}</span>
-      <span style={{fontSize:22,fontWeight:700,color:accent?C.accent:C.text}}>{val}</span>
+      <span style={{fontSize:12,color:var(--c-textDim)}}>{label}</span>
+      <span style={{fontSize:22,fontWeight:700,color:accent?var(--c-accent):var(--c-text)}}>{val}</span>
     </div>
   );
 }
 function PRow({ label, val }: { label:string; val:string }) {
   return (
-    <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
-      <span style={{color:C.textDim}}>{label}</span>
-      <span style={{color:C.text}}>{val}</span>
+    <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid var(--c-border)`,fontSize:12}}>
+      <span style={{color:var(--c-textDim)}}>{label}</span>
+      <span style={{color:var(--c-text)}}>{val}</span>
     </div>
   );
 }
 
 const c: Record<string, React.CSSProperties> = {
-  root:    {display:"flex",flexDirection:"column",height:"100%",background:C.bg,color:C.text,fontFamily:F,overflow:"hidden"},
-  center:  {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:16,background:C.bg,padding:32},
-  spinner: {width:32,height:32,border:`3px solid ${C.border}`,borderTop:`3px solid ${C.accent}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"},
-  spinSub: {color:C.textSub,fontSize:14},
+  root:    {display:"flex",flexDirection:"column",height:"100%",background:var(--c-bg),color:var(--c-text),fontFamily:F,overflow:"hidden"},
+  center:  {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:16,background:var(--c-bg),padding:32},
+  spinner: {width:32,height:32,border:`3px solid var(--c-border)`,borderTop:`3px solid var(--c-accent)`,borderRadius:"50%",animation:"spin 0.8s linear infinite"},
+  spinSub: {color:var(--c-textSub),fontSize:14},
 
-  header:     {display:"flex",alignItems:"center",gap:10,padding:"12px 22px",borderBottom:`1px solid ${C.border}`,flexShrink:0},
-  chainBadge: {padding:"3px 10px",background:C.accentBg,border:`1px solid ${C.accentBd}`,borderRadius:12,color:C.accent,fontSize:11},
-  title:      {fontSize:16,fontWeight:700,color:C.text},
-  fileSub:    {fontSize:12,color:C.textSub,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
-  pageSub:    {fontSize:11,color:C.textDim},
-  btnBack:    {padding:"6px 16px",background:"transparent",border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.textSub,cursor:"pointer",fontSize:13,fontFamily:F},
-  btnSkip:    {padding:"6px 16px",background:"transparent",border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.textSub,cursor:"pointer",fontSize:13,fontFamily:F},
+  header:     {display:"flex",alignItems:"center",gap:10,padding:"12px 22px",borderBottom:`1px solid var(--c-border)`,flexShrink:0},
+  chainBadge: {padding:"3px 10px",background:var(--c-accentBg),border:`1px solid var(--c-accentBd)`,borderRadius:12,color:var(--c-accent),fontSize:11},
+  title:      {fontSize:16,fontWeight:700,color:var(--c-text)},
+  fileSub:    {fontSize:12,color:var(--c-textSub),maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
+  pageSub:    {fontSize:11,color:var(--c-textDim)},
+  btnBack:    {padding:"6px 16px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:var(--c-textSub),cursor:"pointer",fontSize:13,fontFamily:F},
+  btnSkip:    {padding:"6px 16px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:var(--c-textSub),cursor:"pointer",fontSize:13,fontFamily:F},
 
   presetGrid: {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,padding:"24px 22px 0"},
-  card:       {display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"22px 12px",background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:12,cursor:"pointer",transition:"all 0.15s",fontFamily:F,color:C.text},
+  card:       {display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"22px 12px",background:var(--c-bgCard),border:`1px solid var(--c-border)`,borderRadius:12,cursor:"pointer",transition:"all 0.15s",fontFamily:F,color:var(--c-text)},
   cardIcon:   {fontSize:30},
-  cardLabel:  {fontSize:16,fontWeight:700,color:C.text},
-  cardDesc:   {fontSize:11,color:C.textSub,textAlign:"center" as const},
-  cardNote:   {fontSize:10,color:C.textDim,textAlign:"center" as const,lineHeight:1.5},
+  cardLabel:  {fontSize:16,fontWeight:700,color:var(--c-text)},
+  cardDesc:   {fontSize:11,color:var(--c-textSub),textAlign:"center" as const},
+  cardNote:   {fontSize:10,color:var(--c-textDim),textAlign:"center" as const,lineHeight:1.5},
 
   execArea:     {display:"flex",justifyContent:"center",alignItems:"center",padding:"28px 0",flex:1},
   singleExecBox:{display:"flex",flexDirection:"column",alignItems:"center",gap:16},
-  execHint:     {fontSize:13,color:C.textSub,textAlign:"center" as const,lineHeight:1.7},
-  btnExec:      {padding:"14px 56px",background:C.accentBg,border:`2px solid ${C.accentBd}`,borderRadius:10,color:C.accent,fontWeight:700,fontSize:16,cursor:"pointer",fontFamily:F},
+  execHint:     {fontSize:13,color:var(--c-textSub),textAlign:"center" as const,lineHeight:1.7},
+  btnExec:      {padding:"14px 56px",background:var(--c-accentBg),border:`2px solid var(--c-accentBd)`,borderRadius:10,color:var(--c-accent),fontWeight:700,fontSize:16,cursor:"pointer",fontFamily:F},
   btnExecDim:   {opacity:0.5},
 
   batchExecBox: {display:"flex",flexDirection:"column",alignItems:"center",gap:14,width:"100%",maxWidth:480},
-  batchInfo:    {fontSize:14,color:C.textSub},
+  batchInfo:    {fontSize:14,color:var(--c-textSub)},
   dirRow:       {display:"flex",gap:8,width:"100%"},
-  dirPath:      {flex:1,padding:"8px 12px",background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:7,color:C.textSub,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
-  dirPickBtn:   {padding:"8px 16px",background:C.bgCard,border:`1px solid ${C.borderHi}`,borderRadius:7,color:C.text,cursor:"pointer",fontSize:13,fontFamily:F,flexShrink:0},
+  dirPath:      {flex:1,padding:"8px 12px",background:var(--c-bgCard),border:`1px solid var(--c-border)`,borderRadius:7,color:var(--c-textSub),fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
+  dirPickBtn:   {padding:"8px 16px",background:var(--c-bgCard),border:`1px solid var(--c-borderHi)`,borderRadius:7,color:var(--c-text),cursor:"pointer",fontSize:13,fontFamily:F,flexShrink:0},
 
   // 結果画面
   resultBody:   {flex:1,display:"flex",gap:24,padding:"20px 24px",overflow:"auto"},
   prevCol:      {display:"flex",flexDirection:"column",alignItems:"center",gap:10,flexShrink:0},
-  prevImg:      {maxWidth:260,maxHeight:360,borderRadius:6,border:`1px solid ${C.border}`},
-  prevPh:       {width:220,height:300,background:C.bgCard,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",color:C.textDim,fontSize:13},
-  prevSub:      {fontSize:11,color:C.textDim},
+  prevImg:      {maxWidth:260,maxHeight:360,borderRadius:6,border:`1px solid var(--c-border)`},
+  prevPh:       {width:220,height:300,background:var(--c-bgCard),borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",color:var(--c-textDim),fontSize:13},
+  prevSub:      {fontSize:11,color:var(--c-textDim)},
   statsCol:     {flex:1,display:"flex",flexDirection:"column",gap:14,minWidth:0},
   statBig:      {fontSize:44,fontWeight:800,display:"flex",alignItems:"baseline",gap:8,lineHeight:1},
-  statBigSub:   {fontSize:15,fontWeight:400,color:C.textDim},
-  statRow:      {display:"flex",alignItems:"center",gap:20,padding:"14px 18px",background:C.bgCard,borderRadius:8,border:`1px solid ${C.border}`},
-  paramsBox:    {padding:"12px 14px",background:C.bgCard,borderRadius:8,border:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:2},
-  paramsHd:     {fontSize:10,color:C.textDim,letterSpacing:"0.1em",textTransform:"uppercase" as const,marginBottom:6},
-  warnBox:      {padding:"8px 12px",background:C.warnBg,border:`1px solid ${C.warnBd}`,borderRadius:6,color:C.warn,fontSize:12},
-  infoBox:      {padding:"8px 12px",background:C.accentBg,border:`1px solid ${C.accentBd}`,borderRadius:6,color:C.textSub,fontSize:12},
+  statBigSub:   {fontSize:15,fontWeight:400,color:var(--c-textDim)},
+  statRow:      {display:"flex",alignItems:"center",gap:20,padding:"14px 18px",background:var(--c-bgCard),borderRadius:8,border:`1px solid var(--c-border)`},
+  paramsBox:    {padding:"12px 14px",background:var(--c-bgCard),borderRadius:8,border:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",gap:2},
+  paramsHd:     {fontSize:10,color:var(--c-textDim),letterSpacing:"0.1em",textTransform:"uppercase" as const,marginBottom:6},
+  warnBox:      {padding:"8px 12px",background:var(--c-warnBg),border:`1px solid var(--c-warnBd)`,borderRadius:6,color:var(--c-warn),fontSize:12},
+  infoBox:      {padding:"8px 12px",background:var(--c-accentBg),border:`1px solid var(--c-accentBd)`,borderRadius:6,color:var(--c-textSub),fontSize:12},
 
   // 保存選択ボックス（目立つUI）
-  saveChoiceBox:  {marginTop:"auto",background:C.bgCard,border:`1px solid ${C.borderHi}`,borderRadius:12,padding:"16px",display:"flex",flexDirection:"column",gap:10},
-  saveChoiceLabel:{fontSize:12,color:C.textDim,letterSpacing:"0.06em"},
+  saveChoiceBox:  {marginTop:"auto",background:var(--c-bgCard),border:`1px solid var(--c-borderHi)`,borderRadius:12,padding:"16px",display:"flex",flexDirection:"column",gap:10},
+  saveChoiceLabel:{fontSize:12,color:var(--c-textDim),letterSpacing:"0.06em"},
   saveChoiceBtns: {display:"flex",gap:10},
-  btnSaveCompressed:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"14px 10px",background:C.accentBg,border:`2px solid ${C.accentBd}`,borderRadius:9,cursor:"pointer",fontFamily:F,transition:"all 0.12s"},
-  btnSaveOriginal:  {flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"14px 10px",background:C.bgHover,border:`1px solid ${C.borderHi}`,borderRadius:9,cursor:"pointer",fontFamily:F,transition:"all 0.12s"},
+  btnSaveCompressed:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"14px 10px",background:var(--c-accentBg),border:`2px solid var(--c-accentBd)`,borderRadius:9,cursor:"pointer",fontFamily:F,transition:"all 0.12s"},
+  btnSaveOriginal:  {flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"14px 10px",background:var(--c-bgHover),border:`1px solid var(--c-borderHi)`,borderRadius:9,cursor:"pointer",fontFamily:F,transition:"all 0.12s"},
   saveBtnIcon:  {fontSize:22},
-  saveBtnMain:  {fontSize:14,fontWeight:700,color:C.text},
-  saveBtnSub:   {fontSize:11,color:C.textSub},
+  saveBtnMain:  {fontSize:14,fontWeight:700,color:var(--c-text)},
+  saveBtnSub:   {fontSize:11,color:var(--c-textSub)},
 
   // バッチ進捗
-  bpTitle:   {fontSize:16,fontWeight:700,color:C.text},
-  bpBarWrap: {width:"100%",maxWidth:440,height:8,background:C.border,borderRadius:4,overflow:"hidden"},
-  bpBar:     {height:"100%",background:C.accent,borderRadius:4,transition:"width 0.3s"},
-  bpCurFile: {fontSize:12,color:C.textSub},
-  bpOutDir:  {fontSize:11,color:C.textDim},
+  bpTitle:   {fontSize:16,fontWeight:700,color:var(--c-text)},
+  bpBarWrap: {width:"100%",maxWidth:440,height:8,background:var(--c-border),borderRadius:4,overflow:"hidden"},
+  bpBar:     {height:"100%",background:var(--c-accent),borderRadius:4,transition:"width 0.3s"},
+  bpCurFile: {fontSize:12,color:var(--c-textSub)},
+  bpOutDir:  {fontSize:11,color:var(--c-textDim)},
   bpLog:     {width:"100%",maxWidth:480,display:"flex",flexDirection:"column",gap:4,maxHeight:300,overflowY:"auto"},
-  bpRow:     {display:"flex",alignItems:"center",gap:8,padding:"5px 10px",background:C.bgCard,borderRadius:6,border:`1px solid ${C.border}`},
-  bpFile:    {flex:1,fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
-  bpPct:     {fontSize:12,color:C.accent,fontWeight:700,flexShrink:0},
+  bpRow:     {display:"flex",alignItems:"center",gap:8,padding:"5px 10px",background:var(--c-bgCard),borderRadius:6,border:`1px solid var(--c-border)`},
+  bpFile:    {flex:1,fontSize:12,color:var(--c-text),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
+  bpPct:     {fontSize:12,color:var(--c-accent),fontWeight:700,flexShrink:0},
 
-  errPre:    {fontSize:11,color:C.err,background:C.errBg,border:`1px solid ${C.errBd}`,borderRadius:6,padding:"10px 14px",maxWidth:480,whiteSpace:"pre-wrap",wordBreak:"break-all"},
-  btnBack:   {padding:"8px 22px",background:"transparent",border:`1px solid ${C.borderHi}`,borderRadius:7,color:C.textSub,cursor:"pointer",fontSize:13,fontFamily:F},
+  errPre:    {fontSize:11,color:var(--c-err),background:var(--c-errBg),border:`1px solid var(--c-errBd)`,borderRadius:6,padding:"10px 14px",maxWidth:480,whiteSpace:"pre-wrap",wordBreak:"break-all"},
+  btnBack:   {padding:"8px 22px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:7,color:var(--c-textSub),cursor:"pointer",fontSize:13,fontFamily:F},
 };

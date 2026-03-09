@@ -238,7 +238,7 @@ export async function mergePdf(
 
 // ── 画像変換 ──────────────────────────────────────────────────────────────────
 
-export type ImageFormat = "jpeg" | "png";
+export type ImageFormat = "jpeg" | "png" | "svg";
 
 export interface ExportImagesResponse {
   ok:    boolean;
@@ -252,13 +252,29 @@ export async function exportImages(
   dpi:         number,
   quality?:    number,
   namePrefix?: string,
+  pages?:      string,  // "1-3,5" etc. undefined=全ページ
 ): Promise<ExportImagesResponse> {
   return invoke<ExportImagesResponse>("export_images", {
     path, outDir, format, dpi,
     quality:    quality    ?? null,
     namePrefix: namePrefix ?? null,
+    pages:      pages      ?? null,
   });
 }
 
 // ── 回転 (tauri.ts 既存の rotatePdf は PageRotation[] 形式) ──────────────────
 // rotate_pdf コマンドは invoke("rotate_pdf", { request: { input, output, angle?, rotations? } })
+
+// ── ファイル操作ユーティリティ ──────────────────────────────────────────────
+
+export async function moveFile(src: string, dst: string): Promise<void> {
+  return invoke("move_file", { src, dst });
+}
+
+export async function copyFile(src: string, dst: string): Promise<void> {
+  return invoke("copy_file", { src, dst });
+}
+
+export async function getTempPath(name: string): Promise<string> {
+  return invoke<string>("get_temp_path", { name });
+}

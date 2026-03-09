@@ -226,7 +226,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Render { path, page, dpi, format, quality, output, out_dir, name_prefix, start_number } => {
-            let ext = if format == "png" { "png" } else { "jpg" };
+            let ext = match format.as_str() { "png" => "png", "svg" => "svg", _ => "jpg" };
 
             // --page をパース → PageSpec に変換
             let page_spec = match page.as_deref() {
@@ -312,6 +312,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 },
                 unit: "pt".to_string(),  // CLI側で変換済み
                 pages: page_sel,
+                extract_pages: None,
             };
             let resp = pdf_kozou_core::trim::trim(&req)?;
             println!("{}", serde_json::to_string(&resp)?);
@@ -363,6 +364,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     garbage_level:   gc,
                     clean:           if clean    { Some(true) } else { None },
                     sanitize:        if sanitize { Some(true) } else { None },
+                    font_subset:     None,  // None = preset に従う (Standard以上は自動有効)
                     linearize:       None,
                 };
                 pdf_kozou_core::compress::compress(&req)?

@@ -1,6 +1,6 @@
 [package]
 name    = "pdf-kozou-core"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "PDF処理エンジン — MuPDF ベース CLI / sidecar"
 

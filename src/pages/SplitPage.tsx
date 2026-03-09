@@ -6,6 +6,7 @@ import { Spinner, ErrorView, ThumbCard, PageHeader, BtnBack, BtnPrimary } from "
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { renderPage, splitPdf, getPdfInfo, type SplitMode, type SplitResponse, type PdfInfo } from "../lib/tauri";
 import { C, F } from "../lib/theme";
+import { CompressPage } from "./CompressPage";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ interface Props {
   batchFiles?: FileEntry[];   // バッチ時: 選択ファイル一覧
 }
 
-type Phase  = "edit" | "processing" | "result" | "error";
+type Phase  = "edit" | "processing" | "result" | "error" | "compress";
 type ModeId = "all" | "every" | "ranges";
 
 const THUMB_DPI = 52;
@@ -42,6 +43,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const total       = isBatch ? (previewFile?.pageCount ?? 1) : pdfInfo.page_count;
 
   const [phase,    setPhase]    = useState<Phase>("edit");
+  const [savedDir, setSavedDir] = useState("");
   const [modeId,   setModeId]   = useState<ModeId>("all");
   const [everyN,   setEveryN]   = useState(2);
   const [ranges,   setRanges]   = useState<[number,number][]>([[1, pdfInfo.page_count]]);
@@ -109,6 +111,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                              { type:"Ranges", ranges };
       const res = await splitPdf(filePath, outDir, mode, prefix || undefined);
       setResult(res);
+      setSavedDir(outDir);
       setPhase("result");
     } catch (e) {
       setErrMsg(String(e)); setPhase("error"); setError(String(e));
@@ -179,16 +182,16 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.bpLog}>
           {batchProgress.done.map((d,i) => (
             <div key={i} style={s.bpLogRow}>
-              <span style={{color:C.accent}}>✓</span>
+              <span style={{color:var(--c-accent)}}>✓</span>
               <span style={s.bpLogFile}>{d.file}</span>
               <span style={s.bpLogMeta}>→ {d.count}ファイル</span>
             </div>
           ))}
           {batchProgress.errors.map((e,i) => (
             <div key={i} style={{...s.bpLogRow}}>
-              <span style={{color:C.err}}>✕</span>
+              <span style={{color:var(--c-err)}}>✕</span>
               <span style={s.bpLogFile}>{e.file}</span>
-              <span style={{...s.bpLogMeta, color:C.err}}>{e.msg}</span>
+              <span style={{...s.bpLogMeta, color:var(--c-err)}}>{e.msg}</span>
             </div>
           ))}
         </div>
@@ -216,16 +219,16 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.bpLog}>
           {batchProgress.done.map((d,i) => (
             <div key={i} style={s.bpLogRow}>
-              <span style={{color:C.accent}}>✓</span>
+              <span style={{color:var(--c-accent)}}>✓</span>
               <span style={s.bpLogFile}>{d.file}</span>
               <span style={s.bpLogMeta}>→ {d.count}ファイル</span>
             </div>
           ))}
           {batchProgress.errors.map((e,i) => (
             <div key={`e${i}`} style={s.bpLogRow}>
-              <span style={{color:C.err}}>✕</span>
+              <span style={{color:var(--c-err)}}>✕</span>
               <span style={s.bpLogFile}>{e.file}</span>
-              <span style={{...s.bpLogMeta, color:C.err}}>{e.msg}</span>
+              <span style={{...s.bpLogMeta, color:var(--c-err)}}>{e.msg}</span>
             </div>
           ))}
         </div>
@@ -242,18 +245,29 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       </PageHeader>
       <div style={s.resultBody}>
         <div style={s.resultIcon}>✓</div>
-        <div style={s.resultDir}>{outDir}</div>
+        <div style={s.resultDir}>{savedDir}</div>
         <div style={s.fileList}>
-          {result.files.map((f,i) => (
+          {result.files.slice(0, 20).map((f,i) => (
             <div key={i} style={s.fileRow}>
               <span>📄</span>
               <span style={s.fileName}>{f.split(/[/\\]/).pop()}</span>
             </div>
           ))}
+          {result.files.length > 20 && (
+            <div style={{fontSize:12,color:var(--c-textDim),textAlign:"center",padding:8}}>
+              … 他 {result.files.length - 20} ファイル
+            </div>
+          )}
+        </div>
+        <div style={{fontSize:12,color:"var(--c-textDim)",marginTop:4,textAlign:"center"}}>
+          ※ 分割ファイルは圧縮ツールでまとめて処理できます
         </div>
       </div>
     </div>
   );
+
+  // ── 圧縮フェーズ ─────────────────────────────────────────────────────────
+  if (phase === "compress") return null; // 分割は複数ファイルのため未対応 (バッチ圧縮を使用)
 
   // ── 設定画面 ──────────────────────────────────────────────────────────────
   return (
@@ -325,7 +339,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   )}
                 </div>
               ))}
-              <button style={s.addBtn} onClick={()=>setRanges(r=>[...r,[1,total]])}>＋ 範囲を追加</button>
+              <button style={s.addBtn} onClick={e=>{ setRanges(r=>[...r,[1,total]]); (e.currentTarget as HTMLButtonElement).blur(); }}>＋ 範囲を追加</button>
             </>
           )}
 
@@ -347,7 +361,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   {ranges.length>1 && <button style={s.delBtn} onClick={()=>setRanges(r=>r.filter((_,j)=>j!==i))}>✕</button>}
                 </div>
               ))}
-              <button style={s.addBtn} onClick={()=>setRanges(r=>[...r,[1,99]])}>＋ 範囲を追加</button>
+              <button style={s.addBtn} onClick={e=>{ setRanges(r=>[...r,[1,99]]); (e.currentTarget as HTMLButtonElement).blur(); }}>＋ 範囲を追加</button>
             </>
           )}
 
@@ -441,86 +455,86 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  root:      { display:"flex", flexDirection:"column", height:"100%", background:C.bg, color:C.text, fontFamily:F, overflow:"hidden" },
-  title:     { fontSize:15, fontWeight:700, color:C.text },
-  sub:       { fontSize:12, color:C.textSub, maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  pageBadge: { padding:"2px 10px", background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:12, fontSize:11, color:C.textSub },
-  groupCount:{ fontSize:13, color:C.accent, fontWeight:700 },
+  root:      { display:"flex", flexDirection:"column", height:"100%", background:var(--c-bg), color:var(--c-text), fontFamily:F, overflow:"hidden" },
+  title:     { fontSize:15, fontWeight:700, color:var(--c-text) },
+  sub:       { fontSize:12, color:var(--c-textSub), maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  pageBadge: { padding:"2px 10px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:12, fontSize:11, color:var(--c-textSub) },
+  groupCount:{ fontSize:13, color:var(--c-accent), fontWeight:700 },
 
   body:    { flex:1, display:"flex", overflow:"hidden" },
-  panel:   { width:296, flexShrink:0, padding:"16px 18px", display:"flex", flexDirection:"column", gap:12, overflowY:"auto", borderRight:`1px solid ${C.border}` },
+  panel:   { width:296, flexShrink:0, padding:"16px 18px", display:"flex", flexDirection:"column", gap:12, overflowY:"auto", borderRight:`1px solid var(--c-border)` },
 
-  secLabel:  { fontSize:11, color:C.textSub, letterSpacing:"0.08em", textTransform:"uppercase" as const },
+  secLabel:  { fontSize:11, color:var(--c-textSub), letterSpacing:"0.08em", textTransform:"uppercase" as const },
   modeList:  { display:"flex", flexDirection:"column", gap:5 },
-  modeBtn:   { display:"flex", alignItems:"center", gap:11, padding:"11px 13px", background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:8, cursor:"pointer", fontFamily:F, color:C.text, textAlign:"left" as const, transition:"all 0.1s" },
-  modeBtnOn: { borderColor:C.accent, background:C.accentBg },
+  modeBtn:   { display:"flex", alignItems:"center", gap:11, padding:"11px 13px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:8, cursor:"pointer", fontFamily:F, color:var(--c-text), textAlign:"left" as const, transition:"all 0.1s" },
+  modeBtnOn: { borderColor:var(--c-accent), background:var(--c-accentBg) },
   modeIcon:  { fontSize:20, flexShrink:0 },
-  modeName:  { fontSize:13, fontWeight:600, color:C.text },
-  modeDesc:  { fontSize:11, color:C.textSub },
+  modeName:  { fontSize:13, fontWeight:600, color:var(--c-text) },
+  modeDesc:  { fontSize:11, color:var(--c-textSub) },
 
   numRow:    { display:"flex", alignItems:"center", gap:7 },
-  stepBtn:   { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, cursor:"pointer", fontSize:22, color:C.text, fontFamily:F, flexShrink:0 },
-  numInput:  { width:80, padding:"8px 0", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, color:C.text, fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
-  numLabel:  { fontSize:12, color:C.textSub },
+  stepBtn:   { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:var(--c-text), fontFamily:F, flexShrink:0 },
+  numInput:  { width:80, padding:"8px 0", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-text), fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
+  numLabel:  { fontSize:12, color:var(--c-textSub) },
 
   rangeRow:    { display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" as const },
-  rangeIdx:    { fontSize:11, color:C.textDim, width:24, flexShrink:0 },
-  rangeInput:  { width:80, padding:"8px 4px", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, color:C.text, fontSize:26, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
-  rangeSep:    { fontSize:14, color:C.textDim },
-  rangeArrow:  { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:7, cursor:"pointer", fontSize:22, color:C.text, fontFamily:F },
+  rangeIdx:    { fontSize:11, color:var(--c-textDim), width:24, flexShrink:0 },
+  rangeInput:  { width:80, padding:"8px 4px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-text), fontSize:26, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
+  rangeSep:    { fontSize:14, color:var(--c-textDim) },
+  rangeArrow:  { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:var(--c-text), fontFamily:F },
   rangeSteps:  { display:"flex", gap:3 },
-  delBtn:      { width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"transparent", border:"none", color:C.textDim, cursor:"pointer", fontSize:14, padding:0, fontFamily:F },
-  addBtn:      { padding:"8px 14px", background:"transparent", border:`1px dashed ${C.borderHi}`, borderRadius:6, color:C.textSub, cursor:"pointer", fontSize:12, fontFamily:F },
-  batchRangeNote: { padding:"9px 11px", background:"#1a2a1a", border:`1px solid #3a5a2a`, borderRadius:7, fontSize:11, color:C.textSub, lineHeight:1.6 },
+  delBtn:      { width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"transparent", border:"none", color:var(--c-textDim), cursor:"pointer", fontSize:14, padding:0, fontFamily:F },
+  addBtn:      { padding:"8px 14px", background:"transparent", border:`1px dashed var(--c-borderHi)`, borderRadius:6, color:var(--c-textSub), cursor:"pointer", fontSize:12, fontFamily:F },
+  batchRangeNote: { padding:"9px 11px", background:"#1a2a1a", border:`1px solid #3a5a2a`, borderRadius:7, fontSize:11, color:var(--c-textSub), lineHeight:1.6 },
 
   prefixRow:  { display:"flex", alignItems:"center", gap:6 },
-  textInput:  { flex:1, padding:"7px 9px", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.text, fontSize:13, fontFamily:F },
-  prefixSuffix:{ fontSize:11, color:C.textDim, flexShrink:0 },
+  textInput:  { flex:1, padding:"7px 9px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:6, color:var(--c-text), fontSize:13, fontFamily:F },
+  prefixSuffix:{ fontSize:11, color:var(--c-textDim), flexShrink:0 },
   dirRow:     { display:"flex", gap:7 },
-  dirPath:    { flex:1, padding:"7px 9px", background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:6, color:C.textSub, fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  dirPickBtn: { padding:"7px 14px", background:C.bgCard, border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.text, cursor:"pointer", fontSize:12, fontFamily:F, flexShrink:0 },
+  dirPath:    { flex:1, padding:"7px 9px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:6, color:var(--c-textSub), fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  dirPickBtn: { padding:"7px 14px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:6, color:var(--c-text), cursor:"pointer", fontSize:12, fontFamily:F, flexShrink:0 },
 
   // バッチ進捗
   batchProgress: { flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18, padding:40 },
-  bpTitle:    { fontSize:16, fontWeight:700, color:C.text },
-  bpBar:      { width:"100%", maxWidth:480, height:8, background:C.border, borderRadius:4, overflow:"hidden" },
-  bpFill:     { height:"100%", background:C.accent, borderRadius:4, transition:"width 0.3s" },
-  bpCurrent:  { fontSize:13, color:C.textSub },
+  bpTitle:    { fontSize:16, fontWeight:700, color:var(--c-text) },
+  bpBar:      { width:"100%", maxWidth:480, height:8, background:var(--c-border), borderRadius:4, overflow:"hidden" },
+  bpFill:     { height:"100%", background:var(--c-accent), borderRadius:4, transition:"width 0.3s" },
+  bpCurrent:  { fontSize:13, color:var(--c-textSub) },
   bpLog:      { width:"100%", maxWidth:480, display:"flex", flexDirection:"column", gap:5, maxHeight:300, overflowY:"auto" },
-  bpLogRow:   { display:"flex", alignItems:"center", gap:10, padding:"6px 10px", background:C.bgCard, borderRadius:6, border:`1px solid ${C.border}` },
-  bpLogFile:  { flex:1, fontSize:12, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  bpLogMeta:  { fontSize:11, color:C.textSub },
+  bpLogRow:   { display:"flex", alignItems:"center", gap:10, padding:"6px 10px", background:var(--c-bgCard), borderRadius:6, border:`1px solid var(--c-border)` },
+  bpLogFile:  { flex:1, fontSize:12, color:var(--c-text), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  bpLogMeta:  { fontSize:11, color:var(--c-textSub) },
 
   // プレビューエリア
   preview:    { flex:1, display:"flex", flexDirection:"column", overflow:"hidden" },
-  previewHead:{ padding:"10px 18px", fontSize:12, color:C.textSub, borderBottom:`1px solid ${C.border}`, flexShrink:0, letterSpacing:"0.04em" },
+  previewHead:{ padding:"10px 18px", fontSize:12, color:var(--c-textSub), borderBottom:`1px solid var(--c-border)`, flexShrink:0, letterSpacing:"0.04em" },
 
   // バッチファイルリスト
   batchFileList: { flex:1, overflowY:"auto", display:"flex", flexDirection:"column", gap:0 },
-  batchFileItem: { display:"flex", alignItems:"center", gap:14, padding:"12px 16px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", transition:"background 0.1s" },
-  batchFileItemOn: { background:C.accentBg, borderLeft:`3px solid ${C.accent}` },
+  batchFileItem: { display:"flex", alignItems:"center", gap:14, padding:"12px 16px", borderBottom:`1px solid var(--c-border)`, cursor:"pointer", transition:"background 0.1s" },
+  batchFileItemOn: { background:var(--c-accentBg), borderLeft:`3px solid var(--c-accent)` },
   batchThumb:    { width:72, height:102, objectFit:"cover" as const, borderRadius:4, flexShrink:0 },
-  batchThumbPh:  { width:72, height:102, background:C.border, borderRadius:4, flexShrink:0 },
+  batchThumbPh:  { width:72, height:102, background:var(--c-border), borderRadius:4, flexShrink:0 },
   batchFileInfo: { flex:1, display:"flex", flexDirection:"column", gap:5, minWidth:0 },
-  batchFileName: { fontSize:13, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  batchFileMeta: { fontSize:11, color:C.textSub },
+  batchFileName: { fontSize:13, color:var(--c-text), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  batchFileMeta: { fontSize:11, color:var(--c-textSub) },
 
   // 単体グループプレビュー
   groupList:   { flex:1, overflowY:"auto", padding:14, display:"flex", flexDirection:"column", gap:8 },
-  group:       { background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:9, overflow:"hidden" },
-  groupLabel:  { display:"flex", alignItems:"center", gap:9, padding:"7px 13px", borderBottom:`1px solid ${C.border}`, background:C.bg },
-  groupNum:    { fontSize:12, fontWeight:700, color:C.accent, minWidth:28 },
-  groupPages:  { fontSize:11, color:C.textSub },
-  groupRange:  { fontSize:11, color:C.textDim, marginLeft:"auto" },
+  group:       { background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:9, overflow:"hidden" },
+  groupLabel:  { display:"flex", alignItems:"center", gap:9, padding:"7px 13px", borderBottom:`1px solid var(--c-border)`, background:var(--c-bg) },
+  groupNum:    { fontSize:12, fontWeight:700, color:var(--c-accent), minWidth:28 },
+  groupPages:  { fontSize:11, color:var(--c-textSub) },
+  groupRange:  { fontSize:11, color:var(--c-textDim), marginLeft:"auto" },
   groupThumbs: { display:"flex", gap:5, padding:"9px 11px", flexWrap:"wrap" as const },
-  groupMore:   { width:70, height:99, display:"flex", alignItems:"center", justifyContent:"center", background:C.border, borderRadius:4, fontSize:12, color:C.textSub },
+  groupMore:   { width:70, height:99, display:"flex", alignItems:"center", justifyContent:"center", background:var(--c-border), borderRadius:4, fontSize:12, color:var(--c-textSub) },
 
   // 結果
   resultBody:  { flex:1, display:"flex", flexDirection:"column", alignItems:"center", padding:28, gap:12, overflowY:"auto" },
-  resultIcon:  { fontSize:52, color:C.accent },
-  resultStat:  { fontSize:18, fontWeight:700, color:C.text },
-  resultDir:   { fontSize:12, color:C.textSub },
+  resultIcon:  { fontSize:52, color:var(--c-accent) },
+  resultStat:  { fontSize:18, fontWeight:700, color:var(--c-text) },
+  resultDir:   { fontSize:12, color:var(--c-textSub) },
   fileList:    { width:"100%", maxWidth:500, display:"flex", flexDirection:"column", gap:4 },
-  fileRow:     { display:"flex", alignItems:"center", gap:9, padding:"7px 11px", background:C.bgCard, borderRadius:6, border:`1px solid ${C.border}` },
-  fileName:    { fontSize:12, color:C.text },
+  fileRow:     { display:"flex", alignItems:"center", gap:9, padding:"7px 11px", background:var(--c-bgCard), borderRadius:6, border:`1px solid var(--c-border)` },
+  fileName:    { fontSize:12, color:var(--c-text) },
 };

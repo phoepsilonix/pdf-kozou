@@ -126,26 +126,19 @@ pub async fn export_images(
     dpi:         Option<u32>,
     quality:     Option<u8>,
     name_prefix: Option<String>,
+    pages:       Option<String>,  // ページ指定 "1-3,5,7-" etc.
 ) -> Result<Value> {
     use serde_json::json;
-    use std::path::PathBuf;
 
     let fmt     = format.unwrap_or_else(|| "jpeg".into());
     let dpi_val = dpi.unwrap_or(150);
     let prefix  = name_prefix.unwrap_or_else(|| "page".into());
-    let ext     = if fmt == "png" { "png" } else { "jpg" };
-
-    // ① ページ数を先に取得 (info コマンド、JSON を返す)
-    let info = call_core(vec!["info".into(), path.clone()]).await?;
-    let page_count = info["page_count"].as_i64()
-        .ok_or_else(|| Error::Core("page_count not found in info response".into()))?;
 
     // ② 出力先ディレクトリを作成
     std::fs::create_dir_all(&out_dir)
         .map_err(|e| Error::Core(format!("mkdir {out_dir}: {e}")))?;
 
-    // ③ render --out-dir で全ページ一括変換
-    //    このコマンドは stdout に何も出力しない (exit 0 = 成功)
+    // ③ render --out-dir で一括変換 (pages 指定があれば --page で渡す)
     let mut args: Vec<String> = vec![
         "render".into(),
         path.clone(),
@@ -154,6 +147,12 @@ pub async fn export_images(
         "--format".into(),      fmt.clone(),
         "--name-prefix".into(), prefix.clone(),
     ];
+    if let Some(ref pg) = pages {
+        if !pg.is_empty() && pg != "all" {
+            args.push("--page".into());
+            args.push(pg.clone());
+        }
+    }
     if let Some(q) = quality {
         args.push("--quality".into());
         args.push(q.to_string());
@@ -173,15 +172,19 @@ pub async fn export_images(
         return Err(Error::Core(format!("render: {}", stderr.trim())));
     }
 
-    // ④ コアが生成するファイル名規則: {prefix}_{0001}.{ext} (start_number=1)
-    let files: Vec<String> = (1..=page_count)
-        .map(|n| {
-            PathBuf::from(&out_dir)
-                .join(format!("{prefix}_{n:04}.{ext}"))
-                .display()
-                .to_string()
+    // ④ 出力ディレクトリをスキャンして実際に生成されたファイルを返す
+    // (コアの命名規則に依存せず、実ファイルを一覧する)
+    let mut files: Vec<String> = std::fs::read_dir(&out_dir)
+        .map_err(|e| Error::Core(format!("readdir {out_dir}: {e}")))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path().display().to_string())
+        .filter(|p| {
+            let pl = p.to_lowercase();
+            pl.ends_with(".jpg") || pl.ends_with(".jpeg") ||
+            pl.ends_with(".png") || pl.ends_with(".svg")
         })
         .collect();
+    files.sort();
 
     Ok(json!({ "ok": true, "files": files }))
 }
@@ -269,4 +272,30 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
 
     serde_json::from_str(stdout.trim())
         .map_err(|e| Error::Core(format!("JSON parse: {e}\nraw: {stdout}")))
+}
+
+
+/// 一時ファイルパスを返す (OS の temp dir + name)
+#[tauri::command]
+pub async fn get_temp_path(name: String) -> Result<String> {
+    let dir = std::env::temp_dir();
+    Ok(dir.join(&name).display().to_string())
+}
+
+/// ファイルを移動 (rename → 失敗なら copy + delete)
+#[tauri::command]
+pub async fn move_file(src: String, dst: String) -> Result<()> {
+    if let Ok(_) = std::fs::rename(&src, &dst) {
+        return Ok(());
+    }
+    std::fs::copy(&src, &dst).map_err(|e| Error::Core(e.to_string()))?;
+    let _ = std::fs::remove_file(&src);
+    Ok(())
+}
+
+/// ファイルをコピー
+#[tauri::command]
+pub async fn copy_file(src: String, dst: String) -> Result<()> {
+    std::fs::copy(&src, &dst).map_err(|e| Error::Core(e.to_string()))?;
+    Ok(())
 }

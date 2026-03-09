@@ -24,6 +24,8 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
 
   const [phase,         setPhase]        = useState<Phase>("edit");
   const [entries,       setEntries]      = useState<PdfEntry[]>([]);
+  // initPathsがある場合は最初のロード完了まで「ロード中」を示すフラグ
+  const [initLoading,   setInitLoading]  = useState(initPaths.length > 0);
   const [result,        setResult]       = useState<MergeResponse | null>(null);
   const [errMsg,        setErrMsg]       = useState("");
   const [dropOver,      setDropOver]     = useState(false);
@@ -40,7 +42,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   useEffect(() => {
     if (initLoaded.current || initPaths.length === 0) return;
     initLoaded.current = true;
-    loadPaths(initPaths);
+    loadPaths(initPaths).finally(() => setInitLoading(false));
   }, []); // 依存配列は空: マウント時のみ
 
   // ── ファイル追加 ─────────────────────────────────────────────────────────
@@ -108,17 +110,19 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   }, [entries]);
 
   // ── 保存 ─────────────────────────────────────────────────────────────────
-  const handleSave = useCallback(async () => {
+  const [compressAfter, setCompressAfter] = useState(false);
+
+  const handleSave = useCallback(async (withCompress = false) => {
     const sp = await pickSave("merged.pdf");
     if (!sp) return;
     setSavePath(sp);
+    setCompressAfter(withCompress);
     setPhase("processing");
     try {
       const res = await mergePdf(entries.map(e => e.path), sp);
       setResult(res);
-      // 続けて圧縮用にPdfInfoを生成
       setMergedInfo({ page_count: res.page_count, pages: Array.from({length:res.page_count},()=>({w:595,h:842})) });
-      setPhase("result");
+      setPhase(withCompress ? "compress" : "result");
     } catch (e) {
       setErrMsg(String(e)); setPhase("error"); setError(String(e));
     }
@@ -126,6 +130,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
 
   const totalPages = entries.reduce((s,e) => s + e.pageCount, 0);
 
+  if (initLoading) return <Spinner label="ファイルを読み込み中…" />;
   if (phase==="processing") return <Spinner label="結合処理中…" />;
   if (phase==="error")      return <ErrorView msg={errMsg} onBack={()=>{setPhase("edit");setErrMsg("");}}/>;
 
@@ -153,9 +158,6 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
           <div style={s.resultStat}>{result.page_count}ページ / {mb} MB</div>
           <div style={s.resultSub}>{savePath.split(/[/\\]/).pop()}</div>
           <div style={s.resultDetail}>{entries.length}ファイルを結合しました</div>
-          <button style={s.compressBtn} onClick={()=>setPhase("compress")}>
-            ⊙ 続けて圧縮する
-          </button>
         </div>
       </div>
     );
@@ -177,42 +179,64 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     return (
       <div style={s.root}>
         <PageHeader>
-          <BtnBack onClick={()=>setPhase("edit")} />
+          <BtnBack onClick={e=>{ setPhase("edit"); (e.currentTarget as HTMLButtonElement).blur(); }} />
           <span style={s.title}>結合プレビュー</span>
           <span style={s.sub}>合計 {totalPages}ページ → 1ファイル</span>
           <div style={{flex:1}}/>
-          <BtnPrimary onClick={handleSave}>💾 この内容で保存</BtnPrimary>
+          <BtnPrimary onClick={()=>handleSave(false)}>💾 保存</BtnPrimary>
+          <BtnPrimary onClick={()=>handleSave(true)}>⊙ 保存して圧縮</BtnPrimary>
         </PageHeader>
 
-        {/* 統合プレビュー: ファイル区切りを帯で表示 */}
+        {/* 統合プレビュー: 大枠で「1つのPDF」を強調 */}
         <div style={s.previewBody}>
-          {segments.map((seg, si) => (
-            <div key={si}>
-              {/* ファイル区切り帯 */}
-              <div style={s.segDivider}>
-                <div style={s.segLine}/>
-                <span style={s.segLabel}>
-                  {si+1}. {seg.label}
-                  <span style={s.segPageCount}> ({seg.pages.length}ページ)</span>
-                </span>
-                <div style={s.segLine}/>
-              </div>
-              {/* サムネイル行 */}
-              <div style={s.previewThumbs}>
-                {seg.pages.map(p => (
-                  <div key={p.globalNum} style={s.prevThumbWrap}>
-                    <ThumbCard b64={p.b64||undefined} pageNum={p.globalNum} width={90} />
-                    <span style={s.prevLocalNum}>元{p.localNum}p</span>
-                  </div>
-                ))}
-              </div>
+          {/* 結合後の全体を囲む大枠 */}
+          <div style={{
+            margin:"0 12px 8px",
+            border:`2px solid var(--c-accent)`,
+            borderRadius:12,
+            padding:"6px 10px 10px",
+            background:var(--c-accentBg),
+          }}>
+            {/* 大枠ラベル */}
+            <div style={{
+              fontSize:12, color:var(--c-accent), fontWeight:700,
+              letterSpacing:"0.08em", marginBottom:6,
+              display:"flex", alignItems:"center", gap:6,
+            }}>
+              <span>⊕ 結合後: 1ファイル ({totalPages}ページ)</span>
             </div>
-          ))}
+            {/* ファイルごとのブロック */}
+            {segments.map((seg, si) => (
+              <div key={si} style={{marginBottom: si < segments.length-1 ? 10 : 0}}>
+                {/* ファイル区切り帯 */}
+                <div style={s.segDivider}>
+                  <div style={s.segLine}/>
+                  <span style={s.segLabel}>
+                    {si+1}. {seg.label}
+                    <span style={s.segPageCount}> ({seg.pages.length}ページ)</span>
+                  </span>
+                  <div style={s.segLine}/>
+                </div>
+                {/* サムネイル行 */}
+                <div style={s.previewThumbs}>
+                  {seg.pages.map(p => (
+                    <div key={p.globalNum} style={s.prevThumbWrap}>
+                      <ThumbCard b64={p.b64||undefined} pageNum={p.globalNum} width={90} />
+                      <span style={s.prevLocalNum}>元{p.localNum}p</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div style={s.previewFooter}>
-          <BtnBack onClick={()=>setPhase("edit")} />
-          <BtnPrimary onClick={handleSave}>💾 保存</BtnPrimary>
+          <BtnBack onClick={e=>{ setPhase("edit"); (e.currentTarget as HTMLButtonElement).blur(); }} />
+          <div style={{display:"flex",gap:8}}>
+            <BtnPrimary onClick={()=>handleSave(false)}>💾 保存</BtnPrimary>
+            <BtnPrimary onClick={()=>handleSave(true)}>⊙ 保存して圧縮</BtnPrimary>
+          </div>
         </div>
       </div>
     );
@@ -226,7 +250,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
         {entries.length > 0 && <>
           <span style={s.sub}>{entries.length}ファイル · 合計 {totalPages}ページ</span>
           <div style={{flex:1}}/>
-          <button style={s.btnClear} onClick={()=>setEntries([])}>クリア</button>
+          <button style={s.btnClear} onClick={e=>{ setEntries([]); (e.currentTarget as HTMLButtonElement).blur(); }}>クリア</button>
         </>}
         {entries.length === 0 && <div style={{flex:1}}/>}
       </PageHeader>
@@ -306,8 +330,11 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
                   onClick={handlePreview} disabled={entries.length<2}>
                   👁 プレビュー確認
                 </button>
-                <BtnPrimary onClick={handleSave} disabled={entries.length<2}>
+                <BtnPrimary onClick={()=>handleSave(false)} disabled={entries.length<2}>
                   ⊕ 結合して保存
+                </BtnPrimary>
+                <BtnPrimary onClick={()=>handleSave(true)} disabled={entries.length<2}>
+                  ⊙ 結合して圧縮保存
                 </BtnPrimary>
               </div>
               {entries.length < 2 && <span style={s.execHint}>2ファイル以上必要です</span>}
@@ -320,66 +347,66 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  root:{ display:"flex",flexDirection:"column",height:"100%",background:C.bg,color:C.text,fontFamily:F,overflow:"hidden" },
-  title:{ fontSize:17,fontWeight:700,color:C.text },
-  sub:{ fontSize:14,color:C.textSub },
-  btnClear:{ padding:"5px 14px",background:"transparent",border:`1px solid ${C.errBd}`,borderRadius:6,color:"#aa4040",cursor:"pointer",fontSize:12,fontFamily:F },
+  root:{ display:"flex",flexDirection:"column",height:"100%",background:var(--c-bg),color:var(--c-text),fontFamily:F,overflow:"hidden" },
+  title:{ fontSize:17,fontWeight:700,color:var(--c-text) },
+  sub:{ fontSize:14,color:var(--c-textSub) },
+  btnClear:{ padding:"5px 14px",background:"transparent",border:`1px solid var(--c-errBd)`,borderRadius:6,color:"#aa4040",cursor:"pointer",fontSize:12,fontFamily:F },
 
   body:{ flex:1,display:"flex",overflow:"hidden" },
-  dropZone:{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,margin:20,borderRadius:12,border:`2px dashed ${C.border}`,background:C.bgCard,transition:"all 0.15s" },
-  dropZoneOn:{ borderColor:C.accent,background:C.accentBg },
-  dropIcon:{ fontSize:48,color:C.borderHi },
-  dropTitle:{ fontSize:19,fontWeight:600,color:C.textSub },
-  dropSub:{ fontSize:13,color:C.textDim },
-  btnAddBig:{ padding:"12px 32px",background:C.accentBg,border:`1px solid ${C.accentBd}`,borderRadius:9,color:C.accent,fontWeight:700,cursor:"pointer",fontSize:16,fontFamily:F },
+  dropZone:{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,margin:20,borderRadius:12,border:`2px dashed var(--c-border)`,background:var(--c-bgCard),transition:"all 0.15s" },
+  dropZoneOn:{ borderColor:var(--c-accent),background:var(--c-accentBg) },
+  dropIcon:{ fontSize:48,color:var(--c-borderHi) },
+  dropTitle:{ fontSize:19,fontWeight:600,color:var(--c-textSub) },
+  dropSub:{ fontSize:13,color:var(--c-textDim) },
+  btnAddBig:{ padding:"12px 32px",background:var(--c-accentBg),border:`1px solid var(--c-accentBd)`,borderRadius:9,color:var(--c-accent),fontWeight:700,cursor:"pointer",fontSize:16,fontFamily:F },
 
   listArea:{ flex:1,display:"flex",flexDirection:"column",padding:"14px 18px",gap:0,overflow:"hidden" },
   list:{ flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:7,paddingBottom:7 },
-  listItem:{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:9,cursor:"grab",transition:"all 0.1s",userSelect:"none" },
+  listItem:{ display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:var(--c-bgCard),border:`1px solid var(--c-border)`,borderRadius:9,cursor:"grab",transition:"all 0.1s",userSelect:"none" },
   itemDragging:{ opacity:0.3,transform:"scale(0.97)" },
-  itemTarget:{ borderColor:C.accent,background:C.accentBg,transform:"translateY(-2px)" },
-  itemSeq:{ fontSize:13,fontWeight:700,color:C.textDim,width:22,textAlign:"center" as const,flexShrink:0 },
-  handle:{ fontSize:17,color:C.borderHi,cursor:"grab",flexShrink:0 },
+  itemTarget:{ borderColor:var(--c-accent),background:var(--c-accentBg),transform:"translateY(-2px)" },
+  itemSeq:{ fontSize:13,fontWeight:700,color:var(--c-textDim),width:22,textAlign:"center" as const,flexShrink:0 },
+  handle:{ fontSize:17,color:var(--c-borderHi),cursor:"grab",flexShrink:0 },
   itemThumbs:{ display:"flex",gap:4,flexShrink:0 },
-  thumbMore:{ width:56,height:79,display:"flex",alignItems:"center",justifyContent:"center",background:C.border,borderRadius:4,fontSize:11,color:C.textSub },
+  thumbMore:{ width:56,height:79,display:"flex",alignItems:"center",justifyContent:"center",background:var(--c-border),borderRadius:4,fontSize:11,color:var(--c-textSub) },
   itemInfo:{ flex:1,display:"flex",flexDirection:"column",gap:3,minWidth:0 },
-  itemName:{ fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
-  itemPages:{ fontSize:12,color:C.textSub },
+  itemName:{ fontSize:14,color:var(--c-text),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
+  itemPages:{ fontSize:12,color:var(--c-textSub) },
   moveBtns:{ display:"flex",flexDirection:"column",gap:3,flexShrink:0 },
-  moveBtn:{ width:30,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:C.bgCard,border:`1px solid ${C.borderHi}`,borderRadius:5,color:C.textSub,cursor:"pointer",fontSize:13,fontFamily:F },
-  delBtn:{ width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",border:"none",color:C.textDim,cursor:"pointer",fontSize:14,fontFamily:F,flexShrink:0 },
-  addZone:{ display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:8,border:`1px dashed ${C.border}`,transition:"all 0.12s" },
-  addZoneOn:{ borderColor:C.accent,background:C.accentBg },
-  btnAdd:{ padding:"7px 16px",background:"transparent",border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.textSub,cursor:"pointer",fontSize:12,fontFamily:F,flexShrink:0 },
-  addHint:{ fontSize:11,color:C.textDim },
+  moveBtn:{ width:30,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:var(--c-bgCard),border:`1px solid var(--c-borderHi)`,borderRadius:5,color:var(--c-textSub),cursor:"pointer",fontSize:13,fontFamily:F },
+  delBtn:{ width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",border:"none",color:var(--c-textDim),cursor:"pointer",fontSize:14,fontFamily:F,flexShrink:0 },
+  addZone:{ display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:8,border:`1px dashed var(--c-border)`,transition:"all 0.12s" },
+  addZoneOn:{ borderColor:var(--c-accent),background:var(--c-accentBg) },
+  btnAdd:{ padding:"7px 16px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:var(--c-textSub),cursor:"pointer",fontSize:12,fontFamily:F,flexShrink:0 },
+  addHint:{ fontSize:11,color:var(--c-textDim) },
 
-  execArea:{ flexShrink:0,paddingTop:12,display:"flex",flexDirection:"column",gap:9,borderTop:`1px solid ${C.border}` },
+  execArea:{ flexShrink:0,paddingTop:12,display:"flex",flexDirection:"column",gap:9,borderTop:`1px solid var(--c-border)` },
   summaryRow:{ display:"flex",alignItems:"center",gap:9,justifyContent:"center" },
-  sumFile:{ fontSize:16,fontWeight:700,color:C.text },
-  sumDot:{ color:C.textDim },
-  sumPages:{ fontSize:14,color:C.textSub },
-  sumArrow:{ fontSize:16,color:C.textDim },
-  sumOut:{ fontSize:16,fontWeight:700,color:C.accent },
+  sumFile:{ fontSize:16,fontWeight:700,color:var(--c-text) },
+  sumDot:{ color:var(--c-textDim) },
+  sumPages:{ fontSize:14,color:var(--c-textSub) },
+  sumArrow:{ fontSize:16,color:var(--c-textDim) },
+  sumOut:{ fontSize:16,fontWeight:700,color:var(--c-accent) },
   execBtns:{ display:"flex",gap:9,justifyContent:"center" },
-  btnPreview:{ padding:"12px 26px",background:C.bgCard,border:`1px solid ${C.borderHi}`,borderRadius:8,color:C.text,fontWeight:600,cursor:"pointer",fontSize:15,fontFamily:F },
+  btnPreview:{ padding:"12px 26px",background:var(--c-bgCard),border:`1px solid var(--c-borderHi)`,borderRadius:8,color:var(--c-text),fontWeight:600,cursor:"pointer",fontSize:15,fontFamily:F },
   btnDis:{ opacity:0.35,cursor:"not-allowed" },
-  execHint:{ textAlign:"center" as const,fontSize:13,color:C.textDim },
+  execHint:{ textAlign:"center" as const,fontSize:13,color:var(--c-textDim) },
 
   // プレビュー
   previewBody:{ flex:1,overflowY:"auto",padding:"0 18px 16px" },
   segDivider:{ display:"flex",alignItems:"center",gap:10,padding:"14px 0 8px" },
-  segLine:{ flex:1,height:1,background:C.border },
-  segLabel:{ fontSize:14,fontWeight:700,color:C.accent,whiteSpace:"nowrap" },
-  segPageCount:{ fontSize:11,color:C.textSub,fontWeight:400 },
+  segLine:{ flex:1,height:1,background:var(--c-border) },
+  segLabel:{ fontSize:14,fontWeight:700,color:var(--c-accent),whiteSpace:"nowrap" },
+  segPageCount:{ fontSize:11,color:var(--c-textSub),fontWeight:400 },
   previewThumbs:{ display:"flex",flexWrap:"wrap" as const,gap:8,paddingBottom:4 },
   prevThumbWrap:{ display:"flex",flexDirection:"column",alignItems:"center",gap:3 },
-  prevLocalNum:{ fontSize:9,color:C.textDim },
-  previewFooter:{ flexShrink:0,display:"flex",justifyContent:"space-between",padding:"10px 18px",borderTop:`1px solid ${C.border}` },
+  prevLocalNum:{ fontSize:9,color:var(--c-textDim) },
+  previewFooter:{ flexShrink:0,display:"flex",justifyContent:"space-between",padding:"10px 18px",borderTop:`1px solid var(--c-border)` },
 
   resultBody:{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12 },
-  resultIcon:{ fontSize:52,color:C.green },
-  resultStat:{ fontSize:22,fontWeight:700,color:C.text },
-  resultSub:{ fontSize:15,color:C.textSub },
-  resultDetail:{ fontSize:12,color:C.textDim },
-  compressBtn: { padding:"12px 32px", background:C.accentBg, border:`1px solid ${C.accentBd}`, borderRadius:9, color:C.accent, fontWeight:600, cursor:"pointer", fontSize:15, fontFamily:F },
+  resultIcon:{ fontSize:52,color:var(--c-green) },
+  resultStat:{ fontSize:22,fontWeight:700,color:var(--c-text) },
+  resultSub:{ fontSize:15,color:var(--c-textSub) },
+  resultDetail:{ fontSize:12,color:var(--c-textDim) },
+  compressBtn: { padding:"12px 32px", background:var(--c-accentBg), border:`1px solid var(--c-accentBd)`, borderRadius:9, color:var(--c-accent), fontWeight:600, cursor:"pointer", fontSize:15, fontFamily:F },
 };

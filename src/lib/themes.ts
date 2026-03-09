@@ -127,6 +127,8 @@ export function getTheme(): Theme { return _current; }
 export function setTheme(id: ThemeId) {
   _current = THEMES[id];
   saveThemeId(id);
+  // ブラウザ環境なら CSS 変数も即時更新 (key re-mount の前に確実に反映)
+  if (typeof document !== "undefined") applyThemeCssVars(_current);
 }
 
 // C: 各コンポーネントが import { C } from "../lib/theme" で使えるProxy
@@ -134,3 +136,40 @@ export function setTheme(id: ThemeId) {
 export const C: Theme = new Proxy({} as Theme, {
   get(_: Theme, key: string) { return (_current as any)[key]; },
 });
+
+// ── CSS 変数によるテーマ適用 ─────────────────────────────────────────────────
+// スタイルを :root CSS 変数に書き出すことで、
+// Proxy C の値が古くなっても CSS 変数は即座に全コンポーネントに反映される
+
+export function applyThemeCssVars(t: Theme) {
+  const root = document.documentElement;
+  (Object.entries(t) as [string, string][]).forEach(([k, v]) => {
+    if (typeof v === "string" && v.startsWith("#")) {
+      root.style.setProperty(`--c-${k}`, v);
+    }
+  });
+  root.style.setProperty("--c-bg", t.bg);
+  root.style.setProperty("--c-bgCard", t.bgCard);
+  root.style.setProperty("--c-bgHover", t.bgHover);
+  root.style.setProperty("--c-border", t.border);
+  root.style.setProperty("--c-borderHi", t.borderHi);
+  root.style.setProperty("--c-text", t.text);
+  root.style.setProperty("--c-textSub", t.textSub);
+  root.style.setProperty("--c-textDim", t.textDim);
+  root.style.setProperty("--c-accent", t.accent);
+  root.style.setProperty("--c-accentBg", t.accentBg);
+  root.style.setProperty("--c-accentBd", t.accentBd);
+  root.style.setProperty("--c-green", t.green);
+  root.style.setProperty("--c-warn", t.warn);
+  root.style.setProperty("--c-warnBg", t.warnBg);
+  root.style.setProperty("--c-warnBd", t.warnBd);
+  root.style.setProperty("--c-err", t.err);
+  root.style.setProperty("--c-errBg", t.errBg);
+  root.style.setProperty("--c-errBd", t.errBd);
+  root.style.setProperty("--c-navBg", t.navBg);
+  root.style.setProperty("--c-navBd", t.navBd);
+}
+
+export function initThemeCssVars() {
+  applyThemeCssVars(_current);
+}

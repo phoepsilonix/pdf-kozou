@@ -105,7 +105,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
         <div style={b.log}>
           {progress.done.map((d,i)=>(
             <div key={i} style={b.logRow}>
-              <span style={{color:C.accent}}>✓</span>
+              <span style={{color:var(--c-accent)}}>✓</span>
               <span style={b.logFile}>{d.f}</span>
             </div>
           ))}
@@ -118,24 +118,24 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
   if (phase === "result") {
     return (
       <div style={b.center}>
-        <span style={{fontSize:56,color:progress.errors.length?C.warn:C.accent}}>
+        <span style={{fontSize:56,color:progress.errors.length?var(--c-warn):var(--c-accent)}}>
           {progress.errors.length?"⚠":"✓"}
         </span>
         <div style={b.title}>バッチトリミング完了 — {progress.done.length}件</div>
-        <div style={{fontSize:12,color:C.textSub}}>{outDir}</div>
+        <div style={{fontSize:12,color:var(--c-textSub)}}>{outDir}</div>
         <div style={b.log}>
           {progress.done.map((d,i)=>(
-            <div key={i} style={b.logRow}><span style={{color:C.accent}}>✓</span><span style={b.logFile}>{d.f}</span></div>
+            <div key={i} style={b.logRow}><span style={{color:var(--c-accent)}}>✓</span><span style={b.logFile}>{d.f}</span></div>
           ))}
           {progress.errors.map((e,i)=>(
-            <div key={`e${i}`} style={{...b.logRow,background:C.errBg,borderColor:C.errBd}}>
-              <span style={{color:C.err}}>✕</span>
+            <div key={`e${i}`} style={{...b.logRow,background:var(--c-errBg),borderColor:var(--c-errBd)}}>
+              <span style={{color:var(--c-err)}}>✕</span>
               <span style={b.logFile}>{e.f}</span>
-              <span style={{fontSize:10,color:C.err,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.msg}</span>
+              <span style={{fontSize:10,color:var(--c-err),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.msg}</span>
             </div>
           ))}
         </div>
-        <button style={b.backBtn} onClick={()=>setPhase("edit")}>← 設定に戻る</button>
+        <button style={b.backBtn} onClick={e=>{ setPhase("edit"); (e.currentTarget as HTMLButtonElement).blur(); }}>← 設定に戻る</button>
       </div>
     );
   }
@@ -144,29 +144,29 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
   const curPages = curFile?.pageCount ?? 1;
 
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"100%",background:C.bg,color:C.text,fontFamily:F,overflow:"hidden"}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 20px",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100%",background:var(--c-bg),color:var(--c-text),fontFamily:F,overflow:"hidden"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 20px",borderBottom:`1px solid var(--c-border)`,flexShrink:0}}>
         <span style={{fontSize:16,fontWeight:700}}>トリミング — {files.length}件バッチ</span>
-        <span style={{fontSize:13,color:C.textSub}}>同じ余白設定を全ファイルに適用</span>
+        <span style={{fontSize:13,color:var(--c-textSub)}}>同じ余白設定を全ファイルに適用</span>
       </div>
 
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
         {/* 左: ファイル一覧 */}
-        <div style={{width:172,flexShrink:0,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{padding:"8px 12px",fontSize:11,color:C.textDim,borderBottom:`1px solid ${C.border}`,background:C.bgCard}}>
+        <div style={{width:172,flexShrink:0,borderRight:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"8px 12px",fontSize:11,color:var(--c-textDim),borderBottom:`1px solid var(--c-border)`,background:var(--c-bgCard)}}>
             プレビュー対象
           </div>
           <div style={{flex:1,overflowY:"auto"}}>
             {files.map((f,i) => (
               <button key={f.id}
-                style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",background:i===previewIdx?C.accentBg:"transparent",border:"none",borderBottom:`1px solid ${C.border}`,cursor:"pointer",fontFamily:F,width:"100%",textAlign:"left" as const, borderLeft: i===previewIdx?`3px solid ${C.accent}`:"3px solid transparent"}}
+                style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",background:i===previewIdx?var(--c-accentBg):"transparent",border:"none",borderBottom:`1px solid var(--c-border)`,cursor:"pointer",fontFamily:F,width:"100%",textAlign:"left" as const, borderLeft: i===previewIdx?`3px solid var(--c-accent)`:"3px solid transparent"}}
                 onClick={()=>{setPreviewIdx(i);setPreviewPage(0);}}>
                 {batchThumbs[i]
                   ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={{width:36,height:50,objectFit:"cover" as const,borderRadius:3,flexShrink:0}} alt=""/>
-                  : <div style={{width:36,height:50,background:C.border,borderRadius:3,flexShrink:0}}/>}
+                  : <div style={{width:36,height:50,background:var(--c-border),borderRadius:3,flexShrink:0}}/>}
                 <div style={{flex:1,display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
-                  <span style={{fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.filename}</span>
-                  <span style={{fontSize:10,color:C.textSub}}>{f.pageCount}ページ</span>
+                  <span style={{fontSize:12,color:var(--c-text),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.filename}</span>
+                  <span style={{fontSize:10,color:var(--c-textSub)}}>{f.pageCount}ページ</span>
                 </div>
               </button>
             ))}
@@ -184,15 +184,15 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
               displayWidth={CANVAS_W}
             />
           ) : (
-            <div style={{width:CANVAS_W,height:400,background:C.bgCard,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:C.textDim}}>
+            <div style={{width:CANVAS_W,height:400,background:var(--c-bgCard),borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:var(--c-textDim)}}>
               読み込み中…
             </div>
           )}
           <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,justifyContent:"center"}}>
             {Array.from({length:Math.min(curPages,8)},(_,i)=>(
               <button key={i}
-                style={{padding:"5px 10px",background:i===previewPage?C.accentBg:C.bgCard,border:`1px solid ${i===previewPage?C.accent:C.border}`,borderRadius:5,color:i===previewPage?C.accent:C.textSub,cursor:"pointer",fontSize:13,fontFamily:F}}
-                onClick={()=>setPreviewPage(i)}>
+                style={{padding:"5px 10px",background:i===previewPage?var(--c-accentBg):var(--c-bgCard),border:`1px solid ${i===previewPage?var(--c-accent):var(--c-border)}`,borderRadius:5,color:i===previewPage?var(--c-accent):var(--c-textSub),cursor:"pointer",fontSize:13,fontFamily:F}}
+                onClick={e=>{ setPreviewPage(i); (e.currentTarget as HTMLButtonElement).blur(); }}>
                 p.{i+1}
               </button>
             ))}
@@ -200,7 +200,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
         </div>
 
         {/* 右: コントロール + フォルダ出力 */}
-        <div style={{width:290,flexShrink:0,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{width:290,flexShrink:0,borderLeft:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
           <div style={{flex:1,overflow:"auto"}}>
             <TrimControls
               margins={trimMargins} pageW={595} pageH={842}
@@ -211,17 +211,17 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
               processing={false}
             />
           </div>
-          <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:10,flexShrink:0}}>
-            <div style={{fontSize:12,color:C.textDim}}>出力フォルダ</div>
+          <div style={{padding:"14px 16px",borderTop:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",gap:10,flexShrink:0}}>
+            <div style={{fontSize:12,color:var(--c-textDim)}}>出力フォルダ</div>
             <div style={{display:"flex",gap:7}}>
-              <div style={{flex:1,padding:"8px 10px",background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              <div style={{flex:1,padding:"8px 10px",background:var(--c-bgCard),border:`1px solid var(--c-border)`,borderRadius:6,fontSize:12,color:var(--c-textSub),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                 {outDir||"（未選択）"}
               </div>
-              <button style={{padding:"8px 13px",background:C.bgCard,border:`1px solid ${C.borderHi}`,borderRadius:6,color:C.text,cursor:"pointer",fontSize:12,fontFamily:F,flexShrink:0}}
+              <button style={{padding:"8px 13px",background:var(--c-bgCard),border:`1px solid var(--c-borderHi)`,borderRadius:6,color:var(--c-text),cursor:"pointer",fontSize:12,fontFamily:F,flexShrink:0}}
                 onClick={pickDir}>参照…</button>
             </div>
             <button
-              style={{padding:"13px 0",background:outDir?C.accentBg:C.bgCard,border:`1px solid ${outDir?C.accentBd:C.border}`,borderRadius:8,color:outDir?C.accent:C.textDim,cursor:"pointer",fontWeight:700,fontSize:15,fontFamily:F}}
+              style={{padding:"13px 0",background:outDir?var(--c-accentBg):var(--c-bgCard),border:`1px solid ${outDir?var(--c-accentBd):var(--c-border)}`,borderRadius:8,color:outDir?var(--c-accent):var(--c-textDim),cursor:"pointer",fontWeight:700,fontSize:15,fontFamily:F}}
               onClick={handleExecute}>
               {outDir ? `✂ ${files.length}件まとめてトリミング` : "📁 出力先を選択して実行"}
             </button>
@@ -316,8 +316,8 @@ function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInf
 
   if (phase === "error") return (
     <div style={s.center}>
-      <span style={{fontSize:40,color:C.err}}>✕</span>
-      <span style={{fontSize:16,fontWeight:700,color:C.err}}>エラー</span>
+      <span style={{fontSize:40,color:var(--c-err)}}>✕</span>
+      <span style={{fontSize:16,fontWeight:700,color:var(--c-err)}}>エラー</span>
       <pre style={s.errMsg}>{errMsg}</pre>
       <button style={s.errBtn} onClick={()=>{setPhase("edit");setErrMsg("");}}>← 設定に戻る</button>
     </div>
@@ -422,59 +422,59 @@ function ResultView({ images, pageCount, onSave, onBack, onCompress, isSaving }:
 // ── スタイル ─────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  root:    { display:"flex", height:"100%", background:C.bg, color:C.text, fontFamily:F, overflow:"hidden" },
-  center:  { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:18, background:C.bg },
-  spinner: { width:32, height:32, border:`3px solid ${C.border}`, borderTop:`3px solid ${C.accent}`, borderRadius:"50%", animation:"spin 0.8s linear infinite" },
-  centSub: { color:C.textSub, fontSize:13 },
+  root:    { display:"flex", height:"100%", background:var(--c-bg), color:var(--c-text), fontFamily:F, overflow:"hidden" },
+  center:  { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:18, background:var(--c-bg) },
+  spinner: { width:32, height:32, border:`3px solid var(--c-border)`, borderTop:`3px solid var(--c-accent)`, borderRadius:"50%", animation:"spin 0.8s linear infinite" },
+  centSub: { color:var(--c-textSub), fontSize:13 },
 
-  sidebar:  { width:114, flexShrink:0, display:"flex", flexDirection:"column", background:C.bgCard, borderRight:`1px solid ${C.border}`, overflow:"hidden" },
-  sbHead:   { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 10px 7px", borderBottom:`1px solid ${C.border}` },
-  sbTitle:  { fontSize:10, color:C.textDim, letterSpacing:"0.1em", textTransform:"uppercase" },
-  sbCount:  { fontSize:10, color:C.textDim },
+  sidebar:  { width:114, flexShrink:0, display:"flex", flexDirection:"column", background:var(--c-bgCard), borderRight:`1px solid var(--c-border)`, overflow:"hidden" },
+  sbHead:   { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 10px 7px", borderBottom:`1px solid var(--c-border)` },
+  sbTitle:  { fontSize:10, color:var(--c-textDim), letterSpacing:"0.1em", textTransform:"uppercase" },
+  sbCount:  { fontSize:10, color:var(--c-textDim) },
   thumbList:{ flex:1, overflowY:"auto", padding:"6px 5px", display:"flex", flexDirection:"column", gap:5 },
   thumb:    { display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"5px 4px", borderRadius:6, border:"1px solid transparent", background:"transparent", cursor:"pointer", transition:"all 0.12s" },
-  thumbOn:  { borderColor:C.accent, background:C.accentBg },
+  thumbOn:  { borderColor:var(--c-accent), background:var(--c-accentBg) },
   thumbImg: { width:74, height:"auto", borderRadius:2, display:"block" },
-  thumbPh:  { width:74, height:100, background:C.border, borderRadius:2 },
-  thumbN:   { fontSize:10, color:C.textDim },
+  thumbPh:  { width:74, height:100, background:var(--c-border), borderRadius:2 },
+  thumbN:   { fontSize:10, color:var(--c-textDim) },
 
   main:      { flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"16px 20px", gap:12 },
   mainHead:  { display:"flex", alignItems:"center", gap:12 },
-  mainTitle: { fontSize:15, fontWeight:600, color:C.text },
-  pageInd:   { fontSize:12, color:C.textSub },
+  mainTitle: { fontSize:15, fontWeight:600, color:var(--c-text) },
+  pageInd:   { fontSize:12, color:var(--c-textSub) },
   canvasWrap:{ flex:1, overflow:"auto", display:"flex", alignItems:"flex-start", justifyContent:"center" },
-  ph:        { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:C.bgCard, borderRadius:8, gap:12 },
-  panel:     { width:280, flexShrink:0, borderLeft:`1px solid ${C.border}`, overflow:"hidden" },
+  ph:        { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:var(--c-bgCard), borderRadius:8, gap:12 },
+  panel:     { width:280, flexShrink:0, borderLeft:`1px solid var(--c-border)`, overflow:"hidden" },
 
-  errMsg: { fontSize:12, color:C.err, background:C.errBg, border:`1px solid ${C.errBd}`, borderRadius:6, padding:"12px 16px", maxWidth:480, whiteSpace:"pre-wrap", wordBreak:"break-all" },
-  errBtn: { padding:"8px 22px", background:"transparent", border:`1px solid ${C.errBd}`, borderRadius:7, color:C.err, cursor:"pointer", fontSize:13, fontFamily:F },
+  errMsg: { fontSize:12, color:var(--c-err), background:var(--c-errBg), border:`1px solid var(--c-errBd)`, borderRadius:6, padding:"12px 16px", maxWidth:480, whiteSpace:"pre-wrap", wordBreak:"break-all" },
+  errBtn: { padding:"8px 22px", background:"transparent", border:`1px solid var(--c-errBd)`, borderRadius:7, color:var(--c-err), cursor:"pointer", fontSize:13, fontFamily:F },
 };
 
 const r: Record<string, React.CSSProperties> = {
-  root:       { display:"flex", flexDirection:"column", height:"100%", background:C.bg, color:C.text, fontFamily:F },
-  header:     { display:"flex", alignItems:"center", gap:10, padding:"12px 20px", borderBottom:`1px solid ${C.border}`, flexShrink:0 },
-  btnBack:    { padding:"6px 14px", background:"transparent", border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.textSub, cursor:"pointer", fontSize:13, fontFamily:F },
-  btnCompress:{ padding:"8px 18px", background:C.accentBg, border:`1px solid ${C.accentBd}`, borderRadius:7, color:C.accent, fontWeight:600, cursor:"pointer", fontSize:13, fontFamily:F },
-  btnSave:    { padding:"9px 22px", background:C.accentBg, border:`2px solid ${C.accentBd}`, borderRadius:7, color:C.accent, fontWeight:700, cursor:"pointer", fontSize:14, fontFamily:F },
+  root:       { display:"flex", flexDirection:"column", height:"100%", background:var(--c-bg), color:var(--c-text), fontFamily:F },
+  header:     { display:"flex", alignItems:"center", gap:10, padding:"12px 20px", borderBottom:`1px solid var(--c-border)`, flexShrink:0 },
+  btnBack:    { padding:"6px 14px", background:"transparent", border:`1px solid var(--c-borderHi)`, borderRadius:6, color:var(--c-textSub), cursor:"pointer", fontSize:13, fontFamily:F },
+  btnCompress:{ padding:"8px 18px", background:var(--c-accentBg), border:`1px solid var(--c-accentBd)`, borderRadius:7, color:var(--c-accent), fontWeight:600, cursor:"pointer", fontSize:13, fontFamily:F },
+  btnSave:    { padding:"9px 22px", background:var(--c-accentBg), border:`2px solid var(--c-accentBd)`, borderRadius:7, color:var(--c-accent), fontWeight:700, cursor:"pointer", fontSize:14, fontFamily:F },
   dis:        { opacity:0.4, cursor:"not-allowed" },
-  title:      { fontSize:15, fontWeight:600, color:C.text },
-  sub:        { fontSize:12, color:C.textSub },
+  title:      { fontSize:15, fontWeight:600, color:var(--c-text) },
+  sub:        { fontSize:12, color:var(--c-textSub) },
   gallery:    { flex:1, overflowY:"auto", display:"flex", flexWrap:"wrap", gap:20, padding:24, alignContent:"flex-start", justifyContent:"center" },
-  card:       { display:"flex", flexDirection:"column", alignItems:"center", gap:8, background:C.bgCard, border:`1px solid ${C.border}`, borderRadius:9, padding:14 },
-  pageN:      { fontSize:11, color:C.textSub },
+  card:       { display:"flex", flexDirection:"column", alignItems:"center", gap:8, background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:9, padding:14 },
+  pageN:      { fontSize:11, color:var(--c-textSub) },
   img:        { maxWidth:290, maxHeight:390, display:"block", borderRadius:4 },
-  imgPh:      { width:200, height:260, background:C.bgHover, borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center", color:C.textDim, fontSize:12 },
-  more:       { display:"flex", alignItems:"center", justifyContent:"center", color:C.textDim, fontSize:13, padding:"30px 20px" },
-  footer:     { display:"flex", justifyContent:"flex-end", gap:10, padding:"12px 20px", borderTop:`1px solid ${C.border}`, flexShrink:0 },
+  imgPh:      { width:200, height:260, background:var(--c-bgHover), borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center", color:var(--c-textDim), fontSize:12 },
+  more:       { display:"flex", alignItems:"center", justifyContent:"center", color:var(--c-textDim), fontSize:13, padding:"30px 20px" },
+  footer:     { display:"flex", justifyContent:"flex-end", gap:10, padding:"12px 20px", borderTop:`1px solid var(--c-border)`, flexShrink:0 },
 };
 
 const b: Record<string, React.CSSProperties> = {
-  center:  { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:14, background:C.bg, padding:32 },
-  title:   { fontSize:17, fontWeight:700, color:C.text },
-  barWrap: { width:"100%", maxWidth:460, height:8, background:C.border, borderRadius:4, overflow:"hidden" },
-  bar:     { height:"100%", background:C.accent, borderRadius:4, transition:"width 0.3s" },
+  center:  { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:14, background:var(--c-bg), padding:32 },
+  title:   { fontSize:17, fontWeight:700, color:var(--c-text) },
+  barWrap: { width:"100%", maxWidth:460, height:8, background:var(--c-border), borderRadius:4, overflow:"hidden" },
+  bar:     { height:"100%", background:var(--c-accent), borderRadius:4, transition:"width 0.3s" },
   log:     { width:"100%", maxWidth:460, display:"flex", flexDirection:"column", gap:5, maxHeight:300, overflowY:"auto" },
-  logRow:  { display:"flex", alignItems:"center", gap:9, padding:"6px 10px", background:C.bgCard, borderRadius:6, border:`1px solid ${C.border}` },
-  logFile: { flex:1, fontSize:12, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  backBtn: { padding:"9px 26px", background:"transparent", border:`1px solid ${C.borderHi}`, borderRadius:7, color:C.textSub, cursor:"pointer", fontSize:13, fontFamily:F, marginTop:8 },
+  logRow:  { display:"flex", alignItems:"center", gap:9, padding:"6px 10px", background:var(--c-bgCard), borderRadius:6, border:`1px solid var(--c-border)` },
+  logFile: { flex:1, fontSize:12, color:var(--c-text), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  backBtn: { padding:"9px 26px", background:"transparent", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-textSub), cursor:"pointer", fontSize:13, fontFamily:F, marginTop:8 },
 };

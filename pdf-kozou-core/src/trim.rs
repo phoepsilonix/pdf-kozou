@@ -29,7 +29,12 @@ pub struct TrimRequest {
     /// 余白の単位: "mm" (デフォルト) | "pt" | "cm" | "in"
     #[serde(default = "default_unit")]
     pub unit:    String,
+    /// どのページにトリミングを適用するか (None=全ページ)
     pub pages:   Option<PageSelection>,
+    /// 出力に含めるページを指定 (1始まり, None=全ページを保持)
+    /// trimming前にこのページだけを抽出し、その後トリミングを適用する
+    #[serde(default)]
+    pub extract_pages: Option<Vec<i32>>,
 }
 
 fn default_unit() -> String { "mm".to_string() }

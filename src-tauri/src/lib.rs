@@ -4,6 +4,7 @@ mod error;
 mod platform;
 
 use commands::{core, platform as platform_cmd};
+use tauri::Emitter;
 
 #[cfg(desktop)]
 pub fn setup_platform() {
@@ -43,6 +44,9 @@ pub fn run() {
             core::merge_pdf,
             core::rotate_pdf,
             core::export_images,
+            core::get_temp_path,
+            core::move_file,
+            core::copy_file,
             platform_cmd::get_screen_info,
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
