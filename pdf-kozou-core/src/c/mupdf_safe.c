@@ -109,16 +109,27 @@ pdf_document *kozou_pdf_document_from_fz_document(
 void kozou_pdf_subset_fonts(
     fz_context   *ctx,
     pdf_document *pdf,
-    int           nranges_unused,  /* 常に 0 を渡す (全ページ対象) */
+    int           page_count,  /* ドキュメントの総ページ数 */
     FfiResult    *result)
 {
-    (void)nranges_unused;
     fz_try(ctx) {
-        /*
-         * pdf_subset_fonts(ctx, doc, nranges, ranges)
-         *   nranges = 0, ranges = NULL → 全ページを対象にサブセット化
-         */
-        pdf_subset_fonts(ctx, pdf, 0, NULL);
+        if (page_count > 0) {
+            /*
+             * MuPDF 1.28 以降: nranges=0/NULL の全ページ指定が
+             * 廃止またはセマンティクスが変化した可能性があるため、
+             * 全ページを明示的な fz_range 配列で指定する。
+             *
+             * pdf_subset_fonts(ctx, doc, nranges, ranges)
+             *   ranges[i] = {0ベースの開始ページ, 終了ページ(含む)}
+             */
+            fz_range range;
+            range.page0 = 0;
+            range.page1 = page_count - 1;
+            pdf_subset_fonts(ctx, pdf, 1, &range);
+        } else {
+            /* page_count <= 0 の場合は nranges=0 でフォールバック */
+            pdf_subset_fonts(ctx, pdf, 0, NULL);
+        }
         set_ok(result);
     }
     fz_catch(ctx) {

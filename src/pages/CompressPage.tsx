@@ -38,7 +38,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const inputFile = sourceFile ?? filePath;
 
   const [phase,   setPhase]   = useState<Phase>("edit");
-  const [preset,  setPreset]  = useState<CompressPreset>("standard");
+  const [preset,      setPreset]      = useState<CompressPreset>("standard");
+  const [fontSubset,  setFontSubset]  = useState(false);  // MuPDF 1.28: デフォルト無効
   const [result,  setResult]  = useState<CompressResponse | null>(null);
   const [tmpFile, setTmpFile] = useState("");     // プレビュー用一時ファイル
   const [preview, setPreview] = useState("");
@@ -60,7 +61,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     setPhase("processing");
     try {
       const tmp = await getTmpPath("kozou_compress_preview.pdf");
-      const res = await compressPdf(inputFile, tmp, { preset });
+      const res = await compressPdf(inputFile, tmp, { preset, font_subset: fontSubset || undefined });
       setResult(res);
       setTmpFile(tmp);
       try { setPreview(await renderPage(tmp, 0, 108)); } catch { setPreview(""); }
@@ -77,7 +78,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     if (!sp) return;
     setSaving(true);
     try {
-      await compressPdf(inputFile, sp, { preset });
+      await compressPdf(inputFile, sp, { preset, font_subset: fontSubset || undefined });
       if (onDone) onDone();
     } catch (e) { setError(String(e)); }
     finally { setSaving(false); }
@@ -116,7 +117,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       setBatchProg({...prog});
       try {
         const out = `${outDir}/${f.filename.replace(/\.pdf$/i,"")}_compressed.pdf`;
-        const res = await compressPdf(f.path, out, { preset });
+        const res = await compressPdf(f.path, out, { preset, font_subset: fontSubset || undefined });
         prog.done.push({ file:f.filename, pct:((1-res.ratio)*100).toFixed(1) });
       } catch (e) {
         prog.errors.push({ file:f.filename, msg:String(e) });
@@ -301,6 +302,21 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         ))}
       </div>
 
+      {/* フォントサブセット化オプション */}
+      <div style={c.optRow}>
+        <label style={c.optLabel}>
+          <input type="checkbox" checked={fontSubset}
+            onChange={e => setFontSubset(e.target.checked)}
+            style={{marginRight:6,cursor:"pointer"}}/>
+          フォントサブセット化
+        </label>
+        <span style={c.optHint}>
+          {fontSubset
+            ? "⚠ 使用グリフのみ保持（CJK/多言語フォントで不安定な場合あり）"
+            : "無効（推奨）— フォントは変更しません"}
+        </span>
+      </div>
+
       <div style={c.execArea}>
         {isBatch ? (
           // バッチ: フォルダ出力
@@ -363,6 +379,9 @@ const c: Record<string, React.CSSProperties> = {
   btnSkip:    {padding:"6px 16px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F},
 
   presetGrid: {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,padding:"24px 22px 0"},
+  optRow:   { display:"flex",alignItems:"center",gap:12,padding:"14px 22px 2px",flexWrap:"wrap" as const },
+  optLabel: { display:"flex",alignItems:"center",fontSize:13,color:"var(--c-text)",cursor:"pointer",userSelect:"none" as const },
+  optHint:  { fontSize:11,color:"var(--c-textSub)" },
   card:       {display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"22px 12px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:12,cursor:"pointer",transition:"all 0.15s",fontFamily:F,color:"var(--c-text)"},
   cardIcon:   {fontSize:30},
   cardLabel:  {fontSize:16,fontWeight:700,color:"var(--c-text)"},

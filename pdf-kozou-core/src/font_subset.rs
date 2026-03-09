@@ -231,10 +231,18 @@ unsafe fn ffi_with_ctx(
     // ── pdf_subset_fonts (フォントグリフ除去) ─────────────────────────
     // do_subset=true の場合のみ実行 (Type3 なし、または明示的に有効化)
     if do_subset {
-        // nranges=0, ranges=NULL で全ページを対象にサブセット化
-        // (kozou 側で pdf_subset_fonts(ctx, pdf, 0, NULL) を呼ぶ)
+        // ページ数を取得して明示的なページ範囲で pdf_subset_fonts を呼ぶ
+        // (MuPDF 1.28: nranges=0/NULL の全ページ指定が変化した可能性への対応)
+        let mut count_res = FfiResult::zeroed();
+        let page_count = kozou_pdf_count_pages(ctx, pdf_doc, &mut count_res);
+        let count_to_use = if count_res.is_ok() && page_count > 0 {
+            page_count
+        } else {
+            0  // フォールバック: C 側で nranges=0 パスに入る
+        };
+
         let mut res = FfiResult::zeroed();
-        kozou_pdf_subset_fonts(ctx, pdf_doc, 0, &mut res);
+        kozou_pdf_subset_fonts(ctx, pdf_doc, count_to_use, &mut res);
         if !res.is_ok() {
             // サブセット化失敗は致命的ではない — 警告ログのみで続行
             eprintln!(

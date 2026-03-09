@@ -155,6 +155,10 @@ export interface CompressRequest {
   garbage_level?:   number;
   clean?:           boolean;
   sanitize?:        boolean;
+  /** フォントサブセット化 (pdf_subset_fonts FFI)。
+   *  MuPDF 1.28 では CJK/多言語フォントで不安定なため、デフォルト無効。
+   *  明示的に true を渡した場合のみ実行される。 */
+  font_subset?:     boolean;
 }
 
 export interface CompressResponse {

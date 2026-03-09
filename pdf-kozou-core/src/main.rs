@@ -135,6 +135,10 @@ enum Commands {
         /// ストリーム再解釈を有効にする ⚠️ フォントリスクあり (プリセットより優先)
         #[arg(long)]
         sanitize: bool,
+        /// フォントサブセット化を有効にする (pdf_subset_fonts FFI)
+        /// ⚠️ MuPDF バージョンによっては CJK/多言語フォントで不安定な場合があります
+        #[arg(long)]
+        font_subset: bool,
     },
 
 
@@ -319,7 +323,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Compress { input, output, rewrite, rewrite_options,
-                               preset, no_compress_images, no_compress_fonts,
+                               preset, no_compress_images, no_compress_fonts, font_subset,
                                gc, clean, sanitize } => {
             let resp = if rewrite {
                 let opts = rewrite_options.as_deref()
@@ -364,7 +368,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     garbage_level:   gc,
                     clean:           if clean    { Some(true) } else { None },
                     sanitize:        if sanitize { Some(true) } else { None },
-                    font_subset:     None,  // None = preset に従う (Standard以上は自動有効)
+                    font_subset:     if font_subset { Some(true) } else { None },
                     linearize:       None,
                 };
                 pdf_kozou_core::compress::compress(&req)?

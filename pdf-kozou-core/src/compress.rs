@@ -35,11 +35,15 @@ pub enum CompressPreset {
 impl CompressPreset {
     /// (compress_images, gc, clean, sanitize, do_subset)
     fn to_params(&self) -> (bool, i32, bool, bool, bool) {
+        // (compress_images, gc, clean, sanitize, do_subset)
+        // MuPDF 1.28: pdf_subset_fonts の挙動変化のため、
+        //   デフォルトは subset=false で安全運転。
+        //   明示的に font_subset=true を指定した場合のみ実行。
         match self {
             Self::Light      => (false, 1, false, false, false),
-            Self::Standard   => (true,  2, false, false, true),
-            Self::Aggressive => (true,  2, true,  false, true),
-            Self::Maximum    => (true,  3, false, true,  true),
+            Self::Standard   => (true,  2, false, false, false), // subset はデフォルト無効
+            Self::Aggressive => (true,  2, true,  false, false), // 同上
+            Self::Maximum    => (true,  3, false, true,  false), // 同上
         }
     }
 }
