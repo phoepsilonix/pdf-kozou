@@ -42,3 +42,6 @@ codegen-units = 1
 lto           = true
 opt-level     = "s"
 strip         = true
+
+[patch.crates-io]
+mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs", rev = "a2cdccc966e359046df17f1db94b54d56159dcb2" }

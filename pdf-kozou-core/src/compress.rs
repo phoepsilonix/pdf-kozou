@@ -187,10 +187,10 @@ fn safe_compress_only(
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
     let mut opts = mupdf::pdf::PdfWriteOptions::default();
+    // MuPDF 1.28: set_compress_fonts は廃止 (compress=true で自動的にフォントも圧縮)
     opts.set_compress(true)
         .set_decompress(false)
         .set_compress_images(compress_images)
-        .set_compress_fonts(compress_fonts)
         .set_garbage_level(gc)
         .set_clean(clean)
         .set_sanitize(sanitize);
@@ -253,7 +253,9 @@ pub fn rewrite(
                 .map_err(|e| CoreError::MuPdf(e.to_string()))?;
             let page_count = doc.page_count()
                 .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-            let mut writer = DocumentWriter::new(output, "pdf", options)
+            // MuPDF 1.28: compress-fonts オプションは廃止されたので除去
+            let options_filtered = filter_obsolete_options(options);
+            let mut writer = DocumentWriter::new(output, "pdf", &options_filtered)
                 .map_err(|e| CoreError::MuPdf(e.to_string()))?;
             let identity = mupdf::Matrix::IDENTITY;
             for i in 0..page_count {
@@ -495,6 +497,21 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
     }
 }
 
+/// MuPDF バージョン間で廃止されたオプションを options 文字列から取り除く。
+/// MuPDF 1.28: compress-fonts は廃止 (compress=yes で自動的にフォントも圧縮される)
+fn filter_obsolete_options(options: &str) -> String {
+    // 廃止されたキー一覧 (MuPDF 1.28+)
+    const OBSOLETE_KEYS: &[&str] = &["compress-fonts", "compress_fonts"];
+    options.split(',')
+        .map(|s| s.trim())
+        .filter(|s| {
+            let key = s.split('=').next().unwrap_or("").trim();
+            !OBSOLETE_KEYS.iter().any(|&obs| obs == key)
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// PDF に Type3 フォントが含まれるか判定
 pub fn has_type3_fonts(input: &str) -> bool {
     use mupdf::pdf::PdfDocument;
@@ -568,5 +585,6 @@ pub fn parse_rewrite_opt_bool(options: &str, key: &str) -> Option<bool> {
         .map(|v| matches!(v.trim(), "yes" | "true" | "1"))
 }
 
+// MuPDF 1.28: compress-fonts オプションは廃止 (compress=yes 時は自動的に圧縮)
 pub const REWRITE_OPTIONS_DEFAULT: &str =
-    "compress=yes,compress-images=yes,compress-fonts=yes,garbage=2";
+    "compress=yes,compress-images=yes,garbage=2";

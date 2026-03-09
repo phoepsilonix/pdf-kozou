@@ -195,15 +195,15 @@ unsafe fn ffi_run(
 }
 
 unsafe fn ffi_with_ctx(
-    ctx:             *mut mupdf_sys::fz_context,
-    input_cstr:      &std::ffi::CStr,
-    output_cstr:     &std::ffi::CStr,
-    gc:              i32,
-    clean:           bool,
-    sanitize:        bool,
-    compress_images: bool,
-    compress_fonts:  bool,
-    do_subset:       bool,
+    ctx:              *mut mupdf_sys::fz_context,
+    input_cstr:       &std::ffi::CStr,
+    output_cstr:      &std::ffi::CStr,
+    gc:               i32,
+    clean:            bool,
+    sanitize:         bool,
+    compress_images:  bool,
+    _compress_fonts:  bool,  // MuPDF 1.28: 廃止 (compress=yes で自動圧縮)
+    do_subset:        bool,
 ) -> Result<()> {
     use mupdf_sys::*;
 
@@ -250,7 +250,7 @@ unsafe fn ffi_with_ctx(
     wopts.do_compress        = 1;
     wopts.do_decompress      = 0;
     wopts.do_compress_images = if compress_images { 1 } else { 0 };
-    wopts.do_compress_fonts  = if compress_fonts  { 1 } else { 0 };
+    // do_compress_fonts: MuPDF 1.28 で削除 (compress=1 時は自動的にフォントも圧縮)
     wopts.do_garbage         = gc;
     wopts.do_sanitize        = if sanitize { 1 } else { 0 };
     wopts.do_clean           = if clean    { 1 } else { 0 };
