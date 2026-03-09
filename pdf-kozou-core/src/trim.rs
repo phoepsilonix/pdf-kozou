@@ -84,10 +84,10 @@ fn get_page_rotate(page_obj: &mupdf::pdf::PdfObject) -> i32 {
 fn get_media_box(page_obj: &mupdf::pdf::PdfObject) -> Option<(f32, f32, f32, f32)> {
     let mb = page_obj.get_dict("MediaBox").ok()??;
     let mb = mb.resolve().ok().flatten().unwrap_or(mb);
-    let x0 = mb.array_get(0).ok()?.resolve().ok().flatten()?.as_float().ok()?;
-    let y0 = mb.array_get(1).ok()?.resolve().ok().flatten()?.as_float().ok()?;
-    let x1 = mb.array_get(2).ok()?.resolve().ok().flatten()?.as_float().ok()?;
-    let y1 = mb.array_get(3).ok()?.resolve().ok().flatten()?.as_float().ok()?;
+    let x0 = mb.get_array(0).ok()??.resolve().ok().flatten()?.as_float().ok()?;
+    let y0 = mb.get_array(1).ok()??.resolve().ok().flatten()?.as_float().ok()?;
+    let x1 = mb.get_array(2).ok()??.resolve().ok().flatten()?.as_float().ok()?;
+    let y1 = mb.get_array(3).ok()??.resolve().ok().flatten()?.as_float().ok()?;
     Some((x0, y0, x1, y1))
 }
 
