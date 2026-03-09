@@ -81,10 +81,11 @@ export async function renderPage(
 // ★ margins は pt 単位で渡し、unit: "pt" を指定する
 
 export async function trimPdf(
-  inputPath:  string,
-  outputPath: string,
-  margins:    TrimMargins,
-  pages:      PageSelection,
+  inputPath:    string,
+  outputPath:   string,
+  margins:      TrimMargins,
+  pages:        PageSelection,
+  extractPages?: number[],    // 1始まりページ番号の配列 (undefined = 全ページ保持)
 ): Promise<void> {
   await invoke("trim_pdf", {
     request: {
@@ -97,9 +98,8 @@ export async function trimPdf(
         top:    margins.top,
       },
       unit:  "pt",
-      // Rust の TrimRequest.pages は Option<PageSelection>
-      // All の場合は null (= 全ページ), それ以外はそのまま渡す
       pages: pages.type === "All" ? null : pages,
+      extract_pages: (extractPages && extractPages.length > 0) ? extractPages : null,
     },
   });
 }

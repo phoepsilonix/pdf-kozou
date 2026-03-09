@@ -172,16 +172,19 @@ pub async fn export_images(
         return Err(Error::Core(format!("render: {}", stderr.trim())));
     }
 
-    // ④ 出力ディレクトリをスキャンして実際に生成されたファイルを返す
-    // (コアの命名規則に依存せず、実ファイルを一覧する)
+    // ④ 選択フォーマットの拡張子のみフィルタして返す
+    let ext_filter: &[&str] = match fmt.as_str() {
+        "png"  => &[".png"],
+        "svg"  => &[".svg"],
+        _      => &[".jpg", ".jpeg"],
+    };
     let mut files: Vec<String> = std::fs::read_dir(&out_dir)
         .map_err(|e| Error::Core(format!("readdir {out_dir}: {e}")))?
         .filter_map(|e| e.ok())
         .map(|e| e.path().display().to_string())
         .filter(|p| {
             let pl = p.to_lowercase();
-            pl.ends_with(".jpg") || pl.ends_with(".jpeg") ||
-            pl.ends_with(".png") || pl.ends_with(".svg")
+            ext_filter.iter().any(|ext| pl.ends_with(*ext))
         })
         .collect();
     files.sort();
@@ -276,7 +279,6 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
 
 
 /// 一時ファイルパスを返す (OS の temp dir + name)
-#[tauri::command]
 #[tauri::command]
 pub async fn get_temp_path(name: String) -> Result<String> {
     let dir = std::env::temp_dir();

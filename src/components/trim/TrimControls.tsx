@@ -1,20 +1,28 @@
 // src/components/trim/TrimControls.tsx
-// 余白指定パネル: 上下左右それぞれ「何mm削るか」を指定
+// 余白指定パネル: 上下左右それぞれ「何mm削るか」を指定 + ページ範囲/抽出
 
 import { useCallback } from "react";
 import type { TrimMargins, PageSelection } from "../../lib/tauri";
-import { C, F } from "../../lib/theme";
+import { PageSelector } from "../PageSelector";
+import { F } from "../../lib/theme";
 
 interface Props {
-  margins:    TrimMargins;
-  pageW:      number;
-  pageH:      number;
-  pages:      PageSelection;
-  onMargins:  (m: TrimMargins) => void;
-  onPages:    (p: PageSelection) => void;
-  onApply:    () => void;
-  onReset:    () => void;
-  processing: boolean;
+  margins:      TrimMargins;
+  pageW:        number;
+  pageH:        number;
+  pages:        PageSelection;
+  totalPages:   number;
+  onMargins:    (m: TrimMargins) => void;
+  onPages:      (p: PageSelection) => void;
+  onApply:      () => void;
+  onReset:      () => void;
+  processing:   boolean;
+  // ページ範囲指定 (トリミング適用対象)
+  trimPageSpec: string;
+  onTrimPageSpec: (v: string) => void;
+  // ページ抽出 (出力に含めるページ)
+  extractSpec:  string;
+  onExtract:    (v: string) => void;
 }
 
 const PT_TO_MM = 1 / 2.8346;
@@ -28,7 +36,12 @@ const PAGE_OPTS: { label: string; value: PageSelection }[] = [
   { label: "奇数ページ", value: { type: "Odd" } },
 ];
 
-export function TrimControls({ margins, pageW, pageH, pages, onMargins, onPages, onApply, onReset, processing }: Props) {
+export function TrimControls({
+  margins, pageW, pageH, pages, totalPages,
+  onMargins, onPages, onApply, onReset, processing,
+  trimPageSpec, onTrimPageSpec,
+  extractSpec, onExtract,
+}: Props) {
   const set = useCallback((key: keyof TrimMargins, mm: number) => {
     onMargins({ ...margins, [key]: toPt(Math.max(0, mm)) });
   }, [margins, onMargins]);
@@ -71,8 +84,9 @@ export function TrimControls({ margins, pageW, pageH, pages, onMargins, onPages,
         </div>
       </section>
 
+      {/* トリミング適用ページ */}
       <section style={s.section}>
-        <h3 style={s.heading}>適用ページ</h3>
+        <h3 style={s.heading}>トリミング適用ページ</h3>
         <div style={s.chips}>
           {PAGE_OPTS.map(o => (
             <button key={o.label}
@@ -81,6 +95,27 @@ export function TrimControls({ margins, pageW, pageH, pages, onMargins, onPages,
             >{o.label}</button>
           ))}
         </div>
+        {/* 範囲指定 */}
+        <PageSelector
+          totalPages={totalPages}
+          value={trimPageSpec}
+          onChange={onTrimPageSpec}
+          compact
+          label="ページ範囲"
+        />
+      </section>
+
+      {/* ページ抽出 (トリミングとは独立) */}
+      <section style={s.section}>
+        <h3 style={s.heading}>ページ抽出 <span style={s.headingOpt}>（オプション）</span></h3>
+        <p style={s.hint2}>トリミング後に残すページを指定。空欄=全ページ保持。</p>
+        <PageSelector
+          totalPages={totalPages}
+          value={extractSpec}
+          onChange={onExtract}
+          compact
+          label="抽出するページ"
+        />
       </section>
 
       <section style={s.actions}>
@@ -112,12 +147,14 @@ function MmField({ label, value, max, onChange }: {
 
 const s: Record<string, React.CSSProperties> = {
   panel: {
-    display:"flex", flexDirection:"column", gap:20,
+    display:"flex", flexDirection:"column", gap:18,
     padding:"18px 14px", background:"var(--c-bgCard)", color:"var(--c-text)",
     fontFamily:F, fontSize:14, height:"100%", overflowY:"auto",
   },
-  section:  { display:"flex", flexDirection:"column", gap:10 },
-  heading:  { margin:0, fontSize:11, letterSpacing:"0.1em", textTransform:"uppercase", color:"var(--c-textDim)" },
+  section:    { display:"flex", flexDirection:"column", gap:10 },
+  heading:    { margin:0, fontSize:11, letterSpacing:"0.1em", textTransform:"uppercase", color:"var(--c-textDim)" },
+  headingOpt: { fontSize:10, color:"var(--c-textDim)", fontWeight:400, letterSpacing:0, textTransform:"none" },
+  hint2:      { margin:0, fontSize:11, color:"var(--c-textSub)", lineHeight:1.5 },
 
   cross:    { display:"flex", flexDirection:"column", alignItems:"center", gap:8 },
   crossTop: { display:"flex", justifyContent:"center" },
@@ -139,7 +176,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   unit: { fontSize:10, color:"var(--c-textDim)" },
 
-  chips: { display:"flex", gap:6 },
+  chips: { display:"flex", gap:6, flexWrap:"wrap" },
   chip: {
     padding:"6px 12px", borderRadius:16,
     border:`1px solid var(--c-borderHi)`, background:"var(--c-bgCard)",

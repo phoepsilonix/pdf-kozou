@@ -434,9 +434,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                       </span>
                     </div>
                     <div style={s.groupThumbs}>
-                      {pages.slice(0,6).map(pi => (
-                        <ThumbCard key={pi} b64={thumbs[pi]} pageNum={pi+1} width={70} />
-                      ))}
+                      {pages.slice(0,6).map(pi => {
+                        const pb = pdfInfo?.pages[pi];
+                        const aspect = pb ? pb.w / pb.h : undefined;
+                        return <ThumbCard key={pi} b64={thumbs[pi]} pageNum={pi+1} width={90} aspectRatio={aspect} />;
+                      })}
                       {pages.length > 6 && (
                         <div style={s.groupMore}>+{pages.length-6}</div>
                       )}
@@ -513,7 +515,7 @@ const s: Record<string, React.CSSProperties> = {
   batchFileList: { flex:1, overflowY:"auto", display:"flex", flexDirection:"column", gap:0 },
   batchFileItem: { display:"flex", alignItems:"center", gap:14, padding:"12px 16px", borderBottom:`1px solid var(--c-border)`, cursor:"pointer", transition:"background 0.1s" },
   batchFileItemOn: { background:"var(--c-accentBg)", borderLeft:`3px solid var(--c-accent)` },
-  batchThumb:    { width:72, height:102, objectFit:"cover" as const, borderRadius:4, flexShrink:0 },
+  batchThumb:    { width:72, maxHeight:108, objectFit:"contain" as const, borderRadius:4, flexShrink:0 },
   batchThumbPh:  { width:72, height:102, background:"var(--c-border)", borderRadius:4, flexShrink:0 },
   batchFileInfo: { flex:1, display:"flex", flexDirection:"column", gap:5, minWidth:0 },
   batchFileName: { fontSize:13, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
@@ -526,7 +528,7 @@ const s: Record<string, React.CSSProperties> = {
   groupNum:    { fontSize:12, fontWeight:700, color:"var(--c-accent)", minWidth:28 },
   groupPages:  { fontSize:11, color:"var(--c-textSub)" },
   groupRange:  { fontSize:11, color:"var(--c-textDim)", marginLeft:"auto" },
-  groupThumbs: { display:"flex", gap:5, padding:"9px 11px", flexWrap:"wrap" as const },
+  groupThumbs: { display:"flex", gap:8, padding:"10px 12px", flexWrap:"wrap" as const },
   groupMore:   { width:70, height:99, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--c-border)", borderRadius:4, fontSize:12, color:"var(--c-textSub)" },
 
   // 結果

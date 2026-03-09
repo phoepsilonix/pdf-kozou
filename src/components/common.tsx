@@ -70,11 +70,13 @@ export function BtnPrimary({ onClick, disabled, children }: {
 
 // サムネイルカード (共通)
 export function ThumbCard({ b64, pageNum, width=80, selected=false,
-                            onClick }: {
+                            aspectRatio, onClick }: {
   b64?: string; pageNum: number; width?: number;
-  selected?: boolean; onClick?: () => void;
+  selected?: boolean; aspectRatio?: number; onClick?: () => void;
 }) {
-  const h = Math.round(width * 1.414);
+  // aspectRatio = w/h。横長(>1)でも縦長(<1)でも適切な高さに
+  const ratio = aspectRatio ?? (1 / 1.414);
+  const h = Math.round(width / ratio);
   return (
     <button onClick={onClick}
       style={{ display:"flex", flexDirection:"column", alignItems:"center",
@@ -83,10 +85,13 @@ export function ThumbCard({ b64, pageNum, width=80, selected=false,
                background: selected ? "var(--c-accentBg)" : "var(--c-bgCard)",
                cursor: onClick ? "pointer" : "default",
                transition:"all 0.1s", fontFamily:F }}>
-      {b64
-        ? <img src={`data:image/jpeg;base64,${b64}`}
-               style={{ width, height:h, objectFit:"cover", borderRadius:3, display:"block" }} alt="" />
-        : <div style={{ width, height:h, background:"var(--c-border)", borderRadius:3 }} />}
+      <div style={{ width, height:h, background:"var(--c-bgCard)", borderRadius:3,
+                   display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}>
+        {b64
+          ? <img src={`data:image/jpeg;base64,${b64}`}
+                 style={{ maxWidth:width, maxHeight:h, objectFit:"contain", borderRadius:3, display:"block" }} alt="" />
+          : <div style={{ width, height:h, background:"var(--c-border)", borderRadius:3 }} />}
+      </div>
       <span style={{ fontSize:13, color: selected ? "var(--c-accent)" : "var(--c-textDim)" }}>{pageNum}</span>
     </button>
   );

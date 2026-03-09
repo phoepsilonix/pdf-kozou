@@ -309,9 +309,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <>
               <div style={s.previewHead}>プレビュー — {total}ページ</div>
               <div style={s.thumbGrid}>
-                {Array.from({length:total},(_,i)=>(
-                  <ThumbCard key={i} b64={thumbs[i]} pageNum={i+1} width={90}/>
-                ))}
+                {Array.from({length:total},(_,i)=>{
+                  const pb = pdfInfo.pages?.[i];
+                  const aspect = pb ? pb.w / pb.h : undefined;
+                  return <ThumbCard key={i} b64={thumbs[i]} pageNum={i+1} width={130} aspectRatio={aspect}/>;
+                })}
               </div>
             </>
           )}
@@ -378,7 +380,7 @@ const s: Record<string, React.CSSProperties> = {
   batchFileList:  { flex:1, overflowY:"auto", display:"flex", flexDirection:"column" },
   batchFileItem:  { display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid var(--c-border)`, cursor:"pointer", transition:"background 0.1s" },
   batchFileItemOn:{ background:"var(--c-accentBg)", borderLeft:`3px solid var(--c-accent)` },
-  batchThumb:     { width:54, height:76, objectFit:"cover" as const, borderRadius:4, flexShrink:0 },
+  batchThumb:     { maxWidth:72, maxHeight:108, objectFit:"contain" as const, borderRadius:4, flexShrink:0 },
   batchThumbPh:   { width:54, height:76, background:"var(--c-border)", borderRadius:4, flexShrink:0 },
   batchFileInfo:  { flex:1, display:"flex", flexDirection:"column", gap:3, minWidth:0 },
   batchFileName:  { fontSize:14, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },

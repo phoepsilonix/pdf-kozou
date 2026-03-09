@@ -11,6 +11,7 @@ import { C, F } from "../lib/theme";
 interface PdfEntry {
   id: number; path: string; filename: string;
   pageCount: number; thumbs: (string|undefined)[];
+  pages?: { w: number; h: number }[];   // アスペクト比用
 }
 type Phase = "edit" | "preview" | "processing" | "result" | "error" | "compress";
 
@@ -62,6 +63,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
             id: _id++, path,
             filename: path.split(/[/\\]/).pop() ?? path,
             pageCount: info.page_count, thumbs,
+            pages: info.pages,
           }];
         });
       } catch (e) { setError(`${path}: ${e}`); }
@@ -219,12 +221,16 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
                 </div>
                 {/* サムネイル行 */}
                 <div style={s.previewThumbs}>
-                  {seg.pages.map(p => (
-                    <div key={p.globalNum} style={s.prevThumbWrap}>
-                      <ThumbCard b64={p.b64||undefined} pageNum={p.globalNum} width={90} />
-                      <span style={s.prevLocalNum}>元{p.localNum}p</span>
-                    </div>
-                  ))}
+                  {seg.pages.map(p => {
+                    const pb = entries[si]?.pages?.[p.localNum - 1];
+                    const aspect = pb ? pb.w / pb.h : undefined;
+                    return (
+                      <div key={p.globalNum} style={s.prevThumbWrap}>
+                        <ThumbCard b64={p.b64||undefined} pageNum={p.globalNum} width={110} aspectRatio={aspect} />
+                        <span style={s.prevLocalNum}>元{p.localNum}p</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -286,9 +292,11 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
                   <span style={s.itemSeq}>{i+1}</span>
                   <span style={s.handle}>⣿</span>
                   <div style={s.itemThumbs}>
-                    {entry.thumbs.slice(0,3).map((b64,ti) => (
-                      <ThumbCard key={ti} b64={b64} pageNum={ti+1} width={56} />
-                    ))}
+                    {entry.thumbs.slice(0,3).map((b64,ti) => {
+                      const pb = entry.pages?.[ti];
+                      const aspect = pb ? pb.w / pb.h : undefined;
+                      return <ThumbCard key={ti} b64={b64} pageNum={ti+1} width={68} aspectRatio={aspect} />;
+                    })}
                     {entry.pageCount > 3 && (
                       <div style={s.thumbMore}>+{entry.pageCount-3}</div>
                     )}
@@ -368,7 +376,7 @@ const s: Record<string, React.CSSProperties> = {
   itemSeq:{ fontSize:13,fontWeight:700,color:"var(--c-textDim)",width:22,textAlign:"center" as const,flexShrink:0 },
   handle:{ fontSize:17,color:"var(--c-borderHi)",cursor:"grab",flexShrink:0 },
   itemThumbs:{ display:"flex",gap:4,flexShrink:0 },
-  thumbMore:{ width:56,height:79,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--c-border)",borderRadius:4,fontSize:11,color:"var(--c-textSub)" },
+  thumbMore:{ width:68,height:96,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--c-border)",borderRadius:4,fontSize:11,color:"var(--c-textSub)" },
   itemInfo:{ flex:1,display:"flex",flexDirection:"column",gap:3,minWidth:0 },
   itemName:{ fontSize:14,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
   itemPages:{ fontSize:12,color:"var(--c-textSub)" },

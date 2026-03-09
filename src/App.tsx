@@ -29,8 +29,9 @@ function makeGlobalCss(t: typeof C) {
   ::-webkit-scrollbar-thumb { background:${t.borderHi}; border-radius:3px; }
   button:hover:not(:disabled) { filter:brightness(1.1); }
   button:active:not(:disabled){ filter:brightness(0.9); }
-  button:focus         { outline: none; }
-  button:focus-visible { outline: 2px solid "var(--c-accent)"; outline-offset: 2px; }
+  button:focus         { outline: none !important; box-shadow: none !important; }
+  button:focus-visible { outline: 2px solid ${t.accent}; outline-offset: 2px; }
+  button:focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }
   button:disabled { cursor:not-allowed !important; }
 `;
 }
@@ -296,7 +297,7 @@ function ToolShell({ activeTool, toolFiles, filePath, pdfInfo, onHome, onToolCha
         {TOOLS.map(t=>(
           <button key={t.id}
             style={{...sh.tab,...(activeTool===t.id?sh.tabOn:{})}}
-            onClick={()=>onToolChange(t.id)} title={t.label}>
+            onClick={e=>{ onToolChange(t.id); (e.currentTarget as HTMLButtonElement).blur(); }} title={t.label}>
             <span>{t.icon}</span>
             <span style={sh.tabLabel}>{t.label}</span>
           </button>

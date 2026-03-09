@@ -14,6 +14,15 @@ interface Props {
 const THUMB_DPI = 52;
 const VIEW_DPI  = 160;
 
+// ページのアスペクト比 (w/h) を取得。回転(90/270)なら逆転
+function pageAspect(info: PdfInfo | null, pageIdx: number): number {
+  if (!info || !info.pages[pageIdx]) return 1 / 1.414;
+  const p = info.pages[pageIdx];
+  const r = (p as any).rotate ?? 0;
+  if (r === 90 || r === 270) return p.h / p.w;
+  return p.w / p.h;
+}
+
 export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const isMulti  = fileList.length > 1;
   const [activeIdx,  setActiveIdx]  = useState(0);
@@ -88,27 +97,23 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const vp = viewPageRef.current;
-      // ページ移動
       if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown") {
-        if (vp < total - 1) openPage(vp + 1);
-        return;
+        if (vp < total - 1) openPage(vp + 1); return;
       }
       if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
-        if (vp > 0) openPage(vp - 1);
-        return;
+        if (vp > 0) openPage(vp - 1); return;
       }
       if (e.key === "Home") { openPage(0); return; }
       if (e.key === "End")  { openPage(total - 1); return; }
-      // ズーム: +/= → 拡大  -  → 縮小  0 → リセット
-      if (e.key === "+" || e.key === "=") {
-        e.preventDefault();
-        setZoom(z => Math.min(4.0, Math.round((z + 0.15) * 100) / 100));
+      if (e.key === "+" || e.key === "=" || e.key === "ZoomIn") {
+        e.preventDefault(); e.stopPropagation();
+        setZoom(z => Math.min(4.0, Math.round((z + 0.15) * 100) / 100)); return;
       }
-      if (e.key === "-") {
-        e.preventDefault();
-        setZoom(z => Math.max(0.2, Math.round((z - 0.15) * 100) / 100));
+      if (e.key === "-" || e.key === "ZoomOut") {
+        e.preventDefault(); e.stopPropagation();
+        setZoom(z => Math.max(0.2, Math.round((z - 0.15) * 100) / 100)); return;
       }
-      if (e.key === "0") { e.preventDefault(); setZoom(1.0); }
+      if (e.key === "0") { e.preventDefault(); e.stopPropagation(); setZoom(1.0); return; }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -142,7 +147,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     };
   }, []);
 
-  // ── ホイールズーム (Alt/Shift + scroll) ──────────────────────────────────
   const onWheel = useCallback((e: React.WheelEvent) => {
     if (e.altKey || e.shiftKey) {
       e.preventDefault();
@@ -154,6 +158,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   if (!activeInfo) return <Spinner label="読み込み中…" />;
   const fname = activePath.split(/[/\\]/).pop() ?? "";
 
+  // 左ペインのサムネイル幅: 110px固定。高さをアスペクト比で動的計算
+  const THUMB_W = 104;
+
   return (
     <div style={s.root}>
       <PageHeader>
@@ -161,7 +168,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         <span style={s.fileSub} title={activePath}>{fname}</span>
         <span style={s.pageBadge}>{total}ページ</span>
         <div style={{ flex: 1 }}/>
-        {/* ズームコントロール */}
         <div style={s.zoomRow}>
           <button style={s.zBtn} onClick={() => setZoom(z => Math.max(0.2, z - 0.25))}>−</button>
           <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
@@ -192,22 +198,30 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           </div>
         )}
 
-        {/* サムネイルペイン */}
+        {/* サムネイルペイン — 横長ページも適切な高さで表示 */}
         <div style={s.thumbPane}>
           <div style={s.paneHead}>{viewPage + 1} / {total}</div>
           <div style={s.thumbList}>
-            {Array.from({ length: total }, (_, i) => (
-              <button key={i}
-                style={{ ...s.thumbItem, ...(i === viewPage ? s.thumbItemOn : {}) }}
-                onClick={() => openPage(i)} title={`ページ ${i + 1}`}>
-                <div style={s.thumbImgBox}>
-                  {thumbs[i]
-                    ? <img src={`data:image/jpeg;base64,${thumbs[i]}`} style={s.thumbImg} alt=""/>
-                    : <div style={s.thumbPh}/>}
-                </div>
-                <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>{i + 1}</span>
-              </button>
-            ))}
+            {Array.from({ length: total }, (_, i) => {
+              const aspect = pageAspect(activeInfo, i);
+              const th = Math.round(THUMB_W / aspect);
+              return (
+                <button key={i}
+                  style={{ ...s.thumbItem, ...(i === viewPage ? s.thumbItemOn : {}) }}
+                  onClick={() => openPage(i)} title={`ページ ${i + 1}`}>
+                  {/* 高さをアスペクト比に合わせる */}
+                  <div style={{ width: THUMB_W, height: th,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                overflow: "hidden", background: "var(--c-bg)", borderRadius: 2 }}>
+                    {thumbs[i]
+                      ? <img src={`data:image/jpeg;base64,${thumbs[i]}`}
+                             style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain", display: "block" }} alt=""/>
+                      : <div style={{ width: THUMB_W, height: th, background: "var(--c-border)" }}/>}
+                  </div>
+                  <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>{i + 1}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -245,7 +259,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
             </div>
           )}
 
-          {/* ページナビ（下部） */}
           <div style={s.pageNav}>
             <button style={s.pageNavBtn} disabled={viewPage === 0}       onClick={() => openPage(viewPage - 1)}>← 前</button>
             <span style={s.pageNavInfo}>{viewPage + 1} / {total}</span>
@@ -262,14 +275,11 @@ const s: Record<string, React.CSSProperties> = {
   title:    { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
   fileSub:  { fontSize: 13, color: "var(--c-textSub)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   pageBadge:{ padding: "3px 11px", background: "var(--c-bgCard)", border: "1px solid var(--c-border)", borderRadius: 11, fontSize: 12, color: "var(--c-textSub)" },
-
   zoomRow:  { display: "flex", alignItems: "center", gap: 4 },
   zBtn:     { width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bgCard)", border: "1px solid var(--c-borderHi)", borderRadius: 5, cursor: "pointer", fontSize: 15, color: "var(--c-text)", fontFamily: F },
   zVal:     { fontSize: 13, color: "var(--c-textSub)", minWidth: 36, textAlign: "center" as const },
   zBtnSm:   { padding: "5px 12px", background: "var(--c-bgCard)", border: "1px solid var(--c-borderHi)", borderRadius: 5, cursor: "pointer", fontSize: 10, color: "var(--c-textSub)", fontFamily: F },
-
   body:     { flex: 1, display: "flex", overflow: "hidden" },
-
   filePane:      { width: 180, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--c-border)", overflow: "hidden" },
   paneHead:      { padding: "7px 10px", fontSize: 10, color: "var(--c-textDim)", letterSpacing: "0.06em", textTransform: "uppercase" as const, borderBottom: "1px solid var(--c-border)", flexShrink: 0, background: "var(--c-bgCard)" },
   filePaneItem:  { display: "flex", alignItems: "center", gap: 7, padding: "9px 10px", background: "transparent", border: "none", borderBottom: "1px solid var(--c-border)", cursor: "pointer", fontFamily: F, textAlign: "left" as const, transition: "background 0.08s", width: "100%" },
@@ -278,23 +288,17 @@ const s: Record<string, React.CSSProperties> = {
   filePaneInfo:  { flex: 1, display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
   filePaneName:  { fontSize: 13, color: "var(--c-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   filePaneMeta:  { fontSize: 9, color: "var(--c-textSub)" },
-
-  thumbPane:    { width: 120, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--c-border)", overflow: "hidden", background: "var(--c-bgCard)" },
-  thumbList:    { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3, padding: "6px 5px" },
-  thumbItem:    { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: 3, background: "transparent", border: "1px solid transparent", borderRadius: 5, cursor: "pointer", transition: "all 0.1s", fontFamily: F },
+  thumbPane:    { width: 128, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--c-border)", overflow: "hidden", background: "var(--c-bgCard)" },
+  thumbList:    { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, padding: "6px 6px" },
+  thumbItem:    { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "3px", background: "transparent", border: "1px solid transparent", borderRadius: 5, cursor: "pointer", transition: "all 0.1s", fontFamily: F },
   thumbItemOn:  { border: "1px solid var(--c-accent)", background: "var(--c-accentBg)" },
-  thumbImgBox:  { width: 102, height: 145, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "var(--c-bg)", borderRadius: 2 },
-  thumbImg:     { width: "100%", height: "100%", objectFit: "contain" as const },
-  thumbPh:      { width: "100%", height: "100%", background: "var(--c-border)" },
   thumbN:       { fontSize: 9, color: "var(--c-textDim)" },
   thumbNOn:     { color: "var(--c-accent)", fontWeight: 700 },
-
   mainView:     { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#070e09" },
   viewCenter:   { flex: 1, display: "flex", alignItems: "center", justifyContent: "center" },
   viewSpinner:  { width: 28, height: 28, border: "3px solid var(--c-border)", borderTop: "3px solid var(--c-accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" },
   viewScroll:   { flex: 1, overflow: "scroll", overscrollBehavior: "contain", cursor: "grab" },
   viewInner:    { display: "flex", alignItems: "flex-start", justifyContent: "center", minWidth: "100%", minHeight: "100%", padding: 24 },
-
   pageNav:      { flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 14, padding: 8, borderTop: "1px solid var(--c-border)", background: "var(--c-bgCard)" },
   pageNavBtn:   { padding: "5px 18px", background: "var(--c-accentBg)", border: "1px solid var(--c-accentBd)", borderRadius: 6, color: "var(--c-accent)", cursor: "pointer", fontSize: 12, fontFamily: F },
   pageNavInfo:  { fontSize: 14, color: "var(--c-textSub)", minWidth: 52, textAlign: "center" as const },

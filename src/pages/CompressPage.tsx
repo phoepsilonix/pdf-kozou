@@ -159,7 +159,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       <span style={{fontSize:38,color:"var(--c-err)"}}>✕</span>
       <span style={{fontSize:16,fontWeight:700,color:"var(--c-err)"}}>エラー</span>
       <pre style={c.errPre}>{errMsg}</pre>
-      <button style={c.btnBack} onClick={()=>{setPhase("edit");setErrMsg("");}}>← 戻る</button>
+      <button style={c.btnBackSm} onClick={()=>{setPhase("edit");setErrMsg("");}}>← 戻る</button>
     </div>
   );
 
@@ -188,7 +188,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           </div>
         ))}
       </div>
-      <button style={c.btnBack} onClick={()=>{setPhase("edit");setBatchProg(null);}}>← 設定に戻る</button>
+      <button style={c.btnBackSm} onClick={()=>{setPhase("edit");setBatchProg(null);}}>← 設定に戻る</button>
     </div>
   );
 
@@ -359,7 +359,7 @@ const c: Record<string, React.CSSProperties> = {
   title:      {fontSize:16,fontWeight:700,color:"var(--c-text)"},
   fileSub:    {fontSize:12,color:"var(--c-textSub)",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},
   pageSub:    {fontSize:11,color:"var(--c-textDim)"},
-  btnBack:    {padding:"6px 16px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F},
+  btnBackSm:  {padding:"6px 16px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F},
   btnSkip:    {padding:"6px 16px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F},
 
   presetGrid: {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,padding:"24px 22px 0"},
@@ -418,4 +418,5 @@ const c: Record<string, React.CSSProperties> = {
   bpPct:     {fontSize:12,color:"var(--c-accent)",fontWeight:700,flexShrink:0},
 
   errPre:    {fontSize:11,color:"var(--c-err)",background:"var(--c-errBg)",border:`1px solid var(--c-errBd)`,borderRadius:6,padding:"10px 14px",maxWidth:480,whiteSpace:"pre-wrap",wordBreak:"break-all"},
+  btnBack:   {padding:"8px 22px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:7,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F},
 };

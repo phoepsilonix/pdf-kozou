@@ -4,14 +4,16 @@ import { invoke }     from "@tauri-apps/api/core";
 import { Spinner, ErrorView, PageHeader, BtnBack, BtnPrimary } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { renderPage, rotatePdf, getPdfInfo, moveFile, getTempPath, type PdfInfo } from "../lib/tauri";
-import { C, F } from "../lib/theme";
+import { PageSelector, resolvePageSpec } from "../components/PageSelector";
+import { F } from "../lib/theme";
+import { CompressPage } from "./CompressPage";
 
 interface Props {
   filePath:    string;
   pdfInfo:     PdfInfo;
   batchFiles?: FileEntry[];
 }
-import { CompressPage } from "./CompressPage";
+
 type Phase = "edit" | "processing" | "preview" | "result" | "error" | "compress";
 const THUMB_DPI = 80;
 
@@ -24,23 +26,21 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
 
-  // バッチ時: 選択中ファイルインデックス
-  const [batchIdx,   setBatchIdx]   = useState(0);
+  const [batchIdx,    setBatchIdx]    = useState(0);
   const curPath  = isBatch ? batchFiles![batchIdx].path : filePath;
-  const curInfo  = isBatch ? null : pdfInfo; // バッチ時は都度取得
   const [curPageCount, setCurPageCount] = useState(pdfInfo.page_count);
 
-  const [phase,    setPhase]    = useState<Phase>("edit");
-  const [thumbs,   setThumbs]   = useState<(string|undefined)[]>([]);
-  const [rotations,setRotations]= useState<number[]>(() => new Array(pdfInfo.page_count).fill(0));
-  const [globalRot,setGlobalRot]= useState<0|90|180|270>(0);
-  const [errMsg,   setErrMsg]   = useState("");
-  const [outDir,   setOutDir]   = useState("");
-  const [savedPath, setSavedPath] = useState("");
+  const [phase,      setPhase]      = useState<Phase>("edit");
+  const [thumbs,     setThumbs]     = useState<(string|undefined)[]>([]);
+  const [rotations,  setRotations]  = useState<number[]>(() => new Array(pdfInfo.page_count).fill(0));
+  const [globalRot,  setGlobalRot]  = useState<0|90|180|270>(0);
+  const [errMsg,     setErrMsg]     = useState("");
+  const [outDir,     setOutDir]     = useState("");
+  const [savedPath,  setSavedPath]  = useState("");
   const [batchProgress, setBatchProgress] = useState<BatchProgress|null>(null);
-  const [batchThumbs, setBatchThumbs] = useState<(string|undefined)[]>([]);
+  const [batchThumbs,   setBatchThumbs]   = useState<(string|undefined)[]>([]);
+  const [pageSpec,   setPageSpec]   = useState("");
 
-  // バッチ切り替え時: そのファイルのページ数取得とサムネイルリセット
   useEffect(() => {
     if (!isBatch) return;
     const path = batchFiles![batchIdx].path;
@@ -51,24 +51,22 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     }).catch(() => {});
   }, [batchIdx, isBatch]);
 
-  // サムネイル取得
   useEffect(() => {
     let cancelled = false;
     setThumbs([]);
+    const n = isBatch ? curPageCount : pdfInfo.page_count;
     (async () => {
-      const n = isBatch ? curPageCount : pdfInfo.page_count;
       for (let i=0; i<n; i++) {
         try {
           const b64 = await renderPage(curPath, i, THUMB_DPI);
           if (cancelled) return;
           setThumbs(p => { const a=[...p]; a[i]=b64; return a; });
-        } catch { /* skip */ }
+        } catch {}
       }
     })();
     return () => { cancelled = true; };
   }, [curPath, curPageCount]);
 
-  // バッチ: 各ファイルの先頭サムネイル
   useEffect(() => {
     if (!isBatch || !batchFiles) return;
     let cancelled = false;
@@ -85,23 +83,30 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => { cancelled = true; };
   }, [isBatch, batchFiles]);
 
+  const n = isBatch ? curPageCount : pdfInfo.page_count;
+
   const rotate = (idx: number, delta: 90|-90) =>
     setRotations(r => r.map((v,i) => i===idx ? (v+delta+360)%360 : v));
 
   const applyGlobal = (deg: 0|90|180|270) => {
     setGlobalRot(deg);
-    setRotations(new Array(curPageCount).fill(deg));
+    setRotations(new Array(n).fill(deg));
   };
-  const resetAll = () => { setRotations(new Array(curPageCount).fill(0)); setGlobalRot(0); };
+  const resetAll = () => { setRotations(new Array(n).fill(0)); setGlobalRot(0); };
 
-  const changedPages = rotations.map((v,i)=>({page:i+1,angle:v})).filter(p=>p.angle!==0);
+  const targetIndices = pageSpec
+    ? resolvePageSpec(pageSpec, n)
+    : Array.from({length: n}, (_, i) => i);
+
+  const changedPages = rotations
+    .map((v,i) => ({ page: i+1, angle: v }))
+    .filter(p => p.angle !== 0 && targetIndices.includes(p.page - 1));
 
   const pickDir = useCallback(async () => {
     const dir = await invoke<string|null>("pick_output_dir").catch(()=>null);
     if (dir) setOutDir(dir);
   }, []);
 
-  // ── 単体実行: tmp に保存 → preview フェーズへ ────────────────────────────
   const handleExecuteSingle = useCallback(async () => {
     if (changedPages.length === 0) return;
     const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
@@ -114,9 +119,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     } catch (e) {
       setErrMsg(String(e)); setPhase("error"); setError(String(e));
     }
-  }, [filePath, changedPages, outDir, setError]);
+  }, [filePath, changedPages, setError]);
 
-  // ── バッチ実行 ────────────────────────────────────────────────────────────
   const handleExecuteBatch = useCallback(async () => {
     if (!outDir) { await pickDir(); return; }
     const files = batchFiles!;
@@ -129,10 +133,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       setBatchProgress({...prog});
       try {
         const info = await getPdfInfo(f.path);
-        const pages = rotations
-          .slice(0, info.page_count)
-          .map((v,idx)=>({page:idx+1,angle:v}))
-          .filter(p=>p.angle!==0);
+        const pages = rotations.slice(0, info.page_count)
+          .map((v,idx) => ({ page:idx+1, angle:v }))
+          .filter(p => p.angle !== 0);
         if (pages.length > 0) {
           const out = `${outDir}/${f.filename.replace(/\.pdf$/i,"")}_rotated.pdf`;
           await rotatePdf(f.path, out, pages);
@@ -153,7 +156,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     <div style={s.root}>
       <div style={s.batchProgress}>
         <div style={s.bpTitle}>回転処理中… {batchProgress.current}/{batchProgress.total}</div>
-        <div style={s.bpBar}><div style={{...s.bpFill, width:`${(batchProgress.current/batchProgress.total)*100}%`}}/></div>
+        <div style={s.bpBarWrap}><div style={{...s.bpBar, width:`${(batchProgress.current/batchProgress.total)*100}%`}}/></div>
         <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
         <div style={s.bpLog}>
           {batchProgress.done.map((d,i)=>(
@@ -169,16 +172,13 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
 
   if (phase==="error") return <ErrorView msg={errMsg} onBack={()=>{setPhase("edit");setErrMsg("");}} />;
 
-  // ── 保存前プレビュー: 保存 or 圧縮してから保存 ───────────────────────────
   if (phase==="preview" && savedPath) {
     const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
     const doSave = async () => {
       const sp = await invoke<string|null>("pick_save_file",
         { defaultName:`${base}_rotated.pdf`, initialDir:outDir||undefined }).catch(()=>null);
       if (!sp) return;
-      // tmpファイルを最終パスへ移動
       await moveFile(savedPath, sp).catch(async () => {
-        // fallback: rotate を再実行して直接保存
         await rotatePdf(filePath, sp, changedPages);
       });
       setSavedPath(sp);
@@ -192,16 +192,12 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           <span style={s.sub}>{changedPages.length}ページを回転済み</span>
         </PageHeader>
         <div style={s.previewPhase}>
-          <span style={{ fontSize: 52, color: "var(--c-accent)" }}>↻</span>
+          <span style={{ fontSize:52, color:"var(--c-accent)" }}>↻</span>
           <span style={s.previewTitle}>{changedPages.length}ページを回転しました</span>
           <span style={s.previewSub}>保存方法を選択してください</span>
           <div style={s.previewBtns}>
-            <button style={s.saveBtnPrimary} onClick={doSave}>
-              💾 そのまま保存
-            </button>
-            <button style={s.compressBtn} onClick={() => setPhase("compress")}>
-              ⊙ 圧縮してから保存
-            </button>
+            <button style={s.saveBtnPrimary} onClick={doSave}>💾 そのまま保存</button>
+            <button style={s.compressBtn} onClick={() => setPhase("compress")}>⊙ 圧縮してから保存</button>
           </div>
           <button style={s.btnBack2} onClick={() => setPhase("edit")}>← やり直す</button>
         </div>
@@ -209,7 +205,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     );
   }
 
-  // 圧縮フェーズ
   if (phase==="compress" && savedPath) return (
     <CompressPage filePath={filePath} pdfInfo={pdfInfo}
       sourceFile={savedPath} onDone={() => setPhase("result")}/>
@@ -236,8 +231,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   );
 
   // ── 設定画面 ──────────────────────────────────────────────────────────────
-  const n = isBatch ? curPageCount : pdfInfo.page_count;
-
   return (
     <div style={s.root}>
       <PageHeader>
@@ -249,9 +242,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       </PageHeader>
 
       <div style={s.body}>
-        {/* 左パネル */}
         <div style={s.panel}>
-          {/* バッチ時: ファイルリスト */}
           {isBatch && (
             <>
               <div style={s.secLabel}>対象ファイル ({batchFiles!.length}件)</div>
@@ -283,6 +274,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
 
+          <div style={s.secLabel}>対象ページ</div>
+          <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} compact />
+
           <div style={s.secLabel}>個別設定</div>
           <p style={s.hint}>各ページの ↺↻ ボタンで個別回転できます。</p>
           <button style={s.resetBtn} onClick={resetAll}>全てリセット</button>
@@ -306,19 +300,23 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           )}
         </div>
 
-        {/* 右: ページグリッド */}
         <div style={s.grid}>
           {Array.from({length:n}, (_,i) => {
-            const rot     = rotations[i] ?? 0;
-            const changed = rot !== 0;
-            // 横長になる回転かどうか
+            const rot        = rotations[i] ?? 0;
+            const changed    = rot !== 0;
+            const inTarget   = targetIndices.includes(i);
             const isLandscape = rot===90 || rot===270;
             const cardW = isLandscape ? 170 : 120;
             const cardH = isLandscape ? 120 : 170;
             const imgW  = isLandscape ? 140 : 100;
             const imgH  = isLandscape ? 100 : 140;
             return (
-              <div key={i} style={{...s.pageCard,...(changed?s.pageCardChanged:{}), width:cardW}}>
+              <div key={i} style={{
+                ...s.pageCard,
+                ...(changed ? s.pageCardChanged : {}),
+                ...(!inTarget ? s.pageCardDimmed : {}),
+                width: cardW,
+              }}>
                 <div style={{...s.pageImgWrap, width:cardW, height:cardH, overflow:"hidden", transition:"all 0.3s"}}>
                   {thumbs[i]
                     ? <img src={`data:image/jpeg;base64,${thumbs[i]}`}
@@ -347,60 +345,58 @@ function rotIcon(deg: number) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  root:{ display:"flex",flexDirection:"column",height:"100%",background:"var(--c-bg)",color:"var(--c-text)",fontFamily:F,overflow:"hidden" },
-  title:{ fontSize:16,fontWeight:700,color:"var(--c-text)" },
-  sub:{ fontSize:13,color:"var(--c-textSub)",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
-  pageBadge:{ padding:"3px 10px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:11,fontSize:12,color:"var(--c-textSub)" },
-  changeBadge:{ padding:"3px 11px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:11,fontSize:13,color:"var(--c-accent)",fontWeight:600 },
-  body:{ flex:1,display:"flex",overflow:"hidden" },
-  panel:{ width:220,flexShrink:0,padding:"14px 14px",display:"flex",flexDirection:"column",gap:10,borderRight:`1px solid var(--c-border)`,overflowY:"auto" },
-  secLabel:{ fontSize:10,color:"var(--c-textSub)",letterSpacing:"0.08em",textTransform:"uppercase" as const },
-  globalBtns:{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:5 },
-  globalBtn:{ display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"9px 6px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:7,cursor:"pointer",fontSize:12,color:"var(--c-text)",fontFamily:F,transition:"all 0.12s" },
-  globalBtnOn:{ borderColor:"var(--c-accent)",background:"var(--c-accentBg)",color:"var(--c-accent)" },
-  rotIcon:{ fontSize:18 },
-  hint:{ fontSize:11,color:"var(--c-textSub)",lineHeight:1.6,margin:0 },
-  resetBtn:{ padding:"7px 0",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:7,color:"var(--c-textSub)",cursor:"pointer",fontSize:12,fontFamily:F },
-  fileList:{ display:"flex",flexDirection:"column",gap:3,maxHeight:200,overflowY:"auto" },
-  fileItem:{ display:"flex",alignItems:"center",gap:7,padding:"5px 7px",background:"transparent",border:`1px solid transparent`,borderRadius:6,cursor:"pointer",fontFamily:F,textAlign:"left" as const,transition:"all 0.1s" },
-  fileItemOn:{ background:"var(--c-accentBg)",borderColor:"var(--c-accentBd)" },
-  fileThumb:{ width:32,height:45,objectFit:"cover" as const,borderRadius:2,flexShrink:0 },
-  fileThumbPh:{ width:32,height:45,background:"var(--c-border)",borderRadius:2,flexShrink:0 },
-  fileItemInfo:{ flex:1,display:"flex",flexDirection:"column",gap:1,minWidth:0 },
-  fileItemName:{ fontSize:10,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
-  fileItemMeta:{ fontSize:9,color:"var(--c-textSub)" },
-  dirRow:{ display:"flex",gap:5 },
-  dirPath:{ flex:1,padding:"5px 7px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:5,color:"var(--c-textSub)",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
-  dirPickBtn:{ padding:"5px 10px",background:"var(--c-bgCard)",border:`1px solid var(--c-borderHi)`,borderRadius:5,color:"var(--c-text)",cursor:"pointer",fontSize:10,fontFamily:F,flexShrink:0 },
-
-  grid:{ flex:1,overflowY:"auto",padding:12,display:"flex",flexWrap:"wrap" as const,gap:8,alignContent:"flex-start" },
-  pageCard:{ display:"flex",flexDirection:"column",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:8,overflow:"hidden",transition:"all 0.15s" },
-  pageCardChanged:{ borderColor:"var(--c-accentBd)",background:"var(--c-accentBg)" },
-  pageImgWrap:{ display:"flex",alignItems:"center",justifyContent:"center",background:"var(--c-bg)" },
-  pageCardBottom:{ display:"flex",alignItems:"center",gap:4,padding:"5px 7px",borderTop:`1px solid var(--c-border)` },
-  pageNum:{ fontSize:10,color:"var(--c-textDim)" },
-  rotBadge:{ fontSize:9,padding:"1px 5px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:9,color:"var(--c-green)" },
-  rotateBtns:{ display:"flex",gap:2,marginLeft:"auto" },
-  rotBtn:{ width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--c-bg)",border:`1px solid var(--c-borderHi)`,borderRadius:4,cursor:"pointer",fontSize:15,color:"var(--c-text)",fontFamily:F },
-
-  resultBody:{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12 },
-  resultIcon:{ fontSize:52,color:"var(--c-green)" },
-  resultStat:{ fontSize:18,fontWeight:700,color:"var(--c-text)" },
-  resultDir:{ fontSize:11,color:"var(--c-textSub)" },
-  compressBtn:{ padding:"10px 28px",background:"var(--c-accentBg)",border:"1px solid var(--c-accentBd)",borderRadius:8,color:"var(--c-accent)",fontWeight:600,cursor:"pointer",fontSize:14,fontFamily:F },
-  previewPhase:  { flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:32 },
-  previewTitle:  { fontSize:20,fontWeight:700,color:"var(--c-text)" },
-  previewSub:    { fontSize:13,color:"var(--c-textSub)" },
-  previewBtns:   { display:"flex",gap:12,flexWrap:"wrap" as const,justifyContent:"center",marginTop:8 },
-  saveBtnPrimary:{ padding:"12px 32px",background:"var(--c-accent)",border:"none",borderRadius:9,color:"#0a1a10",fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:F },
-  btnBack2:      { padding:"8px 20px",background:"transparent",border:"1px solid var(--c-border)",borderRadius:7,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F },
-
-  batchProgress:{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:32 },
-  bpTitle:{ fontSize:14,fontWeight:700,color:"var(--c-text)" },
-  bpBar:{ width:"100%",maxWidth:420,height:7,background:"var(--c-border)",borderRadius:4,overflow:"hidden" },
-  bpFill:{ height:"100%",background:"var(--c-accent)",borderRadius:4,transition:"width 0.3s" },
-  bpCurrent:{ fontSize:11,color:"var(--c-textSub)" },
-  bpLog:{ width:"100%",maxWidth:420,display:"flex",flexDirection:"column",gap:4,maxHeight:240,overflowY:"auto" },
-  bpRow:{ display:"flex",alignItems:"center",gap:8,padding:"4px 8px",background:"var(--c-bgCard)",borderRadius:5,border:`1px solid var(--c-border)` },
-  bpFile:{ flex:1,fontSize:11,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
+  root:     { display:"flex",flexDirection:"column",height:"100%",background:"var(--c-bg)",color:"var(--c-text)",fontFamily:F,overflow:"hidden" },
+  title:    { fontSize:16,fontWeight:700,color:"var(--c-text)" },
+  sub:      { fontSize:13,color:"var(--c-textSub)",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
+  pageBadge:   { padding:"3px 10px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:11,fontSize:12,color:"var(--c-textSub)" },
+  changeBadge: { padding:"3px 11px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:11,fontSize:13,color:"var(--c-accent)",fontWeight:600 },
+  body:   { flex:1,display:"flex",overflow:"hidden" },
+  panel:  { width:240,flexShrink:0,padding:"16px",display:"flex",flexDirection:"column",gap:12,borderRight:`1px solid var(--c-border)`,overflowY:"auto" },
+  secLabel:    { fontSize:11,color:"var(--c-textSub)",letterSpacing:"0.08em",textTransform:"uppercase" as const },
+  globalBtns:  { display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 },
+  globalBtn:   { display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"11px 8px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:8,cursor:"pointer",fontSize:14,color:"var(--c-text)",fontFamily:F,transition:"all 0.12s" },
+  globalBtnOn: { borderColor:"var(--c-accent)",background:"var(--c-accentBg)",color:"var(--c-accent)" },
+  rotIcon:  { fontSize:22 },
+  hint:     { fontSize:12,color:"var(--c-textSub)",lineHeight:1.6,margin:0 },
+  resetBtn: { padding:"9px 0",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:7,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F },
+  fileList:     { display:"flex",flexDirection:"column",gap:3,maxHeight:220,overflowY:"auto" },
+  fileItem:     { display:"flex",alignItems:"center",gap:8,padding:"7px 8px",background:"transparent",border:`1px solid transparent`,borderRadius:6,cursor:"pointer",fontFamily:F,textAlign:"left" as const,transition:"all 0.1s" },
+  fileItemOn:   { background:"var(--c-accentBg)",borderColor:"var(--c-accentBd)" },
+  fileThumb:    { width:36,height:50,objectFit:"cover" as const,borderRadius:3,flexShrink:0 },
+  fileThumbPh:  { width:36,height:50,background:"var(--c-border)",borderRadius:3,flexShrink:0 },
+  fileItemInfo: { flex:1,display:"flex",flexDirection:"column",gap:2,minWidth:0 },
+  fileItemName: { fontSize:11,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
+  fileItemMeta: { fontSize:10,color:"var(--c-textSub)" },
+  dirRow:       { display:"flex",gap:6 },
+  dirPath:      { flex:1,padding:"7px 9px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:6,color:"var(--c-textSub)",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
+  dirPickBtn:   { padding:"7px 12px",background:"var(--c-bgCard)",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:"var(--c-text)",cursor:"pointer",fontSize:12,fontFamily:F,flexShrink:0 },
+  grid:             { flex:1,overflowY:"auto",padding:14,display:"flex",flexWrap:"wrap" as const,gap:10,alignContent:"flex-start" },
+  pageCard:         { display:"flex",flexDirection:"column",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:9,overflow:"hidden",transition:"all 0.15s" },
+  pageCardChanged:  { borderColor:"var(--c-accentBd)",background:"var(--c-accentBg)" },
+  pageCardDimmed:   { opacity:0.4 },
+  pageImgWrap:      { display:"flex",alignItems:"center",justifyContent:"center",background:"var(--c-bg)" },
+  pageCardBottom:   { display:"flex",alignItems:"center",gap:4,padding:"6px 8px",borderTop:`1px solid var(--c-border)` },
+  pageNum:          { fontSize:11,color:"var(--c-textDim)" },
+  rotBadge:         { fontSize:10,padding:"1px 6px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:9,color:"var(--c-accent)" },
+  rotateBtns:       { display:"flex",gap:3,marginLeft:"auto" },
+  rotBtn:           { width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--c-bg)",border:`1px solid var(--c-borderHi)`,borderRadius:5,cursor:"pointer",fontSize:18,color:"var(--c-text)",fontFamily:F },
+  previewPhase:   { flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:32 },
+  previewTitle:   { fontSize:20,fontWeight:700,color:"var(--c-text)" },
+  previewSub:     { fontSize:13,color:"var(--c-textSub)" },
+  previewBtns:    { display:"flex",gap:12,flexWrap:"wrap" as const,justifyContent:"center",marginTop:8 },
+  saveBtnPrimary: { padding:"12px 32px",background:"var(--c-accent)",border:"none",borderRadius:9,color:"#0a1a10",fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:F },
+  compressBtn:    { padding:"12px 28px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:9,color:"var(--c-accent)",fontWeight:600,cursor:"pointer",fontSize:15,fontFamily:F },
+  btnBack2:       { padding:"8px 20px",background:"transparent",border:`1px solid var(--c-border)`,borderRadius:7,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F },
+  resultBody: { flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14 },
+  resultIcon: { fontSize:56,color:"var(--c-accent)" },
+  resultStat: { fontSize:20,fontWeight:700,color:"var(--c-text)" },
+  resultDir:  { fontSize:12,color:"var(--c-textSub)" },
+  batchProgress: { flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:32 },
+  bpTitle:   { fontSize:16,fontWeight:700,color:"var(--c-text)" },
+  bpBarWrap: { width:"100%",maxWidth:440,height:8,background:"var(--c-border)",borderRadius:4,overflow:"hidden" },
+  bpBar:     { height:"100%",background:"var(--c-accent)",borderRadius:4,transition:"width 0.3s" },
+  bpCurrent: { fontSize:13,color:"var(--c-textSub)" },
+  bpLog:     { width:"100%",maxWidth:440,display:"flex",flexDirection:"column",gap:5,maxHeight:260,overflowY:"auto" },
+  bpRow:     { display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--c-bgCard)",borderRadius:6,border:`1px solid var(--c-border)` },
+  bpFile:    { flex:1,fontSize:12,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
 };

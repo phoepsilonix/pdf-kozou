@@ -7,6 +7,7 @@ import { CompressPage }    from "./CompressPage";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { useSaveDialog }   from "../hooks/useSaveDialog";
 import { renderPage, trimPdf, getPdfInfo, type TrimMargins, type PdfInfo } from "../lib/tauri";
+import { resolvePageSpec } from "../components/PageSelector";
 import { C, F } from "../lib/theme";
 
 interface Props {
@@ -244,6 +245,8 @@ function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInf
   const [trimmedTmp,   setTrimmedTmp]   = useState("");
   const [isSaving,     setIsSaving]     = useState(false);
   const [errMsg,       setErrMsg]       = useState("");
+  const [extractSpec,  setExtractSpec]  = useState("");   // ページ抽出 "" = 全ページ
+  const [trimPageSpec, setTrimPageSpec] = useState("");   // トリミング適用ページ範囲
 
   const currentPage = pdfInfo.pages[previewPage] ?? pdfInfo.pages[0];
   const pageW = currentPage?.w ?? 595;
@@ -286,7 +289,8 @@ function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInf
     setPhase("processing"); setErrMsg("");
     try {
       const tmp = await invoke<string>("get_tmp_path", { filename:"kozou_trim_preview.pdf" });
-      await trimPdf(filePath, tmp, trimMargins, trimPages);
+      const ep = extractSpec ? resolvePageSpec(extractSpec, pdfInfo.page_count).map(i => i+1) : undefined;
+      await trimPdf(filePath, tmp, trimMargins, trimPages, ep);
       const previews: string[] = [];
       for (let i=0; i<Math.min(pdfInfo.page_count,4); i++) {
         try { previews.push(await renderPage(tmp, i, RESULT_DPI)); } catch { previews.push(""); }
@@ -295,17 +299,20 @@ function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInf
     } catch (e) {
       const msg = String(e); setErrMsg(msg); setPhase("error"); setError(msg);
     }
-  }, [filePath, trimMargins, trimPages, pdfInfo.page_count, setError]);
+  }, [filePath, trimMargins, trimPages, extractSpec, pdfInfo.page_count, setError]);
 
   const handleSave = useCallback(async () => {
     const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
     const savePath = await pickSave(`${base}_trimmed.pdf`);
     if (!savePath) return;
     setIsSaving(true);
-    try { await trimPdf(filePath, savePath, trimMargins, trimPages); }
+    try {
+      const ep2 = extractSpec ? resolvePageSpec(extractSpec, pdfInfo.page_count).map(i => i+1) : undefined;
+      await trimPdf(filePath, savePath, trimMargins, trimPages, ep2);
+    }
     catch (e) { setError(String(e)); }
     finally { setIsSaving(false); }
-  }, [filePath, trimMargins, trimPages, pickSave, setError]);
+  }, [filePath, trimMargins, trimPages, extractSpec, pickSave, setError]);
 
   if (phase === "processing") return (
     <div style={s.center}>
@@ -370,8 +377,11 @@ function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInf
 
       <aside style={s.panel}>
         <TrimControls margins={trimMargins} pageW={pageW} pageH={pageH} pages={trimPages}
+          totalPages={pdfInfo.page_count}
           onMargins={setTrimMargins} onPages={setTrimPages}
-          onApply={handleExecute} onReset={()=>setTrimMargins(zero())} processing={false}/>
+          onApply={handleExecute} onReset={()=>setTrimMargins(zero())} processing={false}
+          trimPageSpec={trimPageSpec} onTrimPageSpec={setTrimPageSpec}
+          extractSpec={extractSpec} onExtract={setExtractSpec}/>
       </aside>
     </div>
   );
@@ -427,15 +437,15 @@ const s: Record<string, React.CSSProperties> = {
   spinner: { width:32, height:32, border:`3px solid var(--c-border)`, borderTop:`3px solid var(--c-accent)`, borderRadius:"50%", animation:"spin 0.8s linear infinite" },
   centSub: { color:"var(--c-textSub)", fontSize:13 },
 
-  sidebar:  { width:114, flexShrink:0, display:"flex", flexDirection:"column", background:"var(--c-bgCard)", borderRight:`1px solid var(--c-border)`, overflow:"hidden" },
+  sidebar:  { width:128, flexShrink:0, display:"flex", flexDirection:"column", background:"var(--c-bgCard)", borderRight:`1px solid var(--c-border)`, overflow:"hidden" },
   sbHead:   { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 10px 7px", borderBottom:`1px solid var(--c-border)` },
   sbTitle:  { fontSize:10, color:"var(--c-textDim)", letterSpacing:"0.1em", textTransform:"uppercase" },
   sbCount:  { fontSize:10, color:"var(--c-textDim)" },
   thumbList:{ flex:1, overflowY:"auto", padding:"6px 5px", display:"flex", flexDirection:"column", gap:5 },
   thumb:    { display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"5px 4px", borderRadius:6, border:"1px solid transparent", background:"transparent", cursor:"pointer", transition:"all 0.12s" },
   thumbOn:  { borderColor:"var(--c-accent)", background:"var(--c-accentBg)" },
-  thumbImg: { width:74, height:"auto", borderRadius:2, display:"block" },
-  thumbPh:  { width:74, height:100, background:"var(--c-border)", borderRadius:2 },
+  thumbImg: { width:104, height:"auto", borderRadius:2, display:"block" },
+  thumbPh:  { width:104, height:140, background:"var(--c-border)", borderRadius:2 },
   thumbN:   { fontSize:10, color:"var(--c-textDim)" },
 
   main:      { flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"16px 20px", gap:12 },
