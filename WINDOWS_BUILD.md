@@ -24,6 +24,14 @@ cargo xwin tauri build --target x86_64-pc-windows-msvc
 
 > 初回実行時に Windows SDK (~3GB) を自動ダウンロードします。
 
+# NSISインストーラー
+```sh
+npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
+```
+```sh
+bun tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
+```
+
 ---
 
 ## 方法2: cross (Docker ベース)
