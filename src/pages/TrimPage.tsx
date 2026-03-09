@@ -43,6 +43,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
   const [batchThumbs, setBatchThumbs] = useState<(string|undefined)[]>([]);
   const [previewPage, setPreviewPage] = useState(0);
   const [pageImage,   setPageImage]   = useState("");
+  const [curPageInfo, setCurPageInfo] = useState<PdfInfo|null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +64,8 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
     const path = files[previewIdx]?.path;
     if (!path) return;
     let cancelled = false;
+    setCurPageInfo(null);
+    getPdfInfo(path).then(info => { if (!cancelled) setCurPageInfo(info); }).catch(()=>{});
     setPageImage("");
     renderPage(path, previewPage, PREVIEW_DPI)
       .then(b64 => { if (!cancelled) setPageImage(b64); })
@@ -163,7 +166,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
                 style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",background:i===previewIdx?"var(--c-accentBg)":"transparent",border:"none",borderBottom:`1px solid var(--c-border)`,cursor:"pointer",fontFamily:F,width:"100%",textAlign:"left" as const, borderLeft: i===previewIdx?`3px solid var(--c-accent)`:"3px solid transparent"}}
                 onClick={()=>{setPreviewIdx(i);setPreviewPage(0);}}>
                 {batchThumbs[i]
-                  ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={{width:36,height:50,objectFit:"cover" as const,borderRadius:3,flexShrink:0}} alt=""/>
+                  ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={{width:44,maxHeight:62,objectFit:"contain" as const,background:"var(--c-bg)",borderRadius:3,flexShrink:0}} alt=""/>
                   : <div style={{width:36,height:50,background:"var(--c-border)",borderRadius:3,flexShrink:0}}/>}
                 <div style={{flex:1,display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
                   <span style={{fontSize:12,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.filename}</span>
@@ -179,7 +182,8 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
           {pageImage ? (
             <TrimCanvas
               pageImageB64={pageImage}
-              pageWidthPt={595} pageHeightPt={842}
+              pageWidthPt={curPageInfo?.pages[previewPage]?.w ?? 595}
+              pageHeightPt={curPageInfo?.pages[previewPage]?.h ?? 842}
               margins={trimMargins}
               onChange={setTrimMargins}
               displayWidth={CANVAS_W}
@@ -204,7 +208,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
         <div style={{width:290,flexShrink:0,borderLeft:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
           <div style={{flex:1,overflow:"auto"}}>
             <TrimControls
-              margins={trimMargins} pageW={595} pageH={842}
+              margins={trimMargins}
+              pageW={curPageInfo?.pages[previewPage]?.w ?? 595}
+              pageH={curPageInfo?.pages[previewPage]?.h ?? 842}
               pages={trimPages}
               onMargins={setTrimMargins}
               onPages={setTrimPages}

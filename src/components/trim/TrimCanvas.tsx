@@ -25,9 +25,11 @@ type DragTarget =
   | "corner-nw" | "corner-ne" | "corner-sw" | "corner-se"
   | null;
 
-const HANDLE_R  = 6;    // ハンドル半径px
-const MIN_PT    = 1;    // 最小余白 (pt)
-const EDGE_HIT  = 10;   // エッジ判定幅px
+const HANDLE_R   = 6;    // ハンドル半径px
+const MIN_PT     = 0;    // 最小余白 (pt) - スナップ時は0も許可
+const EDGE_HIT   = 10;   // エッジ判定幅px
+const SNAP_PX    = 10;   // スナップ閾値 (px) — ページ端に近づいたら吸着
+const SNAP_ZERO  = 0;    // スナップ先: 余白0 (ページ端)
 
 export function TrimCanvas({
   pageImageB64, pageWidthPt, pageHeightPt,
@@ -45,6 +47,12 @@ export function TrimCanvas({
   const toPx = (pt: number) => pt * scale;
   // px → pt (clamp >= MIN_PT)
   const toPt = (px: number) => Math.max(MIN_PT, px / scale);
+  // スナップ: 0に近ければ0にスナップ (ページ端吸着)
+  const snapPt = (pt: number, maxPt: number) => {
+    if (pt < SNAP_PX / scale) return 0;              // ページ端へスナップ
+    if (pt > maxPt - SNAP_PX / scale) return maxPt; // もう一方の端
+    return pt;
+  };
 
   // margins → canvas上の矩形 (クロップ領域)
   const getRect = (m: TrimMargins) => ({
@@ -239,6 +247,22 @@ export function TrimCanvas({
   }, [margins, scale, pageWidthPt, pageHeightPt, hitTest, draw, onChange]);
 
   const onMouseUp = useCallback(() => {
+    // マウスアップ時にスナップ適用
+    if (dragging.current) {
+      const m = { ...margins };
+      const pw = pageWidthPt, ph = pageHeightPt;
+      const snapped: typeof m = {
+        left:   snapPt(m.left,   pw - m.right),
+        right:  snapPt(m.right,  pw - m.left),
+        top:    snapPt(m.top,    ph - m.bottom),
+        bottom: snapPt(m.bottom, ph - m.top),
+      };
+      if (snapped.left !== m.left || snapped.right !== m.right ||
+          snapped.top !== m.top   || snapped.bottom !== m.bottom) {
+        draw(snapped);
+        onChange(snapped);
+      }
+    }
     dragging.current = null;
   }, []);
 

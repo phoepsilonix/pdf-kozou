@@ -374,7 +374,7 @@ const fr: Record<string,React.CSSProperties> = {
 
 const sh: Record<string,React.CSSProperties> = {
   root:{ display:"flex",flexDirection:"column",height:"100vh",background:"var(--c-bg)" },
-  nav:{ display:"flex",alignItems:"center",gap:4,padding:"0 14px",height:46,background:"var(--c-navBg)",borderBottom:`1px solid var(--c-navBd)`,flexShrink:0,fontFamily:F,overflowX:"auto" },
+  nav:{ display:"flex",alignItems:"center",gap:4,padding:"0 14px",height:46,background:"var(--c-navBg)",borderBottom:`1px solid var(--c-navBd)`,flexShrink:0,fontFamily:F,position:"relative",zIndex:10,overflow:"visible" },
   homeBtn:{ background:"transparent",border:"none",cursor:"pointer",padding:"4px 8px",borderRadius:5,fontFamily:F,fontSize:15,fontWeight:700,color:"var(--c-text)",whiteSpace:"nowrap" },
   div:{ width:1,height:20,background:"var(--c-border)",margin:"0 3px",flexShrink:0 },
   filename:{ fontSize:12,color:"var(--c-textSub)",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:0 },

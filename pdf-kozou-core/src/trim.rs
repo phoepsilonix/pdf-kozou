@@ -121,27 +121,53 @@ fn calc_cropbox(
 
     match rotate {
         90 => {
-            // 視覚: top→pdf-left, bottom→pdf-right, left→pdf-bottom, right→pdf-top
-            let cx0 = mb_x0 + b;   // pdf-left  削除 = 視覚bottom
-            let cy0 = mb_y0 + r;   // pdf-bottom削除 = 視覚right
-            let cx1 = mb_x1 - t;   // pdf-right 削除 = 視覚top
-            let cy1 = mb_y1 - l;   // pdf-top   削除 = 視覚left
+            // Rotate=90 (時計回り90度で表示): CTM=[0,-1,1,0,0,W]
+            // Device-x = PDF-y    → 視覚left/right は PDF-y 方向
+            // Device-y = W - PDF-x → 視覚top/bottom は PDF-x 方向(反転)
+            //
+            // 「視覚左を L削る」= Device-x > L → PDF-y > L → cy0 += L
+            // 「視覚右を R削る」= Device-x < H_vis-R → PDF-y < H_vis-R → cy1 -= R
+            //   (H_vis = 視覚高 = MB高さ = mb_y1-mb_y0)
+            // 「視覚上を T削る」= Device-y < W_vis-T → W-PDF-x < W_vis-T
+            //   → PDF-x > T → cx0 += T  (W_vis = 視覚幅 = MB幅 = mb_x1-mb_x0)
+            //   Wait: W-PDF-x < W_vis-T → PDF-x > W-W_vis+T = T (mb_x0=0なら)
+            //   → cx0 += T は間違い... PDF-x > T → cx0 += T は左端から
+            //   実際: 視覚上端 = Device-y=0 = W-PDF-x=0 → PDF-x=W=mb_x1
+            //   「視覚上を T削る」= Device-y > T → W-PDF-x > T → PDF-x < W-T → cx1 -= T
+            // 「視覚下を B削る」= Device-y < W_vis-B → W-PDF-x < W-B → PDF-x > B → cx0 += B
+            let cx0 = mb_x0 + b;   // 視覚bottom → cx0 += B
+            let cy0 = mb_y0 + l;   // 視覚left   → cy0 += L  ← 修正
+            let cx1 = mb_x1 - t;   // 視覚top    → cx1 -= T
+            let cy1 = mb_y1 - r;   // 視覚right  → cy1 -= R  ← 修正
             (cx0, cy0, cx1, cy1)
         }
         180 => {
-            // 全方向が反転
+            // Rotate=180: CTM=[-1,0,0,-1,W,H]
+            // Device-x = W - PDF-x → 視覚left/right が PDF-x 反転
+            // Device-y = H - PDF-y → 視覚top/bottom が PDF-y 反転
+            // 「視覚左を L削る」= PDF-x < W-L → cx1 -= L
+            // 「視覚右を R削る」= PDF-x > R   → cx0 += R
+            // 「視覚上を T削る」= PDF-y < H-T → cy1 -= T
+            // 「視覚下を B削る」= PDF-y > B   → cy0 += B
             let cx0 = mb_x0 + r;
-            let cy0 = mb_y0 + t;
+            let cy0 = mb_y0 + b;   // 視覚bottom → cy0 += B  ← 修正
             let cx1 = mb_x1 - l;
-            let cy1 = mb_y1 - b;
+            let cy1 = mb_y1 - t;   // 視覚top    → cy1 -= T  ← 修正
             (cx0, cy0, cx1, cy1)
         }
         270 => {
-            // 視覚: top→pdf-right, bottom→pdf-left, left→pdf-top, right→pdf-bottom
-            let cx0 = mb_x0 + t;   // pdf-left  削除 = 視覚top
-            let cy0 = mb_y0 + l;   // pdf-bottom削除 = 視覚left
-            let cx1 = mb_x1 - b;   // pdf-right 削除 = 視覚bottom
-            let cy1 = mb_y1 - r;   // pdf-top   削除 = 視覚right
+            // Rotate=270 (反時計回り90度): CTM=[0,1,-1,0,H,0]
+            // Device-x = H - PDF-y → 視覚left/right が PDF-y 反転
+            // Device-y = PDF-x
+            // 「視覚左を L削る」= H-PDF-y > L → PDF-y < H-L → cy1 -= L
+            // 「視覚右を R削る」= H-PDF-y < H-R → PDF-y > R → cy0 += R
+            // 「視覚上を T削る」= PDF-x < T... Wait: Device-y=PDF-x
+            //   Device-y > T → PDF-x > T → cx0 += T
+            // 「視覚下を B削る」= Device-y < H_vis-B → PDF-x < H_vis-B → cx1 -= B
+            let cx0 = mb_x0 + t;   // 視覚top    → cx0 += T  (Device-y=PDF-x増方向)
+            let cy0 = mb_y0 + r;   // 視覚right  → cy0 += R  ← 修正
+            let cx1 = mb_x1 - b;   // 視覚bottom → cx1 -= B
+            let cy1 = mb_y1 - l;   // 視覚left   → cy1 -= L  ← 修正
             (cx0, cy0, cx1, cy1)
         }
         _ => {

@@ -139,7 +139,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         const mode: SplitMode =
           modeId === "all"   ? { type:"AllPages" } :
           modeId === "every" ? { type:"EveryN", n: everyN } :
-                               { type:"Ranges", ranges: [[1, info.page_count]] };
+          // Ranges: 各ファイルのページ数でクリップして適用
+          { type:"Ranges", ranges: ranges.map(([s,e]) => [s, Math.min(e, info.page_count)] as [number,number]).filter(([s,e]) => s <= info.page_count) };
         const filePrefix = prefix ? `${prefix}_${f.filename.replace(/\.pdf$/i,"")}` : f.filename.replace(/\.pdf$/i,"");
         const res = await splitPdf(f.path, outDir, mode, filePrefix);
         progress.done.push({ file: f.filename, count: res.files.length });
@@ -327,13 +328,19 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               {ranges.map((rng,i) => (
                 <div key={i} style={s.rangeRow}>
                   <span style={s.rangeIdx}>#{i+1}</span>
-                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.max(1,x[0]-1),x[1]]:x))}>◀</button>
-                  <input type="number" style={s.rangeInput} value={rng[0]} min={1} max={total}
-                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[parseInt(e.target.value)||1,x[1]]:x))} />
+                  <div style={s.rangeGroup}>
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.max(1,x[0]-1),x[1]]:x))}>◀</button>
+                    <input type="number" style={s.rangeInput} value={rng[0]} min={1} max={total}
+                      onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[parseInt(e.target.value)||1,x[1]]:x))} />
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.min(x[1],x[0]+1),x[1]]:x))}>▶</button>
+                  </div>
                   <span style={s.rangeSep}>〜</span>
-                  <input type="number" style={s.rangeInput} value={rng[1]} min={1} max={total}
-                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[x[0],parseInt(e.target.value)||1]:x))} />
-                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],Math.min(total,x[1]+1)]:x))}>▶</button>
+                  <div style={s.rangeGroup}>
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],Math.max(x[0],x[1]-1)]:x))}>◀</button>
+                    <input type="number" style={s.rangeInput} value={rng[1]} min={1} max={total}
+                      onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[x[0],parseInt(e.target.value)||1]:x))} />
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],Math.min(total,x[1]+1)]:x))}>▶</button>
+                  </div>
                   {ranges.length > 1 && (
                     <button style={s.delBtn} onClick={()=>setRanges(r=>r.filter((_,j)=>j!==i))}>✕</button>
                   )}
@@ -351,13 +358,19 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               {ranges.map((rng,i) => (
                 <div key={i} style={s.rangeRow}>
                   <span style={s.rangeIdx}>#{i+1}</span>
-                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.max(1,x[0]-1),x[1]]:x))}>◀</button>
-                  <input type="number" style={s.rangeInput} value={rng[0]} min={1}
-                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[parseInt(e.target.value)||1,x[1]]:x))} />
+                  <div style={s.rangeGroup}>
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.max(1,x[0]-1),x[1]]:x))}>◀</button>
+                    <input type="number" style={s.rangeInput} value={rng[0]} min={1}
+                      onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[parseInt(e.target.value)||1,x[1]]:x))} />
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[Math.min(x[1],x[0]+1),x[1]]:x))}>▶</button>
+                  </div>
                   <span style={s.rangeSep}>〜</span>
-                  <input type="number" style={s.rangeInput} value={rng[1]} min={1}
-                    onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[x[0],parseInt(e.target.value)||1]:x))} />
-                  <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],x[1]+1]:x))}>▶</button>
+                  <div style={s.rangeGroup}>
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],Math.max(x[0],x[1]-1)]:x))}>◀</button>
+                    <input type="number" style={s.rangeInput} value={rng[1]} min={1}
+                      onChange={e=>setRanges(r=>r.map((x,j)=>j===i?[x[0],parseInt(e.target.value)||1]:x))} />
+                    <button style={s.rangeArrow} onClick={()=>setRanges(r=>r.map((x,j)=>j===i?[x[0],x[1]+1]:x))}>▶</button>
+                  </div>
                   {ranges.length>1 && <button style={s.delBtn} onClick={()=>setRanges(r=>r.filter((_,j)=>j!==i))}>✕</button>}
                 </div>
               ))}
@@ -480,6 +493,7 @@ const s: Record<string, React.CSSProperties> = {
   numLabel:  { fontSize:12, color:"var(--c-textSub)" },
 
   rangeRow:    { display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" as const },
+  rangeGroup:  { display:"flex", alignItems:"center", gap:2 },
   rangeIdx:    { fontSize:11, color:"var(--c-textDim)", width:24, flexShrink:0 },
   rangeInput:  { width:80, padding:"8px 4px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", fontSize:26, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
   rangeSep:    { fontSize:14, color:"var(--c-textDim)" },

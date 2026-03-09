@@ -306,10 +306,10 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             const changed    = rot !== 0;
             const inTarget   = targetIndices.includes(i);
             const isLandscape = rot===90 || rot===270;
-            const cardW = isLandscape ? 170 : 120;
-            const cardH = isLandscape ? 120 : 170;
-            const imgW  = isLandscape ? 140 : 100;
-            const imgH  = isLandscape ? 100 : 140;
+            const cardW = isLandscape ? 168 : 120;
+            const cardH = isLandscape ? 120 : 168;
+            const imgW  = isLandscape ? 150 : 106;
+            const imgH  = isLandscape ? 106 : 150;
             return (
               <div key={i} style={{
                 ...s.pageCard,
@@ -351,7 +351,7 @@ const s: Record<string, React.CSSProperties> = {
   pageBadge:   { padding:"3px 10px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:11,fontSize:12,color:"var(--c-textSub)" },
   changeBadge: { padding:"3px 11px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:11,fontSize:13,color:"var(--c-accent)",fontWeight:600 },
   body:   { flex:1,display:"flex",overflow:"hidden" },
-  panel:  { width:240,flexShrink:0,padding:"16px",display:"flex",flexDirection:"column",gap:12,borderRight:`1px solid var(--c-border)`,overflowY:"auto" },
+  panel:  { width:260,flexShrink:0,padding:"16px",display:"flex",flexDirection:"column",gap:12,borderRight:`1px solid var(--c-border)`,overflowY:"auto" },
   secLabel:    { fontSize:11,color:"var(--c-textSub)",letterSpacing:"0.08em",textTransform:"uppercase" as const },
   globalBtns:  { display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 },
   globalBtn:   { display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"11px 8px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:8,cursor:"pointer",fontSize:14,color:"var(--c-text)",fontFamily:F,transition:"all 0.12s" },
@@ -359,11 +359,11 @@ const s: Record<string, React.CSSProperties> = {
   rotIcon:  { fontSize:22 },
   hint:     { fontSize:12,color:"var(--c-textSub)",lineHeight:1.6,margin:0 },
   resetBtn: { padding:"9px 0",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:7,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F },
-  fileList:     { display:"flex",flexDirection:"column",gap:3,maxHeight:220,overflowY:"auto" },
+  fileList:     { display:"flex",flexDirection:"column",gap:3,maxHeight:320,overflowY:"auto",minHeight:100 },
   fileItem:     { display:"flex",alignItems:"center",gap:8,padding:"7px 8px",background:"transparent",border:`1px solid transparent`,borderRadius:6,cursor:"pointer",fontFamily:F,textAlign:"left" as const,transition:"all 0.1s" },
   fileItemOn:   { background:"var(--c-accentBg)",borderColor:"var(--c-accentBd)" },
-  fileThumb:    { width:36,height:50,objectFit:"cover" as const,borderRadius:3,flexShrink:0 },
-  fileThumbPh:  { width:36,height:50,background:"var(--c-border)",borderRadius:3,flexShrink:0 },
+  fileThumb:    { width:44,maxHeight:62,objectFit:"contain" as const,borderRadius:3,flexShrink:0,background:"var(--c-bg)" },
+  fileThumbPh:  { width:44,height:62,background:"var(--c-border)",borderRadius:3,flexShrink:0 },
   fileItemInfo: { flex:1,display:"flex",flexDirection:"column",gap:2,minWidth:0 },
   fileItemName: { fontSize:11,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
   fileItemMeta: { fontSize:10,color:"var(--c-textSub)" },

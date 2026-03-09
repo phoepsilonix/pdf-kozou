@@ -4,7 +4,7 @@ import { invoke }      from "@tauri-apps/api/core";
 import { Spinner, ErrorView, ThumbCard, PageHeader, BtnBack, BtnPrimary } from "../components/common";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
-import { mergePdf, renderPage, getPdfInfo, type MergeResponse, type PdfInfo } from "../lib/tauri";
+import { mergePdf, renderPage, getPdfInfo, getTempPath, type MergeResponse, type PdfInfo } from "../lib/tauri";
 import { CompressPage } from "./CompressPage";
 import { C, F } from "../lib/theme";
 
@@ -112,23 +112,43 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   }, [entries]);
 
   // ── 保存 ─────────────────────────────────────────────────────────────────
-  const [compressAfter, setCompressAfter] = useState(false);
+  const [tmpMergedPath, setTmpMergedPath] = useState("");
 
-  const handleSave = useCallback(async (withCompress = false) => {
+  // そのまま保存: 最終パスに直接結合
+  const handleSaveDirect = useCallback(async () => {
     const sp = await pickSave("merged.pdf");
     if (!sp) return;
     setSavePath(sp);
-    setCompressAfter(withCompress);
     setPhase("processing");
     try {
       const res = await mergePdf(entries.map(e => e.path), sp);
       setResult(res);
-      setMergedInfo({ page_count: res.page_count, pages: Array.from({length:res.page_count},()=>({w:595,h:842})) });
-      setPhase(withCompress ? "compress" : "result");
+      setPhase("result");
     } catch (e) {
       setErrMsg(String(e)); setPhase("error"); setError(String(e));
     }
   }, [entries, pickSave, setError]);
+
+  // 圧縮して保存: まず tmp に結合し、CompressPage へ
+  const handleSaveWithCompress = useCallback(async () => {
+    setPhase("processing");
+    try {
+      const tmp = await getTempPath("kozou_merge_tmp.pdf");
+      const res = await mergePdf(entries.map(e => e.path), tmp);
+      setResult(res);
+      setMergedInfo({ page_count: res.page_count, pages: Array.from({length:res.page_count},()=>({w:595,h:842,rotate:0,x:0,y:0})) });
+      setTmpMergedPath(tmp);
+      setPhase("compress");
+    } catch (e) {
+      setErrMsg(String(e)); setPhase("error"); setError(String(e));
+    }
+  }, [entries, setError]);
+
+  // 後方互換: handleSave
+  const handleSave = useCallback((withCompress = false) => {
+    if (withCompress) return handleSaveWithCompress();
+    return handleSaveDirect();
+  }, [handleSaveDirect, handleSaveWithCompress]);
 
   const totalPages = entries.reduce((s,e) => s + e.pageCount, 0);
 
@@ -136,12 +156,12 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   if (phase==="processing") return <Spinner label="結合処理中…" />;
   if (phase==="error")      return <ErrorView msg={errMsg} onBack={()=>{setPhase("edit");setErrMsg("");}}/>;
 
-  // 続けて圧縮
-  if (phase==="compress" && savePath && mergedInfo) return (
+  // 続けて圧縮 (tmpMergedPath → 圧縮 → 最終保存)
+  if (phase==="compress" && tmpMergedPath && mergedInfo) return (
     <CompressPage
-      filePath={savePath}
+      filePath={tmpMergedPath}
       pdfInfo={mergedInfo}
-      sourceFile={savePath}
+      sourceFile={tmpMergedPath}
       onDone={()=>setPhase("result")}
     />
   );

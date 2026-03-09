@@ -10,6 +10,7 @@ export interface PageBounds {
   y: number;
   w: number;
   h: number;
+  rotate: number;   // PDF Rotate値 (0/90/180/270)。w,h はRotate考慮済み
 }
 
 export interface PdfInfo {

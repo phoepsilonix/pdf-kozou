@@ -8,6 +8,8 @@ use crate::error::{CoreError, Result};
 pub struct PageBounds {
     pub w: f32,
     pub h: f32,
+    /// PDF の Rotate 値 (0/90/180/270)。page.bounds() はこれ込みのサイズを返す
+    pub rotate: i32,
 }
 
 #[derive(Serialize)]
@@ -53,13 +55,26 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
     let page_count = doc.page_count()
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
+    // PdfDocument を一度開いてRotate値をまとめて取得
+    let pdf_opt = mupdf::pdf::PdfDocument::open(path).ok();
+
     let mut pages = Vec::with_capacity(page_count as usize);
     for i in 0..page_count {
         let page = doc.load_page(i)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
         let b = page.bounds()
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        pages.push(PageBounds { w: b.x1 - b.x0, h: b.y1 - b.y0 });
+        // page.bounds() は Rotate を考慮した描画サイズを返す (Rotate=90 なら横長)
+        let rotate: i32 = pdf_opt.as_ref()
+            .and_then(|pdf| pdf.find_page(i).ok())
+            .and_then(|pg| {
+                pg.get_dict("Rotate").ok()?.and_then(|o| {
+                    o.resolve().ok()?.and_then(|r| r.as_int().ok())
+                })
+            })
+            .map(|r: i32| r.rem_euclid(360))
+            .unwrap_or(0);
+        pages.push(PageBounds { w: b.x1 - b.x0, h: b.y1 - b.y0, rotate });
     }
 
     let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
