@@ -70,6 +70,11 @@ extern "C" {
         result:   *mut FfiResult,
     );
     fn kozou_pdf_default_write_options(out: *mut mupdf_sys::pdf_write_options);
+    fn kozou_pdf_count_pages(
+        ctx:        *mut mupdf_sys::fz_context,
+        pdf_doc:    *mut mupdf_sys::pdf_document,
+        count_res:  *mut FfiResult,
+    ) -> std::ffi::c_int;
 
 }
 

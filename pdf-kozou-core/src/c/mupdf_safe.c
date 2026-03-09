@@ -107,27 +107,62 @@ pdf_document *kozou_pdf_document_from_fz_document(
 /*   テキスト選択・検索・コピー機能は引き続き動作する。              */
 /* ------------------------------------------------------------------ */
 void kozou_pdf_subset_fonts(
+    fz_context *ctx,
+    pdf_document *pdf,
+    int page_count,  /* ドキュメントの総ページ数 */
+    FfiResult *result)
+{
+    if (page_count <= 0) {
+        set_ok(result);
+        return;
+    }
+
+    int *pages = fz_malloc(ctx, page_count * sizeof(int));
+    if (pages == NULL) {
+        fz_throw(ctx, FZ_ERROR_SYSTEM, "cannot allocate page list for font subsetting");
+        goto catch_block;
+    }
+
+    for (int i = 0; i < page_count; i++) {
+        pages[i] = i;
+    }
+
+    fz_try(ctx) {
+        pdf_subset_fonts(ctx, pdf, page_count, pages);
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        fz_free(ctx, pages);
+    }
+    fz_catch(ctx) {
+    catch_block:
+        set_err(result, fz_caught_message(ctx));
+        //set_error_from_fz_catch(ctx, result);  // あなたのエラー設定関数
+    }
+}
+/*
+void kozou_pdf_subset_fonts(
     fz_context   *ctx,
     pdf_document *pdf,
-    int           page_count,  /* ドキュメントの総ページ数 */
+    int           page_count,  // ドキュメントの総ページ数 
     FfiResult    *result)
 {
     fz_try(ctx) {
         if (page_count > 0) {
-            /*
-             * MuPDF 1.28 以降: nranges=0/NULL の全ページ指定が
-             * 廃止またはセマンティクスが変化した可能性があるため、
-             * 全ページを明示的な fz_range 配列で指定する。
-             *
-             * pdf_subset_fonts(ctx, doc, nranges, ranges)
-             *   ranges[i] = {0ベースの開始ページ, 終了ページ(含む)}
-             */
+            ///
+             // MuPDF 1.28 以降: nranges=0/NULL の全ページ指定が
+             // 廃止またはセマンティクスが変化した可能性があるため、
+             // 全ページを明示的な fz_range 配列で指定する。
+             //
+             // pdf_subset_fonts(ctx, doc, nranges, ranges)
+             //   ranges[i] = {0ベースの開始ページ, 終了ページ(含む)}
+             //
             fz_range range;
             range.page0 = 0;
             range.page1 = page_count - 1;
             pdf_subset_fonts(ctx, pdf, 1, &range);
         } else {
-            /* page_count <= 0 の場合は nranges=0 でフォールバック */
+            // page_count <= 0 の場合は nranges=0 でフォールバック 
             pdf_subset_fonts(ctx, pdf, 0, NULL);
         }
         set_ok(result);
@@ -136,7 +171,7 @@ void kozou_pdf_subset_fonts(
         set_err(result, fz_caught_message(ctx));
     }
 }
-
+*/
 /* ------------------------------------------------------------------ */
 /* kozou_pdf_save_document                                             */
 /* ------------------------------------------------------------------ */
