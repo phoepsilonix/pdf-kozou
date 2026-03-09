@@ -46,18 +46,18 @@ export function PageSelector({ totalPages, value, onChange, label, compact }: Pa
     border: `1px solid var(--c-border)`,
     borderRadius: 6, cursor: "pointer", fontFamily: F,
     fontSize: compact ? 12 : 13, transition: "all 0.1s",
-    background: var(--c-bgCard), color: var(--c-textSub),
+    background: "var(--c-bgCard)", color: "var(--c-textSub)",
   };
   const btnOn: React.CSSProperties = {
     ...btnBase,
-    background: var(--c-accentBg), border: `1px solid var(--c-accentBd)`,
-    color: var(--c-accent), fontWeight: 700,
+    background: "var(--c-accentBg)", border: `1px solid var(--c-accentBd)`,
+    color: "var(--c-accent)", fontWeight: 700,
   };
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap: compact ? 4 : 6 }}>
       {label && (
-        <span style={{ fontSize:11, color:var(--c-textDim), letterSpacing:"0.08em",
+        <span style={{ fontSize:11, color:"var(--c-textDim)", letterSpacing:"0.08em",
           textTransform:"uppercase" }}>
           {label}
         </span>
@@ -80,20 +80,20 @@ export function PageSelector({ totalPages, value, onChange, label, compact }: Pa
             onChange={e => handleRange(e.target.value)}
             placeholder="例: 1-3,5,8-10"
             style={{
-              padding:"6px 10px", background:var(--c-bgCard),
+              padding:"6px 10px", background:"var(--c-bgCard)",
               border:`1px solid var(--c-borderHi)`, borderRadius:6,
-              color:var(--c-text), fontSize:13, fontFamily:F,
+              color:"var(--c-text)", fontSize:13, fontFamily:F,
               width:"100%", boxSizing:"border-box",
             }}
           />
-          <span style={{ fontSize:11, color:var(--c-textDim), lineHeight:1.5 }}>
-            書式: <code style={{color:var(--c-textSub)}}>1-3,5,8-</code> (ハイフン末尾=最終ページまで)
-            　除外: <code style={{color:var(--c-textSub)}}>^4</code> (例: <code>1-10,^4</code>)
+          <span style={{ fontSize:11, color:"var(--c-textDim)", lineHeight:1.5 }}>
+            書式: <code style={{color:"var(--c-textSub)"}}>1-3,5,8-</code> (ハイフン末尾=最終ページまで)
+            　除外: <code style={{color:"var(--c-textSub)"}}>^4</code> (例: <code>1-10,^4</code>)
           </span>
         </div>
       )}
       {totalPages > 0 && (
-        <span style={{ fontSize:11, color:var(--c-textDim) }}>
+        <span style={{ fontSize:11, color:"var(--c-textDim)" }}>
           全 {totalPages} ページ
           {value && value !== "all" && ` / 指定: "${value}"`}
         </span>

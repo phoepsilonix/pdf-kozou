@@ -30,7 +30,7 @@ function makeGlobalCss(t: typeof C) {
   button:hover:not(:disabled) { filter:brightness(1.1); }
   button:active:not(:disabled){ filter:brightness(0.9); }
   button:focus         { outline: none; }
-  button:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+  button:focus-visible { outline: 2px solid "var(--c-accent)"; outline-offset: 2px; }
   button:disabled { cursor:not-allowed !important; }
 `;
 }
@@ -160,7 +160,7 @@ export default function App() {
       onDrop={handleDrop}>
 
       <header style={s.header}>
-        <span style={s.logo}>PDF<span style={{color:var(--c-accent)}}>小僧</span></span>
+        <span style={s.logo}>PDF<span style={{color:"var(--c-accent)"}}>小僧</span></span>
         <span style={s.tagline}>Pure Rust · MuPDF · オフライン完全動作</span>
         <div style={{position:"absolute",top:16,right:20}}>
           <ThemeSwitcher currentId={themeId} onChange={handleThemeChange}/>
@@ -286,7 +286,7 @@ function ToolShell({ activeTool, toolFiles, filePath, pdfInfo, onHome, onToolCha
     <div style={sh.root}>
       <nav style={sh.nav}>
         <button style={sh.homeBtn} onClick={onHome}>
-          PDF<span style={{color:var(--c-accent)}}>小僧</span>
+          PDF<span style={{color:"var(--c-accent)"}}>小僧</span>
         </button>
         <div style={sh.div}/>
         {isBatch
@@ -321,65 +321,65 @@ function ToolShell({ activeTool, toolFiles, filePath, pdfInfo, onHome, onToolCha
 // ── styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string,React.CSSProperties> = {
-  root:{ minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,background:var(--c-bg),color:var(--c-text),fontFamily:F,padding:"28px 32px",position:"relative",transition:"background 0.15s" },
+  root:{ minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,background:"var(--c-bg)",color:"var(--c-text)",fontFamily:F,padding:"28px 32px",position:"relative",transition:"background 0.15s" },
   rootDrag:{ background:"#0e1510" },
   header:{ display:"flex",flexDirection:"column",alignItems:"center",gap:6 },
-  logo:{ fontSize:52,fontWeight:800,color:var(--c-text),letterSpacing:"-0.02em",lineHeight:1 },
-  tagline:{ fontSize:12,color:var(--c-textDim),letterSpacing:"0.12em",textTransform:"uppercase" },
-  listCard:{ width:"100%",maxWidth:720,background:var(--c-bgCard),border:`1px solid var(--c-border)`,borderRadius:12,overflow:"hidden",minHeight:180 },
+  logo:{ fontSize:52,fontWeight:800,color:"var(--c-text)",letterSpacing:"-0.02em",lineHeight:1 },
+  tagline:{ fontSize:12,color:"var(--c-textDim)",letterSpacing:"0.12em",textTransform:"uppercase" },
+  listCard:{ width:"100%",maxWidth:720,background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:12,overflow:"hidden",minHeight:180 },
   emptyZone:{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:"48px 28px" },
-  emptyIcon:{ fontSize:44,color:var(--c-borderHi) },
-  emptyTitle:{ fontSize:18,fontWeight:600,color:var(--c-textSub) },
-  emptySub:{ fontSize:14,color:var(--c-textDim) },
-  btnAddBig:{ padding:"12px 32px",background:var(--c-accentBg),border:`1px solid var(--c-accentBd)`,borderRadius:8,color:var(--c-accent),fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:F },
+  emptyIcon:{ fontSize:44,color:"var(--c-borderHi)" },
+  emptyTitle:{ fontSize:18,fontWeight:600,color:"var(--c-textSub)" },
+  emptySub:{ fontSize:14,color:"var(--c-textDim)" },
+  btnAddBig:{ padding:"12px 32px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:8,color:"var(--c-accent)",fontWeight:700,cursor:"pointer",fontSize:15,fontFamily:F },
   fileRows:{ display:"flex",flexDirection:"column" },
-  listFooter:{ display:"flex",alignItems:"center",gap:8,padding:"10px 16px",borderTop:`1px solid var(--c-border)`,background:var(--c-bg) },
-  btnAdd:{ padding:"6px 16px",background:var(--c-accentBg),border:`1px solid var(--c-accentBd)`,borderRadius:7,color:var(--c-accent),cursor:"pointer",fontSize:13,fontFamily:F,fontWeight:600 },
-  btnSm:{ padding:"6px 13px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:7,color:var(--c-textSub),cursor:"pointer",fontSize:13,fontFamily:F },
-  btnClear:{ padding:"6px 14px",background:"transparent",border:`1px solid var(--c-errBd)`,borderRadius:7,color:var(--c-err),cursor:"pointer",fontSize:13,fontFamily:F },
+  listFooter:{ display:"flex",alignItems:"center",gap:8,padding:"10px 16px",borderTop:`1px solid var(--c-border)`,background:"var(--c-bg)" },
+  btnAdd:{ padding:"6px 16px",background:"var(--c-accentBg)",border:`1px solid var(--c-accentBd)`,borderRadius:7,color:"var(--c-accent)",cursor:"pointer",fontSize:13,fontFamily:F,fontWeight:600 },
+  btnSm:{ padding:"6px 13px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:7,color:"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F },
+  btnClear:{ padding:"6px 14px",background:"transparent",border:`1px solid var(--c-errBd)`,borderRadius:7,color:"var(--c-err)",cursor:"pointer",fontSize:13,fontFamily:F },
   summary:{ display:"flex",alignItems:"center",gap:9,height:28 },
-  sumSel:{ fontSize:16,fontWeight:700,color:var(--c-text) },
-  sumDot:{ color:var(--c-textDim) },
-  sumInfo:{ fontSize:15,color:var(--c-textSub) },
-  sumNone:{ fontSize:14,color:var(--c-textDim) },
+  sumSel:{ fontSize:16,fontWeight:700,color:"var(--c-text)" },
+  sumDot:{ color:"var(--c-textDim)" },
+  sumInfo:{ fontSize:15,color:"var(--c-textSub)" },
+  sumNone:{ fontSize:14,color:"var(--c-textDim)" },
   toolBar:{ display:"flex",gap:9,width:"100%",maxWidth:720,flexWrap:"wrap" },
   toolBtn:{ flex:"1 1 88px",display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"16px 8px",borderRadius:11,border:`1px solid var(--c-border)`,cursor:"pointer",fontFamily:F,transition:"all 0.12s" },
-  toolBtnOn:{ background:var(--c-bgCard),borderColor:var(--c-borderHi),color:var(--c-text) },
-  toolBtnOff:{ background:"transparent",borderColor:var(--c-border),color:var(--c-textDim),opacity:0.38 },
+  toolBtnOn:{ background:"var(--c-bgCard)",borderColor:"var(--c-borderHi)",color:"var(--c-text)" },
+  toolBtnOff:{ background:"transparent",borderColor:"var(--c-border)",color:"var(--c-textDim)",opacity:0.38 },
   toolIcon:{ fontSize:24 },
   toolLabel:{ fontSize:14,fontWeight:700,color:"inherit" },
-  toolDesc:{ fontSize:11,color:var(--c-textSub),textAlign:"center" as const },
+  toolDesc:{ fontSize:11,color:"var(--c-textSub)",textAlign:"center" as const },
   dragOverlay:{ position:"absolute",inset:0,background:"rgba(12,20,14,0.88)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,border:`2px dashed var(--c-accent)`,pointerEvents:"none" },
-  dragIcon:{ fontSize:56,color:var(--c-accent) },
-  dragText:{ fontSize:20,fontWeight:600,color:var(--c-accent) },
-  error:{ padding:"11px 22px",background:var(--c-errBg),border:`1px solid var(--c-errBd)`,borderRadius:9,color:"#ff7070",fontSize:13,maxWidth:460,textAlign:"center" as const },
+  dragIcon:{ fontSize:56,color:"var(--c-accent)" },
+  dragText:{ fontSize:20,fontWeight:600,color:"var(--c-accent)" },
+  error:{ padding:"11px 22px",background:"var(--c-errBg)",border:`1px solid var(--c-errBd)`,borderRadius:9,color:"#ff7070",fontSize:13,maxWidth:460,textAlign:"center" as const },
 };
 
 const fr: Record<string,React.CSSProperties> = {
   row:{ display:"flex",alignItems:"center",gap:11,padding:"11px 14px",borderBottom:`1px solid var(--c-border)`,background:"transparent",transition:"background 0.08s",userSelect:"none" },
   rowSel:{ background:"#192b1e" },
-  rowDO:{ background:var(--c-accentBg),borderColor:var(--c-accent) },
+  rowDO:{ background:"var(--c-accentBg)",borderColor:"var(--c-accent)" },
   rowDrag:{ opacity:0.4 },
   check:{ width:22,height:22,borderRadius:5,flexShrink:0,border:`1.5px solid var(--c-borderHi)`,background:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,transition:"all 0.1s" },
-  checkOn:{ background:var(--c-accent),borderColor:var(--c-accent) },
+  checkOn:{ background:"var(--c-accent)",borderColor:"var(--c-accent)" },
   checkMark:{ fontSize:13,color:"#000",fontWeight:700,lineHeight:1 },
-  handle:{ fontSize:16,color:var(--c-borderHi),cursor:"grab",flexShrink:0 },
-  num:{ fontSize:13,color:var(--c-textDim),width:22,textAlign:"center" as const,flexShrink:0 },
+  handle:{ fontSize:16,color:"var(--c-borderHi)",cursor:"grab",flexShrink:0 },
+  num:{ fontSize:13,color:"var(--c-textDim)",width:22,textAlign:"center" as const,flexShrink:0 },
   info:{ flex:1,display:"flex",flexDirection:"column",gap:2,minWidth:0 },
-  name:{ fontSize:15,color:var(--c-text),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
-  meta:{ fontSize:12,color:var(--c-textSub) },
-  del:{ width:26,height:26,flexShrink:0,background:"transparent",border:"none",color:var(--c-textDim),cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:5,padding:0,fontFamily:F },
+  name:{ fontSize:15,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
+  meta:{ fontSize:12,color:"var(--c-textSub)" },
+  del:{ width:26,height:26,flexShrink:0,background:"transparent",border:"none",color:"var(--c-textDim)",cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:5,padding:0,fontFamily:F },
 };
 
 const sh: Record<string,React.CSSProperties> = {
-  root:{ display:"flex",flexDirection:"column",height:"100vh",background:var(--c-bg) },
-  nav:{ display:"flex",alignItems:"center",gap:4,padding:"0 14px",height:46,background:var(--c-navBg),borderBottom:`1px solid var(--c-navBd)`,flexShrink:0,fontFamily:F,overflowX:"auto" },
-  homeBtn:{ background:"transparent",border:"none",cursor:"pointer",padding:"4px 8px",borderRadius:5,fontFamily:F,fontSize:15,fontWeight:700,color:var(--c-text),whiteSpace:"nowrap" },
-  div:{ width:1,height:20,background:var(--c-border),margin:"0 3px",flexShrink:0 },
-  filename:{ fontSize:12,color:var(--c-textSub),maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:0 },
-  batchLabel:{ fontSize:12,color:var(--c-accent),fontWeight:600,whiteSpace:"nowrap",flexShrink:0 },
-  tab:{ display:"flex",alignItems:"center",gap:4,padding:"4px 9px",background:"transparent",border:"1px solid transparent",borderRadius:5,cursor:"pointer",color:var(--c-textSub),fontFamily:F,fontSize:12,transition:"all 0.1s",whiteSpace:"nowrap",flexShrink:0 },
-  tabOn:{ background:var(--c-accentBg),borderColor:var(--c-accentBd),color:var(--c-accent) },
+  root:{ display:"flex",flexDirection:"column",height:"100vh",background:"var(--c-bg)" },
+  nav:{ display:"flex",alignItems:"center",gap:4,padding:"0 14px",height:46,background:"var(--c-navBg)",borderBottom:`1px solid var(--c-navBd)`,flexShrink:0,fontFamily:F,overflowX:"auto" },
+  homeBtn:{ background:"transparent",border:"none",cursor:"pointer",padding:"4px 8px",borderRadius:5,fontFamily:F,fontSize:15,fontWeight:700,color:"var(--c-text)",whiteSpace:"nowrap" },
+  div:{ width:1,height:20,background:"var(--c-border)",margin:"0 3px",flexShrink:0 },
+  filename:{ fontSize:12,color:"var(--c-textSub)",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:0 },
+  batchLabel:{ fontSize:12,color:"var(--c-accent)",fontWeight:600,whiteSpace:"nowrap",flexShrink:0 },
+  tab:{ display:"flex",alignItems:"center",gap:4,padding:"4px 9px",background:"transparent",border:"1px solid transparent",borderRadius:5,cursor:"pointer",color:"var(--c-textSub)",fontFamily:F,fontSize:12,transition:"all 0.1s",whiteSpace:"nowrap",flexShrink:0 },
+  tabOn:{ background:"var(--c-accentBg)",borderColor:"var(--c-accentBd)",color:"var(--c-accent)" },
   tabLabel:{ fontSize:11 },
-  openBtn:{ padding:"4px 11px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:5,color:var(--c-textSub),cursor:"pointer",fontFamily:F,fontSize:12,flexShrink:0 },
+  openBtn:{ padding:"4px 11px",background:"transparent",border:`1px solid var(--c-borderHi)`,borderRadius:5,color:"var(--c-textSub)",cursor:"pointer",fontFamily:F,fontSize:12,flexShrink:0 },
 };

@@ -109,16 +109,16 @@ pdf_document *kozou_pdf_document_from_fz_document(
 void kozou_pdf_subset_fonts(
     fz_context   *ctx,
     pdf_document *pdf,
-    int           page_count,
+    int           nranges_unused,  /* 常に 0 を渡す (全ページ対象) */
     FfiResult    *result)
 {
+    (void)nranges_unused;
     fz_try(ctx) {
         /*
-         * pdf_subset_fonts の第3引数 (page_range) は
-         * 対象ページ範囲の fz_range 配列。NULL を渡すと全ページが対象。
-         * 第4引数は fz_range の個数 (0 = 全ページ)。
+         * pdf_subset_fonts(ctx, doc, nranges, ranges)
+         *   nranges = 0, ranges = NULL → 全ページを対象にサブセット化
          */
-        pdf_subset_fonts(ctx, pdf, page_count, NULL);
+        pdf_subset_fonts(ctx, pdf, 0, NULL);
         set_ok(result);
     }
     fz_catch(ctx) {

@@ -277,6 +277,7 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
 
 /// 一時ファイルパスを返す (OS の temp dir + name)
 #[tauri::command]
+#[tauri::command]
 pub async fn get_temp_path(name: String) -> Result<String> {
     let dir = std::env::temp_dir();
     Ok(dir.join(&name).display().to_string())

@@ -4,11 +4,11 @@ import { C, F } from "../lib/theme";
 export function Spinner({ label }: { label?: string }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
-                  justifyContent:"center", height:"100%", gap:18, background:var(--c-bg) }}>
+                  justifyContent:"center", height:"100%", gap:18, background:"var(--c-bg)" }}>
       <div style={{ width:36, height:36, border:`3px solid var(--c-border)`,
                     borderTop:`3px solid var(--c-accent)`, borderRadius:"50%",
                     animation:"spin 0.8s linear infinite" }} />
-      {label && <span style={{ color:var(--c-textSub), fontSize:14, fontFamily:F }}>{label}</span>}
+      {label && <span style={{ color:"var(--c-textSub)", fontSize:14, fontFamily:F }}>{label}</span>}
     </div>
   );
 }
@@ -17,10 +17,10 @@ export function ErrorView({ msg, onBack }: { msg: string; onBack: () => void }) 
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
                   justifyContent:"center", height:"100%", gap:16,
-                  background:var(--c-bg), fontFamily:F }}>
-      <span style={{ fontSize:42, color:var(--c-err) }}>✕</span>
+                  background:"var(--c-bg)", fontFamily:F }}>
+      <span style={{ fontSize:42, color:"var(--c-err)" }}>✕</span>
       <span style={{ fontSize:16, fontWeight:600, color:"#ff7070" }}>エラーが発生しました</span>
-      <pre style={{ fontSize:12, color:"#cc5555", background:var(--c-errBg),
+      <pre style={{ fontSize:12, color:"#cc5555", background:"var(--c-errBg)",
                     border:`1px solid var(--c-errBd)`, borderRadius:8,
                     padding:"12px 18px", maxWidth:520,
                     whiteSpace:"pre-wrap", wordBreak:"break-all" }}>{msg}</pre>
@@ -36,7 +36,7 @@ export function PageHeader({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:12,
                   padding:"0 22px", height:52, borderBottom:`1px solid var(--c-border)`,
-                  flexShrink:0, background:var(--c-bg) }}>
+                  flexShrink:0, background:"var(--c-bg)" }}>
       {children}
     </div>
   );
@@ -47,7 +47,7 @@ export function BtnBack({ onClick }: { onClick: () => void }) {
     <button onClick={onClick}
       style={{ padding:"6px 16px", background:"transparent",
                border:`1px solid var(--c-borderHi)`, borderRadius:7,
-               color:var(--c-textSub), cursor:"pointer", fontSize:13, fontFamily:F }}>
+               color:"var(--c-textSub)", cursor:"pointer", fontSize:13, fontFamily:F }}>
       ← 戻る
     </button>
   );
@@ -58,9 +58,9 @@ export function BtnPrimary({ onClick, disabled, children }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{ padding:"11px 28px", background: disabled ? var(--c-bgCard) : var(--c-accentBg),
-               border:`1px solid ${disabled ? var(--c-border) : var(--c-accentBd)}`, borderRadius:8,
-               color: disabled ? var(--c-textDim) : var(--c-accent),
+      style={{ padding:"11px 28px", background: disabled ? "var(--c-bgCard)" : "var(--c-accentBg)",
+               border:`1px solid ${disabled ? "var(--c-border)" : "var(--c-accentBd)"}`, borderRadius:8,
+               color: disabled ? "var(--c-textDim)" : "var(--c-accent)",
                fontWeight:700, cursor: disabled ? "not-allowed" : "pointer",
                fontSize:14, fontFamily:F, opacity: disabled ? 0.5 : 1 }}>
       {children}
@@ -79,15 +79,15 @@ export function ThumbCard({ b64, pageNum, width=80, selected=false,
     <button onClick={onClick}
       style={{ display:"flex", flexDirection:"column", alignItems:"center",
                gap:5, padding:"6px 5px", borderRadius:7,
-               border:`1px solid ${selected ? var(--c-accent) : var(--c-border)}`,
-               background: selected ? var(--c-accentBg) : var(--c-bgCard),
+               border:`1px solid ${selected ? "var(--c-accent)" : "var(--c-border)"}`,
+               background: selected ? "var(--c-accentBg)" : "var(--c-bgCard)",
                cursor: onClick ? "pointer" : "default",
                transition:"all 0.1s", fontFamily:F }}>
       {b64
         ? <img src={`data:image/jpeg;base64,${b64}`}
                style={{ width, height:h, objectFit:"cover", borderRadius:3, display:"block" }} alt="" />
-        : <div style={{ width, height:h, background:var(--c-border), borderRadius:3 }} />}
-      <span style={{ fontSize:13, color: selected ? var(--c-accent) : var(--c-textDim) }}>{pageNum}</span>
+        : <div style={{ width, height:h, background:"var(--c-border)", borderRadius:3 }} />}
+      <span style={{ fontSize:13, color: selected ? "var(--c-accent)" : "var(--c-textDim)" }}>{pageNum}</span>
     </button>
   );
 }

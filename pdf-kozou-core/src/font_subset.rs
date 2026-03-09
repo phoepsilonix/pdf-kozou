@@ -70,11 +70,7 @@ extern "C" {
         result:   *mut FfiResult,
     );
     fn kozou_pdf_default_write_options(out: *mut mupdf_sys::pdf_write_options);
-    fn kozou_pdf_count_pages(
-        ctx:    *mut mupdf_sys::fz_context,
-        pdf:    *mut mupdf_sys::pdf_document,
-        result: *mut FfiResult,
-    ) -> std::ffi::c_int;
+
 }
 
 // ------------------------------------------------------------------ //
@@ -235,21 +231,16 @@ unsafe fn ffi_with_ctx(
     // ── pdf_subset_fonts (フォントグリフ除去) ─────────────────────────
     // do_subset=true の場合のみ実行 (Type3 なし、または明示的に有効化)
     if do_subset {
-        // ページ数取得
+        // nranges=0, ranges=NULL で全ページを対象にサブセット化
+        // (kozou 側で pdf_subset_fonts(ctx, pdf, 0, NULL) を呼ぶ)
         let mut res = FfiResult::zeroed();
-        let page_count = kozou_pdf_count_pages(ctx, pdf_doc, &mut res);
-        let page_count = if res.is_ok() && page_count > 0 { page_count } else { 0 };
-
-        if page_count > 0 {
-            let mut res = FfiResult::zeroed();
-            kozou_pdf_subset_fonts(ctx, pdf_doc, page_count, &mut res);
-            if !res.is_ok() {
-                // サブセット化失敗は致命的ではない — 警告ログのみで続行
-                eprintln!(
-                    "[font_subset] pdf_subset_fonts warning: {} — proceeding without subset",
-                    res.error_message()
-                );
-            }
+        kozou_pdf_subset_fonts(ctx, pdf_doc, 0, &mut res);
+        if !res.is_ok() {
+            // サブセット化失敗は致命的ではない — 警告ログのみで続行
+            eprintln!(
+                "[font_subset] pdf_subset_fonts warning: {} — proceeding without subset",
+                res.error_message()
+            );
         }
     }
 

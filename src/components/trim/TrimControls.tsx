@@ -56,7 +56,7 @@ export function TrimControls({ margins, pageW, pageH, pages, onMargins, onPages,
               <span style={s.pageSize}>{origW} × {origH}</span>
               <span style={s.pageUnit}>mm (元)</span>
               <span style={s.arrow}>↓</span>
-              <span style={{ ...s.pageSize, color: var(--c-accent) }}>{trimW} × {trimH}</span>
+              <span style={{ ...s.pageSize, color: "var(--c-accent)" }}>{trimW} × {trimH}</span>
               <span style={s.pageUnit}>mm (後)</span>
             </div>
             <MmField label="右" value={toMm(margins.right)}
@@ -113,11 +113,11 @@ function MmField({ label, value, max, onChange }: {
 const s: Record<string, React.CSSProperties> = {
   panel: {
     display:"flex", flexDirection:"column", gap:20,
-    padding:"18px 14px", background:var(--c-bgCard), color:var(--c-text),
+    padding:"18px 14px", background:"var(--c-bgCard)", color:"var(--c-text)",
     fontFamily:F, fontSize:14, height:"100%", overflowY:"auto",
   },
   section:  { display:"flex", flexDirection:"column", gap:10 },
-  heading:  { margin:0, fontSize:11, letterSpacing:"0.1em", textTransform:"uppercase", color:var(--c-textDim) },
+  heading:  { margin:0, fontSize:11, letterSpacing:"0.1em", textTransform:"uppercase", color:"var(--c-textDim)" },
 
   cross:    { display:"flex", flexDirection:"column", alignItems:"center", gap:8 },
   crossTop: { display:"flex", justifyContent:"center" },
@@ -125,32 +125,32 @@ const s: Record<string, React.CSSProperties> = {
   crossBot: { display:"flex", justifyContent:"center" },
 
   pageBox:  { display:"flex", flexDirection:"column", alignItems:"center", gap:2, minWidth:100 },
-  pageSize: { fontSize:12, color:var(--c-textSub) },
-  pageUnit: { fontSize:10, color:var(--c-textDim) },
-  arrow:    { fontSize:14, color:var(--c-textDim) },
+  pageSize: { fontSize:12, color:"var(--c-textSub)" },
+  pageUnit: { fontSize:10, color:"var(--c-textDim)" },
+  arrow:    { fontSize:14, color:"var(--c-textDim)" },
 
   field:      { display:"flex", flexDirection:"column", alignItems:"center", gap:4 },
-  fieldLabel: { fontSize:12, color:var(--c-textSub), fontWeight:600 },
+  fieldLabel: { fontSize:12, color:"var(--c-textSub)", fontWeight:600 },
   input: {
     width:76, padding:"7px 6px",
-    background:var(--c-bg), border:`1px solid var(--c-borderHi)`, borderRadius:7,
-    color:var(--c-text), fontSize:26, textAlign:"center",
+    background:"var(--c-bg)", border:`1px solid var(--c-borderHi)`, borderRadius:7,
+    color:"var(--c-text)", fontSize:26, textAlign:"center",
     outline:"none", fontFamily:F, fontWeight:700,
   },
-  unit: { fontSize:10, color:var(--c-textDim) },
+  unit: { fontSize:10, color:"var(--c-textDim)" },
 
   chips: { display:"flex", gap:6 },
   chip: {
     padding:"6px 12px", borderRadius:16,
-    border:`1px solid var(--c-borderHi)`, background:var(--c-bgCard),
-    color:var(--c-textSub), cursor:"pointer", fontSize:12,
+    border:`1px solid var(--c-borderHi)`, background:"var(--c-bgCard)",
+    color:"var(--c-textSub)", cursor:"pointer", fontSize:12,
     fontFamily:F, transition:"all 0.12s",
   },
-  chipOn: { background:var(--c-accentBg), borderColor:var(--c-accentBd), color:var(--c-accent) },
+  chipOn: { background:"var(--c-accentBg)", borderColor:"var(--c-accentBd)", color:"var(--c-accent)" },
 
   actions:    { display:"flex", gap:8 },
-  btnReset:   { padding:"10px 14px", background:"transparent", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-textSub), cursor:"pointer", fontFamily:F, fontSize:13 },
-  btnApply:   { flex:1, padding:"10px 0", background:var(--c-accentBg), border:`1px solid var(--c-accentBd)`, borderRadius:7, color:var(--c-accent), fontWeight:700, cursor:"pointer", fontFamily:F, fontSize:14 },
+  btnReset:   { padding:"10px 14px", background:"transparent", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-textSub)", cursor:"pointer", fontFamily:F, fontSize:13 },
+  btnApply:   { flex:1, padding:"10px 0", background:"var(--c-accentBg)", border:`1px solid var(--c-accentBd)`, borderRadius:7, color:"var(--c-accent)", fontWeight:700, cursor:"pointer", fontFamily:F, fontSize:14 },
   btnDisabled:{ opacity:0.4, cursor:"not-allowed" },
-  hint:       { margin:0, fontSize:11, color:var(--c-textDim), lineHeight:1.6 },
+  hint:       { margin:0, fontSize:11, color:"var(--c-textDim)", lineHeight:1.6 },
 };

@@ -142,7 +142,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
         <div style={s.bpLog}>
           {batchProgress.done.map((d,i) => (
-            <div key={i} style={s.bpRow}><span style={{color:var(--c-accent)}}>✓</span><span style={s.bpFile}>{d.file}</span><span style={s.bpMeta}>→ {d.count}枚</span></div>
+            <div key={i} style={s.bpRow}><span style={{color:"var(--c-accent)"}}>✓</span><span style={s.bpFile}>{d.file}</span><span style={s.bpMeta}>→ {d.count}枚</span></div>
           ))}
         </div>
       </div>
@@ -159,12 +159,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         <span style={s.title}>バッチ画像変換完了</span>
       </PageHeader>
       <div style={s.center}>
-        <span style={{fontSize:56,color:batchProgress.errors.length?var(--c-warn):var(--c-accent)}}>{batchProgress.errors.length?"⚠":"✓"}</span>
+        <span style={{fontSize:56,color:batchProgress.errors.length?"var(--c-warn)":"var(--c-accent)"}}>{batchProgress.errors.length?"⚠":"✓"}</span>
         <div style={s.bpTitle}>{batchProgress.done.length}件成功{batchProgress.errors.length>0?` · ${batchProgress.errors.length}件エラー`:""}</div>
-        <div style={{fontSize:12,color:var(--c-textSub)}}>{outDir}</div>
+        <div style={{fontSize:12,color:"var(--c-textSub)"}}>{outDir}</div>
         <div style={s.bpLog}>
-          {batchProgress.done.map((d,i)=>(<div key={i} style={s.bpRow}><span style={{color:var(--c-accent)}}>✓</span><span style={s.bpFile}>{d.file}</span><span style={s.bpMeta}>→ {d.count}枚</span></div>))}
-          {batchProgress.errors.map((e,i)=>(<div key={`e${i}`} style={{...s.bpRow,background:var(--c-errBg),borderColor:var(--c-errBd)}}><span style={{color:var(--c-err)}}>✕</span><span style={s.bpFile}>{e.file}</span><span style={{...s.bpMeta,color:var(--c-err)}}>{e.msg}</span></div>))}
+          {batchProgress.done.map((d,i)=>(<div key={i} style={s.bpRow}><span style={{color:"var(--c-accent)"}}>✓</span><span style={s.bpFile}>{d.file}</span><span style={s.bpMeta}>→ {d.count}枚</span></div>))}
+          {batchProgress.errors.map((e,i)=>(<div key={`e${i}`} style={{...s.bpRow,background:"var(--c-errBg)",borderColor:"var(--c-errBd)"}}><span style={{color:"var(--c-err)"}}>✕</span><span style={s.bpFile}>{e.file}</span><span style={{...s.bpMeta,color:"var(--c-err)"}}>{e.msg}</span></div>))}
         </div>
       </div>
     </div>
@@ -178,12 +178,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         <span style={s.title}>画像変換完了</span>
       </PageHeader>
       <div style={s.center}>
-        <span style={{fontSize:56,color:var(--c-accent)}}>✓</span>
+        <span style={{fontSize:56,color:"var(--c-accent)"}}>✓</span>
         <div style={s.bpTitle}>{result.length}ファイルを出力</div>
-        <div style={{fontSize:12,color:var(--c-textSub)}}>{outDir}</div>
+        <div style={{fontSize:12,color:"var(--c-textSub)"}}>{outDir}</div>
         <div style={s.bpLog}>
           {result.slice(0,20).map((f,i)=>(<div key={i} style={s.bpRow}><span>🖼</span><span style={s.bpFile}>{f.split(/[/\\]/).pop()}</span></div>))}
-          {result.length>20 && <div style={{fontSize:12,color:var(--c-textDim),textAlign:"center",padding:8}}>… 他 {result.length-20}ファイル</div>}
+          {result.length>20 && <div style={{fontSize:12,color:"var(--c-textDim)",textAlign:"center",padding:8}}>… 他 {result.length-20}ファイル</div>}
         </div>
       </div>
     </div>
@@ -240,10 +240,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           </>}
           {format==="jpeg" && (
             <>
-              <div style={s.secLabel}>JPEG品質 <span style={{fontSize:20,fontWeight:700,color:var(--c-text)}}>{quality}</span>%</div>
+              <div style={s.secLabel}>JPEG品質 <span style={{fontSize:20,fontWeight:700,color:"var(--c-text)"}}>{quality}</span>%</div>
               <input type="range" min={10} max={100} step={5} value={quality}
                 onChange={e=>setQuality(parseInt(e.target.value))}
-                style={{width:"100%", accentColor:var(--c-accent)}}/>
+                style={{width:"100%", accentColor:"var(--c-accent)"}}/>
               <div style={s.rangeLabels}><span>低品質</span><span>高品質</span></div>
             </>
           )}
@@ -322,65 +322,65 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  root:      { display:"flex", flexDirection:"column", height:"100%", background:var(--c-bg), color:var(--c-text), fontFamily:F, overflow:"hidden" },
-  title:     { fontSize:16, fontWeight:700, color:var(--c-text) },
-  sub:       { fontSize:13, color:var(--c-textSub), maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  pageBadge: { padding:"3px 11px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:12, fontSize:12, color:var(--c-textSub) },
-  outBadge:  { fontSize:14, color:var(--c-accent), fontWeight:700 },
+  root:      { display:"flex", flexDirection:"column", height:"100%", background:"var(--c-bg)", color:"var(--c-text)", fontFamily:F, overflow:"hidden" },
+  title:     { fontSize:16, fontWeight:700, color:"var(--c-text)" },
+  sub:       { fontSize:13, color:"var(--c-textSub)", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  pageBadge: { padding:"3px 11px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:12, fontSize:12, color:"var(--c-textSub)" },
+  outBadge:  { fontSize:14, color:"var(--c-accent)", fontWeight:700 },
 
   body:    { flex:1, display:"flex", overflow:"hidden" },
   panel:   { width:300, flexShrink:0, padding:"16px 18px", display:"flex", flexDirection:"column", gap:12, overflowY:"auto", borderRight:`1px solid var(--c-border)` },
-  secLabel:{ fontSize:12, color:var(--c-textSub), letterSpacing:"0.07em", textTransform:"uppercase" as const, marginTop:4 },
+  secLabel:{ fontSize:12, color:"var(--c-textSub)", letterSpacing:"0.07em", textTransform:"uppercase" as const, marginTop:4 },
 
   fmtRow:  { display:"flex", gap:8 },
-  fmtBtn:  { flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"13px 8px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:9, cursor:"pointer", fontFamily:F, transition:"all 0.1s" },
-  fmtBtnOn:{ borderColor:var(--c-accent), background:var(--c-accentBg) },
+  fmtBtn:  { flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"13px 8px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:9, cursor:"pointer", fontFamily:F, transition:"all 0.1s" },
+  fmtBtnOn:{ borderColor:"var(--c-accent)", background:"var(--c-accentBg)" },
   fmtIcon: { fontSize:22 },
-  fmtName: { fontSize:14, fontWeight:700, color:var(--c-text) },
-  fmtDesc: { fontSize:11, color:var(--c-textSub), textAlign:"center" as const },
+  fmtName: { fontSize:14, fontWeight:700, color:"var(--c-text)" },
+  fmtDesc: { fontSize:11, color:"var(--c-textSub)", textAlign:"center" as const },
 
   dpiGrid: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 },
-  dpiBtn:  { display:"flex", flexDirection:"column", padding:"8px 10px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:7, cursor:"pointer", fontFamily:F, transition:"all 0.1s" },
-  dpiBtnOn:{ borderColor:var(--c-accent), background:var(--c-accentBg) },
-  dpiLabel:{ fontSize:16, fontWeight:700, color:var(--c-text) },
-  dpiDesc: { fontSize:11, color:var(--c-textSub) },
+  dpiBtn:  { display:"flex", flexDirection:"column", padding:"8px 10px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:7, cursor:"pointer", fontFamily:F, transition:"all 0.1s" },
+  dpiBtnOn:{ borderColor:"var(--c-accent)", background:"var(--c-accentBg)" },
+  dpiLabel:{ fontSize:16, fontWeight:700, color:"var(--c-text)" },
+  dpiDesc: { fontSize:11, color:"var(--c-textSub)" },
 
   // 数値入力 — 大きめ
   numRow:   { display:"flex", alignItems:"center", gap:7 },
-  stepBtn:  { width:42, height:42, display:"flex", alignItems:"center", justifyContent:"center", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:var(--c-text), fontFamily:F, flexShrink:0 },
-  numInput: { width:84, padding:"7px 0", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-text), fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
-  numLabel: { fontSize:11, color:var(--c-textSub) },
-  rangeLabels:{ display:"flex", justifyContent:"space-between", fontSize:11, color:var(--c-textDim) },
+  stepBtn:  { width:42, height:42, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:"var(--c-text)", fontFamily:F, flexShrink:0 },
+  numInput: { width:84, padding:"7px 0", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
+  numLabel: { fontSize:11, color:"var(--c-textSub)" },
+  rangeLabels:{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--c-textDim)" },
 
   prefixRow:   { display:"flex", alignItems:"center", gap:6 },
-  textInput:   { flex:1, padding:"8px 10px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-text), fontSize:14, fontFamily:F },
-  prefixSuffix:{ fontSize:11, color:var(--c-textDim), flexShrink:0 },
+  textInput:   { flex:1, padding:"8px 10px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", fontSize:14, fontFamily:F },
+  prefixSuffix:{ fontSize:11, color:"var(--c-textDim)", flexShrink:0 },
   dirRow:      { display:"flex", gap:7 },
-  dirPath:     { flex:1, padding:"8px 10px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:7, color:var(--c-textSub), fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  dirPickBtn:  { padding:"8px 14px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-text), cursor:"pointer", fontSize:13, fontFamily:F, flexShrink:0 },
-  batchNote:   { padding:"10px 12px", background:var(--c-bgCard), border:`1px solid var(--c-accentBd)`, borderRadius:7, fontSize:12, color:var(--c-textSub), lineHeight:1.6 },
+  dirPath:     { flex:1, padding:"8px 10px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:7, color:"var(--c-textSub)", fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  dirPickBtn:  { padding:"8px 14px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", cursor:"pointer", fontSize:13, fontFamily:F, flexShrink:0 },
+  batchNote:   { padding:"10px 12px", background:"var(--c-bgCard)", border:`1px solid var(--c-accentBd)`, borderRadius:7, fontSize:12, color:"var(--c-textSub)", lineHeight:1.6 },
 
   // 進捗
   center:   { flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, padding:32 },
-  bpTitle:  { fontSize:17, fontWeight:700, color:var(--c-text) },
-  bpBar:    { width:"100%", maxWidth:480, height:8, background:var(--c-border), borderRadius:4, overflow:"hidden" },
-  bpFill:   { height:"100%", background:var(--c-accent), borderRadius:4, transition:"width 0.3s" },
-  bpCurrent:{ fontSize:13, color:var(--c-textSub) },
+  bpTitle:  { fontSize:17, fontWeight:700, color:"var(--c-text)" },
+  bpBar:    { width:"100%", maxWidth:480, height:8, background:"var(--c-border)", borderRadius:4, overflow:"hidden" },
+  bpFill:   { height:"100%", background:"var(--c-accent)", borderRadius:4, transition:"width 0.3s" },
+  bpCurrent:{ fontSize:13, color:"var(--c-textSub)" },
   bpLog:    { width:"100%", maxWidth:480, display:"flex", flexDirection:"column", gap:5, maxHeight:300, overflowY:"auto" },
-  bpRow:    { display:"flex", alignItems:"center", gap:9, padding:"6px 10px", background:var(--c-bgCard), borderRadius:6, border:`1px solid var(--c-border)` },
-  bpFile:   { flex:1, fontSize:13, color:var(--c-text), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  bpMeta:   { fontSize:12, color:var(--c-textSub), flexShrink:0 },
+  bpRow:    { display:"flex", alignItems:"center", gap:9, padding:"6px 10px", background:"var(--c-bgCard)", borderRadius:6, border:`1px solid var(--c-border)` },
+  bpFile:   { flex:1, fontSize:13, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  bpMeta:   { fontSize:12, color:"var(--c-textSub)", flexShrink:0 },
 
   preview:     { flex:1, display:"flex", flexDirection:"column", overflow:"hidden" },
-  previewHead: { padding:"11px 18px", fontSize:13, color:var(--c-textSub), borderBottom:`1px solid var(--c-border)`, flexShrink:0 },
+  previewHead: { padding:"11px 18px", fontSize:13, color:"var(--c-textSub)", borderBottom:`1px solid var(--c-border)`, flexShrink:0 },
   thumbGrid:   { flex:1, overflowY:"auto", padding:14, display:"flex", flexWrap:"wrap" as const, gap:8, alignContent:"flex-start" },
 
   batchFileList:  { flex:1, overflowY:"auto", display:"flex", flexDirection:"column" },
   batchFileItem:  { display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid var(--c-border)`, cursor:"pointer", transition:"background 0.1s" },
-  batchFileItemOn:{ background:var(--c-accentBg), borderLeft:`3px solid var(--c-accent)` },
+  batchFileItemOn:{ background:"var(--c-accentBg)", borderLeft:`3px solid var(--c-accent)` },
   batchThumb:     { width:54, height:76, objectFit:"cover" as const, borderRadius:4, flexShrink:0 },
-  batchThumbPh:   { width:54, height:76, background:var(--c-border), borderRadius:4, flexShrink:0 },
+  batchThumbPh:   { width:54, height:76, background:"var(--c-border)", borderRadius:4, flexShrink:0 },
   batchFileInfo:  { flex:1, display:"flex", flexDirection:"column", gap:3, minWidth:0 },
-  batchFileName:  { fontSize:14, color:var(--c-text), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  batchFileMeta:  { fontSize:12, color:var(--c-textSub) },
+  batchFileName:  { fontSize:14, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  batchFileMeta:  { fontSize:12, color:"var(--c-textSub)" },
 };

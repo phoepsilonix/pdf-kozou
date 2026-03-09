@@ -182,16 +182,16 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.bpLog}>
           {batchProgress.done.map((d,i) => (
             <div key={i} style={s.bpLogRow}>
-              <span style={{color:var(--c-accent)}}>✓</span>
+              <span style={{color:"var(--c-accent)"}}>✓</span>
               <span style={s.bpLogFile}>{d.file}</span>
               <span style={s.bpLogMeta}>→ {d.count}ファイル</span>
             </div>
           ))}
           {batchProgress.errors.map((e,i) => (
             <div key={i} style={{...s.bpLogRow}}>
-              <span style={{color:var(--c-err)}}>✕</span>
+              <span style={{color:"var(--c-err)"}}>✕</span>
               <span style={s.bpLogFile}>{e.file}</span>
-              <span style={{...s.bpLogMeta, color:var(--c-err)}}>{e.msg}</span>
+              <span style={{...s.bpLogMeta, color:"var(--c-err)"}}>{e.msg}</span>
             </div>
           ))}
         </div>
@@ -219,16 +219,16 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.bpLog}>
           {batchProgress.done.map((d,i) => (
             <div key={i} style={s.bpLogRow}>
-              <span style={{color:var(--c-accent)}}>✓</span>
+              <span style={{color:"var(--c-accent)"}}>✓</span>
               <span style={s.bpLogFile}>{d.file}</span>
               <span style={s.bpLogMeta}>→ {d.count}ファイル</span>
             </div>
           ))}
           {batchProgress.errors.map((e,i) => (
             <div key={`e${i}`} style={s.bpLogRow}>
-              <span style={{color:var(--c-err)}}>✕</span>
+              <span style={{color:"var(--c-err)"}}>✕</span>
               <span style={s.bpLogFile}>{e.file}</span>
-              <span style={{...s.bpLogMeta, color:var(--c-err)}}>{e.msg}</span>
+              <span style={{...s.bpLogMeta, color:"var(--c-err)"}}>{e.msg}</span>
             </div>
           ))}
         </div>
@@ -254,7 +254,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
           ))}
           {result.files.length > 20 && (
-            <div style={{fontSize:12,color:var(--c-textDim),textAlign:"center",padding:8}}>
+            <div style={{fontSize:12,color:"var(--c-textDim)",textAlign:"center",padding:8}}>
               … 他 {result.files.length - 20} ファイル
             </div>
           )}
@@ -455,86 +455,86 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  root:      { display:"flex", flexDirection:"column", height:"100%", background:var(--c-bg), color:var(--c-text), fontFamily:F, overflow:"hidden" },
-  title:     { fontSize:15, fontWeight:700, color:var(--c-text) },
-  sub:       { fontSize:12, color:var(--c-textSub), maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  pageBadge: { padding:"2px 10px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:12, fontSize:11, color:var(--c-textSub) },
-  groupCount:{ fontSize:13, color:var(--c-accent), fontWeight:700 },
+  root:      { display:"flex", flexDirection:"column", height:"100%", background:"var(--c-bg)", color:"var(--c-text)", fontFamily:F, overflow:"hidden" },
+  title:     { fontSize:15, fontWeight:700, color:"var(--c-text)" },
+  sub:       { fontSize:12, color:"var(--c-textSub)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  pageBadge: { padding:"2px 10px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:12, fontSize:11, color:"var(--c-textSub)" },
+  groupCount:{ fontSize:13, color:"var(--c-accent)", fontWeight:700 },
 
   body:    { flex:1, display:"flex", overflow:"hidden" },
   panel:   { width:296, flexShrink:0, padding:"16px 18px", display:"flex", flexDirection:"column", gap:12, overflowY:"auto", borderRight:`1px solid var(--c-border)` },
 
-  secLabel:  { fontSize:11, color:var(--c-textSub), letterSpacing:"0.08em", textTransform:"uppercase" as const },
+  secLabel:  { fontSize:11, color:"var(--c-textSub)", letterSpacing:"0.08em", textTransform:"uppercase" as const },
   modeList:  { display:"flex", flexDirection:"column", gap:5 },
-  modeBtn:   { display:"flex", alignItems:"center", gap:11, padding:"11px 13px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:8, cursor:"pointer", fontFamily:F, color:var(--c-text), textAlign:"left" as const, transition:"all 0.1s" },
-  modeBtnOn: { borderColor:var(--c-accent), background:var(--c-accentBg) },
+  modeBtn:   { display:"flex", alignItems:"center", gap:11, padding:"11px 13px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:8, cursor:"pointer", fontFamily:F, color:"var(--c-text)", textAlign:"left" as const, transition:"all 0.1s" },
+  modeBtnOn: { borderColor:"var(--c-accent)", background:"var(--c-accentBg)" },
   modeIcon:  { fontSize:20, flexShrink:0 },
-  modeName:  { fontSize:13, fontWeight:600, color:var(--c-text) },
-  modeDesc:  { fontSize:11, color:var(--c-textSub) },
+  modeName:  { fontSize:13, fontWeight:600, color:"var(--c-text)" },
+  modeDesc:  { fontSize:11, color:"var(--c-textSub)" },
 
   numRow:    { display:"flex", alignItems:"center", gap:7 },
-  stepBtn:   { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:var(--c-text), fontFamily:F, flexShrink:0 },
-  numInput:  { width:80, padding:"8px 0", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-text), fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
-  numLabel:  { fontSize:12, color:var(--c-textSub) },
+  stepBtn:   { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:"var(--c-text)", fontFamily:F, flexShrink:0 },
+  numInput:  { width:80, padding:"8px 0", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
+  numLabel:  { fontSize:12, color:"var(--c-textSub)" },
 
   rangeRow:    { display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" as const },
-  rangeIdx:    { fontSize:11, color:var(--c-textDim), width:24, flexShrink:0 },
-  rangeInput:  { width:80, padding:"8px 4px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, color:var(--c-text), fontSize:26, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
-  rangeSep:    { fontSize:14, color:var(--c-textDim) },
-  rangeArrow:  { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:var(--c-text), fontFamily:F },
+  rangeIdx:    { fontSize:11, color:"var(--c-textDim)", width:24, flexShrink:0 },
+  rangeInput:  { width:80, padding:"8px 4px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", fontSize:26, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
+  rangeSep:    { fontSize:14, color:"var(--c-textDim)" },
+  rangeArrow:  { width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:"var(--c-text)", fontFamily:F },
   rangeSteps:  { display:"flex", gap:3 },
-  delBtn:      { width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"transparent", border:"none", color:var(--c-textDim), cursor:"pointer", fontSize:14, padding:0, fontFamily:F },
-  addBtn:      { padding:"8px 14px", background:"transparent", border:`1px dashed var(--c-borderHi)`, borderRadius:6, color:var(--c-textSub), cursor:"pointer", fontSize:12, fontFamily:F },
-  batchRangeNote: { padding:"9px 11px", background:"#1a2a1a", border:`1px solid #3a5a2a`, borderRadius:7, fontSize:11, color:var(--c-textSub), lineHeight:1.6 },
+  delBtn:      { width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", background:"transparent", border:"none", color:"var(--c-textDim)", cursor:"pointer", fontSize:14, padding:0, fontFamily:F },
+  addBtn:      { padding:"8px 14px", background:"transparent", border:`1px dashed var(--c-borderHi)`, borderRadius:6, color:"var(--c-textSub)", cursor:"pointer", fontSize:12, fontFamily:F },
+  batchRangeNote: { padding:"9px 11px", background:"#1a2a1a", border:`1px solid #3a5a2a`, borderRadius:7, fontSize:11, color:"var(--c-textSub)", lineHeight:1.6 },
 
   prefixRow:  { display:"flex", alignItems:"center", gap:6 },
-  textInput:  { flex:1, padding:"7px 9px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:6, color:var(--c-text), fontSize:13, fontFamily:F },
-  prefixSuffix:{ fontSize:11, color:var(--c-textDim), flexShrink:0 },
+  textInput:  { flex:1, padding:"7px 9px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:6, color:"var(--c-text)", fontSize:13, fontFamily:F },
+  prefixSuffix:{ fontSize:11, color:"var(--c-textDim)", flexShrink:0 },
   dirRow:     { display:"flex", gap:7 },
-  dirPath:    { flex:1, padding:"7px 9px", background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:6, color:var(--c-textSub), fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  dirPickBtn: { padding:"7px 14px", background:var(--c-bgCard), border:`1px solid var(--c-borderHi)`, borderRadius:6, color:var(--c-text), cursor:"pointer", fontSize:12, fontFamily:F, flexShrink:0 },
+  dirPath:    { flex:1, padding:"7px 9px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:6, color:"var(--c-textSub)", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  dirPickBtn: { padding:"7px 14px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:6, color:"var(--c-text)", cursor:"pointer", fontSize:12, fontFamily:F, flexShrink:0 },
 
   // バッチ進捗
   batchProgress: { flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18, padding:40 },
-  bpTitle:    { fontSize:16, fontWeight:700, color:var(--c-text) },
-  bpBar:      { width:"100%", maxWidth:480, height:8, background:var(--c-border), borderRadius:4, overflow:"hidden" },
-  bpFill:     { height:"100%", background:var(--c-accent), borderRadius:4, transition:"width 0.3s" },
-  bpCurrent:  { fontSize:13, color:var(--c-textSub) },
+  bpTitle:    { fontSize:16, fontWeight:700, color:"var(--c-text)" },
+  bpBar:      { width:"100%", maxWidth:480, height:8, background:"var(--c-border)", borderRadius:4, overflow:"hidden" },
+  bpFill:     { height:"100%", background:"var(--c-accent)", borderRadius:4, transition:"width 0.3s" },
+  bpCurrent:  { fontSize:13, color:"var(--c-textSub)" },
   bpLog:      { width:"100%", maxWidth:480, display:"flex", flexDirection:"column", gap:5, maxHeight:300, overflowY:"auto" },
-  bpLogRow:   { display:"flex", alignItems:"center", gap:10, padding:"6px 10px", background:var(--c-bgCard), borderRadius:6, border:`1px solid var(--c-border)` },
-  bpLogFile:  { flex:1, fontSize:12, color:var(--c-text), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  bpLogMeta:  { fontSize:11, color:var(--c-textSub) },
+  bpLogRow:   { display:"flex", alignItems:"center", gap:10, padding:"6px 10px", background:"var(--c-bgCard)", borderRadius:6, border:`1px solid var(--c-border)` },
+  bpLogFile:  { flex:1, fontSize:12, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  bpLogMeta:  { fontSize:11, color:"var(--c-textSub)" },
 
   // プレビューエリア
   preview:    { flex:1, display:"flex", flexDirection:"column", overflow:"hidden" },
-  previewHead:{ padding:"10px 18px", fontSize:12, color:var(--c-textSub), borderBottom:`1px solid var(--c-border)`, flexShrink:0, letterSpacing:"0.04em" },
+  previewHead:{ padding:"10px 18px", fontSize:12, color:"var(--c-textSub)", borderBottom:`1px solid var(--c-border)`, flexShrink:0, letterSpacing:"0.04em" },
 
   // バッチファイルリスト
   batchFileList: { flex:1, overflowY:"auto", display:"flex", flexDirection:"column", gap:0 },
   batchFileItem: { display:"flex", alignItems:"center", gap:14, padding:"12px 16px", borderBottom:`1px solid var(--c-border)`, cursor:"pointer", transition:"background 0.1s" },
-  batchFileItemOn: { background:var(--c-accentBg), borderLeft:`3px solid var(--c-accent)` },
+  batchFileItemOn: { background:"var(--c-accentBg)", borderLeft:`3px solid var(--c-accent)` },
   batchThumb:    { width:72, height:102, objectFit:"cover" as const, borderRadius:4, flexShrink:0 },
-  batchThumbPh:  { width:72, height:102, background:var(--c-border), borderRadius:4, flexShrink:0 },
+  batchThumbPh:  { width:72, height:102, background:"var(--c-border)", borderRadius:4, flexShrink:0 },
   batchFileInfo: { flex:1, display:"flex", flexDirection:"column", gap:5, minWidth:0 },
-  batchFileName: { fontSize:13, color:var(--c-text), overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  batchFileMeta: { fontSize:11, color:var(--c-textSub) },
+  batchFileName: { fontSize:13, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  batchFileMeta: { fontSize:11, color:"var(--c-textSub)" },
 
   // 単体グループプレビュー
   groupList:   { flex:1, overflowY:"auto", padding:14, display:"flex", flexDirection:"column", gap:8 },
-  group:       { background:var(--c-bgCard), border:`1px solid var(--c-border)`, borderRadius:9, overflow:"hidden" },
-  groupLabel:  { display:"flex", alignItems:"center", gap:9, padding:"7px 13px", borderBottom:`1px solid var(--c-border)`, background:var(--c-bg) },
-  groupNum:    { fontSize:12, fontWeight:700, color:var(--c-accent), minWidth:28 },
-  groupPages:  { fontSize:11, color:var(--c-textSub) },
-  groupRange:  { fontSize:11, color:var(--c-textDim), marginLeft:"auto" },
+  group:       { background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:9, overflow:"hidden" },
+  groupLabel:  { display:"flex", alignItems:"center", gap:9, padding:"7px 13px", borderBottom:`1px solid var(--c-border)`, background:"var(--c-bg)" },
+  groupNum:    { fontSize:12, fontWeight:700, color:"var(--c-accent)", minWidth:28 },
+  groupPages:  { fontSize:11, color:"var(--c-textSub)" },
+  groupRange:  { fontSize:11, color:"var(--c-textDim)", marginLeft:"auto" },
   groupThumbs: { display:"flex", gap:5, padding:"9px 11px", flexWrap:"wrap" as const },
-  groupMore:   { width:70, height:99, display:"flex", alignItems:"center", justifyContent:"center", background:var(--c-border), borderRadius:4, fontSize:12, color:var(--c-textSub) },
+  groupMore:   { width:70, height:99, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--c-border)", borderRadius:4, fontSize:12, color:"var(--c-textSub)" },
 
   // 結果
   resultBody:  { flex:1, display:"flex", flexDirection:"column", alignItems:"center", padding:28, gap:12, overflowY:"auto" },
-  resultIcon:  { fontSize:52, color:var(--c-accent) },
-  resultStat:  { fontSize:18, fontWeight:700, color:var(--c-text) },
-  resultDir:   { fontSize:12, color:var(--c-textSub) },
+  resultIcon:  { fontSize:52, color:"var(--c-accent)" },
+  resultStat:  { fontSize:18, fontWeight:700, color:"var(--c-text)" },
+  resultDir:   { fontSize:12, color:"var(--c-textSub)" },
   fileList:    { width:"100%", maxWidth:500, display:"flex", flexDirection:"column", gap:4 },
-  fileRow:     { display:"flex", alignItems:"center", gap:9, padding:"7px 11px", background:var(--c-bgCard), borderRadius:6, border:`1px solid var(--c-border)` },
-  fileName:    { fontSize:12, color:var(--c-text) },
+  fileRow:     { display:"flex", alignItems:"center", gap:9, padding:"7px 11px", background:"var(--c-bgCard)", borderRadius:6, border:`1px solid var(--c-border)` },
+  fileName:    { fontSize:12, color:"var(--c-text)" },
 };
