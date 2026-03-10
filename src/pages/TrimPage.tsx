@@ -167,7 +167,18 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       try {
         const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.pdf$/i, "")}_trimmed.pdf`;
 
-        await trimPdf(f.path, out, trimMargins, trimPages, extractSpec);  // ← Zustand の最新状態を使う
+      const request = {
+        input: f.Path,
+        output: out,
+        margins: trimMargins,
+        pages: trimPages,          // { type: "All" | "Even" | "Odd" | "Ranges", ranges?: [[start,end]] }
+        exclude_pages: undefined,  // "" なら undefined（全ページ）
+        extract_pages: extractSpec || undefined  // "" なら undefined（全ページ）
+      };
+      console.log("[DEBUG] trim_pdf に渡す payload:", request);
+      //const res = await trimPdf(request);
+        const res = await trimPdf(f.path, out, trimMargins, trimPages, undefined, extractSpec);  // ← Zustand の最新状態を使う
+      console.log("[DEBUG] trim_pdf 結果:", res);
         prog.done.push({ f: f.filename });
       } catch (e) {
         prog.errors.push({ f: f.filename, msg: String(e) });
@@ -370,18 +381,21 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       const outTmp = await getTempPath("trimmed_tmp.pdf");
 
       // JSON payload を作成
+      //   echo '{"cmd":"trim","input":"input.pdf","output":"/tmp/out.pdf","margins":{"left":0,"right":0,"top":140,"bottom":0},"pages":"2","exclude_pages":"","extract_pages":""}' | ./target/debug/pdf-kozou-core json
       const request = {
         input: filePath,
         output: outTmp,
         margins: trimMargins,
-        page_selection: trimPages,          // { type: "All" | "Even" | "Odd" | "Ranges", ranges?: [[start,end]] }
-        extract_spec: extractSpec || undefined  // "" なら undefined（全ページ）
+        pages: trimPages,          // { type: "All" | "Even" | "Odd" | "Ranges", ranges?: [[start,end]] }
+        exclude_pages: undefined,  // "" なら undefined（全ページ）
+        extract_pages: extractSpec || undefined  // "" なら undefined（全ページ）
       };
       console.log("[DEBUG] trim_pdf に渡す payload:", request);
-      const res = await trimPdf(request);
+      //const res = await trimPdf(request);
+      const res = await trimPdf(filePath, outTmp, trimMargins, trimPages, undefined, extractSpec);
       console.log("[DEBUG] trim_pdf 結果:", res);
-      const res2 = await trimPdf(filePath, outTmp, trimMargins, trimPages, extractSpec);  // ← Zustand の最新状態を使う
-      console.log("[DEBUG] trim_pdf 結果:", res2);
+      //const res2 = await trimPdf(filePath, outTmp, trimMargins, trimPages, selection.excludePages, extractSpec);  // ← Zustand の最新状態を使う
+      //console.log("[DEBUG] trim_pdf 結果:", res2);
       //filePath, outTmp, trimMargins, trimPages, extractSpec);
       
       // プレビュー用に結果画像を取得（任意で最大6ページ）

@@ -95,6 +95,7 @@ export async function trimPdf(
       margins: margins,
       unit:  "pt",
       pages: pages,
+      exclude_pages: undefined,
       extract_pages: extractPages,
     },
   });

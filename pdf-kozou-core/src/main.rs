@@ -103,6 +103,9 @@ enum Commands {
         /// 除外ページ (例: "2,4-6")。pagesで指定した範囲から除外
         #[arg(long)]
         exclude: Option<String>,
+        /// 抽出ページ (例: "2,4-6")。pagesで指定した範囲のみ
+        #[arg(long)]
+        extract: Option<String>,
     },
 
     /// PDF を圧縮・最適化
@@ -299,7 +302,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             }
         }
 
-        Commands::Trim { input, output, left, right, bottom, top, unit, pages, exclude } => {
+        Commands::Trim { input, output, left, right, bottom, top, unit, pages, exclude, extract } => {
             // 単位をptに変換
             let to_pt = match unit.to_lowercase().as_str() {
                 "pt"         => 1.0_f32,
@@ -309,6 +312,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             let mut page_sel = pages.as_deref().map(parse_page_selection).transpose()?;
             let mut exclude_page = exclude.as_deref().map(parse_page_selection).transpose()?;
+            let mut extract_page = extract.as_deref().map(parse_page_selection).transpose()?;
             println!("{:?} {:?}", page_sel.iter(), exclude_page);
             let req = pdf_kozou_core::trim::TrimRequest {
                 input,
@@ -321,8 +325,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 },
                 unit: "pt".to_string(),  // CLI側で変換済み
                 pages: page_sel,
-                extract_pages: None,
                 exclude_pages: exclude_page,
+                extract_pages: extract_page,
             };
             let resp = pdf_kozou_core::trim::trim(&req)?;
             println!("{}", serde_json::to_string(&resp)?);
