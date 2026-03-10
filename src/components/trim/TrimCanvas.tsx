@@ -7,7 +7,8 @@
 //   - Canvas は左上原点・Y軸下向き
 //   - PDF は左下原点・Y軸上向き → top/bottom は視覚的に反転しない (top=画面上側の余白)
 
-import { useRef, useEffect, useCallback, useState } from "react";
+//import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import type { TrimMargins } from "../../lib/tauri";
 
 interface Props {
@@ -29,7 +30,7 @@ const HANDLE_R   = 6;    // ハンドル半径px
 const MIN_PT     = 0;    // 最小余白 (pt) - スナップ時は0も許可
 const EDGE_HIT   = 10;   // エッジ判定幅px
 const SNAP_PX    = 10;   // スナップ閾値 (px) — ページ端に近づいたら吸着
-const SNAP_ZERO  = 0;    // スナップ先: 余白0 (ページ端)
+//const SNAP_ZERO  = 0;    // スナップ先: 余白0 (ページ端)
 
 export function TrimCanvas({
   pageImageB64, pageWidthPt, pageHeightPt,
@@ -46,7 +47,7 @@ export function TrimCanvas({
   // pt → px
   const toPx = (pt: number) => pt * scale;
   // px → pt (clamp >= MIN_PT)
-  const toPt = (px: number) => Math.max(MIN_PT, px / scale);
+  //const toPt = (px: number) => Math.max(MIN_PT, px / scale);
   // スナップ: 0に近ければ0にスナップ (ページ端吸着)
   const snapPt = (pt: number, maxPt: number) => {
     if (pt < SNAP_PX / scale) return 0;              // ページ端へスナップ

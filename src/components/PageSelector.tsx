@@ -2,7 +2,7 @@
 // 対応表記: "1-3,5,7-", "odd", "even", "-5" (末尾から5ページ), "all"
 
 import { useState, useCallback } from "react";
-import { getTheme } from "../lib/themes";
+//import { getTheme } from "../lib/themes";
 
 export interface PageSelectorProps {
   totalPages:  number;
@@ -22,7 +22,7 @@ function modeOf(v: string): Mode {
 }
 
 export function PageSelector({ totalPages, value, onChange, label, compact }: PageSelectorProps) {
-  const C = getTheme();
+  //const C = getTheme();
   const F = "'JetBrains Mono','Noto Sans JP',monospace";
   const mode = modeOf(value);
   const [rangeText, setRangeText] = useState(

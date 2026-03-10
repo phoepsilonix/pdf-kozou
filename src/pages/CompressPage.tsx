@@ -10,7 +10,8 @@ import {
   compressPdf, getTmpPath, renderPage,
   type CompressPreset, type CompressResponse, type PdfInfo,
 } from "../lib/tauri";
-import { C, F } from "../lib/theme";
+//import { C, F } from "../lib/theme";
+import { F } from "../lib/theme";
 
 interface Props {
   filePath:    string;
@@ -41,6 +42,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const [preset,      setPreset]      = useState<CompressPreset>("standard");
   const [fontSubset,  setFontSubset]  = useState(false);  // MuPDF 1.28: デフォルト無効
   const [result,  setResult]  = useState<CompressResponse | null>(null);
+  //const [setTmpFile] = useState("");     // プレビュー用一時ファイル
   const [tmpFile, setTmpFile] = useState("");     // プレビュー用一時ファイル
   const [preview, setPreview] = useState("");
   const [errMsg,  setErrMsg]  = useState("");
@@ -128,7 +130,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   }, [batchFiles, preset, outDir, pickDir]);
 
   // ═══════════════════════════════════ RENDER ══════════════════════════
-  const bg = "var(--c-bg)";
+  //const bg = "var(--c-bg)";
 
   // 処理中（単体）
   if (phase==="processing" && !isBatch) return (

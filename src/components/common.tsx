@@ -1,5 +1,6 @@
 // src/components/common.tsx — 共通 UI コンポーネント
-import { C, F } from "../lib/theme";
+//import { C, F } from "../lib/theme";
+import { F } from "../lib/theme";
 
 export function Spinner({ label }: { label?: string }) {
   return (

@@ -88,11 +88,39 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const rotate = (idx: number, delta: 90|-90) =>
     setRotations(r => r.map((v,i) => i===idx ? (v+delta+360)%360 : v));
 
+/*
   const applyGlobal = (deg: 0|90|180|270) => {
     setGlobalRot(deg);
     setRotations(new Array(n).fill(deg));
   };
   const resetAll = () => { setRotations(new Array(n).fill(0)); setGlobalRot(0); };
+*/
+// applyGlobal を以下のように修正
+const applyGlobal = (deg: 0|90|180|270) => {
+  setGlobalRot(deg);
+
+  setRotations(r => {
+    if (pageSpec.trim() === "" || pageSpec === "all") {
+      // 範囲指定なし → 全ページに適用
+      return new Array(r.length).fill(deg);
+    } else {
+      // 範囲指定あり → 指定範囲のみ適用
+      return r.map((v, i) => targetIndices.includes(i) ? deg : v);
+    }
+  });
+};
+
+// resetAll も同様に調整（範囲指定なしなら全リセット）
+const resetAll = () => {
+  setGlobalRot(0);
+  setRotations(r => {
+    if (pageSpec.trim() === "" || pageSpec === "all") {
+      return new Array(r.length).fill(0);
+    } else {
+      return r.map((v, i) => targetIndices.includes(i) ? 0 : v);
+    }
+  });
+};
 
   const targetIndices = pageSpec
     ? resolvePageSpec(pageSpec, n)
@@ -231,104 +259,150 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   );
 
   // ── 設定画面 ──────────────────────────────────────────────────────────────
-  return (
-    <div style={s.root}>
-      <PageHeader>
-        <span style={s.title}>回転{isBatch?` — ${batchFiles!.length}件バッチ`:""}</span>
-        {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
-        <span style={s.pageBadge}>{n}ページ</span>
-        <div style={{flex:1}}/>
-        {changedPages.length>0 && <span style={s.changeBadge}>{changedPages.length}ページ変更</span>}
-      </PageHeader>
+return (
+  <div style={s.root}>
+    <PageHeader>
+      <span style={s.title}>回転{isBatch ? ` — ${batchFiles!.length}件バッチ` : ""}</span>
+      {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
+      <span style={s.pageBadge}>{n}ページ</span>
+      <div style={{flex:1}}/>
+      {changedPages.length > 0 && <span style={s.changeBadge}>{changedPages.length}ページ変更</span>}
+    </PageHeader>
 
-      <div style={s.body}>
-        <div style={s.panel}>
-          {isBatch && (
-            <>
-              <div style={s.secLabel}>対象ファイル ({batchFiles!.length}件)</div>
-              <div style={s.fileList}>
-                {batchFiles!.map((f,i)=>(
-                  <button key={f.id} style={{...s.fileItem,...(i===batchIdx?s.fileItemOn:{})}}
-                    onClick={e=>{ setBatchIdx(i); (e.currentTarget as HTMLButtonElement).blur(); }}>
-                    {batchThumbs[i]
-                      ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={s.fileThumb} alt=""/>
-                      : <div style={s.fileThumbPh}/>}
-                    <div style={s.fileItemInfo}>
-                      <span style={s.fileItemName}>{f.filename}</span>
-                      <span style={s.fileItemMeta}>{f.pageCount}p</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+    {/* バッチモード時の上部ファイル選択リスト（前の提案通り） */}
+    {isBatch && (
+      <div style={s.batchFileSelector}>
+        <div style={s.secLabel}>対象ファイル ({batchFiles!.length}件)</div>
+        <div style={s.batchFileListHorizontal}>
+          {batchFiles!.map((f, i) => (
+            <button
+              key={f.id}
+              type="button"
+              style={{
+                ...s.batchFileCard,
+                ...(i === batchIdx ? s.batchFileCardActive : {})
+              }}
+              onClick={() => setBatchIdx(i)}
+            >
+              {batchThumbs[i] ? (
+                <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={s.batchCardThumb} alt="" />
+              ) : (
+                <div style={s.batchCardThumbPh} />
+              )}
+              <div style={s.batchCardName}>{f.filename}</div>
+              <div style={s.batchCardMeta}>{f.pageCount}p</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
 
-          <div style={s.secLabel}>一括回転</div>
+    <div style={s.body}>
+      {/* 左パネル（対象ページ・個別設定・出力など） */}
+      <div style={s.panel}>
+        <div style={s.secLabel}>対象ページ</div>
+        <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} compact />
+
+        <div style={s.secLabel}>個別設定</div>
+        <p style={s.hint}>各ページの ↺↻ ボタンで個別回転できます。</p>
+        <button style={s.resetBtn} onClick={resetAll}>選択範囲をリセット</button>
+
+        <div style={{flex:1}} />
+
+        {isBatch ? (
+          <>
+            <div style={s.secLabel}>出力フォルダ</div>
+            <div style={s.dirRow}>
+              <div style={s.dirPath} title={outDir}>{outDir || "（未選択）"}</div>
+              <button style={s.dirPickBtn} onClick={pickDir}>参照…</button>
+            </div>
+            <BtnPrimary onClick={handleExecuteBatch} disabled={changedPages.length === 0}>
+              {outDir ? `↻ ${batchFiles!.length}件まとめて回転` : "📁 出力先を選択して実行"}
+            </BtnPrimary>
+          </>
+        ) : (
+          <BtnPrimary onClick={handleExecuteSingle} disabled={changedPages.length === 0}>
+            {changedPages.length === 0 ? "回転なし" : `↻ ${changedPages.length}ページを回転して保存`}
+          </BtnPrimary>
+        )}
+      </div>
+
+      {/* 右側プレビューエリア */}
+      <div style={s.rightArea}>
+        {/* 一括回転ボタンをここに移動（プレビューを見ながら操作しやすい） */}
+        <div style={s.globalBtnsWrapper}>
+          <div style={s.secLabel}>一括回転（{pageSpec.trim() === "" ? "全ページ" : "選択範囲"}に適用）</div>
           <div style={s.globalBtns}>
-            {([0,90,180,270] as const).map(deg=>(
-              <button key={deg} style={{...s.globalBtn,...(globalRot===deg?s.globalBtnOn:{})}}
-                onClick={()=>applyGlobal(deg)}>
+            {([0, 90, 180, 270] as const).map(deg => (
+              <button
+                key={deg}
+                style={{
+                  ...s.globalBtn,
+                  ...(globalRot === deg ? s.globalBtnOn : {})
+                }}
+                onClick={() => applyGlobal(deg)}
+                title={`選択範囲を${deg === 0 ? "元に戻す" : deg + "°回転"}`}
+              >
                 <span style={s.rotIcon}>{rotIcon(deg)}</span>
-                <span>{deg===0?"元に戻す":`${deg}°`}</span>
+                <span>{deg === 0 ? "元に戻す" : `${deg}°`}</span>
               </button>
             ))}
           </div>
-
-          <div style={s.secLabel}>対象ページ</div>
-          <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} compact />
-
-          <div style={s.secLabel}>個別設定</div>
-          <p style={s.hint}>各ページの ↺↻ ボタンで個別回転できます。</p>
-          <button style={s.resetBtn} onClick={resetAll}>全てリセット</button>
-          <div style={{flex:1}}/>
-
-          {isBatch ? (
-            <>
-              <div style={s.secLabel}>出力フォルダ</div>
-              <div style={s.dirRow}>
-                <div style={s.dirPath} title={outDir}>{outDir||"（未選択）"}</div>
-                <button style={s.dirPickBtn} onClick={pickDir}>参照…</button>
-              </div>
-              <BtnPrimary onClick={handleExecuteBatch} disabled={changedPages.length===0}>
-                {outDir ? `↻ ${batchFiles!.length}件まとめて回転` : "📁 出力先を選択して実行"}
-              </BtnPrimary>
-            </>
-          ) : (
-            <BtnPrimary onClick={handleExecuteSingle} disabled={changedPages.length===0}>
-              {changedPages.length===0 ? "回転なし" : `↻ ${changedPages.length}ページを回転して保存`}
-            </BtnPrimary>
-          )}
         </div>
 
+        {/* ページグリッド（仮想化なしのまま、元のスタイル） */}
         <div style={s.grid}>
-          {Array.from({length:n}, (_,i) => {
-            const rot        = rotations[i] ?? 0;
-            const changed    = rot !== 0;
-            const inTarget   = targetIndices.includes(i);
-            const isLandscape = rot===90 || rot===270;
+          {Array.from({ length: n }, (_, i) => {
+            const rot = rotations[i] ?? 0;
+            const changed = rot !== 0;
+            const inTarget = targetIndices.includes(i);
+            const isLandscape = rot === 90 || rot === 270;
             const cardW = isLandscape ? 168 : 120;
             const cardH = isLandscape ? 120 : 168;
-            const imgW  = isLandscape ? 150 : 106;
-            const imgH  = isLandscape ? 106 : 150;
+            const imgW = isLandscape ? 150 : 106;
+            const imgH = isLandscape ? 106 : 150;
+
             return (
-              <div key={i} style={{
-                ...s.pageCard,
-                ...(changed ? s.pageCardChanged : {}),
-                ...(!inTarget ? s.pageCardDimmed : {}),
-                width: cardW,
-              }}>
-                <div style={{...s.pageImgWrap, width:cardW, height:cardH, overflow:"hidden", transition:"all 0.3s"}}>
-                  {thumbs[i]
-                    ? <img src={`data:image/jpeg;base64,${thumbs[i]}`}
-                           style={{width:imgW,height:imgH,objectFit:"contain",transform:`rotate(${rot}deg)`,transition:"transform 0.3s"}} alt="" />
-                    : <div style={{width:imgW,height:imgH,background:"var(--c-border)",borderRadius:3}}/>}
+              <div
+                key={i}
+                style={{
+                  ...s.pageCard,
+                  ...(changed ? s.pageCardChanged : {}),
+                  ...(!inTarget ? s.pageCardDimmed : {}),
+                  width: cardW,
+                }}
+              >
+                <div
+                  style={{
+                    ...s.pageImgWrap,
+                    width: cardW,
+                    height: cardH,
+                    overflow: "hidden",
+                    transition: "all 0.3s"
+                  }}
+                >
+                  {thumbs[i] ? (
+                    <img
+                      src={`data:image/jpeg;base64,${thumbs[i]}`}
+                      style={{
+                        width: imgW,
+                        height: imgH,
+                        objectFit: "contain",
+                        transform: `rotate(${rot}deg)`,
+                        transition: "transform 0.3s"
+                      }}
+                      alt=""
+                    />
+                  ) : (
+                    <div style={{ width: imgW, height: imgH, background: "var(--c-border)", borderRadius: 3 }} />
+                  )}
                 </div>
                 <div style={s.pageCardBottom}>
-                  <span style={s.pageNum}>p.{i+1}</span>
+                  <span style={s.pageNum}>p.{i + 1}</span>
                   {changed && <span style={s.rotBadge}>{rot}°</span>}
                   <div style={s.rotateBtns}>
-                    <button style={s.rotBtn} onClick={()=>rotate(i,-90)} title="左90°">↺</button>
-                    <button style={s.rotBtn} onClick={()=>rotate(i, 90)} title="右90°">↻</button>
+                    <button style={s.rotBtn} onClick={() => rotate(i, -90)} title="左90°">↺</button>
+                    <button style={s.rotBtn} onClick={() => rotate(i, 90)} title="右90°">↻</button>
                   </div>
                 </div>
               </div>
@@ -337,7 +411,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }
 
 function rotIcon(deg: number) {
@@ -399,4 +474,74 @@ const s: Record<string, React.CSSProperties> = {
   bpLog:     { width:"100%",maxWidth:440,display:"flex",flexDirection:"column",gap:5,maxHeight:260,overflowY:"auto" },
   bpRow:     { display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--c-bgCard)",borderRadius:6,border:`1px solid var(--c-border)` },
   bpFile:    { flex:1,fontSize:12,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" },
+  batchFileSelector: {
+  padding: "8px 16px",
+  borderBottom: "1px solid var(--c-border)",
+  background: "var(--c-bgCard)",
+  maxHeight: 140,
+  overflowY: "hidden",
+},
+batchFileListHorizontal: {
+  display: "flex",
+  flexDirection: "row",
+  gap: 12,
+  overflowX: "auto",
+  paddingBottom: 8,
+  scrollBehavior: "smooth",
+},
+batchFileCard: {
+  minWidth: 140,
+  width: 140,
+  padding: 8,
+  background: "var(--c-bg)",
+  border: "1px solid var(--c-border)",
+  borderRadius: 8,
+  cursor: "pointer",
+  textAlign: "center",
+  transition: "all 0.15s",
+},
+batchFileCardActive: {
+  borderColor: "var(--c-accent)",
+  background: "var(--c-accentBg)",
+  boxShadow: "0 0 0 3px var(--c-accentShadow)",
+},
+batchCardThumb: {
+  width: "100%",
+  height: 80,
+  objectFit: "contain",
+  borderRadius: 4,
+  marginBottom: 6,
+},
+batchCardThumbPh: {
+  width: "100%",
+  height: 80,
+  background: "var(--c-border)",
+  borderRadius: 4,
+  marginBottom: 6,
+},
+batchCardName: {
+  fontSize: 12,
+  fontWeight: 600,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+},
+batchCardMeta: {
+  fontSize: 11,
+  color: "var(--c-textSub)",
+},
+rightArea: {
+  flex: 1,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden"
+},
+globalBtnsWrapper: {
+  padding: "8px 16px",
+  borderBottom: "1px solid var(--c-border)",
+  background: "var(--c-bgCard)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 8
+},
 };

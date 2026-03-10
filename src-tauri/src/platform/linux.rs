@@ -7,20 +7,8 @@
 
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use crate::platform::ScreenInfo;
+use crate::platform::{ScreenInfo, DisplayServer};
                                                 
-// ── Display Server 種別 ──────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DisplayServer {
-    X11,
-    Wayland,
-    WaylandWithXWayland, // XWayland も利用可能
-    Headless,
-    Unknown,
-}
-
-/// 現在の Display Server を環境変数から確実に検出する。
 ///
 /// 検出順序:
 ///   1. WAYLAND_DISPLAY → Wayland (DISPLAY もあれば XWayland も利用可能)
@@ -201,7 +189,7 @@ pub fn setup_webkit_env() {
 }
 
 // ── スクリーン情報 ────────────────────────────────────────────────────────────
-
+/*
 /// 現在のスクリーン解像度を取得
 pub fn get_screen_info() -> ScreenInfo {
     let ds = detect_display_server();
@@ -243,3 +231,4 @@ fn get_wayland_screen_size() -> Option<(u32, u32, f64)> {
     // TODO: wayland-client を使った完全実装
     Some((1920, 1080, scale))
 }
+*/

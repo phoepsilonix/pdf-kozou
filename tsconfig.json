@@ -12,12 +12,17 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-//    "noUnusedLocals": true,
-//    "noUnusedParameters": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
+    //"noUnusedLocals": true,
+    //"noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src"]
+  "include": ["src"],
+"tauri": {
+    "bundle": {
+      "targets": "all"   // または省略（デフォルトall）
+    }
+  }
 }

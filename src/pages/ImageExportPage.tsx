@@ -5,8 +5,9 @@ import { invoke }   from "@tauri-apps/api/core";
 import { Spinner, ErrorView, ThumbCard, PageHeader, BtnBack, BtnPrimary } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { renderPage, exportImages, type PdfInfo, type ImageFormat } from "../lib/tauri";
-import { C, F } from "../lib/theme";
 import { PageSelector } from "../components/PageSelector";
+//import { C, F } from "../lib/theme";
+import { F } from "../lib/theme";
 
 interface Props {
   filePath:    string;

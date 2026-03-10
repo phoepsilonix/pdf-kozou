@@ -5,8 +5,9 @@ import { invoke }   from "@tauri-apps/api/core";
 import { Spinner, ErrorView, ThumbCard, PageHeader, BtnBack, BtnPrimary } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { renderPage, splitPdf, getPdfInfo, type SplitMode, type SplitResponse, type PdfInfo } from "../lib/tauri";
-import { C, F } from "../lib/theme";
-import { CompressPage } from "./CompressPage";
+//import { C, F } from "../lib/theme";
+import { F } from "../lib/theme";
+//import { CompressPage } from "./CompressPage";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
 

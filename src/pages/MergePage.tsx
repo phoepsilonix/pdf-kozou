@@ -6,7 +6,8 @@ import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { mergePdf, renderPage, getPdfInfo, getTempPath, type MergeResponse, type PdfInfo } from "../lib/tauri";
 import { CompressPage } from "./CompressPage";
-import { C, F } from "../lib/theme";
+//import { C, F } from "../lib/theme";
+import { F } from "../lib/theme";
 
 interface PdfEntry {
   id: number; path: string; filename: string;

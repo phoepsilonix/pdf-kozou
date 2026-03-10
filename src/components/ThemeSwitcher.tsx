@@ -1,6 +1,7 @@
 // src/components/ThemeSwitcher.tsx
 import { useState, useCallback } from "react";
-import { THEMES, getTheme, type ThemeId } from "../lib/themes";
+//import { THEMES, getTheme, type ThemeId } from "../lib/themes";
+import { THEMES, type ThemeId } from "../lib/themes";
 
 interface Props {
   currentId: ThemeId;
@@ -9,7 +10,7 @@ interface Props {
 
 export function ThemeSwitcher({ currentId, onChange }: Props) {
   const [open, setOpen] = useState(false);
-  const C = getTheme();
+  //const C = getTheme();
   const F = "'JetBrains Mono','Noto Sans JP',monospace";
   const cur = THEMES[currentId];
 

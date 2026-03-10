@@ -1,8 +1,8 @@
 // src-tauri/src/platform/mod.rs
 
-pub mod screen_info;  // ← 追加
-pub use screen_info::ScreenInfo;
-                                                
+pub mod screen_info;
+pub use screen_info::{ScreenInfo, DisplayServer};
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 
@@ -10,7 +10,7 @@ pub mod linux;
 pub use linux::{
     log_display_environment,
     open_pdf_dialog, open_pdfs_dialog, save_pdf_dialog, save_pdf_dialog_in,
-    pick_output_dir, setup_webkit_env, get_screen_info,
+    pick_output_dir, setup_webkit_env
 };
 
 #[cfg(all(desktop, not(target_os = "linux")))]
@@ -63,13 +63,3 @@ pub async fn pick_output_dir() -> Option<std::path::PathBuf> { None }
 pub fn setup_webkit_env() {}
 #[cfg(mobile)]
 pub fn log_display_environment() {}
-
-#[cfg(not(target_os = "linux"))]
-pub fn get_screen_info() -> crate::commands::platform::ScreenInfo {
-    crate::commands::platform::ScreenInfo {
-        display_server: "native".to_string(),
-        width:          1920,
-        height:         1080,
-        scale_factor:   1.0,
-    }
-}

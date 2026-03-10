@@ -4,7 +4,7 @@
 // すべて platform モジュール経由で xdg-desktop-portal を使わない実装を呼ぶ。
 
 use serde::{Deserialize, Serialize};
-use crate::platform:ScreenInfo;
+use crate::platform;
 
 /*
 #[derive(Serialize, Deserialize)]
@@ -16,24 +16,31 @@ pub struct ScreenInfoDto {
 }
 */
 /// スクリーン情報を返す (フロントエンドが HiDPI 対応に使用)
+use tauri::{Manager, Window};
+use crate::platform::{ScreenInfo, DisplayServer};
+
 #[tauri::command]
-pub async fn get_screen_info() -> Result<ScreenInfo, String> {
+pub async fn get_screen_info(window: Window) -> Result<ScreenInfo, String> {
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+
+    let monitor = window
+        .primary_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or("No primary monitor available".to_string())?;
+
+    let size = monitor.size();
+
+    // Linuxではネイティブ検出、それ以外はUnknown
     #[cfg(target_os = "linux")]
-    {
-        let info = platform::get_screen_info();
-        Ok(ScreenInfo {
-            display_server: format!("{:?}", info.display_server),
-            width: info.width,
-            height: info.height,
-            scale_factor: info.scale_factor,
-        })
-    }
+    let display_server = crate::platform::linux::detect_display_server();
     #[cfg(not(target_os = "linux"))]
+    let display_server = DisplayServer::Unknown;
+
     Ok(ScreenInfo {
-        display_server: "Native".to_string(),
-        width: 1920,
-        height: 1080,
-        scale_factor: 1.0,
+        display_server,
+        width: size.width as u32,
+        height: size.height as u32,
+        scale_factor: scale,
     })
 }
 
