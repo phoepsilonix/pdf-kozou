@@ -6,7 +6,7 @@ import { TrimControls }    from "../components/trim/TrimControls";
 import { CompressPage }    from "./CompressPage";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { useSaveDialog }   from "../hooks/useSaveDialog";
-import { renderPage, trimPdf, getPdfInfo, type TrimMargins, type PdfInfo } from "../lib/tauri";
+import { getTempPath, renderPage, trimPdf, getPdfInfo, type TrimMargins, type PdfInfo } from "../lib/tauri";
 import { resolvePageSpec } from "../components/PageSelector";
 import { C, F } from "../lib/theme";
 
@@ -25,93 +25,176 @@ type Phase = "edit" | "processing" | "result" | "error" | "compress" | "batchRes
 const zero = (): TrimMargins => ({ left:0, right:0, top:0, bottom:0 });
 
 export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
+  console.log("[TrimPage] コンポーネントマウント開始");
+  console.log("[TrimPage] isBatch:", !!batchFiles, "files length:", batchFiles?.length ?? 0);
+  console.log("[TrimPage] pdfInfo:", pdfInfo);
   const isBatch = (batchFiles?.length ?? 0) > 1;
-  if (isBatch) return <TrimPageBatch files={batchFiles!} firstPdfInfo={pdfInfo} />;
-  return <TrimPageSingle filePath={filePath} pdfInfo={pdfInfo} />;
+  if (isBatch) {
+	  console.log("[TrimPage] → バッチモードへ");
+	  return <TrimPageBatch files={batchFiles!} firstPdfInfo={pdfInfo} />;
+  } else {
+    console.log("[TrimPage] → 単体モードへ");
+    return <TrimPageSingle filePath={filePath} pdfInfo={pdfInfo} />;
+  }
+}
+
+// ページ指定を文字列に変換する関数（除外対応追加）
+function pageSelectionToString(selection: PageSelection, totalPages: number): string | undefined {
+  if (selection.type === "All") return undefined;
+
+  if (selection.type === "Even") return "even";
+  if (selection.type === "Odd") return "odd";
+
+  if (selection.type === "Ranges" && selection.ranges) {
+    // 通常の範囲指定
+    return selection.ranges
+      .map(([start, end]) => start === end ? start.toString() : `${start}-${end}`)
+      .join(",");
+  }
+
+  // 除外指定の場合（仮に selection に exclude フィールドを追加する場合の例）
+  // 実際には PageSelection に exclude を追加するか、別状態で管理
+  // 例: excludePages: number[] = [2,5] として全ページから除外
+  if (selection.excludePages && selection.excludePages.length > 0) {
+    const includeSet = new Set(Array.from({length: totalPages}, (_, i) => i + 1));
+    selection.excludePages.forEach(p => includeSet.delete(p));
+
+    const includeList = Array.from(includeSet).sort((a,b) => a - b);
+    if (includeList.length === 0) return undefined;  // 全除外なら全ページ？
+
+    // 連続範囲にまとめる（効率化）
+    const ranges: string[] = [];
+    let start = includeList[0];
+    let prev = start;
+    for (let i = 1; i < includeList.length; i++) {
+      if (includeList[i] !== prev + 1) {
+        ranges.push(start === prev ? start.toString() : `${start}-${prev}`);
+        start = includeList[i];
+      }
+      prev = includeList[i];
+    }
+    ranges.push(start === prev ? start.toString() : `${start}-${prev}`);
+    return ranges.join(",");
+  }
+
+  return undefined;
 }
 
 // ── バッチトリム ──────────────────────────────────────────────────────────────
-function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInfo:PdfInfo }) {
-  const { setError } = usePdfStore();
-  const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
-  const [trimPages,   setTrimPages]   = useState<any>({ type:"All" });
-  const [outDir,      setOutDir]      = useState("");
-  const [phase,       setPhase]       = useState<"edit"|"processing"|"result">("edit");
-  const [progress,    setProgress]    = useState<{ current:number; done:{f:string}[]; errors:{f:string;msg:string}[] }>
-    ({ current:0, done:[], errors:[] });
-  const [previewIdx,  setPreviewIdx]  = useState(0);
-  const [batchThumbs, setBatchThumbs] = useState<(string|undefined)[]>([]);
-  const [previewPage, setPreviewPage] = useState(0);
-  const [pageImage,   setPageImage]   = useState("");
-  const [curPageInfo, setCurPageInfo] = useState<PdfInfo|null>(null);
-  const [extractSpec,  setExtractSpec]  = useState("");   // ページ抽出 "" = 全ページ
-  const [trimPageSpec, setTrimPageSpec] = useState("");   // トリミング適用ページ範囲
+function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
+  const { 
+    trimMargins, 
+    setTrimMargins, 
+    trimPages, 
+    setTrimPages, 
+    setError 
+  } = usePdfStore();  // ← これを追加！ Zustand から取得
 
+  const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
+  const [progress, setProgress] = useState<{ current: number; done: { f: string }[]; errors: { f: string; msg: string }[] }>(
+    { current: 0, done: [], errors: [] }
+  );
+  const [previewIdx, setPreviewIdx] = useState(0);
+  const [previewPage, setPreviewPage] = useState(0);
+  const [pageImage, setPageImage] = useState("");
+  const [curPageInfo, setCurPageInfo] = useState<PdfInfo | null>(null);
+  const [extractSpec, setExtractSpec] = useState("");
+  const [trimPageSpec, setTrimPageSpec] = useState("");
+
+  const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
+  
+  const currentPage = firstPdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
+  const pageW = currentPage.w;
+  const pageH = currentPage.h;
+
+  // バッチ全体のサムネイル（先頭ページ）
   useEffect(() => {
+    usePdfStore.getState().resetTrimState();
     let cancelled = false;
     setBatchThumbs(new Array(files.length).fill(undefined));
     (async () => {
-      for (let i=0; i<files.length; i++) {
+      for (let i = 0; i < files.length; i++) {
         try {
           const b64 = await renderPage(files[i].path, 0, 56);
           if (cancelled) return;
-          setBatchThumbs(p => { const a=[...p]; a[i]=b64; return a; });
+          setBatchThumbs((p) => { const a = [...p]; a[i] = b64; return a; });
         } catch {}
       }
     })();
     return () => { cancelled = true; };
   }, [files]);
 
+  // プレビュー対象ファイルの情報 + 画像取得
   useEffect(() => {
     const path = files[previewIdx]?.path;
     if (!path) return;
+
     let cancelled = false;
-    setCurPageInfo(null);
-    getPdfInfo(path).then(info => { if (!cancelled) setCurPageInfo(info); }).catch(()=>{});
+
+    // PDF情報取得
+    getPdfInfo(path)
+      .then((info) => { if (!cancelled) setCurPageInfo(info); })
+      .catch(() => {});
+
+    // プレビュー画像（現在のプレビューページ）
     setPageImage("");
     renderPage(path, previewPage, PREVIEW_DPI)
-      .then(b64 => { if (!cancelled) setPageImage(b64); })
+      .then((b64) => { if (!cancelled) setPageImage(b64); })
       .catch(() => {});
+
     return () => { cancelled = true; };
   }, [files, previewIdx, previewPage]);
 
   const pickDir = useCallback(async () => {
-    const dir = await invoke<string|null>("pick_output_dir").catch(()=>null);
-    if (dir) setOutDir(dir);
+    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+    if (dir) {
+      // 必要なら lastSaveDir を Zustand に保存
+      usePdfStore.getState().setLastSaveDir(dir);
+    }
   }, []);
 
   const handleExecute = useCallback(async () => {
-    if (!outDir) { await pickDir(); return; }
-    setPhase("processing");
-    const prog = { current:0, done:[] as any[], errors:[] as any[] };
-    setProgress({...prog});
-    for (let i=0; i<files.length; i++) {
-      const f = files[i];
-      prog.current = i+1;
-      setProgress({...prog});
-      try {
-        const out = `${outDir}/${f.filename.replace(/\.pdf$/i,"")}_trimmed.pdf`;
-        await trimPdf(f.path, out, trimMargins, trimPages);
-        prog.done.push({ f:f.filename });
-      } catch (e) {
-        prog.errors.push({ f:f.filename, msg:String(e) });
-      }
-      setProgress({...prog});
+    if (!usePdfStore.getState().lastSaveDir) {
+      await pickDir();
+      return;
     }
-    setPhase("result");
-  }, [files, outDir, trimMargins, trimPages, pickDir]);
 
-  // 処理中
+    setPhase("processing");
+    const prog = { current: 0, done: [] as { f: string }[], errors: [] as { f: string; msg: string }[] };
+    setProgress({ ...prog });
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      prog.current = i + 1;
+      setProgress({ ...prog });
+
+      try {
+        const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.pdf$/i, "")}_trimmed.pdf`;
+
+        await trimPdf(f.path, out, trimMargins, trimPages, extractSpec);  // ← Zustand の最新状態を使う
+        prog.done.push({ f: f.filename });
+      } catch (e) {
+        prog.errors.push({ f: f.filename, msg: String(e) });
+      }
+      setProgress({ ...prog });
+    }
+
+    setPhase("result");
+  }, [files, trimMargins, trimPages, pickDir]);
+
+  // 処理中画面
   if (phase === "processing") {
     const pct = progress.current / files.length * 100;
     return (
       <div style={b.center}>
         <div style={b.title}>トリミング中… {progress.current}/{files.length}</div>
-        <div style={b.barWrap}><div style={{...b.bar, width:`${pct}%`}}/></div>
+        <div style={b.barWrap}>
+          <div style={{ ...b.bar, width: `${pct}%` }} />
+        </div>
         <div style={b.log}>
-          {progress.done.map((d,i)=>(
+          {progress.done.map((d, i) => (
             <div key={i} style={b.logRow}>
-              <span style={{color:"var(--c-accent)"}}>✓</span>
+              <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={b.logFile}>{d.f}</span>
             </div>
           ))}
@@ -120,213 +203,217 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
     );
   }
 
-  // 完了
+  // 結果画面
   if (phase === "result") {
     return (
       <div style={b.center}>
-        <span style={{fontSize:56,color:progress.errors.length?"var(--c-warn)":"var(--c-accent)"}}>
-          {progress.errors.length?"⚠":"✓"}
+        <span style={{ fontSize: 56, color: progress.errors.length ? "var(--c-warn)" : "var(--c-accent)" }}>
+          {progress.errors.length ? "⚠" : "✓"}
         </span>
         <div style={b.title}>バッチトリミング完了 — {progress.done.length}件</div>
-        <div style={{fontSize:12,color:"var(--c-textSub)"}}>{outDir}</div>
+        <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{usePdfStore.getState().lastSaveDir}</div>
         <div style={b.log}>
-          {progress.done.map((d,i)=>(
-            <div key={i} style={b.logRow}><span style={{color:"var(--c-accent)"}}>✓</span><span style={b.logFile}>{d.f}</span></div>
+          {progress.done.map((d, i) => (
+            <div key={i} style={b.logRow}>
+              <span style={{ color: "var(--c-accent)" }}>✓</span>
+              <span style={b.logFile}>{d.f}</span>
+            </div>
           ))}
-          {progress.errors.map((e,i)=>(
-            <div key={`e${i}`} style={{...b.logRow,background:"var(--c-errBg)",borderColor:"var(--c-errBd)"}}>
-              <span style={{color:"var(--c-err)"}}>✕</span>
+          {progress.errors.map((e, i) => (
+            <div
+              key={`e${i}`}
+              style={{
+                ...b.logRow,
+                background: "var(--c-errBg)",
+                borderColor: "var(--c-errBd)",
+              }}
+            >
+              <span style={{ color: "var(--c-err)" }}>✕</span>
               <span style={b.logFile}>{e.f}</span>
-              <span style={{fontSize:10,color:"var(--c-err)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.msg}</span>
+              <span style={{ fontSize: 10, color: "var(--c-err)" }}>{e.msg}</span>
             </div>
           ))}
         </div>
-        <button style={b.backBtn} onClick={e=>{ setPhase("edit"); (e.currentTarget as HTMLButtonElement).blur(); }}>← 設定に戻る</button>
+        <button
+          style={b.backBtn}
+          onClick={() => {
+            setPhase("edit");
+          }}
+        >
+          ← 設定に戻る
+        </button>
       </div>
     );
   }
 
-  const curFile  = files[previewIdx];
+  // 編集画面
+  const curFile = files[previewIdx];
   const curPages = curFile?.pageCount ?? 1;
+  const curW = curPageInfo?.pages[previewPage]?.w ?? 595;
+  const curH = curPageInfo?.pages[previewPage]?.h ?? 842;
 
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--c-bg)",color:"var(--c-text)",fontFamily:F,overflow:"hidden"}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 20px",borderBottom:`1px solid var(--c-border)`,flexShrink:0}}>
-        <span style={{fontSize:16,fontWeight:700}}>トリミング — {files.length}件バッチ</span>
-        <span style={{fontSize:13,color:"var(--c-textSub)"}}>同じ余白設定を全ファイルに適用</span>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--c-bg)", color: "var(--c-text)", fontFamily: F, overflow: "hidden" }}>
+      {/* ヘッダー */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: `1px solid var(--c-border)`, flexShrink: 0 }}>
+        <span style={{ fontSize: 16, fontWeight: 700 }}>トリミング — {files.length}件バッチ</span>
+        <span style={{ fontSize: 13, color: "var(--c-textSub)" }}>同じ余白設定を全ファイルに適用</span>
       </div>
 
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+      {/* 本体 */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* 左: ファイル一覧 */}
-        <div style={{width:172,flexShrink:0,borderRight:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{padding:"8px 12px",fontSize:11,color:"var(--c-textDim)",borderBottom:`1px solid var(--c-border)`,background:"var(--c-bgCard)"}}>
+        <div style={{ width: 172, flexShrink: 0, borderRight: `1px solid var(--c-border)`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--c-textDim)", borderBottom: `1px solid var(--c-border)`, background: "var(--c-bgCard)" }}>
             プレビュー対象
           </div>
-          <div style={{flex:1,overflowY:"auto"}}>
-            {files.map((f,i) => (
-              <button key={f.id}
-                style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",background:i===previewIdx?"var(--c-accentBg)":"transparent",border:"none",borderBottom:`1px solid var(--c-border)`,cursor:"pointer",fontFamily:F,width:"100%",textAlign:"left" as const, borderLeft: i===previewIdx?`3px solid var(--c-accent)`:"3px solid transparent"}}
-                onClick={()=>{setPreviewIdx(i);setPreviewPage(0);}}>
-                {batchThumbs[i]
-                  ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={{width:44,maxHeight:62,objectFit:"contain" as const,background:"var(--c-bg)",borderRadius:3,flexShrink:0}} alt=""/>
-                  : <div style={{width:36,height:50,background:"var(--c-border)",borderRadius:3,flexShrink:0}}/>}
-                <div style={{flex:1,display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
-                  <span style={{fontSize:12,color:"var(--c-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.filename}</span>
-                  <span style={{fontSize:10,color:"var(--c-textSub)"}}>{f.pageCount}ページ</span>
-                </div>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {files.map((f, i) => (
+              <button
+                key={f.id}
+                style={{
+                  ...s.thumb,
+                  ...(previewIdx === i ? s.thumbOn : {}),
+                }}
+                onClick={() => setPreviewIdx(i)}
+              >
+                {batchThumbs[i] ? (
+                  <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={s.thumbImg} alt="" />
+                ) : (
+                  <div style={s.thumbPh} />
+                )}
+                <span style={s.thumbN}>{f.filename}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* 中: キャンバス */}
-        <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column",alignItems:"center",padding:"20px 12px",gap:12}}>
-          {pageImage ? (
-            <TrimCanvas
-              pageImageB64={pageImage}
-              pageWidthPt={curPageInfo?.pages[previewPage]?.w ?? 595}
-              pageHeightPt={curPageInfo?.pages[previewPage]?.h ?? 842}
-              margins={trimMargins}
-              onChange={setTrimMargins}
-              displayWidth={CANVAS_W}
-            />
-          ) : (
-            <div style={{width:CANVAS_W,height:400,background:"var(--c-bgCard)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--c-textDim)"}}>
-              読み込み中…
-            </div>
-          )}
-          <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,justifyContent:"center"}}>
-            {Array.from({length:Math.min(curPages,8)},(_,i)=>(
-              <button key={i}
-                style={{padding:"5px 10px",background:i===previewPage?"var(--c-accentBg)":"var(--c-bgCard)",border:`1px solid ${i===previewPage?"var(--c-accent)":"var(--c-border)"}`,borderRadius:5,color:i===previewPage?"var(--c-accent)":"var(--c-textSub)",cursor:"pointer",fontSize:13,fontFamily:F}}
-                onClick={e=>{ setPreviewPage(i); (e.currentTarget as HTMLButtonElement).blur(); }}>
-                p.{i+1}
-              </button>
-            ))}
+        {/* 中央: キャンバス */}
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "16px 20px", gap: 12 }}>
+          <div style={s.canvasWrap}>
+            {pageImage ? (
+              <TrimCanvas
+                pageImageB64={pageImage}
+                pageWidthPt={curW}
+                pageHeightPt={curH}
+                margins={trimMargins}          // ← Zustand から
+                onChange={setTrimMargins}      // ← Zustand に更新
+                displayWidth={CANVAS_W}
+              />
+            ) : (
+              <div style={s.ph}>ページ読み込み中...</div>
+            )}
           </div>
-        </div>
+        </main>
 
-        {/* 右: コントロール + フォルダ出力 */}
-        <div style={{width:290,flexShrink:0,borderLeft:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{flex:1,overflow:"auto"}}>
-            <TrimControls
-              margins={trimMargins}
-              pageW={curPageInfo?.pages[previewPage]?.w ?? 595}
-              pageH={curPageInfo?.pages[previewPage]?.h ?? 842}
-              pages={trimPages}
-	      totalPages={curPageInfo?.page_count ?? 1}               // ← 追加：PDFの総ページ数
-              onMargins={setTrimMargins}
-              onPages={setTrimPages}
-              onApply={()=>{}} onReset={()=>setTrimMargins(zero())}
-              processing={false}
-	      // 欠けていた5つを追加
-              trimPageSpec={trimPageSpec}
-              onTrimPageSpec={setTrimPageSpec}
-              extractSpec={extractSpec}
-              onExtract={setExtractSpec}                          // または別ハンドラ関数
-            />
-          </div>
-          <div style={{padding:"14px 16px",borderTop:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",gap:10,flexShrink:0}}>
-            <div style={{fontSize:12,color:"var(--c-textDim)"}}>出力フォルダ</div>
-            <div style={{display:"flex",gap:7}}>
-              <div style={{flex:1,padding:"8px 10px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:6,fontSize:12,color:"var(--c-textSub)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                {outDir||"（未選択）"}
-              </div>
-              <button style={{padding:"8px 13px",background:"var(--c-bgCard)",border:`1px solid var(--c-borderHi)`,borderRadius:6,color:"var(--c-text)",cursor:"pointer",fontSize:12,fontFamily:F,flexShrink:0}}
-                onClick={pickDir}>参照…</button>
-            </div>
-            <button
-              style={{padding:"13px 0",background:outDir?"var(--c-accentBg)":"var(--c-bgCard)",border:`1px solid ${outDir?"var(--c-accentBd)":"var(--c-border)"}`,borderRadius:8,color:outDir?"var(--c-accent)":"var(--c-textDim)",cursor:"pointer",fontWeight:700,fontSize:15,fontFamily:F}}
-              onClick={handleExecute}>
-              {outDir ? `✂ ${files.length}件まとめてトリミング` : "📁 出力先を選択して実行"}
-            </button>
-          </div>
-        </div>
+        {/* 右: コントロール */}
+        <aside style={s.panel}>
+          <TrimControls
+            margins={trimMargins}
+            pageW={curW}
+            pageH={curH}
+            pages={trimPages}
+            totalPages={curPages}
+            onMargins={setTrimMargins}
+            onPages={setTrimPages}
+            onApply={handleExecute}
+            onReset={() => setTrimMargins(zero())}
+            processing={phase !== "edit"}
+            trimPageSpec={trimPageSpec}
+            onTrimPageSpec={setTrimPageSpec}
+            extractSpec={extractSpec}
+            onExtract={setExtractSpec}
+          />
+        </aside>
       </div>
     </div>
   );
 }
 
 // ── 単体トリム ────────────────────────────────────────────────────────────────
-function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInfo }) {
-  const { trimMargins, trimPages, setTrimMargins, setTrimPages, previewPage, setPreviewPage, setError } = usePdfStore();
+export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
+  // Zustand から状態を直接取得・更新
+  const {
+    trimMargins,
+    trimPages,
+    setTrimMargins,
+    setTrimPages,
+    previewPage,
+    setPreviewPage,
+    setError,
+  } = usePdfStore();
+
+  const [phase, setPhase] = useState<Phase>("edit");
+  const [pageImage, setPageImage] = useState("");
+  const [savedPath, setSavedPath] = useState("");
+  const [errMsg, setErrMsg] = useState("");
+  const [extractSpec,  setExtractSpec]  = useState("");
+  const [isSaving,     setIsSaving]     = useState(false);
+  const [resultImgs, setResultImgs] = useState<string[]>([]);
+  const [trimPageSpec, setTrimPageSpec] = useState("");
+  const [outTmp] = useState("");
+
   const { pickSave } = useSaveDialog();
 
-  const [phase,        setPhase]        = useState<Phase>("edit");
-  const [pageImage,    setPageImage]    = useState("");
-  const [thumbImages,  setThumbImages]  = useState<(string|undefined)[]>([]);
-  const [resultImages, setResultImages] = useState<string[]>([]);
-  const [trimmedTmp,   setTrimmedTmp]   = useState("");
-  const [isSaving,     setIsSaving]     = useState(false);
-  const [errMsg,       setErrMsg]       = useState("");
-  const [extractSpec,  setExtractSpec]  = useState("");   // ページ抽出 "" = 全ページ
-  const [trimPageSpec, setTrimPageSpec] = useState("");   // トリミング適用ページ範囲
+  const currentPage = pdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
+  const pageW = currentPage.w;
+  const pageH = currentPage.h;
 
-  const currentPage = pdfInfo.pages[previewPage] ?? pdfInfo.pages[0];
-  const pageW = currentPage?.w ?? 595;
-  const pageH = currentPage?.h ?? 842;
-
+  // プレビューページ変更時に画像を再取得
   useEffect(() => {
-    setPhase("edit"); setResultImages([]); setErrMsg(""); setTrimmedTmp(""); setTrimMargins(zero());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath]);
-
-  useEffect(() => {
-    if (phase !== "edit") return;
-    let cancelled = false;
-    setPageImage("");
-    renderPage(filePath, previewPage, PREVIEW_DPI).then(b64 => { if (!cancelled) setPageImage(b64); }).catch(e => setError(String(e)));
-    return () => { cancelled = true; };
-  }, [filePath, previewPage, phase, setError]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setThumbImages([]);
-    (async () => {
-      for (let i=0; i<pdfInfo.page_count; i++) {
-        try {
-          const b64 = await renderPage(filePath, i, THUMB_DPI);
-          if (cancelled) return;
-          setThumbImages(prev => { const a=[...prev]; a[i]=b64; return a; });
-        } catch {}
-      }
-    })();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath, pdfInfo.page_count]);
-
-  const handlePageSelect = useCallback((idx: number) => {
-    setPreviewPage(idx); setTrimMargins(zero());
-  }, [setPreviewPage, setTrimMargins]);
+    //usePdfStore.getState().resetTrimState();
+    renderPage(filePath, previewPage, PREVIEW_DPI)
+      .then(setPageImage)
+      .catch(() => setPageImage(""));
+  }, [filePath, previewPage]);
 
   const handleExecute = useCallback(async () => {
-    setPhase("processing"); setErrMsg("");
+    setPhase("processing");
+    setResultImgs([]);
     try {
-      const tmp = await invoke<string>("get_tmp_path", { filename:"kozou_trim_preview.pdf" });
-      const ep = extractSpec ? resolvePageSpec(extractSpec, pdfInfo.page_count).map(i => i+1) : undefined;
-      await trimPdf(filePath, tmp, trimMargins, trimPages, ep);
-      const previews: string[] = [];
-      for (let i=0; i<Math.min(pdfInfo.page_count,4); i++) {
-        try { previews.push(await renderPage(tmp, i, RESULT_DPI)); } catch { previews.push(""); }
+      const outTmp = await getTempPath("trimmed_tmp.pdf");
+
+      // JSON payload を作成
+      const request = {
+        input: filePath,
+        output: outTmp,
+        margins: trimMargins,
+        page_selection: trimPages,          // { type: "All" | "Even" | "Odd" | "Ranges", ranges?: [[start,end]] }
+        extract_spec: extractSpec || undefined  // "" なら undefined（全ページ）
+      };
+      console.log("[DEBUG] trim_pdf に渡す payload:", request);
+      const res = await trimPdf(request);
+      console.log("[DEBUG] trim_pdf 結果:", res);
+      const res2 = await trimPdf(filePath, outTmp, trimMargins, trimPages, extractSpec);  // ← Zustand の最新状態を使う
+      console.log("[DEBUG] trim_pdf 結果:", res2);
+      //filePath, outTmp, trimMargins, trimPages, extractSpec);
+      
+      // プレビュー用に結果画像を取得（任意で最大6ページ）
+      const n = Math.min(6, pdfInfo.page_count);
+      const imgs: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const b64 = await renderPage(outTmp, i, RESULT_DPI);
+        imgs.push(b64);
       }
-      setResultImages(previews); setTrimmedTmp(tmp); setPhase("result");
+      setResultImgs(imgs);  // 必要なら状態追加
+      setSavedPath(outTmp);
+      setPhase("result");
     } catch (e) {
-      const msg = String(e); setErrMsg(msg); setPhase("error"); setError(msg);
+      console.error("[ERROR] trimPdf エラー:", e);
+      setErrMsg(String(e));
+      setPhase("error");
+      setError(String(e));
     }
   }, [filePath, trimMargins, trimPages, extractSpec, pdfInfo.page_count, setError]);
 
-  const handleSave = useCallback(async () => {
-    const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
-    const savePath = await pickSave(`${base}_trimmed.pdf`);
-    if (!savePath) return;
-    setIsSaving(true);
-    try {
-      const ep2 = extractSpec ? resolvePageSpec(extractSpec, pdfInfo.page_count).map(i => i+1) : undefined;
-      await trimPdf(filePath, savePath, trimMargins, trimPages, ep2);
+  const handleSave = async () => {
+    const saved = await pickSave(savedPath, {
+      defaultName: filePath.replace(/\.pdf$/i, "_trimmed.pdf"),
+    });
+    if (saved) {
+      setSavedPath(saved);
     }
-    catch (e) { setError(String(e)); }
-    finally { setIsSaving(false); }
-  }, [filePath, trimMargins, trimPages, extractSpec, pickSave, setError]);
+  };
 
   if (phase === "processing") return (
     <div style={s.center}>
@@ -345,33 +432,47 @@ function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInf
   );
 
   if (phase === "compress") return (
-    <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={trimmedTmp||undefined} onDone={()=>setPhase("result")}/>
+    <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={outTmp||undefined} onDone={()=>setPhase("result")}/>
   );
 
   if (phase === "result") return (
-    <ResultView images={resultImages} pageCount={pdfInfo.page_count}
-      onSave={handleSave} onBack={()=>{setPhase("edit");setResultImages([]);setErrMsg("");}}
+    <ResultView images={resultImgs} pageCount={pdfInfo.page_count}
+      onSave={handleSave} onBack={()=>{setPhase("edit");setResultImgs([]);setErrMsg("");}}
       onCompress={()=>setPhase("compress")} isSaving={isSaving}/>
   );
 
   return (
     <div style={s.root}>
-      <aside style={s.sidebar}>
-        <div style={s.sbHead}>
-          <span style={s.sbTitle}>ページ</span>
-          <span style={s.sbCount}>{pdfInfo.page_count}枚</span>
-        </div>
-        <div style={s.thumbList}>
-          {Array.from({length:pdfInfo.page_count}, (_,i) => (
-            <button key={i} style={{...s.thumb,...(previewPage===i?s.thumbOn:{})}} onClick={()=>handlePageSelect(i)}>
-              {thumbImages[i]
-                ? <img src={`data:image/jpeg;base64,${thumbImages[i]}`} style={s.thumbImg} alt=""/>
-                : <div style={s.thumbPh}/>}
-              <span style={s.thumbN}>{i+1}</span>
-            </button>
-          ))}
-        </div>
-      </aside>
+<div style={s.sidebar}>
+  <div style={s.sbHead}>
+    <span style={s.sbTitle}>ページ一覧</span>
+    <span style={s.sbCount}>{pdfInfo.page_count} ページ</span>
+  </div>
+  <div style={s.thumbList}>
+    {Array.from({ length: pdfInfo.page_count }, (_, i) => (
+      <button
+        key={i}
+        style={{
+          ...s.thumb,
+          ...(previewPage === i ? s.thumbOn : {}),
+        }}
+        onClick={() => setPreviewPage(i)}
+      >
+        {/* ここで thumbImages を使わず、pageImage をプレビューとして表示（またはサムネイルを別途ロード） */}
+        {i === previewPage && pageImage ? (
+          <img
+            src={`data:image/jpeg;base64,${pageImage}`}
+            style={s.thumbImg}
+            alt={`Page ${i + 1}`}
+          />
+        ) : (
+          <div style={s.thumbPh}>ページ {i + 1}</div>
+        )}
+        <span style={s.thumbN}>{i + 1}</span>
+      </button>
+    ))}
+  </div>
+</div>
 
       <main style={s.main}>
         <div style={s.mainHead}>
@@ -379,24 +480,43 @@ function TrimPageSingle({ filePath, pdfInfo }: { filePath:string; pdfInfo:PdfInf
           <span style={s.pageInd}>{previewPage+1} / {pdfInfo.page_count} ページ</span>
         </div>
         <div style={s.canvasWrap}>
-          {pageImage
-            ? <TrimCanvas pageImageB64={pageImage} pageWidthPt={pageW} pageHeightPt={pageH}
-                margins={trimMargins} onChange={setTrimMargins} displayWidth={CANVAS_W}/>
-            : <div style={{...s.ph, width:CANVAS_W, height:Math.round(CANVAS_W*pageH/pageW)}}>
+          {pageImage ? (
+	        <TrimCanvas
+                  pageImageB64={pageImage}
+                  pageWidthPt={pageW}
+                  pageHeightPt={pageH}
+                  margins={trimMargins}
+                  onChange={setTrimMargins}  // Zustand に直接更新
+                  displayWidth={CANVAS_W}
+                />
+
+	  ) : (
+	      <div style={{...s.ph, width:CANVAS_W, height:Math.round(CANVAS_W*pageH/pageW)}}>
                 <div style={s.spinner}/>
                 <span style={s.centSub}>読み込み中…</span>
-              </div>}
+              </div>
+	  )}
         </div>
       </main>
 
-      <aside style={s.panel}>
-        <TrimControls margins={trimMargins} pageW={pageW} pageH={pageH} pages={trimPages}
-          totalPages={pdfInfo.page_count}
-          onMargins={setTrimMargins} onPages={setTrimPages}
-          onApply={handleExecute} onReset={()=>setTrimMargins(zero())} processing={false}
-          trimPageSpec={trimPageSpec} onTrimPageSpec={setTrimPageSpec}
-          extractSpec={extractSpec} onExtract={setExtractSpec}/>
-      </aside>
+          <aside style={s.panel}>
+            <TrimControls
+              margins={trimMargins}
+              pageW={pageW}
+              pageH={pageH}
+              pages={trimPages}
+              totalPages={pdfInfo.page_count}
+	      onMargins={setTrimMargins}     // Zustand 更新
+              onPages={setTrimPages}         // Zustand 更新
+              onApply={handleExecute}
+              onReset={() => setTrimMargins(zero())}
+              processing={phase !== "edit"}
+              trimPageSpec={trimPageSpec}
+              onTrimPageSpec={setTrimPageSpec}
+              extractSpec={extractSpec}
+              onExtract={setExtractSpec}
+            />
+          </aside>
     </div>
   );
 }

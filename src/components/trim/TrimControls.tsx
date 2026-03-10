@@ -3,7 +3,7 @@
 
 import { useCallback } from "react";
 import type { TrimMargins, PageSelection } from "../../lib/tauri";
-import { PageSelector } from "../PageSelector";
+import { PageSelector, resolvePageSpec } from "../PageSelector";
 import { F } from "../../lib/theme";
 
 interface Props {
@@ -47,9 +47,45 @@ export function TrimControls({
   }, [margins, onMargins]);
 
   const trimW = toMm(pageW - margins.left - margins.right);
-  const trimH = toMm(pageH - margins.top  - margins.bottom);
+  const trimH = toMm(pageH - margins.top - margins.bottom);
   const origW = toMm(pageW);
   const origH = toMm(pageH);
+
+  // PageSelector の onChange で PageSelection を生成し、onPages に渡す
+const handlePageSelectionChange = (spec: string) => {
+  console.log("[DEBUG] PageSelector onChange 呼ばれました:", spec);  // ← これで反応確認
+  let selection: PageSelection;
+  if (spec === "" || spec.toLowerCase() === "all") {
+    selection = { type: "All" };
+  } else if (spec.toLowerCase() === "even") {
+    selection = { type: "Even" };
+  } else if (spec.toLowerCase() === "odd") {
+    selection = { type: "Odd" };
+  } else {
+    // 範囲指定の場合
+    const indices = resolvePageSpec(spec, totalPages);
+    console.log("[DEBUG] resolved indices:", indices);
+    if (indices.length > 0) {
+      const ranges: [number, number][] = [];
+      let start = indices[0] + 1; // 1-based
+      let prev = start;
+      for (let i = 1; i < indices.length; i++) {
+        const curr = indices[i] + 1;
+        if (curr !== prev + 1) {
+          ranges.push([start, prev]);
+          start = curr;
+        }
+        prev = curr;
+      }
+      ranges.push([start, prev]);
+      selection = { type: "Ranges", ranges };
+    }
+  }
+
+  onPages(selection);
+  onTrimPageSpec(spec);
+  console.log("[DEBUG] onPages 呼び出し完了:", selection);
+};
 
   return (
     <div style={s.panel}>
@@ -84,28 +120,24 @@ export function TrimControls({
         </div>
       </section>
 
-      {/* トリミング適用ページ */}
+      {/* トリミング適用ページ - PageSelector に置き換え */}
       <section style={s.section}>
         <h3 style={s.heading}>トリミング適用ページ</h3>
-        <div style={s.chips}>
-          {PAGE_OPTS.map(o => (
-            <button key={o.label}
-              style={{ ...s.chip, ...(pages.type === o.value.type ? s.chipOn : {}) }}
-              onClick={() => onPages(o.value)}
-            >{o.label}</button>
-          ))}
-        </div>
-        {/* 範囲指定 */}
         <PageSelector
           totalPages={totalPages}
           value={trimPageSpec}
-          onChange={onTrimPageSpec}
+          onChange={(newSpec) => {
+		  onTrimPageSpec(newSpec);        // 文字列更新
+		  handlePageSelectionChange(newSpec);  // PageSelection に変換して onPages 呼び出し
+		  console.log("[TrimControls] レンダリング！ onTrimPageSpec が存在するか？", typeof onTrimPageSpec === "function" ? "はい（関数）" : "×（未定義）");
+          }}
+
           compact
-          label="ページ範囲"
+          label="ページ範囲 (all/even/odd/1-5,7)"
         />
       </section>
 
-      {/* ページ抽出 (トリミングとは独立) */}
+      {/* ページ抽出 (出力に含めるページ) - そのまま */}
       <section style={s.section}>
         <h3 style={s.heading}>ページ抽出 <span style={s.headingOpt}>（オプション）</span></h3>
         <p style={s.hint2}>トリミング後に残すページを指定。空欄=全ページ保持。</p>
@@ -183,7 +215,7 @@ const s: Record<string, React.CSSProperties> = {
     color:"var(--c-textSub)", cursor:"pointer", fontSize:12,
     fontFamily:F, transition:"all 0.12s",
   },
-  chipOn: { background:"var(--c-accentBg)", borderColor:"var(--c-accentBd)", color:"var(--c-accent)" },
+  chipOn: { background:"var(--c-accentBg)", border:"1px solid var(--c-accentBd)", color:"var(--c-accent)" },
 
   actions:    { display:"flex", gap:8 },
   btnReset:   { padding:"10px 14px", background:"transparent", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-textSub)", cursor:"pointer", fontFamily:F, fontSize:13 },

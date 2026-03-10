@@ -92,15 +92,10 @@ export async function trimPdf(
     request: {
       input:   inputPath,
       output:  outputPath,
-      margins: {
-        left:   margins.left,
-        right:  margins.right,
-        bottom: margins.bottom,
-        top:    margins.top,
-      },
+      margins: margins,
       unit:  "pt",
-      pages: pages.type === "All" ? null : pages,
-      extract_pages: (extractPages && extractPages.length > 0) ? extractPages : null,
+      pages: pages,
+      extract_pages: extractPages,
     },
   });
 }

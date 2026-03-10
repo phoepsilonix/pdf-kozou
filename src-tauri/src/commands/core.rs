@@ -86,6 +86,14 @@ pub async fn render_page(
 
 #[tauri::command]
 pub async fn trim_pdf(request: Value) -> Result<Value> {
+    // request に page_selection と extract_spec を追加で受け取る
+    // 例: {
+    //   "input": "/path/to/input.pdf",
+    //   "output": "/path/to/output.pdf",
+    //   "margins": { "left": 10.0, "right": 10.0, "top": 10.0, "bottom": 10.0 },
+    //   "page_selection": { "type": "Ranges", "ranges": [[1,3], [5,5]] },
+    //   "extract_spec": "1-10,12"   // 出力に残すページ（オプション）
+    // }
     call_core_json("trim", request).await
 }
 

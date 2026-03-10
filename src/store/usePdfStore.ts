@@ -47,6 +47,7 @@ interface PdfStore {
   setProcessing: (v: boolean) => void;
   lastError:     string | null;
   setError:      (e: string | null) => void;
+  resetTrimState: () => void;
 }
 
 export const usePdfStore = create<PdfStore>((set) => ({
@@ -96,4 +97,12 @@ export const usePdfStore = create<PdfStore>((set) => ({
   setProcessing: (v) => set({ isProcessing: v }),
   lastError:     null,
   setError:      (e) => set({ lastError: e }),
+
+  resetTrimState: () => set({
+    trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
+    trimPages: { type: "All" },
+    trimPageSpec: "All",  // もし追加済みなら
+    extractSpec: "All",   // 抽出もリセット
+  }),
+
 }));
