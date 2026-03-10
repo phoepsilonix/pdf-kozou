@@ -82,15 +82,11 @@ function pageSelectionToString(selection: PageSelection, totalPages: number): st
 
 // ── バッチトリム ──────────────────────────────────────────────────────────────
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
-  const { 
-    trimMargins, 
-    setTrimMargins, 
-    trimPages, 
-    setTrimPages, 
-    setError 
-  } = usePdfStore();  // ← これを追加！ Zustand から取得
-
-  const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
+  const { setError } = usePdfStore();
+  const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
+  const [trimPages,   setTrimPages]   = useState<any>({ type:"All" });
+  const [outDir,      setOutDir]      = useState("");
+  const [phase,       setPhase]       = useState<"edit"|"processing"|"result">("edit");
   const [progress, setProgress] = useState<{ current: number; done: { f: string }[]; errors: { f: string; msg: string }[] }>(
     { current: 0, done: [], errors: [] }
   );
