@@ -11,7 +11,8 @@ import { ViewerPage }      from "./pages/ViewerPage";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo }    from "./lib/tauri";
 import { invoke }          from "@tauri-apps/api/core";
-import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
+//import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
+import { C, F, setTheme, loadThemeId, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
 import { ThemeSwitcher }   from "./components/ThemeSwitcher";
 import type { ThemeId }    from "./lib/themes";
 
@@ -145,7 +146,16 @@ export default function App() {
     return (
       <ToolShell key={themeId}
         activeTool={activeTool} toolFiles={toolFiles}
-        filePath={filePath??""} pdfInfo={pdfInfo??{page_count:0,pages:[]}}
+        filePath={filePath??""} // 修正後（全フィールドを埋める）
+pdfInfo={
+  pdfInfo ?? {
+    page_count: 0,
+    pdf_version: "1.7",      // 仮の値（実際のPDFがない場合のダミー値）
+    encrypted: false,
+    linearized: false,
+    pages: [],               // 空配列でOK（PageBounds[]）
+  }
+}
         onHome={handleHome}
         onToolChange={handleToolChange} isBatch={isBatch}
         themeId={themeId} onThemeChange={handleThemeChange}

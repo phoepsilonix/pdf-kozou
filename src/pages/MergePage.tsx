@@ -136,7 +136,22 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
       const tmp = await getTempPath("kozou_merge_tmp.pdf");
       const res = await mergePdf(entries.map(e => e.path), tmp);
       setResult(res);
-      setMergedInfo({ page_count: res.page_count, pages: Array.from({length:res.page_count},()=>({w:595,h:842,rotate:0,x:0,y:0})) });
+      //setMergedInfo({ page_count: res.page_count, pages: Array.from({length:res.page_count},()=>({w:595,h:842,rotate:0,x:0,y:0})) });
+// 修正後（全フィールド追加）
+setMergedInfo({
+  page_count: res.page_count,
+  pdf_version: "1.7",           // 仮値（マージ後のバージョンとして適当なものを）
+  encrypted: false,
+  linearized: false,
+  pages: Array.from({length: res.page_count}, () => ({
+    w: 595,
+    h: 842,
+    rotate: 0,
+    x: 0,
+    y: 0
+    // PageBounds に他に必須フィールドがあれば追加
+  }))
+});
       setTmpMergedPath(tmp);
       setPhase("compress");
     } catch (e) {

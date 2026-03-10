@@ -1,5 +1,8 @@
 // src-tauri/src/platform/mod.rs
 
+pub mod screen_info;  // ← 追加
+pub use screen_info::ScreenInfo;
+                                                
 #[cfg(target_os = "linux")]
 pub mod linux;
 

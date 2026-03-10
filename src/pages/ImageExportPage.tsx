@@ -1,6 +1,6 @@
 // src/pages/ImageExportPage.tsx — 単体 & バッチ対応
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke }   from "@tauri-apps/api/core";
 import { Spinner, ErrorView, ThumbCard, PageHeader, BtnBack, BtnPrimary } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
@@ -267,7 +267,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               📁 ファイルごとにサブフォルダを作成して出力します
             </div>
           )}
-
           <div style={s.secLabel}>出力フォルダ</div>
           <div style={s.dirRow}>
             <div style={s.dirPath} title={outDir}>{outDir||"（未選択）"}</div>
@@ -290,9 +289,20 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div style={s.previewHead}>対象ファイル — {batchFiles!.length}件</div>
               <div style={s.batchFileList}>
                 {batchFiles!.map((f,i)=>(
-                  <div key={f.id}
-                    style={{...s.batchFileItem,...(i===previewIdx?s.batchFileItemOn:{})}}
-                    onClick={e=>{ setPreviewIdx(i); (e.currentTarget as HTMLButtonElement).blur(); }}>
+                  <button key={f.id} type="button"
+                    style={{...s.batchFileItem,...(i===previewIdx?s.batchFileItemOn:{}),
+        appearance: 'none',
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        textAlign: 'left',
+        width: '100%',          // 推奨: リスト項目として横幅を広げる
+        outline: 'none',        // フォーカス時の枠を消す（任意）
+		    }}
+                    onClick={e=>{
+			    const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+			    setPreviewIdx(i); itemRefs.current[i]?.blur(); }}>
                     {batchThumbs[i]
                       ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={s.batchThumb} alt=""/>
                       : <div style={s.batchThumbPh}/>}
@@ -301,7 +311,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       <span style={s.batchFileMeta}>{f.pageCount}ページ</span>
                       <span style={s.batchFileMeta}>→ {f.pageCount}枚の{format === "jpeg" ? "JPG" : format.toUpperCase()}</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </>

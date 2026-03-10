@@ -7,7 +7,8 @@
 
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-
+use crate::platform::ScreenInfo;
+                                                
 // ── Display Server 種別 ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -200,14 +201,6 @@ pub fn setup_webkit_env() {
 }
 
 // ── スクリーン情報 ────────────────────────────────────────────────────────────
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ScreenInfo {
-    pub display_server: DisplayServer,
-    pub width: u32,
-    pub height: u32,
-    pub scale_factor: f64,
-}
 
 /// 現在のスクリーン解像度を取得
 pub fn get_screen_info() -> ScreenInfo {

@@ -4,8 +4,9 @@
 // すべて platform モジュール経由で xdg-desktop-portal を使わない実装を呼ぶ。
 
 use serde::{Deserialize, Serialize};
-use crate::platform;
+use crate::platform:ScreenInfo;
 
+/*
 #[derive(Serialize, Deserialize)]
 pub struct ScreenInfoDto {
     pub display_server: String,
@@ -13,14 +14,14 @@ pub struct ScreenInfoDto {
     pub height: u32,
     pub scale_factor: f64,
 }
-
+*/
 /// スクリーン情報を返す (フロントエンドが HiDPI 対応に使用)
 #[tauri::command]
-pub async fn get_screen_info() -> Result<ScreenInfoDto, String> {
+pub async fn get_screen_info() -> Result<ScreenInfo, String> {
     #[cfg(target_os = "linux")]
     {
         let info = platform::get_screen_info();
-        Ok(ScreenInfoDto {
+        Ok(ScreenInfo {
             display_server: format!("{:?}", info.display_server),
             width: info.width,
             height: info.height,
@@ -28,7 +29,7 @@ pub async fn get_screen_info() -> Result<ScreenInfoDto, String> {
         })
     }
     #[cfg(not(target_os = "linux"))]
-    Ok(ScreenInfoDto {
+    Ok(ScreenInfo {
         display_server: "Native".to_string(),
         width: 1920,
         height: 1080,

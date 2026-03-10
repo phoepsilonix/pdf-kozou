@@ -355,7 +355,8 @@ function StatCard({ label, val, accent }: { label:string; val:string; accent?:bo
     </div>
   );
 }
-function PRow({ label, val }: { label:string; val:string }) {
+//function PRow({ label, val }: { label:string; val:string }) {
+function PRow({ label, val }: { label: string; val: string | React.ReactNode }) {
   return (
     <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid var(--c-border)`,fontSize:12}}>
       <span style={{color:"var(--c-textDim)"}}>{label}</span>

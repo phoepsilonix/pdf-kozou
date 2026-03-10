@@ -42,7 +42,7 @@ export function PageHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function BtnBack({ onClick }: { onClick: () => void }) {
+export function BtnBack({ onClick }: { onClick: (e: React.MouseEvent<HTMLButtonElement>) => void }) {
   return (
     <button onClick={onClick}
       style={{ padding:"6px 16px", background:"transparent",

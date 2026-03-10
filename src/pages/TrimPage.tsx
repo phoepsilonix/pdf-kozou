@@ -44,6 +44,8 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
   const [previewPage, setPreviewPage] = useState(0);
   const [pageImage,   setPageImage]   = useState("");
   const [curPageInfo, setCurPageInfo] = useState<PdfInfo|null>(null);
+  const [extractSpec,  setExtractSpec]  = useState("");   // ページ抽出 "" = 全ページ
+  const [trimPageSpec, setTrimPageSpec] = useState("");   // トリミング適用ページ範囲
 
   useEffect(() => {
     let cancelled = false;
@@ -212,10 +214,16 @@ function TrimPageBatch({ files, firstPdfInfo }: { files:FileEntry[]; firstPdfInf
               pageW={curPageInfo?.pages[previewPage]?.w ?? 595}
               pageH={curPageInfo?.pages[previewPage]?.h ?? 842}
               pages={trimPages}
+	      totalPages={curPageInfo?.page_count ?? 1}               // ← 追加：PDFの総ページ数
               onMargins={setTrimMargins}
               onPages={setTrimPages}
               onApply={()=>{}} onReset={()=>setTrimMargins(zero())}
               processing={false}
+	      // 欠けていた5つを追加
+              trimPageSpec={trimPageSpec}
+              onTrimPageSpec={setTrimPageSpec}
+              extractSpec={extractSpec}
+              onExtract={setExtractSpec}                          // または別ハンドラ関数
             />
           </div>
           <div style={{padding:"14px 16px",borderTop:`1px solid var(--c-border)`,display:"flex",flexDirection:"column",gap:10,flexShrink:0}}>
