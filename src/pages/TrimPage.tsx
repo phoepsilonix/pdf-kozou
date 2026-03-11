@@ -7,7 +7,6 @@ import { CompressPage }    from "./CompressPage";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { useSaveDialog }   from "../hooks/useSaveDialog";
 import { getTempPath, renderPage, trimPdf, getPdfInfo, type TrimMargins, type PdfInfo } from "../lib/tauri";
-import { resolvePageSpec } from "../components/PageSelector";
 import { C, F } from "../lib/theme";
 
 interface Props {
@@ -25,8 +24,6 @@ type Phase = "edit" | "processing" | "result" | "error" | "compress" | "batchRes
 const zero = (): TrimMargins => ({ left:0, right:0, top:0, bottom:0 });
 
 export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
-  console.log("[TrimPage] コンポーネントマウント開始");
-  console.log("[TrimPage] isBatch:", !!batchFiles, "files length:", batchFiles?.length ?? 0);
   console.log("[TrimPage] pdfInfo:", pdfInfo);
   const isBatch = (batchFiles?.length ?? 0) > 1;
   if (isBatch) {
@@ -38,53 +35,11 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
   }
 }
 
-// ページ指定を文字列に変換する関数（除外対応追加）
-function pageSelectionToString(selection: PageSelection, totalPages: number): string | undefined {
-  if (selection.type === "All") return undefined;
-
-  if (selection.type === "Even") return "even";
-  if (selection.type === "Odd") return "odd";
-
-  if (selection.type === "Ranges" && selection.ranges) {
-    // 通常の範囲指定
-    return selection.ranges
-      .map(([start, end]) => start === end ? start.toString() : `${start}-${end}`)
-      .join(",");
-  }
-
-  // 除外指定の場合（仮に selection に exclude フィールドを追加する場合の例）
-  // 実際には PageSelection に exclude を追加するか、別状態で管理
-  // 例: excludePages: number[] = [2,5] として全ページから除外
-  if (selection.excludePages && selection.excludePages.length > 0) {
-    const includeSet = new Set(Array.from({length: totalPages}, (_, i) => i + 1));
-    selection.excludePages.forEach(p => includeSet.delete(p));
-
-    const includeList = Array.from(includeSet).sort((a,b) => a - b);
-    if (includeList.length === 0) return undefined;  // 全除外なら全ページ？
-
-    // 連続範囲にまとめる（効率化）
-    const ranges: string[] = [];
-    let start = includeList[0];
-    let prev = start;
-    for (let i = 1; i < includeList.length; i++) {
-      if (includeList[i] !== prev + 1) {
-        ranges.push(start === prev ? start.toString() : `${start}-${prev}`);
-        start = includeList[i];
-      }
-      prev = includeList[i];
-    }
-    ranges.push(start === prev ? start.toString() : `${start}-${prev}`);
-    return ranges.join(",");
-  }
-
-  return undefined;
-}
-
 // ── バッチトリム ──────────────────────────────────────────────────────────────
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
   const { setError } = usePdfStore();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
-  const [trimPages,   setTrimPages]   = useState<any>({ type:"All" });
+  const [trimPages,   setTrimPages]   = useState("", "all","odd","even","range");
   const [outDir,      setOutDir]      = useState("");
   const [phase,       setPhase]       = useState<"edit"|"processing"|"result">("edit");
   const [progress, setProgress] = useState<{ current: number; done: { f: string }[]; errors: { f: string; msg: string }[] }>(
@@ -94,8 +49,8 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [previewPage, setPreviewPage] = useState(0);
   const [pageImage, setPageImage] = useState("");
   const [curPageInfo, setCurPageInfo] = useState<PdfInfo | null>(null);
-  const [extractSpec, setExtractSpec] = useState("");
-  const [trimPageSpec, setTrimPageSpec] = useState("");
+  const [excludeSpec, setExclude] = useState("", "all","odd","even","range");
+  const [extractSpec, setExtract] = useState("", "all","odd","even","range");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   
@@ -105,7 +60,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 
   // バッチ全体のサムネイル（先頭ページ）
   useEffect(() => {
-    usePdfStore.getState().resetTrimState();
+    //usePdfStore.getState().resetTrimState();
     let cancelled = false;
     setBatchThumbs(new Array(files.length).fill(undefined));
     (async () => {
@@ -167,17 +122,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       try {
         const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.pdf$/i, "")}_trimmed.pdf`;
 
-      const request = {
-        input: f.Path,
-        output: out,
-        margins: trimMargins,
-        pages: trimPages,          // { type: "All" | "Even" | "Odd" | "Ranges", ranges?: [[start,end]] }
-        exclude_pages: undefined,  // "" なら undefined（全ページ）
-        extract_pages: extractSpec || undefined  // "" なら undefined（全ページ）
-      };
-      console.log("[DEBUG] trim_pdf に渡す payload:", request);
+      console.log("[DEBUG] trim_pdf in out margin pages exclude extract: ", f.path, out, trimMargins, trimPages, excludeSpec, extractSpec);
       //const res = await trimPdf(request);
-        const res = await trimPdf(f.path, out, trimMargins, trimPages, undefined, extractSpec);  // ← Zustand の最新状態を使う
+      const res = await trimPdf(f.path, out, trimMargins, trimPages, excludeSpec, extractSpec);
       console.log("[DEBUG] trim_pdf 結果:", res);
         prog.done.push({ f: f.filename });
       } catch (e) {
@@ -319,17 +266,17 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             margins={trimMargins}
             pageW={curW}
             pageH={curH}
-            pages={trimPages}
+            trimPages={trimPages}
             totalPages={curPages}
             onMargins={setTrimMargins}
             onPages={setTrimPages}
             onApply={handleExecute}
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
-            trimPageSpec={trimPageSpec}
-            onTrimPageSpec={setTrimPageSpec}
+            excludeSpec={excludeSpec}
+            onExclude={setExclude}
             extractSpec={extractSpec}
-            onExtract={setExtractSpec}
+            onExtract={setExtract}
           />
         </aside>
       </div>
@@ -342,9 +289,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   // Zustand から状態を直接取得・更新
   const {
     trimMargins,
-    trimPages,
     setTrimMargins,
-    setTrimPages,
     previewPage,
     setPreviewPage,
     setError,
@@ -354,11 +299,12 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [pageImage, setPageImage] = useState("");
   const [savedPath, setSavedPath] = useState("");
   const [errMsg, setErrMsg] = useState("");
-  const [extractSpec,  setExtractSpec]  = useState("");
   const [isSaving,     setIsSaving]     = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
-  const [trimPageSpec, setTrimPageSpec] = useState("");
   const [outTmp] = useState("");
+  const [trimPages, setTrimPages] = useState("", "all","odd","even","range");
+  const [excludeSpec, setExclude] = useState("", "all","odd","even","range");
+  const [extractSpec, setExtract] = useState("", "all","odd","even","range");
 
   const { pickSave } = useSaveDialog();
 
@@ -380,23 +326,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     try {
       const outTmp = await getTempPath("trimmed_tmp.pdf");
 
-      // JSON payload を作成
-      //   echo '{"cmd":"trim","input":"input.pdf","output":"/tmp/out.pdf","margins":{"left":0,"right":0,"top":140,"bottom":0},"pages":"2","exclude_pages":"","extract_pages":""}' | ./target/debug/pdf-kozou-core json
-      const request = {
-        input: filePath,
-        output: outTmp,
-        margins: trimMargins,
-        pages: trimPages,          // { type: "All" | "Even" | "Odd" | "Ranges", ranges?: [[start,end]] }
-        exclude_pages: undefined,  // "" なら undefined（全ページ）
-        extract_pages: extractSpec || undefined  // "" なら undefined（全ページ）
-      };
-      console.log("[DEBUG] trim_pdf に渡す payload:", request);
-      //const res = await trimPdf(request);
-      const res = await trimPdf(filePath, outTmp, trimMargins, trimPages, undefined, extractSpec);
+      console.log("[DEBUG] trim_pdf {:?} {:?} {:?} {:?} {:?} {:?}", filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
+      const res = await trimPdf(filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
       console.log("[DEBUG] trim_pdf 結果:", res);
-      //const res2 = await trimPdf(filePath, outTmp, trimMargins, trimPages, selection.excludePages, extractSpec);  // ← Zustand の最新状態を使う
-      //console.log("[DEBUG] trim_pdf 結果:", res2);
-      //filePath, outTmp, trimMargins, trimPages, extractSpec);
       
       // プレビュー用に結果画像を取得（任意で最大6ページ）
       const n = Math.min(6, pdfInfo.page_count);
@@ -514,17 +446,17 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               margins={trimMargins}
               pageW={pageW}
               pageH={pageH}
-              pages={trimPages}
               totalPages={pdfInfo.page_count}
 	      onMargins={setTrimMargins}     // Zustand 更新
+              trimPages={trimPages}
               onPages={setTrimPages}         // Zustand 更新
               onApply={handleExecute}
               onReset={() => setTrimMargins(zero())}
               processing={phase !== "edit"}
-              trimPageSpec={trimPageSpec}
-              onTrimPageSpec={setTrimPageSpec}
+              excludeSpec={excludeSpec}
+              onExclude={setExclude}
               extractSpec={extractSpec}
-              onExtract={setExtractSpec}
+              onExtract={setExtract}
             />
           </aside>
     </div>

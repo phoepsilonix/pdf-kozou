@@ -97,13 +97,15 @@ enum Commands {
         /// 単位指定: mm (デフォルト) | pt | cm | in
         #[arg(long, default_value = "mm")]
         unit: String,
-        /// 対象ページ (例: "1,3,5-10")。省略時は全ページ
+        /// トリミング対象ページ (例: "1,3,5-10,all,odd,even")。省略時は全ページ。
         #[arg(long)]
         pages: Option<String>,
-        /// 除外ページ (例: "2,4-6")。pagesで指定した範囲から除外
+        /// 除外ページ (例:
+        /// "2,4-6,all,odd,even")。pagesで指定した範囲からトリミングを除外。省略時は対象ページすべてにトリミング適用。
         #[arg(long)]
         exclude: Option<String>,
-        /// 抽出ページ (例: "2,4-6")。pagesで指定した範囲のみ
+        /// 抽出ページ (例:
+        /// "2,4-6,all,odd,even")。トリミング無関係に、特定ページのみ残す指定。省略時はすべて残す。
         #[arg(long)]
         extract: Option<String>,
     },
@@ -242,7 +244,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let page_spec = match page.as_deref() {
                 None          => PageSpec::Omitted,
                 Some("all")   => PageSpec::All,
-                Some(s)       => PageSpec::Indices(parse_render_pages(s)?),
+                Some(s)       => PageSpec::Indices(parse_string_pages(s)?),
             };
 
             match (page_spec, out_dir) {
@@ -303,6 +305,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Trim { input, output, left, right, bottom, top, unit, pages, exclude, extract } => {
+
             // 単位をptに変換
             let to_pt = match unit.to_lowercase().as_str() {
                 "pt"         => 1.0_f32,
@@ -310,10 +313,11 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 "in" | "inch"=> 72.0,
                 _            => 2.83465,  // mm (デフォルト)
             };
-            let mut page_sel = pages.as_deref().map(parse_page_selection).transpose()?;
-            let mut exclude_page = exclude.as_deref().map(parse_page_selection).transpose()?;
-            let mut extract_page = extract.as_deref().map(parse_page_selection).transpose()?;
-            println!("{:?} {:?}", page_sel.iter(), exclude_page);
+
+            let trim_page = pages.as_deref().map(parse_page_selection).transpose()?;
+            let exclude_page = exclude.as_deref().map(parse_page_selection).transpose()?;
+            let extract_page = extract.as_deref().map(parse_page_selection).transpose()?;
+            println!("{:?} {:?} {:?}", trim_page.iter(), exclude_page, extract_page);
             let req = pdf_kozou_core::trim::TrimRequest {
                 input,
                 output,
@@ -324,9 +328,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     top:    top    * to_pt,
                 },
                 unit: "pt".to_string(),  // CLI側で変換済み
-                pages: page_sel,
-                exclude_pages: exclude_page,
-                extract_pages: extract_page,
+                pages: trim_page,
+                exclude: exclude_page,
+                extract: extract_page,
             };
             let resp = pdf_kozou_core::trim::trim(&req)?;
             println!("{}", serde_json::to_string(&resp)?);
@@ -576,8 +580,14 @@ fn err_json(msg: &str) -> String {
 
 // ── パース補助 ────────────────────────────────────────────────────────────────
 
+use pdf_kozou_core::trim::PageSelection;
+
 /// "1,3,5-10" → PageSelection::Range
 fn parse_page_selection(s: &str) -> anyhow::Result<pdf_kozou_core::trim::PageSelection> {
+    if s.to_lowercase() == "all" { return Ok(PageSelection::All); }
+    if s.to_lowercase() == "odd" { return Ok(PageSelection::Odd); }
+    if s.to_lowercase() == "even" { return Ok(PageSelection::Even); }
+    if s == "" { return Ok(PageSelection::All); }
     let pages = parse_page_list(s)?;
     Ok(pdf_kozou_core::trim::PageSelection::Range { pages })
 }
@@ -676,7 +686,7 @@ enum PageSpec {
 }
 
 /// "1", "1-3", "1,3,5", "1-3,5,7" → 0始まりインデックスの Vec
-fn parse_render_pages(s: &str) -> anyhow::Result<Vec<i32>> {
+fn parse_string_pages(s: &str) -> anyhow::Result<Vec<i32>> {
     let mut indices = Vec::new();
     for part in s.split(',') {
         let part = part.trim();

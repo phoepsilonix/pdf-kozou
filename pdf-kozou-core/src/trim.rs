@@ -33,14 +33,15 @@ pub struct TrimRequest {
     /// 余白の単位: "mm" (デフォルト) | "pt" | "cm" | "in"
     #[serde(default = "default_unit")]
     pub unit:    String,
-    /// どのページにトリミングを適用するか (None=全ページ)
+    /// どのページにトリミングを適用する対象ページ (None=全ページ)
     #[serde(deserialize_with = "deserialize_pages")]
     pub pages:   Option<PageSelection>,
-    /// 出力に含めるページを指定 (1始まり, None=全ページを保持)
+    /// 除外するページを指定 (1始まり, None=対象全ページ適用)
     #[serde(deserialize_with = "deserialize_pages")]
-    pub extract_pages: Option<PageSelection>,
+    pub exclude: Option<PageSelection>,
+    /// 出力に残すページを指定 (1始まり, None=全ページ保持)
     #[serde(deserialize_with = "deserialize_pages")]
-    pub exclude_pages: Option<PageSelection>,  // ← 追加
+    pub extract: Option<PageSelection>,
 }
 
 fn default_unit() -> String { "mm".to_string() }
@@ -290,6 +291,9 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         tmp.page_count().map_err(|e| CoreError::MuPdf(e.to_string()))?
     };
 
+    // # 全ページ
+    let all_pages: Vec<i32> = (0..page_count).collect();
+    
     // trim_target（適用ページ）の計算（既存部分）
     let mut trim_target: Vec<i32> = match req.pages.as_ref().unwrap_or(&PageSelection::All) {
         PageSelection::All   => (0..page_count).collect(),
@@ -298,11 +302,13 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
         PageSelection::None  => (0..page_count).collect(),
     };
-    let src_pages: Vec<i32> = trim_target.clone();
-    let mut write_target: Vec<i32> = trim_target.clone();
+    // トリミング適用ページ
+    let trim_pages: Vec<i32> = trim_target.clone();
+    // 最終的な書き込みページ（抽出ページ。残すページ。）
+    let mut write_target: Vec<i32> = all_pages.clone();
 
     // Trim除外ページ
-    if let Some(exclude) = req.exclude_pages.as_ref() {
+    if let Some(exclude) = req.exclude.as_ref() {
         let exclude_indices: Vec<i32> = match exclude {
             PageSelection::All   => (0..page_count).collect(),
             PageSelection::Even  => (0..page_count).filter(|&i| (i+1) % 2 == 0).collect(),
@@ -312,10 +318,7 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         };
         // target から除外ページを削除
         trim_target.retain(|&p| !exclude_indices.contains(&p));
-        eprintln!("除外ページ: {:?}", exclude_indices.iter().map(|x| *x + 1).collect::<Vec<_>>());
     }
-    // 除外適用後のログ（デバッグ用）
-    println!("除外適用後 trim_target: {:?}", trim_target.iter().map(|&i| i+1).collect::<Vec<_>>());
 
     // ── トリミング適用 ─────────────────────────────────────────────────────
     let doc = PdfDocument::open(&req.input)
@@ -323,7 +326,8 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
 
     let mut crop_boxes = Vec::new();
 
-    for idx in &trim_target {
+    for idx in &all_pages {
+        if ! trim_target.contains(idx) { continue; }
         let idx = *idx;
         if idx < 0 || idx >= page_count { continue; }
 
@@ -377,7 +381,7 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     // 抽出先の中間PDFを作り、対象ページのみコピーする
 
     let mut extract_indices: Vec<i32> = (0..page_count).collect();
-    if let Some(extract) = req.extract_pages.as_ref() {
+    if let Some(extract) = req.extract.as_ref() {
         extract_indices = match extract {
             PageSelection::All   => (0..page_count).collect(),
             PageSelection::Even  => (0..page_count).filter(|&i| (i+1) % 2 == 0).collect(),
@@ -386,12 +390,9 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
             PageSelection::None  => (0..page_count).collect(),
         };
         // src target から抽出ページのみにする
-        eprintln!("抽出ページ: {:?}", extract_indices.iter().map(|x| *x + 1).collect::<Vec<_>>());
         write_target.retain(|&p| extract_indices.contains(&p));
     };
     // 抽出適用後のログ（デバッグ用）
-    eprintln!("抽出適用後 write_target: {:?}", write_target.iter().map(|&i| i+1).collect::<Vec<_>>());
-    eprintln!("Trim Target = {:?}", trim_target.iter().map(|&i| i+1).collect::<Vec<_>>());
 
     if let write_page = write_target.iter().map(|&i| i+1).collect::<Vec<_>>() {
         if !write_page.is_empty() {
@@ -407,7 +408,6 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
         
             for page_1based in write_page {
-                eprintln!("page_1based A = {:?}", page_1based);
                 let idx = page_1based - 1;
                 if idx < 0 || idx >= page_count { continue; }
                 if ! write_target.contains(&idx) { continue; }
@@ -417,7 +417,6 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
                     .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
                 let at = dst.page_count()
                     .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-                eprintln!("at={:?}, page_1based B = {:?}", at, page_1based);
                 dst.insert_page(at, &dst_page)
                     .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
             }
@@ -428,7 +427,6 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
                 .map_err(|e| CoreError::MuPdf(e.to_string()))?;
             working_path = tmp_path;
             working_tmp = Some(tmp);
-            eprintln!("{:?} {:?}", working_path, working_tmp);
         } else {
             working_path = req.input.clone();
             working_tmp = None;

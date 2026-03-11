@@ -10,16 +10,16 @@ interface Props {
   margins:      TrimMargins;
   pageW:        number;
   pageH:        number;
-  pages:        PageSelection;
+  trimPages:    string;
+  onPages:      (v: string) => void;
   totalPages:   number;
   onMargins:    (m: TrimMargins) => void;
-  onPages:      (p: PageSelection) => void;
   onApply:      () => void;
   onReset:      () => void;
   processing:   boolean;
-  // ページ範囲指定 (トリミング適用対象)
-  trimPageSpec: string;
-  onTrimPageSpec: (v: string) => void;
+  // ページ除外指定 (トリミング除外対象)
+  excludeSpec:  string;
+  onExclude:    (v: string) => void;
   // ページ抽出 (出力に含めるページ)
   extractSpec:  string;
   onExtract:    (v: string) => void;
@@ -37,9 +37,9 @@ const PAGE_OPTS: { label: string; value: PageSelection }[] = [
 ];
 
 export function TrimControls({
-  margins, pageW, pageH, pages, totalPages,
+  margins, pageW, pageH, trimPages, totalPages,
   onMargins, onPages, onApply, onReset, processing,
-  trimPageSpec, onTrimPageSpec,
+  excludeSpec, onExclude,
   extractSpec, onExtract,
 }: Props) {
   const set = useCallback((key: keyof TrimMargins, mm: number) => {
@@ -50,42 +50,6 @@ export function TrimControls({
   const trimH = toMm(pageH - margins.top - margins.bottom);
   const origW = toMm(pageW);
   const origH = toMm(pageH);
-
-  // PageSelector の onChange で PageSelection を生成し、onPages に渡す
-const handlePageSelectionChange = (spec: string) => {
-  console.log("[DEBUG] PageSelector onChange 呼ばれました:", spec);  // ← これで反応確認
-  let selection: PageSelection;
-  if (spec === "" || spec.toLowerCase() === "all") {
-    selection = { type: "All" };
-  } else if (spec.toLowerCase() === "even") {
-    selection = { type: "Even" };
-  } else if (spec.toLowerCase() === "odd") {
-    selection = { type: "Odd" };
-  } else {
-    // 範囲指定の場合
-    const indices = resolvePageSpec(spec, totalPages);
-    console.log("[DEBUG] resolved indices:", indices);
-    if (indices.length > 0) {
-      const ranges: [number, number][] = [];
-      let start = indices[0] + 1; // 1-based
-      let prev = start;
-      for (let i = 1; i < indices.length; i++) {
-        const curr = indices[i] + 1;
-        if (curr !== prev + 1) {
-          ranges.push([start, prev]);
-          start = curr;
-        }
-        prev = curr;
-      }
-      ranges.push([start, prev]);
-      selection = { type: "Ranges", ranges };
-    }
-  }
-
-  onPages(selection);
-  onTrimPageSpec(spec);
-  console.log("[DEBUG] onPages 呼び出し完了:", selection);
-};
 
   return (
     <div style={s.panel}>
@@ -120,20 +84,25 @@ const handlePageSelectionChange = (spec: string) => {
         </div>
       </section>
 
-      {/* トリミング適用ページ - PageSelector に置き換え */}
+      {/* トリミング除外ページ - PageSelector に置き換え。基本は全ページ適用。 */}
       <section style={s.section}>
         <h3 style={s.heading}>トリミング適用ページ</h3>
         <PageSelector
           totalPages={totalPages}
-          value={trimPageSpec}
-          onChange={(newSpec) => {
-		  onTrimPageSpec(newSpec);        // 文字列更新
-		  handlePageSelectionChange(newSpec);  // PageSelection に変換して onPages 呼び出し
-		  console.log("[TrimControls] レンダリング！ onTrimPageSpec が存在するか？", typeof onTrimPageSpec === "function" ? "はい（関数）" : "×（未定義）");
-          }}
-
+          value={trimPages}
+          onChange={onPages}
+          label="トリミング適用ページ (all/even/odd/1-5,7)"
           compact
-          label="ページ範囲 (all/even/odd/1-5,7)"
+        />
+      </section>
+      <section style={s.section}>
+        <h3 style={s.heading}>トリミング除外ページ</h3>
+        <PageSelector
+          totalPages={totalPages}
+          value={excludeSpec}
+          onChange={(v) => console.log("onChange:", v.value, extractSpec)}
+          label="除外ページ (all/even/odd/1-5,7)"
+          compact
         />
       </section>
 
@@ -144,9 +113,9 @@ const handlePageSelectionChange = (spec: string) => {
         <PageSelector
           totalPages={totalPages}
           value={extractSpec}
-          onChange={onExtract}
+          onChange={(v) => console.log("onChange:", v.value, extractSpec)}
+          label="抽出ページ (all/even/odd/1-5,7)"
           compact
-          label="抽出するページ"
         />
       </section>
 

@@ -25,10 +25,10 @@ export interface PdfInfo {
 
 /** PDF ポイント単位のトリミングマージン */
 export interface TrimMargins {
-  left:   number;  // pt
-  right:  number;  // pt
-  bottom: number;  // pt
-  top:    number;  // pt
+  left:   number;  // 
+  right:  number;  // 
+  bottom: number;  // 
+  top:    number;  // 
 }
 
 export type PageSelection =
@@ -85,18 +85,24 @@ export async function trimPdf(
   inputPath:    string,
   outputPath:   string,
   margins:      TrimMargins,
-  pages:        PageSelection,
-  extractPages?: number[],    // 1始まりページ番号の配列 (undefined = 全ページ保持)
+  pages?:       string,
+  exclude?:     string,
+  extract?:     string,
 ): Promise<void> {
   await invoke("trim_pdf", {
     request: {
       input:   inputPath,
       output:  outputPath,
-      margins: margins,
+      margins: {
+        left:   margins.left,
+        right:  margins.right,
+        bottom: margins.bottom,
+        top:    margins.top,
+      },
       unit:  "pt",
       pages: pages,
-      exclude_pages: undefined,
-      extract_pages: extractPages,
+      exclude: exclude,
+      extract: extract,
     },
   });
 }

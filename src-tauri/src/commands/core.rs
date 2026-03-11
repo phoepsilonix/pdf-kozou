@@ -91,8 +91,10 @@ pub async fn trim_pdf(request: Value) -> Result<Value> {
     //   "input": "/path/to/input.pdf",
     //   "output": "/path/to/output.pdf",
     //   "margins": { "left": 10.0, "right": 10.0, "top": 10.0, "bottom": 10.0 },
-    //   "page_selection": { "type": "Ranges", "ranges": [[1,3], [5,5]] },
-    //   "extract_spec": "1-10,12"   // 出力に残すページ（オプション）
+    //   トリミング適用ページ(オプション、省略時全ページ)
+    //   "pages": { "type": "Ranges", "ranges": [[1,3], [5,5]] },
+    //   "exclude": "1-10,12"   // トリミング除外ページ（オプション）
+    //   "extract": "1-10,12"   // 出力に残すページ（オプション）
     // }
     call_core_json("trim", request).await
 }
@@ -254,6 +256,7 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
         .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
 
     use tokio::io::AsyncWriteExt;
+    eprintln!("{:?}", json_line);
     if let Some(stdin) = child.stdin.as_mut() {
         stdin.write_all(json_line.as_bytes()).await
             .map_err(|e| Error::Core(e.to_string()))?;
