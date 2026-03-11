@@ -301,7 +301,7 @@ return (
       {/* 左パネル（対象ページ・個別設定・出力など） */}
       <div style={s.panel}>
         <div style={s.secLabel}>対象ページ</div>
-        <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} compact />
+        <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} type="1" compact />
 
         <div style={s.secLabel}>個別設定</div>
         <p style={s.hint}>各ページの ↺↻ ボタンで個別回転できます。</p>

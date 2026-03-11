@@ -253,6 +253,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           <PageSelector
             totalPages={isBatch ? 0 : total}
             value={pages} onChange={setPages}
+	    type="1"
             compact
           />
 
