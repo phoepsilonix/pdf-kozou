@@ -39,7 +39,6 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
   const { setError } = usePdfStore();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
-  const [trimPages,   setTrimPages]   = useState("", "all","odd","even","range");
   const [outDir,      setOutDir]      = useState("");
   const [phase,       setPhase]       = useState<"edit"|"processing"|"result">("edit");
   const [progress, setProgress] = useState<{ current: number; done: { f: string }[]; errors: { f: string; msg: string }[] }>(
@@ -49,8 +48,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [previewPage, setPreviewPage] = useState(0);
   const [pageImage, setPageImage] = useState("");
   const [curPageInfo, setCurPageInfo] = useState<PdfInfo | null>(null);
-  const [excludeSpec, setExclude] = useState("", "all","odd","even","range");
-  const [extractSpec, setExtract] = useState("", "all","odd","even","range");
+  const [trimPages,   onPages]   = useState("all","odd","even","range","");
+  const [excludeSpec, onExclude] = useState("","odd","even","all","range");
+  const [extractSpec, onExtract] = useState("all","odd","even","range","");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   
@@ -60,7 +60,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 
   // バッチ全体のサムネイル（先頭ページ）
   useEffect(() => {
-    //usePdfStore.getState().resetTrimState();
+    usePdfStore.getState().resetTrimState();
     let cancelled = false;
     setBatchThumbs(new Array(files.length).fill(undefined));
     (async () => {
@@ -123,7 +123,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.pdf$/i, "")}_trimmed.pdf`;
 
       console.log("[DEBUG] trim_pdf in out margin pages exclude extract: ", f.path, out, trimMargins, trimPages, excludeSpec, extractSpec);
-      //const res = await trimPdf(request);
+      //if ( excludeSpec === "none" ) { onExclude("") };
       const res = await trimPdf(f.path, out, trimMargins, trimPages, excludeSpec, extractSpec);
       console.log("[DEBUG] trim_pdf 結果:", res);
         prog.done.push({ f: f.filename });
@@ -269,14 +269,14 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             trimPages={trimPages}
             totalPages={curPages}
             onMargins={setTrimMargins}
-            onPages={setTrimPages}
+            onPages={onPages}
             onApply={handleExecute}
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
             excludeSpec={excludeSpec}
-            onExclude={setExclude}
+            onExclude={onExclude}
             extractSpec={extractSpec}
-            onExtract={setExtract}
+            onExtract={onExtract}
           />
         </aside>
       </div>
@@ -302,10 +302,13 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [isSaving,     setIsSaving]     = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
   const [outTmp] = useState("");
-  const [trimPages, setTrimPages] = useState("", "all","odd","even","range");
-  const [excludeSpec, setExclude] = useState("", "all","odd","even","range");
-  const [extractSpec, setExtract] = useState("", "all","odd","even","range");
+  //const [trimPages,   onPages]   = useState("all","odd","even","range","");
+  //const [excludeSpec, onExclude] = useState("","odd","even","all","range");
+  //const [extractSpec, onExtract] = useState("all","odd","even","range");
 
+  const [trimPages,   onPages]   = useState("all");
+  const [excludeSpec, onExclude] = useState("");
+  const [extractSpec, onExtract] = useState("all");
   const { pickSave } = useSaveDialog();
 
   const currentPage = pdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
@@ -314,7 +317,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
 
   // プレビューページ変更時に画像を再取得
   useEffect(() => {
-    //usePdfStore.getState().resetTrimState();
+    usePdfStore.getState().resetTrimState();
     renderPage(filePath, previewPage, PREVIEW_DPI)
       .then(setPageImage)
       .catch(() => setPageImage(""));
@@ -326,16 +329,20 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     try {
       const outTmp = await getTempPath("trimmed_tmp.pdf");
 
+      //if ( excludeSpec === "none" ) { onExclude("") };
       console.log("[DEBUG] trim_pdf {:?} {:?} {:?} {:?} {:?} {:?}", filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
       const res = await trimPdf(filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
       console.log("[DEBUG] trim_pdf 結果:", res);
-      
       // プレビュー用に結果画像を取得（任意で最大6ページ）
       const n = Math.min(6, pdfInfo.page_count);
       const imgs: string[] = [];
       for (let i = 0; i < n; i++) {
-        const b64 = await renderPage(outTmp, i, RESULT_DPI);
-        imgs.push(b64);
+        try {
+            const b64 = await renderPage(outTmp, i, RESULT_DPI);
+            imgs.push(b64);
+        } catch (e) {
+	    break;
+	}
       }
       setResultImgs(imgs);  // 必要なら状態追加
       setSavedPath(outTmp);
@@ -346,6 +353,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       setPhase("error");
       setError(String(e));
     }
+
   }, [filePath, trimMargins, trimPages, extractSpec, pdfInfo.page_count, setError]);
 
   const handleSave = async () => {
@@ -449,14 +457,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               totalPages={pdfInfo.page_count}
 	      onMargins={setTrimMargins}     // Zustand 更新
               trimPages={trimPages}
-              onPages={setTrimPages}         // Zustand 更新
+              onPages={onPages}         // Zustand 更新
               onApply={handleExecute}
               onReset={() => setTrimMargins(zero())}
               processing={phase !== "edit"}
               excludeSpec={excludeSpec}
-              onExclude={setExclude}
+              onExclude={onExclude}
               extractSpec={extractSpec}
-              onExtract={setExtract}
+              onExtract={onExtract}
             />
           </aside>
     </div>

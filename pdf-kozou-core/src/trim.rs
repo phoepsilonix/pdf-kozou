@@ -56,13 +56,13 @@ where
         Value::Null => Ok(Some(PageSelection::All)),
         Value::String(s) => {
             let s = s.trim().to_lowercase();
-            if s.is_empty() || s == "" {
+            if s.is_empty() || s == "" || s.to_lowercase() == "none" {
                 Ok(Some(PageSelection::None))
-            } else if s == "all" {
+            } else if s.to_lowercase() == "all" {
                 Ok(Some(PageSelection::All))
-            } else if s == "even" {
+            } else if s.to_lowercase() == "even" {
                 Ok(Some(PageSelection::Even))
-            } else if s == "odd" {
+            } else if s.to_lowercase() == "odd" {
                 Ok(Some(PageSelection::Odd))
             } else {
                 // "1,3,5-10" のような文字列を Range に変換
@@ -90,6 +90,7 @@ where
                     Some("All") => Ok(Some(PageSelection::All)),
                     Some("Even") => Ok(Some(PageSelection::Even)),
                     Some("Odd") => Ok(Some(PageSelection::Odd)),
+                    Some("None") => Ok(Some(PageSelection::None)),
                     Some("Range") => {
                         if let Some(Value::Array(ranges)) = obj.get("ranges") {
                             let mut pages = Vec::new();

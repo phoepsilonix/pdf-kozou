@@ -101,7 +101,7 @@ enum Commands {
         #[arg(long)]
         pages: Option<String>,
         /// 除外ページ (例:
-        /// "2,4-6,all,odd,even")。pagesで指定した範囲からトリミングを除外。省略時は対象ページすべてにトリミング適用。
+        /// "none, 2,4-6,all,odd,even")。pagesで指定した範囲からトリミングを除外。省略時は対象ページすべてにトリミング適用。
         #[arg(long)]
         exclude: Option<String>,
         /// 抽出ページ (例:
@@ -584,6 +584,7 @@ use pdf_kozou_core::trim::PageSelection;
 
 /// "1,3,5-10" → PageSelection::Range
 fn parse_page_selection(s: &str) -> anyhow::Result<pdf_kozou_core::trim::PageSelection> {
+    if s.to_lowercase() == "none" { return Ok(PageSelection::None); }
     if s.to_lowercase() == "all" { return Ok(PageSelection::All); }
     if s.to_lowercase() == "odd" { return Ok(PageSelection::Odd); }
     if s.to_lowercase() == "even" { return Ok(PageSelection::Even); }

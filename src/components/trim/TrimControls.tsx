@@ -3,7 +3,7 @@
 
 import { useCallback } from "react";
 import type { TrimMargins, PageSelection } from "../../lib/tauri";
-import { PageSelector, resolvePageSpec } from "../PageSelector";
+import { PageSelector, PageSelectorB, resolvePageSpec } from "../PageSelector";
 import { F } from "../../lib/theme";
 
 interface Props {
@@ -30,16 +30,10 @@ const MM_TO_PT = 2.8346;
 const toMm  = (pt: number) => +(pt * PT_TO_MM).toFixed(1);
 const toPt  = (mm: number) => mm * MM_TO_PT;
 
-const PAGE_OPTS: { label: string; value: PageSelection }[] = [
-  { label: "全ページ",   value: { type: "All" } },
-  { label: "偶数ページ", value: { type: "Even" } },
-  { label: "奇数ページ", value: { type: "Odd" } },
-];
-
 export function TrimControls({
   margins, pageW, pageH, trimPages, totalPages,
   onMargins, onPages, onApply, onReset, processing,
-  excludeSpec, onExclude,
+  excludeSpec, onExclude, setExclude,
   extractSpec, onExtract,
 }: Props) {
   const set = useCallback((key: keyof TrimMargins, mm: number) => {
@@ -84,7 +78,7 @@ export function TrimControls({
         </div>
       </section>
 
-      {/* トリミング除外ページ - PageSelector に置き換え。基本は全ページ適用。 */}
+      {/* トリミング適用ページ - PageSelector に置き換え。基本は全ページ適用。 */}
       <section style={s.section}>
         <h3 style={s.heading}>トリミング適用ページ</h3>
         <PageSelector
@@ -92,6 +86,7 @@ export function TrimControls({
           value={trimPages}
           onChange={onPages}
           label="トリミング適用ページ (all/even/odd/1-5,7)"
+	  type="1"
           compact
         />
       </section>
@@ -100,21 +95,22 @@ export function TrimControls({
         <PageSelector
           totalPages={totalPages}
           value={excludeSpec}
-          onChange={(v) => console.log("onChange:", v.value, extractSpec)}
+          onChange={(v) => onExclude(v)}
           label="除外ページ (all/even/odd/1-5,7)"
+	  type="2"
           compact
         />
       </section>
 
-      {/* ページ抽出 (出力に含めるページ) - そのまま */}
       <section style={s.section}>
         <h3 style={s.heading}>ページ抽出 <span style={s.headingOpt}>（オプション）</span></h3>
         <p style={s.hint2}>トリミング後に残すページを指定。空欄=全ページ保持。</p>
         <PageSelector
           totalPages={totalPages}
           value={extractSpec}
-          onChange={(v) => console.log("onChange:", v.value, extractSpec)}
+          onChange={onExtract}
           label="抽出ページ (all/even/odd/1-5,7)"
+	  type="1"
           compact
         />
       </section>
@@ -130,6 +126,12 @@ export function TrimControls({
       <p style={s.hint}>💡 画像の枠をドラッグして余白を調整できます</p>
     </div>
   );
+}
+
+function setExclude({ value }: {
+  value: string
+}) {
+  exCludeSpec = value;
 }
 
 function MmField({ label, value, max, onChange }: {

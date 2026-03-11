@@ -108,9 +108,9 @@ export const usePdfStore = create<PdfStore>((set) => ({
 
   resetTrimState: () => set({
     trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
-    trimPages: "All",
-    excludeSpec: "",      // 除外もリセット
-    extractSpec: "All",   // 抽出もリセット
+    trimPages: "all",
+    excludeSpec: "none",      // 除外もリセット
+    extractSpec: "all",   // 抽出もリセット
   }),
 
 }));
