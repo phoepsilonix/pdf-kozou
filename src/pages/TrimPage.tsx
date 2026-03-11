@@ -48,9 +48,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [previewPage, setPreviewPage] = useState(0);
   const [pageImage, setPageImage] = useState("");
   const [curPageInfo, setCurPageInfo] = useState<PdfInfo | null>(null);
-  const [trimPages,   onPages]   = useState("all","odd","even","range","");
-  const [excludeSpec, onExclude] = useState("","odd","even","all","range");
-  const [extractSpec, onExtract] = useState("all","odd","even","range","");
+  const [trimPages,   onPages]   = useState("all");
+  const [excludeSpec, onExclude] = useState("");
+  const [extractSpec, onExtract] = useState("all");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   
@@ -274,7 +274,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
             excludeSpec={excludeSpec}
-            onExclude={onExclude}
+            onExclude={(v) => onExclude(v)}
             extractSpec={extractSpec}
             onExtract={onExtract}
           />
@@ -302,9 +302,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [isSaving,     setIsSaving]     = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
   const [outTmp] = useState("");
-  //const [trimPages,   onPages]   = useState("all","odd","even","range","");
-  //const [excludeSpec, onExclude] = useState("","odd","even","all","range");
-  //const [extractSpec, onExtract] = useState("all","odd","even","range");
 
   const [trimPages,   onPages]   = useState("all");
   const [excludeSpec, onExclude] = useState("");
@@ -357,12 +354,16 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   }, [filePath, trimMargins, trimPages, extractSpec, pdfInfo.page_count, setError]);
 
   const handleSave = async () => {
-    const saved = await pickSave(savedPath, {
-      defaultName: filePath.replace(/\.pdf$/i, "_trimmed.pdf"),
-    });
-    if (saved) {
-      setSavedPath(saved);
-    }
+    const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
+    const doSave = async () => {
+    const sp = await invoke<string|null>("pick_save_file",
+        { defaultName:`${base}_trimmed.pdf`, initialDir:outTmp||undefined }).catch(()=>null);
+        if (!sp) return;
+    //if (!savedPath || savedPath === "" ) 
+    //setSavedPath(filePath.replace(/\.pdf$/i, "_trimmed.pdf"));
+    //const saved = await pickSave(savedPath);
+        if (sp) { setSavedPath(sp); };
+    };
   };
 
   if (phase === "processing") return (
@@ -381,6 +382,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     </div>
   );
 
+  console.log("compress: ", outTmp,filePath);
   if (phase === "compress") return (
     <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={outTmp||undefined} onDone={()=>setPhase("result")}/>
   );
@@ -462,7 +464,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               onReset={() => setTrimMargins(zero())}
               processing={phase !== "edit"}
               excludeSpec={excludeSpec}
-              onExclude={onExclude}
+              onExclude={(v) => onExclude(v)}
               extractSpec={extractSpec}
               onExtract={onExtract}
             />

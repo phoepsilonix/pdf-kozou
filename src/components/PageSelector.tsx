@@ -9,6 +9,7 @@ export interface PageSelectorProps {
   value:       string;        // "" = 全ページ
   onChange:    (v: string) => void;
   label?:      string;
+  type?:       string;
   compact?:    boolean;
 }
 

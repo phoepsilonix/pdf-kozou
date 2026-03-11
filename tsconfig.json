@@ -22,7 +22,7 @@
   "include": ["src"],
 "tauri": {
     "bundle": {
-      "targets": "all"   // または省略（デフォルトall）
+      "targets": "zip"   // または省略（デフォルトall）
     }
   }
 }

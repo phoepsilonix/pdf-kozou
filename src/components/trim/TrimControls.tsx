@@ -33,7 +33,7 @@ const toPt  = (mm: number) => mm * MM_TO_PT;
 export function TrimControls({
   margins, pageW, pageH, trimPages, totalPages,
   onMargins, onPages, onApply, onReset, processing,
-  excludeSpec, onExclude, setExclude,
+  excludeSpec, onExclude,
   extractSpec, onExtract,
 }: Props) {
   const set = useCallback((key: keyof TrimMargins, mm: number) => {
@@ -126,12 +126,6 @@ export function TrimControls({
       <p style={s.hint}>💡 画像の枠をドラッグして余白を調整できます</p>
     </div>
   );
-}
-
-function setExclude({ value }: {
-  value: string
-}) {
-  exCludeSpec = value;
 }
 
 function MmField({ label, value, max, onChange }: {

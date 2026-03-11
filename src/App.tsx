@@ -172,7 +172,7 @@ pdfInfo={
 
       <header style={s.header}>
         <span style={s.logo}>PDF<span style={{color:"var(--c-accent)"}}>小僧</span></span>
-        <span style={s.tagline}>Pure Rust · MuPDF · オフライン完全動作</span>
+        <span style={s.tagline}>Rust(tauri) · MuPDF · オフライン完全動作</span>
         <div style={{position:"absolute",top:16,right:20}}>
           <ThemeSwitcher currentId={themeId} onChange={handleThemeChange}/>
         </div>
