@@ -1171,7 +1171,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
- "libloading 0.8.9",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -2826,7 +2826,7 @@ dependencies = [
 [[package]]
 name = "mupdf-sys"
 version = "0.6.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs?rev=800a8e77dcd7c5f13b7ccac759cb8a8907f6246e#800a8e77dcd7c5f13b7ccac759cb8a8907f6246e"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=1eead855a46a92b39d8c3ba22fb2c0b9620f29e9#1eead855a46a92b39d8c3ba22fb2c0b9620f29e9"
 dependencies = [
  "bindgen",
  "cc",

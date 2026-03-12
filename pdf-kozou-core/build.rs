@@ -40,6 +40,10 @@ fn main() {
     //let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     // let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     // let target      = env::var("TARGET").unwrap_or_default();
+    if cfg!(target_os = "windows") && cfg!(target_env = "gnu") {
+        println!("cargo:rustc-link-arg=--disable-auto-image-base");
+        println!("cargo:rustc-link-arg=--export-all-symbols=0");
+    }
 
     cc::Build::new()
         .file("src/c/mupdf_safe.c")

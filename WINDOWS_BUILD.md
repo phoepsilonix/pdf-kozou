@@ -15,16 +15,17 @@ rustup target add x86_64-pc-windows-msvc
 
 # ビルド
 cd pdf-kozou
-cargo xwin build --release --target x86_64-pc-windows-msvc -p pdf-kozou-core
+USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY" HAVE_OBJCOPY=no cargo xwin build --release --target x86_64-pc-windows-msvc -p pdf-kozou-core
 
 # Tauri アプリのビルド
 PDF_KOZOU_CORE=./target/x86_64-pc-windows-msvc/release/pdf-kozou-core.exe \
-cargo xwin tauri build --target x86_64-pc-windows-msvc
+cargo-xwin tauri build --target x86_64-pc-windows-msvc
 ```
 
 > 初回実行時に Windows SDK (~3GB) を自動ダウンロードします。
 
 # NSISインストーラー
+クロスビルドは無理だと考える。
 ```sh
 npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
 ```
@@ -35,9 +36,8 @@ bun tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 ---
 
 ## 方法2: cross (Docker ベース)
-
+おそらく、これも無理。
 Docker が使える環境向け。
-
 ```bash
 cargo install cross --git https://github.com/cross-rs/cross
 
@@ -86,7 +86,7 @@ jobs:
 ---
 
 ## 方法4: Windows 上でネイティブビルド
-
+現実的
 Windows 環境で直接ビルドする場合。
 
 ```powershell

@@ -83,7 +83,7 @@ where
                 Ok(Some(PageSelection::Range { pages }))
             }
         }
-        Value::Object(mut obj) => {
+        Value::Object(obj) => {
             // すでに enum形式の場合（{ "type": "Ranges", "ranges": [[1,3]] }）
             if let Some(ty) = obj.get("type") {
                 match ty.as_str() {
@@ -283,8 +283,8 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     };
 
     //let mut working_path: String = req.input.clone();
-    let mut working_path: String;
-    let mut working_tmp: Option<tempfile::NamedTempFile>;
+    let working_path: String;
+    let working_tmp: Option<tempfile::NamedTempFile>;
 
     let page_count = {
         let tmp = PdfDocument::open(&req.input)
@@ -294,7 +294,7 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
 
     // # 全ページ
     let all_pages: Vec<i32> = (0..page_count).collect();
-    
+
     // trim_target（適用ページ）の計算（既存部分）
     let mut trim_target: Vec<i32> = match req.pages.as_ref().unwrap_or(&PageSelection::All) {
         PageSelection::All   => (0..page_count).collect(),
@@ -304,7 +304,7 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         PageSelection::None  => (0..page_count).collect(),
     };
     // トリミング適用ページ
-    let trim_pages: Vec<i32> = trim_target.clone();
+    let _trim_pages: Vec<i32> = trim_target.clone();
     // 最終的な書き込みページ（抽出ページ。残すページ。）
     let mut write_target: Vec<i32> = all_pages.clone();
 
@@ -381,7 +381,8 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     // ── ページ抽出 (extract_pages が指定されている場合) ────────────────────
     // 抽出先の中間PDFを作り、対象ページのみコピーする
 
-    let mut extract_indices: Vec<i32> = (0..page_count).collect();
+    //let mut extract_indices: Vec<i32> = (0..page_count).collect();
+    let extract_indices: Vec<i32>;// = (0..page_count).collect();
     if let Some(extract) = req.extract.as_ref() {
         extract_indices = match extract {
             PageSelection::All   => (0..page_count).collect(),
@@ -395,43 +396,39 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     };
     // 抽出適用後のログ（デバッグ用）
 
-    if let write_page = write_target.iter().map(|&i| i+1).collect::<Vec<_>>() {
-        if !write_page.is_empty() {
-            // 抽出先 tmp ファイル
-            let tmp = tempfile::NamedTempFile::new()
-                .map_err(|e| CoreError::Io(e))?;
-            let tmp_path = tmp.path().to_string_lossy().to_string();
+    let write_page = write_target.iter().map(|&i| i+1).collect::<Vec<_>>();
+    if !write_page.is_empty() {
+        // 抽出先 tmp ファイル
+        let tmp = tempfile::NamedTempFile::new()
+            .map_err(|e| CoreError::Io(e))?;
+        let tmp_path = tmp.path().to_string_lossy().to_string();
 
-                //PdfDocument::open(&req.input) .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-            let src = doc;
-            let mut dst = PdfDocument::new();
-            let mut graft = dst.new_graft_map()
+            //PdfDocument::open(&req.input) .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        let src = doc;
+        let mut dst = PdfDocument::new();
+        let mut graft = dst.new_graft_map()
+            .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+
+        for page_1based in write_page {
+            let idx = page_1based - 1;
+            if idx < 0 || idx >= page_count { continue; }
+            if ! write_target.contains(&idx) { continue; }
+            let src_page = src.find_page(idx)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-        
-            for page_1based in write_page {
-                let idx = page_1based - 1;
-                if idx < 0 || idx >= page_count { continue; }
-                if ! write_target.contains(&idx) { continue; }
-                let src_page = src.find_page(idx)
-                    .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-                let dst_page = graft.graft_object(&src_page)
-                    .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-                let at = dst.page_count()
-                    .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-                dst.insert_page(at, &dst_page)
-                    .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-            }
-
-            let mut opts = mupdf::pdf::PdfWriteOptions::default();
-            opts.set_compress(true).set_garbage_level(2);
-            dst.save_with_options(&tmp_path, opts)
-                .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-            working_path = tmp_path;
-            working_tmp = Some(tmp);
-        } else {
-            working_path = req.input.clone();
-            working_tmp = None;
+            let dst_page = graft.graft_object(&src_page)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            let at = dst.page_count()
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            dst.insert_page(at, &dst_page)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
         }
+
+        let mut opts = mupdf::pdf::PdfWriteOptions::default();
+        opts.set_compress(true).set_garbage_level(2);
+        dst.save_with_options(&tmp_path, opts)
+            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        working_path = tmp_path;
+        working_tmp = Some(tmp);
     } else {
         working_path = req.input.clone();
         working_tmp = None;
@@ -439,7 +436,7 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
 
     let doc = PdfDocument::open(&working_path)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-    let working_page_count = doc.page_count()
+    let _working_page_count = doc.page_count()
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
     let mut opts = mupdf::pdf::PdfWriteOptions::default();

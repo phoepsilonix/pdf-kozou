@@ -10,13 +10,22 @@ path = "src/main.rs"
 
 [lib]
 name      = "pdf_kozou_core"
-crate-type = ["rlib"]
+crate-type = ["rlib", "staticlib"]
+
+[package.metadata.cross.target.x86_64-pc-windows-gnu]
+# MinGW 専用：DLL エクスポート抑制
+rustflags = [
+    "-C", "link-arg=-Wl,--disable-auto-image-base",
+    "-C", "link-arg=-Wl,--export-all-symbols=0"
+]
 
 [dependencies]
 # PDF処理 — MuPDF 静的リンク (依存はここだけ)
 # 0.6.0: MuPDF 1.27.0 ベース、GraftMap/insert_page API 整備済み
-mupdf     = "0.6"
+mupdf     = { version = "0.6", default-features = false, features = ["js", "xps", "svg", "cbz", "img", "html", "epub","system-fonts"] }
 mupdf-sys = "0.6"
+#default = ["js", "xps", "svg", "cbz", "img", "html", "epub", "system-fonts", "tesseract"]
+
 
 # workspace 共通
 serde      = { workspace = true }
@@ -43,5 +52,5 @@ lto           = true
 opt-level     = "s"
 strip         = true
 
-[patch.crates-io]
-mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs", rev = "a2cdccc966e359046df17f1db94b54d56159dcb2" }
+#[patch.crates-io]
+#mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs", rev = "019534a78377f9038386c6a6b93681ed625a134b" }
