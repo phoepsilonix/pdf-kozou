@@ -293,7 +293,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     //setPreviewPage,
     setError,
   } = usePdfStore();
-  
+
   const [previewPage, setPreviewPage] = useState(0);
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [phase, setPhase] = useState<Phase>("edit");
@@ -346,7 +346,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         setTmpPageInfo(info);
         pages = info.page_count;
       }).catch(() => { pages = pdfInfo.page_count; });
-      
+
       console.log("[DEBUG] trim_pdf 結果:", res);
       console.log("pages", pages);
 
