@@ -12,6 +12,8 @@
 // GUI (Tauri) からは stdin に JSON を渡して実行する方式と
 // コマンドライン引数で渡す方式の両方をサポートする。
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use clap::{Parser, Subcommand};
 use pdf_kozou_core::error::ErrorResponse;
 

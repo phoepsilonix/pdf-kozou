@@ -34,12 +34,12 @@ interface PdfStore {
 
   trimMargins:    TrimMargins;
   setTrimMargins: (m: TrimMargins) => void;
-  trimPages:      string;
-  excludeSpec:   string;
-  extractSpec:   string;
-  onPages:   (v: string) => void;
-  onExclude:     (v: string) => void;
-  onExtract:     (v: string) => void;
+  //trimPages:      string;
+  //excludeSpec:   string;
+  //extractSpec:   string;
+  //onPages:   (v: string) => void;
+  //onExclude:     (v: string) => void;
+  //onExtract:     (v: string) => void;
 
   previewPage:    number;
   setPreviewPage: (n: number) => void;
@@ -87,13 +87,13 @@ export const usePdfStore = create<PdfStore>((set) => ({
   clearFile: () => set({ filePath: null, pdfInfo: null }),
 
   trimMargins:    { left: 0, right: 0, top: 0, bottom: 0 },
-  trimPages:      "all",
-  excludeSpec:    "",
-  extractSpec:    "all",
   setTrimMargins: (m) => set({ trimMargins: m }),
-  onPages:   (v: string) => set({trimPages: v}),
-  onExclude:     (v: string) => set({excludeSpec: v}),
-  onExtract:     (v: string) => set({extractSpec: v}),
+  //trimPages:      "all",
+  //excludeSpec:    "",
+  //extractSpec:    "all",
+  //onPages:   (v: string) => set({trimPages: v}),
+  //onExclude:     (v: string) => set({excludeSpec: v}),
+  //onExtract:     (v: string) => set({extractSpec: v}),
 
   previewPage:    0,
   setPreviewPage: (n) => set({ previewPage: n }),
@@ -108,9 +108,6 @@ export const usePdfStore = create<PdfStore>((set) => ({
 
   resetTrimState: () => set({
     trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
-    trimPages: "all",
-    excludeSpec: "",      // 除外もリセット
-    extractSpec: "all",   // 抽出もリセット
   }),
 
 }));

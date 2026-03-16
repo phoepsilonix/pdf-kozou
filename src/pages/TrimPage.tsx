@@ -287,19 +287,22 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
   // Zustand から状態を直接取得・更新
   const {
-    trimMargins,
-    setTrimMargins,
-    previewPage,
-    setPreviewPage,
+    //trimMargins,
+    //setTrimMargins,
+    //previewPage,
+    //setPreviewPage,
     setError,
   } = usePdfStore();
-
+  
+  const [previewPage, setPreviewPage] = useState(0);
+  const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [phase, setPhase] = useState<Phase>("edit");
   const [pageImage, setPageImage] = useState("");
   const [savedPath, setSavedPath] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [isSaving,     setIsSaving]     = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
+  const [tmpPageInfo, setTmpPageInfo] = useState<PdfInfo | null>(null);
 
   const [trimPages,   onPages]   = useState("all");
   const [excludeSpec, onExclude] = useState("");
@@ -310,6 +313,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const currentPage = pdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
   const pageH = currentPage.h;
+  let pages;
 
   // プレビューページ変更時に画像を再取得
   useEffect(() => {
@@ -317,7 +321,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     renderPage(filePath, previewPage, PREVIEW_DPI)
       .then(setPageImage)
       .catch(() => setPageImage(""));
-  }, [filePath, previewPage]);
+  }, [filePath, previewPage, pageImage]);
 
   const handleExecute = useCallback(async () => {
     setPhase("processing");
@@ -326,11 +330,27 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       const tmpPath = await getTempPath("trimmed_tmp.pdf");
       setOutTmp(tmpPath);
 
-      console.log("[DEBUG] trim_pdf {:?} {:?} {:?} {:?} {:?} {:?}", filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
-      const res = await trimPdf(filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
+      console.log("[DEBUG] trim_pdf", filePath, tmpPath, trimMargins, trimPages, excludeSpec, extractSpec);
+      const res = await trimPdf(filePath, tmpPath, trimMargins, trimPages, excludeSpec, extractSpec);
+      /*
+      .then(() => { 
+        // プレビュー用に結果画像を取得（任意で最大6ページ）
+        getPdfInfo(tmpPath).then(info => {
+          setTmpPageInfo(info);
+	  pages = info.page_count;
+          console.log("pages1", pages);
+        }).catch(() => { pages = pdfInfo.page_count; });
+      }).catch(() => {});
+*/
+      await getPdfInfo(tmpPath).then(info => {
+        setTmpPageInfo(info);
+        pages = info.page_count;
+      }).catch(() => { pages = pdfInfo.page_count; });
+      
       console.log("[DEBUG] trim_pdf 結果:", res);
-      // プレビュー用に結果画像を取得（任意で最大6ページ）
-      const n = Math.min(6, pdfInfo.page_count);
+      console.log("pages", pages);
+
+      const n = Math.min(6, pages);
       const imgs: string[] = [];
       for (let i = 0; i < n; i++) {
         try {
@@ -350,7 +370,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       setError(String(e));
     }
 
-  }, [filePath, trimMargins, trimPages, excludeSpec, extractSpec, pdfInfo.page_count, setError]);
+  }, [filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec, pdfInfo.page_count, tmpPageInfo, pages, setError]);
 
   const handleSave = async () => {
     const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
@@ -383,7 +403,10 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   }
 
   if (phase === "result") return (
-    <ResultView images={resultImgs} pageCount={pdfInfo.page_count}
+    <ResultView images={resultImgs}
+      pageCount={//pdfInfo.page_count
+	     () => { console.log("result tmpPageInfo",tmpPageInfo); if (tmpPageInfo != null) { tmpPageInfo.page_count; } else { pdfInfo.page_count; };}
+      }
       onSave={handleSave} onBack={()=>{setPhase("edit");setResultImgs([]);setErrMsg("");}}
       onCompress={()=>setPhase("compress")} isSaving={isSaving}/>
   );
