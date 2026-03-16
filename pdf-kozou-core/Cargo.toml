@@ -16,7 +16,6 @@ crate-type = ["rlib", "staticlib"]
 # MinGW 専用：DLL エクスポート抑制
 rustflags = [
     "-C", "link-arg=-Wl,--disable-auto-image-base",
-    "-C", "link-arg=-Wl,--export-all-symbols=0"
 ]
 
 [dependencies]

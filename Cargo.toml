@@ -19,4 +19,5 @@ tempfile   = "3"
 tracing    = "0.1"
 
 [patch.crates-io]
-mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "b7bbdf3afc092e69ab09a865d8f6d15a1e206322" }
+mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "cc041ec8f44e563cca9ea2706aa243e1c072934d" }
+mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "cc041ec8f44e563cca9ea2706aa243e1c072934d" }
