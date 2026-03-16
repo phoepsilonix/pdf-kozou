@@ -6,7 +6,7 @@ import { TrimControls }    from "../components/trim/TrimControls";
 import { CompressPage }    from "./CompressPage";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { useSaveDialog }   from "../hooks/useSaveDialog";
-import { getTempPath, renderPage, trimPdf, getPdfInfo, type TrimMargins, type PdfInfo } from "../lib/tauri";
+import { getTempPath, renderPage, moveFile, trimPdf, getPdfInfo, type TrimMargins, type PdfInfo } from "../lib/tauri";
 import { C, F } from "../lib/theme";
 
 interface Props {
@@ -53,7 +53,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [extractSpec, onExtract] = useState("all");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
-  
+
   const currentPage = firstPdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
   const pageH = currentPage.h;
@@ -123,7 +123,6 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.pdf$/i, "")}_trimmed.pdf`;
 
       console.log("[DEBUG] trim_pdf in out margin pages exclude extract: ", f.path, out, trimMargins, trimPages, excludeSpec, extractSpec);
-      //if ( excludeSpec === "none" ) { onExclude("") };
       const res = await trimPdf(f.path, out, trimMargins, trimPages, excludeSpec, extractSpec);
       console.log("[DEBUG] trim_pdf 結果:", res);
         prog.done.push({ f: f.filename });
@@ -267,9 +266,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             pageW={curW}
             pageH={curH}
             trimPages={trimPages}
+            onPages={onPages}
             totalPages={curPages}
             onMargins={setTrimMargins}
-            onPages={onPages}
             onApply={handleExecute}
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
@@ -301,12 +300,12 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [errMsg, setErrMsg] = useState("");
   const [isSaving,     setIsSaving]     = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
-  const [outTmp] = useState("");
 
   const [trimPages,   onPages]   = useState("all");
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
   const { pickSave } = useSaveDialog();
+  const [outTmp, setOutTmp] = useState<string>("");
 
   const currentPage = pdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
@@ -324,9 +323,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     setPhase("processing");
     setResultImgs([]);
     try {
-      const outTmp = await getTempPath("trimmed_tmp.pdf");
+      const tmpPath = await getTempPath("trimmed_tmp.pdf");
+      setOutTmp(tmpPath);
 
-      //if ( excludeSpec === "none" ) { onExclude("") };
       console.log("[DEBUG] trim_pdf {:?} {:?} {:?} {:?} {:?} {:?}", filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
       const res = await trimPdf(filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec);
       console.log("[DEBUG] trim_pdf 結果:", res);
@@ -335,14 +334,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       const imgs: string[] = [];
       for (let i = 0; i < n; i++) {
         try {
-            const b64 = await renderPage(outTmp, i, RESULT_DPI);
+            const b64 = await renderPage(tmpPath, i, RESULT_DPI);
             imgs.push(b64);
         } catch (e) {
 	    break;
 	}
       }
       setResultImgs(imgs);  // 必要なら状態追加
-      setSavedPath(outTmp);
+      //setSavedPath(outTmp);
       setPhase("result");
     } catch (e) {
       console.error("[ERROR] trimPdf エラー:", e);
@@ -351,19 +350,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       setError(String(e));
     }
 
-  }, [filePath, trimMargins, trimPages, extractSpec, pdfInfo.page_count, setError]);
+  }, [filePath, trimMargins, trimPages, excludeSpec, extractSpec, pdfInfo.page_count, setError]);
 
   const handleSave = async () => {
     const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
-    const doSave = async () => {
-    const sp = await invoke<string|null>("pick_save_file",
-        { defaultName:`${base}_trimmed.pdf`, initialDir:outTmp||undefined }).catch(()=>null);
-        if (!sp) return;
-    //if (!savedPath || savedPath === "" ) 
-    //setSavedPath(filePath.replace(/\.pdf$/i, "_trimmed.pdf"));
-    //const saved = await pickSave(savedPath);
-        if (sp) { setSavedPath(sp); };
-    };
+    const sp = await pickSave(`${base}_trimmed.pdf`);
+    if (!sp) return;
+    await moveFile(outTmp, sp);
+    setSavedPath(sp);
   };
 
   if (phase === "processing") return (
@@ -382,10 +376,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     </div>
   );
 
-  console.log("compress: ", outTmp,filePath);
-  if (phase === "compress") return (
-    <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={outTmp||undefined} onDone={()=>setPhase("result")}/>
+  if (phase === "compress") {
+  return (
+    <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={outTmp||undefined} />
   );
+  }
 
   if (phase === "result") return (
     <ResultView images={resultImgs} pageCount={pdfInfo.page_count}
@@ -484,7 +479,7 @@ function ResultView({ images, pageCount, onSave, onBack, onCompress, isSaving }:
         <span style={r.title}>トリミング結果確認</span>
         <span style={r.sub}>{pageCount}ページ（先頭{images.length}ページ表示）</span>
         <div style={{flex:1}}/>
-        <!-- <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button> -->
+        <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button>
         <button style={{...r.btnSave,...(isSaving?r.dis:{})}} onClick={onSave} disabled={isSaving}>
           {isSaving?"保存中…":"💾 PDFを保存"}
         </button>
@@ -499,14 +494,11 @@ function ResultView({ images, pageCount, onSave, onBack, onCompress, isSaving }:
               : <div style={r.imgPh}>プレビュー失敗</div>}
           </div>
         ))}
-        {pageCount > images.length && (
-          <div style={r.more}>… 他 {pageCount-images.length} ページ</div>
-        )}
       </div>
 
       <div style={r.footer}>
         <button style={r.btnBack} onClick={onBack}>← 設定に戻る</button>
-        <!-- <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button> -->
+        <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button>
         <button style={{...r.btnSave,...(isSaving?r.dis:{})}} onClick={onSave} disabled={isSaving}>
           {isSaving?"保存中…":"💾 PDFを保存"}
         </button>

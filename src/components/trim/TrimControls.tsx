@@ -3,7 +3,7 @@
 
 import { useCallback } from "react";
 import type { TrimMargins, PageSelection } from "../../lib/tauri";
-import { PageSelector, PageSelectorB, resolvePageSpec } from "../PageSelector";
+import { PageSelector, resolvePageSpec } from "../PageSelector";
 import { F } from "../../lib/theme";
 
 interface Props {
@@ -95,7 +95,7 @@ export function TrimControls({
         <PageSelector
           totalPages={totalPages}
           value={excludeSpec}
-          onChange={(v) => onExclude(v)}
+          onChange={onExclude}
           label="除外ページ (all/even/odd/1-5,7)"
 	  type="2"
           compact

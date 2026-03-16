@@ -91,9 +91,9 @@ export const usePdfStore = create<PdfStore>((set) => ({
   excludeSpec:    "",
   extractSpec:    "all",
   setTrimMargins: (m) => set({ trimMargins: m }),
-  onTrimPages:   (v: string) => (v),
-  onExclude:     (v: string) => (v),
-  onExtract:     (v: string) => (v),
+  onPages:   (v: string) => set({trimPages: v}),
+  onExclude:     (v: string) => set({excludeSpec: v}),
+  onExtract:     (v: string) => set({extractSpec: v}),
 
   previewPage:    0,
   setPreviewPage: (n) => set({ previewPage: n }),
@@ -109,7 +109,7 @@ export const usePdfStore = create<PdfStore>((set) => ({
   resetTrimState: () => set({
     trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
     trimPages: "all",
-    excludeSpec: "none",      // 除外もリセット
+    excludeSpec: "",      // 除外もリセット
     extractSpec: "all",   // 抽出もリセット
   }),
 

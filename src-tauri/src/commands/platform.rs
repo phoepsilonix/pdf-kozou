@@ -5,6 +5,9 @@
 
 use crate::platform;
 
+#[cfg(not(target_os = "linux"))]
+use crate::platform::DisplayServer;
+
 /*
 #[derive(Serialize, Deserialize)]
 pub struct ScreenInfoDto {

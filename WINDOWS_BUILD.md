@@ -11,22 +11,22 @@ cargo install cargo-xwin
 sudo apt install llvm clang lld
 
 # ターゲット追加
-rustup target add x86_64-pc-windows-msvc
+rustup target add x86_64-pc-windows-gnu
 
 # ビルド
 cd pdf-kozou
-#USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY" HAVE_OBJCOPY=no
-OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo xwin build --release --target x86_64-pc-windows-msvc -p pdf-kozou-core
+#USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY"
+OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo xwin build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
 
 # Tauri アプリのビルド
-PDF_KOZOU_CORE=./target/x86_64-pc-windows-msvc/release/pdf-kozou-core.exe \
-cargo-xwin tauri build --target x86_64-pc-windows-msvc
+PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe \
+cargo-xwin tauri build --target x86_64-pc-windows-gnu
 ```
 
 > 初回実行時に Windows SDK (~3GB) を自動ダウンロードします。
 
 # NSISインストーラー
-クロスビルドは無理だと考える。
+クロスビルドは無理。
 ```sh
 npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
 ```
@@ -38,7 +38,6 @@ bun tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 
 ## 方法2: cross (Docker ベース)
 おそらく、これも無理。
-Docker が使える環境向け。
 ```bash
 cargo install cross --git https://github.com/cross-rs/cross
 
@@ -122,9 +121,10 @@ src-tauri/target/release/bundle/
 
 mupdf-sys 0.6.0 は Linux/macOS/Windows 全対応。
 - 静的リンクのため DLL 配布不要
-- MSVC (cargo-xwin) と MinGW (cross) 両方でビルド可能
+- MSVC (cargo-xwin) と MinGW (cross) 両方でビルド可能になったが、インストーラーのクロスビルドは無理。
 
-## アイコン差し替え
+## ToDo
+### アイコン差し替え
 
 ```bash
 # 選択したアイコンの SVG を指定して Tauri アイコン一式を生成
