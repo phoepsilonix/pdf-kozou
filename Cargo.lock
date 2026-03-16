@@ -2826,7 +2826,7 @@ dependencies = [
 [[package]]
 name = "mupdf-sys"
 version = "0.6.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=1eead855a46a92b39d8c3ba22fb2c0b9620f29e9#1eead855a46a92b39d8c3ba22fb2c0b9620f29e9"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=b7bbdf3afc092e69ab09a865d8f6d15a1e206322#b7bbdf3afc092e69ab09a865d8f6d15a1e206322"
 dependencies = [
  "bindgen",
  "cc",

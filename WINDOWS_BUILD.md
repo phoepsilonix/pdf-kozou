@@ -15,7 +15,8 @@ rustup target add x86_64-pc-windows-msvc
 
 # ビルド
 cd pdf-kozou
-USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY" HAVE_OBJCOPY=no cargo xwin build --release --target x86_64-pc-windows-msvc -p pdf-kozou-core
+#USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY" HAVE_OBJCOPY=no
+OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo xwin build --release --target x86_64-pc-windows-msvc -p pdf-kozou-core
 
 # Tauri アプリのビルド
 PDF_KOZOU_CORE=./target/x86_64-pc-windows-msvc/release/pdf-kozou-core.exe \

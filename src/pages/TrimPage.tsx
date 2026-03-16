@@ -49,7 +49,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [pageImage, setPageImage] = useState("");
   const [curPageInfo, setCurPageInfo] = useState<PdfInfo | null>(null);
   const [trimPages,   onPages]   = useState("all");
-  const [excludeSpec, onExclude] = useState("");
+  const [excludeSpec, setExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
@@ -274,7 +274,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
             excludeSpec={excludeSpec}
-            onExclude={(v) => onExclude(v)}
+            onExclude={setExclude}
             extractSpec={extractSpec}
             onExtract={onExtract}
           />
@@ -304,7 +304,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [outTmp] = useState("");
 
   const [trimPages,   onPages]   = useState("all");
-  const [excludeSpec, onExclude] = useState("");
+  const [excludeSpec, setExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
   const { pickSave } = useSaveDialog();
 
@@ -464,7 +464,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               onReset={() => setTrimMargins(zero())}
               processing={phase !== "edit"}
               excludeSpec={excludeSpec}
-              onExclude={(v) => onExclude(v)}
+              onExclude={setExclude}
               extractSpec={extractSpec}
               onExtract={onExtract}
             />
