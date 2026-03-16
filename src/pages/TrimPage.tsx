@@ -313,7 +313,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const currentPage = pdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
   const pageH = currentPage.h;
-  let pages;
+  const [Pages, setPages] = useState(pdfInfo.page_count) || 1;
 
   // プレビューページ変更時に画像を再取得
   useEffect(() => {
@@ -342,13 +342,15 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         }).catch(() => { pages = pdfInfo.page_count; });
       }).catch(() => {});
 */
+      let pages = pdfInfo.page_count;
       await getPdfInfo(tmpPath).then(info => {
         setTmpPageInfo(info);
-        pages = info.page_count;
-      }).catch(() => { pages = pdfInfo.page_count; });
+	pages = info.page_count;
+        setPages(pages);
+      }).catch(() => { pages = pdfInfo.page_count; setPages(pages); });
 
       console.log("[DEBUG] trim_pdf 結果:", res);
-      console.log("pages", pages);
+      console.log("Pages", Pages, pages);
 
       const n = Math.min(6, pages);
       const imgs: string[] = [];
@@ -370,7 +372,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       setError(String(e));
     }
 
-  }, [filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec, pdfInfo.page_count, tmpPageInfo, pages, setError]);
+  }, [filePath, outTmp, trimMargins, trimPages, excludeSpec, extractSpec, pdfInfo.page_count, tmpPageInfo, Pages, setError]);
 
   const handleSave = async () => {
     const base = filePath.split(/[/\\]/).pop()?.replace(/\.pdf$/i,"") ?? "file";
@@ -404,9 +406,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
 
   if (phase === "result") return (
     <ResultView images={resultImgs}
-      pageCount={//pdfInfo.page_count
-	     () => { console.log("result tmpPageInfo",tmpPageInfo); if (tmpPageInfo != null) { tmpPageInfo.page_count; } else { pdfInfo.page_count; };}
-      }
+      pageCount={Pages}
       onSave={handleSave} onBack={()=>{setPhase("edit");setResultImgs([]);setErrMsg("");}}
       onCompress={()=>setPhase("compress")} isSaving={isSaving}/>
   );
