@@ -17,14 +17,20 @@
 //      ~/.cargo/registry/src/.../mupdf-sys-X.Y.Z/mupdf/include
 //   5. システムパス /usr/include
 
-use std::{env, path::{Path, PathBuf}};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     println!("cargo:rerun-if-changed=src/c/mupdf_safe.c");
     println!("cargo:rerun-if-env-changed=MUPDF_INCLUDE_DIR");
 
     let mupdf_include = find_mupdf_include();
-    println!("cargo:warning=kozou build: mupdf include = {}", mupdf_include.display());
+    println!(
+        "cargo:warning=kozou build: mupdf include = {}",
+        mupdf_include.display()
+    );
 
     // 実際に使うヘッダのバージョンを警告表示
     let version_h = mupdf_include.join("mupdf/fitz/version.h");
@@ -72,7 +78,11 @@ fn find_mupdf_include() -> PathBuf {
         // OUT_DIR = target/{profile}/build/pdf-kozou-core-HASH/out
         // mupdf-sys の out は   target/{profile}/build/mupdf-sys-HASH/out
         // 共通の親は           target/{profile}/build/
-        if let Some(build_dir) = out_path.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+        if let Some(build_dir) = out_path
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+        {
             if let Some(inc) = search_mupdf_sys_out_include(build_dir) {
                 println!("cargo:warning=kozou build: using out/build/include (patch/git build)");
                 return inc;
@@ -109,7 +119,7 @@ fn find_mupdf_include() -> PathBuf {
 /// target/{profile}/build/ 以下の mupdf-sys-*/out/build/include を探す。
 /// 複数ある場合はヘッダの FZ_VERSION が最も高いものを選ぶ。
 fn search_mupdf_sys_out_include(build_dir: &Path) -> Option<PathBuf> {
-    let mut candidates: Vec<((u64,u64,u64), PathBuf)> = Vec::new();
+    let mut candidates: Vec<((u64, u64, u64), PathBuf)> = Vec::new();
 
     let entries = std::fs::read_dir(build_dir).ok()?;
     for entry in entries.flatten() {
@@ -128,7 +138,10 @@ fn search_mupdf_sys_out_include(build_dir: &Path) -> Option<PathBuf> {
         }
     }
 
-    candidates.into_iter().max_by_key(|(ver, _)| *ver).map(|(_, p)| p)
+    candidates
+        .into_iter()
+        .max_by_key(|(ver, _)| *ver)
+        .map(|(_, p)| p)
 }
 
 /// CARGO_HOME/git/checkouts 以下の mupdf-sys/mupdf/include を探す。
@@ -141,7 +154,7 @@ fn find_mupdf_sys_git_include() -> Option<PathBuf> {
         return None;
     }
 
-    let mut candidates: Vec<((u64,u64,u64), PathBuf)> = Vec::new();
+    let mut candidates: Vec<((u64, u64, u64), PathBuf)> = Vec::new();
 
     // git/checkouts/REPO-HASH/COMMIT/ の構造
     let repo_dirs = std::fs::read_dir(&git_checkouts).ok()?;
@@ -162,10 +175,7 @@ fn find_mupdf_sys_git_include() -> Option<PathBuf> {
                 continue;
             }
             // mupdf-sys/mupdf/include または mupdf/include
-            for sub_path in &[
-                "mupdf-sys/mupdf/include",
-                "mupdf/include",
-            ] {
+            for sub_path in &["mupdf-sys/mupdf/include", "mupdf/include"] {
                 let c = commit_dir.path().join(sub_path);
                 if c.join("mupdf/fitz.h").exists() {
                     let ver = read_fz_version(&c);
@@ -176,7 +186,10 @@ fn find_mupdf_sys_git_include() -> Option<PathBuf> {
         }
     }
 
-    candidates.into_iter().max_by_key(|(ver, _)| *ver).map(|(_, p)| p)
+    candidates
+        .into_iter()
+        .max_by_key(|(ver, _)| *ver)
+        .map(|(_, p)| p)
 }
 
 /// cargo registry 内の mupdf-sys-*/mupdf/include を探す。
@@ -187,7 +200,7 @@ fn find_mupdf_sys_registry_include() -> Option<PathBuf> {
         return None;
     }
 
-    let mut candidates: Vec<((u64,u64,u64), PathBuf)> = Vec::new();
+    let mut candidates: Vec<((u64, u64, u64), PathBuf)> = Vec::new();
 
     let index_dirs = std::fs::read_dir(&registry_src).ok()?;
     for index_dir in index_dirs.flatten() {
@@ -208,7 +221,10 @@ fn find_mupdf_sys_registry_include() -> Option<PathBuf> {
         }
     }
 
-    candidates.into_iter().max_by_key(|(ver, _)| *ver).map(|(_, path)| path)
+    candidates
+        .into_iter()
+        .max_by_key(|(ver, _)| *ver)
+        .map(|(_, path)| path)
 }
 
 /// ヘッダディレクトリから FZ_VERSION を読み取って semver タプルに変換する。
@@ -222,7 +238,7 @@ fn read_fz_version(include_dir: &Path) -> (u64, u64, u64) {
                 if let Some(start) = line.rfind('"') {
                     let rest = &line[..start];
                     if let Some(ver_start) = rest.rfind('"') {
-                        let ver_str = &rest[ver_start+1..];
+                        let ver_str = &rest[ver_start + 1..];
                         return parse_semver(ver_str);
                     }
                 }
@@ -247,8 +263,13 @@ fn parse_semver(s: &str) -> (u64, u64, u64) {
     let mut parts = s.splitn(3, '.');
     let major = parts.next().and_then(|x| x.parse().ok()).unwrap_or(0);
     let minor = parts.next().and_then(|x| x.parse().ok()).unwrap_or(0);
-    let patch = parts.next()
-        .and_then(|x| x.trim_end_matches(|c: char| !c.is_ascii_digit()).parse().ok())
+    let patch = parts
+        .next()
+        .and_then(|x| {
+            x.trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse()
+                .ok()
+        })
         .unwrap_or(0);
     (major, minor, patch)
 }

@@ -5,9 +5,9 @@
 //   - ネイティブファイルダイアログ (xdg-desktop-portal 不使用)
 //   - ウィンドウ環境情報取得
 
-use std::path::PathBuf;
 use crate::platform::DisplayServer;
-                                                
+use std::path::PathBuf;
+
 ///
 /// 検出順序:
 ///   1. WAYLAND_DISPLAY → Wayland (DISPLAY もあれば XWayland も利用可能)
@@ -22,7 +22,7 @@ pub fn detect_display_server() -> DisplayServer {
         .unwrap_or(false);
 
     match (wayland, x11) {
-        (true, true)  => DisplayServer::WaylandWithXWayland,
+        (true, true) => DisplayServer::WaylandWithXWayland,
         (true, false) => DisplayServer::Wayland,
         (false, true) => DisplayServer::X11,
         (false, false) => {
@@ -100,7 +100,8 @@ pub async fn save_pdf_dialog(default_name: &str) -> Option<PathBuf> {
         .set_title("保存先を選択")
         .set_file_name(default_name)
         .add_filter("PDF", &["pdf"])
-        .save_file().await
+        .save_file()
+        .await
         .map(|f| f.path().to_path_buf())
 }
 
@@ -150,22 +151,21 @@ pub fn setup_webkit_env() {
             std::env::set_var("GDK_BACKEND", "wayland,x11");
         }
         // wl-display ソケットが存在するか確認
-        let wayland_display = std::env::var("WAYLAND_DISPLAY")
-            .unwrap_or_else(|_| "wayland-0".to_string());
-        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-            .unwrap_or_else(|_| {
-                // std のみで UID 取得 (/proc/self/status)、失敗時は 1000
-                let uid = std::fs::read_to_string("/proc/self/status")
-                    .ok()
-                    .and_then(|s| {
-                        s.lines()
-                            .find(|l| l.starts_with("Uid:"))
-                            .and_then(|l| l.split_whitespace().nth(1))
-                            .and_then(|v| v.parse::<u32>().ok())
-                    })
-                    .unwrap_or(1000);
-                format!("/run/user/{}", uid)
-            });
+        let wayland_display =
+            std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".to_string());
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+            // std のみで UID 取得 (/proc/self/status)、失敗時は 1000
+            let uid = std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|s| {
+                    s.lines()
+                        .find(|l| l.starts_with("Uid:"))
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .and_then(|v| v.parse::<u32>().ok())
+                })
+                .unwrap_or(1000);
+            format!("/run/user/{}", uid)
+        });
         let socket = std::path::PathBuf::from(&runtime_dir).join(&wayland_display);
         if !socket.exists() {
             tracing::warn!(

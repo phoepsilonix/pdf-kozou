@@ -151,7 +151,6 @@ enum Commands {
         font_subset: bool,
     },
 
-
     /// PDF を全ページ画像化して PDF に再出力（ラスタライズ）
     ///
     /// ⚠️ この操作はページ全体を画像に変換します。
@@ -222,7 +221,10 @@ fn main() {
     let cli = Cli::parse();
     let result = run(cli);
     if let Err(e) = result {
-        let resp = ErrorResponse { ok: false, error: e.to_string() };
+        let resp = ErrorResponse {
+            ok: false,
+            error: e.to_string(),
+        };
         println!("{}", serde_json::to_string(&resp).unwrap());
         std::process::exit(1);
     }
@@ -239,14 +241,28 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Render { path, page, dpi, format, quality, output, out_dir, name_prefix, start_number } => {
-            let ext = match format.as_str() { "png" => "png", "svg" => "svg", _ => "jpg" };
+        Commands::Render {
+            path,
+            page,
+            dpi,
+            format,
+            quality,
+            output,
+            out_dir,
+            name_prefix,
+            start_number,
+        } => {
+            let ext = match format.as_str() {
+                "png" => "png",
+                "svg" => "svg",
+                _ => "jpg",
+            };
 
             // --page をパース → PageSpec に変換
             let page_spec = match page.as_deref() {
-                None          => PageSpec::Omitted,
-                Some("all")   => PageSpec::All,
-                Some(s)       => PageSpec::Indices(parse_string_pages(s)?),
+                None => PageSpec::Omitted,
+                Some("all") => PageSpec::All,
+                Some(s) => PageSpec::Indices(parse_string_pages(s)?),
             };
 
             match (page_spec, out_dir) {
@@ -259,15 +275,24 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 }
 
                 // ② --page 省略 + --out-dir あり → 全ページをファイル出力
-                (PageSpec::Omitted, Some(ref out_dir)) |
-                (PageSpec::All,     Some(ref out_dir)) => {
+                (PageSpec::Omitted, Some(ref out_dir)) | (PageSpec::All, Some(ref out_dir)) => {
                     let out_dir = out_dir.clone();
                     std::fs::create_dir_all(&out_dir)?;
                     let info = pdf_kozou_core::info::info(&path)?;
                     let total = info.page_count as u32;
                     let indices: Vec<i32> = (0..info.page_count).collect();
-                    render_to_dir(&path, &indices, total, start_number,
-                        name_prefix.as_deref(), &out_dir, &format, quality, dpi, ext)?;
+                    render_to_dir(
+                        &path,
+                        &indices,
+                        total,
+                        start_number,
+                        name_prefix.as_deref(),
+                        &out_dir,
+                        &format,
+                        quality,
+                        dpi,
+                        ext,
+                    )?;
                 }
 
                 // ③ --page all + --out-dir なし → 全ページ JSON stdout
@@ -282,16 +307,28 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     let out_dir = out_dir.clone();
                     std::fs::create_dir_all(&out_dir)?;
                     let total = indices.len() as u32;
-                    render_to_dir(&path, indices, total, start_number,
-                        name_prefix.as_deref(), &out_dir, &format, quality, dpi, ext)?;
+                    render_to_dir(
+                        &path,
+                        indices,
+                        total,
+                        start_number,
+                        name_prefix.as_deref(),
+                        &out_dir,
+                        &format,
+                        quality,
+                        dpi,
+                        ext,
+                    )?;
                 }
 
                 // ⑤ --page N (単ページ) + --out-dir なし → JSON or ファイル (-o)
                 (PageSpec::Indices(ref indices), None) if indices.len() == 1 => {
                     let page_index = indices[0];
                     let req = pdf_kozou_core::render::RenderRequest {
-                        path, page_index, dpi,
-                        format:  Some(format),
+                        path,
+                        page_index,
+                        dpi,
+                        format: Some(format),
                         quality: Some(quality),
                         output,
                     };
@@ -306,30 +343,45 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             }
         }
 
-        Commands::Trim { input, output, left, right, bottom, top, unit, pages, exclude, extract } => {
-
+        Commands::Trim {
+            input,
+            output,
+            left,
+            right,
+            bottom,
+            top,
+            unit,
+            pages,
+            exclude,
+            extract,
+        } => {
             // 単位をptに変換
             let to_pt = match unit.to_lowercase().as_str() {
-                "pt"         => 1.0_f32,
-                "cm"         => 28.3465,
-                "in" | "inch"=> 72.0,
-                _            => 2.83465,  // mm (デフォルト)
+                "pt" => 1.0_f32,
+                "cm" => 28.3465,
+                "in" | "inch" => 72.0,
+                _ => 2.83465, // mm (デフォルト)
             };
 
             let trim_page = pages.as_deref().map(parse_page_selection).transpose()?;
             let exclude_page = exclude.as_deref().map(parse_page_selection).transpose()?;
             let extract_page = extract.as_deref().map(parse_page_selection).transpose()?;
-            println!("{:?} {:?} {:?}", trim_page.iter(), exclude_page, extract_page);
+            println!(
+                "{:?} {:?} {:?}",
+                trim_page.iter(),
+                exclude_page,
+                extract_page
+            );
             let req = pdf_kozou_core::trim::TrimRequest {
                 input,
                 output,
                 margins: pdf_kozou_core::trim::Margins {
-                    left:   left   * to_pt,
-                    right:  right  * to_pt,
+                    left: left * to_pt,
+                    right: right * to_pt,
                     bottom: bottom * to_pt,
-                    top:    top    * to_pt,
+                    top: top * to_pt,
                 },
-                unit: "pt".to_string(),  // CLI側で変換済み
+                unit: "pt".to_string(), // CLI側で変換済み
                 pages: trim_page,
                 exclude: exclude_page,
                 extract: extract_page,
@@ -338,22 +390,36 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Compress { input, output, rewrite, rewrite_options,
-                               preset, no_compress_images, no_compress_fonts, font_subset,
-                               gc, clean, sanitize } => {
+        Commands::Compress {
+            input,
+            output,
+            rewrite,
+            rewrite_options,
+            preset,
+            no_compress_images,
+            no_compress_fonts,
+            font_subset,
+            gc,
+            clean,
+            sanitize,
+        } => {
             let resp = if rewrite {
-                let opts = rewrite_options.as_deref()
+                let opts = rewrite_options
+                    .as_deref()
                     .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
                 // フォールバック時のパラメータ優先順位:
                 //   1. 明示的な CLI フラグ (--gc / --clean / --sanitize / --no-compress-*)
                 //   2. --rewrite-options 文字列から parse（rewrite 失敗時でも同じ設定で圧縮）
                 //   3. デフォルト値
                 let fallback = {
-                    use pdf_kozou_core::compress::{RewriteFallbackParams, parse_rewrite_opt_i32, parse_rewrite_opt_bool};
+                    use pdf_kozou_core::compress::{
+                        parse_rewrite_opt_bool, parse_rewrite_opt_i32, RewriteFallbackParams,
+                    };
                     RewriteFallbackParams {
                         garbage_level: gc.or_else(|| parse_rewrite_opt_i32(opts, "garbage")),
-                        clean:    clean    || parse_rewrite_opt_bool(opts, "clean")   .unwrap_or(false),
-                        sanitize: sanitize || parse_rewrite_opt_bool(opts, "sanitize").unwrap_or(false),
+                        clean: clean || parse_rewrite_opt_bool(opts, "clean").unwrap_or(false),
+                        sanitize: sanitize
+                            || parse_rewrite_opt_bool(opts, "sanitize").unwrap_or(false),
                         compress_images: if no_compress_images {
                             Some(false)
                         } else {
@@ -370,35 +436,44 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             } else {
                 use pdf_kozou_core::compress::CompressPreset;
                 let preset = match preset.as_str() {
-                    "light"      => Some(CompressPreset::Light),
+                    "light" => Some(CompressPreset::Light),
                     "aggressive" => Some(CompressPreset::Aggressive),
-                    "maximum"    => Some(CompressPreset::Maximum),
-                    _            => Some(CompressPreset::Standard),
+                    "maximum" => Some(CompressPreset::Maximum),
+                    _ => Some(CompressPreset::Standard),
                 };
                 let req = pdf_kozou_core::compress::CompressRequest {
                     input,
                     output,
                     preset,
-                    compress_images: if no_compress_images { Some(false) } else { None },
-                    compress_fonts:  if no_compress_fonts  { Some(false) } else { None },
-                    garbage_level:   gc,
-                    clean:           if clean    { Some(true) } else { None },
-                    sanitize:        if sanitize { Some(true) } else { None },
-                    font_subset:     if font_subset { Some(true) } else { None },
-                    linearize:       None,
+                    compress_images: if no_compress_images {
+                        Some(false)
+                    } else {
+                        None
+                    },
+                    compress_fonts: if no_compress_fonts { Some(false) } else { None },
+                    garbage_level: gc,
+                    clean: if clean { Some(true) } else { None },
+                    sanitize: if sanitize { Some(true) } else { None },
+                    font_subset: if font_subset { Some(true) } else { None },
+                    linearize: None,
                 };
                 pdf_kozou_core::compress::compress(&req)?
             };
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-
         Commands::Rasterize { input, output, dpi } => {
             let resp = pdf_kozou_core::compress::rasterize(&input, &output, dpi)?;
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Split { input, out_dir, prefix, every, ranges } => {
+        Commands::Split {
+            input,
+            out_dir,
+            prefix,
+            every,
+            ranges,
+        } => {
             let mode = if let Some(r) = ranges {
                 pdf_kozou_core::split::SplitMode::Ranges {
                     ranges: parse_ranges(&r)?,
@@ -424,7 +499,13 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Rotate { input, output, angle, pages, page_angles } => {
+        Commands::Rotate {
+            input,
+            output,
+            angle,
+            pages,
+            page_angles,
+        } => {
             // --angle: 0/90/180/270 のみ受け付ける
             if let Some(a) = angle {
                 if a % 90 != 0 || a > 270 {
@@ -432,20 +513,34 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 }
             }
             // --page-angles "1:90,2:180,3:270" をパース
-            let rotations = page_angles.as_deref().map(|s| {
-                s.split(',').map(|pair| {
-                    let mut it = pair.splitn(2, ':');
-                    let page  = it.next().unwrap_or("0").trim().parse::<i32>()
-                        .map_err(|e| anyhow::anyhow!("invalid page: {}", e))?;
-                    let deg   = it.next().unwrap_or("0").trim().parse::<i32>()
-                        .map_err(|e| anyhow::anyhow!("invalid angle: {}", e))?;
-                    Ok(pdf_kozou_core::rotate::PageRotation { page, angle: deg })
-                }).collect::<anyhow::Result<Vec<_>>>()
-            }).transpose()?;
+            let rotations = page_angles
+                .as_deref()
+                .map(|s| {
+                    s.split(',')
+                        .map(|pair| {
+                            let mut it = pair.splitn(2, ':');
+                            let page = it
+                                .next()
+                                .unwrap_or("0")
+                                .trim()
+                                .parse::<i32>()
+                                .map_err(|e| anyhow::anyhow!("invalid page: {}", e))?;
+                            let deg = it
+                                .next()
+                                .unwrap_or("0")
+                                .trim()
+                                .parse::<i32>()
+                                .map_err(|e| anyhow::anyhow!("invalid angle: {}", e))?;
+                            Ok(pdf_kozou_core::rotate::PageRotation { page, angle: deg })
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()
+                })
+                .transpose()?;
 
             let pages = pages.as_deref().map(parse_page_list).transpose()?;
             let req = pdf_kozou_core::rotate::RotateRequest {
-                input, output,
+                input,
+                output,
                 angle: angle.map(|a| a as i32),
                 pages,
                 rotations,
@@ -467,7 +562,9 @@ fn run_json_mode() -> anyhow::Result<()> {
     let stdin = std::io::stdin();
     for line in stdin.lock().lines() {
         let line = line?;
-        if line.trim().is_empty() { continue; }
+        if line.trim().is_empty() {
+            continue;
+        }
         let response = dispatch_json(&line);
         println!("{response}");
     }
@@ -477,10 +574,12 @@ fn run_json_mode() -> anyhow::Result<()> {
 /// JSON リクエストをディスパッチして JSON レスポンスを返す
 fn dispatch_json(line: &str) -> String {
     #[derive(serde::Deserialize)]
-    struct Tagged { cmd: String }
+    struct Tagged {
+        cmd: String,
+    }
 
     let tag: Tagged = match serde_json::from_str(line) {
-        Ok(t)  => t,
+        Ok(t) => t,
         Err(e) => return err_json(&format!("JSON parse error: {e}")),
     };
 
@@ -489,7 +588,11 @@ fn dispatch_json(line: &str) -> String {
         match tag.cmd.as_str() {
             "info" => {
                 #[derive(serde::Deserialize)]
-                struct Req { path: String, #[serde(default)] fonts: bool }
+                struct Req {
+                    path: String,
+                    #[serde(default)]
+                    fonts: bool,
+                }
                 let r: Req = serde_json::from_str(line)?;
                 let resp = if r.fonts {
                     pdf_kozou_core::info::info_with_fonts(&r.path)?
@@ -500,7 +603,9 @@ fn dispatch_json(line: &str) -> String {
             }
             "render" => {
                 let req: pdf_kozou_core::render::RenderRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(&pdf_kozou_core::render::render(&req)?)?)
+                Ok(serde_json::to_string(&pdf_kozou_core::render::render(
+                    &req,
+                )?)?)
             }
             "trim" => {
                 let req: pdf_kozou_core::trim::TrimRequest = serde_json::from_str(line)?;
@@ -530,25 +635,37 @@ fn dispatch_json(line: &str) -> String {
                 }
                 let r: Req = serde_json::from_str(line)?;
                 let resp = if r.rewrite {
-                    let opts = r.rewrite_options.as_deref()
+                    let opts = r
+                        .rewrite_options
+                        .as_deref()
                         .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
                     // 優先順位: 明示的な fallback_* フィールド > rewrite_options 文字列 > デフォルト
                     let fallback = {
-                        use pdf_kozou_core::compress::{RewriteFallbackParams, parse_rewrite_opt_i32, parse_rewrite_opt_bool};
+                        use pdf_kozou_core::compress::{
+                            parse_rewrite_opt_bool, parse_rewrite_opt_i32, RewriteFallbackParams,
+                        };
                         RewriteFallbackParams {
-                            garbage_level: r.fallback_gc
+                            garbage_level: r
+                                .fallback_gc
                                 .or_else(|| parse_rewrite_opt_i32(opts, "garbage")),
-                            clean:    r.fallback_clean
+                            clean: r.fallback_clean
                                 || parse_rewrite_opt_bool(opts, "clean").unwrap_or(false),
                             sanitize: r.fallback_sanitize
                                 || parse_rewrite_opt_bool(opts, "sanitize").unwrap_or(false),
-                            compress_images: r.fallback_compress_images
+                            compress_images: r
+                                .fallback_compress_images
                                 .or_else(|| parse_rewrite_opt_bool(opts, "compress-images")),
-                            compress_fonts: r.fallback_compress_fonts
+                            compress_fonts: r
+                                .fallback_compress_fonts
                                 .or_else(|| parse_rewrite_opt_bool(opts, "compress-fonts")),
                         }
                     };
-                    pdf_kozou_core::compress::rewrite(&r.inner.input, &r.inner.output, opts, &fallback)?
+                    pdf_kozou_core::compress::rewrite(
+                        &r.inner.input,
+                        &r.inner.output,
+                        opts,
+                        &fallback,
+                    )?
                 } else {
                     pdf_kozou_core::compress::compress(&r.inner)?
                 };
@@ -564,20 +681,25 @@ fn dispatch_json(line: &str) -> String {
             }
             "rotate" => {
                 let req: pdf_kozou_core::rotate::RotateRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(&pdf_kozou_core::rotate::rotate(&req)?)?)
+                Ok(serde_json::to_string(&pdf_kozou_core::rotate::rotate(
+                    &req,
+                )?)?)
             }
             cmd => Err(anyhow::anyhow!("unknown command: {cmd}")),
         }
     })();
 
     match result {
-        Ok(s)  => s,
+        Ok(s) => s,
         Err(e) => err_json(&e.to_string()),
     }
 }
 
 fn err_json(msg: &str) -> String {
-    format!(r#"{{"ok":false,"error":{}}}"#, serde_json::to_string(msg).unwrap())
+    format!(
+        r#"{{"ok":false,"error":{}}}"#,
+        serde_json::to_string(msg).unwrap()
+    )
 }
 
 // ── パース補助 ────────────────────────────────────────────────────────────────
@@ -586,11 +708,21 @@ use pdf_kozou_core::trim::PageSelection;
 
 /// "1,3,5-10" → PageSelection::Range
 fn parse_page_selection(s: &str) -> anyhow::Result<pdf_kozou_core::trim::PageSelection> {
-    if s.to_lowercase() == "none" { return Ok(PageSelection::None); }
-    if s.to_lowercase() == "all" { return Ok(PageSelection::All); }
-    if s.to_lowercase() == "odd" { return Ok(PageSelection::Odd); }
-    if s.to_lowercase() == "even" { return Ok(PageSelection::Even); }
-    if s == "" { return Ok(PageSelection::All); }
+    if s.to_lowercase() == "none" {
+        return Ok(PageSelection::None);
+    }
+    if s.to_lowercase() == "all" {
+        return Ok(PageSelection::All);
+    }
+    if s.to_lowercase() == "odd" {
+        return Ok(PageSelection::Odd);
+    }
+    if s.to_lowercase() == "even" {
+        return Ok(PageSelection::Even);
+    }
+    if s.is_empty() {
+        return Ok(PageSelection::All);
+    }
     let pages = parse_page_list(s)?;
     Ok(pdf_kozou_core::trim::PageSelection::Range { pages })
 }
@@ -602,7 +734,7 @@ fn parse_page_list(s: &str) -> anyhow::Result<Vec<i32>> {
         let part = part.trim();
         if let Some((a, b)) = part.split_once('-') {
             let start: i32 = a.trim().parse()?;
-            let end:   i32 = b.trim().parse()?;
+            let end: i32 = b.trim().parse()?;
             pages.extend(start..=end);
         } else {
             pages.push(part.parse()?);
@@ -614,12 +746,14 @@ fn parse_page_list(s: &str) -> anyhow::Result<Vec<i32>> {
 /// "1-3,4-6" → Vec<[i32; 2]>
 fn parse_ranges(s: &str) -> anyhow::Result<Vec<[i32; 2]>> {
     s.split(',')
-     .map(|part| {
-         let (a, b) = part.trim().split_once('-')
-             .ok_or_else(|| anyhow::anyhow!("invalid range: {part}"))?;
-         Ok([a.trim().parse()?, b.trim().parse()?])
-     })
-     .collect()
+        .map(|part| {
+            let (a, b) = part
+                .trim()
+                .split_once('-')
+                .ok_or_else(|| anyhow::anyhow!("invalid range: {part}"))?;
+            Ok([a.trim().parse()?, b.trim().parse()?])
+        })
+        .collect()
 }
 
 // ── render 全ページ出力ヘルパー ───────────────────────────────────────────────
@@ -636,23 +770,29 @@ fn parse_ranges(s: &str) -> anyhow::Result<Vec<[i32; 2]>> {
 fn resolve_name_prefix_and_start(
     name_prefix: Option<&str>,
     start_number: Option<u32>,
-    input_path:  &str,
-    _total:      u32,
+    input_path: &str,
+    _total: u32,
 ) -> (String, u32) {
     let raw = match name_prefix {
         Some(p) => p.to_string(),
         None => {
             let stem = std::path::Path::new(input_path)
-                .file_stem().and_then(|s| s.to_str()).unwrap_or("page");
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("page");
             format!("{}_p", stem)
         }
     };
 
     // 末尾の連続する数字を取り出す
-    let tail_digits: String = raw.chars().rev()
+    let tail_digits: String = raw
+        .chars()
+        .rev()
         .take_while(|c| c.is_ascii_digit())
         .collect::<String>()
-        .chars().rev().collect();
+        .chars()
+        .rev()
+        .collect();
 
     if let Some(start) = start_number {
         // --page-start 明示: プレフィックスから末尾数字を除いてベースにする
@@ -675,7 +815,11 @@ fn resolve_name_prefix_and_start(
 
 /// 数値を表現するのに必要な桁数 (最低3桁)
 fn digit_width(max_num: u32) -> u32 {
-    let natural = if max_num == 0 { 1 } else { (max_num as f64).log10().floor() as u32 + 1 };
+    let natural = if max_num == 0 {
+        1
+    } else {
+        (max_num as f64).log10().floor() as u32 + 1
+    };
     natural.max(3)
 }
 
@@ -695,7 +839,7 @@ fn parse_string_pages(s: &str) -> anyhow::Result<Vec<i32>> {
         let part = part.trim();
         if let Some((a, b)) = part.split_once('-') {
             let start: i32 = a.trim().parse()?;
-            let end:   i32 = b.trim().parse()?;
+            let end: i32 = b.trim().parse()?;
             for p in start..=end {
                 indices.push(p - 1); // 1始まり → 0始まり
             }
@@ -709,16 +853,16 @@ fn parse_string_pages(s: &str) -> anyhow::Result<Vec<i32>> {
 
 /// 指定ページをファイルに書き出す (--out-dir あり共通処理)
 fn render_to_dir(
-    path:         &str,
-    indices:      &[i32],
-    total:        u32,
+    path: &str,
+    indices: &[i32],
+    total: u32,
     start_number: Option<u32>,
-    name_prefix:  Option<&str>,
-    out_dir:      &str,
-    format:       &str,
-    quality:      u8,
-    dpi:          u32,
-    ext:          &str,
+    name_prefix: Option<&str>,
+    out_dir: &str,
+    format: &str,
+    quality: u8,
+    dpi: u32,
+    ext: &str,
 ) -> anyhow::Result<()> {
     let (base, start_num) = resolve_name_prefix_and_start(name_prefix, start_number, path, total);
     let mut file_list = Vec::new();
@@ -726,14 +870,21 @@ fn render_to_dir(
     for (seq, &page_index) in indices.iter().enumerate() {
         let num = start_num + seq as u32;
         let width = digit_width(start_num + total - 1);
-        let out_path = format!("{}/{}{:0>width$}.{}", out_dir, base, num, ext, width = width as usize);
+        let out_path = format!(
+            "{}/{}{:0>width$}.{}",
+            out_dir,
+            base,
+            num,
+            ext,
+            width = width as usize
+        );
         let req = pdf_kozou_core::render::RenderRequest {
-            path:    path.to_string(),
+            path: path.to_string(),
             page_index,
             dpi,
-            format:  Some(format.to_string()),
+            format: Some(format.to_string()),
             quality: Some(quality),
-            output:  Some(out_path.clone()),
+            output: Some(out_path.clone()),
         };
         let resp = pdf_kozou_core::render::render(&req)?;
         file_list.push(serde_json::json!({
@@ -743,29 +894,32 @@ fn render_to_dir(
             "height_px":resp.height_px,
         }));
     }
-    println!("{}", serde_json::to_string(&serde_json::json!({
-        "ok": true, "files": file_list,
-    }))?);
+    println!(
+        "{}",
+        serde_json::to_string(&serde_json::json!({
+            "ok": true, "files": file_list,
+        }))?
+    );
     Ok(())
 }
 
 /// 指定ページを JSON (base64) で stdout に出力
 fn render_to_json(
-    path:    &str,
+    path: &str,
     indices: &[i32],
-    format:  &str,
+    format: &str,
     quality: u8,
-    dpi:     u32,
+    dpi: u32,
 ) -> anyhow::Result<()> {
     let mut pages = Vec::new();
     for &page_index in indices {
         let req = pdf_kozou_core::render::RenderRequest {
-            path:    path.to_string(),
+            path: path.to_string(),
             page_index,
             dpi,
-            format:  Some(format.to_string()),
+            format: Some(format.to_string()),
             quality: Some(quality),
-            output:  None,
+            output: None,
         };
         let resp = pdf_kozou_core::render::render(&req)?;
         pages.push(serde_json::json!({
@@ -776,8 +930,11 @@ fn render_to_json(
             "height_px": resp.height_px,
         }));
     }
-    println!("{}", serde_json::to_string(&serde_json::json!({
-        "ok": true, "pages": pages,
-    }))?);
+    println!(
+        "{}",
+        serde_json::to_string(&serde_json::json!({
+            "ok": true, "pages": pages,
+        }))?
+    );
     Ok(())
 }

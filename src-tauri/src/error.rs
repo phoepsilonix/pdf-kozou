@@ -10,10 +10,12 @@ pub enum Error {
     Core(String),
     #[error("io: {0}")]
     Io(String),
-//    #[error("platform: {0}")]
-//    Platform(String),
+    //    #[error("platform: {0}")]
+    //    Platform(String),
 }
 
 impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self { Error::Io(e.to_string()) }
+    fn from(e: std::io::Error) -> Self {
+        Error::Io(e.to_string())
+    }
 }

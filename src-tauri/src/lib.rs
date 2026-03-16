@@ -62,16 +62,17 @@ pub fn run() {
                 .skip(1) // 最初の引数は自身のパスなのでスキップ
                 .filter(|a| {
                     let p = std::path::Path::new(a);
-                    p.exists() && p.extension()
-                        .map(|e| e.eq_ignore_ascii_case("pdf"))
-                        .unwrap_or(false)
+                    p.exists()
+                        && p.extension()
+                            .map(|e| e.eq_ignore_ascii_case("pdf"))
+                            .unwrap_or(false)
                 })
                 .collect();
 
             if !pdf_paths.is_empty() {
                 // フロントエンドの準備ができてから emit する
                 let handle = app.handle().clone();
-                let paths  = pdf_paths.clone();
+                let paths = pdf_paths.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(300));
                     let _ = handle.emit("open-pdf-files", paths);
@@ -85,10 +86,13 @@ pub fn run() {
                 app.on_file_drop_event(move |event| {
                     use tauri::FileDropEvent;
                     if let FileDropEvent::Dropped { paths, .. } = event {
-                        let pdf_paths: Vec<String> = paths.iter()
-                            .filter(|p| p.extension()
-                                .map(|e| e.eq_ignore_ascii_case("pdf"))
-                                .unwrap_or(false))
+                        let pdf_paths: Vec<String> = paths
+                            .iter()
+                            .filter(|p| {
+                                p.extension()
+                                    .map(|e| e.eq_ignore_ascii_case("pdf"))
+                                    .unwrap_or(false)
+                            })
                             .map(|p| p.display().to_string())
                             .collect();
                         if !pdf_paths.is_empty() {

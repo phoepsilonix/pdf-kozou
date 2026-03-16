@@ -1,18 +1,17 @@
 // pdf-kozou-core/src/trim.rs
 // CropBox によるトリミング
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use crate::error::{CoreError, Result};
 use serde::Deserializer;
-
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Margins {
-    pub left:   f32,
-    pub right:  f32,
+    pub left: f32,
+    pub right: f32,
     pub bottom: f32,
-    pub top:    f32,
+    pub top: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,15 +26,15 @@ pub enum PageSelection {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TrimRequest {
-    pub input:   String,
-    pub output:  String,
+    pub input: String,
+    pub output: String,
     pub margins: Margins,
     /// 余白の単位: "mm" (デフォルト) | "pt" | "cm" | "in"
     #[serde(default = "default_unit")]
-    pub unit:    String,
+    pub unit: String,
     /// どのページにトリミングを適用する対象ページ (None=全ページ)
     #[serde(deserialize_with = "deserialize_pages")]
-    pub pages:   Option<PageSelection>,
+    pub pages: Option<PageSelection>,
     /// 除外するページを指定 (1始まり, None=対象全ページ適用)
     #[serde(deserialize_with = "deserialize_pages")]
     pub exclude: Option<PageSelection>,
@@ -44,9 +43,13 @@ pub struct TrimRequest {
     pub extract: Option<PageSelection>,
 }
 
-fn default_unit() -> String { "mm".to_string() }
+fn default_unit() -> String {
+    "mm".to_string()
+}
 
-fn deserialize_pages<'de, D>(deserializer: D) -> std::result::Result<Option<PageSelection>, D::Error>
+fn deserialize_pages<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<PageSelection>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -56,7 +59,7 @@ where
         Value::Null => Ok(Some(PageSelection::All)),
         Value::String(s) => {
             let s = s.trim().to_lowercase();
-            if s.is_empty() || s == "" || s.to_lowercase() == "none" {
+            if s.is_empty() || s.is_empty() || s.to_lowercase() == "none" {
                 Ok(Some(PageSelection::None))
             } else if s.to_lowercase() == "all" {
                 Ok(Some(PageSelection::All))
@@ -71,7 +74,7 @@ where
                     let part = part.trim();
                     if let Some((a, b)) = part.split_once('-') {
                         let start: i32 = a.trim().parse().map_err(serde::de::Error::custom)?;
-                        let end:   i32 = b.trim().parse().map_err(serde::de::Error::custom)?;
+                        let end: i32 = b.trim().parse().map_err(serde::de::Error::custom)?;
                         for p in start..=end {
                             pages.push(p);
                         }
@@ -97,8 +100,12 @@ where
                             for r in ranges {
                                 if let Value::Array(arr) = r {
                                     if arr.len() == 2 {
-                                        if let (Some(Value::Number(s)), Some(Value::Number(e))) = (arr.get(0), arr.get(1)) {
-                                            if let (Some(start), Some(end)) = (s.as_i64(), e.as_i64()) {
+                                        if let (Some(Value::Number(s)), Some(Value::Number(e))) =
+                                            (arr.first(), arr.get(1))
+                                        {
+                                            if let (Some(start), Some(end)) =
+                                                (s.as_i64(), e.as_i64())
+                                            {
                                                 for p in start..=end {
                                                     pages.push((p - 1) as i32); // 1-based → 0-based
                                                 }
@@ -124,27 +131,31 @@ where
 
 #[derive(Serialize)]
 pub struct TrimResponse {
-    pub ok:           bool,
-    pub input_bytes:  u64,
+    pub ok: bool,
+    pub input_bytes: u64,
     pub output_bytes: u64,
-    pub crop_boxes:   Vec<CropBoxInfo>,
+    pub crop_boxes: Vec<CropBoxInfo>,
 }
 
 #[derive(Serialize)]
 pub struct CropBoxInfo {
-    pub page:   i32,
-    pub x0:     f32,
-    pub y0:     f32,
-    pub x1:     f32,
-    pub y1:     f32,
-    pub width:  f32,
+    pub page: i32,
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+    pub width: f32,
     pub height: f32,
 }
 
 /// f32 4値から PDF 配列オブジェクト [a b c d] をインラインで作成
-fn make_rect(doc: &mupdf::pdf::PdfDocument, a: f32, b: f32, c: f32, d: f32)
-    -> std::result::Result<mupdf::pdf::PdfObject, mupdf::Error>
-{
+fn make_rect(
+    doc: &mupdf::pdf::PdfDocument,
+    a: f32,
+    b: f32,
+    c: f32,
+    d: f32,
+) -> std::result::Result<mupdf::pdf::PdfObject, mupdf::Error> {
     let mut arr = doc.new_array()?;
     arr.array_push(doc.new_real(a)?)?;
     arr.array_push(doc.new_real(b)?)?;
@@ -155,7 +166,8 @@ fn make_rect(doc: &mupdf::pdf::PdfDocument, a: f32, b: f32, c: f32, d: f32)
 
 /// ページの Rotate 値を取得 (0/90/180/270)
 fn get_page_rotate(page_obj: &mupdf::pdf::PdfObject) -> i32 {
-    page_obj.get_dict("Rotate")
+    page_obj
+        .get_dict("Rotate")
         .ok()
         .flatten()
         .and_then(|obj| obj.resolve().ok().flatten())
@@ -168,10 +180,38 @@ fn get_page_rotate(page_obj: &mupdf::pdf::PdfObject) -> i32 {
 fn get_media_box(page_obj: &mupdf::pdf::PdfObject) -> Option<(f32, f32, f32, f32)> {
     let mb = page_obj.get_dict("MediaBox").ok()??;
     let mb = mb.resolve().ok().flatten().unwrap_or(mb);
-    let x0 = mb.get_array(0).ok()??.resolve().ok().flatten()?.as_float().ok()?;
-    let y0 = mb.get_array(1).ok()??.resolve().ok().flatten()?.as_float().ok()?;
-    let x1 = mb.get_array(2).ok()??.resolve().ok().flatten()?.as_float().ok()?;
-    let y1 = mb.get_array(3).ok()??.resolve().ok().flatten()?.as_float().ok()?;
+    let x0 = mb
+        .get_array(0)
+        .ok()??
+        .resolve()
+        .ok()
+        .flatten()?
+        .as_float()
+        .ok()?;
+    let y0 = mb
+        .get_array(1)
+        .ok()??
+        .resolve()
+        .ok()
+        .flatten()?
+        .as_float()
+        .ok()?;
+    let x1 = mb
+        .get_array(2)
+        .ok()??
+        .resolve()
+        .ok()
+        .flatten()?
+        .as_float()
+        .ok()?;
+    let y1 = mb
+        .get_array(3)
+        .ok()??
+        .resolve()
+        .ok()
+        .flatten()?
+        .as_float()
+        .ok()?;
     Some((x0, y0, x1, y1))
 }
 
@@ -194,7 +234,10 @@ fn get_media_box(page_obj: &mupdf::pdf::PdfObject) -> Option<(f32, f32, f32, f32
 ///   視覚 left → PDF top   (-top_pt)
 ///   視覚 right → PDF bottom (+bottom_pt)
 fn calc_cropbox(
-    mb_x0: f32, mb_y0: f32, mb_x1: f32, mb_y1: f32,
+    mb_x0: f32,
+    mb_y0: f32,
+    mb_x1: f32,
+    mb_y1: f32,
     margins: &Margins,
     rotate: i32,
 ) -> (f32, f32, f32, f32) {
@@ -219,10 +262,10 @@ fn calc_cropbox(
             //   実際: 視覚上端 = Device-y=0 = W-PDF-x=0 → PDF-x=W=mb_x1
             //   「視覚上を T削る」= Device-y > T → W-PDF-x > T → PDF-x < W-T → cx1 -= T
             // 「視覚下を B削る」= Device-y < W_vis-B → W-PDF-x < W-B → PDF-x > B → cx0 += B
-            let cx0 = mb_x0 + b;   // 視覚bottom → cx0 += B
-            let cy0 = mb_y0 + l;   // 視覚left   → cy0 += L  ← 修正
-            let cx1 = mb_x1 - t;   // 視覚top    → cx1 -= T
-            let cy1 = mb_y1 - r;   // 視覚right  → cy1 -= R  ← 修正
+            let cx0 = mb_x0 + b; // 視覚bottom → cx0 += B
+            let cy0 = mb_y0 + l; // 視覚left   → cy0 += L  ← 修正
+            let cx1 = mb_x1 - t; // 視覚top    → cx1 -= T
+            let cy1 = mb_y1 - r; // 視覚right  → cy1 -= R  ← 修正
             (cx0, cy0, cx1, cy1)
         }
         180 => {
@@ -234,9 +277,9 @@ fn calc_cropbox(
             // 「視覚上を T削る」= PDF-y < H-T → cy1 -= T
             // 「視覚下を B削る」= PDF-y > B   → cy0 += B
             let cx0 = mb_x0 + r;
-            let cy0 = mb_y0 + b;   // 視覚bottom → cy0 += B  ← 修正
+            let cy0 = mb_y0 + b; // 視覚bottom → cy0 += B  ← 修正
             let cx1 = mb_x1 - l;
-            let cy1 = mb_y1 - t;   // 視覚top    → cy1 -= T  ← 修正
+            let cy1 = mb_y1 - t; // 視覚top    → cy1 -= T  ← 修正
             (cx0, cy0, cx1, cy1)
         }
         270 => {
@@ -248,10 +291,10 @@ fn calc_cropbox(
             // 「視覚上を T削る」= PDF-x < T... Wait: Device-y=PDF-x
             //   Device-y > T → PDF-x > T → cx0 += T
             // 「視覚下を B削る」= Device-y < H_vis-B → PDF-x < H_vis-B → cx1 -= B
-            let cx0 = mb_x0 + t;   // 視覚top    → cx0 += T  (Device-y=PDF-x増方向)
-            let cy0 = mb_y0 + r;   // 視覚right  → cy0 += R  ← 修正
-            let cx1 = mb_x1 - b;   // 視覚bottom → cx1 -= B
-            let cy1 = mb_y1 - l;   // 視覚left   → cy1 -= L  ← 修正
+            let cx0 = mb_x0 + t; // 視覚top    → cx0 += T  (Device-y=PDF-x増方向)
+            let cy0 = mb_y0 + r; // 視覚right  → cy0 += R  ← 修正
+            let cx1 = mb_x1 - b; // 視覚bottom → cx1 -= B
+            let cy1 = mb_y1 - l; // 視覚left   → cy1 -= L  ← 修正
             (cx0, cy0, cx1, cy1)
         }
         _ => {
@@ -270,16 +313,16 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
 
     // 単位 → pt 変換
     let to_pt: f32 = match req.unit.to_lowercase().as_str() {
-        "pt"          => 1.0,
-        "cm"          => 28.3465,
+        "pt" => 1.0,
+        "cm" => 28.3465,
         "in" | "inch" => 72.0,
-        _             => 2.83465,  // mm
+        _ => 2.83465, // mm
     };
     let margins_pt = Margins {
-        left:   req.margins.left   * to_pt,
-        right:  req.margins.right  * to_pt,
+        left: req.margins.left * to_pt,
+        right: req.margins.right * to_pt,
         bottom: req.margins.bottom * to_pt,
-        top:    req.margins.top    * to_pt,
+        top: req.margins.top * to_pt,
     };
 
     //let mut working_path: String = req.input.clone();
@@ -287,9 +330,9 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     let working_tmp: Option<tempfile::NamedTempFile>;
 
     let page_count = {
-        let tmp = PdfDocument::open(&req.input)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        tmp.page_count().map_err(|e| CoreError::MuPdf(e.to_string()))?
+        let tmp = PdfDocument::open(&req.input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        tmp.page_count()
+            .map_err(|e| CoreError::MuPdf(e.to_string()))?
     };
 
     // # 全ページ
@@ -297,11 +340,11 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
 
     // trim_target（適用ページ）の計算（既存部分）
     let mut trim_target: Vec<i32> = match req.pages.as_ref().unwrap_or(&PageSelection::All) {
-        PageSelection::All   => (0..page_count).collect(),
-        PageSelection::Even  => (0..page_count).filter(|&i| (i+1) % 2 == 0).collect(),
-        PageSelection::Odd   => (0..page_count).filter(|&i| (i+1) % 2 == 1).collect(),
+        PageSelection::All => (0..page_count).collect(),
+        PageSelection::Even => (0..page_count).filter(|&i| (i + 1) % 2 == 0).collect(),
+        PageSelection::Odd => (0..page_count).filter(|&i| (i + 1) % 2 == 1).collect(),
         PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
-        PageSelection::None  => (0..page_count).collect(),
+        PageSelection::None => (0..page_count).collect(),
     };
     // トリミング適用ページ
     let _trim_pages: Vec<i32> = trim_target.clone();
@@ -311,113 +354,138 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     // Trim除外ページ
     if let Some(exclude) = req.exclude.as_ref() {
         let exclude_indices: Vec<i32> = match exclude {
-            PageSelection::All   => (0..page_count).collect(),
-            PageSelection::Even  => (0..page_count).filter(|&i| (i+1) % 2 == 0).collect(),
-            PageSelection::Odd   => (0..page_count).filter(|&i| (i+1) % 2 == 1).collect(),
+            PageSelection::All => (0..page_count).collect(),
+            PageSelection::Even => (0..page_count).filter(|&i| (i + 1) % 2 == 0).collect(),
+            PageSelection::Odd => (0..page_count).filter(|&i| (i + 1) % 2 == 1).collect(),
             PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
-            PageSelection::None  => [].to_vec(),
+            PageSelection::None => [].to_vec(),
         };
         // target から除外ページを削除
         trim_target.retain(|&p| !exclude_indices.contains(&p));
     }
 
     // ── トリミング適用 ─────────────────────────────────────────────────────
-    let doc = PdfDocument::open(&req.input)
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let doc = PdfDocument::open(&req.input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
     let mut crop_boxes = Vec::new();
 
     for idx in &all_pages {
-        if ! trim_target.contains(idx) { continue; }
+        if !trim_target.contains(idx) {
+            continue;
+        }
         let idx = *idx;
-        if idx < 0 || idx >= page_count { continue; }
+        if idx < 0 || idx >= page_count {
+            continue;
+        }
 
-        let mut page_obj = doc.find_page(idx)
+        let mut page_obj = doc
+            .find_page(idx)
             .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
         let rotate = get_page_rotate(&page_obj);
 
         // MediaBox を取得 (page_obj から直接、または継承)
-        let (mb_x0, mb_y0, mb_x1, mb_y1) = get_media_box(&page_obj)
-            .unwrap_or((0.0, 0.0, 595.0, 842.0));
+        let (mb_x0, mb_y0, mb_x1, mb_y1) =
+            get_media_box(&page_obj).unwrap_or((0.0, 0.0, 595.0, 842.0));
 
-        let (cx0, cy0, cx1, cy1) = calc_cropbox(
-            mb_x0, mb_y0, mb_x1, mb_y1, &margins_pt, rotate
-        );
+        let (cx0, cy0, cx1, cy1) = calc_cropbox(mb_x0, mb_y0, mb_x1, mb_y1, &margins_pt, rotate);
 
         if cx1 <= cx0 || cy1 <= cy0 {
             return Err(CoreError::InvalidArg(format!(
                 "page {}: margins too large — CropBox [{:.2} {:.2} {:.2} {:.2}] invalid \
                  (MediaBox [{:.2} {:.2} {:.2} {:.2}], Rotate={})",
-                idx + 1, cx0, cy0, cx1, cy1, mb_x0, mb_y0, mb_x1, mb_y1, rotate,
+                idx + 1,
+                cx0,
+                cy0,
+                cx1,
+                cy1,
+                mb_x0,
+                mb_y0,
+                mb_x1,
+                mb_y1,
+                rotate,
             )));
         }
 
-        let crop_obj = make_rect(&doc, cx0, cy0, cx1, cy1)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        let crop_obj =
+            make_rect(&doc, cx0, cy0, cx1, cy1).map_err(|e| CoreError::MuPdf(e.to_string()))?;
         let media_obj = make_rect(&doc, mb_x0, mb_y0, mb_x1, mb_y1)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
-        page_obj.dict_put("CropBox", crop_obj)
+        page_obj
+            .dict_put("CropBox", crop_obj)
             .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-        page_obj.dict_put("MediaBox", media_obj)
+        page_obj
+            .dict_put("MediaBox", media_obj)
             .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
         for key in &["ArtBox", "BleedBox", "TrimBox"] {
             if let Ok(Some(_)) = page_obj.get_dict(*key) {
                 let obj = make_rect(&doc, cx0, cy0, cx1, cy1)
                     .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-                page_obj.dict_put(*key, obj)
+                page_obj
+                    .dict_put(*key, obj)
                     .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
             }
         }
 
         crop_boxes.push(CropBoxInfo {
             page: idx + 1,
-            x0: cx0, y0: cy0, x1: cx1, y1: cy1,
-            width: cx1 - cx0, height: cy1 - cy0,
+            x0: cx0,
+            y0: cy0,
+            x1: cx1,
+            y1: cy1,
+            width: cx1 - cx0,
+            height: cy1 - cy0,
         });
     }
     // ── ページ抽出 (extract_pages が指定されている場合) ────────────────────
     // 抽出先の中間PDFを作り、対象ページのみコピーする
 
     //let mut extract_indices: Vec<i32> = (0..page_count).collect();
-    let extract_indices: Vec<i32>;// = (0..page_count).collect();
+    let extract_indices: Vec<i32>; // = (0..page_count).collect();
     if let Some(extract) = req.extract.as_ref() {
         extract_indices = match extract {
-            PageSelection::All   => (0..page_count).collect(),
-            PageSelection::Even  => (0..page_count).filter(|&i| (i+1) % 2 == 0).collect(),
-            PageSelection::Odd   => (0..page_count).filter(|&i| (i+1) % 2 == 1).collect(),
+            PageSelection::All => (0..page_count).collect(),
+            PageSelection::Even => (0..page_count).filter(|&i| (i + 1) % 2 == 0).collect(),
+            PageSelection::Odd => (0..page_count).filter(|&i| (i + 1) % 2 == 1).collect(),
             PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
-            PageSelection::None  => (0..page_count).collect(),
+            PageSelection::None => (0..page_count).collect(),
         };
         // src target から抽出ページのみにする
         write_target.retain(|&p| extract_indices.contains(&p));
     };
     // 抽出適用後のログ（デバッグ用）
 
-    let write_page = write_target.iter().map(|&i| i+1).collect::<Vec<_>>();
+    let write_page = write_target.iter().map(|&i| i + 1).collect::<Vec<_>>();
     if !write_page.is_empty() {
         // 抽出先 tmp ファイル
-        let tmp = tempfile::NamedTempFile::new()
-            .map_err(|e| CoreError::Io(e))?;
+        let tmp = tempfile::NamedTempFile::new().map_err(CoreError::Io)?;
         let tmp_path = tmp.path().to_string_lossy().to_string();
 
-            //PdfDocument::open(&req.input) .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        //PdfDocument::open(&req.input) .map_err(|e| CoreError::MuPdf(e.to_string()))?;
         let src = doc;
         let mut dst = PdfDocument::new();
-        let mut graft = dst.new_graft_map()
+        let mut graft = dst
+            .new_graft_map()
             .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
         for page_1based in write_page {
             let idx = page_1based - 1;
-            if idx < 0 || idx >= page_count { continue; }
-            if ! write_target.contains(&idx) { continue; }
-            let src_page = src.find_page(idx)
+            if idx < 0 || idx >= page_count {
+                continue;
+            }
+            if !write_target.contains(&idx) {
+                continue;
+            }
+            let src_page = src
+                .find_page(idx)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-            let dst_page = graft.graft_object(&src_page)
+            let dst_page = graft
+                .graft_object(&src_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-            let at = dst.page_count()
+            let at = dst
+                .page_count()
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
             dst.insert_page(at, &dst_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
@@ -434,9 +502,9 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         working_tmp = None;
     }
 
-    let doc = PdfDocument::open(&working_path)
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-    let _working_page_count = doc.page_count()
+    let doc = PdfDocument::open(&working_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let _working_page_count = doc
+        .page_count()
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
     let mut opts = mupdf::pdf::PdfWriteOptions::default();
@@ -451,8 +519,13 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     // tmp ファイルはここで drop (自動削除)
     drop(working_tmp);
 
-    let input_bytes  = std::fs::metadata(&req.input) .map(|m| m.len()).unwrap_or(0);
+    let input_bytes = std::fs::metadata(&req.input).map(|m| m.len()).unwrap_or(0);
     let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
 
-    Ok(TrimResponse { ok: true, input_bytes, output_bytes, crop_boxes })
+    Ok(TrimResponse {
+        ok: true,
+        input_bytes,
+        output_bytes,
+        crop_boxes,
+    })
 }

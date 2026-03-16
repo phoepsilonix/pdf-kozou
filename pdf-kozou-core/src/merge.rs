@@ -1,6 +1,6 @@
 // pdf-kozou-core/src/merge.rs
-use serde::{Deserialize, Serialize};
 use crate::error::{CoreError, Result};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MergeRequest {
@@ -10,8 +10,8 @@ pub struct MergeRequest {
 
 #[derive(Serialize)]
 pub struct MergeResponse {
-    pub ok:           bool,
-    pub page_count:   i32,
+    pub ok: bool,
+    pub page_count: i32,
     pub output_bytes: u64,
 }
 
@@ -29,23 +29,28 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
         let src = PdfDocument::open(input_path)
             .map_err(|e| CoreError::MuPdf(format!("{}: {}", input_path, e)))?;
 
-        let n = src.page_count()
+        let n = src
+            .page_count()
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
         // GraftMap でリソースを dst にコピーしながらページを移植
-        let mut graft = dst.new_graft_map()
+        let mut graft = dst
+            .new_graft_map()
             .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
         for i in 0..n {
-            let src_page = src.find_page(i)
+            let src_page = src
+                .find_page(i)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
             // ページオブジェクトを graft して dst に追加
-            let dst_page = graft.graft_object(&src_page)
+            let dst_page = graft
+                .graft_object(&src_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
             // mupdf 0.6: -1 は無効。現在のページ数 = 末尾に追加
-            let at = dst.page_count()
+            let at = dst
+                .page_count()
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
             dst.insert_page(at, &dst_page)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
@@ -61,5 +66,9 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
     let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
-    Ok(MergeResponse { ok: true, page_count: total_pages, output_bytes })
+    Ok(MergeResponse {
+        ok: true,
+        page_count: total_pages,
+        output_bytes,
+    })
 }

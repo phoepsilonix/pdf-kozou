@@ -24,7 +24,7 @@ use crate::error::{CoreError, Result};
 
 #[repr(C)]
 struct FfiResult {
-    ok:      std::ffi::c_int,
+    ok: std::ffi::c_int,
     message: [std::ffi::c_char; 512],
 }
 
@@ -32,48 +32,53 @@ impl FfiResult {
     fn zeroed() -> Self {
         unsafe { std::mem::zeroed() }
     }
-    fn is_ok(&self) -> bool { self.ok != 0 }
+    fn is_ok(&self) -> bool {
+        self.ok != 0
+    }
     fn error_message(&self) -> String {
         let cstr = unsafe { std::ffi::CStr::from_ptr(self.message.as_ptr()) };
         cstr.to_string_lossy().into_owned()
     }
     fn into_result(self) -> Result<()> {
-        if self.is_ok() { Ok(()) }
-        else { Err(CoreError::MuPdf(self.error_message())) }
+        if self.is_ok() {
+            Ok(())
+        } else {
+            Err(CoreError::MuPdf(self.error_message()))
+        }
     }
 }
 
 extern "C" {
     fn kozou_fz_new_context() -> *mut mupdf_sys::fz_context;
     fn kozou_fz_open_document(
-        ctx:    *mut mupdf_sys::fz_context,
-        path:   *const std::ffi::c_char,
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const std::ffi::c_char,
         result: *mut FfiResult,
     ) -> *mut mupdf_sys::fz_document;
     fn kozou_pdf_document_from_fz_document(
-        ctx:    *mut mupdf_sys::fz_context,
-        doc:    *mut mupdf_sys::fz_document,
+        ctx: *mut mupdf_sys::fz_context,
+        doc: *mut mupdf_sys::fz_document,
         result: *mut FfiResult,
     ) -> *mut mupdf_sys::pdf_document;
     /// フォントサブセット化: 使われていないグリフデータを除去
     fn kozou_pdf_subset_fonts(
-        ctx:        *mut mupdf_sys::fz_context,
-        pdf:        *mut mupdf_sys::pdf_document,
+        ctx: *mut mupdf_sys::fz_context,
+        pdf: *mut mupdf_sys::pdf_document,
         page_count: std::ffi::c_int,
-        result:     *mut FfiResult,
+        result: *mut FfiResult,
     );
     fn kozou_pdf_save_document(
-        ctx:      *mut mupdf_sys::fz_context,
-        doc:      *mut mupdf_sys::pdf_document,
+        ctx: *mut mupdf_sys::fz_context,
+        doc: *mut mupdf_sys::pdf_document,
         filename: *const std::ffi::c_char,
-        opts:     *const mupdf_sys::pdf_write_options,
-        result:   *mut FfiResult,
+        opts: *const mupdf_sys::pdf_write_options,
+        result: *mut FfiResult,
     );
     fn kozou_pdf_default_write_options(out: *mut mupdf_sys::pdf_write_options);
     fn kozou_pdf_count_pages(
-        ctx:        *mut mupdf_sys::fz_context,
-        pdf_doc:    *mut mupdf_sys::pdf_document,
-        count_res:  *mut FfiResult,
+        ctx: *mut mupdf_sys::fz_context,
+        pdf_doc: *mut mupdf_sys::pdf_document,
+        count_res: *mut FfiResult,
     ) -> std::ffi::c_int;
 
 }
@@ -83,17 +88,17 @@ extern "C" {
 // ------------------------------------------------------------------ //
 
 pub struct SubsetWriteResult {
-    pub input_bytes:        u64,
-    pub output_bytes:       u64,
+    pub input_bytes: u64,
+    pub output_bytes: u64,
     /// Type3 フォント等の理由でサブセット化をスキップした
-    pub fell_back:          bool,
-    pub has_type3:          bool,
+    pub fell_back: bool,
+    pub has_type3: bool,
     /// 実際に適用した gc レベル
-    pub effective_gc:       i32,
-    pub effective_clean:    bool,
+    pub effective_gc: i32,
+    pub effective_clean: bool,
     pub effective_sanitize: bool,
     /// pdf_subset_fonts を実行したか
-    pub subset_applied:     bool,
+    pub subset_applied: bool,
 }
 
 // ------------------------------------------------------------------ //
@@ -115,13 +120,13 @@ pub struct SubsetWriteResult {
 /// - 拡大縮小時の品質
 /// - ビットマップ画像
 pub fn subset_and_write(
-    input:           &str,
-    output:          &str,
-    gc:              i32,
-    clean:           bool,
-    sanitize:        bool,
+    input: &str,
+    output: &str,
+    gc: i32,
+    clean: bool,
+    sanitize: bool,
     compress_images: bool,
-    compress_fonts:  bool,
+    compress_fonts: bool,
 ) -> Result<SubsetWriteResult> {
     let has_t3 = crate::compress::has_type3_fonts(input);
 
@@ -141,14 +146,18 @@ pub fn subset_and_write(
 
     unsafe {
         ffi_run(
-            input, output,
-            effective_gc, effective_clean, effective_sanitize,
-            compress_images, compress_fonts,
+            input,
+            output,
+            effective_gc,
+            effective_clean,
+            effective_sanitize,
+            compress_images,
+            compress_fonts,
             subset_applied,
         )?;
     }
 
-    let input_bytes  = std::fs::metadata(input) .map(|m| m.len()).unwrap_or(0);
+    let input_bytes = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
     let output_bytes = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
 
     Ok(SubsetWriteResult {
@@ -168,22 +177,22 @@ pub fn subset_and_write(
 // ------------------------------------------------------------------ //
 
 unsafe fn ffi_run(
-    input:           &str,
-    output:          &str,
-    gc:              i32,
-    clean:           bool,
-    sanitize:        bool,
+    input: &str,
+    output: &str,
+    gc: i32,
+    clean: bool,
+    sanitize: bool,
     compress_images: bool,
-    compress_fonts:  bool,
-    do_subset:       bool,
+    compress_fonts: bool,
+    do_subset: bool,
 ) -> Result<()> {
-    use std::ffi::CString;
     use mupdf_sys::*;
+    use std::ffi::CString;
 
-    let input_cstr  = CString::new(input)
-        .map_err(|_| CoreError::InvalidArg("input path: null byte".into()))?;
-    let output_cstr = CString::new(output)
-        .map_err(|_| CoreError::InvalidArg("output path: null byte".into()))?;
+    let input_cstr =
+        CString::new(input).map_err(|_| CoreError::InvalidArg("input path: null byte".into()))?;
+    let output_cstr =
+        CString::new(output).map_err(|_| CoreError::InvalidArg("output path: null byte".into()))?;
 
     let ctx = kozou_fz_new_context();
     if ctx.is_null() {
@@ -191,8 +200,15 @@ unsafe fn ffi_run(
     }
 
     let result = ffi_with_ctx(
-        ctx, &input_cstr, &output_cstr,
-        gc, clean, sanitize, compress_images, compress_fonts, do_subset,
+        ctx,
+        &input_cstr,
+        &output_cstr,
+        gc,
+        clean,
+        sanitize,
+        compress_images,
+        compress_fonts,
+        do_subset,
     );
 
     fz_drop_context(ctx);
@@ -200,15 +216,15 @@ unsafe fn ffi_run(
 }
 
 unsafe fn ffi_with_ctx(
-    ctx:              *mut mupdf_sys::fz_context,
-    input_cstr:       &std::ffi::CStr,
-    output_cstr:      &std::ffi::CStr,
-    gc:               i32,
-    clean:            bool,
-    sanitize:         bool,
-    compress_images:  bool,
-    _compress_fonts:  bool,  // MuPDF 1.28: 廃止 (compress=yes で自動圧縮)
-    do_subset:        bool,
+    ctx: *mut mupdf_sys::fz_context,
+    input_cstr: &std::ffi::CStr,
+    output_cstr: &std::ffi::CStr,
+    gc: i32,
+    clean: bool,
+    sanitize: bool,
+    compress_images: bool,
+    _compress_fonts: bool, // MuPDF 1.28: 廃止 (compress=yes で自動圧縮)
+    do_subset: bool,
 ) -> Result<()> {
     use mupdf_sys::*;
 
@@ -218,7 +234,11 @@ unsafe fn ffi_with_ctx(
     if fz_doc.is_null() || !res.is_ok() {
         return Err(CoreError::MuPdf(format!(
             "fz_open_document: {}",
-            if !res.is_ok() { res.error_message() } else { "null".into() }
+            if !res.is_ok() {
+                res.error_message()
+            } else {
+                "null".into()
+            }
         )));
     }
 
@@ -229,7 +249,11 @@ unsafe fn ffi_with_ctx(
         fz_drop_document(ctx, fz_doc);
         return Err(CoreError::MuPdf(format!(
             "pdf_document_from_fz_document: {}",
-            if !res.is_ok() { res.error_message() } else { "null".into() }
+            if !res.is_ok() {
+                res.error_message()
+            } else {
+                "null".into()
+            }
         )));
     }
 
@@ -243,7 +267,7 @@ unsafe fn ffi_with_ctx(
         let count_to_use = if count_res.is_ok() && page_count > 0 {
             page_count
         } else {
-            0  // フォールバック: C 側で nranges=0 パスに入る
+            0 // フォールバック: C 側で nranges=0 パスに入る
         };
 
         let mut res = FfiResult::zeroed();
@@ -260,15 +284,15 @@ unsafe fn ffi_with_ctx(
     // ── pdf_write_options 構築 ────────────────────────────────────────
     let mut wopts: pdf_write_options = std::mem::zeroed();
     kozou_pdf_default_write_options(&mut wopts);
-    wopts.do_compress        = 1;
-    wopts.do_decompress      = 0;
+    wopts.do_compress = 1;
+    wopts.do_decompress = 0;
     wopts.do_compress_images = if compress_images { 1 } else { 0 };
     // do_compress_fonts: MuPDF 1.28 で削除 (compress=1 時は自動的にフォントも圧縮)
-    wopts.do_garbage         = gc;
-    wopts.do_sanitize        = if sanitize { 1 } else { 0 };
-    wopts.do_clean           = if clean    { 1 } else { 0 };
-    wopts.do_linear          = 0;
-    wopts.do_incremental     = 0;
+    wopts.do_garbage = gc;
+    wopts.do_sanitize = if sanitize { 1 } else { 0 };
+    wopts.do_clean = if clean { 1 } else { 0 };
+    wopts.do_linear = 0;
+    wopts.do_incremental = 0;
 
     // ── pdf_save_document ─────────────────────────────────────────────
     let mut res = FfiResult::zeroed();

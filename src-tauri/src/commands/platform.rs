@@ -17,9 +17,9 @@ pub struct ScreenInfoDto {
     pub scale_factor: f64,
 }
 */
+use crate::platform::ScreenInfo;
 /// スクリーン情報を返す (フロントエンドが HiDPI 対応に使用)
 use tauri::Window;
-use crate::platform::ScreenInfo;
 
 #[tauri::command]
 pub async fn get_screen_info(window: Window) -> Result<ScreenInfo, String> {
@@ -40,8 +40,8 @@ pub async fn get_screen_info(window: Window) -> Result<ScreenInfo, String> {
 
     Ok(ScreenInfo {
         display_server,
-        width: size.width as u32,
-        height: size.height as u32,
+        width: size.width,
+        height: size.height,
         scale_factor: scale,
     })
 }
@@ -65,7 +65,7 @@ pub async fn pick_open_files() -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn pick_save_file_in(
     default_name: String,
-    initial_dir:  Option<String>,
+    initial_dir: Option<String>,
 ) -> Result<Option<String>, String> {
     let path = platform::save_pdf_dialog_in(&default_name, initial_dir.as_deref()).await;
     Ok(path.map(|p| p.display().to_string()))

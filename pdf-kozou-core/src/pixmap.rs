@@ -5,19 +5,19 @@ use crate::error::{CoreError, Result};
 
 /// Pixmap からパディングなしの RGB バッファを取得
 pub fn pixmap_to_rgb_buf(pixmap: &mupdf::Pixmap) -> Vec<u8> {
-    let w         = pixmap.width()  as usize;
-    let h         = pixmap.height() as usize;
-    let n         = pixmap.n()      as usize;
-    let stride    = pixmap.stride() as usize;
+    let w = pixmap.width() as usize;
+    let h = pixmap.height() as usize;
+    let n = pixmap.n() as usize;
+    let stride = pixmap.stride() as usize;
     let row_bytes = w * n;
-    let samples   = pixmap.samples();
+    let samples = pixmap.samples();
 
     if stride == row_bytes {
         samples.to_vec()
     } else {
         let mut buf = Vec::with_capacity(row_bytes * h);
         for row in 0..h {
-            buf.extend_from_slice(&samples[row * stride .. row * stride + row_bytes]);
+            buf.extend_from_slice(&samples[row * stride..row * stride + row_bytes]);
         }
         buf
     }
@@ -27,8 +27,8 @@ pub fn pixmap_to_rgb_buf(pixmap: &mupdf::Pixmap) -> Vec<u8> {
 pub fn pixmap_to_jpeg(pixmap: &mupdf::Pixmap, quality: u8) -> Result<Vec<u8>> {
     use image::codecs::jpeg::JpegEncoder;
 
-    let w   = pixmap.width()  as u32;
-    let h   = pixmap.height() as u32;
+    let w = pixmap.width();
+    let h = pixmap.height();
     let buf = pixmap_to_rgb_buf(pixmap);
 
     let mut out = Vec::new();
@@ -50,8 +50,8 @@ pub fn pixmap_to_png(pixmap: &mupdf::Pixmap) -> Result<Vec<u8>> {
     use image::codecs::png::PngEncoder;
     use image::ImageEncoder;
 
-    let w   = pixmap.width()  as u32;
-    let h   = pixmap.height() as u32;
+    let w = pixmap.width();
+    let h = pixmap.height();
     let buf = pixmap_to_rgb_buf(pixmap);
 
     let mut out = Vec::new();

@@ -36,15 +36,15 @@ fn main() {
         std::process::exit(1);
     }
 
-    let input  = &args[1];
+    let input = &args[1];
     let output = &args[2];
 
     // オプション解析
     let mut gc = 2i32;
-    let mut clean   = false;
+    let mut clean = false;
     let mut sanitize = false;
     let mut compress_images = true;
-    let mut compress_fonts  = true;
+    let mut compress_fonts = true;
 
     let mut i = 3;
     while i < args.len() {
@@ -53,10 +53,10 @@ fn main() {
                 i += 1;
                 gc = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(2);
             }
-            "--clean"              => clean   = true,
-            "--sanitize"           => sanitize = true,
+            "--clean" => clean = true,
+            "--sanitize" => sanitize = true,
             "--no-compress-images" => compress_images = false,
-            "--no-compress-fonts"  => compress_fonts  = false,
+            "--no-compress-fonts" => compress_fonts = false,
             other => eprintln!("不明なオプション: {other} (無視)"),
         }
         i += 1;
@@ -70,12 +70,25 @@ fn main() {
 
     // --- テスト 1: Type3 フォント検出 ---
     let has_t3 = pdf_kozou_core::compress::has_type3_fonts(input);
-    println!("[1] Type3 フォント検出: {}", if has_t3 { "あり → フォールバック動作" } else { "なし → フルサブセット化" });
+    println!(
+        "[1] Type3 フォント検出: {}",
+        if has_t3 {
+            "あり → フォールバック動作"
+        } else {
+            "なし → フルサブセット化"
+        }
+    );
 
     // --- テスト 2: subset_and_write 実行 ---
     println!("[2] subset_and_write 実行中...");
     match pdf_kozou_core::font_subset::subset_and_write(
-        input, output, gc, clean, sanitize, compress_images, compress_fonts,
+        input,
+        output,
+        gc,
+        clean,
+        sanitize,
+        compress_images,
+        compress_fonts,
     ) {
         Ok(result) => {
             println!("    ✓ 成功");
@@ -109,18 +122,21 @@ fn main() {
     println!();
     println!("[3] compress::rewrite 経由のテスト...");
     let fallback = pdf_kozou_core::compress::RewriteFallbackParams {
-        garbage_level:   Some(gc),
-        clean:           false,
+        garbage_level: Some(gc),
+        clean: false,
         sanitize,
         compress_images: Some(compress_images),
-        compress_fonts:  Some(compress_fonts),
+        compress_fonts: Some(compress_fonts),
     };
     let opts = pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT;
     match pdf_kozou_core::compress::rewrite(input, output, opts, &fallback) {
         Ok(resp) => {
             println!("    ✓ 成功");
             println!("    ok={}, ratio={:.3}", resp.ok, resp.ratio);
-            println!("    rewrite_fallback: {}", resp.params_used.rewrite_fallback);
+            println!(
+                "    rewrite_fallback: {}",
+                resp.params_used.rewrite_fallback
+            );
             if let Some(w) = &resp.warning {
                 println!("    警告: {w}");
             }
