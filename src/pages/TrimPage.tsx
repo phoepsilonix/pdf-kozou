@@ -49,7 +49,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [pageImage, setPageImage] = useState("");
   const [curPageInfo, setCurPageInfo] = useState<PdfInfo | null>(null);
   const [trimPages,   onPages]   = useState("all");
-  const [excludeSpec, setExclude] = useState("");
+  const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
@@ -274,7 +274,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
             excludeSpec={excludeSpec}
-            onExclude={setExclude}
+            onExclude={onExclude}
             extractSpec={extractSpec}
             onExtract={onExtract}
           />
@@ -304,7 +304,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [outTmp] = useState("");
 
   const [trimPages,   onPages]   = useState("all");
-  const [excludeSpec, setExclude] = useState("");
+  const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
   const { pickSave } = useSaveDialog();
 
@@ -464,7 +464,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               onReset={() => setTrimMargins(zero())}
               processing={phase !== "edit"}
               excludeSpec={excludeSpec}
-              onExclude={setExclude}
+              onExclude={onExclude}
               extractSpec={extractSpec}
               onExtract={onExtract}
             />
@@ -484,7 +484,7 @@ function ResultView({ images, pageCount, onSave, onBack, onCompress, isSaving }:
         <span style={r.title}>トリミング結果確認</span>
         <span style={r.sub}>{pageCount}ページ（先頭{images.length}ページ表示）</span>
         <div style={{flex:1}}/>
-        <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button>
+        <!-- <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button> -->
         <button style={{...r.btnSave,...(isSaving?r.dis:{})}} onClick={onSave} disabled={isSaving}>
           {isSaving?"保存中…":"💾 PDFを保存"}
         </button>
@@ -506,7 +506,7 @@ function ResultView({ images, pageCount, onSave, onBack, onCompress, isSaving }:
 
       <div style={r.footer}>
         <button style={r.btnBack} onClick={onBack}>← 設定に戻る</button>
-        <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button>
+        <!-- <button style={r.btnCompress} onClick={onCompress}>⚡ 続けて圧縮</button> -->
         <button style={{...r.btnSave,...(isSaving?r.dis:{})}} onClick={onSave} disabled={isSaving}>
           {isSaving?"保存中…":"💾 PDFを保存"}
         </button>

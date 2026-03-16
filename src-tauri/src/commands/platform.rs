@@ -3,7 +3,6 @@
 // フロントエンドから呼び出すファイルダイアログ・画面情報コマンド。
 // すべて platform モジュール経由で xdg-desktop-portal を使わない実装を呼ぶ。
 
-use serde::{Deserialize, Serialize};
 use crate::platform;
 
 /*
@@ -16,8 +15,8 @@ pub struct ScreenInfoDto {
 }
 */
 /// スクリーン情報を返す (フロントエンドが HiDPI 対応に使用)
-use tauri::{Manager, Window};
-use crate::platform::{ScreenInfo, DisplayServer};
+use tauri::Window;
+use crate::platform::ScreenInfo;
 
 #[tauri::command]
 pub async fn get_screen_info(window: Window) -> Result<ScreenInfo, String> {

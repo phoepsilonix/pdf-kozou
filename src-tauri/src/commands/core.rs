@@ -8,14 +8,14 @@ use crate::error::{Error, Result};
 
 /// pdf-kozou-core バイナリを呼び出して JSON レスポンスを返す
 async fn call_core(args: Vec<String>) -> Result<Value> {
-    use tauri_plugin_shell::process::CommandEvent;
-    use tauri::Manager;
+    
+    
 
     // sidecar は tauri.conf.json の externalBin に登録された名前で呼ぶ
     // 開発時は同じ workspace の cargo build 成果物を使う
     let core_path = core_bin_path();
 
-    let mut child = tokio::process::Command::new(&core_path)
+    let child = tokio::process::Command::new(&core_path)
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

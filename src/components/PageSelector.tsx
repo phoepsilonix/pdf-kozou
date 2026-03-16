@@ -135,7 +135,7 @@ export function PageSelector({ totalPages, value, onChange, label, type, compact
         </span>
       )}
       <div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center" }}>
-        {(["", "odd","even", "all", "range"] as Mode2[]).map(m => (
+        {(["", "odd","even", "all", "range"] as Mode[]).map(m => (
           <button key={m} style={mode===m ? btnOn : btnBase}
             onClick={() => handleMode(m)}>
             { m===""   ? "除外なし"

@@ -6,8 +6,7 @@
 //   - ウィンドウ環境情報取得
 
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-use crate::platform::{ScreenInfo, DisplayServer};
+use crate::platform::DisplayServer;
                                                 
 ///
 /// 検出順序:
