@@ -1,53 +1,55 @@
 # PDF小僧 — Windows ビルド方法
 
-## 方法1: cargo-xwin (推奨・Linux/macOSから)
+xwin不要。
+rustの基本機能でOK。
+クロスコンパイルはインストーラーのビルドが無理なので、Windowsでビルドするべき。
+Windowsにrust,make,mingw(gcc) or llvm(clang)、そしてmakensis.exeもインストールする。
+GIT Bashなどで、ターゲットアーキテクチャはx86_64-pc-windows-gnuでビルドを行う。
+msvc,nmakeは用いない。
 
-最も簡単なクロスコンパイル方法。
+# ビルド
+cd pdf-kozou
+#USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY"
 
-```bash
-# 前提: cargo-xwin + LLVM インストール
-cargo install cargo-xwin
-# LLVM (Ubuntu)
-sudo apt install llvm clang lld
+```sh
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
+```
+
+# Tauri アプリのビルド
+#PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe \
+
+```sh
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
+```
+
+
+## 方法1: cargo (推奨・Linux/macOSから)
+
+クロスコンパイル方法。xwin,cross不要。なくてもrustのツールチェインでクロスビルド可能。
 
 # ターゲット追加
 rustup target add x86_64-pc-windows-gnu
 
 # ビルド
+```sh
 cd pdf-kozou
 #USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY"
-OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo xwin build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
+OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
 
 # Tauri アプリのビルド
-PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe \
-cargo-xwin tauri build --target x86_64-pc-windows-gnu
+#PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe \
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
 ```
 
 > 初回実行時に Windows SDK (~3GB) を自動ダウンロードします。
 
 # NSISインストーラー
-クロスビルドは無理。
+クロスビルドは無理。makensis.exeを実行できない。
 ```sh
 npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
 ```
 ```sh
 bun tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
-```
-
----
-
-## 方法2: cross (Docker ベース)
-おそらく、これも無理。
-```bash
-cargo install cross --git https://github.com/cross-rs/cross
-
-# cross.toml を作成
-cat > Cross.toml << 'TOML'
-[target.x86_64-pc-windows-gnu]
-image = "ghcr.io/cross-rs/x86_64-pc-windows-gnu:main"
-TOML
-
-cross build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
 ```
 
 ---
@@ -86,10 +88,11 @@ jobs:
 ---
 
 ## 方法4: Windows 上でネイティブビルド
-現実的
+これが現実的。
 Windows 環境で直接ビルドする場合。
+パス解釈でのトラブルを防止するためGIT Bashなどを用いてビルド。
 
-```powershell
+```sh
 # 前提: Visual Studio Build Tools + Rust + Node.js 20
 
 # リポジトリをクローン
@@ -100,11 +103,10 @@ cd pdf-kozou/pdf-kozou
 npm install
 
 # コアをビルド
-cargo build --release -p pdf-kozou-core
+OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
 
 # Tauri アプリビルド
-$env:PDF_KOZOU_CORE=".\target\release\pdf-kozou-core.exe"
-cargo tauri build
+OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu 
 ```
 
 ### 成果物
@@ -120,8 +122,8 @@ src-tauri/target/release/bundle/
 ## MuPDF の Windows 対応
 
 mupdf-sys 0.6.0 は Linux/macOS/Windows 全対応。
-- 静的リンクのため DLL 配布不要
-- MSVC (cargo-xwin) と MinGW (cross) 両方でビルド可能になったが、インストーラーのクロスビルドは無理。
+- WebView2がインストールされていない環境では、インストールが必要だが、それ以外は不要。
+- exe自体のクロスビルドは可能になったが、インストーラーのクロスビルドは無理。
 
 ## ToDo
 ### アイコン差し替え
