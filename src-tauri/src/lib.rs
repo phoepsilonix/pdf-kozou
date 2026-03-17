@@ -8,13 +8,13 @@ use crate::platform::linux::setup_webkit_env;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
 
-#[cfg(any(windows, linux))]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub fn setup_platform() {
     setup_webkit_env();
     log_display_environment();
 }
 
-#[cfg(mobile)]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn setup_platform() {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
