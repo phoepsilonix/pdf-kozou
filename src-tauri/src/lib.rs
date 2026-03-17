@@ -3,10 +3,13 @@ mod commands;
 mod error;
 mod platform;
 
-use crate::platform::linux::log_display_environment;
-use crate::platform::linux::setup_webkit_env;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
+//use crate::platform::linux;
+//use crate::platform::linux::setup_webkit_env;
+//use crate::platform::linux::log_display_environment;
+use crate::platform::log_display_environment;
+use crate::platform::setup_webkit_env;
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 pub fn setup_platform() {
