@@ -3,13 +3,15 @@ mod commands;
 mod error;
 mod platform;
 
+use crate::platform::linux::log_display_environment;
+use crate::platform::linux::setup_webkit_env;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
 
-#[cfg(desktop)]
+#[cfg(any(windows, linux))]
 pub fn setup_platform() {
-    platform::setup_webkit_env();
-    platform::log_display_environment();
+    setup_webkit_env();
+    log_display_environment();
 }
 
 #[cfg(mobile)]

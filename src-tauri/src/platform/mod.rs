@@ -3,13 +3,12 @@
 pub mod screen_info;
 pub use screen_info::{DisplayServer, ScreenInfo};
 
-#[cfg(target_os = "linux")]
+//#[cfg(target_os = "linux")]
 pub mod linux;
 
-#[cfg(target_os = "linux")]
+//#[cfg(target_os = "linux")]
 pub use linux::{
-    log_display_environment, open_pdf_dialog, open_pdfs_dialog, pick_output_dir, save_pdf_dialog,
-    save_pdf_dialog_in, setup_webkit_env,
+    open_pdf_dialog, open_pdfs_dialog, pick_output_dir, save_pdf_dialog, save_pdf_dialog_in,
 };
 
 #[cfg(all(desktop, not(target_os = "linux")))]
