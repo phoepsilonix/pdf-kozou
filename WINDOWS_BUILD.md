@@ -26,7 +26,7 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-win
 ## 方法1: cargo (推奨・Linux/macOSから)
 
 クロスコンパイル方法。xwin,cross不要。なくてもrustのツールチェインでクロスビルド可能。
-
+msvcをターゲットにする場合、cargo xwinを用いる。
 # ターゲット追加
 rustup target add x86_64-pc-windows-gnu
 
