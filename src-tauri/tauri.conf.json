@@ -72,6 +72,11 @@
         "bundleMediaFramework": false
       }
     },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
     "android": {
       "minSdkVersion": 24,
       "versionCode": 1
