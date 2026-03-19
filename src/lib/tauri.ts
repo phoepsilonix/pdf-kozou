@@ -261,6 +261,7 @@ export async function exportImages(
   namePrefix?: string,
   pages?:      string,  // "1-3,5" etc. undefined=全ページ
 ): Promise<ExportImagesResponse> {
+	console.log("ExportImages", path, outDir,format,dpi,quality,namePrefix,pages)
   return invoke<ExportImagesResponse>("export_images", {
     path, outDir, format, dpi,
     quality:    quality    ?? null,

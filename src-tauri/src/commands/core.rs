@@ -191,6 +191,7 @@ pub async fn export_images(
         return Err(Error::Core(format!("render: {}", stderr.trim())));
     }
 
+    /*
     // ④ 選択フォーマットの拡張子のみフィルタして返す
     let ext_filter: &[&str] = match fmt.as_str() {
         "png" => &[".png"],
@@ -207,6 +208,17 @@ pub async fn export_images(
         })
         .collect();
     files.sort();
+*/
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let response: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| Error::Core(format!("JSON parse: {e}\nraw: {stdout}")))?;
+
+    let files: Vec<String> = response["files"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|item| item["file"].as_str().map(|s| s.to_string()))
+        .collect();
 
     Ok(json!({ "ok": true, "files": files }))
 }

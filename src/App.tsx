@@ -140,6 +140,7 @@ export default function App() {
   const selBytes = sel.reduce((s,f)=>s+f.sizeBytes,0);
 
   const { filePath, pdfInfo } = usePdfStore();
+  console.log("App: filePath, pdfInfo", filePath,pdfInfo);
 
   if (activeTool) {
     const isBatch = toolFiles.length > 1;

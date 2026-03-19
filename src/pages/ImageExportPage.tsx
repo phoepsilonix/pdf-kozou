@@ -35,16 +35,18 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const total   = pdfInfo.page_count;
+  console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
+  console.log("Image: total(pages)", total);
 
   const [phase,   setPhase]   = useState<Phase>("edit");
   const [thumbs,  setThumbs]  = useState<(string|undefined)[]>([]);
   const [format,  setFormat]  = useState<ImageFormat>("jpeg");
   const [dpi,     setDpi]     = useState(144);
   const [quality, setQuality] = useState(85);
-  const [prefix,  setPrefix]  = useState("page");
+  const [prefix,  setPrefix]  = useState("page_");
   const [outDir,  setOutDir]  = useState("");
   const [pages,   setPages]   = useState("");   // "" = 全ページ
-  const [result,  setResult]  = useState<string[]>([]);
+  const [images,  setImages]  = useState<string[]>([]);
   const [errMsg,  setErrMsg]  = useState("");
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [batchThumbs,   setBatchThumbs]   = useState<(string|undefined)[]>([]);
@@ -65,7 +67,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [filePath, total, isBatch]);
+  }, [filePath, isBatch]);
 
   // バッチ: 先頭ページサムネイル
   useEffect(() => {
@@ -99,13 +101,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (!outDir) { await pickDir(); return; }
     setPhase("processing");
     try {
+      console.log("exportImages", prefix, pages, filePath, outDir,format,dpi, format);
       const res = await exportImages(filePath, outDir, format, dpi,
         format==="jpeg" ? quality : undefined, prefix||undefined, pages||undefined);
-      setResult(res.files); setPhase("result");
+      console.log("res",res, res.files, filePath);
+      setImages(res.files); setPhase("result");
+      console.log("images1",images);
     } catch (e) {
       setErrMsg(String(e)); setPhase("error"); setError(String(e));
     }
-  }, [filePath, outDir, format, dpi, quality, prefix, pages, pickDir, setError]);
+  }, [filePath, images, outDir, format, dpi, quality, prefix, pages, pickDir, phase, setError]);
 
   // バッチ実行
   const handleExecuteBatch = useCallback(async () => {
@@ -130,7 +135,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       setBatchProgress({...progress});
     }
     setPhase("result");
-  }, [batchFiles, outDir, format, dpi, quality, prefix, pages, pickDir]);
+  }, [batchFiles, images, outDir, format, dpi, quality, prefix, pages, pickDir, phase]);
 
   // ─────────── フェーズ ───────────
   if (phase==="processing" && !isBatch) return <Spinner label={`画像変換中… (${total}ページ)`}/>;
@@ -153,7 +158,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   if (phase==="error") return <ErrorView msg={errMsg} onBack={()=>{setPhase("edit");setErrMsg("");}}/>;
 
   // バッチ完了
-  if (phase==="result" && isBatch && batchProgress) return (
+  if (phase==="result" && isBatch && batchProgress) { return (
     <div style={s.root}>
       <PageHeader>
         <BtnBack onClick={()=>{setPhase("edit");setBatchProgress(null);}}/>
@@ -172,7 +177,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   );
 
   // 単体完了
-  if (phase==="result") return (
+  } else if (phase==="result") {
+    console.log("images2",images);
+    return (
     <div style={s.root}>
       <PageHeader>
         <BtnBack onClick={e=>{ setPhase("edit"); (e.currentTarget as HTMLButtonElement).blur(); }}/>
@@ -180,16 +187,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       </PageHeader>
       <div style={s.center}>
         <span style={{fontSize:56,color:"var(--c-accent)"}}>✓</span>
-        <div style={s.bpTitle}>{result.length}ファイルを出力</div>
+        <div style={s.bpTitle}>{images.length}ファイルを出力</div>
         <div style={{fontSize:12,color:"var(--c-textSub)"}}>{outDir}</div>
         <div style={s.bpLog}>
-          {result.slice(0,20).map((f,i)=>(<div key={i} style={s.bpRow}><span>🖼</span><span style={s.bpFile}>{f.split(/[/\\]/).pop()}</span></div>))}
-          {result.length>20 && <div style={{fontSize:12,color:"var(--c-textDim)",textAlign:"center",padding:8}}>… 他 {result.length-20}ファイル</div>}
+          {images.slice(0,20).map((f,i)=>(<div key={i} style={s.bpRow}><span>🖼</span><span style={s.bpFile}>{f.split(/[/\\]/).pop()}</span></div>))}
+          {images.length>20 && <div style={{fontSize:12,color:"var(--c-textDim)",textAlign:"center",padding:8}}>… 他 {images.length-20}ファイル</div>}
         </div>
       </div>
     </div>
   );
-
+  }
   // ─────────── 設定画面 ───────────
   return (
     <div style={s.root}>
@@ -261,7 +268,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           <div style={s.prefixRow}>
             <input type="text" style={s.textInput} value={prefix} placeholder="page"
               onChange={e=>setPrefix(e.target.value)}/>
-            <span style={s.prefixSuffix}>_0001.{format==="jpeg"?"jpg":format}</span>
+            <span style={s.prefixSuffix}>0001.{format==="jpeg"?"jpg":format}</span>
           </div>
 
           {isBatch && (

@@ -6,9 +6,15 @@ mod platform;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
 //use crate::platform::linux;
-//use crate::platform::linux::setup_webkit_env;
-//use crate::platform::linux::log_display_environment;
+
+#[cfg(target_os = "linux")]
+use crate::platform::linux::setup_webkit_env;
+#[cfg(target_os = "linux")]
+use crate::platform::linux::log_display_environment;
+
+#[cfg(not(target_os = "linux"))]
 use crate::platform::log_display_environment;
+#[cfg(not(target_os = "linux"))]
 use crate::platform::setup_webkit_env;
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
