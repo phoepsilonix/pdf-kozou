@@ -20,6 +20,8 @@ pub enum CoreError {
     ImageEncode(String),
     #[error("Invalid argument: {0}")]
     InvalidArg(String),
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 /// JSON エラーレスポンス

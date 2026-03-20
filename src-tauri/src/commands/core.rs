@@ -192,23 +192,23 @@ pub async fn export_images(
     }
 
     /*
-    // ④ 選択フォーマットの拡張子のみフィルタして返す
-    let ext_filter: &[&str] = match fmt.as_str() {
-        "png" => &[".png"],
-        "svg" => &[".svg"],
-        _ => &[".jpg", ".jpeg"],
-    };
-    let mut files: Vec<String> = std::fs::read_dir(&out_dir)
-        .map_err(|e| Error::Core(format!("readdir {out_dir}: {e}")))?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path().display().to_string())
-        .filter(|p| {
-            let pl = p.to_lowercase();
-            ext_filter.iter().any(|ext| pl.ends_with(*ext))
-        })
-        .collect();
-    files.sort();
-*/
+        // ④ 選択フォーマットの拡張子のみフィルタして返す
+        let ext_filter: &[&str] = match fmt.as_str() {
+            "png" => &[".png"],
+            "svg" => &[".svg"],
+            _ => &[".jpg", ".jpeg"],
+        };
+        let mut files: Vec<String> = std::fs::read_dir(&out_dir)
+            .map_err(|e| Error::Core(format!("readdir {out_dir}: {e}")))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path().display().to_string())
+            .filter(|p| {
+                let pl = p.to_lowercase();
+                ext_filter.iter().any(|ext| pl.ends_with(*ext))
+            })
+            .collect();
+        files.sort();
+    */
     let stdout = String::from_utf8_lossy(&output.stdout);
     let response: Value = serde_json::from_str(stdout.trim())
         .map_err(|e| Error::Core(format!("JSON parse: {e}\nraw: {stdout}")))?;

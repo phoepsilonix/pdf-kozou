@@ -17,16 +17,13 @@
 //   その他のエラー  → 通常の gc 圧縮にフォールバック
 
 use crate::error::{CoreError, Result};
+use crate::ffi::kozou_pdf_default_write_options;
+use crate::ffi::kozou_pdf_save_document;
+use crate::ffi::FfiResult;
 
 // ------------------------------------------------------------------ //
 // C ラッパーの extern 宣言 (src/c/mupdf_safe.c と対応)              //
 // ------------------------------------------------------------------ //
-
-#[repr(C)]
-struct FfiResult {
-    ok: std::ffi::c_int,
-    message: [std::ffi::c_char; 512],
-}
 
 impl FfiResult {
     fn zeroed() -> Self {
@@ -36,7 +33,8 @@ impl FfiResult {
         self.ok != 0
     }
     fn error_message(&self) -> String {
-        let cstr = unsafe { std::ffi::CStr::from_ptr(self.message.as_ptr()) };
+        let cstr =
+            unsafe { std::ffi::CStr::from_ptr(self.message.as_ptr() as *const std::ffi::c_char) };
         cstr.to_string_lossy().into_owned()
     }
     fn into_result(self) -> Result<()> {
@@ -67,14 +65,6 @@ extern "C" {
         page_count: std::ffi::c_int,
         result: *mut FfiResult,
     );
-    fn kozou_pdf_save_document(
-        ctx: *mut mupdf_sys::fz_context,
-        doc: *mut mupdf_sys::pdf_document,
-        filename: *const std::ffi::c_char,
-        opts: *const mupdf_sys::pdf_write_options,
-        result: *mut FfiResult,
-    );
-    fn kozou_pdf_default_write_options(out: *mut mupdf_sys::pdf_write_options);
     fn kozou_pdf_count_pages(
         ctx: *mut mupdf_sys::fz_context,
         pdf_doc: *mut mupdf_sys::pdf_document,

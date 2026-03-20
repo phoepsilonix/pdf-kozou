@@ -8,9 +8,9 @@ use tauri::Emitter;
 //use crate::platform::linux;
 
 #[cfg(target_os = "linux")]
-use crate::platform::linux::setup_webkit_env;
-#[cfg(target_os = "linux")]
 use crate::platform::linux::log_display_environment;
+#[cfg(target_os = "linux")]
+use crate::platform::linux::setup_webkit_env;
 
 #[cfg(not(target_os = "linux"))]
 use crate::platform::log_display_environment;

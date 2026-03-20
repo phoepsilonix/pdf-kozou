@@ -149,6 +149,11 @@ enum Commands {
         /// ⚠️ MuPDF バージョンによっては CJK/多言語フォントで不安定な場合があります
         #[arg(long)]
         font_subset: bool,
+        /// 未使用埋め込みフォントを取り除く
+        #[arg(long)]
+        purge_fonts: bool, // CLIフラグ
+        #[arg(long)]
+        ascii: bool,
     },
 
     /// PDF を全ページ画像化して PDF に再出力（ラスタライズ）
@@ -398,10 +403,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             preset,
             no_compress_images,
             no_compress_fonts,
-            font_subset,
             gc,
             clean,
             sanitize,
+            font_subset,
+            purge_fonts,
+            ascii,
         } => {
             let resp = if rewrite {
                 let opts = rewrite_options
@@ -430,6 +437,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                         } else {
                             parse_rewrite_opt_bool(opts, "compress-fonts")
                         },
+                        ascii: Some(
+                            ascii || parse_rewrite_opt_bool(opts, "ascii").unwrap_or(false),
+                        ),
                     }
                 };
                 pdf_kozou_core::compress::rewrite(&input, &output, opts, &fallback)?
@@ -455,7 +465,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     clean: if clean { Some(true) } else { None },
                     sanitize: if sanitize { Some(true) } else { None },
                     font_subset: if font_subset { Some(true) } else { None },
-                    linearize: None,
+                    purge_fonts: Some(purge_fonts),
+                    ascii: Some(ascii),
                 };
                 pdf_kozou_core::compress::compress(&req)?
             };
@@ -557,6 +568,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 /// Tauri sidecar モード: stdin から JSON を1行ずつ読んで処理
+/*
 fn run_json_mode() -> anyhow::Result<()> {
     use std::io::BufRead;
     let stdin = std::io::stdin();
@@ -567,6 +579,31 @@ fn run_json_mode() -> anyhow::Result<()> {
         }
         let response = dispatch_json(&line);
         println!("{response}");
+    }
+    Ok(())
+}
+*/
+fn run_json_mode() -> anyhow::Result<()> {
+    let stdin = std::io::stdin();
+    let reader = std::io::BufReader::new(stdin.lock());
+
+    // 1行ずつではなく、ストリームからJSONオブジェクトを順次読み取る
+    let stream = serde_json::Deserializer::from_reader(reader).into_iter::<serde_json::Value>();
+
+    for value in stream {
+        match value {
+            Ok(v) => {
+                // dispatch_json を &str ではなく Value を受け取るように変更するか
+                // 一旦文字列に戻して渡す（既存の dispatch_json を活かす場合）
+                let line = v.to_string();
+                let response = dispatch_json(&line);
+                println!("{response}");
+            }
+            Err(e) => {
+                eprintln!("JSON parse error: {e}");
+                // 致命的なエラーでなければ継続、あるいは exit
+            }
+        }
     }
     Ok(())
 }
@@ -618,6 +655,10 @@ fn dispatch_json(line: &str) -> String {
                     rewrite: bool,
                     #[serde(default)]
                     rewrite_options: Option<String>,
+                    #[serde(default)]
+                    purge_fonts: bool,
+                    #[serde(default)]
+                    ascii: bool,
                     // フォールバック時のパラメータ (JSON API 用)
                     // CLI の --gc / --clean / --sanitize / --no-compress-* に相当
                     #[serde(default)]
@@ -633,7 +674,10 @@ fn dispatch_json(line: &str) -> String {
                     #[serde(flatten)]
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
-                let r: Req = serde_json::from_str(line)?;
+                let mut r: Req = serde_json::from_str(line)?;
+
+                r.inner.purge_fonts = Some(r.purge_fonts);
+                eprintln!("debug {:?}", r.inner.purge_fonts);
                 let resp = if r.rewrite {
                     let opts = r
                         .rewrite_options
@@ -658,6 +702,9 @@ fn dispatch_json(line: &str) -> String {
                             compress_fonts: r
                                 .fallback_compress_fonts
                                 .or_else(|| parse_rewrite_opt_bool(opts, "compress-fonts")),
+                            ascii: Some(
+                                r.ascii || parse_rewrite_opt_bool(opts, "ascii").unwrap_or(false),
+                            ),
                         }
                     };
                     pdf_kozou_core::compress::rewrite(

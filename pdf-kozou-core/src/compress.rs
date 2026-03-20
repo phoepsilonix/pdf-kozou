@@ -15,9 +15,22 @@
 //   Maximum    : gc=3 + フォントサブセット化 + sanitize。CJKフォントに注意
 
 use crate::error::{CoreError, Result};
+use crate::ffi::FfiResult;
 use serde::{Deserialize, Serialize};
+use std::ffi::CString;
 
+use crate::ffi::enable_objstms;
+use crate::ffi::kozou_new_context;
+use crate::ffi::kozou_pdf_save_document;
+use crate::ffi::merge_duplicate_fonts;
+use crate::ffi::purge_unused_fonts;
+use mupdf_sys as ffi;
 // ── 圧縮プリセット ────────────────────────────────────────────────────────────
+
+#[repr(C)]
+struct PdfDocumentMirror {
+    inner: *mut mupdf_sys::pdf_document,
+}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -33,17 +46,17 @@ pub enum CompressPreset {
 }
 
 impl CompressPreset {
-    /// (compress_images, gc, clean, sanitize, do_subset)
-    fn to_params(&self) -> (bool, i32, bool, bool, bool) {
+    /// (compress_images, gc, clean, sanitize, do_subset, ascii)
+    fn to_params(&self) -> (bool, i32, bool, bool, bool, bool) {
         // (compress_images, gc, clean, sanitize, do_subset)
         // MuPDF 1.28: pdf_subset_fonts の挙動変化のため、
         //   デフォルトは subset=false で安全運転。
         //   明示的に font_subset=true を指定した場合のみ実行。
         match self {
-            Self::Light => (false, 1, false, false, false),
-            Self::Standard => (true, 2, false, false, false), // subset はデフォルト無効
-            Self::Aggressive => (true, 2, true, false, false), // 同上
-            Self::Maximum => (true, 3, false, true, false),   // 同上
+            Self::Light => (false, 1, false, false, false, false),
+            Self::Standard => (true, 2, false, false, false, false), // subset はデフォルト無効
+            Self::Aggressive => (true, 2, true, false, false, false), // 同上
+            Self::Maximum => (true, 3, true, true, false, false),    // 同上
         }
     }
 }
@@ -78,8 +91,13 @@ pub struct CompressRequest {
     #[serde(default)]
     pub font_subset: Option<bool>,
 
+    /// 全く参照されていないフォントオブジェクトを物理的に除去するか
+    /// (renderパス相当の解析を行い、Resources辞書からパージする)
     #[serde(default)]
-    pub linearize: Option<bool>, // 互換維持のため残す (無視)
+    pub purge_fonts: Option<bool>,
+
+    #[serde(default)]
+    pub ascii: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -101,6 +119,8 @@ pub struct CompressParamsUsed {
     pub garbage_level: i32,
     pub clean: bool,
     pub sanitize: bool,
+    pub ascii: bool,
+    /// 未参照フォントの除去を実行したか
     /// pdf_subset_fonts() を実行したか
     pub font_subset: bool,
     /// Type3 等でサブセット化をスキップ/制限したか
@@ -116,19 +136,32 @@ pub struct CompressParamsUsed {
 /// 使われていないフォントグリフを除去する。テキスト・アウトラインは保持。
 pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let preset = req.preset.as_ref().unwrap_or(&CompressPreset::Standard);
-    let (preset_ci, preset_gc, preset_clean, preset_sanitize, preset_subset) = preset.to_params();
+    let (preset_ci, preset_gc, preset_clean, preset_sanitize, preset_subset, preset_ascii) =
+        preset.to_params();
 
     let compress_images = req.compress_images.unwrap_or(preset_ci);
     let compress_fonts = req.compress_fonts.unwrap_or(true);
     let garbage_level = req.garbage_level.unwrap_or(preset_gc);
     let clean = req.clean.unwrap_or(preset_clean);
     let sanitize = req.sanitize.unwrap_or(preset_sanitize);
+    let ascii = req.font_subset.unwrap_or(preset_ascii);
     let do_subset = req.font_subset.unwrap_or(preset_subset);
+    let do_purge = req.purge_fonts.unwrap_or(false);
+    // 処理の対象となる入力を保持する変数
+    let mut current_input = req.input.clone();
+    // 一時ファイルのパス（パージ用）
+    let temp_purge_path = format!("{}.purge.tmp", req.output);
 
-    if do_subset {
+    // 1. (オプション) 未参照リソースのパージ
+    if do_purge {
+        execute_font_purge_pass(&current_input, &temp_purge_path)?;
+        current_input = temp_purge_path.clone();
+    }
+
+    let result_res: Result<CompressResponse> = if do_subset {
         // フォントサブセット化パス: font_subset::subset_and_write を呼ぶ
         let result = crate::font_subset::subset_and_write(
-            &req.input,
+            &current_input,
             &req.output,
             garbage_level,
             clean,
@@ -165,7 +198,9 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 clean: result.effective_clean,
                 sanitize: result.effective_sanitize,
                 font_subset: result.subset_applied,
-                subset_skipped: result.fell_back || !result.subset_applied,
+                ascii: ascii,
+                subset_skipped: false,
+                //subset_skipped: result.fell_back || !result.subset_applied,
             },
             warning: if warnings.is_empty() {
                 None
@@ -176,16 +211,156 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     } else {
         // サブセット化なし: PdfWriteOptions のみで圧縮
         safe_compress_only(
-            &req.input,
+            &current_input,
             &req.output,
             compress_images,
             compress_fonts,
             garbage_level,
             clean,
             sanitize,
+            ascii,
         )
+    };
+
+    if do_purge && std::path::Path::new(&temp_purge_path).exists() {
+        // let _ = std::fs::remove_file(&temp_purge_path);
     }
+
+    result_res
 }
+
+// compress.rs
+
+fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
+    unsafe {
+        // もし kozou_new_context で落ちるなら、ここで NULL ではなく
+        // 適切なアロケータを渡しているか再確認が必要です。
+        // 一旦、既存のコンテキスト作成関数を信じますが、
+        // 戻り値が NULL でないことを厳格にチェックしてください。
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::Internal("MuPDF context creation failed".into()));
+        }
+
+        let mut res = FfiResult::default();
+        let c_input = CString::new(input).unwrap();
+        let c_output = CString::new(output).unwrap();
+
+        // 1. PDFドキュメントを読み込む (重要)
+        // 引数: ctx, 入力パスのCポインタ
+        let pdf = ffi::pdf_open_document(ctx, c_input.as_ptr());
+        if pdf.is_null() {
+            ffi::fz_drop_context(ctx);
+            return Err(CoreError::Internal("Failed to open PDF for purging".into()));
+        }
+
+        purge_unused_fonts(ctx, pdf);
+
+        // 2. 書き出しオプションの設定
+        // パージした結果を temp_purge_path (c_output) に書き出す
+        // ffi::pdf_write_options::default() が使えないため、
+        let mut opts: ffi::pdf_write_options = std::mem::zeroed();
+        opts.do_garbage = 2; // これでパージしたフォントを物理削除
+        opts.do_compress = 0;
+        opts.do_clean = 0; // 重要: 0
+        opts.do_sanitize = 0; // 重要: 0
+
+        // ここで物理ファイルが作成されます
+        kozou_pdf_save_document(ctx, pdf, c_output.as_ptr(), &opts, &mut res);
+
+        // 3. 後始末
+        ffi::pdf_drop_document(ctx, pdf);
+        ffi::fz_drop_context(ctx);
+
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(res.to_string()));
+        }
+    }
+    Ok(())
+}
+
+/*
+fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
+    unsafe {
+        // コンテキストの作成 (これは try/catch の外でOK)
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("Failed to create context".into()));
+        }
+
+        let mut res = FfiResult::default();
+        let c_input = CString::new(input).map_err(|e| CoreError::Internal(e.to_string()))?;
+        let c_output = CString::new(output).map_err(|e| CoreError::Internal(e.to_string()))?;
+
+        // C 側の「全部入り」関数を呼ぶ
+//        kozou_pdf_purge_and_save(ctx, c_input.as_ptr(), c_output.as_ptr(), &mut res);
+        ffi::kozou_pdf_render_scan_and_purge(ctx, pdf, c_output.as_ptr(), &mut res);
+        // コンテキストの破棄
+        ffi::fz_drop_context(ctx);
+
+        // 結果の判定
+        if res.ok == 0 {
+            // ここで "cannot open..." というメッセージが返ってくるはず
+            return Err(CoreError::MuPdf(res.to_string()));
+        }
+    }
+    Ok(())
+}
+*/
+/*
+fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
+    unsafe {
+        // コンテキスト作成時に NULL ではなく空文字を渡してみる（MuPDFのバージョンチェック対策）
+        let ctx = kozou_new_context();
+
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("Failed to create context".into()));
+        }
+        ffi::fz_register_document_handlers(ctx);
+
+        let c_input = CString::new(input).map_err(|e| CoreError::Internal(e.to_string()))?;
+        let c_output = CString::new(output).map_err(|e| CoreError::Internal(e.to_string()))?;
+
+        // ゼロ初期化ではなく、Default値を持った構造体を用意する（FfiResultなど）
+        let mut res = FfiResult::default();
+
+        let doc = ffi::fz_open_document(ctx, c_input.as_ptr());
+        if doc.is_null() {
+            ffi::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("Failed to open document".into()));
+        }
+
+        let pdf = ffi::pdf_document_from_fz_document(ctx, doc);
+        if pdf.is_null() {
+            ffi::fz_drop_document(ctx, doc);
+            ffi::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("Not a PDF".into()));
+        }
+
+        // パージ実行
+        kozou_pdf_purge_unused_fonts(ctx, pdf, &mut res);
+
+        // pdf_write_options の初期化をより確実に
+        // zeroed() の後に必ず default 設定関数を呼ぶ
+        let mut opts: ffi::pdf_write_options = std::mem::zeroed();
+        kozou_pdf_default_write_options(&mut opts);
+
+        opts.do_garbage = 2;
+
+        if res.ok != 0 {
+             kozou_pdf_save_document(ctx, pdf, c_output.as_ptr(), &opts, &mut res);
+        }
+
+        ffi::fz_drop_document(ctx, doc);
+        ffi::fz_drop_context(ctx);
+
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(res.to_string()));
+        }
+    }
+    Ok(())
+}
+*/
 
 /// サブセット化なしの通常圧縮 (Light プリセット or font_subset=false 時)
 fn safe_compress_only(
@@ -196,6 +371,7 @@ fn safe_compress_only(
     gc: i32,
     clean: bool,
     sanitize: bool,
+    ascii: bool,
 ) -> Result<CompressResponse> {
     use mupdf::pdf::PdfDocument;
 
@@ -208,8 +384,49 @@ fn safe_compress_only(
         .set_compress_images(compress_images)
         .set_garbage_level(gc)
         .set_clean(clean)
-        .set_sanitize(sanitize);
+        .set_sanitize(sanitize)
+        .set_ascii(ascii);
 
+    /*
+        unsafe {
+            let raw_ptr = &mut opts as *mut PdfWriteOptions as *mut mupdf_sys::pdf_write_options;
+            enable_objstms(raw_ptr);
+        }
+    */
+    unsafe {
+        // 1. PdfDocument は *mut pdf_document へキャスト可能なはずです
+        // (NonNull<pdf_document> が唯一のフィールドであれば、構造体そのもののアドレスがそれです)
+        let doc_ptr: *mut mupdf_sys::pdf_document =
+            *(&doc as *const _ as *const *mut mupdf_sys::pdf_document);
+
+        // 2. 最も重要な「コンテキスト」の取得
+        // mupdf_sys ではなく、mupdf クレートが提供している context() 関数などを探してください。
+        // もし見当たらない場合は、PdfDocument が開かれた際のコンテキストを共有する必要があります。
+        // 多くの MuPDF ラッパーでは、fz_context はスレッドローカルかグローバルに保持されています。
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::Internal("MuPDF context creation failed".into()));
+        }
+
+        if !doc_ptr.is_null() && !ctx.is_null() {
+            merge_duplicate_fonts(ctx, doc_ptr);
+        }
+
+        // 3. 保存オプション (Garbage 5 で重複フォントを物理削除)
+        //let mut opts = PdfWriteOptions::default();
+        //opts.set_garbage_level(5);
+        //opts.set_compress(true);
+
+        // Object Streams 有効化
+        let raw_opts_ptr = &mut opts as *mut _ as *mut mupdf_sys::pdf_write_options;
+        enable_objstms(raw_opts_ptr);
+
+        //   doc.save_with_options(output_path, opts)?;
+    }
+
+    // let mut raw_options = unsafe { std::mem::transmute::<PdfWriteOptions, mupdf_sys::pdf_write_options>(options) };
+    //raw_options.do_use_objstms = 1; // これが GS の Metadata Stream: yes に相当する
+    //
     doc.save_with_options(output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
@@ -227,6 +444,7 @@ fn safe_compress_only(
             garbage_level: gc,
             clean,
             sanitize,
+            ascii: ascii,
             font_subset: false,
             subset_skipped: false,
         },
@@ -243,6 +461,7 @@ pub struct RewriteFallbackParams {
     pub sanitize: bool,
     pub compress_images: Option<bool>,
     pub compress_fonts: Option<bool>,
+    pub ascii: Option<bool>,
 }
 
 /// DocumentWriter + page.run() による PDF 再書き出し
@@ -296,6 +515,7 @@ pub fn rewrite(
             let sanitize = parse_rewrite_opt_bool(options, "sanitize").unwrap_or(false);
             let ci = parse_rewrite_opt_bool(options, "compress-images").unwrap_or(true);
             let cf = parse_rewrite_opt_bool(options, "compress-fonts").unwrap_or(true);
+            let ascii = parse_rewrite_opt_bool(options, "ascii").unwrap_or(true);
 
             Ok(CompressResponse {
                 ok: true,
@@ -310,6 +530,7 @@ pub fn rewrite(
                     sanitize,
                     font_subset: false,
                     subset_skipped: false,
+                    ascii: ascii,
                 },
                 warning: size_increased_warning(ib, ob),
             })
@@ -319,6 +540,7 @@ pub fn rewrite(
             // Type1/CIDFont → font_subset FFI
             eprintln!("[rewrite] non-TrueType ({reason}) → font_subset FFI");
             let gc = fallback.garbage_level.unwrap_or(2);
+            let ascii = fallback.ascii.unwrap_or(false);
             let result = crate::font_subset::subset_and_write(
                 input,
                 output,
@@ -351,6 +573,7 @@ pub fn rewrite(
                     sanitize: result.effective_sanitize,
                     font_subset: result.subset_applied,
                     subset_skipped: result.fell_back,
+                    ascii: ascii,
                 },
                 warning: Some(warns.join(" ")),
             })
@@ -371,11 +594,12 @@ fn rewrite_safe_fallback(
     p: &RewriteFallbackParams,
 ) -> Result<CompressResponse> {
     let gc = p.garbage_level.unwrap_or(2);
-    let clean = p.clean;
-    let sanitize = p.sanitize;
+    let clean = false;
+    let sanitize = false;
     let ci = p.compress_images.unwrap_or(true);
     let cf = p.compress_fonts.unwrap_or(true);
-    let mut res = safe_compress_only(input, output, ci, cf, gc, clean, sanitize)?;
+    let ascii = p.ascii.unwrap_or(false);
+    let mut res = safe_compress_only(input, output, ci, cf, gc, clean, sanitize, ascii)?;
     let mut warns: Vec<String> = Vec::new();
     if let Some(r) = reason {
         warns.push(format!("{r} のため通常圧縮を使用します。"));
@@ -445,6 +669,7 @@ pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse
             sanitize: false,
             font_subset: false,
             subset_skipped: false,
+            ascii: false,
         },
         warning: Some(format!(
             "ラスタライズ: {dpi}dpi 画像PDFに変換。テキスト選択・検索・コピー不可。"
