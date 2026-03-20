@@ -151,9 +151,9 @@ enum Commands {
         font_subset: bool,
         /// 未使用埋め込みフォントを取り除く
         #[arg(long)]
-        purge_fonts: bool, // CLIフラグ
+        object_stream: bool,
         #[arg(long)]
-        ascii: bool,
+        merge_fonts: bool,
     },
 
     /// PDF を全ページ画像化して PDF に再出力（ラスタライズ）
@@ -407,8 +407,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             clean,
             sanitize,
             font_subset,
-            purge_fonts,
-            ascii,
+            object_stream,
+            merge_fonts,
         } => {
             let resp = if rewrite {
                 let opts = rewrite_options
@@ -437,8 +437,11 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                         } else {
                             parse_rewrite_opt_bool(opts, "compress-fonts")
                         },
-                        ascii: Some(
-                            ascii || parse_rewrite_opt_bool(opts, "ascii").unwrap_or(false),
+                        object_stream: Some(
+                            object_stream || parse_rewrite_opt_bool(opts, "object_stream").unwrap_or(false),
+                        ),
+                        merge_fonts: Some(
+                            merge_fonts || parse_rewrite_opt_bool(opts, "merge_fonts").unwrap_or(false),
                         ),
                     }
                 };
@@ -465,8 +468,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     clean: if clean { Some(true) } else { None },
                     sanitize: if sanitize { Some(true) } else { None },
                     font_subset: if font_subset { Some(true) } else { None },
-                    purge_fonts: Some(purge_fonts),
-                    ascii: Some(ascii),
+                    object_stream: Some(object_stream),
+                    merge_fonts: Some(merge_fonts),
                 };
                 pdf_kozou_core::compress::compress(&req)?
             };
@@ -656,9 +659,9 @@ fn dispatch_json(line: &str) -> String {
                     #[serde(default)]
                     rewrite_options: Option<String>,
                     #[serde(default)]
-                    purge_fonts: bool,
+                    merge_fonts: bool,
                     #[serde(default)]
-                    ascii: bool,
+                    object_stream: bool,
                     // フォールバック時のパラメータ (JSON API 用)
                     // CLI の --gc / --clean / --sanitize / --no-compress-* に相当
                     #[serde(default)]
@@ -675,9 +678,9 @@ fn dispatch_json(line: &str) -> String {
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
+                //r.inner.purge_fonts = Some(r.purge_fonts);
+                //eprintln!("debug {:?}", r.inner.purge_fonts);
 
-                r.inner.purge_fonts = Some(r.purge_fonts);
-                eprintln!("debug {:?}", r.inner.purge_fonts);
                 let resp = if r.rewrite {
                     let opts = r
                         .rewrite_options
@@ -702,8 +705,11 @@ fn dispatch_json(line: &str) -> String {
                             compress_fonts: r
                                 .fallback_compress_fonts
                                 .or_else(|| parse_rewrite_opt_bool(opts, "compress-fonts")),
-                            ascii: Some(
-                                r.ascii || parse_rewrite_opt_bool(opts, "ascii").unwrap_or(false),
+                            merge_fonts: Some(
+                                r.merge_fonts || parse_rewrite_opt_bool(opts, "merge_fonts").unwrap_or(false),
+                            ),
+                            object_stream: Some(
+                                r.object_stream || parse_rewrite_opt_bool(opts, "object_stream").unwrap_or(false),
                             ),
                         }
                     };

@@ -46,17 +46,17 @@ pub enum CompressPreset {
 }
 
 impl CompressPreset {
-    /// (compress_images, gc, clean, sanitize, do_subset, ascii)
-    fn to_params(&self) -> (bool, i32, bool, bool, bool, bool) {
+    /// (compress_images, gc, clean, sanitize, do_subset, merge_fonts, object_stream)
+    fn to_params(&self) -> (bool, i32, bool, bool, bool, bool, bool) {
         // (compress_images, gc, clean, sanitize, do_subset)
         // MuPDF 1.28: pdf_subset_fonts の挙動変化のため、
         //   デフォルトは subset=false で安全運転。
         //   明示的に font_subset=true を指定した場合のみ実行。
         match self {
-            Self::Light => (false, 1, false, false, false, false),
-            Self::Standard => (true, 2, false, false, false, false), // subset はデフォルト無効
-            Self::Aggressive => (true, 2, true, false, false, false), // 同上
-            Self::Maximum => (true, 3, true, true, false, false),    // 同上
+            Self::Light => (false, 1, false, false, false, false, false),
+            Self::Standard => (true, 2, false, false, false, false, false), // subset はデフォルト無効
+            Self::Aggressive => (true, 2, false, true, false, true, true), // 同上
+            Self::Maximum => (true, 3, true, true, false, true, true),    // 同上.clean
         }
     }
 }
@@ -93,11 +93,14 @@ pub struct CompressRequest {
 
     /// 全く参照されていないフォントオブジェクトを物理的に除去するか
     /// (renderパス相当の解析を行い、Resources辞書からパージする)
-    #[serde(default)]
-    pub purge_fonts: Option<bool>,
+    //#[serde(default)]
+    //pub purge_fonts: Option<bool>,
 
     #[serde(default)]
-    pub ascii: Option<bool>,
+    pub merge_fonts: Option<bool>,
+    
+    #[serde(default)]
+    pub object_stream: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -119,7 +122,8 @@ pub struct CompressParamsUsed {
     pub garbage_level: i32,
     pub clean: bool,
     pub sanitize: bool,
-    pub ascii: bool,
+    pub merge_fonts: bool,
+    pub object_stream: bool,
     /// 未参照フォントの除去を実行したか
     /// pdf_subset_fonts() を実行したか
     pub font_subset: bool,
@@ -136,7 +140,7 @@ pub struct CompressParamsUsed {
 /// 使われていないフォントグリフを除去する。テキスト・アウトラインは保持。
 pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let preset = req.preset.as_ref().unwrap_or(&CompressPreset::Standard);
-    let (preset_ci, preset_gc, preset_clean, preset_sanitize, preset_subset, preset_ascii) =
+    let (preset_ci, preset_gc, preset_clean, preset_sanitize, preset_subset, preset_merge_fonts, preset_object_stream) =
         preset.to_params();
 
     let compress_images = req.compress_images.unwrap_or(preset_ci);
@@ -144,19 +148,20 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let garbage_level = req.garbage_level.unwrap_or(preset_gc);
     let clean = req.clean.unwrap_or(preset_clean);
     let sanitize = req.sanitize.unwrap_or(preset_sanitize);
-    let ascii = req.font_subset.unwrap_or(preset_ascii);
+    let merge_fonts = req.merge_fonts.unwrap_or(preset_merge_fonts);
+    let object_stream = req.object_stream.unwrap_or(preset_object_stream);
     let do_subset = req.font_subset.unwrap_or(preset_subset);
-    let do_purge = req.purge_fonts.unwrap_or(false);
+    //let do_purge = req.purge_fonts.unwrap_or(false);
     // 処理の対象となる入力を保持する変数
     let mut current_input = req.input.clone();
     // 一時ファイルのパス（パージ用）
-    let temp_purge_path = format!("{}.purge.tmp", req.output);
+    //let temp_purge_path = format!("{}.purge.tmp", req.output);
 
     // 1. (オプション) 未参照リソースのパージ
-    if do_purge {
-        execute_font_purge_pass(&current_input, &temp_purge_path)?;
-        current_input = temp_purge_path.clone();
-    }
+    //if do_purge {
+    //    execute_font_purge_pass(&current_input, &temp_purge_path)?;
+    //    current_input = temp_purge_path.clone();
+    //}
 
     let result_res: Result<CompressResponse> = if do_subset {
         // フォントサブセット化パス: font_subset::subset_and_write を呼ぶ
@@ -198,7 +203,8 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 clean: result.effective_clean,
                 sanitize: result.effective_sanitize,
                 font_subset: result.subset_applied,
-                ascii: ascii,
+                merge_fonts: merge_fonts,
+                object_stream: object_stream,
                 subset_skipped: false,
                 //subset_skipped: result.fell_back || !result.subset_applied,
             },
@@ -218,13 +224,14 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
             garbage_level,
             clean,
             sanitize,
-            ascii,
+            merge_fonts,
+            object_stream,
         )
     };
 
-    if do_purge && std::path::Path::new(&temp_purge_path).exists() {
+    //if do_purge && std::path::Path::new(&temp_purge_path).exists() {
         // let _ = std::fs::remove_file(&temp_purge_path);
-    }
+    //}
 
     result_res
 }
@@ -371,7 +378,8 @@ fn safe_compress_only(
     gc: i32,
     clean: bool,
     sanitize: bool,
-    ascii: bool,
+    merge_fonts: bool,
+    object_stream: bool,
 ) -> Result<CompressResponse> {
     use mupdf::pdf::PdfDocument;
 
@@ -384,8 +392,7 @@ fn safe_compress_only(
         .set_compress_images(compress_images)
         .set_garbage_level(gc)
         .set_clean(clean)
-        .set_sanitize(sanitize)
-        .set_ascii(ascii);
+        .set_sanitize(sanitize);
 
     /*
         unsafe {
@@ -408,7 +415,7 @@ fn safe_compress_only(
             return Err(CoreError::Internal("MuPDF context creation failed".into()));
         }
 
-        if !doc_ptr.is_null() && !ctx.is_null() {
+        if merge_fonts && !doc_ptr.is_null() && !ctx.is_null() {
             merge_duplicate_fonts(ctx, doc_ptr);
         }
 
@@ -418,8 +425,10 @@ fn safe_compress_only(
         //opts.set_compress(true);
 
         // Object Streams 有効化
-        let raw_opts_ptr = &mut opts as *mut _ as *mut mupdf_sys::pdf_write_options;
-        enable_objstms(raw_opts_ptr);
+        if object_stream {
+            let raw_opts_ptr = &mut opts as *mut _ as *mut mupdf_sys::pdf_write_options;
+            enable_objstms(raw_opts_ptr);
+        }
 
         //   doc.save_with_options(output_path, opts)?;
     }
@@ -444,7 +453,8 @@ fn safe_compress_only(
             garbage_level: gc,
             clean,
             sanitize,
-            ascii: ascii,
+            merge_fonts: merge_fonts,
+            object_stream: object_stream,
             font_subset: false,
             subset_skipped: false,
         },
@@ -461,7 +471,8 @@ pub struct RewriteFallbackParams {
     pub sanitize: bool,
     pub compress_images: Option<bool>,
     pub compress_fonts: Option<bool>,
-    pub ascii: Option<bool>,
+    pub merge_fonts: Option<bool>,
+    pub object_stream: Option<bool>,
 }
 
 /// DocumentWriter + page.run() による PDF 再書き出し
@@ -515,7 +526,8 @@ pub fn rewrite(
             let sanitize = parse_rewrite_opt_bool(options, "sanitize").unwrap_or(false);
             let ci = parse_rewrite_opt_bool(options, "compress-images").unwrap_or(true);
             let cf = parse_rewrite_opt_bool(options, "compress-fonts").unwrap_or(true);
-            let ascii = parse_rewrite_opt_bool(options, "ascii").unwrap_or(true);
+            let merge_fonts = parse_rewrite_opt_bool(options, "merge_fonts").unwrap_or(true);
+            let object_stream = parse_rewrite_opt_bool(options, "object_stream").unwrap_or(true);
 
             Ok(CompressResponse {
                 ok: true,
@@ -530,7 +542,8 @@ pub fn rewrite(
                     sanitize,
                     font_subset: false,
                     subset_skipped: false,
-                    ascii: ascii,
+                    merge_fonts: merge_fonts,
+                    object_stream: object_stream,
                 },
                 warning: size_increased_warning(ib, ob),
             })
@@ -540,7 +553,8 @@ pub fn rewrite(
             // Type1/CIDFont → font_subset FFI
             eprintln!("[rewrite] non-TrueType ({reason}) → font_subset FFI");
             let gc = fallback.garbage_level.unwrap_or(2);
-            let ascii = fallback.ascii.unwrap_or(false);
+            let merge_fonts = fallback.merge_fonts.unwrap_or(false);
+            let object_stream = fallback.object_stream.unwrap_or(false);
             let result = crate::font_subset::subset_and_write(
                 input,
                 output,
@@ -573,7 +587,8 @@ pub fn rewrite(
                     sanitize: result.effective_sanitize,
                     font_subset: result.subset_applied,
                     subset_skipped: result.fell_back,
-                    ascii: ascii,
+                    merge_fonts: merge_fonts,
+                    object_stream: object_stream,
                 },
                 warning: Some(warns.join(" ")),
             })
@@ -598,8 +613,9 @@ fn rewrite_safe_fallback(
     let sanitize = false;
     let ci = p.compress_images.unwrap_or(true);
     let cf = p.compress_fonts.unwrap_or(true);
-    let ascii = p.ascii.unwrap_or(false);
-    let mut res = safe_compress_only(input, output, ci, cf, gc, clean, sanitize, ascii)?;
+    let merge_fonts = p.merge_fonts.unwrap_or(false);
+    let object_stream = p.object_stream.unwrap_or(false);
+    let mut res = safe_compress_only(input, output, ci, cf, gc, clean, sanitize, merge_fonts, object_stream)?;
     let mut warns: Vec<String> = Vec::new();
     if let Some(r) = reason {
         warns.push(format!("{r} のため通常圧縮を使用します。"));
@@ -669,7 +685,8 @@ pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse
             sanitize: false,
             font_subset: false,
             subset_skipped: false,
-            ascii: false,
+            merge_fonts: false,
+            object_stream: false,
         },
         warning: Some(format!(
             "ラスタライズ: {dpi}dpi 画像PDFに変換。テキスト選択・検索・コピー不可。"
