@@ -593,51 +593,82 @@ void merge_duplicate_fonts(fz_context *ctx, pdf_document *doc) {
     int n_objs = pdf_count_objects(ctx, doc);
     struct {
         char name[128];
-        pdf_obj *descriptor; // 代表となる FontDescriptor
+        pdf_obj *font_obj; // ここを確実に font_obj と定義
     } registry[100];
     int registry_count = 0;
 
-    // 1. 全オブジェクトをスキャンして「フォント記述子」を名寄せ
+    // 1. 全オブジェクトを走査して「各フォント名の代表（Font Dict）」を決定
     for (int i = 1; i < n_objs; i++) {
-        pdf_obj *font_obj = pdf_new_indirect(ctx, doc, i, 0);
-
-        // Font オブジェクトを見つけたら、その下の FontDescriptor を探す
-        if (pdf_is_dict(ctx, font_obj) && pdf_name_eq(ctx, pdf_dict_get(ctx, font_obj, PDF_NAME(Type)), PDF_NAME(Font))) {
-            pdf_obj *base_font = pdf_dict_get(ctx, font_obj, PDF_NAME(BaseFont));
-            pdf_obj *current_desc = pdf_dict_get(ctx, font_obj, PDF_NAME(FontDescriptor));
-
-            if (base_font && current_desc) {
+        pdf_obj *obj = pdf_new_indirect(ctx, doc, i, 0);
+        if (pdf_is_dict(ctx, obj) && pdf_name_eq(ctx, pdf_dict_get(ctx, obj, PDF_NAME(Type)), PDF_NAME(Font))) {
+            pdf_obj *base_font = pdf_dict_get(ctx, obj, PDF_NAME(BaseFont));
+            if (base_font) {
                 const char *full_name = pdf_to_name(ctx, base_font);
                 const char *name = strchr(full_name, '+');
-                name = (name) ? name + 1 : full_name; // "ABCDEF+MPlus" -> "MPlus"
+                name = (name) ? name + 1 : full_name;
 
                 int found_idx = -1;
                 for (int j = 0; j < registry_count; j++) {
-                    const char *reg_name = strchr(registry[j].name, '+');
-                    reg_name = (reg_name) ? reg_name + 1 : registry[j].name;
+                    const char *reg_full = registry[j].name;
+                    const char *reg_name = strchr(reg_full, '+');
+                    reg_name = (reg_name) ? reg_name + 1 : reg_full;
                     if (strcmp(reg_name, name) == 0) { found_idx = j; break; }
                 }
 
-                if (found_idx == -1) {
-                    // 初めて見るフォント名なら登録
-                    if (registry_count < 100) {
-                        strncpy(registry[registry_count].name, full_name, 127);
-                        registry[registry_count].descriptor = pdf_keep_obj(ctx, current_desc);
-                        registry_count++;
-                    }
-                } else {
-                    // 【重要】2回目以降の同じフォントなら、その FontDescriptor を代表に差し替える
-                    // これにより、このフォントが持つバイナリ(FontFile)への参照が絶たれる
-                    pdf_dict_put(ctx, font_obj, PDF_NAME(FontDescriptor), registry[found_idx].descriptor);
-                    pdf_dirty_obj(ctx, font_obj);
+                if (found_idx == -1 && registry_count < 100) {
+                    strncpy(registry[registry_count].name, full_name, 127);
+                    registry[registry_count].font_obj = pdf_keep_obj(ctx, obj);
+                    registry_count++;
                 }
             }
         }
-        pdf_drop_obj(ctx, font_obj);
+        pdf_drop_obj(ctx, obj);
     }
 
-    // 2. クリーンアップ
+    // 2. 全オブジェクト（Page, XObject 等）の /Font 辞書を代表へ差し替え
+    for (int i = 1; i < n_objs; i++) {
+        pdf_obj *obj = pdf_new_indirect(ctx, doc, i, 0);
+        if (pdf_is_dict(ctx, obj)) {
+            // 直接 Font 辞書を持っているか、Resources 内に持っているか確認
+            pdf_obj *fonts = pdf_dict_get(ctx, obj, PDF_NAME(Font));
+            if (!fonts) {
+                pdf_obj *res = pdf_dict_get(ctx, obj, PDF_NAME(Resources));
+                if (res) fonts = pdf_dict_get(ctx, res, PDF_NAME(Font));
+            }
+
+            if (pdf_is_dict(ctx, fonts)) {
+                int n_fonts = pdf_dict_len(ctx, fonts);
+                for (int f = 0; f < n_fonts; f++) {
+                    pdf_obj *key = pdf_dict_get_key(ctx, fonts, f);
+                    pdf_obj *f_val = pdf_dict_get_val(ctx, fonts, f);
+                    pdf_obj *base_font = pdf_dict_get(ctx, f_val, PDF_NAME(BaseFont));
+
+                    if (base_font) {
+                        const char *full_name = pdf_to_name(ctx, base_font);
+                        const char *name = strchr(full_name, '+');
+                        name = (name) ? name + 1 : full_name;
+
+                        for (int j = 0; j < registry_count; j++) {
+                            const char *reg_full = registry[j].name;
+                            const char *reg_name = strchr(reg_full, '+');
+                            reg_name = (reg_name) ? reg_name + 1 : reg_full;
+
+                            if (strcmp(reg_name, name) == 0) {
+                                // 代表の Font Object ID に上書き
+                                pdf_dict_put(ctx, fonts, key, registry[j].font_obj);
+                                pdf_dirty_obj(ctx, fonts);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        pdf_drop_obj(ctx, obj);
+    }
+
     for (int i = 0; i < registry_count; i++) {
-        pdf_drop_obj(ctx, registry[i].descriptor);
+        pdf_drop_obj(ctx, registry[i].font_obj);
     }
 }
+
