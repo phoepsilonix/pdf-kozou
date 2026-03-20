@@ -155,7 +155,7 @@ void kozou_pdf_subset_fonts(
 void kozou_pdf_subset_fonts(
     fz_context   *ctx,
     pdf_document *pdf,
-    int           page_count,  // ドキュメントの総ページ数
+    int           page_count,  // ドキュメントの総ページ数 
     FfiResult    *result)
 {
     fz_try(ctx) {
@@ -173,7 +173,7 @@ void kozou_pdf_subset_fonts(
             range.page1 = page_count - 1;
             pdf_subset_fonts(ctx, pdf, 1, &range);
         } else {
-            // page_count <= 0 の場合は nranges=0 でフォールバック
+            // page_count <= 0 の場合は nranges=0 でフォールバック 
             pdf_subset_fonts(ctx, pdf, 0, NULL);
         }
         set_ok(result);
@@ -292,10 +292,10 @@ void kozou_pdf_purge_and_save(fz_context *ctx, const char *input, const char *ou
         }
 
         /* 修正箇所：関数呼び出しではなく、構造体の代入を行う */
-        pdf_write_options opts = pdf_default_write_options;
+        pdf_write_options opts = pdf_default_write_options; 
 
         /* 必要なオプションを上書き */
-        opts.do_garbage = 2;
+        opts.do_garbage = 2; 
         opts.do_compress = 1;
 
         pdf_save_document(ctx, pdf, output, &opts);
@@ -323,11 +323,11 @@ static void log_font(fz_context *ctx, pdf_obj *font, int id, const char *action)
     const char *subtype = pdf_to_name(ctx, subtype_obj);
 
     pdf_obj *desc = pdf_dict_get(ctx, font, PDF_NAME(FontDescriptor));
-    int embedded = (pdf_dict_get(ctx, desc, PDF_NAME(FontFile)) ||
-                    pdf_dict_get(ctx, desc, PDF_NAME(FontFile2)) ||
+    int embedded = (pdf_dict_get(ctx, desc, PDF_NAME(FontFile)) || 
+                    pdf_dict_get(ctx, desc, PDF_NAME(FontFile2)) || 
                     pdf_dict_get(ctx, desc, PDF_NAME(FontFile3)));
 
-    printf("[%s] ID:%-4d | Type:%-12s | Embedded:%-3s | Name:%s\n",
+    printf("[%s] ID:%-4d | Type:%-12s | Embedded:%-3s | Name:%s\n", 
            action, id, subtype ? subtype : "Type3", embedded ? "YES" : "NO", name ? name : "(no name)");
 }
 
@@ -553,7 +553,7 @@ int purge_unused_fonts(fz_context *ctx, pdf_document *pdf) {
         }
 	pdf_obj *type = pdf_dict_get(ctx, obj, PDF_NAME(Type));
 	if (pdf_name_eq(ctx, type, PDF_NAME(Font))) {
-		printf("[DEBUG] Found Font Object ID: %d, Marked as Used: %s\n",
+		printf("[DEBUG] Found Font Object ID: %d, Marked as Used: %s\n", 
 		       i, used_flags[i] ? "YES" : "NO");
 	}
         pdf_drop_obj(ctx, obj);
@@ -584,120 +584,8 @@ void enable_objstms(pdf_write_options *opts) {
 }
 
 
-#include <mupdf/fitz.h>
 #include <mupdf/pdf.h>
 #include <string.h>
-
-void clean_document_contents(fz_context *ctx, pdf_document *doc) {
-    if (!ctx || !doc) return;
-
-    int page_count = pdf_count_pages(ctx, doc);
-
-    fz_try(ctx) {
-        for (int i = 0; i < page_count; i++) {
-            // pdf_load_page でページをメモリに展開
-            pdf_page *page = pdf_load_page(ctx, doc, i);
-
-            // 内部的なページオブジェクトを取得（pdf_page 構造体のメンバに直接アクセス）
-            // pdf_page_obj が使えない場合、page->obj を使用します
-            pdf_obj *page_obj = page->obj;
-
-            // 1. トリミング枠（CropBox）を確定させる
-            // これにより、保存時に「枠外」を判定する基準が強固になります
-            pdf_obj *cropbox = pdf_dict_get(ctx, page_obj, PDF_NAME(CropBox));
-            if (cropbox) {
-                pdf_dict_put(ctx, page_obj, PDF_NAME(MediaBox), cropbox);
-            }
-
-            // 2. アノテーション（注釈）の整理
-            // アノテーションが巨大な非表示データを抱えている場合があるため、空にするか整理
-            // pdf_dict_del(ctx, page_obj, PDF_NAME(Annots)); // 必要ならコメント解除
-
-            pdf_drop_page(ctx, page);
-        }
-    }
-    fz_catch(ctx) {
-        // エラー時は何もしない
-    }
-}
-
-// 以前の「安定版」をベースにしつつ、XObject（画像や埋め込みフォーム）も対象に加えます
-void merge_resources_safely(fz_context *ctx, pdf_document *doc) {
-    if (!ctx || !doc) return;
-
-    int n_objs = pdf_count_objects(ctx, doc);
-
-    // フォントとXObject（画像など）の代表を管理するレジストリ
-    struct {
-        char name[128];
-        pdf_obj *obj;
-    } registry[512];
-    int registry_count = 0;
-
-    fz_try(ctx) {
-        // 1. 全オブジェクトから「代表」を決定
-        for (int i = 1; i < n_objs; i++) {
-            pdf_obj *obj = pdf_new_indirect(ctx, doc, i, 0);
-            if (pdf_is_dict(ctx, obj)) {
-                pdf_obj *type = pdf_dict_get(ctx, obj, PDF_NAME(Type));
-                pdf_obj *subtype = pdf_dict_get(ctx, obj, PDF_NAME(Subtype));
-
-                // Font または Image/Form XObject が対象
-                if (pdf_name_eq(ctx, type, PDF_NAME(Font)) || pdf_name_eq(ctx, subtype, PDF_NAME(Image))) {
-                    pdf_obj *name_ptr = pdf_dict_get(ctx, obj, PDF_NAME(BaseFont));
-                    if (!name_ptr) name_ptr = pdf_dict_get(ctx, obj, PDF_NAME(Name));
-
-                    if (name_ptr) {
-                        const char *full_name = pdf_to_name(ctx, name_ptr);
-                        const char *pure = strchr(full_name, '+'); pure = pure ? pure + 1 : full_name;
-
-                        int found = -1;
-                        for (int j = 0; j < registry_count; j++) {
-                            const char *r_pure = strchr(registry[j].name, '+');
-                            r_pure = r_pure ? r_pure + 1 : registry[j].name;
-                            if (strcmp(r_pure, pure) == 0) { found = j; break; }
-                        }
-
-                        if (found == -1 && registry_count < 512) {
-                            strncpy(registry[registry_count].name, full_name, 127);
-                            registry[registry_count].obj = pdf_keep_obj(ctx, obj);
-                            registry_count++;
-                        }
-                    }
-                }
-            }
-            pdf_drop_obj(ctx, obj);
-        }
-
-        // 2. ページおよび XObject 内のリソース辞書を一括置換
-        for (int i = 1; i < n_objs; i++) {
-            pdf_obj *obj = pdf_new_indirect(ctx, doc, i, 0);
-            if (pdf_is_dict(ctx, obj)) {
-                // Resources 辞書を探す
-                pdf_obj *res = pdf_dict_get(ctx, obj, PDF_NAME(Resources));
-                if (pdf_is_dict(ctx, res)) {
-                    const char *res_keys[] = {"Font", "XObject"};
-                    for (int k = 0; k < 2; k++) {
-                        pdf_obj *sub_res = pdf_dict_get(ctx, res, pdf_new_name(ctx, res_keys[k]));
-                        if (pdf_is_dict(ctx, sub_res)) {
-                            for (int f = 0; f < pdf_dict_len(ctx, sub_res); f++) {
-                                pdf_obj *val = pdf_dict_get_val(ctx, sub_res, f);
-                                // 名前で一致する代表に差し替え
-                                // (ここに名前比較ロジックを挿入)
-                                // ...
-                            }
-                        }
-                    }
-                }
-            }
-            pdf_drop_obj(ctx, obj);
-        }
-    }
-    fz_always(ctx) {
-        for (int i = 0; i < registry_count; i++) pdf_drop_obj(ctx, registry[i].obj);
-    }
-    fz_catch(ctx) { fz_rethrow(ctx); }
-}
 
 void merge_duplicate_fonts(fz_context *ctx, pdf_document *doc) {
     if (!ctx || !doc) return;
@@ -705,258 +593,51 @@ void merge_duplicate_fonts(fz_context *ctx, pdf_document *doc) {
     int n_objs = pdf_count_objects(ctx, doc);
     struct {
         char name[128];
-        pdf_obj *font_obj;
-    } registry[256];
+        pdf_obj *descriptor; // 代表となる FontDescriptor
+    } registry[100];
     int registry_count = 0;
 
-    // 1. 名前ベースで代表を決定（ここまでは安全）
+    // 1. 全オブジェクトをスキャンして「フォント記述子」を名寄せ
     for (int i = 1; i < n_objs; i++) {
-        pdf_obj *obj = pdf_new_indirect(ctx, doc, i, 0);
-        if (pdf_is_dict(ctx, obj) && pdf_name_eq(ctx, pdf_dict_get(ctx, obj, PDF_NAME(Type)), PDF_NAME(Font))) {
-            pdf_obj *name_ptr = pdf_dict_get(ctx, obj, PDF_NAME(BaseFont));
-            if (!name_ptr) name_ptr = pdf_dict_get(ctx, obj, PDF_NAME(Name));
-            if (name_ptr) {
-                const char *full_name = pdf_to_name(ctx, name_ptr);
-                const char *pure = strchr(full_name, '+'); pure = pure ? pure + 1 : full_name;
-                int found = -1;
+        pdf_obj *font_obj = pdf_new_indirect(ctx, doc, i, 0);
+
+        // Font オブジェクトを見つけたら、その下の FontDescriptor を探す
+        if (pdf_is_dict(ctx, font_obj) && pdf_name_eq(ctx, pdf_dict_get(ctx, font_obj, PDF_NAME(Type)), PDF_NAME(Font))) {
+            pdf_obj *base_font = pdf_dict_get(ctx, font_obj, PDF_NAME(BaseFont));
+            pdf_obj *current_desc = pdf_dict_get(ctx, font_obj, PDF_NAME(FontDescriptor));
+
+            if (base_font && current_desc) {
+                const char *full_name = pdf_to_name(ctx, base_font);
+                const char *name = strchr(full_name, '+');
+                name = (name) ? name + 1 : full_name; // "ABCDEF+MPlus" -> "MPlus"
+
+                int found_idx = -1;
                 for (int j = 0; j < registry_count; j++) {
-                    const char *r_pure = strchr(registry[j].name, '+'); r_pure = r_pure ? r_pure + 1 : registry[j].name;
-                    if (strcmp(r_pure, pure) == 0) { found = j; break; }
+                    const char *reg_name = strchr(registry[j].name, '+');
+                    reg_name = (reg_name) ? reg_name + 1 : registry[j].name;
+                    if (strcmp(reg_name, name) == 0) { found_idx = j; break; }
                 }
-                if (found == -1 && registry_count < 256) {
-                    strncpy(registry[registry_count].name, full_name, 127);
-                    registry[registry_count].font_obj = pdf_keep_obj(ctx, obj);
-                    registry_count++;
-                }
-            }
-        }
-        pdf_drop_obj(ctx, obj);
-    }
 
-    // 2. リソース辞書の書き換え（ページとXObjectのFont辞書のみ）
-    for (int i = 1; i < n_objs; i++) {
-        pdf_obj *obj = pdf_new_indirect(ctx, doc, i, 0);
-        if (pdf_is_dict(ctx, obj)) {
-            pdf_obj *fonts = pdf_dict_get(ctx, obj, PDF_NAME(Font));
-            if (!fonts) {
-                pdf_obj *res = pdf_dict_get(ctx, obj, PDF_NAME(Resources));
-                if (res) fonts = pdf_dict_get(ctx, res, PDF_NAME(Font));
-            }
-            if (pdf_is_dict(ctx, fonts)) {
-                for (int f = 0; f < pdf_dict_len(ctx, fonts); f++) {
-                    pdf_obj *val = pdf_dict_get_val(ctx, fonts, f);
-                    pdf_obj *fn = pdf_dict_get(ctx, val, PDF_NAME(BaseFont));
-                    if (!fn) fn = pdf_dict_get(ctx, val, PDF_NAME(Name));
-                    if (fn) {
-                        const char *pure = strchr(pdf_to_name(ctx, fn), '+'); pure = pure ? pure + 1 : pdf_to_name(ctx, fn);
-                        for (int j = 0; j < registry_count; j++) {
-                            const char *r_pure = strchr(registry[j].name, '+'); r_pure = r_pure ? r_pure + 1 : registry[j].name;
-                            if (strcmp(r_pure, pure) == 0) {
-                                pdf_dict_put(ctx, fonts, pdf_dict_get_key(ctx, fonts, f), registry[j].font_obj);
-                                break;
-                            }
-                        }
+                if (found_idx == -1) {
+                    // 初めて見るフォント名なら登録
+                    if (registry_count < 100) {
+                        strncpy(registry[registry_count].name, full_name, 127);
+                        registry[registry_count].descriptor = pdf_keep_obj(ctx, current_desc);
+                        registry_count++;
                     }
+                } else {
+                    // 【重要】2回目以降の同じフォントなら、その FontDescriptor を代表に差し替える
+                    // これにより、このフォントが持つバイナリ(FontFile)への参照が絶たれる
+                    pdf_dict_put(ctx, font_obj, PDF_NAME(FontDescriptor), registry[found_idx].descriptor);
+                    pdf_dirty_obj(ctx, font_obj);
                 }
             }
         }
-        pdf_drop_obj(ctx, obj);
+        pdf_drop_obj(ctx, font_obj);
     }
-    for (int i = 0; i < registry_count; i++) pdf_drop_obj(ctx, registry[i].font_obj);
-}
 
-void compress_all_images(fz_context *ctx, pdf_document *doc) {
-    if (!ctx || !doc) return;
-
-    // オブジェクトの総数を取得
-    int obj_count = pdf_count_objects(ctx, doc);
-
-    for (int i = 1; i < obj_count; i++) {
-        // 第4引数 gen に 0 を指定
-        pdf_obj *obj = pdf_new_indirect(ctx, doc, i, 0);
-
-        fz_try(ctx) {
-            // pdf_is_image の代わりに Subtype が Image かを直接チェック
-            pdf_obj *subtype = pdf_dict_get(ctx, obj, PDF_NAME(Subtype));
-            if (pdf_name_eq(ctx, subtype, PDF_NAME(Image))) {
-
-                // 画像をロード (引数は obj)
-                fz_image *img = pdf_load_image(ctx, doc, obj);
-
-                // 注: このバージョンでは pdf_update_xobject_from_image が使えないため、
-                // 画像の「参照」を解決させることで保存時の最適化対象にします。
-                // 実際のリサイズは Rust 側の WriteOptions (do_compress_images) が担当します。
-
-                fz_drop_image(ctx, img);
-            }
-        }
-        fz_catch(ctx) {
-            // エラー時はスキップ
-        }
-        pdf_drop_obj(ctx, obj);
+    // 2. クリーンアップ
+    for (int i = 0; i < registry_count; i++) {
+        pdf_drop_obj(ctx, registry[i].descriptor);
     }
 }
-
-void remove_out_of_bounds_resources(fz_context *ctx, pdf_document *doc) {
-    if (!ctx || !doc) return;
-
-    int page_count = pdf_count_pages(ctx, doc);
-    for (int p = 0; p < page_count; p++) {
-        pdf_page *page = pdf_load_page(ctx, doc, p);
-        // 現在の表示枠（下半分など）を取得
-        fz_rect crop_box = pdf_bound_page(ctx, page, FZ_CROP_BOX);
-
-        pdf_obj *res = pdf_dict_get(ctx, page->obj, PDF_NAME(Resources));
-        pdf_obj *xobjs = pdf_dict_get(ctx, res, PDF_NAME(XObject));
-
-        int n = pdf_dict_len(ctx, xobjs);
-        // 辞書から削除するため、逆順でループ
-        for (int i = n - 1; i >= 0; i--) {
-            pdf_obj *key = pdf_dict_get_key(ctx, xobjs, i);
-            pdf_obj *val = pdf_dict_get_val(ctx, xobjs, i);
-
-            fz_try(ctx) {
-                // オブジェクトのバウンディングボックス（表示位置）を取得
-                // 注: pdf_xobject_bbox 等を使用して座標を判定
-                fz_rect obj_bbox = pdf_xobject_bbox(ctx, val);
-
-                // もし CropBox と全く重なっていない（完全に枠外）場合
-                if (fz_is_empty_rect(fz_intersect_rect(obj_bbox, crop_box))) {
-                    // ページのリソース辞書から削除（参照を断つ）
-                    pdf_dict_del(ctx, xobjs, key);
-                }
-            }
-            fz_catch(ctx) { /* 判定不能なものは安全のため維持 */ }
-        }
-        pdf_drop_page(ctx, page);
-    }
-}
-
-void strip_out_of_bounds_contents(fz_context *ctx, pdf_document *doc) {
-    if (!ctx || !doc) return;
-
-    int page_count = pdf_count_pages(ctx, doc);
-
-    fz_try(ctx) {
-        for (int i = 0; i < page_count; i++) {
-            pdf_page *page = pdf_load_page(ctx, doc, i);
-
-            // ページの内容（Contents）を一度展開し、
-            // MuPDFの内部クリーニングフラグを立てる
-            // これにより、保存時に「本当に使っているリソース」だけが抽出されます
-            pdf_obj *page_obj = page->obj;
-            if (page_obj) {
-                // Resources辞書を直接触って、再構築のトリガーにする
-                pdf_obj *res = pdf_dict_get(ctx, page_obj, PDF_NAME(Resources));
-                if (res) {
-                    pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), res);
-                }
-            }
-
-            pdf_drop_page(ctx, page);
-        }
-    }
-    fz_catch(ctx) {
-        // エラー時はスキップ
-    }
-}
-
-void physical_crop_all_images(fz_context *ctx, pdf_document *doc) {
-    if (!ctx || !doc) return;
-
-    int page_count = pdf_count_pages(ctx, doc);
-    for (int p = 0; p < page_count; p++) {
-        pdf_page *page = pdf_load_page(ctx, doc, p);
-        pdf_obj *res = pdf_dict_get(ctx, page->obj, PDF_NAME(Resources));
-        pdf_obj *xobjs = pdf_dict_get(ctx, res, PDF_NAME(XObject));
-        int n = pdf_dict_len(ctx, xobjs);
-
-        for (int i = 0; i < n; i++) {
-            pdf_obj *img_obj = pdf_dict_get_val(ctx, xobjs, i);
-            if (pdf_name_eq(ctx, pdf_dict_get(ctx, img_obj, PDF_NAME(Subtype)), PDF_NAME(Image))) {
-                fz_try(ctx) {
-                    // 1. 画像をロード
-                    fz_image *img = pdf_load_image(ctx, doc, img_obj);
-
-                    // 2. Pixmapへ変換（引数エラーを修正: ctmにfz_identityを渡す）
-                    fz_pixmap *pix = fz_get_pixmap_from_image(ctx, img, NULL, &fz_identity, NULL, NULL);
-
-                    // 3. 画像データを更新するためのバッファを作成（PNG等で再圧縮）
-                    // pdf_update_xobject_from_pixmap が使えないため、
-                    // 新しい画像オブジェクトを生成して、そのストリームを元のobjに移植します
-                    pdf_obj *new_img_obj = pdf_add_image(ctx, doc, img);
-
-                    // 元の画像オブジェクトの「Contents」を新しい圧縮データで置き換える
-                    // これにより、参照IDを変えずに中身を物理的に上書きします
-                    pdf_obj *new_stream = pdf_resolve_indirect(ctx, new_img_obj);
-                    fz_buffer *new_buf = pdf_load_stream(ctx, new_stream);
-                    pdf_update_stream(ctx, doc, img_obj, new_buf, 0);
-
-                    // リソース辞書側のメタデータ（Width, Height等）も更新が必要な場合があります
-                    pdf_dict_put(ctx, img_obj, PDF_NAME(Width), pdf_dict_get(ctx, new_stream, PDF_NAME(Width)));
-                    pdf_dict_put(ctx, img_obj, PDF_NAME(Height), pdf_dict_get(ctx, new_stream, PDF_NAME(Height)));
-
-                    fz_drop_buffer(ctx, new_buf);
-                    pdf_drop_obj(ctx, new_img_obj);
-                    fz_drop_pixmap(ctx, pix);
-                    fz_drop_image(ctx, img);
-                }
-                fz_catch(ctx) { /* スキップ */ }
-            }
-        }
-        pdf_drop_page(ctx, page);
-    }
-}
-
-// 物理的に「今見えているもの」だけでPDFを再構築する
-pdf_document *rebuild_pdf_physically(fz_context *ctx, pdf_document *old_doc) {
-    if (!ctx || !old_doc) return NULL;
-
-    pdf_document *new_doc = pdf_create_document(ctx);
-    int page_count = pdf_count_pages(ctx, old_doc);
-
-    for (int i = 0; i < page_count; i++) {
-        pdf_page *page = pdf_load_page(ctx, old_doc, i);
-        // 現在の表示枠（下半分など）を取得
-        fz_rect bbox = pdf_bound_page(ctx, page, FZ_CROP_BOX);
-
-        // 1. DisplayList（録画データ）を作成
-        fz_display_list *list = fz_new_display_list(ctx, bbox);
-        fz_device *list_dev = fz_new_list_device(ctx, list);
-
-        // ページ内容を録画。ここで bbox 外の命令は MuPDF によって無視される
-        fz_run_page(ctx, (fz_page*)page, list_dev, fz_identity, NULL);
-        fz_close_device(ctx, list_dev);
-        fz_drop_device(ctx, list_dev);
-
-        // 2. 新しいドキュメントに「空のページ」を作成
-        pdf_obj *page_obj = pdf_add_page(ctx, new_doc, bbox, 0, NULL, NULL);
-
-        // 3. 新しいページのリソース辞書を作成
-        pdf_obj *res = pdf_new_dict(ctx, new_doc, 2);
-        pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), res);
-
-        // 4. 新しいページへ「描き戻す」。ここがポイント！
-        // pdf_new_pdf_device を使うことで、新しい Content Stream が生成される
-        fz_device *pdf_dev = pdf_new_pdf_device(ctx, new_doc, fz_identity, res, NULL);
-        fz_run_display_list(ctx, list, pdf_dev, fz_identity, bbox, NULL);
-        fz_close_device(ctx, pdf_dev);
-        fz_drop_device(ctx, pdf_dev);
-
-        // 後片付け
-        pdf_drop_obj(ctx, res);
-        fz_drop_display_list(ctx, list);
-        pdf_drop_page(ctx, page);
-    }
-    return new_doc;
-}
-
-// 最終的な圧縮関数
-void final_compression_pass(fz_context *ctx, pdf_document *doc) {
-    //clean_document_contents(ctx, doc);
-    //strip_out_of_bounds_contents(ctx, doc);
-    physical_crop_all_images(ctx, doc);
-    //remove_out_of_bounds_resources(ctx, doc);
-    merge_duplicate_fonts(ctx, doc);
-}
-
