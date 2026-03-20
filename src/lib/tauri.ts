@@ -157,10 +157,8 @@ export interface CompressRequest {
   garbage_level?:   number;
   clean?:           boolean;
   sanitize?:        boolean;
-  /** フォントサブセット化 (pdf_subset_fonts FFI)。
-   *  MuPDF 1.28 では CJK/多言語フォントで不安定なため、デフォルト無効。
-   *  明示的に true を渡した場合のみ実行される。 */
-  font_subset?:     boolean;
+  object_stream?:   boolean;
+  merge_fonts?:     boolean;
 }
 
 export interface CompressResponse {
@@ -174,6 +172,8 @@ export interface CompressResponse {
     garbage_level:   number;
     clean:           boolean;
     sanitize:        boolean;
+    object_stream:   boolean;
+    merge_fonts:     boolean;
     rewrite_fallback?: boolean;
   };
   warning?: string;
@@ -184,6 +184,7 @@ export async function compressPdf(
   outputPath: string,
   opts:       CompressRequest,
 ): Promise<CompressResponse> {
+  console.log("compressPdf", inputPath, outputPath,opts);
   return invoke<CompressResponse>("compress_pdf", {
     request: {
       input:  inputPath,

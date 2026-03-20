@@ -15,33 +15,23 @@
 //   Maximum    : gc=3 + フォントサブセット化 + sanitize。CJKフォントに注意
 
 use crate::error::{CoreError, Result};
-use crate::ffi::FfiResult;
 use serde::{Deserialize, Serialize};
-use std::ffi::CString;
 
 use crate::ffi::enable_objstms;
 use crate::ffi::kozou_new_context;
-use crate::ffi::kozou_pdf_save_document;
 use crate::ffi::merge_duplicate_fonts;
-use crate::ffi::purge_unused_fonts;
-use mupdf_sys as ffi;
 // ── 圧縮プリセット ────────────────────────────────────────────────────────────
-
-#[repr(C)]
-struct PdfDocumentMirror {
-    inner: *mut mupdf_sys::pdf_document,
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum CompressPreset {
-    /// 軽め: gc=1、画像圧縮なし、フォントサブセットなし — 最安全
+    /// 軽め: gc=1 — 最安全
     Light,
-    /// 標準: gc=2、画像圧縮あり、フォントサブセットあり — デフォルト推奨
+    /// 標準: gc=2 — デフォルト推奨
     Standard,
-    /// 強め: gc=2、フォントサブセット + clean — Standard より削減
+    /// 強め: gc=2 + sanitize + merge-font + object-stream — Standard より削減
     Aggressive,
-    /// 最大: gc=3、フォントサブセット + sanitize — CJK等では注意
+    /// 最大: gc=3 + sanitize + clean + merge-font + object-stream — CJK等では注意
     Maximum,
 }
 
@@ -153,7 +143,7 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let do_subset = req.font_subset.unwrap_or(preset_subset);
     //let do_purge = req.purge_fonts.unwrap_or(false);
     // 処理の対象となる入力を保持する変数
-    let mut current_input = req.input.clone();
+    let current_input = req.input.clone();
     // 一時ファイルのパス（パージ用）
     //let temp_purge_path = format!("{}.purge.tmp", req.output);
 
@@ -237,7 +227,7 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
 }
 
 // compress.rs
-
+/*
 fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
     unsafe {
         // もし kozou_new_context で落ちるなら、ここで NULL ではなく
@@ -285,7 +275,7 @@ fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
     }
     Ok(())
 }
-
+*/
 /*
 fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
     unsafe {

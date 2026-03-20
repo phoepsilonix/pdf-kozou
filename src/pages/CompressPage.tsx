@@ -28,8 +28,8 @@ const PRESETS: {
 }[] = [
   { id:"light",      icon:"☁",  label:"軽め",    desc:"GC=1、画像圧縮なし",     note:"フォント完全保護。効果小さめ",           color:"#3a7a4a" },
   { id:"standard",   icon:"⚖",  label:"標準",    desc:"GC=2、画像圧縮あり",     note:"バランス重視。ほとんどのPDFに安全",       color:"#2a5a9a" },
-  { id:"aggressive", icon:"⚡", label:"強め",    desc:"GC=3、sanitize=true",    note:"⚠ 埋め込みフォントに影響する場合あり",   color:"#7a5a1a" },
-  { id:"maximum",    icon:"🔥", label:"最大",    desc:"GC=4、sanitize=true",    note:"⚠ 最大圧縮。フォントへの影響リスク高",   color:"#7a2020" },
+  { id:"aggressive", icon:"⚡", label:"強め",    desc:"GC=2、sanitize,merge-fonts,object-stream",    note:"⚠ 埋め込みフォントに影響する場合あり",   color:"#7a5a1a" },
+  { id:"maximum",    icon:"🔥", label:"最大",    desc:"GC=3、sanitize,clean,merge-fonts,object-stream",    note:"⚠ 最大圧縮。フォントへの影響リスク高",   color:"#7a2020" },
 ];
 
 export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles }: Props) {
@@ -40,7 +40,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
   const [phase,   setPhase]   = useState<Phase>("edit");
   const [preset,      setPreset]      = useState<CompressPreset>("standard");
-  const [fontSubset,  setFontSubset]  = useState(false);  // MuPDF 1.28: デフォルト無効
+  const [objectStream,  setObjectStream]  = useState(false);  // MuPDF 1.28: デフォルト無効
+  const [mergeFonts,  setMergeFonts]  = useState(false);  // MuPDF 1.28: デフォルト無効
   const [result,  setResult]  = useState<CompressResponse | null>(null);
   //const [setTmpFile] = useState("");     // プレビュー用一時ファイル
   const [tmpFile, setTmpFile] = useState("");     // プレビュー用一時ファイル
@@ -63,7 +64,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     setPhase("processing");
     try {
       const tmp = await getTmpPath("kozou_compress_preview.pdf");
-      const res = await compressPdf(inputFile, tmp, { preset, font_subset: fontSubset || undefined });
+      const res = await compressPdf(inputFile, tmp, { preset, merge_fonts: mergeFonts || undefined, object_stream: objectStream || undefined });
       setResult(res);
       setTmpFile(tmp);
       try { setPreview(await renderPage(tmp, 0, 108)); } catch { setPreview(""); }
@@ -71,7 +72,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     } catch (e) {
       setErrMsg(String(e)); setPhase("error"); setError(String(e));
     }
-  }, [inputFile, preset, setError]);
+  }, [inputFile, preset, mergeFonts, objectStream, setError]);
 
   // ── 単体: 圧縮して保存 ───────────────────────────────────────────────
   const handleSaveCompressed = useCallback(async () => {
@@ -80,11 +81,11 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     if (!sp) return;
     setSaving(true);
     try {
-      await compressPdf(inputFile, sp, { preset, font_subset: fontSubset || undefined });
+      await compressPdf(inputFile, sp, { preset, merge_fonts: mergeFonts || undefined, object_stream: objectStream || undefined });
       if (onDone) onDone();
     } catch (e) { setError(String(e)); }
     finally { setSaving(false); }
-  }, [inputFile, filePath, preset, pickSave, setError, onDone]);
+  }, [inputFile, filePath, preset, mergeFonts, objectStream, pickSave, setError, onDone]);
 
   // ── 単体: 圧縮せずそのまま保存 ──────────────────────────────────────
   const handleSaveOriginal = useCallback(async () => {
@@ -105,7 +106,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       if (onDone) onDone();
     } catch (e) { setError(String(e)); }
     finally { setSaving(false); }
-  }, [inputFile, filePath, pickSave, setError, onDone]);
+  }, [inputFile, filePath, mergeFonts, objectStream, pickSave, setError, onDone]);
 
   // ── バッチ: フォルダ出力 ─────────────────────────────────────────────
   const handleBatch = useCallback(async () => {
@@ -119,7 +120,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       setBatchProg({...prog});
       try {
         const out = `${outDir}/${f.filename.replace(/\.pdf$/i,"")}_compressed.pdf`;
-        const res = await compressPdf(f.path, out, { preset, font_subset: fontSubset || undefined });
+        const res = await compressPdf(f.path, out, { preset, merge_fonts: mergeFonts || undefined, object_stream: objectStream || undefined });
         prog.done.push({ file:f.filename, pct:((1-res.ratio)*100).toFixed(1) });
       } catch (e) {
         prog.errors.push({ file:f.filename, msg:String(e) });
@@ -127,7 +128,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       setBatchProg({...prog});
     }
     setPhase("batchResult");
-  }, [batchFiles, preset, outDir, pickDir]);
+  }, [batchFiles, preset, mergeFonts, objectStream, outDir, pickDir]);
 
   // ═══════════════════════════════════ RENDER ══════════════════════════
   //const bg = "var(--c-bg)";
@@ -239,18 +240,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               <PRow label="GCレベル"     val={String(p.garbage_level)}/>
               <PRow label="画像圧縮"     val={p.compress_images?"あり":"なし"}/>
               <PRow label="フォント圧縮" val={p.compress_fonts?"あり":"なし"}/>
-              <PRow label="フォントサブセット化" val={
-                (p as any).font_subset
-                  ? <span style={{color:"var(--c-accent)"}}>✓ 実行 (未使用グリフ除去)</span>
-                  : (p as any).subset_skipped
-                    ? <span style={{color:"var(--c-warn)"}}>Type3フォントのためスキップ</span>
-                    : "スキップ"
-              }/>
               <PRow label="sanitize"    val={p.sanitize?"あり":"なし"}/>
-              {(p as any).subset_skipped && !(p as any).font_subset &&
-                <div style={c.infoBox}>ℹ Type3フォント保護のためサブセット化をスキップしました。テキストは維持されています。</div>}
-              {(p as any).rewrite_fallback &&
-                <div style={c.warnBox}>⚠ Type3フォント → フォールバック</div>}
+              <PRow label="merge_fonts"    val={p.merge_fonts?"あり":"なし"}/>
+              <PRow label="object_stream"    val={p.object_stream?"あり":"なし"}/>
             </div>
             {result.warning && <div style={c.warnBox}>{result.warning}</div>}
 
@@ -304,18 +296,33 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         ))}
       </div>
 
-      {/* フォントサブセット化オプション */}
+      {/* Object Stream */}
       <div style={c.optRow}>
         <label style={c.optLabel}>
-          <input type="checkbox" checked={fontSubset}
-            onChange={e => setFontSubset(e.target.checked)}
+          <input type="checkbox" checked={objectStream}
+            onChange={e => setObjectStream(e.target.checked)}
             style={{marginRight:6,cursor:"pointer"}}/>
-          フォントサブセット化
+          オブジェクトのストリーム圧縮
         </label>
         <span style={c.optHint}>
-          {fontSubset
-            ? "⚠ 使用グリフのみ保持（CJK/多言語フォントで不安定な場合あり）"
-            : "無効（推奨）— フォントは変更しません"}
+          {objectStream
+            ? "有効(ストリーム圧縮)"
+            : "無効"}
+        </span>
+      </div>
+
+      {/* Merge Fonts */}
+      <div style={c.optRow}>
+        <label style={c.optLabel}>
+          <input type="checkbox" checked={mergeFonts}
+            onChange={e => setMergeFonts(e.target.checked)}
+            style={{marginRight:6,cursor:"pointer"}}/>
+          CIDフォント統合
+        </label>
+        <span style={c.optHint}>
+          {mergeFonts
+            ? "有効(分かれているCIDフォントをなるべく統一します。)"
+            : "無効"}
         </span>
       </div>
 
@@ -384,7 +391,9 @@ const c: Record<string, React.CSSProperties> = {
   presetGrid: {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,padding:"24px 22px 0"},
   optRow:   { display:"flex",alignItems:"center",gap:12,padding:"14px 22px 2px",flexWrap:"wrap" as const },
   optLabel: { display:"flex",alignItems:"center",fontSize:13,color:"var(--c-text)",cursor:"pointer",userSelect:"none" as const },
+  optLabel2: { display:"flex",alignItems:"center",fontSize:13,color:"var(--c-text)",cursor:"pointer",userSelect:"none" as const },
   optHint:  { fontSize:11,color:"var(--c-textSub)" },
+  optHint2:  { fontSize:11,color:"var(--c-textSub)" },
   card:       {display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"22px 12px",background:"var(--c-bgCard)",border:`1px solid var(--c-border)`,borderRadius:12,cursor:"pointer",transition:"all 0.15s",fontFamily:F,color:"var(--c-text)"},
   cardIcon:   {fontSize:30},
   cardLabel:  {fontSize:16,fontWeight:700,color:"var(--c-text)"},

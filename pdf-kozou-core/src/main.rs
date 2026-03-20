@@ -471,6 +471,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     object_stream: Some(object_stream),
                     merge_fonts: Some(merge_fonts),
                 };
+                eprintln!("{:?}", req);
                 pdf_kozou_core::compress::compress(&req)?
             };
             println!("{}", serde_json::to_string(&resp)?);
@@ -658,10 +659,6 @@ fn dispatch_json(line: &str) -> String {
                     rewrite: bool,
                     #[serde(default)]
                     rewrite_options: Option<String>,
-                    #[serde(default)]
-                    merge_fonts: bool,
-                    #[serde(default)]
-                    object_stream: bool,
                     // フォールバック時のパラメータ (JSON API 用)
                     // CLI の --gc / --clean / --sanitize / --no-compress-* に相当
                     #[serde(default)]
@@ -677,9 +674,7 @@ fn dispatch_json(line: &str) -> String {
                     #[serde(flatten)]
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
-                let mut r: Req = serde_json::from_str(line)?;
-                //r.inner.purge_fonts = Some(r.purge_fonts);
-                //eprintln!("debug {:?}", r.inner.purge_fonts);
+                let r: Req = serde_json::from_str(line)?;
 
                 let resp = if r.rewrite {
                     let opts = r
@@ -706,10 +701,10 @@ fn dispatch_json(line: &str) -> String {
                                 .fallback_compress_fonts
                                 .or_else(|| parse_rewrite_opt_bool(opts, "compress-fonts")),
                             merge_fonts: Some(
-                                r.merge_fonts || parse_rewrite_opt_bool(opts, "merge_fonts").unwrap_or(false),
+                                parse_rewrite_opt_bool(opts, "merge_fonts").unwrap_or(false),
                             ),
                             object_stream: Some(
-                                r.object_stream || parse_rewrite_opt_bool(opts, "object_stream").unwrap_or(false),
+                                parse_rewrite_opt_bool(opts, "object_stream").unwrap_or(false),
                             ),
                         }
                     };
