@@ -3,6 +3,10 @@ name    = "pdf-kozou-core"
 version = "1.0.0"
 edition = "2021"
 description = "PDF処理エンジン — MuPDF ベース CLI / sidecar"
+license = "AGPL-3.0-only"   # または "AGPL-3.0"（SPDX準拠）
+homepage = "https://github.com/phoepsilonix/pdf-kozou.git"
+repository = "https://github.com/phoepsilonix/pdf-kozou.git"
+authors = ["Masato TOYOSHIMA <phoepsilonix@gmail.com>"]
 
 [[bin]]
 name = "pdf-kozou-core"

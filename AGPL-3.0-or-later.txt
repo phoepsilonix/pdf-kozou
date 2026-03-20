@@ -1,3 +1,6 @@
+PDF小僧 v1.0.0
+Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

@@ -2,6 +2,11 @@
 name    = "pdf-kozou"
 version = "1.0.0"
 edition = "2021"
+description = "PDF小僧 - MuPDF ベース GUI(tauri) and CLI"
+license = "AGPL-3.0-only"   # または "AGPL-3.0"（SPDX準拠）
+homepage = "https://github.com/phoepsilonix/pdf-kozou.git"
+repository = "https://github.com/phoepsilonix/pdf-kozou.git"
+authors = ["Masato TOYOSHIMA <phoepsilonix@gmail.com>"]
 
 [lib]
 name       = "pdf_kozou_lib"
