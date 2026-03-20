@@ -2,6 +2,7 @@
 use mupdf_sys;
 use mupdf_sys::fz_context;
 use mupdf_sys::pdf_document;
+use mupdf::pdf::PdfDocument;
 
 use std::ffi::c_int;
 
@@ -37,8 +38,14 @@ impl fmt::Display for FfiResult {
 extern "C" {
     pub fn kozou_new_context() -> *mut mupdf_sys::fz_context;
 
+    pub fn physical_crop_images(ctx: *mut fz_context, doc: *mut pdf_document);
+    pub fn clean_document_contents(ctx: *mut fz_context, doc: *mut pdf_document);
+    pub fn compress_all_images(ctx: *mut fz_context, doc: *mut pdf_document);
     pub fn merge_duplicate_fonts(ctx: *mut fz_context, doc: *mut pdf_document);
+    pub fn final_compression_pass(ctx: *mut fz_context, doc: *mut pdf_document);
+    pub fn merge_resources_safely(ctx: *mut fz_context, doc: *mut pdf_document);
 
+    pub fn rebuild_pdf_physically(ctx: *mut fz_context, old_doc: *mut pdf_document) -> *mut pdf_document;
     pub fn enable_objstms(opts: *mut mupdf_sys::pdf_write_options);
     //pub fn enable_objstms(opts: *mut PdfWriteOptions);
 

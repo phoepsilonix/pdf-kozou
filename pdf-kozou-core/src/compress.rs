@@ -19,12 +19,24 @@ use crate::ffi::FfiResult;
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 
+use crate::ffi::rebuild_pdf_physically;
+
+use crate::ffi::physical_crop_images;
+use crate::ffi::clean_document_contents;
+use crate::ffi::merge_duplicate_fonts;
+use crate::ffi::compress_all_images;
+use crate::ffi::final_compression_pass;
 use crate::ffi::enable_objstms;
+
 use crate::ffi::kozou_new_context;
 use crate::ffi::kozou_pdf_save_document;
-use crate::ffi::merge_duplicate_fonts;
+use crate::ffi::merge_resources_safely;
 use crate::ffi::purge_unused_fonts;
+
 use mupdf_sys as ffi;
+use mupdf_sys::pdf_drop_document;
+
+
 // ── 圧縮プリセット ────────────────────────────────────────────────────────────
 
 #[repr(C)]
@@ -396,8 +408,9 @@ fn safe_compress_only(
     unsafe {
         // 1. PdfDocument は *mut pdf_document へキャスト可能なはずです
         // (NonNull<pdf_document> が唯一のフィールドであれば、構造体そのもののアドレスがそれです)
-        let doc_ptr: *mut mupdf_sys::pdf_document =
+        let mut doc_ptr: *mut mupdf_sys::pdf_document =
             *(&doc as *const _ as *const *mut mupdf_sys::pdf_document);
+        //let cleaned_doc: PdfDocument = rebuild_and_clean(&doc).map_err(|e| CoreError::Internal(e.to_string()))?;
 
         // 2. 最も重要な「コンテキスト」の取得
         // mupdf_sys ではなく、mupdf クレートが提供している context() 関数などを探してください。
@@ -408,25 +421,30 @@ fn safe_compress_only(
             return Err(CoreError::Internal("MuPDF context creation failed".into()));
         }
 
+
+        //let new_doc_ptr = rebuild_pdf_physically(ctx, doc_ptr);
+
+        //if !new_doc_ptr.is_null() {
+        // 2. 古いドキュメントを解放し、新しいものに差し替え
+        //    pdf_drop_document(ctx, doc_ptr);
+        //    doc_ptr = new_doc_ptr;
+        //}
+
         if !doc_ptr.is_null() && !ctx.is_null() {
-            merge_duplicate_fonts(ctx, doc_ptr);
+            // 1. 構造の整理
+            //clean_document_contents(ctx, doc_ptr);
+            // 2. 画像の強制圧縮（これが効く！）
+            //compress_all_images(ctx, doc_ptr);
+            //physical_crop_images(ctx, doc_ptr);
+            // 3. フォントの名寄せ
+            //merge_duplicate_fonts(ctx, doc_ptr);
+            final_compression_pass(ctx, doc_ptr);
         }
 
-        // 3. 保存オプション (Garbage 5 で重複フォントを物理削除)
-        //let mut opts = PdfWriteOptions::default();
-        //opts.set_garbage_level(5);
-        //opts.set_compress(true);
-
-        // Object Streams 有効化
         let raw_opts_ptr = &mut opts as *mut _ as *mut mupdf_sys::pdf_write_options;
         enable_objstms(raw_opts_ptr);
-
-        //   doc.save_with_options(output_path, opts)?;
     }
 
-    // let mut raw_options = unsafe { std::mem::transmute::<PdfWriteOptions, mupdf_sys::pdf_write_options>(options) };
-    //raw_options.do_use_objstms = 1; // これが GS の Metadata Stream: yes に相当する
-    //
     doc.save_with_options(output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
