@@ -335,3 +335,13 @@ pub async fn copy_file(src: String, dst: String) -> Result<()> {
     std::fs::copy(&src, &dst).map_err(|e| Error::Core(e.to_string()))?;
     Ok(())
 }
+
+#[tauri::command]
+fn check_ghostscript_installed() -> bool {
+    pdf_kozou_core::gs::is_installed()
+}
+
+#[tauri::command]
+async fn run_advanced_compression(input: String, output: String) -> Result<(), String> {
+    pdf_kozou_core::gs::optimize(&input, &output).map_err(|e| e.to_string())
+}

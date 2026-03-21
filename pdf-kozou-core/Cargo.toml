@@ -42,6 +42,10 @@ tracing    = { workspace = true }
 
 # CLI 引数
 clap = { version = "4", features = ["derive"] }
+which = "8"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56.0"
 
 [build-dependencies]
 # mupdf_safe.c のコンパイルに使う

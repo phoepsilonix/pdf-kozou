@@ -287,3 +287,13 @@ export async function copyFile(src: string, dst: string): Promise<void> {
 export async function getTempPath(name: string): Promise<string> {
   return invoke<string>("get_temp_path", { name });
 }
+
+export type GsLevel = "prepress" | "printer" | "ebook";
+
+export async function checkGsInstalled(): Promise<boolean> {
+  return await invoke<boolean>("check_ghostscript_installed");
+}
+
+export async function runGsOptimize(input: string, output: string, level: GsLevel): Promise<void> {
+  await invoke("run_gs_optimize", { input, output, levelStr: level });
+}

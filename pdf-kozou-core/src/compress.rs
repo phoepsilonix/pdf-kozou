@@ -45,8 +45,8 @@ impl CompressPreset {
         match self {
             Self::Light => (false, 1, false, false, false, false, false),
             Self::Standard => (true, 2, false, false, false, false, false), // subset はデフォルト無効
-            Self::Aggressive => (true, 2, false, true, false, true, true), // 同上
-            Self::Maximum => (true, 3, true, true, false, true, true),    // 同上.clean
+            Self::Aggressive => (true, 2, false, true, false, true, true),  // 同上
+            Self::Maximum => (true, 3, true, true, false, true, true),      // 同上.clean
         }
     }
 }
@@ -88,7 +88,7 @@ pub struct CompressRequest {
 
     #[serde(default)]
     pub merge_fonts: Option<bool>,
-    
+
     #[serde(default)]
     pub object_stream: Option<bool>,
 }
@@ -130,8 +130,15 @@ pub struct CompressParamsUsed {
 /// 使われていないフォントグリフを除去する。テキスト・アウトラインは保持。
 pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let preset = req.preset.as_ref().unwrap_or(&CompressPreset::Standard);
-    let (preset_ci, preset_gc, preset_clean, preset_sanitize, preset_subset, preset_merge_fonts, preset_object_stream) =
-        preset.to_params();
+    let (
+        preset_ci,
+        preset_gc,
+        preset_clean,
+        preset_sanitize,
+        preset_subset,
+        preset_merge_fonts,
+        preset_object_stream,
+    ) = preset.to_params();
 
     let compress_images = req.compress_images.unwrap_or(preset_ci);
     let compress_fonts = req.compress_fonts.unwrap_or(true);
@@ -220,7 +227,7 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     };
 
     //if do_purge && std::path::Path::new(&temp_purge_path).exists() {
-        // let _ = std::fs::remove_file(&temp_purge_path);
+    // let _ = std::fs::remove_file(&temp_purge_path);
     //}
 
     result_res
@@ -605,7 +612,17 @@ fn rewrite_safe_fallback(
     let cf = p.compress_fonts.unwrap_or(true);
     let merge_fonts = p.merge_fonts.unwrap_or(false);
     let object_stream = p.object_stream.unwrap_or(false);
-    let mut res = safe_compress_only(input, output, ci, cf, gc, clean, sanitize, merge_fonts, object_stream)?;
+    let mut res = safe_compress_only(
+        input,
+        output,
+        ci,
+        cf,
+        gc,
+        clean,
+        sanitize,
+        merge_fonts,
+        object_stream,
+    )?;
     let mut warns: Vec<String> = Vec::new();
     if let Some(r) = reason {
         warns.push(format!("{r} のため通常圧縮を使用します。"));

@@ -9,3 +9,24 @@ fn main() {
     pdf_kozou_lib::setup_platform();
     pdf_kozou_lib::run();
 }
+
+#[tauri::command]
+async fn run_gs_optimize(
+    input: String,
+    output: String,
+    level_str: String,
+) -> Result<String, String> {
+    let gs_path = pdf_kozou_core::gs_detector::find_gs_executable()
+        .ok_or("Ghostscriptが見つかりません。インストールしてください。")?;
+
+    let level = match level_str.as_str() {
+        "prepress" => GsCompressionLevel::Prepress,
+        "printer" => GsCompressionLevel::Printer,
+        _ => GsCompressionLevel::Ebook,
+    };
+
+    pdf_kozou_core::gs::optimize_with_gs(&gs_path, &input, &output, level)
+        .map_err(|e| e.to_string())?;
+
+    Ok("圧縮が完了しました".into())
+}

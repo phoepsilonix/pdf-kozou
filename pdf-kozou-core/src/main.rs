@@ -438,10 +438,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                             parse_rewrite_opt_bool(opts, "compress-fonts")
                         },
                         object_stream: Some(
-                            object_stream || parse_rewrite_opt_bool(opts, "object_stream").unwrap_or(false),
+                            object_stream
+                                || parse_rewrite_opt_bool(opts, "object_stream").unwrap_or(false),
                         ),
                         merge_fonts: Some(
-                            merge_fonts || parse_rewrite_opt_bool(opts, "merge_fonts").unwrap_or(false),
+                            merge_fonts
+                                || parse_rewrite_opt_bool(opts, "merge_fonts").unwrap_or(false),
                         ),
                     }
                 };
