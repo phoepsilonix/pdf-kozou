@@ -4,35 +4,37 @@ import type { PdfInfo, TrimMargins, PageSelection } from "../lib/tauri";
 
 // ── ファイルエントリ（ホーム画面のリスト） ────────────────────────────────────
 export interface FileEntry {
-  id:        number;
-  path:      string;
-  filename:  string;
+  id: number;
+  path: string;
+  filename: string;
   pageCount: number;
   sizeBytes: number;
-  selected:  boolean;
+  selected: boolean;
 }
 
 let _entryId = 1;
-export function makeEntryId() { return _entryId++; }
+export function makeEntryId() {
+  return _entryId++;
+}
 
 interface PdfStore {
   // ホーム画面: 複数ファイルリスト
-  fileList:     FileEntry[];
-  addFiles:     (entries: Omit<FileEntry, "id">[]) => void;
-  removeFile:   (id: number) => void;
+  fileList: FileEntry[];
+  addFiles: (entries: Omit<FileEntry, "id">[]) => void;
+  removeFile: (id: number) => void;
   toggleSelect: (id: number) => void;
-  selectAll:    () => void;
-  selectNone:   () => void;
-  clearList:    () => void;
+  selectAll: () => void;
+  selectNone: () => void;
+  clearList: () => void;
   reorderFiles: (fromId: number, toId: number) => void;
 
   // ツール画面: 単一ファイル（既存ツールとの橋渡し）
-  filePath:  string | null;
-  pdfInfo:   PdfInfo | null;
-  setFile:   (path: string, info: PdfInfo) => void;
+  filePath: string | null;
+  pdfInfo: PdfInfo | null;
+  setFile: (path: string, info: PdfInfo) => void;
   clearFile: () => void;
 
-  trimMargins:    TrimMargins;
+  trimMargins: TrimMargins;
   setTrimMargins: (m: TrimMargins) => void;
   //trimPages:      string;
   //excludeSpec:   string;
@@ -41,52 +43,57 @@ interface PdfStore {
   //onExclude:     (v: string) => void;
   //onExtract:     (v: string) => void;
 
-  previewPage:    number;
+  previewPage: number;
   setPreviewPage: (n: number) => void;
 
-  lastSaveDir:    string | null;
+  lastSaveDir: string | null;
   setLastSaveDir: (dir: string) => void;
 
-  isProcessing:  boolean;
+  isProcessing: boolean;
   setProcessing: (v: boolean) => void;
-  lastError:     string | null;
-  setError:      (e: string | null) => void;
+  lastError: string | null;
+  setError: (e: string | null) => void;
   resetTrimState: () => void;
 }
 
 export const usePdfStore = create<PdfStore>((set) => ({
   fileList: [],
 
-  addFiles: (entries) => set((s) => {
-    const existing = new Set(s.fileList.map(f => f.path));
-    const fresh = entries
-      .filter(e => !existing.has(e.path))
-      .map(e => ({ ...e, id: makeEntryId() }));
-    return { fileList: [...s.fileList, ...fresh] };
-  }),
+  addFiles: (entries) =>
+    set((s) => {
+      const existing = new Set(s.fileList.map((f) => f.path));
+      const fresh = entries
+        .filter((e) => !existing.has(e.path))
+        .map((e) => ({ ...e, id: makeEntryId() }));
+      return { fileList: [...s.fileList, ...fresh] };
+    }),
 
-  removeFile:   (id)  => set((s) => ({ fileList: s.fileList.filter(f => f.id !== id) })),
-  toggleSelect: (id)  => set((s) => ({ fileList: s.fileList.map(f => f.id === id ? { ...f, selected: !f.selected } : f) })),
-  selectAll:    ()    => set((s) => ({ fileList: s.fileList.map(f => ({ ...f, selected: true })) })),
-  selectNone:   ()    => set((s) => ({ fileList: s.fileList.map(f => ({ ...f, selected: false })) })),
-  clearList:    ()    => set({ fileList: [] }),
+  removeFile: (id) => set((s) => ({ fileList: s.fileList.filter((f) => f.id !== id) })),
+  toggleSelect: (id) =>
+    set((s) => ({
+      fileList: s.fileList.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f)),
+    })),
+  selectAll: () => set((s) => ({ fileList: s.fileList.map((f) => ({ ...f, selected: true })) })),
+  selectNone: () => set((s) => ({ fileList: s.fileList.map((f) => ({ ...f, selected: false })) })),
+  clearList: () => set({ fileList: [] }),
 
-  reorderFiles: (fromId, toId) => set((s) => {
-    const arr = [...s.fileList];
-    const fi  = arr.findIndex(f => f.id === fromId);
-    const ti  = arr.findIndex(f => f.id === toId);
-    if (fi < 0 || ti < 0 || fi === ti) return {};
-    const [item] = arr.splice(fi, 1);
-    arr.splice(ti, 0, item);
-    return { fileList: arr };
-  }),
+  reorderFiles: (fromId, toId) =>
+    set((s) => {
+      const arr = [...s.fileList];
+      const fi = arr.findIndex((f) => f.id === fromId);
+      const ti = arr.findIndex((f) => f.id === toId);
+      if (fi < 0 || ti < 0 || fi === ti) return {};
+      const [item] = arr.splice(fi, 1);
+      arr.splice(ti, 0, item);
+      return { fileList: arr };
+    }),
 
-  filePath:  null,
-  pdfInfo:   null,
-  setFile:   (path, info) => set({ filePath: path, pdfInfo: info }),
+  filePath: null,
+  pdfInfo: null,
+  setFile: (path, info) => set({ filePath: path, pdfInfo: info }),
   clearFile: () => set({ filePath: null, pdfInfo: null }),
 
-  trimMargins:    { left: 0, right: 0, top: 0, bottom: 0 },
+  trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
   setTrimMargins: (m) => set({ trimMargins: m }),
   //trimPages:      "all",
   //excludeSpec:    "",
@@ -95,19 +102,19 @@ export const usePdfStore = create<PdfStore>((set) => ({
   //onExclude:     (v: string) => set({excludeSpec: v}),
   //onExtract:     (v: string) => set({extractSpec: v}),
 
-  previewPage:    0,
+  previewPage: 0,
   setPreviewPage: (n) => set({ previewPage: n }),
 
-  lastSaveDir:    null,
+  lastSaveDir: null,
   setLastSaveDir: (dir) => set({ lastSaveDir: dir }),
 
-  isProcessing:  false,
+  isProcessing: false,
   setProcessing: (v) => set({ isProcessing: v }),
-  lastError:     null,
-  setError:      (e) => set({ lastError: e }),
+  lastError: null,
+  setError: (e) => set({ lastError: e }),
 
-  resetTrimState: () => set({
-    trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
-  }),
-
+  resetTrimState: () =>
+    set({
+      trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
+    }),
 }));

@@ -6,29 +6,29 @@ import { invoke } from "@tauri-apps/api/core";
 // ── 共通型 ────────────────────────────────────────────────────────────────────
 
 export interface PageBounds {
-  x: number;   // ポイント (1pt = 1/72 inch)
+  x: number; // ポイント (1pt = 1/72 inch)
   y: number;
   w: number;
   h: number;
-  rotate: number;   // PDF Rotate値 (0/90/180/270)。w,h はRotate考慮済み
+  rotate: number; // PDF Rotate値 (0/90/180/270)。w,h はRotate考慮済み
 }
 
 export interface PdfInfo {
-  page_count:  number;
+  page_count: number;
   pdf_version: string;
-  encrypted:   boolean;
-  linearized:  boolean;
-  pages:       PageBounds[];
+  encrypted: boolean;
+  linearized: boolean;
+  pages: PageBounds[];
 }
 
 // ── トリミング型 ──────────────────────────────────────────────────────────────
 
 /** PDF ポイント単位のトリミングマージン */
 export interface TrimMargins {
-  left:   number;  // 
-  right:  number;  // 
-  bottom: number;  // 
-  top:    number;  // 
+  left: number; //
+  right: number; //
+  bottom: number; //
+  top: number; //
 }
 
 export type PageSelection =
@@ -63,14 +63,15 @@ export async function getPdfInfo(path: string): Promise<PdfInfo> {
 
 export async function renderPage(
   path: string,
-  page: number,   // 0-indexed
-  dpi:  number,
-): Promise<string> {  // base64 JPEG
+  page: number, // 0-indexed
+  dpi: number,
+): Promise<string> {
+  // base64 JPEG
   const resp = await invoke<{ image_b64: string }>("render_page", {
     path,
     page,
     dpi,
-    format:  "jpeg",
+    format: "jpeg",
     quality: 85,
   });
   return resp.image_b64;
@@ -82,24 +83,24 @@ export async function renderPage(
 // ★ margins は pt 単位で渡し、unit: "pt" を指定する
 
 export async function trimPdf(
-  inputPath:    string,
-  outputPath:   string,
-  margins:      TrimMargins,
-  pages?:       string,
-  exclude?:     string,
-  extract?:     string,
+  inputPath: string,
+  outputPath: string,
+  margins: TrimMargins,
+  pages?: string,
+  exclude?: string,
+  extract?: string,
 ): Promise<void> {
   await invoke("trim_pdf", {
     request: {
-      input:   inputPath,
-      output:  outputPath,
+      input: inputPath,
+      output: outputPath,
       margins: {
-        left:   margins.left,
-        right:  margins.right,
+        left: margins.left,
+        right: margins.right,
         bottom: margins.bottom,
-        top:    margins.top,
+        top: margins.top,
       },
-      unit:  "pt",
+      unit: "pt",
       pages: pages,
       exclude: exclude,
       extract: extract,
@@ -111,9 +112,9 @@ export async function trimPdf(
 
 export interface ScreenInfo {
   display_server: string;
-  width:          number;
-  height:         number;
-  scale_factor:   number;
+  width: number;
+  height: number;
+  scale_factor: number;
 }
 
 export async function getScreenInfo(): Promise<ScreenInfo> {
@@ -125,19 +126,19 @@ export async function getScreenInfo(): Promise<ScreenInfo> {
 // RotateRequest: { input, output, rotations: [{ page, angle }] }
 
 export interface PageRotation {
-  page:  number;  // 1始まり
-  angle: number;  // 0 | 90 | 180 | 270
+  page: number; // 1始まり
+  angle: number; // 0 | 90 | 180 | 270
 }
 
 export async function rotatePdf(
-  inputPath:  string,
+  inputPath: string,
   outputPath: string,
-  rotations:  PageRotation[],
+  rotations: PageRotation[],
 ): Promise<void> {
   await invoke("rotate_pdf", {
     request: {
-      input:     inputPath,
-      output:    outputPath,
+      input: inputPath,
+      output: outputPath,
       rotations,
     },
   });
@@ -151,43 +152,43 @@ export async function rotatePdf(
 export type CompressPreset = "light" | "standard" | "aggressive" | "maximum";
 
 export interface CompressRequest {
-  preset?:          CompressPreset;
+  preset?: CompressPreset;
   compress_images?: boolean;
-  compress_fonts?:  boolean;
-  garbage_level?:   number;
-  clean?:           boolean;
-  sanitize?:        boolean;
-  object_stream?:   boolean;
-  merge_fonts?:     boolean;
+  compress_fonts?: boolean;
+  garbage_level?: number;
+  clean?: boolean;
+  sanitize?: boolean;
+  object_stream?: boolean;
+  merge_fonts?: boolean;
 }
 
 export interface CompressResponse {
-  ok:           boolean;
-  input_bytes:  number;
+  ok: boolean;
+  input_bytes: number;
   output_bytes: number;
-  ratio:        number;
-  params_used:  {
+  ratio: number;
+  params_used: {
     compress_images: boolean;
-    compress_fonts:  boolean;
-    garbage_level:   number;
-    clean:           boolean;
-    sanitize:        boolean;
-    object_stream:   boolean;
-    merge_fonts:     boolean;
+    compress_fonts: boolean;
+    garbage_level: number;
+    clean: boolean;
+    sanitize: boolean;
+    object_stream: boolean;
+    merge_fonts: boolean;
     rewrite_fallback?: boolean;
   };
   warning?: string;
 }
 
 export async function compressPdf(
-  inputPath:  string,
+  inputPath: string,
   outputPath: string,
-  opts:       CompressRequest,
+  opts: CompressRequest,
 ): Promise<CompressResponse> {
-  console.log("compressPdf", inputPath, outputPath,opts);
+  console.log("compressPdf", inputPath, outputPath, opts);
   return invoke<CompressResponse>("compress_pdf", {
     request: {
-      input:  inputPath,
+      input: inputPath,
       output: outputPath,
       ...opts,
     },
@@ -212,15 +213,15 @@ export type SplitMode =
   | { type: "Ranges"; ranges: [number, number][] };
 
 export interface SplitResponse {
-  ok:    boolean;
+  ok: boolean;
   files: string[];
 }
 
 export async function splitPdf(
   inputPath: string,
-  outDir:    string,
-  mode:      SplitMode,
-  prefix?:   string,
+  outDir: string,
+  mode: SplitMode,
+  prefix?: string,
 ): Promise<SplitResponse> {
   return invoke<SplitResponse>("split_pdf", {
     request: { input: inputPath, out_dir: outDir, mode, prefix: prefix ?? null },
@@ -230,15 +231,12 @@ export async function splitPdf(
 // ── 結合 ──────────────────────────────────────────────────────────────────────
 
 export interface MergeResponse {
-  ok:           boolean;
-  page_count:   number;
+  ok: boolean;
+  page_count: number;
   output_bytes: number;
 }
 
-export async function mergePdf(
-  inputs:     string[],
-  outputPath: string,
-): Promise<MergeResponse> {
+export async function mergePdf(inputs: string[], outputPath: string): Promise<MergeResponse> {
   return invoke<MergeResponse>("merge_pdf", {
     request: { inputs, output: outputPath },
   });
@@ -249,25 +247,28 @@ export async function mergePdf(
 export type ImageFormat = "jpeg" | "png" | "svg";
 
 export interface ExportImagesResponse {
-  ok:    boolean;
+  ok: boolean;
   files: string[];
 }
 
 export async function exportImages(
-  path:        string,
-  outDir:      string,
-  format:      ImageFormat,
-  dpi:         number,
-  quality?:    number,
+  path: string,
+  outDir: string,
+  format: ImageFormat,
+  dpi: number,
+  quality?: number,
   namePrefix?: string,
-  pages?:      string,  // "1-3,5" etc. undefined=全ページ
+  pages?: string, // "1-3,5" etc. undefined=全ページ
 ): Promise<ExportImagesResponse> {
-	console.log("ExportImages", path, outDir,format,dpi,quality,namePrefix,pages)
+  console.log("ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
   return invoke<ExportImagesResponse>("export_images", {
-    path, outDir, format, dpi,
-    quality:    quality    ?? null,
+    path,
+    outDir,
+    format,
+    dpi,
+    quality: quality ?? null,
     namePrefix: namePrefix ?? null,
-    pages:      pages      ?? null,
+    pages: pages ?? null,
   });
 }
 
@@ -294,10 +295,20 @@ export async function checkGsInstalled(): Promise<boolean> {
   return await invoke<boolean>("check_ghostscript_installed");
 }
 
-export async function runGsOptimize(gs_path: string, input: string, output: string, level: GsLevel): Promise<void> {
+export async function runGsOptimize(
+  gs_path: string,
+  input: string,
+  output: string,
+  level: GsLevel,
+): Promise<void> {
   await invoke("run_gs_optimize", { gs_path, input, output, levelStr: level });
 }
 
-export async function runGsPreview(gs_path: string, input: string, output: string, level: GsLevel): Promise<void> {
+export async function runGsPreview(
+  gs_path: string,
+  input: string,
+  output: string,
+  level: GsLevel,
+): Promise<void> {
   await invoke("run_gs_preview", { gs_path, input, output, levelStr: level });
 }

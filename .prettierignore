@@ -1,0 +1,23 @@
+# ビルド出力
+dist
+build
+out
+target
+
+# 依存ライブラリ
+node_modules
+
+# Tauri関連の自動生成・ビルドフォルダ
+src-tauri/target
+src-tauri/gen
+
+# 静的資産や一時ファイル
+public
+temp
+*.pdf
+*.png
+*.jpg
+*.svg
+
+# 設定ファイル自体（いじりたくない場合）
+#package-lock.json

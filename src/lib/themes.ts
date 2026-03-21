@@ -5,98 +5,167 @@ export const F = "'JetBrains Mono','Noto Sans JP',monospace";
 export type ThemeId = "moss" | "ocean" | "slate" | "dusk" | "ember";
 
 export interface Theme {
-  id:       ThemeId;
-  name:     string;
-  emoji:    string;
-  bg:       string;
-  bgCard:   string;
-  bgHover:  string;
-  border:   string;
+  id: ThemeId;
+  name: string;
+  emoji: string;
+  bg: string;
+  bgCard: string;
+  bgHover: string;
+  border: string;
   borderHi: string;
-  text:     string;
-  textSub:  string;
-  textDim:  string;
-  accent:   string;
+  text: string;
+  textSub: string;
+  textDim: string;
+  accent: string;
   accentBg: string;
   accentBd: string;
-  green:    string;
-  warn:     string;
-  warnBg:   string;
-  warnBd:   string;
-  err:      string;
-  errBg:    string;
-  errBd:    string;
-  navBg:    string;
-  navBd:    string;
+  green: string;
+  warn: string;
+  warnBg: string;
+  warnBd: string;
+  err: string;
+  errBg: string;
+  errBd: string;
+  navBg: string;
+  navBd: string;
 }
 
 // ── テーマ定義 ────────────────────────────────────────────────────────────────
 
 export const THEMES: Record<ThemeId, Theme> = {
-
   /** 1. モスグリーン (デフォルト) — 落ち着いた職人の深緑 */
   moss: {
-    id:"moss", name:"モスグリーン", emoji:"🌿",
-    bg:"#19221c",       bgCard:"#222e26",   bgHover:"#283624",
-    border:"#33483a",   borderHi:"#45634e",
-    text:"#e4f2e8",     textSub:"#94c4a4",  textDim:"#5e8a6e",
-    accent:"#5dd68a",   accentBg:"#18321f", accentBd:"#3d9055",
-    green:"#4fe090",
-    warn:"#d4b84a",     warnBg:"#2c2808",   warnBd:"#5a4a14",
-    err:"#e06060",      errBg:"#2a1212",    errBd:"#602020",
-    navBg:"#1f2c22",    navBd:"#33483a",
+    id: "moss",
+    name: "モスグリーン",
+    emoji: "🌿",
+    bg: "#19221c",
+    bgCard: "#222e26",
+    bgHover: "#283624",
+    border: "#33483a",
+    borderHi: "#45634e",
+    text: "#e4f2e8",
+    textSub: "#94c4a4",
+    textDim: "#5e8a6e",
+    accent: "#5dd68a",
+    accentBg: "#18321f",
+    accentBd: "#3d9055",
+    green: "#4fe090",
+    warn: "#d4b84a",
+    warnBg: "#2c2808",
+    warnBd: "#5a4a14",
+    err: "#e06060",
+    errBg: "#2a1212",
+    errBd: "#602020",
+    navBg: "#1f2c22",
+    navBd: "#33483a",
   },
 
   /** 2. オーシャン — 深海ブルー (初期コンセプト) */
   ocean: {
-    id:"ocean", name:"オーシャン", emoji:"🌊",
-    bg:"#141c26",       bgCard:"#1a2536",   bgHover:"#1f2e42",
-    border:"#2a3d56",   borderHi:"#3a5470",
-    text:"#ddeeff",     textSub:"#7aaacf",  textDim:"#4a6a8a",
-    accent:"#4fa8f0",   accentBg:"#0d2040", accentBd:"#2a60a0",
-    green:"#4fd090",
-    warn:"#d4b84a",     warnBg:"#282208",   warnBd:"#585010",
-    err:"#e06060",      errBg:"#281010",    errBd:"#581818",
-    navBg:"#18223a",    navBd:"#2a3d56",
+    id: "ocean",
+    name: "オーシャン",
+    emoji: "🌊",
+    bg: "#141c26",
+    bgCard: "#1a2536",
+    bgHover: "#1f2e42",
+    border: "#2a3d56",
+    borderHi: "#3a5470",
+    text: "#ddeeff",
+    textSub: "#7aaacf",
+    textDim: "#4a6a8a",
+    accent: "#4fa8f0",
+    accentBg: "#0d2040",
+    accentBd: "#2a60a0",
+    green: "#4fd090",
+    warn: "#d4b84a",
+    warnBg: "#282208",
+    warnBd: "#585010",
+    err: "#e06060",
+    errBg: "#281010",
+    errBd: "#581818",
+    navBg: "#18223a",
+    navBd: "#2a3d56",
   },
 
   /** 3. スレート — モノクロに近いプロ向けグレー */
   slate: {
-    id:"slate", name:"スレート", emoji:"🪨",
-    bg:"#18191e",       bgCard:"#21232a",   bgHover:"#282a33",
-    border:"#353844",   borderHi:"#484c5e",
-    text:"#e8eaf2",     textSub:"#9095b0",  textDim:"#565a72",
-    accent:"#8b9cf4",   accentBg:"#181c3c", accentBd:"#4050a0",
-    green:"#64d080",
-    warn:"#d4b84a",     warnBg:"#26200a",   warnBd:"#504810",
-    err:"#e06060",      errBg:"#261010",    errBd:"#501818",
-    navBg:"#1c1e26",    navBd:"#353844",
+    id: "slate",
+    name: "スレート",
+    emoji: "🪨",
+    bg: "#18191e",
+    bgCard: "#21232a",
+    bgHover: "#282a33",
+    border: "#353844",
+    borderHi: "#484c5e",
+    text: "#e8eaf2",
+    textSub: "#9095b0",
+    textDim: "#565a72",
+    accent: "#8b9cf4",
+    accentBg: "#181c3c",
+    accentBd: "#4050a0",
+    green: "#64d080",
+    warn: "#d4b84a",
+    warnBg: "#26200a",
+    warnBd: "#504810",
+    err: "#e06060",
+    errBg: "#261010",
+    errBd: "#501818",
+    navBg: "#1c1e26",
+    navBd: "#353844",
   },
 
   /** 4. ダスク — 夕暮れパープル */
   dusk: {
-    id:"dusk", name:"ダスク", emoji:"🌆",
-    bg:"#1c1824",       bgCard:"#252030",   bgHover:"#2c2838",
-    border:"#3d3652",   borderHi:"#534a70",
-    text:"#ede8f8",     textSub:"#a898cc",  textDim:"#6a5888",
-    accent:"#c084f0",   accentBg:"#26143c", accentBd:"#7030a0",
-    green:"#64d090",
-    warn:"#d4b84a",     warnBg:"#28200c",   warnBd:"#584818",
-    err:"#e06868",      errBg:"#281016",    errBd:"#581828",
-    navBg:"#211c2e",    navBd:"#3d3652",
+    id: "dusk",
+    name: "ダスク",
+    emoji: "🌆",
+    bg: "#1c1824",
+    bgCard: "#252030",
+    bgHover: "#2c2838",
+    border: "#3d3652",
+    borderHi: "#534a70",
+    text: "#ede8f8",
+    textSub: "#a898cc",
+    textDim: "#6a5888",
+    accent: "#c084f0",
+    accentBg: "#26143c",
+    accentBd: "#7030a0",
+    green: "#64d090",
+    warn: "#d4b84a",
+    warnBg: "#28200c",
+    warnBd: "#584818",
+    err: "#e06868",
+    errBg: "#281016",
+    errBd: "#581828",
+    navBg: "#211c2e",
+    navBd: "#3d3652",
   },
 
   /** 5. エンバー — 暖かみのある琥珀 */
   ember: {
-    id:"ember", name:"エンバー", emoji:"🔥",
-    bg:"#221a12",       bgCard:"#2e2218",   bgHover:"#382a1e",
-    border:"#4e3824",   borderHi:"#6a4e32",
-    text:"#f4e8d8",     textSub:"#c4985a",  textDim:"#806040",
-    accent:"#f0a050",   accentBg:"#3c2010", accentBd:"#a05828",
-    green:"#70d090",
-    warn:"#e8c840",     warnBg:"#2c2408",   warnBd:"#605010",
-    err:"#e06060",      errBg:"#2a1010",    errBd:"#601818",
-    navBg:"#281e14",    navBd:"#4e3824",
+    id: "ember",
+    name: "エンバー",
+    emoji: "🔥",
+    bg: "#221a12",
+    bgCard: "#2e2218",
+    bgHover: "#382a1e",
+    border: "#4e3824",
+    borderHi: "#6a4e32",
+    text: "#f4e8d8",
+    textSub: "#c4985a",
+    textDim: "#806040",
+    accent: "#f0a050",
+    accentBg: "#3c2010",
+    accentBd: "#a05828",
+    green: "#70d090",
+    warn: "#e8c840",
+    warnBg: "#2c2408",
+    warnBd: "#605010",
+    err: "#e06060",
+    errBg: "#2a1010",
+    errBd: "#601818",
+    navBg: "#281e14",
+    navBd: "#4e3824",
   },
 };
 
@@ -114,7 +183,9 @@ export function loadThemeId(): ThemeId {
 }
 
 export function saveThemeId(id: ThemeId) {
-  try { localStorage.setItem(STORAGE_KEY, id); } catch {}
+  try {
+    localStorage.setItem(STORAGE_KEY, id);
+  } catch {}
 }
 
 // ── グローバルテーマ状態 ─────────────────────────────────────────────────────
@@ -122,7 +193,9 @@ export function saveThemeId(id: ThemeId) {
 
 let _current: Theme = THEMES[loadThemeId()];
 
-export function getTheme(): Theme { return _current; }
+export function getTheme(): Theme {
+  return _current;
+}
 
 export function setTheme(id: ThemeId) {
   _current = THEMES[id];
@@ -134,7 +207,9 @@ export function setTheme(id: ThemeId) {
 // C: 各コンポーネントが import { C } from "../lib/theme" で使えるProxy
 // Proxy は _current を動的に引くため、setTheme() 後に最新値を返す
 export const C: Theme = new Proxy({} as Theme, {
-  get(_: Theme, key: string) { return (_current as any)[key]; },
+  get(_: Theme, key: string) {
+    return (_current as any)[key];
+  },
 });
 
 // ── CSS 変数によるテーマ適用 ─────────────────────────────────────────────────

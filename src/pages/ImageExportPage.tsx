@@ -1,8 +1,15 @@
 // src/pages/ImageExportPage.tsx — 単体 & バッチ対応
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { invoke }   from "@tauri-apps/api/core";
-import { Spinner, ErrorView, ThumbCard, PageHeader, BtnBack, BtnPrimary } from "../components/common";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  Spinner,
+  ErrorView,
+  ThumbCard,
+  PageHeader,
+  BtnBack,
+  BtnPrimary,
+} from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { renderPage, exportImages, type PdfInfo, type ImageFormat } from "../lib/tauri";
 import { PageSelector } from "../components/PageSelector";
@@ -10,8 +17,8 @@ import { PageSelector } from "../components/PageSelector";
 import { F } from "../lib/theme";
 
 interface Props {
-  filePath:    string;
-  pdfInfo:     PdfInfo;
+  filePath: string;
+  pdfInfo: PdfInfo;
   batchFiles?: FileEntry[];
 }
 
@@ -19,38 +26,40 @@ type Phase = "edit" | "processing" | "result" | "error";
 const THUMB_DPI = 56;
 
 const DPI_PRESETS = [
-  { label:"72",  val:72,  desc:"画面用" },
-  { label:"144", val:144, desc:"標準" },
-  { label:"300", val:300, desc:"印刷" },
-  { label:"600", val:600, desc:"高精細" },
+  { label: "72", val: 72, desc: "画面用" },
+  { label: "144", val: 144, desc: "標準" },
+  { label: "300", val: 300, desc: "印刷" },
+  { label: "600", val: 600, desc: "高精細" },
 ];
 
 interface BatchProgress {
-  current: number; total: number; currentFile: string;
-  done:    { file:string; count:number }[];
-  errors:  { file:string; msg:string }[];
+  current: number;
+  total: number;
+  currentFile: string;
+  done: { file: string; count: number }[];
+  errors: { file: string; msg: string }[];
 }
 
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
-  const total   = pdfInfo.page_count;
+  const total = pdfInfo.page_count;
   console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
   console.log("Image: total(pages)", total);
 
-  const [phase,   setPhase]   = useState<Phase>("edit");
-  const [thumbs,  setThumbs]  = useState<(string|undefined)[]>([]);
-  const [format,  setFormat]  = useState<ImageFormat>("jpeg");
-  const [dpi,     setDpi]     = useState(144);
+  const [phase, setPhase] = useState<Phase>("edit");
+  const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
+  const [format, setFormat] = useState<ImageFormat>("jpeg");
+  const [dpi, setDpi] = useState(144);
   const [quality, setQuality] = useState(85);
-  const [prefix,  setPrefix]  = useState("page_");
-  const [outDir,  setOutDir]  = useState("");
-  const [pages,   setPages]   = useState("");   // "" = 全ページ
-  const [images,  setImages]  = useState<string[]>([]);
-  const [errMsg,  setErrMsg]  = useState("");
+  const [prefix, setPrefix] = useState("page_");
+  const [outDir, setOutDir] = useState("");
+  const [pages, setPages] = useState(""); // "" = 全ページ
+  const [images, setImages] = useState<string[]>([]);
+  const [errMsg, setErrMsg] = useState("");
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
-  const [batchThumbs,   setBatchThumbs]   = useState<(string|undefined)[]>([]);
-  const [previewIdx,    setPreviewIdx]    = useState(0);
+  const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
+  const [previewIdx, setPreviewIdx] = useState(0);
 
   // 単体: サムネイル
   useEffect(() => {
@@ -58,15 +67,21 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     let cancelled = false;
     setThumbs([]);
     (async () => {
-      for (let i=0; i<total; i++) {
+      for (let i = 0; i < total; i++) {
         try {
           const b64 = await renderPage(filePath, i, THUMB_DPI);
           if (cancelled) return;
-          setThumbs(p => { const a=[...p]; a[i]=b64; return a; });
+          setThumbs((p) => {
+            const a = [...p];
+            a[i] = b64;
+            return a;
+          });
         } catch {}
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [filePath, isBatch]);
 
   // バッチ: 先頭ページサムネイル
@@ -75,19 +90,25 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     let cancelled = false;
     setBatchThumbs(new Array(batchFiles.length).fill(undefined));
     (async () => {
-      for (let i=0; i<batchFiles.length; i++) {
+      for (let i = 0; i < batchFiles.length; i++) {
         try {
           const b64 = await renderPage(batchFiles[i].path, 0, THUMB_DPI);
           if (cancelled) return;
-          setBatchThumbs(p => { const a=[...p]; a[i]=b64; return a; });
+          setBatchThumbs((p) => {
+            const a = [...p];
+            a[i] = b64;
+            return a;
+          });
         } catch {}
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isBatch, batchFiles]);
 
   const pickDir = useCallback(async () => {
-    const dir = await invoke<string|null>("pick_output_dir").catch(()=>null);
+    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
   }, []);
 
@@ -98,114 +119,216 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // 単体実行
   const handleExecuteSingle = useCallback(async () => {
-    if (!outDir) { await pickDir(); return; }
+    if (!outDir) {
+      await pickDir();
+      return;
+    }
     setPhase("processing");
     try {
-      console.log("exportImages", prefix, pages, filePath, outDir,format,dpi, format);
-      const res = await exportImages(filePath, outDir, format, dpi,
-        format==="jpeg" ? quality : undefined, prefix||undefined, pages||undefined);
-      console.log("res",res, res.files, filePath);
-      setImages(res.files); setPhase("result");
-      console.log("images1",images);
+      console.log("exportImages", prefix, pages, filePath, outDir, format, dpi, format);
+      const res = await exportImages(
+        filePath,
+        outDir,
+        format,
+        dpi,
+        format === "jpeg" ? quality : undefined,
+        prefix || undefined,
+        pages || undefined,
+      );
+      console.log("res", res, res.files, filePath);
+      setImages(res.files);
+      setPhase("result");
+      console.log("images1", images);
     } catch (e) {
-      setErrMsg(String(e)); setPhase("error"); setError(String(e));
+      setErrMsg(String(e));
+      setPhase("error");
+      setError(String(e));
     }
   }, [filePath, images, outDir, format, dpi, quality, prefix, pages, pickDir, phase, setError]);
 
   // バッチ実行
   const handleExecuteBatch = useCallback(async () => {
-    if (!outDir) { await pickDir(); return; }
+    if (!outDir) {
+      await pickDir();
+      return;
+    }
     const files = batchFiles!;
     setPhase("processing");
-    const progress: BatchProgress = { current:0, total:files.length, currentFile:"", done:[], errors:[] };
-    setBatchProgress({...progress});
-    for (let i=0; i<files.length; i++) {
+    const progress: BatchProgress = {
+      current: 0,
+      total: files.length,
+      currentFile: "",
+      done: [],
+      errors: [],
+    };
+    setBatchProgress({ ...progress });
+    for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      progress.current = i+1; progress.currentFile = f.filename;
-      setBatchProgress({...progress});
+      progress.current = i + 1;
+      progress.currentFile = f.filename;
+      setBatchProgress({ ...progress });
       try {
         const stem = f.filename.replace(/\.pdf$/i, "");
         const subDir = `${outDir}/${stem}`;
-        const res = await exportImages(f.path, subDir, format, dpi,
-          format==="jpeg" ? quality : undefined, prefix||undefined, pages||undefined);
-        progress.done.push({ file:f.filename, count:res.files.length });
+        const res = await exportImages(
+          f.path,
+          subDir,
+          format,
+          dpi,
+          format === "jpeg" ? quality : undefined,
+          prefix || undefined,
+          pages || undefined,
+        );
+        progress.done.push({ file: f.filename, count: res.files.length });
       } catch (e) {
-        progress.errors.push({ file:f.filename, msg:String(e) });
+        progress.errors.push({ file: f.filename, msg: String(e) });
       }
-      setBatchProgress({...progress});
+      setBatchProgress({ ...progress });
     }
     setPhase("result");
   }, [batchFiles, images, outDir, format, dpi, quality, prefix, pages, pickDir, phase]);
 
   // ─────────── フェーズ ───────────
-  if (phase==="processing" && !isBatch) return <Spinner label={`画像変換中… (${total}ページ)`}/>;
+  if (phase === "processing" && !isBatch) return <Spinner label={`画像変換中… (${total}ページ)`} />;
 
-  if (phase==="processing" && isBatch && batchProgress) return (
-    <div style={s.root}>
-      <div style={s.center}>
-        <div style={s.bpTitle}>画像変換中… {batchProgress.current}/{batchProgress.total}</div>
-        <div style={s.bpBar}><div style={{...s.bpFill, width:`${batchProgress.current/batchProgress.total*100}%`}}/></div>
-        <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
-        <div style={s.bpLog}>
-          {batchProgress.done.map((d,i) => (
-            <div key={i} style={s.bpRow}><span style={{color:"var(--c-accent)"}}>✓</span><span style={s.bpFile}>{d.file}</span><span style={s.bpMeta}>→ {d.count}枚</span></div>
-          ))}
+  if (phase === "processing" && isBatch && batchProgress)
+    return (
+      <div style={s.root}>
+        <div style={s.center}>
+          <div style={s.bpTitle}>
+            画像変換中… {batchProgress.current}/{batchProgress.total}
+          </div>
+          <div style={s.bpBar}>
+            <div
+              style={{
+                ...s.bpFill,
+                width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+              }}
+            />
+          </div>
+          <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
+          <div style={s.bpLog}>
+            {batchProgress.done.map((d, i) => (
+              <div key={i} style={s.bpRow}>
+                <span style={{ color: "var(--c-accent)" }}>✓</span>
+                <span style={s.bpFile}>{d.file}</span>
+                <span style={s.bpMeta}>→ {d.count}枚</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
 
-  if (phase==="error") return <ErrorView msg={errMsg} onBack={()=>{setPhase("edit");setErrMsg("");}}/>;
+  if (phase === "error")
+    return (
+      <ErrorView
+        msg={errMsg}
+        onBack={() => {
+          setPhase("edit");
+          setErrMsg("");
+        }}
+      />
+    );
 
   // バッチ完了
-  if (phase==="result" && isBatch && batchProgress) { return (
-    <div style={s.root}>
-      <PageHeader>
-        <BtnBack onClick={()=>{setPhase("edit");setBatchProgress(null);}}/>
-        <span style={s.title}>バッチ画像変換完了</span>
-      </PageHeader>
-      <div style={s.center}>
-        <span style={{fontSize:56,color:batchProgress.errors.length?"var(--c-warn)":"var(--c-accent)"}}>{batchProgress.errors.length?"⚠":"✓"}</span>
-        <div style={s.bpTitle}>{batchProgress.done.length}件成功{batchProgress.errors.length>0?` · ${batchProgress.errors.length}件エラー`:""}</div>
-        <div style={{fontSize:12,color:"var(--c-textSub)"}}>{outDir}</div>
-        <div style={s.bpLog}>
-          {batchProgress.done.map((d,i)=>(<div key={i} style={s.bpRow}><span style={{color:"var(--c-accent)"}}>✓</span><span style={s.bpFile}>{d.file}</span><span style={s.bpMeta}>→ {d.count}枚</span></div>))}
-          {batchProgress.errors.map((e,i)=>(<div key={`e${i}`} style={{...s.bpRow,background:"var(--c-errBg)",borderColor:"var(--c-errBd)"}}><span style={{color:"var(--c-err)"}}>✕</span><span style={s.bpFile}>{e.file}</span><span style={{...s.bpMeta,color:"var(--c-err)"}}>{e.msg}</span></div>))}
-        </div>
-      </div>
-    </div>
-  );
-
-  // 単体完了
-  } else if (phase==="result") {
-    console.log("images2",images);
+  if (phase === "result" && isBatch && batchProgress) {
     return (
-    <div style={s.root}>
-      <PageHeader>
-        <BtnBack onClick={e=>{ setPhase("edit"); (e.currentTarget as HTMLButtonElement).blur(); }}/>
-        <span style={s.title}>画像変換完了</span>
-      </PageHeader>
-      <div style={s.center}>
-        <span style={{fontSize:56,color:"var(--c-accent)"}}>✓</span>
-        <div style={s.bpTitle}>{images.length}ファイルを出力</div>
-        <div style={{fontSize:12,color:"var(--c-textSub)"}}>{outDir}</div>
-        <div style={s.bpLog}>
-          {images.slice(0,20).map((f,i)=>(<div key={i} style={s.bpRow}><span>🖼</span><span style={s.bpFile}>{f.split(/[/\\]/).pop()}</span></div>))}
-          {images.length>20 && <div style={{fontSize:12,color:"var(--c-textDim)",textAlign:"center",padding:8}}>… 他 {images.length-20}ファイル</div>}
+      <div style={s.root}>
+        <PageHeader>
+          <BtnBack
+            onClick={() => {
+              setPhase("edit");
+              setBatchProgress(null);
+            }}
+          />
+          <span style={s.title}>バッチ画像変換完了</span>
+        </PageHeader>
+        <div style={s.center}>
+          <span
+            style={{
+              fontSize: 56,
+              color: batchProgress.errors.length ? "var(--c-warn)" : "var(--c-accent)",
+            }}
+          >
+            {batchProgress.errors.length ? "⚠" : "✓"}
+          </span>
+          <div style={s.bpTitle}>
+            {batchProgress.done.length}件成功
+            {batchProgress.errors.length > 0 ? ` · ${batchProgress.errors.length}件エラー` : ""}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
+          <div style={s.bpLog}>
+            {batchProgress.done.map((d, i) => (
+              <div key={i} style={s.bpRow}>
+                <span style={{ color: "var(--c-accent)" }}>✓</span>
+                <span style={s.bpFile}>{d.file}</span>
+                <span style={s.bpMeta}>→ {d.count}枚</span>
+              </div>
+            ))}
+            {batchProgress.errors.map((e, i) => (
+              <div
+                key={`e${i}`}
+                style={{ ...s.bpRow, background: "var(--c-errBg)", borderColor: "var(--c-errBd)" }}
+              >
+                <span style={{ color: "var(--c-err)" }}>✕</span>
+                <span style={s.bpFile}>{e.file}</span>
+                <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+
+    // 単体完了
+  } else if (phase === "result") {
+    console.log("images2", images);
+    return (
+      <div style={s.root}>
+        <PageHeader>
+          <BtnBack
+            onClick={(e) => {
+              setPhase("edit");
+              (e.currentTarget as HTMLButtonElement).blur();
+            }}
+          />
+          <span style={s.title}>画像変換完了</span>
+        </PageHeader>
+        <div style={s.center}>
+          <span style={{ fontSize: 56, color: "var(--c-accent)" }}>✓</span>
+          <div style={s.bpTitle}>{images.length}ファイルを出力</div>
+          <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
+          <div style={s.bpLog}>
+            {images.slice(0, 20).map((f, i) => (
+              <div key={i} style={s.bpRow}>
+                <span>🖼</span>
+                <span style={s.bpFile}>{f.split(/[/\\]/).pop()}</span>
+              </div>
+            ))}
+            {images.length > 20 && (
+              <div
+                style={{ fontSize: 12, color: "var(--c-textDim)", textAlign: "center", padding: 8 }}
+              >
+                … 他 {images.length - 20}ファイル
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
   // ─────────── 設定画面 ───────────
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>画像変換{isBatch?` — ${batchFiles!.length}件バッチ`:""}</span>
+        <span style={s.title}>画像変換{isBatch ? ` — ${batchFiles!.length}件バッチ` : ""}</span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
         {!isBatch && <span style={s.pageBadge}>{total}ページ</span>}
-        <div style={{flex:1}}/>
-        <span style={s.outBadge}>→ {format.toUpperCase()} {pw}×{ph}px</span>
+        <div style={{ flex: 1 }} />
+        <span style={s.outBadge}>
+          → {format.toUpperCase()} {pw}×{ph}px
+        </span>
       </PageHeader>
 
       <div style={s.body}>
@@ -213,73 +336,125 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.panel}>
           <div style={s.secLabel}>フォーマット</div>
           <div style={s.fmtRow}>
-            {(["jpeg","png","svg"] as const).map(f=>(
-              <button key={f}
-                onClick={e=>{ setFormat(f); (e.currentTarget as HTMLButtonElement).blur(); }}
-                style={{...s.fmtBtn,...(format===f?s.fmtBtnOn:{})}}>
-                <span style={s.fmtIcon}>{f==="jpeg"?"🖼":"📐"}</span>
+            {(["jpeg", "png", "svg"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={(e) => {
+                  setFormat(f);
+                  (e.currentTarget as HTMLButtonElement).blur();
+                }}
+                style={{ ...s.fmtBtn, ...(format === f ? s.fmtBtnOn : {}) }}
+              >
+                <span style={s.fmtIcon}>{f === "jpeg" ? "🖼" : "📐"}</span>
                 <span style={s.fmtName}>{f.toUpperCase()}</span>
-                <span style={s.fmtDesc}>{f==="jpeg"?"小・写真向き":f==="png"?"可逆・透過対応":"ベクター・印刷最適"}</span>
+                <span style={s.fmtDesc}>
+                  {f === "jpeg"
+                    ? "小・写真向き"
+                    : f === "png"
+                      ? "可逆・透過対応"
+                      : "ベクター・印刷最適"}
+                </span>
               </button>
             ))}
           </div>
 
-          {format !== "svg" && <>
-          <div style={s.secLabel}>解像度 (DPI)</div>
-          <div style={s.dpiGrid}>
-            {DPI_PRESETS.map(p=>(
-              <button key={p.val}
-                onClick={e=>{ setDpi(p.val); (e.currentTarget as HTMLButtonElement).blur(); }}
-                style={{...s.dpiBtn,...(dpi===p.val?s.dpiBtnOn:{})}}>
-                <span style={s.dpiLabel}>{p.label}</span>
-                <span style={s.dpiDesc}>{p.desc}</span>
-              </button>
-            ))}
-          </div>
-          {/* DPI 数値直接入力 — 大きめフォント */}
-          <div style={s.numRow}>
-            <button style={s.stepBtn} onClick={()=>setDpi(v=>Math.max(36,v-12))}>−</button>
-            <input type="number" style={s.numInput} value={dpi} min={36} max={1200}
-              onChange={e=>setDpi(parseInt(e.target.value)||72)}/>
-            <button style={s.stepBtn} onClick={()=>setDpi(v=>Math.min(1200,v+12))}>＋</button>
-            <span style={s.numLabel}>dpi → {pw}×{ph}px</span>
-          </div>
-
-          </>}
-          {format==="jpeg" && (
+          {format !== "svg" && (
             <>
-              <div style={s.secLabel}>JPEG品質 <span style={{fontSize:20,fontWeight:700,color:"var(--c-text)"}}>{quality}</span>%</div>
-              <input type="range" min={10} max={100} step={5} value={quality}
-                onChange={e=>setQuality(parseInt(e.target.value))}
-                style={{width:"100%", accentColor:"var(--c-accent)"}}/>
-              <div style={s.rangeLabels}><span>低品質</span><span>高品質</span></div>
+              <div style={s.secLabel}>解像度 (DPI)</div>
+              <div style={s.dpiGrid}>
+                {DPI_PRESETS.map((p) => (
+                  <button
+                    key={p.val}
+                    onClick={(e) => {
+                      setDpi(p.val);
+                      (e.currentTarget as HTMLButtonElement).blur();
+                    }}
+                    style={{ ...s.dpiBtn, ...(dpi === p.val ? s.dpiBtnOn : {}) }}
+                  >
+                    <span style={s.dpiLabel}>{p.label}</span>
+                    <span style={s.dpiDesc}>{p.desc}</span>
+                  </button>
+                ))}
+              </div>
+              {/* DPI 数値直接入力 — 大きめフォント */}
+              <div style={s.numRow}>
+                <button style={s.stepBtn} onClick={() => setDpi((v) => Math.max(36, v - 12))}>
+                  −
+                </button>
+                <input
+                  type="number"
+                  style={s.numInput}
+                  value={dpi}
+                  min={36}
+                  max={1200}
+                  onChange={(e) => setDpi(parseInt(e.target.value) || 72)}
+                />
+                <button style={s.stepBtn} onClick={() => setDpi((v) => Math.min(1200, v + 12))}>
+                  ＋
+                </button>
+                <span style={s.numLabel}>
+                  dpi → {pw}×{ph}px
+                </span>
+              </div>
+            </>
+          )}
+          {format === "jpeg" && (
+            <>
+              <div style={s.secLabel}>
+                JPEG品質{" "}
+                <span style={{ fontSize: 20, fontWeight: 700, color: "var(--c-text)" }}>
+                  {quality}
+                </span>
+                %
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                step={5}
+                value={quality}
+                onChange={(e) => setQuality(parseInt(e.target.value))}
+                style={{ width: "100%", accentColor: "var(--c-accent)" }}
+              />
+              <div style={s.rangeLabels}>
+                <span>低品質</span>
+                <span>高品質</span>
+              </div>
             </>
           )}
 
           <div style={s.secLabel}>ページ指定</div>
           <PageSelector
             totalPages={isBatch ? 0 : total}
-            value={pages} onChange={setPages}
-	    type="1"
+            value={pages}
+            onChange={setPages}
+            type="1"
             compact
           />
 
           <div style={s.secLabel}>ファイル名プレフィックス</div>
           <div style={s.prefixRow}>
-            <input type="text" style={s.textInput} value={prefix} placeholder="page"
-              onChange={e=>setPrefix(e.target.value)}/>
-            <span style={s.prefixSuffix}>0001.{format==="jpeg"?"jpg":format}</span>
+            <input
+              type="text"
+              style={s.textInput}
+              value={prefix}
+              placeholder="page"
+              onChange={(e) => setPrefix(e.target.value)}
+            />
+            <span style={s.prefixSuffix}>0001.{format === "jpeg" ? "jpg" : format}</span>
           </div>
 
           {isBatch && (
-            <div style={s.batchNote}>
-              📁 ファイルごとにサブフォルダを作成して出力します
-            </div>
+            <div style={s.batchNote}>📁 ファイルごとにサブフォルダを作成して出力します</div>
           )}
           <div style={s.secLabel}>出力フォルダ</div>
           <div style={s.dirRow}>
-            <div style={s.dirPath} title={outDir}>{outDir||"（未選択）"}</div>
-            <button style={s.dirPickBtn} onClick={pickDir}>参照…</button>
+            <div style={s.dirPath} title={outDir}>
+              {outDir || "（未選択）"}
+            </div>
+            <button style={s.dirPickBtn} onClick={pickDir}>
+              参照…
+            </button>
           </div>
 
           <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
@@ -297,28 +472,43 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <>
               <div style={s.previewHead}>対象ファイル — {batchFiles!.length}件</div>
               <div style={s.batchFileList}>
-                {batchFiles!.map((f,i)=>(
-                  <button key={f.id} type="button"
-                    style={{...s.batchFileItem,...(i===previewIdx?s.batchFileItemOn:{}),
-        appearance: 'none',
-        background: 'none',
-        border: 'none',
-        padding: 0,
-        cursor: 'pointer',
-        textAlign: 'left',
-        width: '100%',          // 推奨: リスト項目として横幅を広げる
-        outline: 'none',        // フォーカス時の枠を消す（任意）
-		    }}
-                    onClick={e=>{
-			    const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-			    setPreviewIdx(i); itemRefs.current[i]?.blur(); }}>
-                    {batchThumbs[i]
-                      ? <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={s.batchThumb} alt=""/>
-                      : <div style={s.batchThumbPh}/>}
+                {batchFiles!.map((f, i) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    style={{
+                      ...s.batchFileItem,
+                      ...(i === previewIdx ? s.batchFileItemOn : {}),
+                      appearance: "none",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      width: "100%", // 推奨: リスト項目として横幅を広げる
+                      outline: "none", // フォーカス時の枠を消す（任意）
+                    }}
+                    onClick={(e) => {
+                      const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+                      setPreviewIdx(i);
+                      itemRefs.current[i]?.blur();
+                    }}
+                  >
+                    {batchThumbs[i] ? (
+                      <img
+                        src={`data:image/jpeg;base64,${batchThumbs[i]}`}
+                        style={s.batchThumb}
+                        alt=""
+                      />
+                    ) : (
+                      <div style={s.batchThumbPh} />
+                    )}
                     <div style={s.batchFileInfo}>
                       <span style={s.batchFileName}>{f.filename}</span>
                       <span style={s.batchFileMeta}>{f.pageCount}ページ</span>
-                      <span style={s.batchFileMeta}>→ {f.pageCount}枚の{format === "jpeg" ? "JPG" : format.toUpperCase()}</span>
+                      <span style={s.batchFileMeta}>
+                        → {f.pageCount}枚の{format === "jpeg" ? "JPG" : format.toUpperCase()}
+                      </span>
                     </div>
                   </button>
                 ))}
@@ -328,10 +518,18 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <>
               <div style={s.previewHead}>プレビュー — {total}ページ</div>
               <div style={s.thumbGrid}>
-                {Array.from({length:total},(_,i)=>{
+                {Array.from({ length: total }, (_, i) => {
                   const pb = pdfInfo.pages?.[i];
                   const aspect = pb ? pb.w / pb.h : undefined;
-                  return <ThumbCard key={i} b64={thumbs[i]} pageNum={i+1} width={130} aspectRatio={aspect}/>;
+                  return (
+                    <ThumbCard
+                      key={i}
+                      b64={thumbs[i]}
+                      pageNum={i + 1}
+                      width={130}
+                      aspectRatio={aspect}
+                    />
+                  );
                 })}
               </div>
             </>
@@ -343,65 +541,276 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  root:      { display:"flex", flexDirection:"column", height:"100%", background:"var(--c-bg)", color:"var(--c-text)", fontFamily:F, overflow:"hidden" },
-  title:     { fontSize:16, fontWeight:700, color:"var(--c-text)" },
-  sub:       { fontSize:13, color:"var(--c-textSub)", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  pageBadge: { padding:"3px 11px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:12, fontSize:12, color:"var(--c-textSub)" },
-  outBadge:  { fontSize:14, color:"var(--c-accent)", fontWeight:700 },
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    background: "var(--c-bg)",
+    color: "var(--c-text)",
+    fontFamily: F,
+    overflow: "hidden",
+  },
+  title: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  sub: {
+    fontSize: 13,
+    color: "var(--c-textSub)",
+    maxWidth: 200,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  pageBadge: {
+    padding: "3px 11px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-border)`,
+    borderRadius: 12,
+    fontSize: 12,
+    color: "var(--c-textSub)",
+  },
+  outBadge: { fontSize: 14, color: "var(--c-accent)", fontWeight: 700 },
 
-  body:    { flex:1, display:"flex", overflow:"hidden" },
-  panel:   { width:300, flexShrink:0, padding:"16px 18px", display:"flex", flexDirection:"column", gap:12, overflowY:"auto", borderRight:`1px solid var(--c-border)` },
-  secLabel:{ fontSize:12, color:"var(--c-textSub)", letterSpacing:"0.07em", textTransform:"uppercase" as const, marginTop:4 },
+  body: { flex: 1, display: "flex", overflow: "hidden" },
+  panel: {
+    width: 300,
+    flexShrink: 0,
+    padding: "16px 18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    overflowY: "auto",
+    borderRight: `1px solid var(--c-border)`,
+  },
+  secLabel: {
+    fontSize: 12,
+    color: "var(--c-textSub)",
+    letterSpacing: "0.07em",
+    textTransform: "uppercase" as const,
+    marginTop: 4,
+  },
 
-  fmtRow:  { display:"flex", gap:8 },
-  fmtBtn:  { flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:5, padding:"13px 8px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:9, cursor:"pointer", fontFamily:F, transition:"all 0.1s" },
-  fmtBtnOn:{ borderColor:"var(--c-accent)", background:"var(--c-accentBg)" },
-  fmtIcon: { fontSize:22 },
-  fmtName: { fontSize:14, fontWeight:700, color:"var(--c-text)" },
-  fmtDesc: { fontSize:11, color:"var(--c-textSub)", textAlign:"center" as const },
+  fmtRow: { display: "flex", gap: 8 },
+  fmtBtn: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 5,
+    padding: "13px 8px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-border)`,
+    borderRadius: 9,
+    cursor: "pointer",
+    fontFamily: F,
+    transition: "all 0.1s",
+  },
+  fmtBtnOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
+  fmtIcon: { fontSize: 22 },
+  fmtName: { fontSize: 14, fontWeight: 700, color: "var(--c-text)" },
+  fmtDesc: { fontSize: 11, color: "var(--c-textSub)", textAlign: "center" as const },
 
-  dpiGrid: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 },
-  dpiBtn:  { display:"flex", flexDirection:"column", padding:"8px 10px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:7, cursor:"pointer", fontFamily:F, transition:"all 0.1s" },
-  dpiBtnOn:{ borderColor:"var(--c-accent)", background:"var(--c-accentBg)" },
-  dpiLabel:{ fontSize:16, fontWeight:700, color:"var(--c-text)" },
-  dpiDesc: { fontSize:11, color:"var(--c-textSub)" },
+  dpiGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 },
+  dpiBtn: {
+    display: "flex",
+    flexDirection: "column",
+    padding: "8px 10px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-border)`,
+    borderRadius: 7,
+    cursor: "pointer",
+    fontFamily: F,
+    transition: "all 0.1s",
+  },
+  dpiBtnOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
+  dpiLabel: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  dpiDesc: { fontSize: 11, color: "var(--c-textSub)" },
 
   // 数値入力 — 大きめ
-  numRow:   { display:"flex", alignItems:"center", gap:7 },
-  stepBtn:  { width:42, height:42, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, cursor:"pointer", fontSize:22, color:"var(--c-text)", fontFamily:F, flexShrink:0 },
-  numInput: { width:84, padding:"7px 0", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", fontSize:28, fontFamily:F, textAlign:"center" as const, fontWeight:700 },
-  numLabel: { fontSize:11, color:"var(--c-textSub)" },
-  rangeLabels:{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--c-textDim)" },
+  numRow: { display: "flex", alignItems: "center", gap: 7 },
+  stepBtn: {
+    width: 42,
+    height: 42,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 7,
+    cursor: "pointer",
+    fontSize: 22,
+    color: "var(--c-text)",
+    fontFamily: F,
+    flexShrink: 0,
+  },
+  numInput: {
+    width: 84,
+    padding: "7px 0",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 7,
+    color: "var(--c-text)",
+    fontSize: 28,
+    fontFamily: F,
+    textAlign: "center" as const,
+    fontWeight: 700,
+  },
+  numLabel: { fontSize: 11, color: "var(--c-textSub)" },
+  rangeLabels: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: 11,
+    color: "var(--c-textDim)",
+  },
 
-  prefixRow:   { display:"flex", alignItems:"center", gap:6 },
-  textInput:   { flex:1, padding:"8px 10px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", fontSize:14, fontFamily:F },
-  prefixSuffix:{ fontSize:11, color:"var(--c-textDim)", flexShrink:0 },
-  dirRow:      { display:"flex", gap:7 },
-  dirPath:     { flex:1, padding:"8px 10px", background:"var(--c-bgCard)", border:`1px solid var(--c-border)`, borderRadius:7, color:"var(--c-textSub)", fontSize:12, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  dirPickBtn:  { padding:"8px 14px", background:"var(--c-bgCard)", border:`1px solid var(--c-borderHi)`, borderRadius:7, color:"var(--c-text)", cursor:"pointer", fontSize:13, fontFamily:F, flexShrink:0 },
-  batchNote:   { padding:"10px 12px", background:"var(--c-bgCard)", border:`1px solid var(--c-accentBd)`, borderRadius:7, fontSize:12, color:"var(--c-textSub)", lineHeight:1.6 },
+  prefixRow: { display: "flex", alignItems: "center", gap: 6 },
+  textInput: {
+    flex: 1,
+    padding: "8px 10px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 7,
+    color: "var(--c-text)",
+    fontSize: 14,
+    fontFamily: F,
+  },
+  prefixSuffix: { fontSize: 11, color: "var(--c-textDim)", flexShrink: 0 },
+  dirRow: { display: "flex", gap: 7 },
+  dirPath: {
+    flex: 1,
+    padding: "8px 10px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-border)`,
+    borderRadius: 7,
+    color: "var(--c-textSub)",
+    fontSize: 12,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  dirPickBtn: {
+    padding: "8px 14px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 7,
+    color: "var(--c-text)",
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: F,
+    flexShrink: 0,
+  },
+  batchNote: {
+    padding: "10px 12px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-accentBd)`,
+    borderRadius: 7,
+    fontSize: 12,
+    color: "var(--c-textSub)",
+    lineHeight: 1.6,
+  },
 
   // 進捗
-  center:   { flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, padding:32 },
-  bpTitle:  { fontSize:17, fontWeight:700, color:"var(--c-text)" },
-  bpBar:    { width:"100%", maxWidth:480, height:8, background:"var(--c-border)", borderRadius:4, overflow:"hidden" },
-  bpFill:   { height:"100%", background:"var(--c-accent)", borderRadius:4, transition:"width 0.3s" },
-  bpCurrent:{ fontSize:13, color:"var(--c-textSub)" },
-  bpLog:    { width:"100%", maxWidth:480, display:"flex", flexDirection:"column", gap:5, maxHeight:300, overflowY:"auto" },
-  bpRow:    { display:"flex", alignItems:"center", gap:9, padding:"6px 10px", background:"var(--c-bgCard)", borderRadius:6, border:`1px solid var(--c-border)` },
-  bpFile:   { flex:1, fontSize:13, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  bpMeta:   { fontSize:12, color:"var(--c-textSub)", flexShrink:0 },
+  center: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    padding: 32,
+  },
+  bpTitle: { fontSize: 17, fontWeight: 700, color: "var(--c-text)" },
+  bpBar: {
+    width: "100%",
+    maxWidth: 480,
+    height: 8,
+    background: "var(--c-border)",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  bpFill: {
+    height: "100%",
+    background: "var(--c-accent)",
+    borderRadius: 4,
+    transition: "width 0.3s",
+  },
+  bpCurrent: { fontSize: 13, color: "var(--c-textSub)" },
+  bpLog: {
+    width: "100%",
+    maxWidth: 480,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    maxHeight: 300,
+    overflowY: "auto",
+  },
+  bpRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    padding: "6px 10px",
+    background: "var(--c-bgCard)",
+    borderRadius: 6,
+    border: `1px solid var(--c-border)`,
+  },
+  bpFile: {
+    flex: 1,
+    fontSize: 13,
+    color: "var(--c-text)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  bpMeta: { fontSize: 12, color: "var(--c-textSub)", flexShrink: 0 },
 
-  preview:     { flex:1, display:"flex", flexDirection:"column", overflow:"hidden" },
-  previewHead: { padding:"11px 18px", fontSize:13, color:"var(--c-textSub)", borderBottom:`1px solid var(--c-border)`, flexShrink:0 },
-  thumbGrid:   { flex:1, overflowY:"auto", padding:14, display:"flex", flexWrap:"wrap" as const, gap:8, alignContent:"flex-start" },
+  preview: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  previewHead: {
+    padding: "11px 18px",
+    fontSize: 13,
+    color: "var(--c-textSub)",
+    borderBottom: `1px solid var(--c-border)`,
+    flexShrink: 0,
+  },
+  thumbGrid: {
+    flex: 1,
+    overflowY: "auto",
+    padding: 14,
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: 8,
+    alignContent: "flex-start",
+  },
 
-  batchFileList:  { flex:1, overflowY:"auto", display:"flex", flexDirection:"column" },
-  batchFileItem:  { display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom:`1px solid var(--c-border)`, cursor:"pointer", transition:"background 0.1s" },
-  batchFileItemOn:{ background:"var(--c-accentBg)", borderLeft:`3px solid var(--c-accent)` },
-  batchThumb:     { maxWidth:72, maxHeight:108, objectFit:"contain" as const, borderRadius:4, flexShrink:0 },
-  batchThumbPh:   { width:54, height:76, background:"var(--c-border)", borderRadius:4, flexShrink:0 },
-  batchFileInfo:  { flex:1, display:"flex", flexDirection:"column", gap:3, minWidth:0 },
-  batchFileName:  { fontSize:14, color:"var(--c-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
-  batchFileMeta:  { fontSize:12, color:"var(--c-textSub)" },
+  batchFileList: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" },
+  batchFileItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 16px",
+    borderBottom: `1px solid var(--c-border)`,
+    cursor: "pointer",
+    transition: "background 0.1s",
+  },
+  batchFileItemOn: { background: "var(--c-accentBg)", borderLeft: `3px solid var(--c-accent)` },
+  batchThumb: {
+    maxWidth: 72,
+    maxHeight: 108,
+    objectFit: "contain" as const,
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  batchThumbPh: {
+    width: 54,
+    height: 76,
+    background: "var(--c-border)",
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  batchFileInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+  batchFileName: {
+    fontSize: 14,
+    color: "var(--c-text)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  batchFileMeta: { fontSize: 12, color: "var(--c-textSub)" },
 };
