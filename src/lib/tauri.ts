@@ -294,6 +294,10 @@ export async function checkGsInstalled(): Promise<boolean> {
   return await invoke<boolean>("check_ghostscript_installed");
 }
 
-export async function runGsOptimize(input: string, output: string, level: GsLevel): Promise<void> {
-  await invoke("run_gs_optimize", { input, output, levelStr: level });
+export async function runGsOptimize(gs_path: string, input: string, output: string, level: GsLevel): Promise<void> {
+  await invoke("run_gs_optimize", { gs_path, input, output, levelStr: level });
+}
+
+export async function runGsPreview(gs_path: string, input: string, output: string, level: GsLevel): Promise<void> {
+  await invoke("run_gs_preview", { gs_path, input, output, levelStr: level });
 }

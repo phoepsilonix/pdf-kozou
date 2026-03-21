@@ -12,8 +12,6 @@ pub mod render;
 pub mod rotate;
 pub mod split;
 pub mod trim;
-pub mod gs;
-pub mod gs_detector;
 
 // 開発用: mupdf-sys シンボル探索（本実装前に削除予定）
 #[allow(dead_code)]

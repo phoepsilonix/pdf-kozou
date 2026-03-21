@@ -3318,6 +3318,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols 0.31.2",
  "wayland-protocols-wlr 0.2.0",
+ "which",
  "x11rb",
 ]
 
@@ -3338,7 +3339,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tracing",
  "uuid",
- "which",
  "winreg 0.56.0",
 ]
 

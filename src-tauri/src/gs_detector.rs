@@ -3,7 +3,13 @@
 #[cfg(target_os = "windows")]
 use std::path::Path;
 
-pub fn find_gs_executable() -> Option<String> {
+#[tauri::command]
+pub async fn check_ghostscript_installed() -> bool {
+    find_gs_executable().await.is_some()
+}
+
+#[tauri::command]
+pub async fn find_gs_executable() -> Option<String> {
     // 1. PATH上の実行ファイルを優先 (gs, gswin64c, gswin32c)
     #[cfg(not(target_os = "windows"))]
     let bins = vec!["gs"];
@@ -21,7 +27,7 @@ pub fn find_gs_executable() -> Option<String> {
     {
         use winreg::enums::*;
         use winreg::RegKey;
-        
+
         let roots = [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER];
         let vendors = ["SOFTWARE\\GPL Ghostscript", "SOFTWARE\\Artifex Ghostscript"];
 

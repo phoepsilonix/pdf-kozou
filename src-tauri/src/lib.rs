@@ -1,6 +1,8 @@
 // src-tauri/src/lib.rs
 mod commands;
 mod error;
+mod gs;
+mod gs_detector;
 mod platform;
 
 use commands::{core, platform as platform_cmd};
@@ -64,6 +66,10 @@ pub fn run() {
             platform_cmd::pick_save_file,
             platform_cmd::pick_save_file_in,
             platform_cmd::pick_output_dir,
+            gs_detector::check_ghostscript_installed,
+            gs_detector::find_gs_executable,
+            gs::run_gs_optimize,
+            gs::run_gs_preview,
         ])
         .setup(|app| {
             // ── 起動時引数からPDFファイルパスを取得してフロントに渡す ──────────
