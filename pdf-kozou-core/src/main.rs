@@ -471,7 +471,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     object_stream: Some(object_stream),
                     merge_fonts: Some(merge_fonts),
                 };
-                eprintln!("{:?}", req);
                 pdf_kozou_core::compress::compress(&req)?
             };
             println!("{}", serde_json::to_string(&resp)?);
