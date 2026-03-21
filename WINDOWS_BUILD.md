@@ -5,7 +5,7 @@ rustの基本機能でOK。
 クロスコンパイルはインストーラーのビルドが無理なので、Windowsでビルドするべき。
 Windowsにrust,make,mingw(gcc) or llvm(clang)、そしてmakensis.exeもインストールする。
 GIT Bashなどで、ターゲットアーキテクチャはx86_64-pc-windows-gnuでビルドを行う。
-msvc,nmakeは用いない。
+msvc,nmake,link.exeは、クロスビルドでは用いない。msvcの場合には、cargo-xwinを使うとできるかもしれません。
 
 # ビルド
 cd pdf-kozou
@@ -19,9 +19,13 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc
 #PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe \
 
 ```sh
-OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
+OS=mingw USE_MAKE=1 HAVE_OBJCOPY=no LICENSE=AGPL-3.0-or-later.txt cargo tauri build --target x86_64-pc-windows-gnu
+
 ```
 
+```sh
+OS=mingw USE_MAKE=1 HAVE_OBJCOPY=no LICENSE=AGPL-3.0-or-later.txt cargo-xwin tauri build --target x86_64-pc-windows-msvc
+```
 
 ## 方法1: cargo (推奨・Linux/macOSから)
 
