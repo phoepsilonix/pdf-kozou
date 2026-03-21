@@ -21,7 +21,7 @@
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
-	"devtools": true
+        "devtools": true
       }
     ],
     "security": {
@@ -41,9 +41,7 @@
     ],
     "fileAssociations": [
       {
-        "ext": [
-          "pdf"
-        ],
+        "ext": ["pdf"],
         "name": "PDF Document",
         "description": "PDF小僧で開く",
         "mimeType": "application/pdf"
@@ -60,13 +58,7 @@
         ]
       },
       "rpm": {
-        "depends": [
-          "gtk3",
-          "webkit2gtk4.1",
-          "glib2",
-          "cairo",
-          "pango"
-        ]
+        "depends": ["gtk3", "webkit2gtk4.1", "glib2", "cairo", "pango"]
       },
       "appimage": {
         "bundleMediaFramework": false
@@ -77,10 +69,10 @@
         "type": "embedBootstrapper"
       },
       "nsis": {
-	"installMode": "both",
-	"installerHooks": "nsis/install.nsh",
+        "installMode": "both",
+        "installerHooks": "nsis/install.nsh",
         "displayLanguageSelector": true,
-	"languages": ["Japanese", "English"]
+        "languages": ["Japanese", "English"]
       }
     },
     "android": {

@@ -3,11 +3,14 @@
 xwin不要。
 rustの基本機能でOK。
 クロスコンパイルはインストーラーのビルドが無理なので、Windowsでビルドするべき。
+一応、NSISのインストーラーも含めてLinux上でビルド可能だが、同じソースでもLinuxでWindows向けにビルドしたものは一部機能が動作しない症状が発生することがあった。
+そのためWindows向けはWindowsでビルドすることを推奨する。
 Windowsにrust,make,mingw(gcc) or llvm(clang)、そしてmakensis.exeもインストールする。
-GIT Bashなどで、ターゲットアーキテクチャはx86_64-pc-windows-gnuでビルドを行う。
-msvc,nmake,link.exeは、クロスビルドでは用いない。msvcの場合には、cargo-xwinを使うとできるかもしれません。
+パス解釈の影響を減らすために、GIT Bashなどで、ターゲットアーキテクチャはx86_64-pc-windows-gnuでビルドを行う。
+nmake,link.exeは、クロスビルドでは用いない。msvcターゲットの場合には、cargo-xwinを使うとできるかもしれませんが、link.exeは必要なので、Windowsでビルドしてください。
 
 # ビルド
+
 cd pdf-kozou
 #USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY"
 
@@ -16,6 +19,7 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc
 ```
 
 # Tauri アプリのビルド
+
 #PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe \
 
 ```sh
@@ -31,10 +35,13 @@ OS=mingw USE_MAKE=1 HAVE_OBJCOPY=no LICENSE=AGPL-3.0-or-later.txt cargo-xwin tau
 
 クロスコンパイル方法。xwin,cross不要。なくてもrustのツールチェインでクロスビルド可能。
 msvcをターゲットにする場合、cargo xwinを用いる。
+
 # ターゲット追加
+
 rustup target add x86_64-pc-windows-gnu
 
 # ビルド
+
 ```sh
 cd pdf-kozou
 #USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY"
@@ -48,10 +55,13 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-win
 > 初回実行時に Windows SDK (~3GB) を自動ダウンロードします。
 
 # NSISインストーラー
+
 クロスビルドは無理。makensis.exeを実行できない。
+
 ```sh
 npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
 ```
+
 ```sh
 bun tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 ```
@@ -66,7 +76,7 @@ bun tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 name: Release
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -92,6 +102,7 @@ jobs:
 ---
 
 ## 方法4: Windows 上でネイティブビルド
+
 これが現実的。
 Windows 環境で直接ビルドする場合。
 パス解釈でのトラブルを防止するためGIT Bashなどを用いてビルド。
@@ -110,7 +121,7 @@ npm install
 OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
 
 # Tauri アプリビルド
-OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu 
+OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
 ```
 
 ### 成果物
@@ -126,10 +137,12 @@ src-tauri/target/release/bundle/
 ## MuPDF の Windows 対応
 
 mupdf-sys 0.6.0 は Linux/macOS/Windows 全対応。
+
 - WebView2がインストールされていない環境では、インストールが必要だが、それ以外は不要。
 - exe自体のクロスビルドは可能になったが、インストーラーのクロスビルドは無理。
 
 ## ToDo
+
 ### アイコン差し替え
 
 ```bash

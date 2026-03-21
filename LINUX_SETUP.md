@@ -5,16 +5,16 @@
 PDF小僧はインターネット接続なしで完全動作します。  
 以下のツールをアプリに同梱します。
 
-| ツール | バージョン | ライセンス | 用途 |
-|--------|-----------|-----------|------|
-| Ghostscript | 10.x | AGPL v3* | 変換・圧縮・透かし・ページ番号 |
-| qpdf | 11.x | Apache 2.0 | 事前最適化・分割・結合・回転・暗号化 |
-| pdftoppm | Poppler 24.x | GPL v2 | ページラスタライズ (プレビュー) |
-| pdftotext | Poppler 24.x | GPL v2 | テキスト抽出 |
-| pdftohtml | Poppler 24.x | GPL v2 | HTML変換 |
-| pdftocairo | Poppler 24.x | GPL v2 | SVG変換 |
-| Tesseract | 5.x | Apache 2.0 | OCR |
-| tessdata (eng/jpn/jpn_vert) | — | Apache 2.0 | OCR言語データ |
+| ツール                      | バージョン   | ライセンス | 用途                                 |
+| --------------------------- | ------------ | ---------- | ------------------------------------ |
+| Ghostscript                 | 10.x         | AGPL v3\*  | 変換・圧縮・透かし・ページ番号       |
+| qpdf                        | 11.x         | Apache 2.0 | 事前最適化・分割・結合・回転・暗号化 |
+| pdftoppm                    | Poppler 24.x | GPL v2     | ページラスタライズ (プレビュー)      |
+| pdftotext                   | Poppler 24.x | GPL v2     | テキスト抽出                         |
+| pdftohtml                   | Poppler 24.x | GPL v2     | HTML変換                             |
+| pdftocairo                  | Poppler 24.x | GPL v2     | SVG変換                              |
+| Tesseract                   | 5.x          | Apache 2.0 | OCR                                  |
+| tessdata (eng/jpn/jpn_vert) | —            | Apache 2.0 | OCR言語データ                        |
 
 > **Ghostscript 商用利用について:**  
 > AGPL v3 の Ghostscript を商用製品に同梱する場合、  
@@ -79,14 +79,14 @@ DISPLAY=:0
 
 ### 環境変数リファレンス
 
-| 変数 | 値 | 効果 |
-|------|----|------|
-| `GTK_USE_PORTAL` | `0` | GTK がポータルを使わない (自動設定) |
-| `GDK_BACKEND` | `wayland,x11` | バックエンドの優先順位を指定 |
-| `GDK_BACKEND` | `x11` | X11 に強制 |
-| `WEBKIT_DISABLE_DMABUF_RENDERER` | `1` | 一部GPU環境での描画問題を回避 |
-| `WAYLAND_DISPLAY` | `wayland-0` | Wayland ソケットを指定 |
-| `DISPLAY` | `:0` | X11 ディスプレイを指定 |
+| 変数                             | 値            | 効果                                |
+| -------------------------------- | ------------- | ----------------------------------- |
+| `GTK_USE_PORTAL`                 | `0`           | GTK がポータルを使わない (自動設定) |
+| `GDK_BACKEND`                    | `wayland,x11` | バックエンドの優先順位を指定        |
+| `GDK_BACKEND`                    | `x11`         | X11 に強制                          |
+| `WEBKIT_DISABLE_DMABUF_RENDERER` | `1`           | 一部GPU環境での描画問題を回避       |
+| `WAYLAND_DISPLAY`                | `wayland-0`   | Wayland ソケットを指定              |
+| `DISPLAY`                        | `:0`          | X11 ディスプレイを指定              |
 
 ---
 
@@ -134,6 +134,7 @@ qpdf --optimize-images \
 ```
 
 **効果:**
+
 - 重複オブジェクトをストリームに統合 → ファイルサイズ削減
 - 画像の最適化 → 不要な高解像度データを削減
 - クロスリファレンスを最新形式に更新 → 後続処理が高速・安定

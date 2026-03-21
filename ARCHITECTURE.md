@@ -107,12 +107,12 @@ MuPDF 0.6 では既存の Rotate 値の読み取り API が存在しないため
 
 ## 将来の拡張
 
-| 形態 | 状態 | 概要 |
-|------|------|------|
-| CLI | ✅ 実装済み | pdf-kozou-core バイナリ |
-| デスクトップ GUI | 🚧 開発中 | Tauri v2 |
-| Web 版 | 📋 計画中 | mupdf.wasm + coi-serviceworker |
-| iOS / Android | 📋 計画中 | PWA (Service Worker でオフライン動作) |
+| 形態             | 状態        | 概要                                  |
+| ---------------- | ----------- | ------------------------------------- |
+| CLI              | ✅ 実装済み | pdf-kozou-core バイナリ               |
+| デスクトップ GUI | 🚧 開発中   | Tauri v2                              |
+| Web 版           | 📋 計画中   | mupdf.wasm + coi-serviceworker        |
+| iOS / Android    | 📋 計画中   | PWA (Service Worker でオフライン動作) |
 
 Web 版は [coi-serviceworker](https://github.com/gzuidhof/coi-serviceworker) を使って
 GitHub Pages など任意のホスティングサービスで動作させる予定です。

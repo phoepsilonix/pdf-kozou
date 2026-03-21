@@ -1,6 +1,7 @@
 # PDF小僧 ライセンス情報
 
 ## 本ソフトウェア（PDF小僧）
+
 Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
 Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)  
 Full license: AGPL-3.0-or-later.txt

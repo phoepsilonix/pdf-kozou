@@ -24,15 +24,15 @@ pdf-kozou/
 
 ## 機能
 
-| コマンド | 内容 |
-|----------|------|
+| コマンド   | 内容                                                    |
+| ---------- | ------------------------------------------------------- |
 | `info`     | PDF の基本情報を取得 (ページ数・サイズ・暗号化状態など) |
-| `render`   | ページを JPEG / PNG 画像にレンダリング |
-| `trim`     | CropBox を設定してトリミング |
-| `compress` | ファイルサイズを最適化・圧縮 |
-| `split`    | 1ページずつ・N ページごと・ページ範囲で分割 |
-| `merge`    | 複数の PDF を結合 |
-| `rotate`   | ページを 90 / 180 / 270 度回転 |
+| `render`   | ページを JPEG / PNG 画像にレンダリング                  |
+| `trim`     | CropBox を設定してトリミング                            |
+| `compress` | ファイルサイズを最適化・圧縮                            |
+| `split`    | 1ページずつ・N ページごと・ページ範囲で分割             |
+| `merge`    | 複数の PDF を結合                                       |
+| `rotate`   | ページを 90 / 180 / 270 度回転                          |
 
 ---
 
@@ -42,10 +42,10 @@ pdf-kozou/
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases) ページから各プラットフォーム向けのバイナリをダウンロードしてください。
 
-| プラットフォーム | ファイル |
-|------------------|---------|
-| Windows (x64)    | `pdf-kozou_windows_x64.zip` |
-| Linux (x64)      | `pdf-kozou_linux_x64.tar.gz` |
+| プラットフォーム      | ファイル                         |
+| --------------------- | -------------------------------- |
+| Windows (x64)         | `pdf-kozou_windows_x64.zip`      |
+| Linux (x64)           | `pdf-kozou_linux_x64.tar.gz`     |
 | macOS (Apple Silicon) | `pdf-kozou_macos_aarch64.tar.gz` |
 
 ### cargo でインストール

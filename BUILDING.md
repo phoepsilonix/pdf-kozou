@@ -4,12 +4,12 @@
 
 ### 共通
 
-| ツール | バージョン | 用途 |
-|--------|-----------|------|
-| Rust | 1.75 以上 | コンパイラ |
-| C/C++ ツールチェーン | — | mupdf-sys のビルド |
-| cmake | 3.15 以上 | mupdf-sys のビルドシステム |
-| clang / LLVM | — | bindgen (FFI 自動生成) |
+| ツール               | バージョン | 用途                       |
+| -------------------- | ---------- | -------------------------- |
+| Rust                 | 1.75 以上  | コンパイラ                 |
+| C/C++ ツールチェーン | —          | mupdf-sys のビルド         |
+| cmake                | 3.15 以上  | mupdf-sys のビルドシステム |
+| clang / LLVM         | —          | bindgen (FFI 自動生成)     |
 
 ### Linux (Debian / Ubuntu 系)
 
@@ -36,6 +36,7 @@ cargo xwin build --release -p pdf-kozou-core --target x86_64-pc-windows-msvc
 ```
 
 通常の Windows 環境でビルドする場合:
+
 - [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) をインストール
 - cmake と LLVM (clang) を PATH に追加
 
@@ -63,11 +64,11 @@ cargo build --release -p pdf-kozou-core
 
 ### 追加要件
 
-| ツール | 用途 |
-|--------|------|
-| Node.js 18+ | フロントエンドのビルド |
-| npm / pnpm | パッケージ管理 |
-| Tauri CLI | `cargo install tauri-cli` |
+| ツール      | 用途                      |
+| ----------- | ------------------------- |
+| Node.js 18+ | フロントエンドのビルド    |
+| npm / pnpm  | パッケージ管理            |
+| Tauri CLI   | `cargo install tauri-cli` |
 
 ### Linux 追加パッケージ
 
