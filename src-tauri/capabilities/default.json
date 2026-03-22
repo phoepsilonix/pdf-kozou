@@ -5,6 +5,13 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "url": "https://github.com/**/*" },
+        { "url": "https://ghostscript.com/**/*" }
+      ]
+    },
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",

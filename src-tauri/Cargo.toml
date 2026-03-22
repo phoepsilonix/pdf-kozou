@@ -10,7 +10,7 @@ authors = ["Masato TOYOSHIMA <phoepsilonix@gmail.com>"]
 
 [lib]
 name       = "pdf_kozou_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["staticlib", "rlib"]
 
 [[bin]]
 name = "pdf-kozou"
@@ -38,6 +38,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # OS 標準の既知フォルダパス取得 (Linux=XDG, macOS=NSFileManager, Windows=SHGetKnownFolderPath)
 dirs = "5"
 which = "8"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56.0"
+
 
 # ── Linux デスクトップのみ ─────────────────────────────────────────────────────
 [target.'cfg(target_os = "linux")'.dependencies]

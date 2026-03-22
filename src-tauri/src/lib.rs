@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
 // src-tauri/src/lib.rs
 mod commands;
 mod error;
@@ -69,7 +73,6 @@ pub fn run() {
             gs_detector::check_ghostscript_installed,
             gs_detector::find_gs_executable,
             gs::run_gs_optimize,
-            gs::run_gs_preview,
         ])
         .setup(|app| {
             // ── 起動時引数からPDFファイルパスを取得してフロントに渡す ──────────

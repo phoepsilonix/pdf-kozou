@@ -1,3 +1,8 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
+
 // src/pages/CompressPage.tsx
 // フロー（単体）: プリセット選択 → プレビュー実行 → 結果確認 → [圧縮保存 / 圧縮せず保存]
 // フロー（バッチ）: プリセット選択 → 出力フォルダ選択 → 全件処理 → 結果
@@ -104,7 +109,14 @@ const GS_PRESETS: {
 ];
 
 export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles }: Props) {
-  const { setError } = usePdfStore();
+  const {
+    setError,
+    gsAvailable,
+    setGsAvailable,
+    activeCompressMode,
+    setActiveCompressMode,
+    useGsPreference,
+  } = usePdfStore();
   const { pickSave } = useSaveDialog();
 
   const [currentSource, setCurrentSource] = useState(sourceFile ?? filePath);
@@ -132,9 +144,14 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
   // --- GS追加用 ---
   const [gsPath, setGsPath] = useState<string | null>(null);
-  const [useGs, setUseGs] = useState(false);
-  const [gsAvailable, setGsAvailable] = useState(false);
   const [gsPreset, setGsPreset] = useState<"Prepress" | "Printer" | "Ebook">("Printer");
+  const [useGs, setUseGs] = useState(useGsPreference && gsAvailable);
+
+  useEffect(() => {
+    if (useGsPreference && gsAvailable) {
+      setUseGs(true);
+    }
+  }, [gsAvailable, useGsPreference]);
 
   useEffect(() => {
     invoke<string | null>("find_gs_executable")
@@ -190,6 +207,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         }
 
         setResult({
+          ok: true,
           input_bytes: inSize,
           output_bytes: outSize,
           ratio: outSize / inSize,
@@ -352,8 +370,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
+      const out = `${outDir}/${f.filename.replace(/\.pdf$/i, "")}_compressed.pdf`;
       try {
-        const out = `${outDir}/${f.filename.replace(/\.pdf$/i, "")}_compressed.pdf`;
         let ratio = 0;
 
         if (useGs && gsPath) {
@@ -569,27 +587,36 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             </div>
             {result.warning && <div style={c.warnBox}>{result.warning}</div>}
 
-            <div
-              style={{
-                marginTop: 12,
-                padding: 12,
-                border: "1px dashed var(--c-accentBd)",
-                borderRadius: 8,
-                background: "var(--c-accentBg)11",
-              }}
-            >
+            {gsAvailable && (
               <div
-                style={{ fontSize: 11, color: "var(--c-accent)", fontWeight: 700, marginBottom: 6 }}
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  border: "1px dashed var(--c-accentBd)",
+                  borderRadius: 8,
+                  background: "var(--c-accentBg)11",
+                }}
               >
-                🔗 連続圧縮モード
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--c-accent)",
+                    fontWeight: 700,
+                    marginBottom: 6,
+                  }}
+                >
+                  🔗 連続圧縮モード
+                </div>
+                <button style={c.btnChain} onClick={handleChainNext}>
+                  {useGs
+                    ? "この結果を MuPDF でさらに最適化する"
+                    : "この結果を GS でさらに再構築する"}
+                </button>
+                <div style={{ fontSize: 10, color: "var(--c-textDim)", marginTop: 4 }}>
+                  ※ 現在の圧縮結果を「入力ファイル」として再セットします
+                </div>
               </div>
-              <button style={c.btnChain} onClick={handleChainNext}>
-                {useGs ? "この結果を MuPDF でさらに最適化する" : "この結果を GS でさらに再構築する"}
-              </button>
-              <div style={{ fontSize: 10, color: "var(--c-textDim)", marginTop: 4 }}>
-                ※ 現在の圧縮結果を「入力ファイル」として再セットします
-              </div>
-            </div>
+            )}
 
             <div style={c.saveChoiceBox}>
               <div style={c.saveChoiceBtns}>

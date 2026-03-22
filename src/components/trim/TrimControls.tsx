@@ -1,3 +1,8 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
+
 // src/components/trim/TrimControls.tsx
 // 余白指定パネル: 上下左右それぞれ「何mm削るか」を指定 + ページ範囲/抽出
 

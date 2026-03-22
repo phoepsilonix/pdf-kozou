@@ -1,4 +1,4 @@
-; webview2loader.nsh
+; install.nsh
 
 !macro NSIS_HOOK_POSTINSTALL
   ; both モードの選択結果（all または current）に合わせてコンテキストを切り替え

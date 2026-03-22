@@ -1,3 +1,8 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
+
 // src/App.tsx
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -8,6 +13,7 @@ import { MergePage } from "./pages/MergePage";
 import { RotatePage } from "./pages/RotatePage";
 import { ImageExportPage } from "./pages/ImageExportPage";
 import { ViewerPage } from "./pages/ViewerPage";
+import LicensePage from "./pages/LicensePage";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
@@ -45,7 +51,7 @@ function makeGlobalCss(t: typeof C) {
 `;
 }
 
-export type ToolId = "split" | "merge" | "trim" | "rotate" | "compress" | "image" | "viewer";
+export type ToolId = "split" | "merge" | "trim" | "rotate" | "compress" | "image" | "viewer" | "about";
 
 const TOOLS: {
   id: ToolId;
@@ -269,10 +275,30 @@ export default function App() {
       }}
       onDrop={handleDrop}
     >
-      <header style={s.header}>
-        <span style={s.logo}>
-          PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-        </span>
+<header style={s.header}>
+  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+    <span style={s.logo}>
+      PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
+    </span>
+    {/* Aboutボタンを追加 */}
+    <button 
+      onClick={() => setActiveTool("about")}
+      style={{
+        background: "var(--c-bgSub)",
+        border: "1px solid var(--c-border)",
+        borderRadius: "20px",
+        padding: "4px 12px",
+        fontSize: "12px",
+        color: "var(--c-textSub)",
+        cursor: "pointer",
+        marginTop: "10px"
+      }}
+    >
+      ℹ️ About
+    </button>
+  </div>
+
+
         <span style={s.tagline}>Rust(tauri) · MuPDF · オフライン完全動作</span>
         <div style={{ position: "absolute", top: 16, right: 20 }}>
           <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
@@ -478,7 +504,9 @@ function ToolShell({
           PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
         </button>
         <div style={sh.div} />
-        {isBatch ? (
+	{activeTool === "about" ? (
+          <span style={sh.batchLabel}>ℹ️ アプリについて</span>
+        ) : isBatch ? (
           <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
         ) : (
           <span style={sh.filename} title={filePath}>
@@ -524,6 +552,9 @@ function ToolShell({
         {activeTool === "viewer" && (
           <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
         )}
+	{activeTool === "about" && (
+          <LicensePage />
+         )}
       </div>
     </div>
   );

@@ -3297,7 +3297,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3319,12 +3319,13 @@ dependencies = [
  "wayland-protocols 0.31.2",
  "wayland-protocols-wlr 0.2.0",
  "which",
+ "winreg 0.56.0",
  "x11rb",
 ]
 
 [[package]]
 name = "pdf-kozou-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3339,7 +3340,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tracing",
  "uuid",
- "winreg 0.56.0",
 ]
 
 [[package]]

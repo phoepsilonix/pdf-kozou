@@ -1,3 +1,8 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
+
 // src/components/PageSelector.tsx — 共通ページ範囲指定コンポーネント
 // 対応表記: "1-3,5,7-", "odd", "even", "-5" (末尾から5ページ), "all"
 

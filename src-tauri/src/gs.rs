@@ -1,7 +1,13 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
 // pdf-kozou-core/src/gs.rs
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 
 //#[derive(Debug, Clone, Copy)]
 #[derive(Debug, Deserialize, Serialize)]
@@ -31,60 +37,33 @@ pub async fn run_gs_optimize(
     output: String,
     level: GsCompressionLevel,
 ) -> Result<String, String> {
-    let out = Command::new(&gs_path)
-        .args([
-            "-sDEVICE=pdfwrite",
-            "-dCompatibilityLevel=1.4",
-            &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
-            "-dNOPAUSE",
-            //           "-dQUIET",
-            "-dBATCH",
-            "-dEmbedAllFonts=true",
-            "-dSubsetFonts=true",
-            "-dColorConversionStrategy=/LeaveColorUnchanged",
-            &format!("-sOutputFile={}", &output),
-            &input,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(&gs_path);
+
+    cmd.args([
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.4",
+        &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
+        "-dNOPAUSE",
+        //           "-dQUIET",
+        "-dBATCH",
+        "-dEmbedAllFonts=true",
+        "-dSubsetFonts=true",
+        "-dColorConversionStrategy=/LeaveColorUnchanged",
+        &format!("-sOutputFile={}", &output),
+        &input,
+    ]);
+
+    #[cfg(target_os = "windows")]
+    {
+        // CREATE_NO_WINDOW フラグ (0x08000000)
+        cmd.creation_flags(0x08000000);
+    }
+
+    let out = cmd.output().map_err(|e| e.to_string())?;
 
     if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).to_string()) // 成功時のログを返す
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
-        Err(String::from_utf8_lossy(&out.stderr).to_string()) // 失敗時の詳細エラーを返す
-    }
-}
-
-// pdf-kozou-core/src/gs.rs
-
-#[tauri::command]
-pub async fn run_gs_preview(
-    gs_path: String,
-    input: String,
-    temp_output: String,
-    level: GsCompressionLevel,
-) -> Result<(), String> {
-    // プレビュー用なので、最初の1ページ目だけを処理対象にするオプションを追加
-    // -dFirstPage=1 -dLastPage=1 を加えると爆速になります
-    let status = Command::new(&gs_path)
-        .args([
-            "-sDEVICE=pdfwrite",
-            "-dFirstPage=1",
-            "-dLastPage=1",
-            "-dCompatibilityLevel=1.4",
-            &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
-            "-dNOPAUSE",
-            "-dQUIET",
-            "-dBATCH",
-            &format!("-sOutputFile={}", &temp_output),
-            &input,
-        ])
-        .status()
-        .map_err(|e| format!("Ghostscriptプレビューの起動に失敗しました: {}", e))?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err("Ghostscriptプレビューの生成に失敗しました".to_string())
+        Err(String::from_utf8_lossy(&out.stderr).to_string())
     }
 }

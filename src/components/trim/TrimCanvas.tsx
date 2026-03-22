@@ -1,3 +1,8 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
+
 // src/components/trim/TrimCanvas.tsx
 //
 // PDF ページ上でトリミング余白をマウスドラッグで指定する Canvas コンポーネント

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
 // src-tauri/src/commands/core.rs
 //
 // pdf-kozou-core sidecar を呼び出す Tauri コマンド群

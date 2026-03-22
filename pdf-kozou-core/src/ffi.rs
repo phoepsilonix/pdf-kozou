@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
 // pdf-kozou-core/src/ffi.rs
 use mupdf_sys;
 use mupdf_sys::fz_context;

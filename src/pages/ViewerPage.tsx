@@ -1,3 +1,8 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
+
 // src/pages/ViewerPage.tsx — キーボード・マウス拡張ビューワー
 import { useEffect, useState, useCallback, useRef } from "react";
 import { renderPage, getPdfInfo, type PdfInfo } from "../lib/tauri";

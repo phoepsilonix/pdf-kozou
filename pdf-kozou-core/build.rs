@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// -------------------------------------------------------------------------
+
 // build.rs — mupdf_safe.c をコンパイルして静的ライブラリにリンクする
 //
 // ヘッダバージョンの問題:
