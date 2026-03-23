@@ -14,9 +14,11 @@ import { RotatePage } from "./pages/RotatePage";
 import { ImageExportPage } from "./pages/ImageExportPage";
 import { ViewerPage } from "./pages/ViewerPage";
 import LicensePage from "./pages/LicensePage";
+
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
+
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
 import {
   C,
@@ -137,6 +139,13 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const ul = listen<string[]>("tauri://drag-drop", (e) => handleAddPaths(e.payload.paths));
+    return () => {
+      ul.then((fn) => fn());
+    };
+  }, []);
+
   const handleAddPaths = useCallback(
     async (paths: string[]) => {
       for (const path of paths) {
@@ -229,6 +238,32 @@ export default function App() {
   const selBytes = sel.reduce((s, f) => s + f.sizeBytes, 0);
 
   const { filePath, pdfInfo } = usePdfStore();
+
+  useEffect(() => {
+    const syncSelectedFileInfo = async () => {
+      // 選択されている最初のファイルを取得
+      const firstSelected = fileList.find((f) => f.selected);
+
+      if (firstSelected) {
+        // すでにロード済みのファイルと同じなら何もしない
+        if (firstSelected.path === filePath) return;
+
+        try {
+          const info = await getPdfInfo(firstSelected.path);
+          setFile(firstSelected.path, info);
+        } catch (e) {
+          console.error("Failed to sync PDF info:", e);
+          // 必要に応じて setError(`${firstSelected.filename}: ${e}`);
+        }
+      } else if (fileList.length > 0 && !filePath) {
+        // 何も選択されていないが、リストにファイルがある場合の初期ロード（任意）
+        // 1番目のファイルを暫定的にロードしておくならここ
+      }
+    };
+
+    syncSelectedFileInfo();
+  }, [fileList, filePath, setFile]);
+
   console.log("App: filePath, pdfInfo", filePath, pdfInfo);
 
   if (activeTool) {
@@ -706,7 +741,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: 16,
     border: `2px dashed var(--c-accent)`,
-    pointerEvents: "none",
+    pointerEvents: "auto",
   },
   dragIcon: { fontSize: 56, color: "var(--c-accent)" },
   dragText: { fontSize: 20, fontWeight: 600, color: "var(--c-accent)" },

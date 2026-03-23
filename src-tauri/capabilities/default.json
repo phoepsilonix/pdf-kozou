@@ -3,19 +3,25 @@
   "identifier": "default",
   "description": "PDF小僧のデフォルト権限",
   "windows": ["main"],
+  "platforms": ["windows", "linux", "macOS"],
   "permissions": [
     "core:default",
+    "core:webview:allow-set-webview-zoom",
     {
       "identifier": "shell:allow-open",
       "allow": [
         { "url": "https://github.com/**/*" },
-        { "url": "https://ghostscript.com/**/*" }
+        { "url": "https://ghostscript.com/**/*" },
+        { "url": "https://localhost:*/**/*" },
+        { "url": "https://asset.localhost:*/**/*" }
       ]
     },
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
+    "shell:default",
+    "process:default",
     "fs:default",
     "fs:allow-read-file",
     "fs:allow-write-file",
@@ -24,7 +30,8 @@
     "fs:allow-exists",
     "fs:allow-remove",
     "fs:allow-rename",
-    "shell:default",
-    "process:default"
+    "fs:read-files",
+    "fs:read-dirs"
   ]
 }
+

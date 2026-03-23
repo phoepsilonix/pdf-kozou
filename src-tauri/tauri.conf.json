@@ -25,7 +25,13 @@
       }
     ],
     "security": {
-      "csp": null
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      },
+      "csp": "default-src 'self' asset: http://asset.localhost; img-src 'self' asset: data:; script-src 'self' 'unsafe-eval' blob:;"
     }
   },
   "bundle": {
@@ -40,6 +46,9 @@
       "icons/icon.icns",
       "icons/icon.ico",
       "icons/icon.png"
+    ],
+    "resources": [
+      "../public/**/*"
     ],
     "fileAssociations": [
       {

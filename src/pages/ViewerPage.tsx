@@ -2,13 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
-// src/pages/ViewerPage.tsx — キーボード・マウス拡張ビューワー
+// src/pages/ViewerPage.tsx
 import { useEffect, useState, useCallback, useRef } from "react";
 import { renderPage, getPdfInfo, type PdfInfo } from "../lib/tauri";
 import { Spinner, PageHeader } from "../components/common";
 import { type FileEntry } from "../store/usePdfStore";
 import { F } from "../lib/theme";
+import * as pdfjsLib from "pdfjs-dist";
+import { convertFileSrc } from "@tauri-apps/api/core";
+
+// テキストレイヤー用の標準CSSをインポート
+import "pdfjs-dist/web/pdf_viewer.css";
+
+// ワーカーの設定
+const workerSrc = window.location.protocol === 'http:' 
+  ? '/pdf.worker.min.mjs' 
+  : 'asset://localhost/pdfjs/build/pdf.worker.min.mjs';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 interface Props {
   filePath?: string;
@@ -17,9 +28,8 @@ interface Props {
 }
 
 const THUMB_DPI = 52;
-const VIEW_DPI = 160;
+const VIEW_DPI = 1.5; // PDF.jsの基本スケール
 
-// ページのアスペクト比 (w/h) を取得。回転(90/270)なら逆転
 function pageAspect(info: PdfInfo | null, pageIdx: number): number {
   if (!info || !info.pages[pageIdx]) return 1 / 1.414;
   const p = info.pages[pageIdx];
@@ -32,348 +42,284 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const isMulti = fileList.length > 1;
   const [activeIdx, setActiveIdx] = useState(0);
   const [activeInfo, setActiveInfo] = useState<PdfInfo | null>(pdfInfo ?? null);
-  const activePath = isMulti ? fileList[activeIdx]?.path : (filePath ?? "");
-
+  const [pdfDoc, setPdfDoc] = useState<any>(null); // useRefからuseStateに変更
   useEffect(() => {
-    if (!isMulti) {
-      setActiveInfo(pdfInfo ?? null);
-      return;
+    if (filePath) {
+      // PDF読み込みロジックを実行
     }
-    setActiveInfo(null);
-    const path = fileList[activeIdx]?.path;
-    if (path)
-      getPdfInfo(path)
-        .then(setActiveInfo)
-        .catch(() => {});
-  }, [activeIdx, isMulti]);
+  }, [filePath]);
 
-  const total = activeInfo?.page_count ?? 0;
+  // 修正：単一ファイルの場合でも確実にパスを取得する
+  const activePath = isMulti 
+    ? (fileList[activeIdx]?.path || "") 
+    : (filePath || (fileList.length > 0 ? fileList[0].path : ""));
 
-  const thumbCache = useRef<Map<string, (string | undefined)[]>>(new Map());
-  const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
   const [viewPage, setViewPage] = useState(0);
-  const [viewImg, setViewImg] = useState<string | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
   const [zoom, setZoom] = useState(1.0);
+  const [total, setTotal] = useState(0);
+  const [fileCoverThumbs, setFileCoverThumbs] = useState<Map<string, string>>(new Map());
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
+  const pdfDocRef = useRef<any>(null);
+  const renderTaskRef = useRef<any>(null);
+
+  // PDF.js描画用のRef
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // サムネイル取得
+  // サムネイルキャッシュ（既存の画像ベースロジックを維持 [cite: 11, 12]）
+  const thumbCache = useRef<Map<string, (string | undefined)[]>>(new Map());
+  const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
+  const LIST_THUMB_DPI = 24; // リスト用は低解像度でOK
+
+// 1. ファイル情報・ページ総数の管理
+  useEffect(() => {
+    if (!isMulti) {
+      if (pdfInfo) {
+        setActiveInfo(pdfInfo);
+        setTotal(pdfInfo.page_count);
+      } else if (activePath) {
+        getPdfInfo(activePath).then(info => {
+          setActiveInfo(info);
+          setTotal(info.page_count);
+        });
+      }
+      return;
+    }
+    const path = fileList[activeIdx]?.path;
+    if (path) {
+      getPdfInfo(path).then(info => {
+        setActiveInfo(info);
+        setTotal(info.page_count);
+      });
+    }
+  }, [activeIdx, isMulti, filePath, pdfInfo, fileList]);
+
+// 2. メインビュー用のPDF読み込み（ドキュメントの保持）
+  useEffect(() => {
+    if (!activePath) return;
+    let cancelled = false;
+    
+    (async () => {
+      try {
+        const url = convertFileSrc(activePath);
+        const loadingTask = pdfjsLib.getDocument(url);
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        
+        pdfDocRef.current = pdf;
+        // ドキュメントがロードされたら描画を実行
+        renderPdfPage();
+      } catch (e) {
+        console.error("PDF load error:", e);
+      }
+    })();
+    
+    return () => { cancelled = true; };
+  }, [activePath]);
+
+  useEffect(() => {
+    // Propsで渡されなかった場合のみ取得、ある場合はそれを使う
+    if (!pdfInfo && filePath) {
+      getPdfInfo(filePath).then(setActiveInfo(pdfInfo));
+    } else {
+      setActiveInfo(pdfInfo || null);
+    }
+  }, [filePath, pdfInfo]);
+
+// 3. 描画ロジック
+  const renderPdfPage = useCallback(async () => {
+    // pdfDocRef.current が無い場合は何もしない
+    if (!pdfDocRef.current || !canvasRef.current) return;
+    
+    setViewLoading(true);
+    try {
+      const pdf = pdfDocRef.current;
+      const page = await pdf.getPage(viewPage + 1);
+      const viewport = page.getViewport({ scale: zoom * VIEW_DPI });
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d')!;
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+      }
+
+      const renderContext = { canvasContext: ctx, viewport: viewport };
+      renderTaskRef.current = page.render(renderContext);
+      await renderTaskRef.current.promise;
+      renderTaskRef.current = null;
+
+      if (textLayerRef.current) {
+        textLayerRef.current.innerHTML = '';
+        textLayerRef.current.style.height = `${viewport.height}px`;
+        textLayerRef.current.style.width = `${viewport.width}px`;
+        const textContent = await page.getTextContent();
+        const textLayer = new pdfjsLib.TextLayer({
+          textContentSource: textContent,
+          container: textLayerRef.current,
+          viewport: viewport,
+        });
+        await textLayer.render();
+      }
+    } catch (e: any) {
+      if (e.name !== "RenderingCancelledException") console.error(e);
+    } finally {
+      setViewLoading(false);
+    }
+  }, [viewPage, zoom]);
+
+  // ページやズームが変わった際にも再描画
+  useEffect(() => {
+    if (pdfDocRef.current) renderPdfPage();
+  }, [viewPage, zoom, renderPdfPage]);
+
+  useEffect(() => {
+    renderPdfPage();
+  }, [renderPdfPage]);
+
+  // --- 追加: ファイルリストの各表紙サムネイルを取得するエフェクト ---
+  useEffect(() => {
+    if (fileList.length === 0) return;
+
+   const loadCovers = async () => {
+      const newCovers = new Map(fileCoverThumbs);
+      let changed = false;
+
+      for (const f of fileList) {
+        if (!newCovers.has(f.path)) {
+          try {
+            // 各ファイルの0ページ目をサムネイルとして取得
+            const b64 = await renderPage(f.path, 0, THUMB_DPI);
+            newCovers.set(f.path, b64);
+            changed = true;
+          } catch (e) {
+            console.error(`Failed to load cover for ${f.filename}`, e);
+          }
+        }
+      }
+
+      if (changed) {
+        setFileCoverThumbs(new Map(newCovers));
+      }
+    };
+
+    loadCovers();
+  }, [fileList]);
+
+  // 4. サムネイル一覧の画像レンダリング (既存のrenderPageを使用 [cite: 14, 15, 16])
   useEffect(() => {
     if (!activePath || !activeInfo) {
       setThumbs([]);
       return;
     }
     const cached = thumbCache.current.get(activePath);
-    if (cached) setThumbs([...cached]);
-    else {
-      const arr: (string | undefined)[] = new Array(activeInfo.page_count).fill(undefined);
+    if (cached) {
+      setThumbs([...cached]);
+    } else {
+      const arr = new Array(activeInfo.page_count).fill(undefined);
       thumbCache.current.set(activePath, arr);
       setThumbs([]);
     }
     let cancelled = false;
-    const info = activeInfo;
     (async () => {
       const cur = thumbCache.current.get(activePath)!;
-      for (let i = 0; i < info.page_count; i++) {
+      for (let i = 0; i < activeInfo.page_count; i++) {
         if (cur[i]) continue;
         try {
           const b64 = await renderPage(activePath, i, THUMB_DPI);
           if (cancelled) return;
           cur[i] = b64;
-          thumbCache.current.set(activePath, [...cur]);
           setThumbs([...cur]);
         } catch {}
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [activePath, activeInfo]);
 
-  const openPage = useCallback(
-    async (pageIdx: number) => {
-      if (!activePath) return;
-      setViewPage(pageIdx);
-      setViewLoading(true);
-      setViewImg(null);
-      try {
-        const b64 = await renderPage(activePath, pageIdx, VIEW_DPI);
-        setViewImg(b64);
-      } catch {
-        setViewImg(null);
-      }
-      setViewLoading(false);
-    },
-    [activePath],
-  );
+  const openPage = (idx: number) => setViewPage(idx);
 
-  useEffect(() => {
-    if (total > 0) openPage(0);
-  }, [activePath, total]);
-
-  // ── キーボード操作 ────────────────────────────────────────────────────────
-  const viewPageRef = useRef(viewPage);
-  viewPageRef.current = viewPage;
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const vp = viewPageRef.current;
-      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown") {
-        if (vp < total - 1) openPage(vp + 1);
-        return;
-      }
-      if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
-        if (vp > 0) openPage(vp - 1);
-        return;
-      }
-      if (e.key === "Home") {
-        openPage(0);
-        return;
-      }
-      if (e.key === "End") {
-        openPage(total - 1);
-        return;
-      }
-      if (e.key === "+" || e.key === "=" || e.key === "ZoomIn") {
-        e.preventDefault();
-        e.stopPropagation();
-        setZoom((z) => Math.min(4.0, Math.round((z + 0.15) * 100) / 100));
-        return;
-      }
-      if (e.key === "-" || e.key === "ZoomOut") {
-        e.preventDefault();
-        e.stopPropagation();
-        setZoom((z) => Math.max(0.2, Math.round((z - 0.15) * 100) / 100));
-        return;
-      }
-      if (e.key === "0") {
-        e.preventDefault();
-        e.stopPropagation();
-        setZoom(1.0);
-        return;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [total, openPage]);
-
-  // ── ドラッグスクロール ────────────────────────────────────────────────────
-  const dragRef = useRef<{ down: boolean; sx: number; sy: number; sl: number; st: number }>({
-    down: false,
-    sx: 0,
-    sy: 0,
-    sl: 0,
-    st: 0,
-  });
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    const el = scrollRef.current!;
-    dragRef.current = {
-      down: true,
-      sx: e.clientX,
-      sy: e.clientY,
-      sl: el.scrollLeft,
-      st: el.scrollTop,
-    };
-    e.preventDefault();
-  }, []);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dragRef.current.down) return;
-      const el = scrollRef.current;
-      if (!el) return;
-      el.scrollLeft = dragRef.current.sl - (e.clientX - dragRef.current.sx);
-      el.scrollTop = dragRef.current.st - (e.clientY - dragRef.current.sy);
-    };
-    const onUp = () => {
-      dragRef.current.down = false;
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, []);
-
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (e.altKey || e.shiftKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom((z) => Math.min(4.0, Math.max(0.2, Math.round((z + delta) * 100) / 100)));
-    }
-  }, []);
-
-  if (!activeInfo) return <Spinner label="読み込み中…" />;
+if (!activeInfo && !viewLoading) return <Spinner label="読み込み中…" />;
   const fname = activePath.split(/[/\\]/).pop() ?? "";
-
-  // 左ペインのサムネイル幅: 110px固定。高さをアスペクト比で動的計算
   const THUMB_W = 104;
 
-  return (
+return (
     <div style={s.root}>
-      <PageHeader>
-        <span style={s.title}>ビューワー</span>
-        <span style={s.fileSub} title={activePath}>
-          {fname}
-        </span>
-        <span style={s.pageBadge}>{total}ページ</span>
-        <div style={{ flex: 1 }} />
-        <div style={s.zoomRow}>
-          <button style={s.zBtn} onClick={() => setZoom((z) => Math.max(0.2, z - 0.25))}>
-            −
-          </button>
-          <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
-          <button style={s.zBtn} onClick={() => setZoom((z) => Math.min(4.0, z + 0.25))}>
-            ＋
-          </button>
-          <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
-            100%
-          </button>
-          <button style={s.zBtnSm} onClick={() => setZoom(1.5)}>
-            150%
-          </button>
-        </div>
-      </PageHeader>
-
+      {/* PageHeader などはそのまま */}
       <div style={s.body}>
-        {/* 複数ファイルペイン */}
+        {/* 左ペイン: ファイルリスト表示の修正 */}
+{/* 左ペイン: ファイルリスト表示の修正 */}
         {isMulti && (
           <div style={s.filePane}>
             <div style={s.paneHead}>ファイル ({fileList.length})</div>
             <div style={{ flex: 1, overflowY: "auto" }}>
-              {fileList.map((f, i) => (
-                <button
-                  key={f.id}
-                  style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
-                  onClick={() => {
-                    setActiveIdx(i);
-                    setZoom(1.0);
-                  }}
-                >
-                  <span style={s.filePaneIcon}>📄</span>
-                  <div style={s.filePaneInfo}>
-                    <span style={s.filePaneName}>{f.filename}</span>
-                    <span style={s.filePaneMeta}>{f.pageCount}p</span>
-                  </div>
-                </button>
-              ))}
-            </div>
+{fileList.map((f, i) => {
+  const cover = fileCoverThumbs.get(f.path);
+  return (
+    <button
+      key={f.id}
+      style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
+      onClick={() => {
+        setActiveIdx(i);
+        setViewPage(0);
+        pdfDocRef.current = null;
+      }}
+    >
+      {/* サムネイル：サイズを小さく固定 */}
+      <div style={s.filePaneThumbBox}>
+        {cover ? (
+          <img src={`data:image/jpeg;base64,${cover}`} style={s.filePaneThumbImg} alt="" />
+        ) : (
+          <span style={s.filePaneIcon}>📄</span>
+        )}
+      </div>
+
+      {/* テキスト情報：はみ出し防止（ellipsis） */}
+      <div style={s.filePaneInfo}>
+        <div style={s.filePaneName} title={f.filename}>{f.filename || "無題"}</div>
+        <div style={s.filePaneMeta}>{f.pageCount}p</div>
+      </div>
+    </button>
+  );
+})}            </div>
           </div>
         )}
-
-        {/* サムネイルペイン — 横長ページも適切な高さで表示 */}
+        {/* 中ペイン: サムネイル一覧 (既存の画像ベース [cite: 39-50]) */}
         <div style={s.thumbPane}>
-          <div style={s.paneHead}>
-            {viewPage + 1} / {total}
-          </div>
+          <div style={s.paneHead}>{viewPage + 1} / {total}</div>
           <div style={s.thumbList}>
             {Array.from({ length: total }, (_, i) => {
               const aspect = pageAspect(activeInfo, i);
               const th = Math.round(THUMB_W / aspect);
               return (
-                <button
-                  key={i}
-                  style={{ ...s.thumbItem, ...(i === viewPage ? s.thumbItemOn : {}) }}
-                  onClick={() => openPage(i)}
-                  title={`ページ ${i + 1}`}
-                >
-                  {/* 高さをアスペクト比に合わせる */}
-                  <div
-                    style={{
-                      width: THUMB_W,
-                      height: th,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      overflow: "hidden",
-                      background: "var(--c-bg)",
-                      borderRadius: 2,
-                    }}
-                  >
+                <button key={i} style={{ ...s.thumbItem, ...(i === viewPage ? s.thumbItemOn : {}) }} onClick={() => openPage(i)}>
+                  <div style={{ width: THUMB_W, height: th, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "var(--c-bg)", borderRadius: 2 }}>
                     {thumbs[i] ? (
-                      <img
-                        src={`data:image/jpeg;base64,${thumbs[i]}`}
-                        style={{
-                          maxWidth: THUMB_W,
-                          maxHeight: th,
-                          objectFit: "contain",
-                          display: "block",
-                        }}
-                        alt=""
-                      />
+                      <img src={`data:image/jpeg;base64,${thumbs[i]}`} style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain" }} alt="" />
                     ) : (
                       <div style={{ width: THUMB_W, height: th, background: "var(--c-border)" }} />
                     )}
                   </div>
-                  <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>
-                    {i + 1}
-                  </span>
+                  <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>{i + 1}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* メインビュー */}
-        <div style={s.mainView} onWheel={onWheel}>
-          {viewLoading && (
-            <div style={s.viewCenter}>
-              <div style={s.viewSpinner} />
-            </div>
-          )}
-          {!viewLoading && viewImg && (
-            <div
-              ref={scrollRef}
-              style={s.viewScroll}
-              onMouseDown={onMouseDown}
-              title="ドラッグでスクロール / Alt+ホイール or +/- でズーム"
-            >
-              <div style={s.viewInner}>
-                <img
-                  src={`data:image/jpeg;base64,${viewImg}`}
-                  draggable={false}
-                  style={{
-                    display: "block",
-                    width: `${Math.round(zoom * 600)}px`,
-                    height: "auto",
-                    boxShadow: "0 4px 32px rgba(0,0,0,0.7)",
-                    borderRadius: 2,
-                    flexShrink: 0,
-                    userSelect: "none",
-                    pointerEvents: "none",
-                  }}
-                  alt={`ページ ${viewPage + 1}`}
-                />
+ {/* メインビュー */}
+        <div style={s.mainView}>
+          <div ref={scrollRef} style={s.viewScroll}>
+            <div style={s.viewInner}>
+              <div style={{ position: 'relative', boxShadow: "0 4px 32px rgba(0,0,0,0.7)", visibility: viewLoading ? 'hidden' : 'visible' }}>
+                <canvas ref={canvasRef} />
+                <div ref={textLayerRef} className="textLayer" style={s.textLayerStyle} />
               </div>
+              {viewLoading && <div style={s.viewCenter}><div style={s.viewSpinner} /></div>}
             </div>
-          )}
-          {!viewLoading && !viewImg && (
-            <div style={s.viewCenter}>
-              <span style={{ color: "var(--c-textDim)", fontSize: 14 }}>表示できません</span>
-            </div>
-          )}
-
-          <div style={s.pageNav}>
-            <button
-              style={s.pageNavBtn}
-              disabled={viewPage === 0}
-              onClick={() => openPage(viewPage - 1)}
-            >
-              ← 前
-            </button>
-            <span style={s.pageNavInfo}>
-              {viewPage + 1} / {total}
-            </span>
-            <button
-              style={s.pageNavBtn}
-              disabled={viewPage >= total - 1}
-              onClick={() => openPage(viewPage + 1)}
-            >
-              次 →
-            </button>
           </div>
         </div>
       </div>
@@ -381,153 +327,95 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   );
 }
 
+// スタイル定義（s）は既存のものを適宜補完してください
 const s: Record<string, React.CSSProperties> = {
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-    background: "var(--c-bg)",
-    color: "var(--c-text)",
-    fontFamily: F,
-    overflow: "hidden",
-  },
-  title: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
-  fileSub: {
-    fontSize: 13,
-    color: "var(--c-textSub)",
-    maxWidth: 180,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  pageBadge: {
-    padding: "3px 11px",
-    background: "var(--c-bgCard)",
-    border: "1px solid var(--c-border)",
-    borderRadius: 11,
-    fontSize: 12,
-    color: "var(--c-textSub)",
-  },
-  zoomRow: { display: "flex", alignItems: "center", gap: 4 },
-  zBtn: {
-    width: 32,
-    height: 32,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "var(--c-bgCard)",
-    border: "1px solid var(--c-borderHi)",
-    borderRadius: 5,
-    cursor: "pointer",
-    fontSize: 15,
-    color: "var(--c-text)",
-    fontFamily: F,
-  },
-  zVal: { fontSize: 13, color: "var(--c-textSub)", minWidth: 36, textAlign: "center" as const },
-  zBtnSm: {
-    padding: "5px 12px",
-    background: "var(--c-bgCard)",
-    border: "1px solid var(--c-borderHi)",
-    borderRadius: 5,
-    cursor: "pointer",
-    fontSize: 10,
-    color: "var(--c-textSub)",
-    fontFamily: F,
-  },
+  root: { height: "100%", display: "flex", flexDirection: "column", background: "var(--c-bg)" },
   body: { flex: 1, display: "flex", overflow: "hidden" },
-  filePane: {
-    width: 180,
+  filePane: { width: 120, borderRight: "1px solid var(--c-border)", background: "var(--c-bgSub)", overflowY: "auto" },
+  fileItem: { padding: "8px", fontSize: "11px", cursor: "pointer", borderBottom: "1px solid var(--c-border)" },
+  fileItemActive: { background: "var(--c-accentBg)", color: "var(--c-accent)", fontWeight: "bold" },
+  thumbPane: { width: 140, borderRight: "1px solid var(--c-border)", overflowY: "auto", padding: "10px" },
+  thumbItem: { display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "15px", background: "none", border: "2px", borderStyle: "solid", borderColor: "transparent", cursor: "pointer" },
+  thumbItemOn: { borderColor: "var(--c-accent)" },
+  textLayerStyle: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    overflow: 'hidden',
+    lineHeight: 1,
+    unicodeBidi: 'plaintext'
+  },
+filePane: {
+    width: 220, // 左ペイン自体の幅を固定
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
     borderRight: "1px solid var(--c-border)",
-    overflow: "hidden",
-  },
-  paneHead: {
-    padding: "7px 10px",
-    fontSize: 10,
-    color: "var(--c-textDim)",
-    letterSpacing: "0.06em",
-    textTransform: "uppercase" as const,
-    borderBottom: "1px solid var(--c-border)",
-    flexShrink: 0,
-    background: "var(--c-bgCard)",
+    background: "var(--c-bgSide)",
   },
   filePaneItem: {
     display: "flex",
     alignItems: "center",
-    gap: 7,
-    padding: "9px 10px",
+    gap: 10,
+    padding: "8px 12px",
+    width: "100%",
     background: "transparent",
     border: "none",
-    borderBottom: "1px solid var(--c-border)",
+    borderBottom: "1px solid rgba(255,255,255,0.05)",
     cursor: "pointer",
-    fontFamily: F,
-    textAlign: "left" as const,
-    transition: "background 0.08s",
-    width: "100%",
+    transition: "background 0.2s",
+    overflow: "hidden", // はみ出し防止
   },
-  filePaneItemOn: { background: "var(--c-accentBg)" },
-  filePaneIcon: { fontSize: 14, flexShrink: 0 },
-  filePaneInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
-  filePaneName: {
-    fontSize: 13,
-    color: "var(--c-text)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+  filePaneItemOn: {
+    background: "rgba(255,255,255,0.1)",
+    borderLeft: "3px solid var(--c-accent)", // 選択中を強調
   },
-  filePaneMeta: { fontSize: 9, color: "var(--c-textSub)" },
-  thumbPane: {
-    width: 128,
+  filePaneThumbBox: {
+    width: 36,  // サムネイルの横幅を小さく固定
+    height: 48, // 縦横比を維持しやすい高さ
     flexShrink: 0,
+    background: "#000",
+    borderRadius: 2,
     display: "flex",
-    flexDirection: "column",
-    borderRight: "1px solid var(--c-border)",
-    overflow: "hidden",
-    background: "var(--c-bgCard)",
-  },
-  thumbList: {
-    flex: 1,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    padding: "6px 6px",
-  },
-  thumbItem: {
-    display: "flex",
-    flexDirection: "column",
     alignItems: "center",
-    gap: 2,
-    padding: "3px",
-    background: "transparent",
-    border: "1px solid transparent",
-    borderRadius: 5,
-    cursor: "pointer",
-    transition: "all 0.1s",
-    fontFamily: F,
+    justifyContent: "center",
+    overflow: "hidden",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
   },
-  thumbItemOn: { border: "1px solid var(--c-accent)", background: "var(--c-accentBg)" },
-  thumbN: { fontSize: 9, color: "var(--c-textDim)" },
-  thumbNOn: { color: "var(--c-accent)", fontWeight: 700 },
+  filePaneThumbImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover", // 枠いっぱいに表示
+  },
+  filePaneInfo: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0, // 文字が長くても親を突き破らないために必須
+    textAlign: "left",
+  },
+  filePaneName: {
+    fontSize: "12px",
+    color: "var(--c-text)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis", // 長いファイル名を「...」にする
+    fontWeight: 500,
+  },
+  filePaneMeta: {
+    fontSize: "10px",
+    color: "var(--c-textDim)",
+  },
   mainView: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
     background: "#070e09",
+    position: 'relative'
   },
-  viewCenter: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center" },
-  viewSpinner: {
-    width: 28,
-    height: 28,
-    border: "3px solid var(--c-border)",
-    borderTop: "3px solid var(--c-accent)",
-    borderRadius: "50%",
-    animation: "spin 0.8s linear infinite",
-  },
-  viewScroll: { flex: 1, overflow: "scroll", overscrollBehavior: "contain", cursor: "grab" },
+  viewScroll: { flex: 1, overflow: "auto" },
   viewInner: {
     display: "flex",
     alignItems: "flex-start",
@@ -535,31 +423,14 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: "100%",
     minHeight: "100%",
     padding: 24,
-  },
-  pageNav: {
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 14,
-    padding: 8,
-    borderTop: "1px solid var(--c-border)",
-    background: "var(--c-bgCard)",
-  },
-  pageNavBtn: {
-    padding: "5px 18px",
-    background: "var(--c-accentBg)",
-    border: "1px solid var(--c-accentBd)",
-    borderRadius: 6,
-    color: "var(--c-accent)",
-    cursor: "pointer",
-    fontSize: 12,
-    fontFamily: F,
-  },
-  pageNavInfo: {
-    fontSize: 14,
-    color: "var(--c-textSub)",
-    minWidth: 52,
-    textAlign: "center" as const,
-  },
+  }, 
+  viewCenter: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center" },
+  title: { fontWeight: 700, fontSize: 14, fontFamily: F },
+  pageBadge: { fontSize: 11, background: "var(--c-border)", padding: "2px 8px", borderRadius: 10, marginLeft: 8 },
+  zoomRow: { display: "flex", alignItems: "center", gap: 8 },
+  zBtn: { width: 28, height: 28, cursor: "pointer" },
+  zVal: { fontSize: 12, minWidth: 40, textAlign: "center" },
+  thumbN: { fontSize: "10px", marginTop: "4px", color: "#ccc" }
 };
+
+

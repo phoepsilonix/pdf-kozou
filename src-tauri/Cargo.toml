@@ -1,6 +1,6 @@
 [package]
 name    = "pdf-kozou"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 description = "PDF小僧 - MuPDF ベース GUI(tauri) and CLI"
 license = "AGPL-3.0-only"   # または "AGPL-3.0"（SPDX準拠）
@@ -20,7 +20,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri                = { version = "2", features = [] }
+tauri                = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-fs      = "2"
 tauri-plugin-dialog  = "2"
 tauri-plugin-process = "2"
@@ -36,7 +36,7 @@ tracing    = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # OS 標準の既知フォルダパス取得 (Linux=XDG, macOS=NSFileManager, Windows=SHGetKnownFolderPath)
-dirs = "5"
+dirs = "6"
 which = "8"
 
 [target.'cfg(windows)'.dependencies]
@@ -45,16 +45,16 @@ winreg = "0.56.0"
 
 # ── Linux デスクトップのみ ─────────────────────────────────────────────────────
 [target.'cfg(target_os = "linux")'.dependencies]
-rfd     = { version = "0.14", default-features = false, features = ["gtk3"] }
+rfd     = { version = "0.17", default-features = false, features = ["gtk3"] }
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 x11rb   = { version = "0.13", features = ["allow-unsafe-code", "randr"] }
 wayland-client        = "0.31"
-wayland-protocols     = { version = "0.31", features = ["client"] }
-wayland-protocols-wlr = { version = "0.2",  features = ["client"] }
+wayland-protocols     = { version = "0.32", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3",  features = ["client"] }
 
 # ── Windows / macOS ───────────────────────────────────────────────────────────
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-rfd     = { version = "0.14" }
+rfd     = { version = "0.17" }
 arboard = { version = "3" }
 
 [profile.release]

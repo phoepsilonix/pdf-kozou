@@ -212,7 +212,9 @@ const LicensePage: React.FC = () => {
 
       <div style={s.footer}>
         © 2026 PDF Kozou Project.
-        Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
+        <br />
+        Copyright (C) 2026 Masato TOYOSHIMA {"<phoepsilonix at gmail dot com>"}
+        <br />
         SPDX-License-Identifier: AGPL-3.0-or-later
       </div>
     </div>
