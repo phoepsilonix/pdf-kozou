@@ -56,11 +56,3 @@ wayland-protocols-wlr = { version = "0.3",  features = ["client"] }
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 rfd     = { version = "0.17" }
 arboard = { version = "3" }
-
-[profile.release]
-panic         = "abort"
-codegen-units = 1
-lto           = true
-opt-level     = "s"
-strip         = true
-

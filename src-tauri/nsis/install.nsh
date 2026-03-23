@@ -12,6 +12,7 @@
   SetOutPath $INSTDIR
   File ..\..\pdf-kozou-core.exe
   File ..\..\WebView2Loader.dll
+
   DetailPrint "library installation complete to: $INSTDIR"
 !macroend
 
@@ -25,5 +26,6 @@
   ; インストールしたファイルを削除
   Delete "$INSTDIR\WebView2Loader.dll"
   Delete "$INSTDIR\pdf-kozou-core.exe"
+
   DetailPrint "library uninstallation complete to: $INSTDIR"
 !macroend

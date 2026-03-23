@@ -17,7 +17,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 // ワーカーの設定
 const workerSrc = window.location.protocol === 'http:' 
   ? '/pdf.worker.min.mjs' 
-  : 'asset://localhost/pdfjs/build/pdf.worker.min.mjs';
+  : 'asset://localhost/pdf.worker.min.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
@@ -122,7 +122,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   useEffect(() => {
     // Propsで渡されなかった場合のみ取得、ある場合はそれを使う
     if (!pdfInfo && filePath) {
-      getPdfInfo(filePath).then(setActiveInfo(pdfInfo));
+      getPdfInfo(filePath).then((info) => setActiveInfo(info));
     } else {
       setActiveInfo(pdfInfo || null);
     }
@@ -154,14 +154,37 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       renderTaskRef.current = null;
 
       if (textLayerRef.current) {
+        await page.getOperatorList();
+	let textContent: any = { items: [], styles: Object.create(null) };
+        //let textContent;
+	try {
+	  // 普通に呼ぶ
+	  textContent = await page.getTextContent();
+	} catch (e) {
+	  console.warn("Standard getTextContent failed, trying manual stream read:", e);
+	  
+	  // 手動でストリームを読み込むバックアップ処理
+	  const stream = page.streamTextContent();
+	  const reader = stream.getReader();
+	  //textContent = { items: [], styles: Object.create(null) };
+	  //textContent: any = { items: [], styles: Object.create(null) };
+	  
+	  while (true) {
+	    const { value, done } = await reader.read();
+	    if (done) break;
+	    if (value.items) textContent.items.push(...value.items);
+	    if (value.styles) Object.assign(textContent.styles, value.styles);
+	  }
+	}
         textLayerRef.current.innerHTML = '';
         textLayerRef.current.style.height = `${viewport.height}px`;
         textLayerRef.current.style.width = `${viewport.width}px`;
-        const textContent = await page.getTextContent();
+
         const textLayer = new pdfjsLib.TextLayer({
           textContentSource: textContent,
           container: textLayerRef.current,
           viewport: viewport,
+          //enhanceTextSelection: true, // テキスト選択を強化する
         });
         await textLayer.render();
       }
@@ -248,7 +271,30 @@ if (!activeInfo && !viewLoading) return <Spinner label="読み込み中…" />;
 
 return (
     <div style={s.root}>
-      {/* PageHeader などはそのまま */}
+      <PageHeader>
+        <span style={s.title}>ビューワー</span>
+        <span style={s.fileSub} title={activePath}>
+          {fname}
+        </span>
+        <span style={s.pageBadge}>{total}ページ</span>
+        <div style={{ flex: 1 }} />
+        <div style={s.zoomRow}>
+          <button style={s.zBtn} onClick={() => setZoom((z) => Math.max(0.2, z - 0.25))}>
+            −
+          </button>
+          <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
+          <button style={s.zBtn} onClick={() => setZoom((z) => Math.min(4.0, z + 0.25))}>
+            ＋
+          </button>
+          <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
+            100%
+          </button>
+          <button style={s.zBtnSm} onClick={() => setZoom(1.5)}>
+            150%
+          </button>
+        </div>
+      </PageHeader>
+
       <div style={s.body}>
         {/* 左ペイン: ファイルリスト表示の修正 */}
 {/* 左ペイン: ファイルリスト表示の修正 */}
@@ -331,21 +377,27 @@ return (
 const s: Record<string, React.CSSProperties> = {
   root: { height: "100%", display: "flex", flexDirection: "column", background: "var(--c-bg)" },
   body: { flex: 1, display: "flex", overflow: "hidden" },
-  filePane: { width: 120, borderRight: "1px solid var(--c-border)", background: "var(--c-bgSub)", overflowY: "auto" },
+  //filePane: { width: 120, borderRight: "1px solid var(--c-border)", background: "var(--c-bgSub)", overflowY: "auto" },
   fileItem: { padding: "8px", fontSize: "11px", cursor: "pointer", borderBottom: "1px solid var(--c-border)" },
   fileItemActive: { background: "var(--c-accentBg)", color: "var(--c-accent)", fontWeight: "bold" },
   thumbPane: { width: 140, borderRight: "1px solid var(--c-border)", overflowY: "auto", padding: "10px" },
   thumbItem: { display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "15px", background: "none", border: "2px", borderStyle: "solid", borderColor: "transparent", cursor: "pointer" },
   thumbItemOn: { borderColor: "var(--c-accent)" },
   textLayerStyle: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
-    overflow: 'hidden',
+    right: 0,
+    bottom: 0,
+    overflow: "hidden",
     lineHeight: 1,
+    opacity: 0.2, // デバッグ時は 0.5 くらいにすると文字の位置がズレていないか確認できます
+    mixBlendMode: "multiply",
+    pointerEvents: "auto",
+    zIndex: 2,
     unicodeBidi: 'plaintext'
   },
-filePane: {
+  filePane: {
     width: 220, // 左ペイン自体の幅を固定
     flexShrink: 0,
     display: "flex",

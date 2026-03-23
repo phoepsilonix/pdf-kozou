@@ -27,6 +27,7 @@ import {
 import { CompressPage } from "./CompressPage";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
+import { listen } from "@tauri-apps/api/event";
 
 interface PdfEntry {
   id: number;
@@ -110,14 +111,50 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
     if (paths.length) await loadPaths(paths);
   }, [loadPaths]);
+/*
+const handleDrop = useCallback(
+  async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDropOver(false);
+    dragCounter.current = 0;
 
+    // e.dataTransfer.files からパスを取り出す
+    const ps = Array.from(e.dataTransfer.files)
+      .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
+      .map((f) => (f as any).path as string) // Tauri環境ではこれで絶対パスが取れる
+      .filter(Boolean);
+
+    if (ps.length) loadPaths(ps);
+  },
+  [loadPaths]
+);*/
   // ── D&D 並べ替え ─────────────────────────────────────────────────────────
   const onDragStart = useCallback((id: number) => {
     setDragId(id);
   }, []);
+/*
   const onDragEnter = useCallback((id: number) => {
     setDragOverId(id);
-  }, []);
+  }, []);*/
+
+// 並べ替えロジックを「ライブ」に変更
+const onDragEnter = useCallback((id: number) => {
+  setDragOverId(id);
+  
+  // 掴んでいる要素と重なった要素が異なる場合、即座に入れ替える
+  if (dragId !== null && dragId !== id) {
+    setEntries((prev) => {
+      const a = [...prev];
+      const fi = a.findIndex((e) => e.id === dragId);
+      const ti = a.findIndex((e) => e.id === id);
+      if (fi < 0 || ti < 0) return prev;
+      const [item] = a.splice(fi, 1);
+      a.splice(ti, 0, item);
+      return a;
+    });
+  }
+}, [dragId]);
+
   const onDragEnd = useCallback(() => {
     if (dragId != null && dragOverId != null && dragId !== dragOverId) {
       setEntries((prev) => {
@@ -133,7 +170,18 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     setDragId(null);
     setDragOverId(null);
   }, [dragId, dragOverId]);
-
+/*
+// ファイル追加も Tauri のイベントで待ち受ける
+useEffect(() => {
+  const unlisten = listen<string[]>("tauri://drag-drop", (event) => {
+    if (Array.isArray(event.payload)) {
+      const ps = event.payload.filter(p => p.toLowerCase().endsWith(".pdf"));
+      if (ps.length) loadPaths(ps);
+    }
+  });
+  return () => { unlisten.then(f => f()); };
+}, [loadPaths]);
+*/
   const moveUp = (i: number) =>
     setEntries((p) => {
       if (i === 0) return p;
@@ -467,12 +515,17 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
                   key={entry.id}
                   draggable
                   onDragStart={(e) => {
+                    e.stopPropagation();
+                    e.dataTransfer.effectAllowed = "move";
                     e.dataTransfer.setData("mergeId", String(entry.id));
                     onDragStart(entry.id);
                   }}
                   onDragEnter={() => onDragEnter(entry.id)}
                   onDragEnd={onDragEnd}
-                  onDragOver={(e) => e.preventDefault()}
+onDragOver={(e) => {
+    e.preventDefault();
+    e.stopPropagation(); // App.tsx のリスナーまでイベントを届けない
+  }}
                   style={{
                     ...s.listItem,
                     ...(dragId === entry.id ? s.itemDragging : {}),
@@ -529,7 +582,11 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
 
               <div
                 style={{ ...s.addZone, ...(dropOver ? s.addZoneOn : {}) }}
-                onDragOver={(e) => e.preventDefault()}
+onDragOver={(e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect = "copy"; // コピー（追加）であることを示す
+}}
                 onDragEnter={(e) => {
                   e.preventDefault();
                   dragCounter.current++;
@@ -541,21 +598,33 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
                     dragCounter.current = 0;
                   }
                 }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDropOver(false);
-                  dragCounter.current = 0;
-                  const ps = Array.from(e.dataTransfer.files)
-                    .filter((f) => f.name.endsWith(".pdf"))
-                    .map((f) => (f as any).path as string)
-                    .filter(Boolean);
-                  if (ps.length) loadPaths(ps);
-                }}
-              >
+onDrop={(e) => {
+  e.preventDefault();
+  e.stopPropagation(); // イベントの伝播を止める
+  setDropOver(false);
+  dragCounter.current = 0;
+
+  // FileListを配列に変換
+  const files = Array.from(e.dataTransfer.files);
+  
+  const ps = files
+    .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
+    .map((f) => {
+      // Tauri環境下では、Fileオブジェクトに 'path' というプロパティが注入されています
+      return (f as any).path || (f as any).webkitRelativePath || "";
+    })
+    .filter((p) => p !== ""); // 空のパスを除外
+
+  if (ps.length) {
+    loadPaths(ps);
+  } else {
+    console.warn("No valid PDF paths found in drop event.");
+  }
+}}              >
                 <button style={s.btnAdd} onClick={pickFiles}>
                   ＋ PDFを追加
                 </button>
-                <span style={s.addHint}>ここにドロップしても追加できます</span>
+                {/*<span style={s.addHint}>ここにドロップしても追加できます</span>*/}
               </div>
             </div>
 

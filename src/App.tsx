@@ -18,6 +18,7 @@ import LicensePage from "./pages/LicensePage";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
+import pkg from "../package.json";
 
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
 import {
@@ -132,50 +133,50 @@ export default function App() {
     };
   }, [themeId]);
 
-  useEffect(() => {
-    const ul = listen<string[]>("open-pdf-files", (e) => handleAddPaths(e.payload));
-    return () => {
-      ul.then((fn) => fn());
-    };
-  }, []);
-
-  useEffect(() => {
-    const ul = listen<string[]>("tauri://drag-drop", (e) => handleAddPaths(e.payload.paths));
-    return () => {
-      ul.then((fn) => fn());
-    };
-  }, []);
-
-  const handleAddPaths = useCallback(
-    async (paths: string[]) => {
-      for (const path of paths) {
-        try {
-          const info = await getPdfInfo(path);
-          const stat = await invoke<{ size: number }>("get_file_stat", { path }).catch(() => ({
-            size: 0,
-          }));
-          addFiles([
-            {
-              path,
-              filename: path.split(/[/\\]/).pop() ?? path,
-              pageCount: info.page_count,
-              sizeBytes: stat.size,
-              selected: true,
-            },
-          ]);
-        } catch (e) {
-          setError(`${path.split(/[/\\]/).pop()}: ${e}`);
-        }
+const handleAddPaths = useCallback(
+  async (paths: string[]) => {
+    // PDFファイルのみに絞り込み
+    const pdfPaths = paths.filter(p => p.toLowerCase().endsWith('.pdf'));
+    
+    await Promise.all(pdfPaths.map(async (path) => {
+      try {
+        const info = await getPdfInfo(path);
+        const stat = await invoke<{ size: number }>("get_file_stat", { path }).catch(() => ({ size: 0 }));
+        
+        addFiles([{
+          path,
+          filename: path.split(/[/\\]/).pop() ?? path,
+          pageCount: info.page_count,
+          sizeBytes: stat.size,
+          selected: true,
+        }]);
+      } catch (e) {
+        setError(`${path.split(/[/\\]/).pop()}: ${e}`);
       }
-    },
-    [addFiles, setError],
-  );
+    }));
+  },
+  [addFiles, setError]
+);
+
+useEffect(() => {
+  let unlistenCustom: (() => void) | null = null;
+  const setupListeners = async () => {
+    unlistenCustom = await listen<string[]>("open-pdf-files", (event) => {
+      handleAddPaths(event.payload);
+    });
+  };
+  setupListeners();
+
+  return () => {
+    if (unlistenCustom) unlistenCustom();
+  };
+}, [handleAddPaths]);
 
   const handlePickFiles = useCallback(async () => {
     const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
     if (paths.length) await handleAddPaths(paths);
   }, [handleAddPaths]);
-
+/*
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
       e.preventDefault();
@@ -188,7 +189,7 @@ export default function App() {
       if (paths.length) await handleAddPaths(paths);
     },
     [handleAddPaths],
-  );
+  );*/
 
   const handleLaunchTool = useCallback(
     async (toolId: ToolId) => {
@@ -308,13 +309,13 @@ export default function App() {
           dragCounter.current = 0;
         }
       }}
-      onDrop={handleDrop}
     >
 <header style={s.header}>
   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+    <img src="/app-icon.svg" style={{ width: 48, height: 48, borderRadius: 10 }} alt="logo" />
     <span style={s.logo}>
       PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-    </span>
+　　</span>
     {/* Aboutボタンを追加 */}
     <button 
       onClick={() => setActiveTool("about")}
@@ -332,9 +333,8 @@ export default function App() {
       ℹ️ About
     </button>
   </div>
-
-
-        <span style={s.tagline}>Rust(tauri) · MuPDF · オフライン完全動作</span>
+        <span style={{ ...s.tagline, marginBottom: 8, opacity: 0.8 }}>v{pkg.version}</span>
+        <span style={s.tagline}>Rust with tauri · MuPDF · オフライン完全動作</span>
         <div style={{ position: "absolute", top: 16, right: 20 }}>
           <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
         </div>
@@ -343,12 +343,11 @@ export default function App() {
       <div style={s.listCard}>
         {fileList.length === 0 ? (
           <div style={s.emptyZone}>
-            <span style={s.emptyIcon}>⊕</span>
+{/*            <span style={s.emptyIcon}>⊕</span>
             <span style={s.emptyTitle}>PDFをドロップ、または追加</span>
-            <span style={s.emptySub}>複数ファイルを一度に追加できます</span>
+            <span style={s.emptySub}>複数ファイルを一度に追加できます</span>*/}
             <button style={s.btnAddBig} onClick={handlePickFiles}>
-              ファイルを選択…
-            </button>
+              ファイルを選択…</button>
           </div>
         ) : (
           <>
@@ -427,13 +426,13 @@ export default function App() {
           })}
         </div>
       )}
-
+{/*
       {dragOver && (
         <div style={s.dragOverlay}>
           <span style={s.dragIcon}>⊕</span>
           <span style={s.dragText}>PDFをドロップして追加</span>
         </div>
-      )}
+      )}*/}
       {lastError && <div style={s.error}>{lastError}</div>}
     </div>
   );
@@ -538,6 +537,9 @@ function ToolShell({
         <button style={sh.homeBtn} onClick={onHome}>
           PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
         </button>
+        <span style={{ color: "var(--c-text)", fontSize: 10, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}> v{pkg.version}</span>
+
+        <img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" />
         <div style={sh.div} />
 	{activeTool === "about" ? (
           <span style={sh.batchLabel}>ℹ️ アプリについて</span>
@@ -625,7 +627,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "var(--c-textDim)",
     letterSpacing: "0.12em",
-    textTransform: "uppercase",
+//    textTransform: "uppercase",
   },
   listCard: {
     width: "100%",
@@ -731,17 +733,17 @@ const s: Record<string, React.CSSProperties> = {
   toolIcon: { fontSize: 24 },
   toolLabel: { fontSize: 14, fontWeight: 700, color: "inherit" },
   toolDesc: { fontSize: 11, color: "var(--c-textSub)", textAlign: "center" as const },
-  dragOverlay: {
-    position: "absolute",
+dragOverlay: {
+    position: "fixed" as const, // fixedにすることで他の要素を動かさない
     inset: 0,
-    background: "rgba(12,20,14,0.88)",
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    border: "3px dashed var(--c-accent)",
+    zIndex: 9999,
     display: "flex",
-    flexDirection: "column",
+    flexDirection: "column" as const,
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
-    border: `2px dashed var(--c-accent)`,
-    pointerEvents: "auto",
+    pointerEvents: "none" as const, // これが重要！マウス操作を透過させる
   },
   dragIcon: { fontSize: 56, color: "var(--c-accent)" },
   dragText: { fontSize: 20, fontWeight: 600, color: "var(--c-accent)" },
@@ -849,6 +851,8 @@ const sh: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     color: "var(--c-text)",
     whiteSpace: "nowrap",
+    display: "flex",
+    alignItems: "center",
   },
   div: { width: 1, height: 20, background: "var(--c-border)", margin: "0 3px", flexShrink: 0 },
   filename: {

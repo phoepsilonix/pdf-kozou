@@ -21,6 +21,7 @@
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
+        "dragDropEnabled": false,
         "devtools": true
       }
     ],
@@ -46,9 +47,6 @@
       "icons/icon.icns",
       "icons/icon.ico",
       "icons/icon.png"
-    ],
-    "resources": [
-      "../public/**/*"
     ],
     "fileAssociations": [
       {
