@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PDF小僧",
+  "productName": "PDF Kozou",
   "version": "../package.json",
   "identifier": "love.phoepsilonix.pdf-kozou",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "PDF小僧",
+        "title": "PDF Kozou",
         "width": 1280,
         "height": 820,
         "minWidth": 980,
@@ -50,7 +50,7 @@
       {
         "ext": ["pdf"],
         "name": "PDF Document",
-        "description": "PDF小僧で開く",
+        "description": "Open with PDF Kozou",
         "mimeType": "application/pdf"
       }
     ],

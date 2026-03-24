@@ -295,6 +295,7 @@ export default function App() {
             encrypted: false,
             linearized: false,
             pages: [], // 空配列でOK（PageBounds[]）
+            metadata: {},
           }
         }
         onHome={handleHome}

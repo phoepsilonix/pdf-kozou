@@ -287,8 +287,8 @@ export async function exportImages(
     console.log("Res:ExportImages:", res);
     return res;
   } catch (e) {
-    console.log("Err: ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
-    return e;
+    console.error("Err: ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
+    throw e;
   }
 }
 

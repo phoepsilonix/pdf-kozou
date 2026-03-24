@@ -257,6 +257,7 @@ useEffect(() => {
         pdf_version: "1.4", // 仮値（マージ後のバージョンとして適当なものを）
         encrypted: false,
         linearized: false,
+        metadata: {},
         pages: Array.from({ length: res.page_count }, () => ({
           w: 595,
           h: 842,
