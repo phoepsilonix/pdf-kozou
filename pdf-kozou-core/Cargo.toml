@@ -1,6 +1,6 @@
 [package]
 name    = "pdf-kozou-core"
-version = "1.0.1"
+version = "1.0.3"
 edition = "2021"
 description = "PDF処理エンジン — MuPDF ベース CLI / sidecar"
 license = "AGPL-3.0-only"   # または "AGPL-3.0"（SPDX準拠）
@@ -47,9 +47,3 @@ clap = { version = "4", features = ["derive"] }
 # mupdf_safe.c のコンパイルに使う
 cc = "1"
 
-[profile.release]
-panic         = "abort"
-codegen-units = 1
-lto           = true
-opt-level     = "s"
-strip         = true

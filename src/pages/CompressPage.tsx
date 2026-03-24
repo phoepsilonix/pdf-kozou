@@ -59,7 +59,7 @@ const PRESETS: {
     id: "aggressive",
     icon: "⚡",
     label: "強め",
-    desc: "GC=2、sanitize,merge-fonts,object-stream",
+    desc: "GC=3、sanitize",
     note: "⚠ 埋め込みフォントに影響する場合あり",
     color: "#7a5a1a",
   },
@@ -67,7 +67,7 @@ const PRESETS: {
     id: "maximum",
     icon: "🔥",
     label: "最大",
-    desc: "GC=3、sanitize,clean,merge-fonts,object-stream",
+    desc: "GC=3、sanitize,clean",
     note: "⚠ 最大圧縮",
     color: "#7a2020",
   },
@@ -87,7 +87,7 @@ const GS_PRESETS: {
     icon: "✨",
     label: "高品質(prepress)",
     desc: "300dpi / 低圧縮",
-    note: "印刷・商業出版向け。画質を最優先",
+    note: "印刷・商業印刷向け。画質を最優先",
     color: "#2a5a9a",
   },
   {
@@ -103,7 +103,7 @@ const GS_PRESETS: {
     icon: "📱",
     label: "電子書籍,Web向け(ebook)",
     desc: "150dpi / 高圧縮",
-    note: "画面閲覧・メール送信用。軽量化",
+    note: "Web閲覧用・メール送信用。軽量化",
     color: "#7a5a1a",
   },
 ];
@@ -578,10 +578,10 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                   <PRow label="GCレベル" val={String(p.garbage_level)} />
                   <PRow label="画像圧縮" val={p.compress_images ? "あり" : "なし"} />
                   <PRow label="フォント圧縮" val={p.compress_fonts ? "あり" : "なし"} />
-                  <PRow label="merge_fonts" val={p.merge_fonts ? "あり" : "なし"} />
-                  <PRow label="object_stream" val={p.object_stream ? "あり" : "なし"} />
                   <PRow label="sanitize" val={p.sanitize ? "あり" : "なし"} />
                   <PRow label="clean" val={p.clean ? "あり" : "なし"} />
+                  <PRow label="merge_fonts" val={p.merge_fonts ? "あり" : "なし"} />
+                  <PRow label="object_stream" val={p.object_stream ? "あり" : "なし"} />
                 </>
               )}
             </div>
@@ -759,7 +759,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 オブジェクトのストリーム圧縮
               </label>
               <span style={c.optHint}>
-                {objectStream ? "有効 (MuPDFのデフォルト設定を上書き)" : "無効"}
+                {objectStream ? "有効 (リスク小)" : "無効"}
               </span>
             </div>
             <div style={c.optRow}>
@@ -773,7 +773,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 CIDフォント統合 (merge-fonts)
               </label>
               <span style={c.optHint}>
-                {mergeFonts ? "有効 (フォントを再利用して削減)" : "無効"}
+                {mergeFonts ? "有効 (リスク大。フォントを再利用して削減。主に単一ページ向け。)" : "無効"}
               </span>
             </div>
           </>

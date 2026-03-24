@@ -85,7 +85,7 @@ const LicensePage: React.FC = () => {
             <br />
             2. <strong>MuPDFモード</strong>で「論理的な最適化（オブジェクトストリーム、フォント統合等）」を行う
             <br />
-            3. MuPDFモードで<strong>フォント統合</strong>、<strong>オブジェクトストリーム</strong>をONにして圧縮後、<strong>GSモード</strong>で続けて圧縮するのもオススメです。何度か交互に繰り返すことで、それぞれのツールが活かされて更にサイズを減らせる場合もあります。
+            3. MuPDFモードで<strong>オブジェクトストリーム</strong>、<strong>フォント統合（リスク大き目。単一ページ向け）</strong>、をONにして圧縮後、<strong>GSモード</strong>で続けて圧縮するのもオススメです。何度か交互に繰り返すことで、それぞれのツールが活かされて更にサイズを減らせる場合もあります。
           </div>
         </div>
       </section>
@@ -121,9 +121,11 @@ const LicensePage: React.FC = () => {
               <p style={{ fontSize: "13px", marginBottom: "10px" }}>
                 GSモードを使用するには、Ghostscriptのインストールが必要です。
                 Windowsをご利用の場合は <strong>"Ghostscript 64-bit for Windows"</strong>{" "}
-                を選択してください。
+                を選択してください。<br />
+                Windows上級者向けTips<br />
+                管理者権限がない場合には、GhostScriptのインストールファイルを7zip FileManagerなどで展開して中身を取り出し、どこかに配置した上で、そこにPATHを通してください。
+                PATHが通る場所にGhostScriptがあれば、PDF小僧側から認識できると思います。
               </p>
-              GSモードを使用するには、
               <span
                 style={s.linkBtn}
                 onClick={() => openUrl("https://ghostscript.com/releases/gsdnld.html")}

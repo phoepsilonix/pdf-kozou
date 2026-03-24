@@ -535,11 +535,7 @@ function ToolShell({
     <div style={sh.root}>
       <nav style={sh.nav}>
         <button style={sh.homeBtn} onClick={onHome}>
-          PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-        </button>
-        <span style={{ color: "var(--c-text)", fontSize: 10, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}> v{pkg.version}</span>
-
-        <img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" />
+          PDF<span style={{ color: "var(--c-accent)" }}>小僧</span><span style={{ color: "var(--c-text)", fontSize: 10, opacity: 0.6, marginLeft:12, fontWeight: 400 }}> v{pkg.version}</span><img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" /></button>
         <div style={sh.div} />
 	{activeTool === "about" ? (
           <span style={sh.batchLabel}>ℹ️ アプリについて</span>

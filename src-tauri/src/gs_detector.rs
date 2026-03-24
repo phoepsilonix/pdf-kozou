@@ -18,7 +18,7 @@ pub async fn find_gs_executable() -> Option<String> {
     #[cfg(not(target_os = "windows"))]
     let bins = vec!["gs"];
     #[cfg(target_os = "windows")]
-    let bins = vec!["gswin64c", "gswin32c", "gs"];
+    let bins = vec!["gswin64c", "gswin32c", "gs", "gxpswin64", "gxpswin32" ];
 
     for bin in bins {
         if let Ok(path) = which::which(bin) {

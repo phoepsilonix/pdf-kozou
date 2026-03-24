@@ -33,9 +33,9 @@ pub enum CompressPreset {
     Light,
     /// 標準: gc=2 — デフォルト推奨
     Standard,
-    /// 強め: gc=2 + sanitize + merge-font + object-stream — Standard より削減
+    /// 強め: gc=3 + sanitize — Standard より削減
     Aggressive,
-    /// 最大: gc=3 + sanitize + clean + merge-font + object-stream — CJK等では注意
+    /// 最大: gc=3 + sanitize + clean — CJK等では注意
     Maximum,
 }
 
@@ -49,8 +49,8 @@ impl CompressPreset {
         match self {
             Self::Light => (false, 1, false, false, false, false, false),
             Self::Standard => (true, 2, false, false, false, false, false), // subset はデフォルト無効
-            Self::Aggressive => (true, 2, false, true, false, true, true),  // 同上
-            Self::Maximum => (true, 3, true, true, false, true, true),      // 同上.clean
+            Self::Aggressive => (true, 2, false, true, false, false, false),  // 同上
+            Self::Maximum => (true, 3, true, true, false, false, false),      // 同上.clean
         }
     }
 }
