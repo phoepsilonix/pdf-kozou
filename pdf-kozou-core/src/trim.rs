@@ -520,6 +520,10 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     doc.save_with_options(&req.output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
+    // メタデータを書き戻す（PdfDocument::new() で作成した doc は /Info を持たないため）
+    let metadata = crate::compress::collect_metadata(&req.input);
+    crate::compress::copy_metadata_after_write(&req.output, &metadata);
+
     // tmp ファイルはここで drop (自動削除)
     drop(working_tmp);
 

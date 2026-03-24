@@ -118,5 +118,9 @@ pub fn rotate(req: &RotateRequest) -> Result<RotateResponse> {
     doc.save_with_options(&req.output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
+    // メタデータを保持（Rotate 変更のみなので /Info はそのまま引き継ぐが念のため）
+    let metadata = crate::compress::collect_metadata(&req.input);
+    crate::compress::copy_metadata_after_write(&req.output, &metadata);
+
     Ok(RotateResponse { ok: true })
 }

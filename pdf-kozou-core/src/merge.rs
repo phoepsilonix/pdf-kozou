@@ -26,6 +26,9 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
         return Err(CoreError::InvalidArg("inputs is empty".into()));
     }
 
+    // 最初の入力ファイルのメタデータを出力に引き継ぐ（主ファイル優先）
+    let metadata = crate::compress::collect_metadata(&req.inputs[0]);
+
     let mut dst = PdfDocument::new();
     let mut total_pages = 0i32;
 
@@ -68,6 +71,9 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
     opts.set_compress(true).set_garbage_level(2);
     dst.save_with_options(&req.output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+    // 最初の入力ファイルのメタデータを出力に引き継ぐ
+    crate::compress::copy_metadata_after_write(&req.output, &metadata);
 
     let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
     Ok(MergeResponse {

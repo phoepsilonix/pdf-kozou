@@ -40,6 +40,9 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
     let out_dir = std::path::Path::new(&req.out_dir);
     std::fs::create_dir_all(out_dir)?;
 
+    // 入力 PDF のメタデータを一度だけ収集し、各出力ファイルに引き継ぐ
+    let metadata = crate::compress::collect_metadata(&req.input);
+
     let ranges: Vec<Vec<i32>> = match &req.mode {
         SplitMode::AllPages => (0..page_count).map(|i| vec![i]).collect(),
         SplitMode::Ranges { ranges } => ranges
@@ -100,6 +103,12 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
             .set_garbage_level(2);
         dst.save_with_options(out_path.to_str().unwrap(), opts)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+        // 入力 PDF のメタデータを各出力ファイルに引き継ぐ
+        crate::compress::copy_metadata_after_write(
+            out_path.to_str().unwrap(),
+            &metadata,
+        );
 
         files.push(out_path.to_string_lossy().to_string());
     }
