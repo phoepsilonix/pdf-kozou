@@ -60,7 +60,7 @@ enum Commands {
         /// 解像度 DPI
         #[arg(long, default_value = "144")]
         dpi: u32,
-        /// 出力フォーマット: jpeg | png
+        /// 出力フォーマット: jpeg | png | svg
         #[arg(long, default_value = "jpeg")]
         format: String,
         /// JPEG クオリティ (0-100)

@@ -8,6 +8,7 @@
 use crate::error::{CoreError, Result};
 use crate::pixmap;
 use serde::{Deserialize, Serialize};
+use std::env;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RenderRequest {
@@ -139,6 +140,37 @@ fn embed_metadata_jpeg(jpeg_bytes: Vec<u8>, metadata: &[(String, String)]) -> Ve
 // 引き継ぐキー: Title, Author, Subject, Keywords, Creator
 // tEXt チャンクを IDAT の直前に挿入する
 fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
+    if metadata.is_empty() || png_bytes.len() < 33 { return png_bytes; }
+
+    let sig_ihdr_end = 33; // 8+25
+
+    let mut text_chunks = Vec::new();
+    const PNG_TEXT_KEYS: &[(&str, &str)] = &[
+        ("Title", "Title"),
+        ("Author", "Author"),
+        ("Subject", "Subject"),
+        ("Keywords", "Keywords"),
+        ("Creator", "Software"),
+        ("Producer", "Comment"),
+    ];
+
+    for (meta_key, png_key) in PNG_TEXT_KEYS {
+        if let Some((_, value)) = metadata.iter().find(|(k, _)| k == meta_key) {
+            let chunk_data = build_png_itxt_chunk(png_key, value);  // ← iTXt に変更
+            text_chunks.extend_from_slice(&chunk_data);
+        }
+    }
+
+    if text_chunks.is_empty() { return png_bytes; }
+
+    let mut result = Vec::with_capacity(png_bytes.len() + text_chunks.len());
+    result.extend_from_slice(&png_bytes[..sig_ihdr_end]);
+    result.extend_from_slice(&text_chunks);
+    result.extend_from_slice(&png_bytes[sig_ihdr_end..]);
+    result
+}
+/*
+fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
     if metadata.is_empty() || png_bytes.len() < 8 {
         return png_bytes;
     }
@@ -180,7 +212,7 @@ fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<
     result.extend_from_slice(&png_bytes[sig_ihdr_end..]);
     result
 }
-
+*/
 /// PNG tEXt チャンクを生成する
 /// 構造: length(4BE) | "tEXt"(4) | keyword + NUL + text | CRC(4)
 fn build_png_text_chunk(keyword: &str, text: &str) -> Vec<u8> {
@@ -255,11 +287,15 @@ fn render_svg(
     let page_h = bounds.y1 - bounds.y0;
 
     // tmp ファイルに書き出してから読む
-    let tmp = format!("/tmp/kozou_svg_{}.svg", std::process::id());
+    let tmp_dir = env::temp_dir();
+    let tmp = tmp_dir
+    .join(format!("kozou_svg_{}.svg", std::process::id()))
+    .to_string_lossy()
+    .into_owned();
     let actual_out = req.output.as_deref().unwrap_or(&tmp);
 
     // text-as-path=yes: フォントアウトラインを完全保持
-    let mut writer = DocumentWriter::new(actual_out, "svg", "text-as-path=yes")
+    let mut writer = DocumentWriter::new(actual_out, "svg", "text-as-path=1")
         .map_err(|e| CoreError::MuPdf(format!("svg writer: {e}")))?;
     let dev = writer
         .begin_page(*bounds)
@@ -419,4 +455,25 @@ fn build_metadata_comment(metadata: &[(String, String)]) -> String {
         .map(|(k, v)| format!("{k}: {v}"))
         .collect();
     parts.join("; ")
+}
+
+fn build_png_itxt_chunk(keyword: &str, text: &str) -> Vec<u8> {
+    let mut data = Vec::new();
+    data.extend_from_slice(keyword.as_bytes());
+    data.push(0x00);           // keyword NUL
+    data.push(0x00);           // compression flag = 0 (uncompressed)
+    data.push(0x00);           // language tag NUL（空）
+    data.push(0x00);           // translated keyword NUL（空）
+    data.extend_from_slice(text.as_bytes()); // ← UTF-8 のまま！
+
+    let length = data.len() as u32;
+    let chunk_type = b"iTXt";
+    let crc = png_crc(chunk_type, &data);
+
+    let mut chunk = Vec::with_capacity(12 + data.len());
+    chunk.extend_from_slice(&length.to_be_bytes());
+    chunk.extend_from_slice(chunk_type);
+    chunk.extend_from_slice(&data);
+    chunk.extend_from_slice(&crc.to_be_bytes());
+    chunk
 }
