@@ -274,15 +274,22 @@ export async function exportImages(
   pages?: string, // "1-3,5" etc. undefined=全ページ
 ): Promise<ExportImagesResponse> {
   console.log("ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
-  return invoke<ExportImagesResponse>("export_images", {
-    path,
-    outDir,
-    format,
-    dpi,
-    quality: quality ?? null,
-    namePrefix: namePrefix ?? null,
-    pages: pages ?? null,
-  });
+  try {
+    const res = invoke<ExportImagesResponse>("export_images", {
+      path,
+      outDir,
+      format,
+      dpi,
+      quality: quality ?? null,
+      namePrefix: namePrefix ?? null,
+      pages: pages ?? null,
+    });
+    console.log("Res:ExportImages:", res);
+    return res;
+  } catch (e) {
+    console.log("Err: ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
+    return e;
+  }
 }
 
 // ── 回転 (tauri.ts 既存の rotatePdf は PageRotation[] 形式) ──────────────────

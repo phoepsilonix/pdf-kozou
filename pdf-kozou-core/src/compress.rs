@@ -129,15 +129,6 @@ pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
 }
 
 extern "C" {
-    /// 既存 PDF の /Info 辞書に key=value を設定してインプレース保存する（単一キー用）
-    fn kozou_set_pdf_info_key(
-        ctx: *mut mupdf_sys::fz_context,
-        path: *const std::ffi::c_char,
-        key: *const std::ffi::c_char,
-        value: *const std::ffi::c_char,
-        result: *mut crate::ffi::FfiResult,
-    );
-
     /// 既存 PDF の /Info 辞書に複数のキーをまとめて書き込み1回だけ保存する（バッチ用）
     fn kozou_write_pdf_info(
         ctx: *mut mupdf_sys::fz_context,

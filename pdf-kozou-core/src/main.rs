@@ -908,7 +908,7 @@ fn parse_string_pages(s: &str) -> anyhow::Result<Vec<i32>> {
 fn render_to_dir(
     path: &str,
     indices: &[i32],
-    total: u32,
+    _total: u32, // 全ページ数は使わない
     start_number: Option<u32>,
     name_prefix: Option<&str>,
     out_dir: &str,
@@ -917,20 +917,29 @@ fn render_to_dir(
     dpi: u32,
     ext: &str,
 ) -> anyhow::Result<()> {
-    let (base, start_num) = resolve_name_prefix_and_start(name_prefix, start_number, path, total);
+    let (base, start_num) = resolve_name_prefix_and_start(
+        name_prefix,
+        start_number,
+        path,
+        indices.len() as u32, // ← 重要：今回の出力ページ数を使う
+    );
     let mut file_list = Vec::new();
+
+    let output_count = indices.len() as u32;
+    let max_num = start_num + output_count.saturating_sub(1);
+    let width = digit_width(max_num);
 
     for (seq, &page_index) in indices.iter().enumerate() {
         let num = start_num + seq as u32;
-        let width = digit_width(start_num + total - 1);
         let out_path = format!(
             "{}/{}{:0>width$}.{}",
-            out_dir,
+            out_dir.trim_end_matches('/'),
             base,
             num,
             ext,
             width = width as usize
         );
+
         let req = pdf_kozou_core::render::RenderRequest {
             path: path.to_string(),
             page_index,
@@ -939,14 +948,17 @@ fn render_to_dir(
             quality: Some(quality),
             output: Some(out_path.clone()),
         };
+
         let resp = pdf_kozou_core::render::render(&req)?;
+
         file_list.push(serde_json::json!({
             "page":     page_index + 1,
-            "file":     out_path,
+            "file":     out_path,           // JSONにも同じパスを入れる
             "width_px": resp.width_px,
-            "height_px":resp.height_px,
+            "height_px": resp.height_px,
         }));
     }
+
     println!(
         "{}",
         serde_json::to_string(&serde_json::json!({

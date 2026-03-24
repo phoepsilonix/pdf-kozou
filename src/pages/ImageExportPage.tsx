@@ -139,10 +139,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         prefix || undefined,
         pages || undefined,
       );
-      console.log("res", res, res.files, filePath);
+      console.log("res", res);
       setImages(res.files);
       setPhase("result");
-      console.log("images1", images);
     } catch (e) {
       setErrMsg(String(e));
       setPhase("error");
