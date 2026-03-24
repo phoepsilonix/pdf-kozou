@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
 // src/components/ThemeSwitcher.tsx
 import { useState, useCallback } from "react";
 //import { THEMES, getTheme, type ThemeId } from "../lib/themes";

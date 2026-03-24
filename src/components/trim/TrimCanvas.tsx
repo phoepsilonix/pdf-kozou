@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
 // src/components/trim/TrimCanvas.tsx
 //
 // PDF ページ上でトリミング余白をマウスドラッグで指定する Canvas コンポーネント

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
 // src/pages/MergePage.tsx
 import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -111,7 +110,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
     if (paths.length) await loadPaths(paths);
   }, [loadPaths]);
-/*
+  /*
 const handleDrop = useCallback(
   async (e: React.DragEvent) => {
     e.preventDefault();
@@ -132,28 +131,31 @@ const handleDrop = useCallback(
   const onDragStart = useCallback((id: number) => {
     setDragId(id);
   }, []);
-/*
+  /*
   const onDragEnter = useCallback((id: number) => {
     setDragOverId(id);
   }, []);*/
 
-// 並べ替えロジックを「ライブ」に変更
-const onDragEnter = useCallback((id: number) => {
-  setDragOverId(id);
-  
-  // 掴んでいる要素と重なった要素が異なる場合、即座に入れ替える
-  if (dragId !== null && dragId !== id) {
-    setEntries((prev) => {
-      const a = [...prev];
-      const fi = a.findIndex((e) => e.id === dragId);
-      const ti = a.findIndex((e) => e.id === id);
-      if (fi < 0 || ti < 0) return prev;
-      const [item] = a.splice(fi, 1);
-      a.splice(ti, 0, item);
-      return a;
-    });
-  }
-}, [dragId]);
+  // 並べ替えロジックを「ライブ」に変更
+  const onDragEnter = useCallback(
+    (id: number) => {
+      setDragOverId(id);
+
+      // 掴んでいる要素と重なった要素が異なる場合、即座に入れ替える
+      if (dragId !== null && dragId !== id) {
+        setEntries((prev) => {
+          const a = [...prev];
+          const fi = a.findIndex((e) => e.id === dragId);
+          const ti = a.findIndex((e) => e.id === id);
+          if (fi < 0 || ti < 0) return prev;
+          const [item] = a.splice(fi, 1);
+          a.splice(ti, 0, item);
+          return a;
+        });
+      }
+    },
+    [dragId],
+  );
 
   const onDragEnd = useCallback(() => {
     if (dragId != null && dragOverId != null && dragId !== dragOverId) {
@@ -170,7 +172,7 @@ const onDragEnter = useCallback((id: number) => {
     setDragId(null);
     setDragOverId(null);
   }, [dragId, dragOverId]);
-/*
+  /*
 // ファイル追加も Tauri のイベントで待ち受ける
 useEffect(() => {
   const unlisten = listen<string[]>("tauri://drag-drop", (event) => {
@@ -522,10 +524,10 @@ useEffect(() => {
                   }}
                   onDragEnter={() => onDragEnter(entry.id)}
                   onDragEnd={onDragEnd}
-onDragOver={(e) => {
-    e.preventDefault();
-    e.stopPropagation(); // App.tsx のリスナーまでイベントを届けない
-  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); // App.tsx のリスナーまでイベントを届けない
+                  }}
                   style={{
                     ...s.listItem,
                     ...(dragId === entry.id ? s.itemDragging : {}),
@@ -582,11 +584,11 @@ onDragOver={(e) => {
 
               <div
                 style={{ ...s.addZone, ...(dropOver ? s.addZoneOn : {}) }}
-onDragOver={(e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  e.dataTransfer.dropEffect = "copy"; // コピー（追加）であることを示す
-}}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "copy"; // コピー（追加）であることを示す
+                }}
                 onDragEnter={(e) => {
                   e.preventDefault();
                   dragCounter.current++;
@@ -598,29 +600,30 @@ onDragOver={(e) => {
                     dragCounter.current = 0;
                   }
                 }}
-onDrop={(e) => {
-  e.preventDefault();
-  e.stopPropagation(); // イベントの伝播を止める
-  setDropOver(false);
-  dragCounter.current = 0;
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation(); // イベントの伝播を止める
+                  setDropOver(false);
+                  dragCounter.current = 0;
 
-  // FileListを配列に変換
-  const files = Array.from(e.dataTransfer.files);
-  
-  const ps = files
-    .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
-    .map((f) => {
-      // Tauri環境下では、Fileオブジェクトに 'path' というプロパティが注入されています
-      return (f as any).path || (f as any).webkitRelativePath || "";
-    })
-    .filter((p) => p !== ""); // 空のパスを除外
+                  // FileListを配列に変換
+                  const files = Array.from(e.dataTransfer.files);
 
-  if (ps.length) {
-    loadPaths(ps);
-  } else {
-    console.warn("No valid PDF paths found in drop event.");
-  }
-}}              >
+                  const ps = files
+                    .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
+                    .map((f) => {
+                      // Tauri環境下では、Fileオブジェクトに 'path' というプロパティが注入されています
+                      return (f as any).path || (f as any).webkitRelativePath || "";
+                    })
+                    .filter((p) => p !== ""); // 空のパスを除外
+
+                  if (ps.length) {
+                    loadPaths(ps);
+                  } else {
+                    console.warn("No valid PDF paths found in drop event.");
+                  }
+                }}
+              >
                 <button style={s.btnAdd} onClick={pickFiles}>
                   ＋ PDFを追加
                 </button>

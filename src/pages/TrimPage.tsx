@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
 // src/pages/TrimPage.tsx
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";

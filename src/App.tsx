@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
 // src/App.tsx
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -54,7 +53,15 @@ function makeGlobalCss(t: typeof C) {
 `;
 }
 
-export type ToolId = "split" | "merge" | "trim" | "rotate" | "compress" | "image" | "viewer" | "about";
+export type ToolId =
+  | "split"
+  | "merge"
+  | "trim"
+  | "rotate"
+  | "compress"
+  | "image"
+  | "viewer"
+  | "about";
 
 const TOOLS: {
   id: ToolId;
@@ -133,50 +140,56 @@ export default function App() {
     };
   }, [themeId]);
 
-const handleAddPaths = useCallback(
-  async (paths: string[]) => {
-    // PDFファイルのみに絞り込み
-    const pdfPaths = paths.filter(p => p.toLowerCase().endsWith('.pdf'));
-    
-    await Promise.all(pdfPaths.map(async (path) => {
-      try {
-        const info = await getPdfInfo(path);
-        const stat = await invoke<{ size: number }>("get_file_stat", { path }).catch(() => ({ size: 0 }));
-        
-        addFiles([{
-          path,
-          filename: path.split(/[/\\]/).pop() ?? path,
-          pageCount: info.page_count,
-          sizeBytes: stat.size,
-          selected: true,
-        }]);
-      } catch (e) {
-        setError(`${path.split(/[/\\]/).pop()}: ${e}`);
-      }
-    }));
-  },
-  [addFiles, setError]
-);
+  const handleAddPaths = useCallback(
+    async (paths: string[]) => {
+      // PDFファイルのみに絞り込み
+      const pdfPaths = paths.filter((p) => p.toLowerCase().endsWith(".pdf"));
 
-useEffect(() => {
-  let unlistenCustom: (() => void) | null = null;
-  const setupListeners = async () => {
-    unlistenCustom = await listen<string[]>("open-pdf-files", (event) => {
-      handleAddPaths(event.payload);
-    });
-  };
-  setupListeners();
+      await Promise.all(
+        pdfPaths.map(async (path) => {
+          try {
+            const info = await getPdfInfo(path);
+            const stat = await invoke<{ size: number }>("get_file_stat", { path }).catch(() => ({
+              size: 0,
+            }));
 
-  return () => {
-    if (unlistenCustom) unlistenCustom();
-  };
-}, [handleAddPaths]);
+            addFiles([
+              {
+                path,
+                filename: path.split(/[/\\]/).pop() ?? path,
+                pageCount: info.page_count,
+                sizeBytes: stat.size,
+                selected: true,
+              },
+            ]);
+          } catch (e) {
+            setError(`${path.split(/[/\\]/).pop()}: ${e}`);
+          }
+        }),
+      );
+    },
+    [addFiles, setError],
+  );
+
+  useEffect(() => {
+    let unlistenCustom: (() => void) | null = null;
+    const setupListeners = async () => {
+      unlistenCustom = await listen<string[]>("open-pdf-files", (event) => {
+        handleAddPaths(event.payload);
+      });
+    };
+    setupListeners();
+
+    return () => {
+      if (unlistenCustom) unlistenCustom();
+    };
+  }, [handleAddPaths]);
 
   const handlePickFiles = useCallback(async () => {
     const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
     if (paths.length) await handleAddPaths(paths);
   }, [handleAddPaths]);
-/*
+  /*
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
       e.preventDefault();
@@ -310,29 +323,30 @@ useEffect(() => {
         }
       }}
     >
-<header style={s.header}>
-  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-    <img src="/app-icon.svg" style={{ width: 48, height: 48, borderRadius: 10 }} alt="logo" />
-    <span style={s.logo}>
-      PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-　　</span>
-    {/* Aboutボタンを追加 */}
-    <button 
-      onClick={() => setActiveTool("about")}
-      style={{
-        background: "var(--c-bgSub)",
-        border: "1px solid var(--c-border)",
-        borderRadius: "20px",
-        padding: "4px 12px",
-        fontSize: "12px",
-        color: "var(--c-textSub)",
-        cursor: "pointer",
-        marginTop: "10px"
-      }}
-    >
-      ℹ️ About
-    </button>
-  </div>
+      <header style={s.header}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <img src="/app-icon.svg" style={{ width: 48, height: 48, borderRadius: 10 }} alt="logo" />
+          <span style={s.logo}>
+            PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
+            　　
+          </span>
+          {/* Aboutボタンを追加 */}
+          <button
+            onClick={() => setActiveTool("about")}
+            style={{
+              background: "var(--c-bgSub)",
+              border: "1px solid var(--c-border)",
+              borderRadius: "20px",
+              padding: "4px 12px",
+              fontSize: "12px",
+              color: "var(--c-textSub)",
+              cursor: "pointer",
+              marginTop: "10px",
+            }}
+          >
+            ℹ️ About
+          </button>
+        </div>
         <span style={{ ...s.tagline, marginBottom: 8, opacity: 0.8 }}>v{pkg.version}</span>
         <span style={s.tagline}>Rust with tauri · MuPDF · オフライン完全動作</span>
         <div style={{ position: "absolute", top: 16, right: 20 }}>
@@ -343,11 +357,12 @@ useEffect(() => {
       <div style={s.listCard}>
         {fileList.length === 0 ? (
           <div style={s.emptyZone}>
-{/*            <span style={s.emptyIcon}>⊕</span>
+            {/*            <span style={s.emptyIcon}>⊕</span>
             <span style={s.emptyTitle}>PDFをドロップ、または追加</span>
             <span style={s.emptySub}>複数ファイルを一度に追加できます</span>*/}
             <button style={s.btnAddBig} onClick={handlePickFiles}>
-              ファイルを選択…</button>
+              ファイルを選択…
+            </button>
           </div>
         ) : (
           <>
@@ -426,7 +441,7 @@ useEffect(() => {
           })}
         </div>
       )}
-{/*
+      {/*
       {dragOver && (
         <div style={s.dragOverlay}>
           <span style={s.dragIcon}>⊕</span>
@@ -535,9 +550,23 @@ function ToolShell({
     <div style={sh.root}>
       <nav style={sh.nav}>
         <button style={sh.homeBtn} onClick={onHome}>
-          PDF<span style={{ color: "var(--c-accent)" }}>小僧</span><span style={{ color: "var(--c-text)", fontSize: 10, opacity: 0.6, marginLeft:12, fontWeight: 400 }}> v{pkg.version}</span><img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" /></button>
+          PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
+          <span
+            style={{
+              color: "var(--c-text)",
+              fontSize: 10,
+              opacity: 0.6,
+              marginLeft: 12,
+              fontWeight: 400,
+            }}
+          >
+            {" "}
+            v{pkg.version}
+          </span>
+          <img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" />
+        </button>
         <div style={sh.div} />
-	{activeTool === "about" ? (
+        {activeTool === "about" ? (
           <span style={sh.batchLabel}>ℹ️ アプリについて</span>
         ) : isBatch ? (
           <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
@@ -585,9 +614,7 @@ function ToolShell({
         {activeTool === "viewer" && (
           <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
         )}
-	{activeTool === "about" && (
-          <LicensePage />
-         )}
+        {activeTool === "about" && <LicensePage />}
       </div>
     </div>
   );
@@ -623,7 +650,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "var(--c-textDim)",
     letterSpacing: "0.12em",
-//    textTransform: "uppercase",
+    //    textTransform: "uppercase",
   },
   listCard: {
     width: "100%",
@@ -729,7 +756,7 @@ const s: Record<string, React.CSSProperties> = {
   toolIcon: { fontSize: 24 },
   toolLabel: { fontSize: 14, fontWeight: 700, color: "inherit" },
   toolDesc: { fontSize: 11, color: "var(--c-textSub)", textAlign: "center" as const },
-dragOverlay: {
+  dragOverlay: {
     position: "fixed" as const, // fixedにすることで他の要素を動かさない
     inset: 0,
     backgroundColor: "rgba(0, 0, 0, 0.2)",

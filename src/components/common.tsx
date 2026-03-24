@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
 // src/components/common.tsx — 共通 UI コンポーネント
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";

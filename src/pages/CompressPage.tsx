@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-
 // src/pages/CompressPage.tsx
 // フロー（単体）: プリセット選択 → プレビュー実行 → 結果確認 → [圧縮保存 / 圧縮せず保存]
 // フロー（バッチ）: プリセット選択 → 出力フォルダ選択 → 全件処理 → 結果
@@ -258,7 +257,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       await invoke("copy_file", { src: tmpFile, dst: chainedPath });
 
       // 連携ファイルのパスを記録（リセット時に削除するため）
-      setChainedFiles(prev => [...prev, chainedPath]);
+      setChainedFiles((prev) => [...prev, chainedPath]);
 
       // ステートを更新して「次の入力」としてセット
       setCurrentSource(chainedPath);
@@ -772,9 +771,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 />
                 オブジェクトのストリーム圧縮
               </label>
-              <span style={c.optHint}>
-                {objectStream ? "有効 (リスク小)" : "無効"}
-              </span>
+              <span style={c.optHint}>{objectStream ? "有効 (リスク小)" : "無効"}</span>
             </div>
             <div style={c.optRow}>
               <label style={c.optLabel}>
@@ -787,7 +784,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 CIDフォント統合 (merge-fonts)
               </label>
               <span style={c.optHint}>
-                {mergeFonts ? "有効 (リスク大。フォントを再利用して削減。主に単一ページ向け。)" : "無効"}
+                {mergeFonts
+                  ? "有効 (リスク大。フォントを再利用して削減。主に単一ページ向け。)"
+                  : "無効"}
               </span>
             </div>
           </>

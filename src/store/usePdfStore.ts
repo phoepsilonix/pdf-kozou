@@ -58,25 +58,34 @@ export const usePdfStore = create<PdfStore>()(
   persist(
     (set, get) => ({
       fileList: [],
-      addFiles: (entries) => set((s) => {
-        const existing = new Set(s.fileList.map((f) => f.path));
-        const fresh = entries.filter((e) => !existing.has(e.path)).map((e) => ({ ...e, id: makeEntryId() }));
-        return { fileList: [...s.fileList, ...fresh] };
-      }),
+      addFiles: (entries) =>
+        set((s) => {
+          const existing = new Set(s.fileList.map((f) => f.path));
+          const fresh = entries
+            .filter((e) => !existing.has(e.path))
+            .map((e) => ({ ...e, id: makeEntryId() }));
+          return { fileList: [...s.fileList, ...fresh] };
+        }),
       removeFile: (id) => set((s) => ({ fileList: s.fileList.filter((f) => f.id !== id) })),
-      toggleSelect: (id) => set((s) => ({ fileList: s.fileList.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f)) })),
-      selectAll: () => set((s) => ({ fileList: s.fileList.map((f) => ({ ...f, selected: true })) })),
-      selectNone: () => set((s) => ({ fileList: s.fileList.map((f) => ({ ...f, selected: false })) })),
+      toggleSelect: (id) =>
+        set((s) => ({
+          fileList: s.fileList.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f)),
+        })),
+      selectAll: () =>
+        set((s) => ({ fileList: s.fileList.map((f) => ({ ...f, selected: true })) })),
+      selectNone: () =>
+        set((s) => ({ fileList: s.fileList.map((f) => ({ ...f, selected: false })) })),
       clearList: () => set({ fileList: [] }),
-      reorderFiles: (fromId, toId) => set((s) => {
-        const arr = [...s.fileList];
-        const fi = arr.findIndex((f) => f.id === fromId);
-        const ti = arr.findIndex((f) => f.id === toId);
-        if (fi < 0 || ti < 0 || fi === ti) return {};
-        const [item] = arr.splice(fi, 1);
-        arr.splice(ti, 0, item);
-        return { fileList: arr };
-      }),
+      reorderFiles: (fromId, toId) =>
+        set((s) => {
+          const arr = [...s.fileList];
+          const fi = arr.findIndex((f) => f.id === fromId);
+          const ti = arr.findIndex((f) => f.id === toId);
+          if (fi < 0 || ti < 0 || fi === ti) return {};
+          const [item] = arr.splice(fi, 1);
+          arr.splice(ti, 0, item);
+          return { fileList: arr };
+        }),
 
       filePath: null,
       pdfInfo: null,
@@ -92,7 +101,7 @@ export const usePdfStore = create<PdfStore>()(
       setActiveCompressMode: (mode) => set({ activeCompressMode: mode }),
       initCompressMode: () => {
         const { gsAvailable, useGsPreference } = get();
-        set({ activeCompressMode: (gsAvailable && useGsPreference) ? "gs" : "mupdf" });
+        set({ activeCompressMode: gsAvailable && useGsPreference ? "gs" : "mupdf" });
       },
 
       trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
@@ -109,8 +118,10 @@ export const usePdfStore = create<PdfStore>()(
     }),
     {
       name: "pdf-kozou-storage",
-      partialize: (state) => ({ useGsPreference: state.useGsPreference, lastSaveDir: state.lastSaveDir }),
-    }
-  )
+      partialize: (state) => ({
+        useGsPreference: state.useGsPreference,
+        lastSaveDir: state.lastSaveDir,
+      }),
+    },
+  ),
 );
-
