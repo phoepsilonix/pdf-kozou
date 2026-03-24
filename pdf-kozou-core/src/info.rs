@@ -16,12 +16,34 @@ pub struct PageBounds {
     pub rotate: i32,
 }
 
+#[derive(Serialize, Clone, Default)]
+pub struct PdfMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keywords: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub producer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creation_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mod_date: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct InfoResponse {
     pub ok: bool,
     pub page_count: i32,
     pub file_size: u64,
     pub pages: Vec<PageBounds>,
+    /// PDF /Info メタデータ（常に返す）
+    pub metadata: PdfMetadata,
     /// fonts は --fonts オプション指定時のみ Some
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fonts: Option<Vec<FontInfo>>,
@@ -88,6 +110,23 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
 
     let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
+    // /Info メタデータを収集
+    let meta_pairs = crate::compress::collect_metadata(path);
+    let mut metadata = PdfMetadata::default();
+    for (key, value) in meta_pairs {
+        match key.as_str() {
+            "Title"        => metadata.title        = Some(value),
+            "Author"       => metadata.author       = Some(value),
+            "Subject"      => metadata.subject      = Some(value),
+            "Keywords"     => metadata.keywords     = Some(value),
+            "Creator"      => metadata.creator      = Some(value),
+            "Producer"     => metadata.producer     = Some(value),
+            "CreationDate" => metadata.creation_date = Some(value),
+            "ModDate"      => metadata.mod_date     = Some(value),
+            _ => {}
+        }
+    }
+
     let fonts = if include_fonts {
         Some(collect_fonts(path, page_count)?)
     } else {
@@ -99,6 +138,7 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
         page_count,
         file_size,
         pages,
+        metadata,
         fonts,
     })
 }

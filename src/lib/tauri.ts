@@ -13,12 +13,25 @@ export interface PageBounds {
   rotate: number; // PDF Rotate値 (0/90/180/270)。w,h はRotate考慮済み
 }
 
+export interface PdfMetadata {
+  title?: string;
+  author?: string;
+  subject?: string;
+  keywords?: string;
+  creator?: string;
+  producer?: string;
+  creation_date?: string;
+  mod_date?: string;
+}
+
 export interface PdfInfo {
   page_count: number;
   pdf_version: string;
   encrypted: boolean;
   linearized: boolean;
   pages: PageBounds[];
+  metadata: PdfMetadata;
+  file_size?: number;
 }
 
 // ── トリミング型 ──────────────────────────────────────────────────────────────
