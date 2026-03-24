@@ -26,25 +26,15 @@ use crate::ffi::kozou_new_context;
 use crate::ffi::merge_duplicate_fonts;
 
 // ── メタデータ保持ユーティリティ ──────────────────────────────────────────────
-
-/// PDFの /Info 辞書から保存すべきメタデータキー一覧
-const METADATA_KEYS: &[&str] = &[
-    "Title",
-    "Author",
-    "Subject",
-    "Keywords",
-    "Creator",
-    "Producer",
-    "CreationDate",
-    "ModDate",
-];
-
 /// 入力PDFの /Info 辞書からメタデータを収集する
 ///
-/// `mupdf::Document::metadata("info:Key")` = MuPDF の fz_lookup_metadata を内部で
-/// 使用しており、PDFDocEncoding・UTF-16 BE を両方 UTF-8 に正しく変換して返す。
-/// C FFI を使わず Rust クレートの公式 API のみで実装。
+/// `mupdf::Document::metadata(MetadataName)` を使用。
+/// MuPDF が内部で fz_lookup_metadata を呼び、
+/// PDFDocEncoding / UTF-16 BE を UTF-8 に変換して返す。
+/// 空文字列が返った場合はそのキーが存在しないことを意味する。
 pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
+    use mupdf::MetadataName;
+
     let doc = match mupdf::Document::open(input) {
         Ok(d) => d,
         Err(e) => {
@@ -52,18 +42,29 @@ pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
             return vec![];
         }
     };
+
+    // MetadataName enum と文字列キー名の対応
+    let keys: &[(&str, MetadataName)] = &[
+        ("Title", MetadataName::Title),
+        ("Author", MetadataName::Author),
+        ("Subject", MetadataName::Subject),
+        ("Keywords", MetadataName::Keywords),
+        ("Creator", MetadataName::Creator),
+        ("Producer", MetadataName::Producer),
+        ("CreationDate", MetadataName::CreationDate),
+        ("ModDate", MetadataName::ModDate),
+    ];
+
     let mut result = Vec::new();
-    for key in METADATA_KEYS {
-        let info_key = format!("info:{key}");
-        match doc.metadata(&info_key) {
-            Ok(Some(val)) => {
+    for (key_str, name) in keys {
+        match doc.metadata(*name) {
+            Ok(val) => {
                 let s = val.trim().to_string();
                 if !s.is_empty() {
-                    result.push((key.to_string(), s));
+                    result.push((key_str.to_string(), s));
                 }
             }
-            Ok(None) => {} // キーなし
-            Err(e) => eprintln!("[metadata] collect: metadata({info_key}) error: {e}"),
+            Err(e) => eprintln!("[metadata] collect: metadata({key_str}) error: {e}"),
         }
     }
     eprintln!("[metadata] collected {} keys from {input}", result.len());
