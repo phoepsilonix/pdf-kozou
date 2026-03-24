@@ -203,8 +203,8 @@ impl CompressPreset {
         match self {
             Self::Light => (false, 1, false, false, false, false, false),
             Self::Standard => (true, 2, false, false, false, false, false), // subset はデフォルト無効
-            Self::Aggressive => (true, 2, false, true, false, false, false),  // 同上
-            Self::Maximum => (true, 3, true, true, false, false, false),      // 同上.clean
+            Self::Aggressive => (true, 2, false, true, false, false, false), // 同上
+            Self::Maximum => (true, 3, true, true, false, false, false),    // 同上.clean
         }
     }
 }

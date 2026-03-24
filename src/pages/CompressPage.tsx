@@ -134,8 +134,6 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const [preview, setPreview] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [saving, setSaving] = useState(false);
-  // 連携で作成した一時ファイルのパス一覧（リセット時に削除）
-  const [chainedFiles, setChainedFiles] = useState<string[]>([]);
   const [outDir, setOutDir] = useState("");
   const [batchProg, setBatchProg] = useState<{
     cur: number;

@@ -12,7 +12,6 @@ pub mod tempdir;
 
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
-//use crate::platform::linux;
 
 #[cfg(target_os = "linux")]
 use crate::platform::linux::log_display_environment;
@@ -45,7 +44,7 @@ pub fn run() {
             .try_init();
     }
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -77,17 +76,9 @@ pub fn run() {
             gs::run_gs_optimize,
         ])
         .setup(|app| {
-            // ── アプリ終了時に pdf-kozou 一時フォルダをクリーンアップ ────────
-            app.on_window_event(|_window, event| {
-                if let tauri::WindowEvent::Destroyed = event {
-                    crate::tempdir::cleanup_kozou_temp();
-                }
-            });
             // ── 起動時引数からPDFファイルパスを取得してフロントに渡す ──────────
-            // macOS/Linux: アプリアイコンへのD&DやCLI起動でファイルが渡される
-            // Windows:     ファイル関連付けで起動時に引数として渡される
             let pdf_paths: Vec<String> = std::env::args()
-                .skip(1) // 最初の引数は自身のパスなのでスキップ
+                .skip(1)
                 .filter(|a| {
                     let p = std::path::Path::new(a);
                     p.exists()
@@ -98,7 +89,6 @@ pub fn run() {
                 .collect();
 
             if !pdf_paths.is_empty() {
-                // フロントエンドの準備ができてから emit する
                 let handle = app.handle().clone();
                 let paths = pdf_paths.clone();
                 std::thread::spawn(move || {
@@ -132,6 +122,15 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running PDF小僧");
+        .build(tauri::generate_context!())
+        .expect("error while building PDF小僧");
+
+    // ── アプリのイベントループ実行（終了時クリーンアップ付き） ────────────
+    // Tauri v2: Builder::run() の代わりに build() + App::run() を使うことで
+    // RunEvent::Exit を捕捉し、pdf-kozou 一時フォルダを削除できる。
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            crate::tempdir::cleanup_kozou_temp();
+        }
+    });
 }

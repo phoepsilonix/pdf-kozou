@@ -188,7 +188,7 @@ fn build_png_text_chunk(keyword: &str, text: &str) -> Vec<u8> {
     let mut data: Vec<u8> = Vec::new();
     data.extend_from_slice(keyword.as_bytes());
     data.push(0x00); // NUL 区切り
-    // text はLatin-1に収まらない文字があれば ? に置換（安全優先）
+                     // text はLatin-1に収まらない文字があれば ? に置換（安全優先）
     for ch in text.chars() {
         if ch as u32 <= 0xFF {
             data.push(ch as u8);
@@ -357,15 +357,9 @@ fn find_svg_tag_end(svg: &str) -> Option<usize> {
 /// SVG <metadata> ブロックを生成する（Dublin Core 形式）
 fn build_svg_metadata(metadata: &[(String, String)]) -> String {
     let mut lines = Vec::new();
-    lines.push(
-        r#"<metadata>"#.to_string(),
-    );
-    lines.push(
-        r#"  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#""#.to_string(),
-    );
-    lines.push(
-        r#"           xmlns:dc="http://purl.org/dc/elements/1.1/">"#.to_string(),
-    );
+    lines.push(r#"<metadata>"#.to_string());
+    lines.push(r#"  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#""#.to_string());
+    lines.push(r#"           xmlns:dc="http://purl.org/dc/elements/1.1/">"#.to_string());
     lines.push(r#"    <rdf:Description>"#.to_string());
 
     for (key, value) in metadata {
@@ -426,4 +420,3 @@ fn build_metadata_comment(metadata: &[(String, String)]) -> String {
         .collect();
     parts.join("; ")
 }
-

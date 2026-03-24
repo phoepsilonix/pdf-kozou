@@ -115,14 +115,14 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
     let mut metadata = PdfMetadata::default();
     for (key, value) in meta_pairs {
         match key.as_str() {
-            "Title"        => metadata.title        = Some(value),
-            "Author"       => metadata.author       = Some(value),
-            "Subject"      => metadata.subject      = Some(value),
-            "Keywords"     => metadata.keywords     = Some(value),
-            "Creator"      => metadata.creator      = Some(value),
-            "Producer"     => metadata.producer     = Some(value),
+            "Title" => metadata.title = Some(value),
+            "Author" => metadata.author = Some(value),
+            "Subject" => metadata.subject = Some(value),
+            "Keywords" => metadata.keywords = Some(value),
+            "Creator" => metadata.creator = Some(value),
+            "Producer" => metadata.producer = Some(value),
             "CreationDate" => metadata.creation_date = Some(value),
-            "ModDate"      => metadata.mod_date     = Some(value),
+            "ModDate" => metadata.mod_date = Some(value),
             _ => {}
         }
     }
