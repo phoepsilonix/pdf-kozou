@@ -24,6 +24,160 @@ use serde::{Deserialize, Serialize};
 use crate::ffi::enable_objstms;
 use crate::ffi::kozou_new_context;
 use crate::ffi::merge_duplicate_fonts;
+
+// ── メタデータ保持ユーティリティ ──────────────────────────────────────────────
+
+/// PDFの /Info 辞書から保存すべきメタデータキー一覧
+const METADATA_KEYS: &[&str] = &[
+    "Title",
+    "Author",
+    "Subject",
+    "Keywords",
+    "Creator",
+    "Producer",
+    "CreationDate",
+    "ModDate",
+];
+
+/// 入力PDFの /Info 辞書からメタデータを収集する
+///
+/// mupdf 0.6 の PdfDocument を使い、/Info 辞書から直接文字列を取得する。
+/// get_dict / resolve / as_string パターンは info.rs と同様。
+pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
+    use mupdf::pdf::PdfDocument;
+
+    let pdf = match PdfDocument::open(input) {
+        Ok(p) => p,
+        Err(_) => return vec![],
+    };
+
+    let mut result = Vec::new();
+
+    // /Info 辞書は PDF trailer の "Info" キーにある。
+    // PdfDocument::find_page(-1) は使えないが、
+    // trailer オブジェクトへのアクセスは C FFI 経由が確実。
+    // ここでは「page 0 から /Parent → ... → /Root → /Info」ではなく、
+    // C FFI の pdf_trailer を使う kozou_get_info_string 関数で取得する。
+    // → 実装を C 側に委ねる: kozou_collect_pdf_info を呼ぶ。
+    //
+    // ただし C 関数のコールバック経由は Rust では複雑なため、
+    // 各キーを個別に kozou_get_pdf_info_key で取得する方式を取る。
+
+    unsafe {
+        use std::ffi::CString;
+        let ctx = crate::ffi::kozou_new_context();
+        if ctx.is_null() {
+            return result;
+        }
+        let c_path = match CString::new(input) {
+            Ok(s) => s,
+            Err(_) => {
+                mupdf_sys::fz_drop_context(ctx);
+                return result;
+            }
+        };
+        for key in METADATA_KEYS {
+            let c_key = match CString::new(*key) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let mut buf = [0u8; 1024];
+            let mut res = crate::ffi::FfiResult::default();
+            let got = kozou_get_pdf_info_key(
+                ctx,
+                c_path.as_ptr(),
+                c_key.as_ptr(),
+                buf.as_mut_ptr() as *mut std::ffi::c_char,
+                buf.len() as std::ffi::c_int,
+                &mut res,
+            );
+            if got > 0 && res.ok != 0 {
+                // ヌル終端バイト列を Rust 文字列に変換
+                let s = std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char)
+                    .to_string_lossy()
+                    .trim()
+                    .to_string();
+                if !s.is_empty() {
+                    result.push((key.to_string(), s));
+                }
+            }
+        }
+        mupdf_sys::fz_drop_context(ctx);
+    }
+    result
+}
+
+extern "C" {
+    /// PDF /Info 辞書から指定キーの値を取得する。
+    /// 返り値: コピーしたバイト数（終端ヌル含まず）。0 なら未設定 or エラー。
+    fn kozou_get_pdf_info_key(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const std::ffi::c_char,
+        key: *const std::ffi::c_char,
+        buf: *mut std::ffi::c_char,
+        buf_len: std::ffi::c_int,
+        result: *mut crate::ffi::FfiResult,
+    ) -> std::ffi::c_int;
+}
+
+/// 出力 PDF ファイルの /Info 辞書にメタデータを書き戻す
+///
+/// C FFI ラッパー `kozou_set_pdf_info_key` に委ねる。
+/// `save_with_options()` で書き出した **後** に呼ぶ。
+pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
+    if metadata.is_empty() {
+        return;
+    }
+    use std::ffi::CString;
+    unsafe {
+        let ctx = crate::ffi::kozou_new_context();
+        if ctx.is_null() {
+            return;
+        }
+        let c_output = match CString::new(output) {
+            Ok(s) => s,
+            Err(_) => {
+                mupdf_sys::fz_drop_context(ctx);
+                return;
+            }
+        };
+        for (key, value) in metadata {
+            let c_key = match CString::new(key.as_str()) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let c_value = match CString::new(value.as_str()) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let mut res = crate::ffi::FfiResult::default();
+            kozou_set_pdf_info_key(
+                ctx,
+                c_output.as_ptr(),
+                c_key.as_ptr(),
+                c_value.as_ptr(),
+                &mut res,
+            );
+            // エラーが出た場合は最初のキー設定が失敗しているので中断
+            if res.ok == 0 {
+                break;
+            }
+        }
+        mupdf_sys::fz_drop_context(ctx);
+    }
+}
+
+extern "C" {
+    /// 既存 PDF の /Info 辞書に key=value を設定してインプレース保存する
+    fn kozou_set_pdf_info_key(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const std::ffi::c_char,
+        key: *const std::ffi::c_char,
+        value: *const std::ffi::c_char,
+        result: *mut crate::ffi::FfiResult,
+    );
+}
+
 // ── 圧縮プリセット ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -384,6 +538,9 @@ fn safe_compress_only(
 ) -> Result<CompressResponse> {
     use mupdf::pdf::PdfDocument;
 
+    // メタデータを事前に収集（圧縮処理で /Info が失われる場合に備える）
+    let metadata = collect_metadata(input);
+
     let doc = PdfDocument::open(input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
     let mut opts = mupdf::pdf::PdfWriteOptions::default();
@@ -440,6 +597,9 @@ fn safe_compress_only(
     doc.save_with_options(output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
+    // メタデータを書き戻す（gc 処理で /Info が消えた場合に復元）
+    copy_metadata_after_write(output, &metadata);
+
     let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
     let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
 
@@ -495,6 +655,9 @@ pub fn rewrite(
     match unsafe_fonts {
         None => {
             // TrueType のみ — DocumentWriter + page.run()
+            // メタデータを事前に収集（DocumentWriter は /Info を引き継がない）
+            let metadata = collect_metadata(input);
+
             let doc = mupdf::Document::open(input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
             let page_count = doc
                 .page_count()
@@ -519,6 +682,9 @@ pub fn rewrite(
                     .map_err(|e| CoreError::MuPdf(e.to_string()))?;
             }
             drop(writer);
+
+            // DocumentWriter は /Info を引き継がないため、ここで書き戻す
+            copy_metadata_after_write(output, &metadata);
 
             let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
             let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
@@ -649,6 +815,9 @@ fn rewrite_safe_fallback(
 pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse> {
     use mupdf::{Colorspace, DocumentWriter, Matrix};
 
+    // メタデータを事前収集
+    let metadata = collect_metadata(input);
+
     let doc = mupdf::Document::open(input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
     let page_count = doc
         .page_count()
@@ -681,6 +850,10 @@ pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
     }
     drop(writer);
+
+    // DocumentWriter は /Info を引き継がないため書き戻す
+    copy_metadata_after_write(output, &metadata);
+
     let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
     let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
     Ok(CompressResponse {

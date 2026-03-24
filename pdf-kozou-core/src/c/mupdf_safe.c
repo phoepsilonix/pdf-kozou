@@ -672,3 +672,154 @@ void merge_duplicate_fonts(fz_context *ctx, pdf_document *doc) {
     }
 }
 
+
+/* ------------------------------------------------------------------ */
+/* kozou_set_pdf_info_key                                              */
+/*                                                                     */
+/* PDF ファイルを開き、/Info 辞書の指定キーに値を設定して保存する。   */
+/* 既存の /Info がなければ新規作成する。                               */
+/*                                                                     */
+/* 引数:                                                               */
+/*   ctx    - MuPDF コンテキスト                                      */
+/*   path   - 対象 PDF ファイルパス (読み書き)                        */
+/*   key    - /Info キー名 ("Title", "Author" 等)                     */
+/*   value  - 設定する UTF-8 文字列値                                 */
+/*   result - 成功/失敗を返す FfiResult                               */
+/*                                                                     */
+/* 注意: この関数は path ファイルをインプレース（上書き）保存する。   */
+/*       同一ファイルへの複数キー設定は呼び出し毎に開き直す。        */
+/*       効率化が必要ならバッチ版を別途実装する。                     */
+/* ------------------------------------------------------------------ */
+void kozou_set_pdf_info_key(
+    fz_context   *ctx,
+    const char   *path,
+    const char   *key,
+    const char   *value,
+    FfiResult    *result)
+{
+    pdf_document *pdf = NULL;
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+
+        /* PDF を読み書きモードで開く */
+        pdf = pdf_open_document(ctx, path);
+
+        /* trailer から /Info を取得。なければ新規作成 */
+        pdf_obj *trailer = pdf_trailer(ctx, pdf);
+        pdf_obj *info    = pdf_dict_get(ctx, trailer, PDF_NAME(Info));
+
+        if (!info || pdf_is_null(ctx, info)) {
+            /* /Info 辞書を新規作成して trailer に追加 */
+            info = pdf_add_new_dict(ctx, pdf, 4);
+            pdf_dict_put(ctx, trailer, PDF_NAME(Info), info);
+            pdf_drop_obj(ctx, info);
+            /* trailer に追加した後、再取得 */
+            info = pdf_dict_get(ctx, trailer, PDF_NAME(Info));
+        }
+
+        /* 間接参照を解決する */
+        info = pdf_resolve_indirect(ctx, info);
+
+        /* キーを name オブジェクトとして作成してから値を設定 */
+        pdf_obj *key_name = pdf_new_name(ctx, key);
+        /* pdf_dict_put_string: MuPDF 1.18+ で利用可 */
+        pdf_dict_put_string(ctx, info, key_name, value, strlen(value));
+        pdf_drop_obj(ctx, key_name);
+
+        /* インクリメンタル更新で保存（追記形式） */
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_incremental = 1;
+        opts.do_garbage     = 0;
+        opts.do_compress    = 0;
+
+        pdf_save_document(ctx, pdf, path, &opts);
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdf) pdf_drop_document(ctx, pdf);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* kozou_get_pdf_info_key                                              */
+/*                                                                     */
+/* PDF /Info 辞書から指定キーの文字列値を取得してバッファにコピーする。*/
+/*                                                                     */
+/* 引数:                                                               */
+/*   ctx     - MuPDF コンテキスト                                     */
+/*   path    - 対象 PDF ファイルパス                                   */
+/*   key     - /Info キー名 ("Title", "Author" 等)                    */
+/*   buf     - 出力バッファ                                            */
+/*   buf_len - バッファサイズ (ヌル終端含む)                          */
+/*   result  - 成功/失敗を返す FfiResult                              */
+/*                                                                     */
+/* 返り値: コピーしたバイト数（ヌル終端含まず）。0 なら未設定/エラー。*/
+/* ------------------------------------------------------------------ */
+int kozou_get_pdf_info_key(
+    fz_context *ctx,
+    const char *path,
+    const char *key,
+    char       *buf,
+    int         buf_len,
+    FfiResult  *result)
+{
+    pdf_document *pdf = NULL;
+    int copied = 0;
+
+    if (buf && buf_len > 0) buf[0] = '\0';
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+
+        pdf = pdf_open_document(ctx, path);
+
+        pdf_obj *trailer = pdf_trailer(ctx, pdf);
+        pdf_obj *info    = pdf_dict_get(ctx, trailer, PDF_NAME(Info));
+
+        if (info && !pdf_is_null(ctx, info)) {
+            info = pdf_resolve_indirect(ctx, info);
+            pdf_obj *key_name = pdf_new_name(ctx, key);
+            pdf_obj *val = pdf_dict_get(ctx, info, key_name);
+            pdf_drop_obj(ctx, key_name);
+
+            if (val && !pdf_is_null(ctx, val)) {
+                val = pdf_resolve_indirect(ctx, val);
+                /* pdf_to_str_buf: バッファポインタと長さを返す */
+                size_t val_len = 0;
+                const char *str_ptr = pdf_to_str_buf(ctx, val, &val_len);
+                if (str_ptr && val_len > 0 && buf && buf_len > 1) {
+                    int to_copy = (int)val_len < buf_len - 1
+                                  ? (int)val_len
+                                  : buf_len - 1;
+                    memcpy(buf, str_ptr, to_copy);
+                    buf[to_copy] = '\0';
+                    copied = to_copy;
+                } else if (!str_ptr) {
+                    /* name オブジェクトとして格納されている場合 */
+                    const char *name_ptr = pdf_to_name(ctx, val);
+                    if (name_ptr && name_ptr[0] && buf && buf_len > 1) {
+                        int len = (int)strlen(name_ptr);
+                        int to_copy = len < buf_len - 1 ? len : buf_len - 1;
+                        memcpy(buf, name_ptr, to_copy);
+                        buf[to_copy] = '\0';
+                        copied = to_copy;
+                    }
+                }
+            }
+        }
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdf) pdf_drop_document(ctx, pdf);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+        copied = 0;
+    }
+    return copied;
+}

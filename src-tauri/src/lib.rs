@@ -8,6 +8,7 @@ mod error;
 mod gs;
 mod gs_detector;
 mod platform;
+pub mod tempdir;
 
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
@@ -64,6 +65,7 @@ pub fn run() {
             core::get_temp_path,
             core::move_file,
             core::copy_file,
+            core::remove_file,
             platform_cmd::get_screen_info,
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
@@ -75,6 +77,12 @@ pub fn run() {
             gs::run_gs_optimize,
         ])
         .setup(|app| {
+            // ── アプリ終了時に pdf-kozou 一時フォルダをクリーンアップ ────────
+            app.on_window_event(|_window, event| {
+                if let tauri::WindowEvent::Destroyed = event {
+                    crate::tempdir::cleanup_kozou_temp();
+                }
+            });
             // ── 起動時引数からPDFファイルパスを取得してフロントに渡す ──────────
             // macOS/Linux: アプリアイコンへのD&DやCLI起動でファイルが渡される
             // Windows:     ファイル関連付けで起動時に引数として渡される

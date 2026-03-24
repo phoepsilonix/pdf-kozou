@@ -122,6 +122,9 @@ pub fn subset_and_write(
     compress_images: bool,
     compress_fonts: bool,
 ) -> Result<SubsetWriteResult> {
+    // メタデータを事前収集（gc処理で /Info が消える場合に備える）
+    let metadata = crate::compress::collect_metadata(input);
+
     let has_t3 = crate::compress::has_type3_fonts(input);
 
     // Type3 含有時は安全側に制限
@@ -150,6 +153,9 @@ pub fn subset_and_write(
             subset_applied,
         )?;
     }
+
+    // メタデータを書き戻す（gc処理で /Info が消えた場合に復元）
+    crate::compress::copy_metadata_after_write(output, &metadata);
 
     let input_bytes = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
     let output_bytes = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);

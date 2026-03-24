@@ -130,9 +130,12 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
   const [result, setResult] = useState<CompressResponse | null>(null);
   const [tmpFile, setTmpFile] = useState("");
+  const [chainedFiles, setChainedFiles] = useState<string[]>([]); // 連携で作成した一時ファイル一覧
   const [preview, setPreview] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  // 連携で作成した一時ファイルのパス一覧（リセット時に削除）
+  const [chainedFiles, setChainedFiles] = useState<string[]>([]);
   const [outDir, setOutDir] = useState("");
   const [batchProg, setBatchProg] = useState<{
     cur: number;
@@ -256,6 +259,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       const chainedPath = await getTmpPath(`chained_step_${Date.now()}.pdf`);
       await invoke("copy_file", { src: tmpFile, dst: chainedPath });
 
+      // 連携ファイルのパスを記録（リセット時に削除するため）
+      setChainedFiles(prev => [...prev, chainedPath]);
+
       // ステートを更新して「次の入力」としてセット
       setCurrentSource(chainedPath);
 
@@ -271,7 +277,17 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     }
   }, [tmpFile, useGs, setError]);
 
-  const handleResetSource = useCallback(() => {
+  const handleResetSource = useCallback(async () => {
+    // 連携で作成した一時ファイルを削除する
+    for (const cf of chainedFiles) {
+      try {
+        await invoke("remove_file", { path: cf });
+      } catch {
+        // 削除失敗は無視（ファイルが既にない場合など）
+      }
+    }
+    setChainedFiles([]);
+
     // Propsで渡された最初のファイルパス（sourceFile または filePath）に戻す
     setCurrentSource(sourceFile ?? filePath);
     setPhase("edit");
@@ -279,7 +295,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     setPreview("");
     // 必要ならモードも初期（MuPDF）に戻す
     //setUseGs(false);
-  }, [sourceFile, filePath]);
+  }, [sourceFile, filePath, chainedFiles]);
 
   const handleSaveCompressed = useCallback(async () => {
     const base =

@@ -250,8 +250,7 @@ pub async fn get_default_save_dir() -> Result<String> {
 
 #[tauri::command]
 pub async fn get_tmp_path(filename: String) -> Result<String> {
-    let mut path = std::env::temp_dir();
-    path.push(filename);
+    let path = crate::tempdir::kozou_temp_path(&filename);
     Ok(path.display().to_string())
 }
 
@@ -316,11 +315,11 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
         .map_err(|e| Error::Core(format!("JSON parse: {e}\nraw: {stdout}")))
 }
 
-/// 一時ファイルパスを返す (OS の temp dir + name)
+/// 一時ファイルパスを返す (pdf-kozou temp dir + name)
 #[tauri::command]
 pub async fn get_temp_path(name: String) -> Result<String> {
-    let dir = std::env::temp_dir();
-    Ok(dir.join(&name).display().to_string())
+    let path = crate::tempdir::kozou_temp_path(&name);
+    Ok(path.display().to_string())
 }
 
 /// ファイルを移動 (rename → 失敗なら copy + delete)
@@ -339,4 +338,14 @@ pub async fn move_file(src: String, dst: String) -> Result<()> {
 pub async fn copy_file(src: String, dst: String) -> Result<()> {
     std::fs::copy(&src, &dst).map_err(|e| Error::Core(e.to_string()))?;
     Ok(())
+}
+
+/// ファイルを削除 (存在しない場合はエラーにしない)
+#[tauri::command]
+pub async fn remove_file(path: String) -> Result<()> {
+    match std::fs::remove_file(&path) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(Error::Core(format!("remove {path}: {e}"))),
+    }
 }
