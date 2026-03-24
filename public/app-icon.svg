@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" 
+     width="220" height="220" 
+     viewBox="0 0 220 220"
+     aria-labelledby="title desc">
+  <!-- <rect width="220" height="220" fill="#f9f7f2" opacity="0.4"/> -->
+
+  <!-- 袴・着物本体（少し左右に広げて正方形にフィット） -->
+  <path
+    d="M75,140
+      Q68,155 58,210
+      L162,210
+      Q152,160 145,140
+      Q138,128 128,127
+      L92,127
+      Q82,128 75,140 Z"
+    fill="#1e40af"
+    stroke="#0f172a"
+    stroke-width="12"
+    stroke-linejoin="round"/>
+
+  <!-- 着物の襞（調整） -->
+  <path d="M85,140 L83,205" fill="transparent" stroke="#0f172a" stroke-width="4"/>
+  <path d="M105,140 L104,205" fill="transparent" stroke="#0f172a" stroke-width="3.5"/>
+  <path d="M125,140 L128,205" fill="transparent" stroke="#0f172a" stroke-width="4"/>
+
+  <!-- 帯（位置微調整） -->
+  <rect x="65" y="162" width="90" height="12" rx="2" fill="#eab308" stroke="#0f172a" stroke-width="5"/>
+
+  <!-- 左袖 -->
+  <path
+    d="M74,145
+      Q52,162 48,180
+      L52,198
+      L71,203 Z"
+    fill="#1e40af"
+    stroke="#0f172a"
+    stroke-width="8"/>
+
+  <!-- 右袖 -->
+  <path
+    d="M146,145
+      Q168,162 172,180
+      L168,198
+      L149,203 Z"
+    fill="#1e40af"
+    stroke="#0f172a"
+    stroke-width="8"/>
+
+  <!-- 首 -->
+  <rect x="85" y="128" width="50" height="20" rx="10" fill="#f8d9be" stroke="#0f172a" stroke-width="7"/>
+
+  <!-- 頭 -->
+  <ellipse cx="110" cy="80" rx="58" ry="60" fill="#f8d9be" stroke="#0f172a" stroke-width="10"/>
+
+  <!-- 髪 -->
+  <path
+    d="M52,40
+      C55,25 65,18 78,15
+      C88,10 102,9 115,15
+      C132,17 150,30 165,48
+      L162,62
+      C142,48 128,40 110,39
+      C85,38 66,45 52,58 Z"
+    fill="#1e293b"
+    stroke="#0f172a"
+    stroke-width="7"/>
+
+  <!-- 耳 -->
+  <ellipse cx="52" cy="80" rx="10" ry="14" fill="#f8d9be" stroke="#0f172a" stroke-width="5"/>
+  <ellipse cx="168" cy="80" rx="10" ry="14" fill="#f8d9be" stroke="#0f172a" stroke-width="5"/>
+
+  <!-- 目 -->
+  <path d="M74,70 C82,65 90,64 98,70" fill="none" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+  <path d="M122,70 C130,65 138,64 146,70" fill="none" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- 鼻 -->
+  <path d="M110,77 L110,90" fill="none" stroke="#1e293b" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- 口 -->
+  <path d="M80,102 C88,108 98,110 110,108 C122,110 130,106 138,100" fill="none" stroke="#1e293b" stroke-width="3.2" stroke-linecap="round"/>
+
+  <!-- 頰紅 -->
+  <ellipse cx="74" cy="88" rx="8" ry="5" fill="#fda4af" opacity="0.7"/>
+  <ellipse cx="146" cy="88" rx="8" ry="5" fill="#fda4af" opacity="0.7"/>
+</svg>
