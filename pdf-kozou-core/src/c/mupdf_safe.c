@@ -721,11 +721,13 @@ void kozou_set_pdf_info_key(
         /* 間接参照を解決する */
         info = pdf_resolve_indirect(ctx, info);
 
-        /* キーを name オブジェクトとして作成してから値を設定 */
-        pdf_obj *key_name = pdf_new_name(ctx, key);
-        /* pdf_dict_put_string: MuPDF 1.18+ で利用可 */
-        pdf_dict_put_string(ctx, info, key_name, value, strlen(value));
-        pdf_drop_obj(ctx, key_name);
+        /* pdf_new_string + pdf_dict_put でキーに値を設定
+         * （pdf_dict_put_string のシグネチャはバージョン依存のため回避）  */
+        pdf_obj *key_obj = pdf_new_name(ctx, key);
+        pdf_obj *val_obj = pdf_new_string(ctx, value, strlen(value));
+        pdf_dict_put(ctx, info, key_obj, val_obj);
+        pdf_drop_obj(ctx, val_obj);
+        pdf_drop_obj(ctx, key_obj);
 
         /* インクリメンタル更新で保存（追記形式） */
         pdf_write_options opts = pdf_default_write_options;
@@ -789,17 +791,21 @@ int kozou_get_pdf_info_key(
 
             if (val && !pdf_is_null(ctx, val)) {
                 val = pdf_resolve_indirect(ctx, val);
-                /* pdf_to_str_buf: バッファポインタと長さを返す */
-                size_t val_len = 0;
-                const char *str_ptr = pdf_to_str_buf(ctx, val, &val_len);
-                if (str_ptr && val_len > 0 && buf && buf_len > 1) {
-                    int to_copy = (int)val_len < buf_len - 1
-                                  ? (int)val_len
-                                  : buf_len - 1;
-                    memcpy(buf, str_ptr, to_copy);
-                    buf[to_copy] = '\0';
-                    copied = to_copy;
-                } else if (!str_ptr) {
+                /* MuPDF 1.28: pdf_to_str_buf(ctx, obj) → char* (引数2個)
+                 * 長さは strlen で取得する（pdf_to_str_len が存在しない
+                 * バージョンへの互換性のため）                            */
+                if (pdf_is_string(ctx, val)) {
+                    const char *str_ptr = pdf_to_str_buf(ctx, val);
+                    if (str_ptr && buf && buf_len > 1) {
+                        int val_len = (int)strlen(str_ptr);
+                        int to_copy = val_len < buf_len - 1
+                                      ? val_len
+                                      : buf_len - 1;
+                        memcpy(buf, str_ptr, to_copy);
+                        buf[to_copy] = '\0';
+                        copied = to_copy;
+                    }
+                } else {
                     /* name オブジェクトとして格納されている場合 */
                     const char *name_ptr = pdf_to_name(ctx, val);
                     if (name_ptr && name_ptr[0] && buf && buf_len > 1) {
