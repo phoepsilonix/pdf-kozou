@@ -291,7 +291,7 @@ export default function App() {
         pdfInfo={
           pdfInfo ?? {
             page_count: 0,
-            pdf_version: "1.7", // 仮の値（実際のPDFがない場合のダミー値）
+            pdf_version: "1.4", // 仮の値（実際のPDFがない場合のダミー値）
             encrypted: false,
             linearized: false,
             pages: [], // 空配列でOK（PageBounds[]）

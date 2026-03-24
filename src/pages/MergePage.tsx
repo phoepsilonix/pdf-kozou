@@ -254,7 +254,7 @@ useEffect(() => {
       // 修正後（全フィールド追加）
       setMergedInfo({
         page_count: res.page_count,
-        pdf_version: "1.7", // 仮値（マージ後のバージョンとして適当なものを）
+        pdf_version: "1.4", // 仮値（マージ後のバージョンとして適当なものを）
         encrypted: false,
         linearized: false,
         pages: Array.from({ length: res.page_count }, () => ({
