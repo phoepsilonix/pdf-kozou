@@ -66,9 +66,8 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
     }
 
     let mut opts = mupdf::pdf::PdfWriteOptions::default();
-    // フォント保護: clean=false, sanitize=false (デフォルト), gc=2
-    // MuPDF 1.28: set_compress_fonts は廃止 (compress=true で自動的にフォントも圧縮)
-    opts.set_compress(true).set_garbage_level(2);
+    // gc=1: 未参照オブジェクト除去のみ。サイズ削減は連携圧縮機能で。
+    opts.set_compress(true).set_garbage_level(1);
     dst.save_with_options(&req.output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 

@@ -312,13 +312,21 @@ fn calc_cropbox(
     }
 }
 
+/// ページ選択を 0始まりインデックスの Vec に変換するヘルパー
+fn resolve_selection(sel: &PageSelection, page_count: i32) -> Vec<i32> {
+    match sel {
+        PageSelection::All => (0..page_count).collect(),
+        PageSelection::Even => (0..page_count).filter(|&i| (i + 1) % 2 == 0).collect(),
+        PageSelection::Odd => (0..page_count).filter(|&i| (i + 1) % 2 == 1).collect(),
+        PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
+        PageSelection::None => vec![],
+    }
+}
+
 pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
-    use mupdf::pdf::PdfDocument;
+    use mupdf::pdf::{PdfDocument, PdfWriteOptions};
 
-    // 入力ファイルのメタデータを最初に収集（後続の処理で入力ファイルが変わる前に）
-    let metadata = crate::compress::collect_metadata(&req.input);
-
-    // 単位 → pt 変換
+    // ── 単位 → pt 変換 ─────────────────────────────────────────────────────
     let to_pt: f32 = match req.unit.to_lowercase().as_str() {
         "pt" => 1.0,
         "cm" => 28.3465,
@@ -332,66 +340,58 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         top: req.margins.top * to_pt,
     };
 
-    //let mut working_path: String = req.input.clone();
-    let working_path: String;
-    let working_tmp: Option<tempfile::NamedTempFile>;
+    // ── 入力ファイルをコピーして作業ファイルを作る ──────────────────────────
+    // コピー元の /Info・XMP などメタデータが全て保持される。
+    // graft 方式（PdfDocument::new）と違い PDF バージョンも変わらない。
+    let work_tmp = tempfile::Builder::new()
+        .suffix(".pdf")
+        .tempfile()
+        .map_err(CoreError::Io)?;
+    let work_path = work_tmp.path().to_string_lossy().to_string();
+    std::fs::copy(&req.input, &work_path).map_err(CoreError::Io)?;
 
-    let page_count = {
-        let tmp = PdfDocument::open(&req.input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        tmp.page_count()
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?
-    };
+    // ── 作業ファイルを開いてページ情報を取得 ───────────────────────────────
+    let mut doc = PdfDocument::open(&work_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let page_count = doc
+        .page_count()
+        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
-    // # 全ページ
-    let all_pages: Vec<i32> = (0..page_count).collect();
-
-    // trim_target（適用ページ）の計算（既存部分）
-    let mut trim_target: Vec<i32> = match req.pages.as_ref().unwrap_or(&PageSelection::All) {
-        PageSelection::All => (0..page_count).collect(),
-        PageSelection::Even => (0..page_count).filter(|&i| (i + 1) % 2 == 0).collect(),
-        PageSelection::Odd => (0..page_count).filter(|&i| (i + 1) % 2 == 1).collect(),
-        PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
-        PageSelection::None => (0..page_count).collect(),
-    };
-    // トリミング適用ページ
-    let _trim_pages: Vec<i32> = trim_target.clone();
-    // 最終的な書き込みページ（抽出ページ。残すページ。）
-    let mut write_target: Vec<i32> = all_pages.clone();
-
-    // Trim除外ページ
+    // ── trim 対象ページを計算 ────────────────────────────────────────────────
+    let mut trim_target: Vec<i32> = resolve_selection(
+        req.pages.as_ref().unwrap_or(&PageSelection::All),
+        page_count,
+    );
     if let Some(exclude) = req.exclude.as_ref() {
-        let exclude_indices: Vec<i32> = match exclude {
-            PageSelection::All => (0..page_count).collect(),
-            PageSelection::Even => (0..page_count).filter(|&i| (i + 1) % 2 == 0).collect(),
-            PageSelection::Odd => (0..page_count).filter(|&i| (i + 1) % 2 == 1).collect(),
-            PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
-            PageSelection::None => [].to_vec(),
-        };
-        // target から除外ページを削除
-        trim_target.retain(|&p| !exclude_indices.contains(&p));
+        let excl = resolve_selection(exclude, page_count);
+        trim_target.retain(|p| !excl.contains(p));
     }
 
-    // ── トリミング適用 ─────────────────────────────────────────────────────
-    let doc = PdfDocument::open(&req.input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    // ── 残すページを計算（extract 指定がなければ全ページ）────────────────────
+    let keep_pages: Vec<i32> = if let Some(extract) = req.extract.as_ref() {
+        let mut kp = resolve_selection(extract, page_count);
+        kp.sort_unstable();
+        kp.dedup();
+        kp
+    } else {
+        (0..page_count).collect()
+    };
 
-    let mut crop_boxes = Vec::new();
+    // ── CropBox を計算して書き込む ────────────────────────────────────────────
+    let mut crop_boxes: Vec<CropBoxInfo> = Vec::new();
 
-    for idx in &all_pages {
-        if !trim_target.contains(idx) {
-            continue;
-        }
-        let idx = *idx;
+    for &idx in &trim_target {
         if idx < 0 || idx >= page_count {
             continue;
         }
+        if !keep_pages.contains(&idx) {
+            continue;
+        } // extract で除外されるページは不要
 
         let mut page_obj = doc
             .find_page(idx)
             .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
         let rotate = get_page_rotate(&page_obj);
-
-        // MediaBox を取得 (page_obj から直接、または継承)
         let (mb_x0, mb_y0, mb_x1, mb_y1) =
             get_media_box(&page_obj).unwrap_or((0.0, 0.0, 595.0, 842.0));
 
@@ -446,88 +446,55 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
             height: cy1 - cy0,
         });
     }
-    // ── ページ抽出 (extract_pages が指定されている場合) ────────────────────
-    // 抽出先の中間PDFを作り、対象ページのみコピーする
 
-    //let mut extract_indices: Vec<i32> = (0..page_count).collect();
-    let extract_indices: Vec<i32>; // = (0..page_count).collect();
-    if let Some(extract) = req.extract.as_ref() {
-        extract_indices = match extract {
-            PageSelection::All => (0..page_count).collect(),
-            PageSelection::Even => (0..page_count).filter(|&i| (i + 1) % 2 == 0).collect(),
-            PageSelection::Odd => (0..page_count).filter(|&i| (i + 1) % 2 == 1).collect(),
-            PageSelection::Range { pages } => pages.iter().map(|&p| p - 1).collect(),
-            PageSelection::None => (0..page_count).collect(),
-        };
-        // src target から抽出ページのみにする
-        write_target.retain(|&p| extract_indices.contains(&p));
-    };
-    // 抽出適用後のログ（デバッグ用）
+    // ── extract あり: 不要ページを後ろから delete_page で削除 ─────────────────
+    // keep_pages が全ページより少ない場合のみ削除処理を行う
+    let has_extract = keep_pages.len() < page_count as usize;
+    if has_extract {
+        // 削除するページ = 全ページ - keep_pages、後ろから削除して番号ずれを防ぐ
+        let mut delete_indices: Vec<i32> = (0..page_count)
+            .filter(|p| !keep_pages.contains(p))
+            .collect();
+        delete_indices.sort_unstable_by(|a, b| b.cmp(a)); // 降順
 
-    let write_page = write_target.iter().map(|&i| i + 1).collect::<Vec<_>>();
-    if !write_page.is_empty() {
-        // 抽出先 tmp ファイル
-        let tmp = tempfile::NamedTempFile::new().map_err(CoreError::Io)?;
-        let tmp_path = tmp.path().to_string_lossy().to_string();
-
-        //PdfDocument::open(&req.input) .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        let src = doc;
-        let mut dst = PdfDocument::new();
-        let mut graft = dst
-            .new_graft_map()
-            .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-
-        for page_1based in write_page {
-            let idx = page_1based - 1;
-            if idx < 0 || idx >= page_count {
-                continue;
-            }
-            if !write_target.contains(&idx) {
-                continue;
-            }
-            let src_page = src
-                .find_page(idx)
-                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-            let dst_page = graft
-                .graft_object(&src_page)
-                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-            let at = dst
-                .page_count()
-                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-            dst.insert_page(at, &dst_page)
+        for idx in delete_indices {
+            doc.delete_page(idx)
                 .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
         }
-
-        let mut opts = mupdf::pdf::PdfWriteOptions::default();
-        opts.set_compress(true).set_garbage_level(2);
-        dst.save_with_options(&tmp_path, opts)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        working_path = tmp_path;
-        working_tmp = Some(tmp);
-    } else {
-        working_path = req.input.clone();
-        working_tmp = None;
     }
 
-    let doc = PdfDocument::open(&working_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
-    let _working_page_count = doc
-        .page_count()
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    // ── インクリメンタル保存（/Info を含む全メタデータを保持）──────────────────
+    // gc=0: 構造変更なし（delete_page がある場合も gc=1 では OK だが
+    //        incremental=true との組み合わせで gc=0 が最も安全）
+    // 注意: extract あり（delete_page 実行済み）の場合は incremental=false にする
+    //        incremental=true でページ削除をしても差分追記になるが、
+    //        ビューア互換性のため通常保存を使う
+    let mut opts = PdfWriteOptions::default();
+    if has_extract {
+        // ページ数が変わる場合: gc=1 の通常保存
+        opts.set_incremental(false)
+            .set_compress(true)
+            .set_compress_fonts(true)
+            .set_garbage_level(1)
+            .set_clean(false);
+        doc.save_with_options(&req.output, opts)
+            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        // delete_page で /Info が消えた場合に備えてメタデータを書き戻す
+        let metadata = crate::compress::collect_metadata(&req.input);
+        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+    } else {
+        // ページ数変わらず: インクリメンタル保存で /Info 完全保持
+        opts.set_incremental(true)
+            .set_compress(true)
+            .set_garbage_level(0)
+            .set_clean(false);
+        doc.save_with_options(&req.output, opts)
+            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    }
 
-    let mut opts = mupdf::pdf::PdfWriteOptions::default();
-    opts.set_compress(true)
-        .set_compress_fonts(true)
-        .set_garbage_level(2)
-        .set_clean(false);
-
-    doc.save_with_options(&req.output, opts)
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-
-    // 入力 PDF のメタデータを出力に書き戻す
-    crate::compress::copy_metadata_after_write(&req.output, &metadata);
-
-    // tmp ファイルはここで drop (自動削除)
-    drop(working_tmp);
+    // 作業用一時ファイルを解放・削除
+    drop(doc);
+    drop(work_tmp);
 
     let input_bytes = std::fs::metadata(&req.input).map(|m| m.len()).unwrap_or(0);
     let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);

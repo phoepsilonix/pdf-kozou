@@ -99,7 +99,10 @@ pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
         let mut c_vals: Vec<CString> = Vec::with_capacity(metadata.len());
         for (key, value) in metadata {
             match (CString::new(key.as_str()), CString::new(value.as_str())) {
-                (Ok(k), Ok(v)) => { c_keys.push(k); c_vals.push(v); }
+                (Ok(k), Ok(v)) => {
+                    c_keys.push(k);
+                    c_vals.push(v);
+                }
                 _ => continue,
             }
         }
@@ -170,8 +173,8 @@ impl CompressPreset {
         match self {
             Self::Light => (false, 1, false, false, false, false, false),
             Self::Standard => (true, 2, false, false, false, false, false), // subset はデフォルト無効
-            Self::Aggressive => (true, 2, false, true, false, false, false),  // 同上
-            Self::Maximum => (true, 3, true, true, false, false, false),      // 同上.clean
+            Self::Aggressive => (true, 2, false, true, false, false, false), // 同上
+            Self::Maximum => (true, 3, true, true, false, false, false),    // 同上.clean
         }
     }
 }

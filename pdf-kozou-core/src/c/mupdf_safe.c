@@ -947,10 +947,10 @@ int kozou_get_pdf_info_key(
                 val = pdf_resolve_indirect(ctx, val);
 
                 if (pdf_is_string(ctx, val)) {
-                    /* pdf_to_utf8: PDFDocEncoding / UTF-16 BE(BOM付き) を
-                     * 正しく UTF-8 に変換する MuPDF 公式 API。
-                     * 戻り値は fz_malloc 確保なので fz_free が必要。   */
-                    char *utf8 = pdf_to_utf8(ctx, val);
+                    /* MuPDF 1.28: pdf_to_text_string(ctx, obj) は
+                     * PDFDocEncoding / UTF-16 BE を自動で UTF-8 に変換して返す。
+                     * 返り値は内部バッファへのポインタのため fz_free 不要。 */
+                    const char *utf8 = pdf_to_text_string(ctx, val);
                     if (utf8 && buf && buf_len > 1) {
                         int len = (int)strlen(utf8);
                         int to_copy = len < buf_len - 1 ? len : buf_len - 1;
@@ -958,7 +958,6 @@ int kozou_get_pdf_info_key(
                         buf[to_copy] = '\0';
                         copied = to_copy;
                     }
-                    fz_free(ctx, utf8);
                 } else if (pdf_is_name(ctx, val)) {
                     /* /Name オブジェクトとして格納されている場合（稀）*/
                     const char *name_ptr = pdf_to_name(ctx, val);

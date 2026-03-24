@@ -97,18 +97,15 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
         }
 
         let mut opts = mupdf::pdf::PdfWriteOptions::default();
-        // フォント保護: clean=false, sanitize=false (デフォルト), gc=2
+        // gc=1: 未参照オブジェクト除去のみ。サイズ削減は連携圧縮機能で。
         opts.set_compress(true)
             .set_compress_fonts(true)
-            .set_garbage_level(2);
+            .set_garbage_level(1);
         dst.save_with_options(out_path.to_str().unwrap(), opts)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
         // 入力 PDF のメタデータを各出力ファイルに引き継ぐ
-        crate::compress::copy_metadata_after_write(
-            out_path.to_str().unwrap(),
-            &metadata,
-        );
+        crate::compress::copy_metadata_after_write(out_path.to_str().unwrap(), &metadata);
 
         files.push(out_path.to_string_lossy().to_string());
     }

@@ -44,7 +44,6 @@ extern "C" {
     pub fn merge_duplicate_fonts(ctx: *mut fz_context, doc: *mut pdf_document);
 
     pub fn enable_objstms(opts: *mut mupdf_sys::pdf_write_options);
-    //pub fn enable_objstms(opts: *mut PdfWriteOptions);
 
     pub fn purge_unused_fonts(ctx: *mut fz_context, pdf: *mut pdf_document) -> c_int;
 
