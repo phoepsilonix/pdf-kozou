@@ -41,88 +41,39 @@ const METADATA_KEYS: &[&str] = &[
 
 /// 入力PDFの /Info 辞書からメタデータを収集する
 ///
-/// mupdf 0.6 の PdfDocument を使い、/Info 辞書から直接文字列を取得する。
-/// get_dict / resolve / as_string パターンは info.rs と同様。
+/// `mupdf::Document::metadata("info:Key")` = MuPDF の fz_lookup_metadata を内部で
+/// 使用しており、PDFDocEncoding・UTF-16 BE を両方 UTF-8 に正しく変換して返す。
+/// C FFI を使わず Rust クレートの公式 API のみで実装。
 pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
-    use mupdf::pdf::PdfDocument;
-
-    let pdf = match PdfDocument::open(input) {
-        Ok(p) => p,
-        Err(_) => return vec![],
-    };
-
-    let mut result = Vec::new();
-
-    // /Info 辞書は PDF trailer の "Info" キーにある。
-    // PdfDocument::find_page(-1) は使えないが、
-    // trailer オブジェクトへのアクセスは C FFI 経由が確実。
-    // ここでは「page 0 から /Parent → ... → /Root → /Info」ではなく、
-    // C FFI の pdf_trailer を使う kozou_get_info_string 関数で取得する。
-    // → 実装を C 側に委ねる: kozou_collect_pdf_info を呼ぶ。
-    //
-    // ただし C 関数のコールバック経由は Rust では複雑なため、
-    // 各キーを個別に kozou_get_pdf_info_key で取得する方式を取る。
-
-    unsafe {
-        use std::ffi::CString;
-        let ctx = crate::ffi::kozou_new_context();
-        if ctx.is_null() {
-            return result;
+    let doc = match mupdf::Document::open(input) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[metadata] collect: open failed for {input}: {e}");
+            return vec![];
         }
-        let c_path = match CString::new(input) {
-            Ok(s) => s,
-            Err(_) => {
-                mupdf_sys::fz_drop_context(ctx);
-                return result;
-            }
-        };
-        for key in METADATA_KEYS {
-            let c_key = match CString::new(*key) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            let mut buf = [0u8; 1024];
-            let mut res = crate::ffi::FfiResult::default();
-            let got = kozou_get_pdf_info_key(
-                ctx,
-                c_path.as_ptr(),
-                c_key.as_ptr(),
-                buf.as_mut_ptr() as *mut std::ffi::c_char,
-                buf.len() as std::ffi::c_int,
-                &mut res,
-            );
-            if got > 0 && res.ok != 0 {
-                // ヌル終端バイト列を Rust 文字列に変換
-                let s = std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char)
-                    .to_string_lossy()
-                    .trim()
-                    .to_string();
+    };
+    let mut result = Vec::new();
+    for key in METADATA_KEYS {
+        let info_key = format!("info:{key}");
+        match doc.metadata(&info_key) {
+            Ok(Some(val)) => {
+                let s = val.trim().to_string();
                 if !s.is_empty() {
                     result.push((key.to_string(), s));
                 }
             }
+            Ok(None) => {} // キーなし
+            Err(e) => eprintln!("[metadata] collect: metadata({info_key}) error: {e}"),
         }
-        mupdf_sys::fz_drop_context(ctx);
     }
+    eprintln!("[metadata] collected {} keys from {input}", result.len());
     result
-}
-
-extern "C" {
-    /// PDF /Info 辞書から指定キーの値を取得する。
-    /// 返り値: コピーしたバイト数（終端ヌル含まず）。0 なら未設定 or エラー。
-    fn kozou_get_pdf_info_key(
-        ctx: *mut mupdf_sys::fz_context,
-        path: *const std::ffi::c_char,
-        key: *const std::ffi::c_char,
-        buf: *mut std::ffi::c_char,
-        buf_len: std::ffi::c_int,
-        result: *mut crate::ffi::FfiResult,
-    ) -> std::ffi::c_int;
 }
 
 /// 出力 PDF ファイルの /Info 辞書にメタデータを書き戻す
 ///
-/// C FFI ラッパー `kozou_set_pdf_info_key` に委ねる。
+/// バッチ関数 `kozou_write_pdf_info` に委ねる。1回のファイルオープンで
+/// 全キーをまとめて書き込み、1回だけ保存する。
 /// `save_with_options()` で書き出した **後** に呼ぶ。
 pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
     if metadata.is_empty() {
@@ -132,6 +83,7 @@ pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
     unsafe {
         let ctx = crate::ffi::kozou_new_context();
         if ctx.is_null() {
+            eprintln!("[metadata] kozou_new_context failed for {output}");
             return;
         }
         let c_output = match CString::new(output) {
@@ -141,39 +93,54 @@ pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
                 return;
             }
         };
+
+        // キー・値を CString の Vec に変換
+        let mut c_keys: Vec<CString> = Vec::with_capacity(metadata.len());
+        let mut c_vals: Vec<CString> = Vec::with_capacity(metadata.len());
         for (key, value) in metadata {
-            let c_key = match CString::new(key.as_str()) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            let c_value = match CString::new(value.as_str()) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            let mut res = crate::ffi::FfiResult::default();
-            kozou_set_pdf_info_key(
-                ctx,
-                c_output.as_ptr(),
-                c_key.as_ptr(),
-                c_value.as_ptr(),
-                &mut res,
-            );
-            // エラーが出た場合は最初のキー設定が失敗しているので中断
-            if res.ok == 0 {
-                break;
+            match (CString::new(key.as_str()), CString::new(value.as_str())) {
+                (Ok(k), Ok(v)) => { c_keys.push(k); c_vals.push(v); }
+                _ => continue,
             }
+        }
+
+        // ポインタ配列を作成
+        let key_ptrs: Vec<*const std::ffi::c_char> = c_keys.iter().map(|s| s.as_ptr()).collect();
+        let val_ptrs: Vec<*const std::ffi::c_char> = c_vals.iter().map(|s| s.as_ptr()).collect();
+
+        let mut res = crate::ffi::FfiResult::default();
+        kozou_write_pdf_info(
+            ctx,
+            c_output.as_ptr(),
+            key_ptrs.as_ptr(),
+            val_ptrs.as_ptr(),
+            key_ptrs.len() as std::ffi::c_int,
+            &mut res,
+        );
+        if res.ok == 0 {
+            eprintln!("[metadata] kozou_write_pdf_info failed for {output}: {res}");
         }
         mupdf_sys::fz_drop_context(ctx);
     }
 }
 
 extern "C" {
-    /// 既存 PDF の /Info 辞書に key=value を設定してインプレース保存する
+    /// 既存 PDF の /Info 辞書に key=value を設定してインプレース保存する（単一キー用）
     fn kozou_set_pdf_info_key(
         ctx: *mut mupdf_sys::fz_context,
         path: *const std::ffi::c_char,
         key: *const std::ffi::c_char,
         value: *const std::ffi::c_char,
+        result: *mut crate::ffi::FfiResult,
+    );
+
+    /// 既存 PDF の /Info 辞書に複数のキーをまとめて書き込み1回だけ保存する（バッチ用）
+    fn kozou_write_pdf_info(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const std::ffi::c_char,
+        keys: *const *const std::ffi::c_char,
+        values: *const *const std::ffi::c_char,
+        count: std::ffi::c_int,
         result: *mut crate::ffi::FfiResult,
     );
 }
@@ -203,8 +170,8 @@ impl CompressPreset {
         match self {
             Self::Light => (false, 1, false, false, false, false, false),
             Self::Standard => (true, 2, false, false, false, false, false), // subset はデフォルト無効
-            Self::Aggressive => (true, 2, false, true, false, false, false), // 同上
-            Self::Maximum => (true, 3, true, true, false, false, false),    // 同上.clean
+            Self::Aggressive => (true, 2, false, true, false, false, false),  // 同上
+            Self::Maximum => (true, 3, true, true, false, false, false),      // 同上.clean
         }
     }
 }

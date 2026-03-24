@@ -674,21 +674,90 @@ void merge_duplicate_fonts(fz_context *ctx, pdf_document *doc) {
 
 
 /* ------------------------------------------------------------------ */
+/* utf8_to_pdf_string_obj                                              */
+/*                                                                     */
+/* UTF-8 文字列から PDF /Info 文字列オブジェクトを生成する。           */
+/* ASCII のみなら PDFDocEncoding (= Latin-1 サブセット) として格納し、 */
+/* 非 ASCII を含む場合は BOM 付き UTF-16 BE として格納する。           */
+/* これにより pdfinfo・Adobe Acrobat など標準ツールで正しく表示される。*/
+/* ------------------------------------------------------------------ */
+static pdf_obj *utf8_to_pdf_string_obj(fz_context *ctx, const char *utf8)
+{
+    if (!utf8) return pdf_new_string(ctx, "", 0);
+
+    /* ASCII のみか判定 */
+    int is_ascii = 1;
+    for (const char *p = utf8; *p; p++) {
+        if ((unsigned char)*p > 0x7F) { is_ascii = 0; break; }
+    }
+
+    if (is_ascii) {
+        /* ASCII のみ: そのまま PDFDocEncoding 文字列として格納 */
+        return pdf_new_string(ctx, utf8, strlen(utf8));
+    }
+
+    /* UTF-8 → BOM 付き UTF-16 BE に変換 */
+    /* まず必要バイト数を計算: BOM(2) + 各コードポイント*2 (or *4) */
+    size_t buf_capacity = 2 + strlen(utf8) * 3 + 4; /* 余裕を持たせる */
+    unsigned char *buf = (unsigned char *)fz_malloc(ctx, buf_capacity);
+
+    buf[0] = 0xFE; /* BOM high */
+    buf[1] = 0xFF; /* BOM low  */
+    int out = 2;
+
+    const unsigned char *s = (const unsigned char *)utf8;
+    while (*s) {
+        unsigned int cp = 0;
+        if (*s < 0x80) {
+            cp = *s++;
+        } else if ((*s & 0xE0) == 0xC0) {
+            cp = (*s++ & 0x1F) << 6;
+            if (*s) cp |= (*s++ & 0x3F);
+        } else if ((*s & 0xF0) == 0xE0) {
+            cp = (*s++ & 0x0F) << 12;
+            if (*s) cp |= (*s++ & 0x3F) << 6;
+            if (*s) cp |= (*s++ & 0x3F);
+        } else if ((*s & 0xF8) == 0xF0) {
+            cp = (*s++ & 0x07) << 18;
+            if (*s) cp |= (*s++ & 0x3F) << 12;
+            if (*s) cp |= (*s++ & 0x3F) << 6;
+            if (*s) cp |= (*s++ & 0x3F);
+        } else {
+            s++; cp = 0xFFFD; /* 不正バイト → 置換文字 */
+        }
+
+        if (cp < 0x10000) {
+            /* BMP: 2バイト */
+            buf[out++] = (cp >> 8) & 0xFF;
+            buf[out++] = cp & 0xFF;
+        } else {
+            /* サプリメンタリ: サロゲートペア */
+            cp -= 0x10000;
+            unsigned int hi = 0xD800 + (cp >> 10);
+            unsigned int lo = 0xDC00 + (cp & 0x3FF);
+            buf[out++] = (hi >> 8) & 0xFF;
+            buf[out++] = hi & 0xFF;
+            buf[out++] = (lo >> 8) & 0xFF;
+            buf[out++] = lo & 0xFF;
+        }
+
+        /* バッファ拡張（念のため） */
+        if ((size_t)(out + 8) >= buf_capacity) {
+            buf_capacity *= 2;
+            buf = (unsigned char *)fz_realloc(ctx, buf, buf_capacity);
+        }
+    }
+
+    pdf_obj *obj = pdf_new_string(ctx, (const char *)buf, out);
+    fz_free(ctx, buf);
+    return obj;
+}
+
+/* ------------------------------------------------------------------ */
 /* kozou_set_pdf_info_key                                              */
 /*                                                                     */
 /* PDF ファイルを開き、/Info 辞書の指定キーに値を設定して保存する。   */
-/* 既存の /Info がなければ新規作成する。                               */
-/*                                                                     */
-/* 引数:                                                               */
-/*   ctx    - MuPDF コンテキスト                                      */
-/*   path   - 対象 PDF ファイルパス (読み書き)                        */
-/*   key    - /Info キー名 ("Title", "Author" 等)                     */
-/*   value  - 設定する UTF-8 文字列値                                 */
-/*   result - 成功/失敗を返す FfiResult                               */
-/*                                                                     */
-/* 注意: この関数は path ファイルをインプレース（上書き）保存する。   */
-/*       同一ファイルへの複数キー設定は呼び出し毎に開き直す。        */
-/*       効率化が必要ならバッチ版を別途実装する。                     */
+/* UTF-8 入力を BOM 付き UTF-16 BE に変換して格納する。               */
 /* ------------------------------------------------------------------ */
 void kozou_set_pdf_info_key(
     fz_context   *ctx,
@@ -698,6 +767,7 @@ void kozou_set_pdf_info_key(
     FfiResult    *result)
 {
     pdf_document *pdf = NULL;
+
 
     fz_try(ctx) {
         fz_register_document_handlers(ctx);
@@ -721,17 +791,100 @@ void kozou_set_pdf_info_key(
         /* 間接参照を解決する */
         info = pdf_resolve_indirect(ctx, info);
 
-        /* pdf_new_string + pdf_dict_put でキーに値を設定
-         * （pdf_dict_put_string のシグネチャはバージョン依存のため回避）  */
+        /* UTF-8 → BOM 付き UTF-16 BE (非ASCII含む場合) で格納 */
         pdf_obj *key_obj = pdf_new_name(ctx, key);
-        pdf_obj *val_obj = pdf_new_string(ctx, value, strlen(value));
+        pdf_obj *val_obj = utf8_to_pdf_string_obj(ctx, value);
         pdf_dict_put(ctx, info, key_obj, val_obj);
         pdf_drop_obj(ctx, val_obj);
         pdf_drop_obj(ctx, key_obj);
 
-        /* インクリメンタル更新で保存（追記形式） */
+        /* do_incremental = 0: 新規作成 PDF にも対応するため通常保存。*/
         pdf_write_options opts = pdf_default_write_options;
-        opts.do_incremental = 1;
+        opts.do_incremental = 0;
+        opts.do_garbage     = 0;
+        opts.do_compress    = 0;
+
+        pdf_save_document(ctx, pdf, path, &opts);
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdf) pdf_drop_document(ctx, pdf);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* kozou_write_pdf_info                                                */
+/*                                                                     */
+/* PDF ファイルを1回だけ開き、複数の /Info キーをまとめて書き込んで   */
+/* 1回だけ保存するバッチ関数。                                         */
+/* PdfDocument::new() で作成した新規 PDF にも対応。                   */
+/* ------------------------------------------------------------------ */
+void kozou_write_pdf_info(
+    fz_context  *ctx,
+    const char  *path,
+    const char **keys,
+    const char **values,
+    int          count,
+    FfiResult   *result)
+{
+    pdf_document *pdf  = NULL;
+    pdf_obj      *info = NULL;
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+
+        pdf = pdf_open_document(ctx, path);
+
+        /* --- /Info 辞書を取得または新規作成 --- */
+        pdf_obj *trailer = pdf_trailer(ctx, pdf);
+
+        /* trailer は通常 direct dict だが念のため解決する */
+        if (pdf_is_indirect(ctx, trailer))
+            trailer = pdf_resolve_indirect(ctx, trailer);
+
+        pdf_obj *info_ref = pdf_dict_get(ctx, trailer, PDF_NAME(Info));
+
+        if (info_ref && !pdf_is_null(ctx, info_ref)) {
+            /* 既存 /Info: 間接参照を解決して実体を取得 */
+            info = pdf_resolve_indirect(ctx, info_ref);
+        } else {
+            /* /Info がない（新規 PDF など）: オブジェクトとして追加 */
+            /* pdf_add_new_dict: xref に登録された新規辞書オブジェクトを返す */
+            info = pdf_add_new_dict(ctx, pdf, count > 0 ? count : 8);
+
+            /* trailer の /Info に間接参照として設定 */
+            pdf_dict_put(ctx, trailer, PDF_NAME(Info), info);
+
+            /* pdf_add_new_dict が返したオブジェクトは既に xref 登録済み
+             * なので drop して trailer 経由で再取得 */
+            pdf_drop_obj(ctx, info);
+            info = pdf_resolve_indirect(ctx,
+                       pdf_dict_get(ctx, trailer, PDF_NAME(Info)));
+        }
+
+        /* --- 各キー/値を書き込む --- */
+        for (int i = 0; i < count; i++) {
+            if (!keys[i] || !values[i]) continue;
+            pdf_obj *key_obj = pdf_new_name(ctx, keys[i]);
+            /* UTF-8 → BOM 付き UTF-16 BE に変換して格納 */
+            pdf_obj *val_obj = utf8_to_pdf_string_obj(ctx, values[i]);
+            pdf_dict_put(ctx, info, key_obj, val_obj);
+            pdf_drop_obj(ctx, val_obj);
+            pdf_drop_obj(ctx, key_obj);
+        }
+
+        /* --- 保存 ---
+         * do_incremental = 0: 新規 PDF には /Info が xref にないため
+         *                      インクリメンタル保存では追加できない。
+         *                      通常保存（全体再書き込み）を使う。
+         * do_garbage = 0:     メタデータ追加のみなので gc 不要。
+         * do_compress = 0:    圧縮状態を変えない。                 */
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_incremental = 0;
         opts.do_garbage     = 0;
         opts.do_compress    = 0;
 
@@ -751,12 +904,13 @@ void kozou_set_pdf_info_key(
 /* kozou_get_pdf_info_key                                              */
 /*                                                                     */
 /* PDF /Info 辞書から指定キーの文字列値を取得してバッファにコピーする。*/
+/* UTF-16 BE 文字列 (BOM \xfe\xff 付き) を UTF-8 に変換して返す。     */
 /*                                                                     */
 /* 引数:                                                               */
 /*   ctx     - MuPDF コンテキスト                                     */
 /*   path    - 対象 PDF ファイルパス                                   */
 /*   key     - /Info キー名 ("Title", "Author" 等)                    */
-/*   buf     - 出力バッファ                                            */
+/*   buf     - 出力バッファ (UTF-8)                                    */
 /*   buf_len - バッファサイズ (ヌル終端含む)                          */
 /*   result  - 成功/失敗を返す FfiResult                              */
 /*                                                                     */
@@ -791,22 +945,22 @@ int kozou_get_pdf_info_key(
 
             if (val && !pdf_is_null(ctx, val)) {
                 val = pdf_resolve_indirect(ctx, val);
-                /* MuPDF 1.28: pdf_to_str_buf(ctx, obj) → char* (引数2個)
-                 * 長さは strlen で取得する（pdf_to_str_len が存在しない
-                 * バージョンへの互換性のため）                            */
+
                 if (pdf_is_string(ctx, val)) {
-                    const char *str_ptr = pdf_to_str_buf(ctx, val);
-                    if (str_ptr && buf && buf_len > 1) {
-                        int val_len = (int)strlen(str_ptr);
-                        int to_copy = val_len < buf_len - 1
-                                      ? val_len
-                                      : buf_len - 1;
-                        memcpy(buf, str_ptr, to_copy);
+                    /* pdf_to_utf8: PDFDocEncoding / UTF-16 BE(BOM付き) を
+                     * 正しく UTF-8 に変換する MuPDF 公式 API。
+                     * 戻り値は fz_malloc 確保なので fz_free が必要。   */
+                    char *utf8 = pdf_to_utf8(ctx, val);
+                    if (utf8 && buf && buf_len > 1) {
+                        int len = (int)strlen(utf8);
+                        int to_copy = len < buf_len - 1 ? len : buf_len - 1;
+                        memcpy(buf, utf8, to_copy);
                         buf[to_copy] = '\0';
                         copied = to_copy;
                     }
-                } else {
-                    /* name オブジェクトとして格納されている場合 */
+                    fz_free(ctx, utf8);
+                } else if (pdf_is_name(ctx, val)) {
+                    /* /Name オブジェクトとして格納されている場合（稀）*/
                     const char *name_ptr = pdf_to_name(ctx, val);
                     if (name_ptr && name_ptr[0] && buf && buf_len > 1) {
                         int len = (int)strlen(name_ptr);

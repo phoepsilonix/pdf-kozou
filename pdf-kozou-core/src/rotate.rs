@@ -50,6 +50,9 @@ pub fn rotate(req: &RotateRequest) -> Result<RotateResponse> {
     use mupdf::pdf::PdfDocument;
     use std::collections::HashMap;
 
+    // メタデータを最初に収集（save 前に入力から取得しておく）
+    let metadata = crate::compress::collect_metadata(&req.input);
+
     let doc = PdfDocument::open(&req.input).map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
     let page_count = doc
@@ -118,8 +121,7 @@ pub fn rotate(req: &RotateRequest) -> Result<RotateResponse> {
     doc.save_with_options(&req.output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
-    // メタデータを保持（Rotate 変更のみなので /Info はそのまま引き継ぐが念のため）
-    let metadata = crate::compress::collect_metadata(&req.input);
+    // メタデータを書き戻す（gc=2 で /Info が消えた場合に復元）
     crate::compress::copy_metadata_after_write(&req.output, &metadata);
 
     Ok(RotateResponse { ok: true })

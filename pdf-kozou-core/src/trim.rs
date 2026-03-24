@@ -315,6 +315,9 @@ fn calc_cropbox(
 pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     use mupdf::pdf::PdfDocument;
 
+    // 入力ファイルのメタデータを最初に収集（後続の処理で入力ファイルが変わる前に）
+    let metadata = crate::compress::collect_metadata(&req.input);
+
     // 単位 → pt 変換
     let to_pt: f32 = match req.unit.to_lowercase().as_str() {
         "pt" => 1.0,
@@ -520,8 +523,7 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     doc.save_with_options(&req.output, opts)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
-    // メタデータを書き戻す（PdfDocument::new() で作成した doc は /Info を持たないため）
-    let metadata = crate::compress::collect_metadata(&req.input);
+    // 入力 PDF のメタデータを出力に書き戻す
     crate::compress::copy_metadata_after_write(&req.output, &metadata);
 
     // tmp ファイルはここで drop (自動削除)

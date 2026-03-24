@@ -105,7 +105,10 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
         // 入力 PDF のメタデータを各出力ファイルに引き継ぐ
-        crate::compress::copy_metadata_after_write(out_path.to_str().unwrap(), &metadata);
+        crate::compress::copy_metadata_after_write(
+            out_path.to_str().unwrap(),
+            &metadata,
+        );
 
         files.push(out_path.to_string_lossy().to_string());
     }
