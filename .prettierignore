@@ -19,6 +19,8 @@ temp
 *.jpg
 *.svg
 *.yml
+*.orig
+*.rej
 
 # 設定ファイル自体（いじりたくない場合）
 #package-lock.json
