@@ -1095,10 +1095,153 @@ void kozou_convert_to_pdf(
 /* kozou_rasterize                                                     */
 /*                                                                     */
 /* 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。   */
-/* Type3 フォントを含む PDF でも動作する（ラスタライズで回避）。       */
+/* Type3 フォントを含む PDF でも動作する。                             */
 /*                                                                     */
-/* 方式: fz_load_page → to_pixmap → fz_new_image_from_pixmap →        */
-/*       pdf_page_write デバイスで fz_fill_image → pdf_save_document  */
+/* 方式:                                                               */
+/*   1. fz_new_draw_device でページを pixmap にレンダリング             */
+/*   2. fz_new_image_from_pixmap で fz_image を作成                   */
+/*   3. pdf_add_image で PDF の xref に XObject として登録             */
+/*   4. コンテンツストリームに cm + Do オペレータを手動で書く          */
+/*   5. pdf_add_page + pdf_insert_page でページを追加                 */
+/* ------------------------------------------------------------------ */
+void kozou_rasterize(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    float        dpi,
+    FfiResult   *result)
+{
+    fz_document  *doc    = NULL;
+    pdf_document *pdfout = NULL;
+
+    fz_var(doc);
+    fz_var(pdfout);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+
+        doc = fz_open_document(ctx, input);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            fz_layout_document(ctx, doc, 450.0f, 600.0f, 12.0f);
+        }
+
+        int page_count = fz_count_pages(ctx, doc);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+
+        if (dpi <= 0.0f) dpi = 150.0f;
+        float scale = dpi / 72.0f;
+
+        pdfout = pdf_create_document(ctx);
+
+        for (int i = 0; i < page_count; i++) {
+            fz_page    *page      = NULL;
+            fz_pixmap  *pixmap    = NULL;
+            fz_image   *image     = NULL;
+            pdf_obj    *imgref    = NULL;
+            fz_buffer  *contents  = NULL;
+            pdf_obj    *resources = NULL;
+            pdf_obj    *xobj_dict = NULL;
+            pdf_obj    *page_obj  = NULL;
+
+            fz_var(page);
+            fz_var(pixmap);
+            fz_var(image);
+            fz_var(imgref);
+            fz_var(contents);
+            fz_var(resources);
+            fz_var(xobj_dict);
+            fz_var(page_obj);
+
+            fz_try(ctx) {
+                page = fz_load_page(ctx, doc, i);
+                fz_rect bounds = fz_bound_page(ctx, page);
+
+                float pw_pt = bounds.x1 - bounds.x0;
+                float ph_pt = bounds.y1 - bounds.y0;
+
+                /* draw device で pixmap にレンダリング */
+                fz_matrix ctm = fz_scale(scale, scale);
+                fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
+                fz_colorspace *rgb = fz_device_rgb(ctx);
+                pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
+                fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
+
+                {
+                    fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
+                    fz_try(ctx) {
+                        fz_run_page(ctx, page, draw_dev, fz_identity, NULL);
+                        fz_close_device(ctx, draw_dev);
+                    }
+                    fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                }
+
+                /* pixmap → image → PDF xref に XObject として登録 */
+                image   = fz_new_image_from_pixmap(ctx, pixmap, NULL);
+                imgref  = pdf_add_image(ctx, pdfout, image);
+
+                /* Resources 辞書: /XObject << /Im0 <imgref> >> */
+                resources = pdf_new_dict(ctx, pdfout, 1);
+                xobj_dict = pdf_new_dict(ctx, pdfout, 1);
+                pdf_dict_put(ctx, xobj_dict, PDF_NAME(Im0), imgref);
+                pdf_dict_put(ctx, resources, PDF_NAME(XObject), xobj_dict);
+
+                /* コンテンツストリーム:
+                 *   q
+                 *   pw 0 0 ph 0 0 cm   ← MediaBox サイズに拡大
+                 *   /Im0 Do             ← 画像を描画
+                 *   Q
+                 *
+                 * PDF 座標系は左下原点なので (0,0) が左下。
+                 * cm でページ全体に画像を配置する。
+                 */
+                char cs_buf[256];
+                int cs_len = snprintf(cs_buf, sizeof(cs_buf),
+                    "q\n%.4f 0 0 %.4f 0 0 cm\n/Im0 Do\nQ\n",
+                    pw_pt, ph_pt);
+                contents = fz_new_buffer_from_copied_data(ctx,
+                    (const unsigned char *)cs_buf, (size_t)cs_len);
+
+                /* MediaBox = bounds（元のページサイズを維持） */
+                fz_rect mediabox = { 0, 0, pw_pt, ph_pt };
+                page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
+                pdf_insert_page(ctx, pdfout, -1, page_obj);
+            }
+            fz_always(ctx) {
+                pdf_drop_obj(ctx, page_obj);
+                pdf_drop_obj(ctx, xobj_dict);
+                pdf_drop_obj(ctx, resources);
+                fz_drop_buffer(ctx, contents);
+                pdf_drop_obj(ctx, imgref);
+                fz_drop_image(ctx, image);
+                fz_drop_pixmap(ctx, pixmap);
+                fz_drop_page(ctx, page);
+            }
+            fz_catch(ctx) {
+                fz_rethrow(ctx);
+            }
+        }
+
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_compress        = 1;
+        opts.do_compress_images = 1;
+        opts.do_garbage         = 0;
+        opts.do_clean           = 0;
+        pdf_save_document(ctx, pdfout, output, &opts);
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdfout) pdf_drop_document(ctx, pdfout);
+        if (doc)    fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
 /* ------------------------------------------------------------------ */
 void kozou_rasterize(
     fz_context  *ctx,
