@@ -15,6 +15,7 @@ pub mod pixmap;
 pub mod render;
 pub mod rotate;
 pub mod split;
+pub mod stext;
 pub mod trim;
 
 // 開発用: mupdf-sys シンボル探索（本実装前に削除予定）

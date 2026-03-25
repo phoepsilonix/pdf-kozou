@@ -738,6 +738,24 @@ fn dispatch_json(line: &str) -> String {
                     &req,
                 )?)?)
             }
+            "page_text" => {
+                let req: pdf_kozou_core::stext::PageTextRequest = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::get_page_text(&req)?,
+                )?)
+            }
+            "search" => {
+                let req: pdf_kozou_core::stext::SearchRequest = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(&pdf_kozou_core::stext::search_page(
+                    &req,
+                )?)?)
+            }
+            "page_links" => {
+                let req: pdf_kozou_core::stext::PageLinksRequest = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::get_page_links(&req)?,
+                )?)
+            }
             cmd => Err(anyhow::anyhow!("unknown command: {cmd}")),
         }
     })();

@@ -340,7 +340,7 @@ fn build_exif_payload(
         ]
         .iter()
         .flatten()
-        .map(|(k, v)| *v)
+        .map(|(_k, v)| *v)
         .collect();
 
         if !comment_parts.is_empty() {
@@ -556,7 +556,8 @@ fn render_svg(
 
     // MuPDFに書き出させる
     {
-        let mut writer = DocumentWriter::new(&temp_str, "svg", "text=text")
+        //let mut writer = DocumentWriter::new(&temp_str, "svg", "text=text")
+        let mut writer = DocumentWriter::new(&temp_str, "svg", "text=path")
             .map_err(|e| CoreError::MuPdf(format!("svg writer: {e}")))?;
 
         let dev = writer

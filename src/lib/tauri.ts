@@ -34,6 +34,93 @@ export interface PdfInfo {
   file_size?: number;
 }
 
+// ── stext (構造化テキスト) 型 ──────────────────────────────────────────────────
+
+export interface BBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface STextChar {
+  c: string;
+  quad: [number, number, number, number, number, number, number, number]; // ul,ur,ll,lr
+  size: number;
+  origin: [number, number];
+}
+
+export interface STextLine {
+  bbox: BBox;
+  wmode: number; // 0=横, 1=縦
+  chars: STextChar[];
+}
+
+export interface STextBlock {
+  type: "text" | "image";
+  bbox: BBox;
+  lines: STextLine[];
+}
+
+export interface PageTextResponse {
+  ok: boolean;
+  page: number;
+  width_pt: number;
+  height_pt: number;
+  blocks: STextBlock[];
+}
+
+export interface SearchHit {
+  page: number;
+  quad: [number, number, number, number, number, number, number, number];
+}
+
+export interface SearchResponse {
+  ok: boolean;
+  hits: SearchHit[];
+}
+
+export interface PageLink {
+  bbox: BBox;
+  uri: string;
+  dest_page?: number;
+}
+
+export interface PageLinksResponse {
+  ok: boolean;
+  links: PageLink[];
+}
+
+// ── stext コマンド ────────────────────────────────────────────────────────────
+
+/** ページの構造化テキストを取得（テキスト選択オーバーレイ用） */
+export async function getPageText(
+  path: string,
+  page: number,
+  scale: number,
+): Promise<PageTextResponse> {
+  return invoke<PageTextResponse>("get_page_text", { path, page, scale });
+}
+
+/** ページ内テキスト検索 */
+export async function searchPage(
+  path: string,
+  page: number,
+  needle: string,
+  scale: number,
+): Promise<SearchResponse> {
+  return invoke<SearchResponse>("search_page", { path, page, needle, scale });
+}
+
+/** ページのリンク一覧を取得 */
+export async function getPageLinks(
+  path: string,
+  page: number,
+  scale: number,
+): Promise<PageLinksResponse> {
+  return invoke<PageLinksResponse>("get_page_links", { path, page, scale });
+}
+
 // ── トリミング型 ──────────────────────────────────────────────────────────────
 
 /** PDF ポイント単位のトリミングマージン */

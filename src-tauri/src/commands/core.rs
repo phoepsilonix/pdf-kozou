@@ -95,17 +95,51 @@ pub async fn render_page(
 
 #[tauri::command]
 pub async fn trim_pdf(request: Value) -> Result<Value> {
-    // request に page_selection と extract_spec を追加で受け取る
-    // 例: {
-    //   "input": "/path/to/input.pdf",
-    //   "output": "/path/to/output.pdf",
-    //   "margins": { "left": 10.0, "right": 10.0, "top": 10.0, "bottom": 10.0 },
-    //   トリミング適用ページ(オプション、省略時全ページ)
-    //   "pages": { "type": "Ranges", "ranges": [[1,3], [5,5]] },
-    //   "exclude": "1-10,12"   // トリミング除外ページ（オプション）
-    //   "extract": "1-10,12"   // 出力に残すページ（オプション）
-    // }
     call_core_json("trim", request).await
+}
+
+/// ページの構造化テキスト（stext）を取得する
+/// テキスト選択・コピーのためのオーバーレイ生成に使用
+#[tauri::command]
+pub async fn get_page_text(path: String, page: i32, scale: f32) -> Result<Value> {
+    call_core_json(
+        "page_text",
+        serde_json::json!({
+            "path": path,
+            "page": page,
+            "scale": scale,
+        }),
+    )
+    .await
+}
+
+/// ページ内テキスト検索
+#[tauri::command]
+pub async fn search_page(path: String, page: i32, needle: String, scale: f32) -> Result<Value> {
+    call_core_json(
+        "search",
+        serde_json::json!({
+            "path": path,
+            "page": page,
+            "needle": needle,
+            "scale": scale,
+        }),
+    )
+    .await
+}
+
+/// ページのリンク一覧を取得する
+#[tauri::command]
+pub async fn get_page_links(path: String, page: i32, scale: f32) -> Result<Value> {
+    call_core_json(
+        "page_links",
+        serde_json::json!({
+            "path": path,
+            "page": page,
+            "scale": scale,
+        }),
+    )
+    .await
 }
 
 #[tauri::command]
