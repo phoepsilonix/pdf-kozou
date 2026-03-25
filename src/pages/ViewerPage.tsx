@@ -1,16 +1,15 @@
 // Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
-
-// src/pages/ViewerPage.tsx
+// src/pages/ViewerPage.tsx — MuPDF ビューア（軽量版）
 //
-// MuPDF ベースビューア（pdfjs-dist 廃止）
-//   - メインビュー: renderPage (MuPDF JPEG) → <img>
-//   - テキスト選択: getPageText (stext) → 透明 div オーバーレイ
-//   - 検索: searchPage → ハイライト矩形
-//   - リンク: getPageLinks → クリック処理
+// 設計：
+//   - レンダリング DPI=96 固定（軽量）、ズームは CSS transform のみ
+//   - テキストは行単位の透明 div（DOM 軽量、文字ごとの span は廃止）
+//   - 画像表示後に stext を遅延取得
+//   - 前後1ページをプリフェッチ
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   renderPage,
   getPdfInfo,
@@ -20,129 +19,109 @@ import {
   type PdfInfo,
   type PdfMetadata,
   type STextBlock,
-  type STextChar,
-  type STextLine,
   type SearchHit,
   type PageLink,
-  type BBox,
 } from "../lib/tauri";
 import { Spinner, PageHeader } from "../components/common";
 import { type FileEntry } from "../store/usePdfStore";
 import { F } from "../lib/theme";
 
-// ── 定数 ────────────────────────────────────────────────────────────────────
-
+// ── 定数 ─────────────────────────────────────────────────────────────────────
 const THUMB_DPI = 52;
-const VIEW_DPI = 150; // メインビューの基本 DPI（高品質）
-
-// ── 型 ──────────────────────────────────────────────────────────────────────
-
-interface Props {
-  filePath?: string;
-  pdfInfo?: PdfInfo;
-  fileList?: FileEntry[];
-}
+const RENDER_DPI = 96; // 固定。ズームは CSS transform で対応
 
 // ── ユーティリティ ────────────────────────────────────────────────────────────
-
-function ptToMm(pt: number): string {
-  return ((pt * 25.4) / 72).toFixed(1);
-}
-
-function formatDate(d: string): string {
-  const s = d.startsWith("D:") ? d.slice(2) : d;
-  if (s.length >= 8) {
-    const yyyy = s.slice(0, 4),
-      mm = s.slice(4, 6),
-      dd = s.slice(6, 8);
-    if (s.length >= 14) return `${yyyy}/${mm}/${dd} ${s.slice(8, 10)}:${s.slice(10, 12)}`;
-    return `${yyyy}/${mm}/${dd}`;
-  }
-  return d;
-}
-
-function formatBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1048576).toFixed(2)} MB`;
-}
-
 function pageAspect(info: PdfInfo | null, i: number): number {
   if (!info?.pages[i]) return 1 / 1.414;
   const p = info.pages[i];
   return (p as any).rotate === 90 || (p as any).rotate === 270 ? p.h / p.w : p.w / p.h;
 }
-
-// ── テキストレイヤー ──────────────────────────────────────────────────────────
-//
-// stext の quad 座標（PDF pt × scale = 表示ピクセル）を使って
-// 各文字に透明な <span> を配置する。
-// ユーザーはブラウザのテキスト選択機能でそのまま選択・コピーできる。
-
-interface TextLayerProps {
-  blocks: STextBlock[];
-  scale: number; // VIEW_DPI / 72
-  width: number; // 表示幅 (px)
-  height: number; // 表示高さ (px)
-  searchHits: SearchHit[];
+function ptToMm(pt: number) {
+  return ((pt * 25.4) / 72).toFixed(1);
+}
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1048576).toFixed(2)} MB`;
+}
+function formatDate(d: string) {
+  const s = d.startsWith("D:") ? d.slice(2) : d;
+  if (s.length >= 8) {
+    const [y, m, dd] = [s.slice(0, 4), s.slice(4, 6), s.slice(6, 8)];
+    if (s.length >= 14) return `${y}/${m}/${dd} ${s.slice(8, 10)}:${s.slice(10, 12)}`;
+    return `${y}/${m}/${dd}`;
+  }
+  return d;
 }
 
-function TextLayer({ blocks, scale: _s, width, height, searchHits }: TextLayerProps) {
-  // PDF の Y 座標は下から上だが、stext の quad は左上原点なのでそのまま使える
+// ── TextLayer ─────────────────────────────────────────────────────────────────
+// 行単位の透明 div を配置するだけ。
+// ブラウザのテキスト選択は div の中の textContent で行われる。
+// 文字ごとの span は廃止（DOM 重い・フォント依存のズレが大きい）
+function TextLayer({
+  blocks,
+  containerW,
+  containerH,
+  searchHits,
+}: {
+  blocks: STextBlock[];
+  containerW: number;
+  containerH: number;
+  searchHits: SearchHit[];
+}) {
   return (
     <div
       style={{
         position: "absolute",
-        top: 0,
-        left: 0,
-        width,
-        height,
+        inset: 0,
         overflow: "hidden",
-        pointerEvents: "none",
-        userSelect: "text",
+        width: containerW,
+        height: containerH,
       }}
     >
-      {/* テキスト選択オーバーレイ */}
-      <div style={{ position: "absolute", top: 0, left: 0, width, height, pointerEvents: "auto" }}>
-        {blocks
-          .filter((b) => b.type === "text")
-          .map((block, bi) =>
-            block.lines.map((line, li) => (
-              <div key={`${bi}-${li}`} style={{ position: "absolute" }}>
-                {line.chars.map((ch, ci) => {
-                  const [ulx, uly, urx, , , lly] = ch.quad;
-                  const w = Math.max(1, urx - ulx);
-                  const h = Math.max(1, lly - uly);
-                  return (
-                    <span
-                      key={ci}
-                      style={{
-                        position: "absolute",
-                        left: ulx,
-                        top: uly,
-                        width: w,
-                        height: h,
-                        fontSize: ch.size,
-                        lineHeight: 1,
-                        color: "transparent",
-                        whiteSpace: "pre",
-                        cursor: "text",
-                        transformOrigin: "top left",
-                        // 文字の実際のサイズに合わせてスケール（フォント依存のずれを補正）
-                        transform: `scaleX(${w / (ch.size * 0.6)})`,
-                        userSelect: "text",
-                      }}
-                    >
-                      {ch.c}
-                    </span>
-                  );
-                })}
+      {/* テキスト行オーバーレイ */}
+      {blocks
+        .filter((b) => b.type === "text")
+        .flatMap((block, bi) =>
+          block.lines.map((line, li) => {
+            const text = line.chars.map((c) => c.c).join("");
+            const { x0, y0, x1, y1 } = line.bbox;
+            const w = Math.max(1, x1 - x0);
+            const h = Math.max(1, y1 - y0);
+            // font-size はbbox高さから近似（line-height=1 で一致させる）
+            const fs = h * 0.85;
+            // scaleX で幅を bbox に合わせる（文字数で割って1文字幅を計算）
+            const nChars = Math.max(1, text.length);
+            const naturalW = fs * 0.55 * nChars; // 等幅近似
+            const scaleX = w / naturalW;
+            return (
+              <div
+                key={`${bi}-${li}`}
+                style={{
+                  position: "absolute",
+                  left: x0,
+                  top: y0,
+                  width: w,
+                  height: h,
+                  fontSize: fs,
+                  lineHeight: 1,
+                  color: "transparent",
+                  whiteSpace: "pre",
+                  overflow: "hidden",
+                  transformOrigin: "top left",
+                  transform: `scaleX(${Math.min(scaleX, 3)})`,
+                  cursor: "text",
+                  userSelect: "text",
+                  pointerEvents: "auto",
+                }}
+              >
+                {text}
               </div>
-            )),
-          )}
-      </div>
+            );
+          }),
+        )}
 
-      {/* 検索ヒットのハイライト */}
+      {/* 検索ハイライト */}
       {searchHits.map((hit, i) => {
         const [ulx, uly, urx, , , lly] = hit.quad;
         return (
@@ -154,7 +133,7 @@ function TextLayer({ blocks, scale: _s, width, height, searchHits }: TextLayerPr
               top: uly,
               width: urx - ulx,
               height: lly - uly,
-              background: "rgba(255, 200, 0, 0.45)",
+              background: "rgba(255,200,0,0.45)",
               borderRadius: 2,
               pointerEvents: "none",
             }}
@@ -165,14 +144,8 @@ function TextLayer({ blocks, scale: _s, width, height, searchHits }: TextLayerPr
   );
 }
 
-// ── リンクレイヤー ────────────────────────────────────────────────────────────
-
-interface LinkLayerProps {
-  links: PageLink[];
-  onNavigate: (page: number) => void;
-}
-
-function LinkLayer({ links, onNavigate }: LinkLayerProps) {
+// ── LinkLayer ─────────────────────────────────────────────────────────────────
+function LinkLayer({ links, onNavigate }: { links: PageLink[]; onNavigate: (p: number) => void }) {
   return (
     <>
       {links.map((link, i) => {
@@ -209,7 +182,6 @@ function LinkLayer({ links, onNavigate }: LinkLayerProps) {
 }
 
 // ── MetaRow / InfoDrawer ──────────────────────────────────────────────────────
-
 function MetaRow({ label, value }: { label: string; value?: string }) {
   const [copied, setCopied] = useState(false);
   if (!value) return null;
@@ -221,12 +193,12 @@ function MetaRow({ label, value }: { label: string; value?: string }) {
       </span>
       <button
         style={{ ...ds.copyBtn, ...(copied ? ds.copyBtnDone : {}) }}
-        onClick={() => {
+        onClick={() =>
           navigator.clipboard.writeText(value).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
-          });
-        }}
+          })
+        }
       >
         {copied ? "✓" : "⎘"}
       </button>
@@ -266,8 +238,8 @@ function InfoDrawer({
     const lines = [
       fileName && `ファイル名: ${fileName}`,
       filePath && `パス: ${filePath}`,
-      info?.file_size != null && `サイズ: ${formatBytes(info.file_size)}`,
-      info?.page_count != null && `ページ数: ${info.page_count}`,
+      info?.file_size && `サイズ: ${formatBytes(info.file_size)}`,
+      info?.page_count && `ページ数: ${info.page_count}`,
       meta.title && `タイトル: ${meta.title}`,
       meta.author && `作成者: ${meta.author}`,
       meta.subject && `件名: ${meta.subject}`,
@@ -372,15 +344,16 @@ function InfoDrawer({
   );
 }
 
-// ── 検索バー ──────────────────────────────────────────────────────────────────
-
-interface SearchBarProps {
+// ── SearchBar ────────────────────────────────────────────────────────────────
+function SearchBar({
+  onSearch,
+  hitCount,
+  onClose,
+}: {
   onSearch: (q: string) => void;
   hitCount: number;
   onClose: () => void;
-}
-
-function SearchBar({ onSearch, hitCount, onClose }: SearchBarProps) {
+}) {
   const [q, setQ] = useState("");
   return (
     <div style={ss.bar}>
@@ -391,7 +364,7 @@ function SearchBar({ onSearch, hitCount, onClose }: SearchBarProps) {
           setQ(e.target.value);
           onSearch(e.target.value);
         }}
-        placeholder="検索…"
+        placeholder="ページ内検索…"
         autoFocus
       />
       {q && <span style={ss.count}>{hitCount} 件</span>}
@@ -410,6 +383,11 @@ function SearchBar({ onSearch, hitCount, onClose }: SearchBarProps) {
 }
 
 // ── メインコンポーネント ──────────────────────────────────────────────────────
+interface Props {
+  filePath?: string;
+  pdfInfo?: PdfInfo;
+  fileList?: FileEntry[];
+}
 
 export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const isMulti = fileList.length > 1;
@@ -417,121 +395,161 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const [activeInfo, setActiveInfo] = useState<PdfInfo | null>(pdfInfo ?? null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-
-  const activePath = isMulti
-    ? fileList[activeIdx]?.path || ""
-    : filePath || (fileList.length > 0 ? fileList[0].path : "");
-
   const [viewPage, setViewPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [zoom, setZoom] = useState(1.0);
 
-  // メインビュー画像
+  // メイン画像キャッシュ（path → page → b64）
+  const imgCache = useRef<Map<string, Map<number, string>>>(new Map());
+
+  // 表示中ページの状態
   const [mainImg, setMainImg] = useState<string>("");
   const [mainLoading, setMainLoading] = useState(false);
+  const [imgNaturalW, setImgNaturalW] = useState(0);
+  const [imgNaturalH, setImgNaturalH] = useState(0);
 
-  // テキストレイヤー
+  // stext（遅延取得）
   const [textBlocks, setTextBlocks] = useState<STextBlock[]>([]);
-  const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
-
-  // 検索
+  const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
 
-  // リンク
-  const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
-
   // サムネイル
-  const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
   const thumbCache = useRef<Map<string, (string | undefined)[]>>(new Map());
+  const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
   const [fileCoverThumbs, setFileCoverThumbs] = useState<Map<string, string>>(new Map());
 
-  // 1. ページ情報
+  const activePath = isMulti
+    ? fileList[activeIdx]?.path || ""
+    : filePath || fileList[0]?.path || "";
+
+  // ── 1. ページ情報 ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isMulti) {
       if (pdfInfo) {
         setActiveInfo(pdfInfo);
         setTotal(pdfInfo.page_count);
       } else if (activePath)
-        getPdfInfo(activePath).then((info) => {
-          setActiveInfo(info);
-          setTotal(info.page_count);
+        getPdfInfo(activePath).then((i) => {
+          setActiveInfo(i);
+          setTotal(i.page_count);
         });
       return;
     }
-    const path = fileList[activeIdx]?.path;
-    if (path)
-      getPdfInfo(path).then((info) => {
-        setActiveInfo(info);
-        setTotal(info.page_count);
+    const p = fileList[activeIdx]?.path;
+    if (p)
+      getPdfInfo(p).then((i) => {
+        setActiveInfo(i);
+        setTotal(i.page_count);
       });
   }, [activeIdx, isMulti, filePath, pdfInfo, fileList]);
 
   useEffect(() => {
-    if (!pdfInfo && filePath) getPdfInfo(filePath).then((info) => setActiveInfo(info));
+    if (!pdfInfo && filePath) getPdfInfo(filePath).then((i) => setActiveInfo(i));
     else setActiveInfo(pdfInfo || null);
   }, [filePath, pdfInfo]);
 
-  // 2. メインビューレンダリング（MuPDF JPEG）
-  const renderMain = useCallback(async () => {
+  // ── 2. メイン画像レンダリング（キャッシュ付き）────────────────────────────
+  const getOrRender = useCallback(async (path: string, page: number): Promise<string> => {
+    if (!imgCache.current.has(path)) imgCache.current.set(path, new Map());
+    const pageMap = imgCache.current.get(path)!;
+    if (pageMap.has(page)) return pageMap.get(page)!;
+    const b64 = await renderPage(path, page, RENDER_DPI);
+    pageMap.set(page, b64);
+    return b64;
+  }, []);
+
+  // プリフェッチ（前後1ページ）
+  const prefetch = useCallback(
+    (path: string, page: number, max: number) => {
+      [page - 1, page + 1]
+        .filter((p) => p >= 0 && p < max)
+        .forEach((p) => {
+          getOrRender(path, p).catch(() => {});
+        });
+    },
+    [getOrRender],
+  );
+
+  useEffect(() => {
     if (!activePath) return;
-    setMainLoading(true);
+    let cancelled = false;
+
     setTextBlocks([]);
     setPageLinks([]);
     setSearchHits([]);
-    try {
-      const dpi = Math.round(VIEW_DPI * zoom);
-      const b64 = await renderPage(activePath, viewPage, dpi);
-      setMainImg(b64);
 
-      // 画像の実際のサイズを取得
-      const img = new Image();
-      img.onload = () => setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
-      img.src = `data:image/jpeg;base64,${b64}`;
-
-      // stext テキストレイヤーを並行取得
-      const scale = dpi / 72.0;
-      getPageText(activePath, viewPage, scale)
-        .then((res) => {
-          if (res.ok) setTextBlocks(res.blocks);
-        })
-        .catch(() => {});
-
-      // リンクも取得
-      getPageLinks(activePath, viewPage, scale)
-        .then((res) => {
-          if (res.ok) setPageLinks(res.links);
-        })
-        .catch(() => {});
-    } catch (e) {
-      console.error("[viewer] render failed:", e);
-    } finally {
+    // キャッシュがあれば即表示
+    const cached = imgCache.current.get(activePath)?.get(viewPage);
+    if (cached) {
+      setMainImg(cached);
       setMainLoading(false);
+    } else {
+      setMainLoading(true);
     }
-  }, [activePath, viewPage, zoom]);
 
-  useEffect(() => {
-    renderMain();
-  }, [renderMain]);
+    (async () => {
+      try {
+        const b64 = await getOrRender(activePath, viewPage);
+        if (cancelled) return;
+        setMainImg(b64);
+        setMainLoading(false);
 
-  // 3. 検索
+        // 画像の実サイズを取得
+        const img = new window.Image();
+        img.onload = () => {
+          if (!cancelled) {
+            setImgNaturalW(img.naturalWidth);
+            setImgNaturalH(img.naturalHeight);
+          }
+        };
+        img.src = `data:image/jpeg;base64,${b64}`;
+
+        // stext を遅延取得（非同期、失敗しても表示には影響なし）
+        const scale = RENDER_DPI / 72.0;
+        getPageText(activePath, viewPage, scale)
+          .then((r) => {
+            if (!cancelled && r.ok) setTextBlocks(r.blocks);
+          })
+          .catch(() => {});
+        getPageLinks(activePath, viewPage, scale)
+          .then((r) => {
+            if (!cancelled && r.ok) setPageLinks(r.links);
+          })
+          .catch(() => {});
+
+        // 前後プリフェッチ
+        prefetch(activePath, viewPage, total);
+      } catch (e) {
+        if (!cancelled) {
+          console.error("[viewer] render failed:", e);
+          setMainLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePath, viewPage, getOrRender, prefetch, total]);
+
+  // ── 3. 検索 ───────────────────────────────────────────────────────────────
   const handleSearch = useCallback(
     async (needle: string) => {
       if (!activePath || !needle.trim()) {
         setSearchHits([]);
         return;
       }
-      const scale = Math.round(VIEW_DPI * zoom) / 72.0;
       try {
-        const res = await searchPage(activePath, viewPage, needle.trim(), scale);
-        if (res.ok) setSearchHits(res.hits);
+        const r = await searchPage(activePath, viewPage, needle.trim(), RENDER_DPI / 72.0);
+        if (r.ok) setSearchHits(r.hits);
       } catch {
         setSearchHits([]);
       }
     },
-    [activePath, viewPage, zoom],
+    [activePath, viewPage],
   );
 
-  // 4. サムネイル
+  // ── 4. サムネイル ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!activePath || !activeInfo) {
       setThumbs([]);
@@ -540,8 +558,8 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     const cached = thumbCache.current.get(activePath);
     if (cached) setThumbs([...cached]);
     else {
-      const arr = new Array(activeInfo.page_count).fill(undefined);
-      thumbCache.current.set(activePath, arr);
+      const a = new Array(activeInfo.page_count).fill(undefined);
+      thumbCache.current.set(activePath, a);
       setThumbs([]);
     }
     let cancelled = false;
@@ -562,7 +580,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     };
   }, [activePath, activeInfo]);
 
-  // 5. ファイルカバー
+  // ── 5. ファイルカバー ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!fileList.length) return;
     (async () => {
@@ -581,9 +599,12 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   }, [fileList]);
 
   if (!activeInfo && !mainLoading) return <Spinner label="読み込み中…" />;
-
   const fname = activePath.split(/[/\\]/).pop() ?? "";
   const THUMB_W = 104;
+
+  // 表示サイズ（zoom は CSS transform で）
+  const displayW = imgNaturalW;
+  const displayH = imgNaturalH;
 
   return (
     <div style={s.root}>
@@ -594,28 +615,32 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         </span>
         <span style={s.pageBadge}>{total}ページ</span>
         <div style={{ flex: 1 }} />
-        {/* 検索ボタン */}
         <button
-          style={{ ...s.zBtn, ...(showSearch ? s.infoBtnOn : {}), marginRight: 4 }}
+          style={{ ...s.zBtn, ...(showSearch ? s.btnOn : {}), marginRight: 4 }}
           onClick={() => setShowSearch((v) => !v)}
-          title="テキスト検索 (Ctrl+F)"
+          title="検索"
         >
           🔍
         </button>
-        {/* 情報ボタン */}
         <button
-          style={{ ...s.zBtn, ...(infoOpen ? s.infoBtnOn : {}), marginRight: 8 }}
+          style={{ ...s.zBtn, ...(infoOpen ? s.btnOn : {}), marginRight: 8 }}
           onClick={() => setInfoOpen((v) => !v)}
           title="ファイル情報"
         >
           ℹ
         </button>
         <div style={s.zoomRow}>
-          <button style={s.zBtn} onClick={() => setZoom((z) => Math.max(0.2, z - 0.25))}>
+          <button
+            style={s.zBtn}
+            onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
+          >
             −
           </button>
           <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
-          <button style={s.zBtn} onClick={() => setZoom((z) => Math.min(4.0, z + 0.25))}>
+          <button
+            style={s.zBtn}
+            onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.25).toFixed(2)))}
+          >
             ＋
           </button>
           <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
@@ -627,7 +652,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         </div>
       </PageHeader>
 
-      {/* 検索バー */}
       {showSearch && (
         <SearchBar
           onSearch={handleSearch}
@@ -640,7 +664,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       )}
 
       <div style={s.body}>
-        {/* 左ペイン: 複数ファイル */}
+        {/* 左ペイン */}
         {isMulti && (
           <div style={s.filePane}>
             <div style={s.paneHead}>ファイル ({fileList.length})</div>
@@ -681,7 +705,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           </div>
         )}
 
-        {/* 中ペイン: サムネイル */}
+        {/* サムネイルペイン */}
         <div style={s.thumbPane}>
           <div style={s.paneHead}>
             {viewPage + 1} / {total}
@@ -726,48 +750,56 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           </div>
         </div>
 
-        {/* メインビュー */}
+        {/* メインビュー + ドロワー */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
           <div style={s.mainView}>
             <div style={s.viewScroll}>
               <div style={s.viewInner}>
-                {mainLoading && (
+                {mainLoading && !mainImg && (
                   <div style={s.viewCenter}>
                     <div style={s.viewSpinner} />
                   </div>
                 )}
                 {mainImg && (
+                  /* zoom は CSS transform のみ（再レンダリング不要） */
                   <div
                     style={{
                       position: "relative",
                       display: "inline-block",
                       boxShadow: "0 4px 32px rgba(0,0,0,0.7)",
+                      transform: `scale(${zoom})`,
+                      transformOrigin: "top center",
+                      // ズーム後のサイズをレイアウトに反映させるために高さを調整
+                      marginBottom: displayH * (zoom - 1),
                     }}
                   >
                     <img
                       src={`data:image/jpeg;base64,${mainImg}`}
                       alt={`ページ ${viewPage + 1}`}
-                      style={{ display: "block", maxWidth: "100%" }}
+                      style={{ display: "block" }}
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        setImgNaturalW(img.naturalWidth);
+                        setImgNaturalH(img.naturalHeight);
+                      }}
                     />
-                    {/* テキスト選択レイヤー */}
-                    {textBlocks.length > 0 && imgSize.w > 0 && (
+                    {/* テキストオーバーレイ（stext 取得後に表示） */}
+                    {textBlocks.length > 0 && displayW > 0 && (
                       <TextLayer
                         blocks={textBlocks}
-                        scale={Math.round(VIEW_DPI * zoom) / 72.0}
-                        width={imgSize.w}
-                        height={imgSize.h}
+                        containerW={displayW}
+                        containerH={displayH}
                         searchHits={searchHits}
                       />
                     )}
                     {/* リンクレイヤー */}
-                    {pageLinks.length > 0 && (
+                    {pageLinks.length > 0 && displayW > 0 && (
                       <div
                         style={{
                           position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: imgSize.w,
-                          height: imgSize.h,
+                          inset: 0,
+                          width: displayW,
+                          height: displayH,
                         }}
                       >
                         <LinkLayer links={pageLinks} onNavigate={setViewPage} />
@@ -778,7 +810,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
               </div>
             </div>
 
-            {/* ページナビゲーション */}
+            {/* ページナビ */}
             <div style={s.pageNav}>
               <button
                 style={s.navBtn}
@@ -800,7 +832,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
             </div>
           </div>
 
-          {/* 情報ドロワー */}
           <InfoDrawer
             open={infoOpen}
             onClose={() => setInfoOpen(false)}
@@ -814,7 +845,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   );
 }
 
-// ── 検索バースタイル ──────────────────────────────────────────────────────────
+// ── スタイル ──────────────────────────────────────────────────────────────────
 const ss: Record<string, React.CSSProperties> = {
   bar: {
     display: "flex",
@@ -844,7 +875,6 @@ const ss: Record<string, React.CSSProperties> = {
   },
 };
 
-// ── ドロワースタイル ──────────────────────────────────────────────────────────
 const ds: Record<string, React.CSSProperties> = {
   drawer: {
     position: "absolute",
@@ -908,7 +938,6 @@ const ds: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     padding: "1px 5px",
     lineHeight: 1.4,
-    transition: "background 0.15s",
   },
   copyBtnDone: {
     background: "var(--c-accent, #3a7a4a)",
@@ -925,7 +954,6 @@ const ds: Record<string, React.CSSProperties> = {
   },
 };
 
-// ── メインスタイル ────────────────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
   root: { height: "100%", display: "flex", flexDirection: "column", background: "var(--c-bg)" },
   body: { flex: 1, display: "flex", overflow: "hidden" },
@@ -1012,8 +1040,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "flex-start",
     justifyContent: "center",
     minWidth: "100%",
-    minHeight: "100%",
-    padding: 24,
+    padding: "24px 24px 0",
   },
   viewCenter: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 },
   viewSpinner: {
@@ -1078,7 +1105,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     fontSize: 14,
   },
-  infoBtnOn: { background: "var(--c-accent, #3a7a4a)", color: "#fff", borderColor: "transparent" },
+  btnOn: { background: "var(--c-accent, #3a7a4a)", color: "#fff", borderColor: "transparent" },
   zBtnSm: {
     height: 24,
     padding: "0 8px",
