@@ -364,6 +364,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             exclude,
             extract,
         } => {
+            let _tmp = auto_convert_if_needed(&input)?;
+            let input = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                input
+            };
             // 単位をptに変換
             let to_pt = match unit.to_lowercase().as_str() {
                 "pt" => 1.0_f32,
@@ -414,6 +420,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             object_stream,
             merge_fonts,
         } => {
+            let _tmp = auto_convert_if_needed(&input)?;
+            let input = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                input
+            };
             let resp = if rewrite {
                 let opts = rewrite_options
                     .as_deref()
@@ -483,6 +495,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Rasterize { input, output, dpi } => {
+            let _tmp = auto_convert_if_needed(&input)?;
+            let input = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                input
+            };
             let resp = pdf_kozou_core::compress::rasterize(&input, &output, dpi)?;
             println!("{}", serde_json::to_string(&resp)?);
         }
@@ -494,6 +512,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             every,
             ranges,
         } => {
+            let _tmp = auto_convert_if_needed(&input)?;
+            let input = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                input
+            };
             let mode = if let Some(r) = ranges {
                 pdf_kozou_core::split::SplitMode::Ranges {
                     ranges: parse_ranges(&r)?,
@@ -514,8 +538,22 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Merge { inputs, output } => {
+            let mut tmps: Vec<(tempfile::NamedTempFile, String)> = Vec::new();
+            let inputs = inputs
+                .into_iter()
+                .map(|inp| {
+                    if let Ok(Some(converted)) = auto_convert_if_needed(&inp) {
+                        let path = converted.1.clone();
+                        tmps.push(converted);
+                        path
+                    } else {
+                        inp
+                    }
+                })
+                .collect::<Vec<_>>();
             let req = pdf_kozou_core::merge::MergeRequest { inputs, output };
             let resp = pdf_kozou_core::merge::merge(&req)?;
+            drop(tmps);
             println!("{}", serde_json::to_string(&resp)?);
         }
 
@@ -526,6 +564,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             pages,
             page_angles,
         } => {
+            let _tmp = auto_convert_if_needed(&input)?;
+            let input = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                input
+            };
             // --angle: 0/90/180/270 のみ受け付ける
             if let Some(a) = angle {
                 if a % 90 != 0 || a > 270 {
@@ -617,6 +661,43 @@ fn run_json_mode() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 非 PDF ファイルを一時 PDF に変換して、そのパスを返す
+///
+/// PDF なら Some(None)（変換不要）
+/// 非 PDF かつ対応形式なら Some(Some((tmp_file, tmp_path)))
+/// 非 PDF かつ非対応形式ならエラー
+fn auto_convert_if_needed(
+    input: &str,
+) -> anyhow::Result<Option<(tempfile::NamedTempFile, String)>> {
+    use pdf_kozou_core::convert::{convert_to_pdf, is_mupdf_supported, is_pdf, ConvertRequest};
+
+    if is_pdf(input) {
+        return Ok(None); // PDF はそのまま
+    }
+    if !is_mupdf_supported(input) {
+        anyhow::bail!("unsupported file format: {input}");
+    }
+
+    // 非 PDF → 一時 PDF に変換
+    let tmp = tempfile::Builder::new()
+        .suffix(".pdf")
+        .tempfile()
+        .map_err(|e| anyhow::anyhow!("tempfile: {e}"))?;
+    let tmp_path = tmp.path().to_string_lossy().to_string();
+
+    eprintln!("[auto-convert] converting {input} → {tmp_path}");
+    let req = ConvertRequest {
+        input: input.to_string(),
+        output: tmp_path.clone(),
+        layout_w: None,
+        layout_h: None,
+        layout_em: None,
+    };
+    convert_to_pdf(&req).map_err(|e| anyhow::anyhow!("convert failed: {e}"))?;
+
+    Ok(Some((tmp, tmp_path)))
+}
+
 /// JSON リクエストをディスパッチして JSON レスポンスを返す
 fn dispatch_json(line: &str) -> String {
     #[derive(serde::Deserialize)]
@@ -654,7 +735,11 @@ fn dispatch_json(line: &str) -> String {
                 )?)?)
             }
             "trim" => {
-                let req: pdf_kozou_core::trim::TrimRequest = serde_json::from_str(line)?;
+                let mut req: pdf_kozou_core::trim::TrimRequest = serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone())?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
                 Ok(serde_json::to_string(&pdf_kozou_core::trim::trim(&req)?)?)
             }
             "compress" => {
@@ -679,7 +764,11 @@ fn dispatch_json(line: &str) -> String {
                     #[serde(flatten)]
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
-                let r: Req = serde_json::from_str(line)?;
+                let mut r: Req = serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&r.inner.input.clone())?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    r.inner.input = tmp_path.clone();
+                }
 
                 let resp = if r.rewrite {
                     let opts = r
@@ -725,15 +814,33 @@ fn dispatch_json(line: &str) -> String {
                 Ok(serde_json::to_string(&resp)?)
             }
             "split" => {
-                let req: pdf_kozou_core::split::SplitRequest = serde_json::from_str(line)?;
+                let mut req: pdf_kozou_core::split::SplitRequest = serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone())?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
                 Ok(serde_json::to_string(&pdf_kozou_core::split::split(&req)?)?)
             }
             "merge" => {
-                let req: pdf_kozou_core::merge::MergeRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(&pdf_kozou_core::merge::merge(&req)?)?)
+                // merge は複数入力。各ファイルをチェックして非 PDF を変換する
+                let mut req: pdf_kozou_core::merge::MergeRequest = serde_json::from_str(line)?;
+                let mut tmps: Vec<(tempfile::NamedTempFile, String)> = Vec::new();
+                for input in req.inputs.iter_mut() {
+                    if let Some(converted) = auto_convert_if_needed(input)? {
+                        *input = converted.1.clone();
+                        tmps.push(converted);
+                    }
+                }
+                let res = pdf_kozou_core::merge::merge(&req)?;
+                drop(tmps); // 一時ファイルを削除
+                Ok(serde_json::to_string(&res)?)
             }
             "rotate" => {
-                let req: pdf_kozou_core::rotate::RotateRequest = serde_json::from_str(line)?;
+                let mut req: pdf_kozou_core::rotate::RotateRequest = serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone())?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
                 Ok(serde_json::to_string(&pdf_kozou_core::rotate::rotate(
                     &req,
                 )?)?)
@@ -760,6 +867,27 @@ fn dispatch_json(line: &str) -> String {
                 let req: pdf_kozou_core::convert::ConvertRequest = serde_json::from_str(line)?;
                 Ok(serde_json::to_string(
                     &pdf_kozou_core::convert::convert_to_pdf(&req)?,
+                )?)
+            }
+            "rasterize" => {
+                #[derive(serde::Deserialize)]
+                struct Req {
+                    input: String,
+                    output: String,
+                    #[serde(default)]
+                    dpi: Option<f32>,
+                }
+                let mut r: Req = serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&r.input.clone())?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    r.input = tmp_path.clone();
+                }
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::compress::rasterize(
+                        &r.input,
+                        &r.output,
+                        r.dpi.unwrap_or(150.0),
+                    )?,
                 )?)
             }
             "is_pdf" => {

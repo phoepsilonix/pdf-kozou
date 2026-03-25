@@ -76,4 +76,17 @@ extern "C" {
         opts: *const mupdf_sys::pdf_write_options,
         result: *mut FfiResult,
     );
+
+    /// mutool convert 相当のフローで非 PDF を PDF に変換する。
+    /// fz_layout_document を呼んでから pdf_page_write + fz_run_page で変換し
+    /// gc=4 付きで保存する。DocumentWriter 方式より小さいファイルを生成する。
+    pub fn kozou_convert_to_pdf(
+        ctx: *mut mupdf_sys::fz_context,
+        input: *const c_char,
+        output: *const c_char,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        result: *mut FfiResult,
+    );
 }

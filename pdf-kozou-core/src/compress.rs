@@ -878,10 +878,15 @@ pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse
         let dev = writer
             .begin_page(bounds)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        let img_ctm = Matrix::new_scale(
-            bounds.width() / pixmap.width() as f32,
-            bounds.height() / pixmap.height() as f32,
-        );
+
+        // PDF 座標系: 左下原点（Y軸 上向き）
+        // 画像座標系: 左上原点（Y軸 下向き）
+        // → Y軸を反転し、ページ上端（bounds.y1）に移動する
+        let sx = bounds.width() / pixmap.width() as f32;
+        let sy = bounds.height() / pixmap.height() as f32;
+        let mut img_ctm = Matrix::new_scale(sx, -sy);
+        img_ctm.pre_translate(bounds.x0, bounds.y1);
+
         let image =
             mupdf::Image::from_pixmap(&pixmap).map_err(|e| CoreError::MuPdf(e.to_string()))?;
         dev.fill_image(&image, &img_ctm, 1.0, mupdf::ColorParams::default())
