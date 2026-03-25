@@ -89,4 +89,14 @@ extern "C" {
         layout_em: f32,
         result: *mut FfiResult,
     );
+
+    /// 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。
+    /// Type3 フォントを含む PDF でも動作する（fz_new_draw_device でラスタライズ）。
+    pub fn kozou_rasterize(
+        ctx: *mut mupdf_sys::fz_context,
+        input: *const c_char,
+        output: *const c_char,
+        dpi: f32,
+        result: *mut FfiResult,
+    );
 }
