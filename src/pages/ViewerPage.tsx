@@ -19,7 +19,6 @@ import {
   type PdfInfo,
   type PdfMetadata,
   type STextBlock,
-  type SearchHit,
   type PageLink,
 } from "../lib/tauri";
 import { Spinner, PageHeader } from "../components/common";
@@ -58,17 +57,15 @@ function formatDate(d: string) {
 // 行単位の透明 div を配置するだけ。
 // ブラウザのテキスト選択は div の中の textContent で行われる。
 // 文字ごとの span は廃止（DOM 重い・フォント依存のズレが大きい）
-function TextLayer({
-  blocks,
-  containerW,
-  containerH,
-  searchHits,
-}: {
+interface TextLayerProps {
   blocks: STextBlock[];
   containerW: number;
   containerH: number;
-  searchHits: SearchHit[];
-}) {
+  searchHits: GlobalHit[];
+  currentHit?: GlobalHit | null;
+}
+
+function TextLayer({ blocks, containerW, containerH, searchHits, currentHit }: TextLayerProps) {
   return (
     <div
       style={{
@@ -124,6 +121,11 @@ function TextLayer({
       {/* 検索ハイライト */}
       {searchHits.map((hit, i) => {
         const [ulx, uly, urx, , , lly] = hit.quad;
+        const isCurrent =
+          currentHit &&
+          hit.page === currentHit.page &&
+          hit.quad[0] === currentHit.quad[0] &&
+          hit.quad[1] === currentHit.quad[1];
         return (
           <div
             key={i}
@@ -133,7 +135,8 @@ function TextLayer({
               top: uly,
               width: urx - ulx,
               height: lly - uly,
-              background: "rgba(255,200,0,0.45)",
+              background: isCurrent ? "rgba(255, 160, 0, 0.65)" : "rgba(255, 220, 0, 0.35)",
+              border: isCurrent ? "2px solid rgba(255,120,0,0.8)" : "none",
               borderRadius: 2,
               pointerEvents: "none",
             }}
@@ -345,16 +348,119 @@ function InfoDrawer({
 }
 
 // ── SearchBar ────────────────────────────────────────────────────────────────
-function SearchBar({
-  onSearch,
-  hitCount,
-  onClose,
-}: {
-  onSearch: (q: string) => void;
-  hitCount: number;
+// 全ページ検索 + ヒット間ナビゲーション対応
+
+interface GlobalHit {
+  page: number;
+  quad: [number, number, number, number, number, number, number, number];
+}
+
+interface SearchBarProps {
+  path: string;
+  totalPages: number;
+  currentPage: number;
+  onNavigate: (page: number, hit: GlobalHit) => void;
+  onHitsForPage: (page: number, hits: GlobalHit[]) => void;
   onClose: () => void;
-}) {
+}
+
+function SearchBar({
+  path,
+  totalPages,
+  currentPage,
+  onNavigate,
+  onHitsForPage,
+  onClose,
+}: SearchBarProps) {
   const [q, setQ] = useState("");
+  const [allHits, setAllHits] = useState<GlobalHit[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const searchRef = useRef<AbortController | null>(null);
+
+  const doSearch = useCallback(
+    async (needle: string) => {
+      // 前の検索をキャンセル
+      searchRef.current?.abort();
+      if (!needle.trim()) {
+        setAllHits([]);
+        setCurrent(0);
+        onHitsForPage(currentPage, []);
+        return;
+      }
+
+      setSearching(true);
+      const controller = new AbortController();
+      searchRef.current = controller;
+      const hits: GlobalHit[] = [];
+      const scale = RENDER_DPI / 72.0;
+
+      try {
+        // 全ページを検索（現在ページを優先して先に検索）
+        const pages = [...Array.from({ length: totalPages }, (_, i) => i)].sort((a, b) => {
+          // 現在ページを先頭に
+          if (a === currentPage) return -1;
+          if (b === currentPage) return 1;
+          return a - b;
+        });
+
+        for (const p of pages) {
+          if (controller.signal.aborted) break;
+          try {
+            const res = await searchPage(path, p, needle.trim(), scale);
+            if (controller.signal.aborted) break;
+            if (res.ok && res.hits.length > 0) {
+              const pageHits = res.hits.map((h) => ({ page: p, quad: h.quad }));
+              hits.push(...pageHits);
+              // ページ番号順に並び替え
+              hits.sort((a, b) => a.page - b.page);
+              setAllHits([...hits]);
+              // 現在表示中のページのヒットを即座に反映
+              const forThisPage = hits.filter((h) => h.page === currentPage);
+              onHitsForPage(currentPage, forThisPage);
+            }
+          } catch {
+            /* ページエラーは無視 */
+          }
+        }
+      } finally {
+        setSearching(false);
+        // 最初のヒットに移動
+        if (hits.length > 0) {
+          const firstIdx = hits.findIndex((h) => h.page >= currentPage);
+          const idx = firstIdx >= 0 ? firstIdx : 0;
+          setCurrent(idx);
+          onNavigate(hits[idx].page, hits[idx]);
+          onHitsForPage(
+            hits[idx].page,
+            hits.filter((h) => h.page === hits[idx].page),
+          );
+        }
+      }
+    },
+    [path, totalPages, currentPage, onNavigate, onHitsForPage],
+  );
+
+  const go = (delta: number) => {
+    if (allHits.length === 0) return;
+    const next = (current + delta + allHits.length) % allHits.length;
+    setCurrent(next);
+    const hit = allHits[next];
+    onNavigate(hit.page, hit);
+    onHitsForPage(
+      hit.page,
+      allHits.filter((h) => h.page === hit.page),
+    );
+  };
+
+  const handleClose = () => {
+    setQ("");
+    setAllHits([]);
+    setCurrent(0);
+    onHitsForPage(currentPage, []);
+    onClose();
+  };
+
   return (
     <div style={ss.bar}>
       <input
@@ -362,20 +468,32 @@ function SearchBar({
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
-          onSearch(e.target.value);
+          doSearch(e.target.value);
         }}
-        placeholder="ページ内検索…"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") go(e.shiftKey ? -1 : 1);
+          if (e.key === "Escape") handleClose();
+        }}
+        placeholder="全ページ検索… (Enter で次へ)"
         autoFocus
       />
-      {q && <span style={ss.count}>{hitCount} 件</span>}
-      <button
-        style={ss.close}
-        onClick={() => {
-          setQ("");
-          onSearch("");
-          onClose();
-        }}
-      >
+      {searching && <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>検索中…</span>}
+      {!searching && q && (
+        <span style={ss.count}>
+          {allHits.length === 0 ? "0件" : `${current + 1} / ${allHits.length} 件`}
+        </span>
+      )}
+      {allHits.length > 0 && (
+        <>
+          <button style={ss.navBtn} onClick={() => go(-1)} title="前のヒット (Shift+Enter)">
+            ◀
+          </button>
+          <button style={ss.navBtn} onClick={() => go(1)} title="次のヒット (Enter)">
+            ▶
+          </button>
+        </>
+      )}
+      <button style={ss.close} onClick={handleClose}>
         ✕
       </button>
     </div>
@@ -411,7 +529,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   // stext（遅延取得）
   const [textBlocks, setTextBlocks] = useState<STextBlock[]>([]);
   const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
-  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  // 検索: ページ上のヒット一覧 + カレントヒット
+  const [pageSearchHits, setPageSearchHits] = useState<GlobalHit[]>([]);
+  const [currentHit, setCurrentHit] = useState<GlobalHit | null>(null);
 
   // サムネイル
   const thumbCache = useRef<Map<string, (string | undefined)[]>>(new Map());
@@ -476,7 +596,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
     setTextBlocks([]);
     setPageLinks([]);
-    setSearchHits([]);
+    // 検索ヒットはページが変わってもクリアしない（SearchBar が管理）
 
     // キャッシュがあれば即表示
     const cached = imgCache.current.get(activePath)?.get(viewPage);
@@ -531,23 +651,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       cancelled = true;
     };
   }, [activePath, viewPage, getOrRender, prefetch, total]);
-
-  // ── 3. 検索 ───────────────────────────────────────────────────────────────
-  const handleSearch = useCallback(
-    async (needle: string) => {
-      if (!activePath || !needle.trim()) {
-        setSearchHits([]);
-        return;
-      }
-      try {
-        const r = await searchPage(activePath, viewPage, needle.trim(), RENDER_DPI / 72.0);
-        if (r.ok) setSearchHits(r.hits);
-      } catch {
-        setSearchHits([]);
-      }
-    },
-    [activePath, viewPage],
-  );
 
   // ── 4. サムネイル ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -654,11 +757,20 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
       {showSearch && (
         <SearchBar
-          onSearch={handleSearch}
-          hitCount={searchHits.length}
+          path={activePath}
+          totalPages={total}
+          currentPage={viewPage}
+          onNavigate={(page, hit) => {
+            setViewPage(page);
+            setCurrentHit(hit);
+          }}
+          onHitsForPage={(page, hits) => {
+            if (page === viewPage) setPageSearchHits(hits);
+          }}
           onClose={() => {
             setShowSearch(false);
-            setSearchHits([]);
+            setPageSearchHits([]);
+            setCurrentHit(null);
           }}
         />
       )}
@@ -789,7 +901,8 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                         blocks={textBlocks}
                         containerW={displayW}
                         containerH={displayH}
-                        searchHits={searchHits}
+                        searchHits={pageSearchHits}
+                        currentHit={currentHit}
                       />
                     )}
                     {/* リンクレイヤー */}
@@ -865,7 +978,20 @@ const ss: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     fontSize: 13,
   },
-  count: { fontSize: 11, color: "var(--c-textDim)", minWidth: 40 },
+  count: { fontSize: 11, color: "var(--c-textDim)", minWidth: 60, textAlign: "center" as const },
+  navBtn: {
+    width: 26,
+    height: 26,
+    cursor: "pointer",
+    borderRadius: 4,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bgSub)",
+    color: "var(--c-text)",
+    fontSize: 12,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   close: {
     background: "transparent",
     border: "none",
