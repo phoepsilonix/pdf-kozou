@@ -27,7 +27,7 @@ import { F } from "../lib/theme";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 const THUMB_DPI = 52;
-const RENDER_DPI = 96; // 固定。ズームは CSS transform で対応
+const RENDER_DPI = 120; // 固定。ズームは CSS transform で対応
 
 // ── ユーティリティ ────────────────────────────────────────────────────────────
 function pageAspect(info: PdfInfo | null, i: number): number {
