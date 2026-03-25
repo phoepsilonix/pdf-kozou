@@ -65,19 +65,6 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
     let mut files = Vec::new();
 
     for page_indices in &ranges {
-        // ── 入力ファイルをコピーして作業ファイルを作る ──────────────────────────
-        // コピー元の /Info・XMP などメタデータが全て保持される。
-        // graft 方式（PdfDocument::new）と違い PDF バージョンも変わらない。
-        let work_tmp = tempfile::Builder::new()
-            .suffix(".pdf")
-            .tempfile()
-            .map_err(CoreError::Io)?;
-        let work_path = work_tmp.path().to_string_lossy().to_string();
-        std::fs::copy(&req.input, &work_path).map_err(CoreError::Io)?;
-
-        // ── 作業ファイルを開いてページ情報を取得 ───────────────────────────────
-        let mut doc = PdfDocument::open(&work_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
-
         let fname = if page_indices.len() == 1 {
             format!("{prefix}_{:04}.pdf", page_indices[0] + 1)
         } else {
@@ -88,34 +75,44 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
             )
         };
         let out_path = out_dir.join(&fname);
-        eprintln!("{:?}", out_path);
 
-        // コピーした作業ファイルから、page_indices以外のページを削除
-        (0..page_count)
-            .filter(|p| !page_indices.contains(p))
-            .rev()
-            .try_for_each(|idx| {
-                doc.delete_page(idx)
-                    .map_err(|e| CoreError::MuPdf(e.to_string()))
-            })?;
+        let mut dst = PdfDocument::new();
+        let mut graft = dst
+            .new_graft_map()
+            .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+
+        for &page_idx in page_indices {
+            let src_page = src
+                .find_page(page_idx)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            let dst_page = graft
+                .graft_object(&src_page)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            // mupdf 0.6: -1 は無効。現在のページ数 = 末尾に追加
+            let at = dst
+                .page_count()
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            dst.insert_page(at, &dst_page)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+        }
 
         let mut opts = mupdf::pdf::PdfWriteOptions::default();
-        // 入力 PDF のメタデータを各出力ファイルに引き継ぐ
+        // gc=2: 未参照オブジェクト除去のみ。サイズ削減は連携圧縮ができていないので2にしておく。
+        //
         opts.set_incremental(false)
             .set_compress(true)
             .set_compress_fonts(true)
-            .set_garbage_level(1)
+            .set_compress_images(true)
+            .set_garbage_level(2)
+            .set_sanitize(false)
             .set_clean(false);
-        // 作業ファイルの中身をout_pathへ出力
-        doc.save_with_options(out_path.to_str().unwrap(), opts)
+        dst.save_with_options(out_path.to_str().unwrap(), opts)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
-        // delete_page で /Info が消えた場合に備えてメタデータを書き戻す
+        // 入力 PDF のメタデータを各出力ファイルに引き継ぐ
         crate::compress::copy_metadata_after_write(out_path.to_str().unwrap(), &metadata);
+
         files.push(out_path.to_string_lossy().to_string());
-        // 作業用一時ファイルを解放・削除
-        drop(doc);
-        drop(work_tmp);
     }
 
     Ok(SplitResponse { ok: true, files })
