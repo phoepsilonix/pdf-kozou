@@ -22,7 +22,7 @@ import {
   type PageLink,
 } from "../lib/tauri";
 import { Spinner, PageHeader } from "../components/common";
-import { type FileEntry } from "../store/usePdfStore";
+import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
@@ -561,6 +561,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const [total, setTotal] = useState(0);
   const [zoom, setZoom] = useState(1.0);
 
+  // ホーム画面のレイアウト設定（リフロー可能文書用）
+  const { convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
+
   // メイン画像キャッシュ（path → page → b64）
   const imgCache = useRef<Map<string, Map<number, string>>>(new Map());
 
@@ -660,18 +663,21 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   }, [filePath, pdfInfo]);
 
   // ── 2. メイン画像レンダリング（キャッシュ付き）────────────────────────────
-  const getOrRender = useCallback(async (path: string, page: number): Promise<string> => {
-    if (!imgCache.current.has(path)) imgCache.current.set(path, new Map());
-    const pageMap = imgCache.current.get(path)!;
-    if (pageMap.has(page)) return pageMap.get(page)!;
-    const b64 = await renderPage(path, page, RENDER_DPI, {
-      layoutW: convertLayoutW,
-      layoutH: convertLayoutH,
-      layoutEm: convertLayoutEm,
-    });
-    pageMap.set(page, b64);
-    return b64;
-  }, []);
+  const getOrRender = useCallback(
+    async (path: string, page: number): Promise<string> => {
+      if (!imgCache.current.has(path)) imgCache.current.set(path, new Map());
+      const pageMap = imgCache.current.get(path)!;
+      if (pageMap.has(page)) return pageMap.get(page)!;
+      const b64 = await renderPage(path, page, RENDER_DPI, {
+        layoutW: convertLayoutW,
+        layoutH: convertLayoutH,
+        layoutEm: convertLayoutEm,
+      });
+      pageMap.set(page, b64);
+      return b64;
+    },
+    [convertLayoutW, convertLayoutH, convertLayoutEm],
+  );
 
   // プリフェッチ（前後1ページ）
   const prefetch = useCallback(
@@ -766,7 +772,11 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       for (let i = 0; i < activeInfo.page_count; i++) {
         if (cur[i]) continue;
         try {
-          const b64 = await renderPage(activePath, i, THUMB_DPI);
+          const b64 = await renderPage(activePath, i, THUMB_DPI, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           if (cancelled) return;
           cur[i] = b64;
           setThumbs([...cur]);
@@ -787,7 +797,14 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       for (const f of fileList) {
         if (!m.has(f.path)) {
           try {
-            m.set(f.path, await renderPage(f.path, 0, THUMB_DPI));
+            m.set(
+              f.path,
+              await renderPage(f.path, 0, THUMB_DPI, {
+                layoutW: convertLayoutW,
+                layoutH: convertLayoutH,
+                layoutEm: convertLayoutEm,
+              }),
+            );
             changed = true;
           } catch {}
         }

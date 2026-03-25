@@ -1183,9 +1183,15 @@ void kozou_rasterize(
                 imgref  = pdf_add_image(ctx, pdfout, image);
 
                 /* Resources 辞書: /XObject << /Im0 <imgref> >> */
+                /* pdf_dict_put はキー・値の参照をコピーする（所有権を移さない）  */
+                /* pdf_dict_put_drop はキーと値の参照を消費するので二重 drop に注意 */
                 resources = pdf_new_dict(ctx, pdfout, 1);
                 xobj_dict = pdf_new_dict(ctx, pdfout, 1);
-                pdf_dict_put_drop(ctx, xobj_dict, pdf_new_name(ctx, "Im0"), imgref);
+                {
+                    pdf_obj *im0_name = pdf_new_name(ctx, "Im0");
+                    pdf_dict_put(ctx, xobj_dict, im0_name, imgref);
+                    pdf_drop_obj(ctx, im0_name);
+                }
                 pdf_dict_put(ctx, resources, PDF_NAME(XObject), xobj_dict);
 
                 /* コンテンツストリーム:
@@ -1214,7 +1220,8 @@ void kozou_rasterize(
                 pdf_drop_obj(ctx, xobj_dict);
                 pdf_drop_obj(ctx, resources);
                 fz_drop_buffer(ctx, contents);
-                pdf_drop_obj(ctx, imgref);
+                /* imgref は pdf_add_image が返す間接参照: pdfout の xref が管理する */
+                /* → ここでは drop しない（二重 free を防ぐ）                      */
                 fz_drop_image(ctx, image);
                 fz_drop_pixmap(ctx, pixmap);
                 fz_drop_page(ctx, page);
