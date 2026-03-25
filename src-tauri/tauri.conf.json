@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "cargo build -p pdf-kozou-core && npm run dev",
-    "beforeBuildCommand": "cargo build -p pdf-kozou-core --release && npm run build"
+    "beforeDevCommand": "cargo build -p pdf-kozou-core && bun run dev",
+    "beforeBuildCommand": "cargo build -p pdf-kozou-core --release && bun run build"
   },
   "app": {
     "windows": [
