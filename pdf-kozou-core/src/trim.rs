@@ -452,15 +452,13 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     let has_extract = keep_pages.len() < page_count as usize;
     if has_extract {
         // 削除するページ = 全ページ - keep_pages、後ろから削除して番号ずれを防ぐ
-        let mut delete_indices: Vec<i32> = (0..page_count)
+        (0..page_count)
             .filter(|p| !keep_pages.contains(p))
-            .collect();
-        delete_indices.sort_unstable_by(|a, b| b.cmp(a)); // 降順
-
-        for idx in delete_indices {
-            doc.delete_page(idx)
-                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-        }
+            .rev() // 逆順、降順
+            .try_for_each(|idx| {
+                doc.delete_page(idx)
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))
+            })?;
     }
 
     // ── インクリメンタル保存（/Info を含む全メタデータを保持）──────────────────
