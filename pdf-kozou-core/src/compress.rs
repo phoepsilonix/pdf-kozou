@@ -73,71 +73,154 @@ pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
 
 /// 出力 PDF ファイルの /Info 辞書にメタデータを書き戻す
 ///
-/// バッチ関数 `kozou_write_pdf_info` に委ねる。1回のファイルオープンで
-/// 全キーをまとめて書き込み、1回だけ保存する。
+/// Rust の `PdfDocument` API を使って直接 `/Info` 辞書を操作する。
+/// - `/Info` が既存 → インクリメンタル保存で差分追記（高速・安全）
+/// - `/Info` がない（新規 PDF）→ 新規辞書を作成して通常保存
+///
 /// `save_with_options()` で書き出した **後** に呼ぶ。
 pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
     if metadata.is_empty() {
         return;
     }
-    use std::ffi::CString;
-    unsafe {
-        let ctx = crate::ffi::kozou_new_context();
-        if ctx.is_null() {
-            eprintln!("[metadata] kozou_new_context failed for {output}");
-            return;
-        }
-        let c_output = match CString::new(output) {
-            Ok(s) => s,
-            Err(_) => {
-                mupdf_sys::fz_drop_context(ctx);
-                return;
-            }
-        };
+    // まず /Info が存在するか確認
+    let has_info = {
+        use mupdf::pdf::PdfDocument;
+        PdfDocument::open(output)
+            .ok()
+            .and_then(|doc| doc.trailer().ok())
+            .and_then(|trailer| trailer.get_dict("Info").ok())
+            .map(|opt| opt.is_some())
+            .unwrap_or(false)
+    };
 
-        // キー・値を CString の Vec に変換
-        let mut c_keys: Vec<CString> = Vec::with_capacity(metadata.len());
-        let mut c_vals: Vec<CString> = Vec::with_capacity(metadata.len());
-        for (key, value) in metadata {
-            match (CString::new(key.as_str()), CString::new(value.as_str())) {
-                (Ok(k), Ok(v)) => {
-                    c_keys.push(k);
-                    c_vals.push(v);
-                }
-                _ => continue,
-            }
-        }
+    let result = if has_info {
+        write_pdf_info(output, metadata)
+    } else {
+        write_pdf_info_new(output, metadata)
+    };
 
-        // ポインタ配列を作成
-        let key_ptrs: Vec<*const std::ffi::c_char> = c_keys.iter().map(|s| s.as_ptr()).collect();
-        let val_ptrs: Vec<*const std::ffi::c_char> = c_vals.iter().map(|s| s.as_ptr()).collect();
-
-        let mut res = crate::ffi::FfiResult::default();
-        kozou_write_pdf_info(
-            ctx,
-            c_output.as_ptr(),
-            key_ptrs.as_ptr(),
-            val_ptrs.as_ptr(),
-            key_ptrs.len() as std::ffi::c_int,
-            &mut res,
-        );
-        if res.ok == 0 {
-            eprintln!("[metadata] kozou_write_pdf_info failed for {output}: {res}");
-        }
-        mupdf_sys::fz_drop_context(ctx);
+    if let Err(e) = result {
+        eprintln!("[metadata] write_pdf_info failed for {output}: {e}");
     }
 }
 
-extern "C" {
-    /// 既存 PDF の /Info 辞書に複数のキーをまとめて書き込み1回だけ保存する（バッチ用）
-    fn kozou_write_pdf_info(
-        ctx: *mut mupdf_sys::fz_context,
-        path: *const std::ffi::c_char,
-        keys: *const *const std::ffi::c_char,
-        values: *const *const std::ffi::c_char,
-        count: std::ffi::c_int,
-        result: *mut crate::ffi::FfiResult,
+/// PDF の /Info 辞書にメタデータを書き込んで保存する（Rust 実装）
+///
+/// mupdf クレートの `rotate.rs` と同じパターン:
+///   doc.find_page → page_obj.dict_put → doc.save_with_options
+/// PdfObject は内部でポインタを保持し dict_put は直接変更するため
+/// doc を経由せず変更が反映される。
+fn write_pdf_info(path: &str, metadata: &[(String, String)]) -> std::result::Result<(), String> {
+    use mupdf::pdf::{PdfDocument, PdfObject, PdfWriteOptions};
+
+    let doc = PdfDocument::open(path).map_err(|e| format!("open failed: {e}"))?;
+
+    // trailer から /Info を取得
+    let trailer = doc.trailer().map_err(|e| format!("trailer failed: {e}"))?;
+
+    let info_obj = trailer
+        .get_dict("Info")
+        .map_err(|e| format!("get Info failed: {e}"))?;
+
+    // /Info 辞書の実体を取得（間接参照を解決）
+    let mut info = match info_obj {
+        Some(obj) => {
+            // 間接参照を解決して実体を取得
+            obj.resolve()
+                .map_err(|e| format!("resolve Info failed: {e}"))?
+                .unwrap_or(obj)
+        }
+        None => {
+            // /Info がない場合は書き込み不可（新規PDFはメタデータなし）
+            // → 呼び出し側でこのケースを考慮する
+            eprintln!("[metadata] /Info dict not found in {path}, skipping");
+            return Ok(());
+        }
+    };
+
+    // 各キーを /Info 辞書に書き込む
+    // PdfObject::new_string → pdf_new_text_string → UTF-16 BE 自動変換
+    for (key, value) in metadata {
+        let val_obj =
+            PdfObject::new_string(value).map_err(|e| format!("new_string({key}) failed: {e}"))?;
+        info.dict_put(key.as_str(), val_obj)
+            .map_err(|e| format!("dict_put({key}) failed: {e}"))?;
+    }
+
+    // インクリメンタル保存:
+    //   /Info が既存の場合は incremental=true で差分のみ追記が最適
+    //   gc=0: メタデータ変更のみなので gc 不要
+    let mut opts = PdfWriteOptions::default();
+    opts.set_incremental(true)
+        .set_compress(true)
+        .set_garbage_level(0)
+        .set_clean(false);
+
+    doc.save_with_options(path, opts)
+        .map_err(|e| format!("save failed: {e}"))?;
+
+    eprintln!("[metadata] wrote {} keys to {path}", metadata.len());
+    Ok(())
+}
+
+/// /Info がない新規 PDF にメタデータを書き込む
+///
+/// 新規 PDF の場合は incremental 保存では /Info を追加できないため
+/// 通常保存（gc=0）を使う。
+fn write_pdf_info_new(
+    path: &str,
+    metadata: &[(String, String)],
+) -> std::result::Result<(), String> {
+    use mupdf::pdf::{PdfDocument, PdfObject, PdfWriteOptions};
+
+    let mut doc = PdfDocument::open(path).map_err(|e| format!("open failed: {e}"))?;
+
+    // 新規辞書を作成して xref に登録（間接オブジェクトにする）
+    let new_dict = doc
+        .new_dict()
+        .map_err(|e| format!("new_dict failed: {e}"))?;
+    let info_ref = doc
+        .add_object(&new_dict)
+        .map_err(|e| format!("add_object failed: {e}"))?;
+
+    // trailer の /Info に間接参照をセット
+    {
+        let mut trailer = doc.trailer().map_err(|e| format!("trailer failed: {e}"))?;
+        trailer
+            .dict_put("Info", info_ref.clone())
+            .map_err(|e| format!("dict_put Info to trailer failed: {e}"))?;
+    }
+
+    // /Info 辞書に各キーを書き込む
+    // info_ref は xref に登録された間接オブジェクトへの参照
+    // resolve して実体を取得してから dict_put する
+    let mut info = info_ref
+        .resolve()
+        .map_err(|e| format!("resolve failed: {e}"))?
+        .ok_or_else(|| "resolved Info is null".to_string())?;
+
+    for (key, value) in metadata {
+        let val_obj =
+            PdfObject::new_string(value).map_err(|e| format!("new_string({key}) failed: {e}"))?;
+        info.dict_put(key.as_str(), val_obj)
+            .map_err(|e| format!("dict_put({key}) failed: {e}"))?;
+    }
+
+    // 通常保存（新規 /Info は xref に追加されるため incremental 不可）
+    let mut opts = PdfWriteOptions::default();
+    opts.set_incremental(false)
+        .set_compress(true)
+        .set_garbage_level(0)
+        .set_clean(false);
+
+    doc.save_with_options(path, opts)
+        .map_err(|e| format!("save failed: {e}"))?;
+
+    eprintln!(
+        "[metadata] wrote {} keys to {path} (new Info)",
+        metadata.len()
     );
+    Ok(())
 }
 
 // ── 圧縮プリセット ────────────────────────────────────────────────────────────

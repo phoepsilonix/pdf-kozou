@@ -99,37 +99,362 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
 
 // ── JPEG メタデータ埋め込み ─────────────────────────────────────────────────
 //
-// JPEG の構造: SOI(FF D8) | APP0(FF E0) | ... | SOS(FF DA) | データ | EOI
-// メタデータは JPEG COM セグメント (FF FE) として SOI の直後に挿入する。
-// COM セグメント: FF FE | length_hi | length_lo | data...
-// length はセグメント長 (length フィールド自身の2バイト + データ長)
+// JPEG APP1 セグメント (FF E1) として EXIF を挿入する。
+// EXIF は Windows エクスプローラ・macOS Finder・各種ビューアで
+// タイトル・作者・著作権等として表示される標準フォーマット。
 //
-// 引き継ぐキー: Title, Author, Subject, Keywords, Creator, Producer
+// COM セグメント (FF FE) も残してソフトウェアの互換性を確保する。
+//
+// 挿入順: SOI | APP1(EXIF) | COM | 元の残りデータ
 fn embed_metadata_jpeg(jpeg_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
     if metadata.is_empty() || jpeg_bytes.len() < 2 {
         return jpeg_bytes;
     }
-    // メタデータをテキスト形式にまとめる
-    let comment = build_metadata_comment(metadata);
-    if comment.is_empty() {
-        return jpeg_bytes;
-    }
-    let comment_bytes = comment.as_bytes();
-    // COM セグメントを構築: FF FE | length(2) | data
-    let seg_len = (comment_bytes.len() + 2) as u16; // length フィールド含む
-    let mut com_seg = Vec::with_capacity(4 + comment_bytes.len());
-    com_seg.push(0xFF);
-    com_seg.push(0xFE);
-    com_seg.push((seg_len >> 8) as u8);
-    com_seg.push((seg_len & 0xFF) as u8);
-    com_seg.extend_from_slice(comment_bytes);
 
-    // SOI (2バイト) の直後に COM セグメントを挿入
-    let mut result = Vec::with_capacity(jpeg_bytes.len() + com_seg.len());
-    result.extend_from_slice(&jpeg_bytes[..2]); // SOI: FF D8
+    // メタデータ値を取得するヘルパー
+    let get = |key: &str| -> Option<&str> {
+        metadata
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    };
+
+    // COM セグメント（互換性用テキストコメント）を構築
+    let comment = build_metadata_comment(metadata);
+    let com_seg = if !comment.is_empty() {
+        let cb = comment.as_bytes();
+        let seg_len = (cb.len() + 2) as u16;
+        let mut seg = Vec::with_capacity(4 + cb.len());
+        seg.push(0xFF);
+        seg.push(0xFE);
+        seg.push((seg_len >> 8) as u8);
+        seg.push((seg_len & 0xFF) as u8);
+        seg.extend_from_slice(cb);
+        seg
+    } else {
+        vec![]
+    };
+
+    // EXIF APP1 セグメントを構築
+    let exif_payload = build_exif_payload(
+        get("Title"),
+        get("Author"),
+        get("Creator"), // Software
+        get("CreationDate"),
+        get("ModDate"),
+        get("Subject"),
+        get("Keywords"),
+    );
+
+    let app1_seg = if !exif_payload.is_empty() {
+        // APP1: FF E1 | length(2, BE, length フィールド自身含む) | "Exif\0\0" | TIFF
+        let total_len = (exif_payload.len() + 2) as u16;
+        let mut seg = Vec::with_capacity(4 + exif_payload.len());
+        seg.push(0xFF);
+        seg.push(0xE1);
+        seg.push((total_len >> 8) as u8);
+        seg.push((total_len & 0xFF) as u8);
+        seg.extend_from_slice(&exif_payload);
+        seg
+    } else {
+        vec![]
+    };
+
+    // 既存のAPP1(EXIF)とCOMを除いた残りを収集（二重挿入防止）
+    let rest = skip_existing_app1_and_com(&jpeg_bytes[2..]);
+
+    let mut result = Vec::with_capacity(2 + app1_seg.len() + com_seg.len() + rest.len());
+    result.extend_from_slice(&jpeg_bytes[..2]); // SOI
+    result.extend_from_slice(&app1_seg);
     result.extend_from_slice(&com_seg);
-    result.extend_from_slice(&jpeg_bytes[2..]);
+    result.extend_from_slice(rest);
     result
+}
+
+/// 既存の APP1(EXIF) と COM セグメントをスキップして残りを返す
+fn skip_existing_app1_and_com(data: &[u8]) -> &[u8] {
+    let mut pos = 0;
+    while pos + 3 < data.len() {
+        if data[pos] != 0xFF {
+            break;
+        }
+        let marker = data[pos + 1];
+        // COM (FF FE) または APP1 (FF E1) をスキップ
+        if marker == 0xFE || marker == 0xE1 {
+            let seg_len = ((data[pos + 2] as usize) << 8) | (data[pos + 3] as usize);
+            pos += 2 + seg_len;
+        } else {
+            break;
+        }
+    }
+    &data[pos..]
+}
+
+/// EXIF ペイロードを構築する（"Exif\0\0" + TIFF ヘッダ + IFD0 + Exif SubIFD）
+///
+/// 構造: "Exif\0\0" | TIFF-LE-header(8) | IFD0 | ExifSubIFD | value_area
+/// TIFF ヘッダ: "II"(LE) | 0x002A | offset_to_IFD0(4)
+///
+/// Windows ファイルプロパティで表示される主要タグ:
+///   IFD0:
+///     0x010E ImageDescription (ASCII)  ← Title (ASCII のみ、互換性)
+///     0x013B Artist            (ASCII)  ← Author
+///     0x0131 Software          (ASCII)  ← Creator
+///     0x8298 Copyright         (ASCII)  ← Keywords（著作権情報として転用）
+///     0x0132 DateTime          (ASCII)  ← ModDate (YYYY:MM:DD HH:MM:SS)
+///     0x8769 ExifIFD           (LONG)   ← Exif Sub IFD へのオフセット
+///     0x9C9B XPTitle           (BYTE/UTF-16LE) ← Title（日本語対応）
+///     0x9C9D XPAuthor          (BYTE/UTF-16LE) ← Author
+///     0x9C9C XPComment         (BYTE/UTF-16LE) ← Subject
+///     0x9C9F XPSubject         (BYTE/UTF-16LE) ← Subject
+///     0x9C9E XPKeywords        (BYTE/UTF-16LE) ← Keywords
+///   Exif SubIFD:
+///     0x9003 DateTimeOriginal  (ASCII)  ← CreationDate
+fn build_exif_payload(
+    title: Option<&str>,
+    artist: Option<&str>,
+    software: Option<&str>,
+    creation_date: Option<&str>,
+    mod_date: Option<&str>,
+    subject: Option<&str>,
+    keywords: Option<&str>,
+) -> Vec<u8> {
+    // ASCII 形式タグに UTF-8 をそのまま格納（NUL終端）
+    // EXIF 仕様上は ASCII 型だが UTF-8 を入れても
+    // Windows・macOS・多くのビューアで読める。
+    // XP タグ（UTF-16 LE）が主、こちらは補助的な格納。
+    let to_ascii = |s: &str| -> Vec<u8> {
+        // NUL バイトのみ除去してそのまま UTF-8 として格納
+        let mut v: Vec<u8> = s.bytes().filter(|&b| b != 0).collect();
+        v.push(0); // NUL 終端
+        v
+    };
+
+    // UTF-16 LE 変換（XP タグ用、NUL終端）
+    let to_utf16le = |s: &str| -> Vec<u8> {
+        let mut v: Vec<u8> = s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        v.push(0);
+        v.push(0);
+        v
+    };
+
+    // PDF 日付 "D:YYYYMMDDHHmmSS..." → EXIF 日時 "YYYY:MM:DD HH:MM:SS\0"
+    let to_exif_date = |s: &str| -> Vec<u8> {
+        let s = if s.starts_with("D:") { &s[2..] } else { s };
+        let date = if s.len() >= 14 {
+            format!(
+                "{}:{}:{} {}:{}:{}",
+                &s[0..4],
+                &s[4..6],
+                &s[6..8],
+                &s[8..10],
+                &s[10..12],
+                &s[12..14]
+            )
+        } else if s.len() >= 8 {
+            format!("{}:{}:{} 00:00:00", &s[0..4], &s[4..6], &s[6..8])
+        } else {
+            return vec![];
+        };
+        let mut v = date.into_bytes();
+        v.push(0);
+        v
+    };
+
+    // ── IFD0 タグを構築 ────────────────────────────────────────────────────
+    const TYPE_ASCII: u16 = 2;
+    const TYPE_BYTE: u16 = 1;
+    const TYPE_LONG: u16 = 4;
+    const TYPE_UNDEFINED: u16 = 7; // UserComment 用
+
+    // (tag_id, type, data)
+    let mut ifd0_tags: Vec<(u16, u16, Vec<u8>)> = Vec::new();
+
+    // 0x010E ImageDescription (UTF-8) ← Title
+    // macOS Finder 詳細情報・Linux exiftool・Android ギャラリーで表示
+    if let Some(v) = title {
+        ifd0_tags.push((0x010E, TYPE_ASCII, to_ascii(v)));
+        // Windows 用 XPTitle (UTF-16 LE)
+        ifd0_tags.push((0x9C9B, TYPE_BYTE, to_utf16le(v)));
+    }
+
+    // 0x013B Artist (UTF-8) ← Author
+    // macOS Finder・Android・Windows (Exif Artist) で表示
+    if let Some(v) = artist {
+        ifd0_tags.push((0x013B, TYPE_ASCII, to_ascii(v)));
+        // Windows 用 XPAuthor (UTF-16 LE)
+        ifd0_tags.push((0x9C9D, TYPE_BYTE, to_utf16le(v)));
+    }
+
+    // 0x8298 Copyright (UTF-8) ← Author を著作権者として格納
+    // macOS Finder「著作権」・多くのビューアで表示
+    if let Some(v) = artist {
+        ifd0_tags.push((0x8298, TYPE_ASCII, to_ascii(v)));
+    }
+
+    // 0x0131 Software (UTF-8) ← Creator（作成ソフト）
+    if let Some(v) = software {
+        ifd0_tags.push((0x0131, TYPE_ASCII, to_ascii(v)));
+    }
+
+    // 0x0132 DateTime (ASCII) ← ModDate
+    if let Some(v) = mod_date {
+        let d = to_exif_date(v);
+        if !d.is_empty() {
+            ifd0_tags.push((0x0132, TYPE_ASCII, d));
+        }
+    }
+
+    // Windows XP タグ（UTF-16 LE）
+    if let Some(v) = subject {
+        ifd0_tags.push((0x9C9C, TYPE_BYTE, to_utf16le(v))); // XPComment
+        ifd0_tags.push((0x9C9F, TYPE_BYTE, to_utf16le(v))); // XPSubject
+    }
+    if let Some(v) = keywords {
+        ifd0_tags.push((0x9C9E, TYPE_BYTE, to_utf16le(v))); // XPKeywords
+    }
+
+    // ExifSubIFD リンクは後で追加（オフセットが確定してから）
+    // 0x8769 ExifIFD pointer を IFD0 に追加する
+
+    // ── Exif SubIFD タグを構築 ─────────────────────────────────────────────
+    let mut exif_sub_tags: Vec<(u16, u16, Vec<u8>)> = Vec::new();
+
+    // 0x9003 DateTimeOriginal ← CreationDate
+    // macOS Finder「作成日」・Android・exiftool で表示
+    if let Some(v) = creation_date {
+        let d = to_exif_date(v);
+        if !d.is_empty() {
+            exif_sub_tags.push((0x9003, TYPE_ASCII, d.clone()));
+            exif_sub_tags.push((0x9004, TYPE_ASCII, d)); // DateTimeDigitized も同値
+        }
+    }
+
+    // 0x9286 UserComment (UNICODE形式 UTF-16 BE) ← Subject + Keywords
+    // macOS・Android・多くのビューアで日本語として表示される
+    // 形式: "UNICODE\0" (8バイト識別子) + UTF-16 BE テキスト
+    {
+        let comment_parts: Vec<&str> = [
+            subject.map(|s| ("Subject", s)),
+            keywords.map(|s| ("Keywords", s)),
+        ]
+        .iter()
+        .flatten()
+        .map(|(k, v)| *v)
+        .collect();
+
+        if !comment_parts.is_empty() {
+            let combined = comment_parts.join("; ");
+            // UserComment: "UNICODE\0" (8バイト) + UTF-16 BE
+            let mut uc: Vec<u8> = b"UNICODE\0".to_vec();
+            for unit in combined.encode_utf16() {
+                uc.extend_from_slice(&unit.to_be_bytes()); // BE
+            }
+            exif_sub_tags.push((0x9286, TYPE_UNDEFINED, uc));
+        }
+    }
+
+    let has_exif_sub = !exif_sub_tags.is_empty();
+
+    if ifd0_tags.is_empty() && !has_exif_sub {
+        return vec![];
+    }
+
+    // ExifIFD ポインタをソート前に追加（ダミー値 0、後で上書き）
+    if has_exif_sub {
+        ifd0_tags.push((0x8769, TYPE_LONG, vec![0, 0, 0, 0])); // ExifIFD オフセット（後で上書き）
+    }
+
+    // タグをタグ番号昇順にソート（TIFF 仕様要件）
+    ifd0_tags.sort_by_key(|t| t.0);
+    exif_sub_tags.sort_by_key(|t| t.0);
+
+    // ── オフセット計算 ─────────────────────────────────────────────────────
+    // TIFF ヘッダ: 8 バイト
+    // IFD0: 2(count) + n*12(entries) + 4(next=0)
+    // ExifSubIFD: 2(count) + m*12(entries) + 4(next=0)
+    // value area: IFD0 の長い値 + ExifSubIFD の長い値
+
+    let tiff_header_size: u32 = 8;
+    let ifd0_n = ifd0_tags.len() as u32;
+    let ifd0_size = 2 + ifd0_n * 12 + 4;
+
+    let exif_sub_n = exif_sub_tags.len() as u32;
+    let exif_sub_size = if has_exif_sub {
+        2 + exif_sub_n * 12 + 4
+    } else {
+        0
+    };
+
+    let ifd0_start = tiff_header_size;
+    let exif_sub_start = ifd0_start + ifd0_size;
+    let value_area_start = exif_sub_start + exif_sub_size;
+
+    // IFD0 の ExifIFD ポインタを正しいオフセットで上書き
+    if has_exif_sub {
+        if let Some(entry) = ifd0_tags.iter_mut().find(|(tag, _, _)| *tag == 0x8769) {
+            entry.2 = exif_sub_start.to_le_bytes().to_vec();
+        }
+    }
+
+    // ── IFD0 エントリを組み立て ────────────────────────────────────────────
+    let mut value_area: Vec<u8> = Vec::new();
+    let mut ifd0_entries: Vec<u8> = Vec::new();
+    ifd0_entries.extend_from_slice(&(ifd0_n as u16).to_le_bytes());
+
+    for (tag, typ, data) in &ifd0_tags {
+        let count = data.len() as u32;
+        ifd0_entries.extend_from_slice(&tag.to_le_bytes());
+        ifd0_entries.extend_from_slice(&typ.to_le_bytes());
+        ifd0_entries.extend_from_slice(&count.to_le_bytes());
+        if data.len() <= 4 {
+            let mut val = [0u8; 4];
+            val[..data.len()].copy_from_slice(data);
+            ifd0_entries.extend_from_slice(&val);
+        } else {
+            let offset = (value_area_start + value_area.len() as u32).to_le_bytes();
+            ifd0_entries.extend_from_slice(&offset);
+            value_area.extend_from_slice(data);
+        }
+    }
+    ifd0_entries.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
+
+    // ── Exif SubIFD エントリを組み立て ────────────────────────────────────
+    let mut exif_sub_entries: Vec<u8> = Vec::new();
+    if has_exif_sub {
+        exif_sub_entries.extend_from_slice(&(exif_sub_n as u16).to_le_bytes());
+        for (tag, typ, data) in &exif_sub_tags {
+            let count = data.len() as u32;
+            exif_sub_entries.extend_from_slice(&tag.to_le_bytes());
+            exif_sub_entries.extend_from_slice(&typ.to_le_bytes());
+            exif_sub_entries.extend_from_slice(&count.to_le_bytes());
+            if data.len() <= 4 {
+                let mut val = [0u8; 4];
+                val[..data.len()].copy_from_slice(data);
+                exif_sub_entries.extend_from_slice(&val);
+            } else {
+                let offset = (value_area_start + value_area.len() as u32).to_le_bytes();
+                exif_sub_entries.extend_from_slice(&offset);
+                value_area.extend_from_slice(data);
+            }
+        }
+        exif_sub_entries.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
+    }
+
+    // ── TIFF ヘッダ組み立て ────────────────────────────────────────────────
+    let mut tiff: Vec<u8> = Vec::new();
+    tiff.extend_from_slice(b"II");
+    tiff.extend_from_slice(&0x002Au16.to_le_bytes());
+    tiff.extend_from_slice(&ifd0_start.to_le_bytes());
+    tiff.extend_from_slice(&ifd0_entries);
+    tiff.extend_from_slice(&exif_sub_entries);
+    tiff.extend_from_slice(&value_area);
+
+    // ── EXIF ペイロード = "Exif\0\0" + TIFF ──────────────────────────────
+    let mut payload = Vec::with_capacity(6 + tiff.len());
+    payload.extend_from_slice(b"Exif\0\0");
+    payload.extend_from_slice(&tiff);
+    payload
 }
 
 // ── PNG メタデータ埋め込み ──────────────────────────────────────────────────

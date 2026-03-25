@@ -91,14 +91,13 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
         eprintln!("{:?}", out_path);
 
         // コピーした作業ファイルから、page_indices以外のページを削除
-        let mut delete_indices: Vec<i32> = (0..page_count)
+        (0..page_count)
             .filter(|p| !page_indices.contains(p))
-            .collect();
-        delete_indices.sort_unstable_by(|a, b| b.cmp(a)); // 降順
-        for idx in delete_indices {
-            doc.delete_page(idx)
-                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-        }
+            .rev()
+            .try_for_each(|idx| {
+                doc.delete_page(idx)
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))
+            })?;
 
         let mut opts = mupdf::pdf::PdfWriteOptions::default();
         // 入力 PDF のメタデータを各出力ファイルに引き継ぐ
@@ -112,7 +111,6 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
         // delete_page で /Info が消えた場合に備えてメタデータを書き戻す
-        // copy_metadata_after_writeは現状、うまく機能していない。修正まち
         crate::compress::copy_metadata_after_write(out_path.to_str().unwrap(), &metadata);
         files.push(out_path.to_string_lossy().to_string());
         // 作業用一時ファイルを解放・削除
