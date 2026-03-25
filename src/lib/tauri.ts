@@ -37,10 +37,7 @@ export interface PdfInfo {
 // ── stext (構造化テキスト) 型 ──────────────────────────────────────────────────
 
 export interface BBox {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
+  x0: number; y0: number; x1: number; y1: number;
 }
 
 export interface STextChar {
@@ -209,6 +206,7 @@ export async function renderPage(
   path: string,
   page: number, // 0-indexed
   dpi: number,
+  options?: ConvertOptions,
 ): Promise<string> {
   // base64 JPEG
   const resp = await invoke<{ image_b64: string }>("render_page", {
@@ -217,6 +215,9 @@ export async function renderPage(
     dpi,
     format: "jpeg",
     quality: 85,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
   });
   return resp.image_b64;
 }
@@ -241,12 +242,7 @@ export async function trimPdf(
     request: {
       input: inputPath,
       output: outputPath,
-      margins: {
-        left: margins.left,
-        right: margins.right,
-        bottom: margins.bottom,
-        top: margins.top,
-      },
+      margins: { left: margins.left, right: margins.right, bottom: margins.bottom, top: margins.top },
       unit: "pt",
       pages,
       exclude,
@@ -390,9 +386,7 @@ export async function splitPdf(
 ): Promise<SplitResponse> {
   return invoke<SplitResponse>("split_pdf", {
     request: {
-      input: inputPath,
-      out_dir: outDir,
-      mode,
+      input: inputPath, out_dir: outDir, mode,
       prefix: prefix ?? null,
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
@@ -418,8 +412,7 @@ export async function mergePdf(
 ): Promise<MergeResponse> {
   return invoke<MergeResponse>("merge_pdf", {
     request: {
-      inputs,
-      output: outputPath,
+      inputs, output: outputPath,
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
       layout_em: layoutEm ?? null,
@@ -444,6 +437,7 @@ export async function exportImages(
   quality?: number,
   namePrefix?: string,
   pages?: string, // "1-3,5" etc. undefined=全ページ
+  options?: ConvertOptions,
 ): Promise<ExportImagesResponse> {
   console.log("ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
   try {
@@ -455,6 +449,9 @@ export async function exportImages(
       quality: quality ?? null,
       namePrefix: namePrefix ?? null,
       pages: pages ?? null,
+      layoutW: options?.layoutW ?? null,
+      layoutH: options?.layoutH ?? null,
+      layoutEm: options?.layoutEm ?? null,
     });
     console.log("Res:ExportImages:", res);
     return res;

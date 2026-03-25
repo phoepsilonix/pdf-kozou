@@ -18,6 +18,15 @@ pub struct RenderRequest {
     pub format: Option<String>,
     pub quality: Option<u8>,
     pub output: Option<String>,
+    /// リフロー可能文書のレイアウト幅 (pt)。省略時は 450pt
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    /// リフロー可能文書のレイアウト高さ (pt)。省略時は 600pt
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    /// リフロー可能文書のフォントサイズ (pt)。省略時は 12pt
+    #[serde(default)]
+    pub layout_em: Option<f32>,
 }
 
 #[derive(Serialize)]
@@ -35,7 +44,17 @@ pub struct RenderResponse {
 }
 
 pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
-    let doc = mupdf::Document::open(&req.path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let mut doc = mupdf::Document::open(&req.path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+    // リフロー可能な文書（DOCX/EPUB/HTML 等）はレイアウト計算が必要
+    if doc.is_reflowable().unwrap_or(false) {
+        let w = req.layout_w.unwrap_or(450.0);
+        let h = req.layout_h.unwrap_or(600.0);
+        let em = req.layout_em.unwrap_or(12.0);
+        doc.layout(w, h, em)
+            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    }
+
     let page = doc
         .load_page(req.page_index)
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
@@ -340,7 +359,7 @@ fn build_exif_payload(
         ]
         .iter()
         .flatten()
-        .map(|(_k, v)| *v)
+        .map(|(k, v)| *v)
         .collect();
 
         if !comment_parts.is_empty() {
@@ -556,8 +575,7 @@ fn render_svg(
 
     // MuPDFに書き出させる
     {
-        //let mut writer = DocumentWriter::new(&temp_str, "svg", "text=text")
-        let mut writer = DocumentWriter::new(&temp_str, "svg", "text=path")
+        let mut writer = DocumentWriter::new(&temp_str, "svg", "text=text")
             .map_err(|e| CoreError::MuPdf(format!("svg writer: {e}")))?;
 
         let dev = writer

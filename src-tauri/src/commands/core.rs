@@ -75,10 +75,12 @@ pub async fn render_page(
     dpi: u32,
     format: Option<String>,
     quality: Option<u8>,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
 ) -> Result<Value> {
-    // --page は 1始まり、page 引数は 0始まりなので +1 する
     let page_1based = page + 1;
-    let args = vec![
+    let mut args = vec![
         "render".into(),
         path,
         "--page".into(),
@@ -90,6 +92,18 @@ pub async fn render_page(
         "--quality".into(),
         quality.unwrap_or(85).to_string(),
     ];
+    if let Some(w) = layout_w {
+        args.push("--layout-w".into());
+        args.push(w.to_string());
+    }
+    if let Some(h) = layout_h {
+        args.push("--layout-h".into());
+        args.push(h.to_string());
+    }
+    if let Some(em) = layout_em {
+        args.push("--layout-em".into());
+        args.push(em.to_string());
+    }
     call_core(args).await
 }
 
@@ -220,7 +234,10 @@ pub async fn export_images(
     dpi: Option<u32>,
     quality: Option<u8>,
     name_prefix: Option<String>,
-    pages: Option<String>, // ページ指定 "1-3,5,7-" etc.
+    pages: Option<String>,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
 ) -> Result<Value> {
     use serde_json::json;
 
@@ -228,10 +245,8 @@ pub async fn export_images(
     let dpi_val = dpi.unwrap_or(150);
     let prefix = name_prefix.unwrap_or_else(|| "page".into());
 
-    // ② 出力先ディレクトリを作成
     std::fs::create_dir_all(&out_dir).map_err(|e| Error::Core(format!("mkdir {out_dir}: {e}")))?;
 
-    // ③ render --out-dir で一括変換 (pages 指定があれば --page で渡す)
     let mut args: Vec<String> = vec![
         "render".into(),
         path.clone(),
@@ -253,6 +268,18 @@ pub async fn export_images(
     if let Some(q) = quality {
         args.push("--quality".into());
         args.push(q.to_string());
+    }
+    if let Some(w) = layout_w {
+        args.push("--layout-w".into());
+        args.push(w.to_string());
+    }
+    if let Some(h) = layout_h {
+        args.push("--layout-h".into());
+        args.push(h.to_string());
+    }
+    if let Some(em) = layout_em {
+        args.push("--layout-em".into());
+        args.push(em.to_string());
     }
 
     let output = tokio::process::Command::new(core_bin_path())

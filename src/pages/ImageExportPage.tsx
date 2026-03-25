@@ -45,7 +45,7 @@ interface BatchProgress {
 }
 
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
-  const { setError } = usePdfStore();
+  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const total = pdfInfo.page_count;
   console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
@@ -138,6 +138,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         format === "jpeg" ? quality : undefined,
         prefix || undefined,
         pages || undefined,
+        { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
       );
       console.log("res", res);
       setImages(res.files);
@@ -181,6 +182,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           format === "jpeg" ? quality : undefined,
           prefix || undefined,
           pages || undefined,
+          { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
         );
         progress.done.push({ file: f.filename, count: res.files.length });
       } catch (e) {

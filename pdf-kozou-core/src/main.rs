@@ -80,6 +80,15 @@ enum Commands {
         /// ファイル出力時の連番開始番号 (省略時は --name-prefix 末尾の数字、またはデフォルト 1)
         #[arg(long)]
         start_number: Option<u32>,
+        /// リフロー可能文書のレイアウト幅 (pt)。省略時は 450pt
+        #[arg(long)]
+        layout_w: Option<f32>,
+        /// リフロー可能文書のレイアウト高さ (pt)。省略時は 600pt
+        #[arg(long)]
+        layout_h: Option<f32>,
+        /// リフロー可能文書のフォントサイズ (pt)。省略時は 12pt
+        #[arg(long)]
+        layout_em: Option<f32>,
     },
 
     /// PDF をトリミング (CropBox 設定)
@@ -277,6 +286,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             out_dir,
             name_prefix,
             start_number,
+            layout_w,
+            layout_h,
+            layout_em,
         } => {
             let ext = match format.as_str() {
                 "png" => "png",
@@ -284,7 +296,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 _ => "jpg",
             };
 
-            // --page をパース → PageSpec に変換
             let page_spec = match page.as_deref() {
                 None => PageSpec::Omitted,
                 Some("all") => PageSpec::All,
@@ -292,7 +303,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
 
             match (page_spec, out_dir) {
-                // ① --page 省略 + --out-dir なし → エラー
                 (PageSpec::Omitted, None) => {
                     anyhow::bail!(
                         "either --page <N|RANGE|all> or --out-dir <DIR> is required
@@ -300,7 +310,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     );
                 }
 
-                // ② --page 省略 + --out-dir あり → 全ページをファイル出力
                 (PageSpec::Omitted, Some(ref out_dir)) | (PageSpec::All, Some(ref out_dir)) => {
                     let out_dir = out_dir.clone();
                     std::fs::create_dir_all(&out_dir)?;
@@ -318,17 +327,20 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                         quality,
                         dpi,
                         ext,
+                        layout_w,
+                        layout_h,
+                        layout_em,
                     )?;
                 }
 
-                // ③ --page all + --out-dir なし → 全ページ JSON stdout
                 (PageSpec::All, None) => {
                     let info = pdf_kozou_core::info::info(&path)?;
                     let indices: Vec<i32> = (0..info.page_count).collect();
-                    render_to_json(&path, &indices, &format, quality, dpi)?;
+                    render_to_json(
+                        &path, &indices, &format, quality, dpi, layout_w, layout_h, layout_em,
+                    )?;
                 }
 
-                // ④ --page N/range + --out-dir あり → 指定ページをファイル出力
                 (PageSpec::Indices(ref indices), Some(ref out_dir)) => {
                     let out_dir = out_dir.clone();
                     std::fs::create_dir_all(&out_dir)?;
@@ -344,10 +356,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                         quality,
                         dpi,
                         ext,
+                        layout_w,
+                        layout_h,
+                        layout_em,
                     )?;
                 }
 
-                // ⑤ --page N (単ページ) + --out-dir なし → JSON or ファイル (-o)
                 (PageSpec::Indices(ref indices), None) if indices.len() == 1 => {
                     let page_index = indices[0];
                     let req = pdf_kozou_core::render::RenderRequest {
@@ -357,14 +371,18 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                         format: Some(format),
                         quality: Some(quality),
                         output,
+                        layout_w,
+                        layout_h,
+                        layout_em,
                     };
                     let resp = pdf_kozou_core::render::render(&req)?;
                     println!("{}", serde_json::to_string(&resp)?);
                 }
 
-                // ⑥ --page 複数指定 + --out-dir なし → 複数ページ JSON stdout
                 (PageSpec::Indices(ref indices), None) => {
-                    render_to_json(&path, indices, &format, quality, dpi)?;
+                    render_to_json(
+                        &path, indices, &format, quality, dpi, layout_w, layout_h, layout_em,
+                    )?;
                 }
             }
         }
@@ -1135,7 +1153,7 @@ fn parse_string_pages(s: &str) -> anyhow::Result<Vec<i32>> {
 fn render_to_dir(
     path: &str,
     indices: &[i32],
-    _total: u32, // 全ページ数は使わない
+    _total: u32,
     start_number: Option<u32>,
     name_prefix: Option<&str>,
     out_dir: &str,
@@ -1143,6 +1161,9 @@ fn render_to_dir(
     quality: u8,
     dpi: u32,
     ext: &str,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
 ) -> anyhow::Result<()> {
     let (base, start_num) = resolve_name_prefix_and_start(
         name_prefix,
@@ -1174,6 +1195,9 @@ fn render_to_dir(
             format: Some(format.to_string()),
             quality: Some(quality),
             output: Some(out_path.clone()),
+            layout_w,
+            layout_h,
+            layout_em,
         };
 
         let resp = pdf_kozou_core::render::render(&req)?;
@@ -1202,6 +1226,9 @@ fn render_to_json(
     format: &str,
     quality: u8,
     dpi: u32,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
 ) -> anyhow::Result<()> {
     let mut pages = Vec::new();
     for &page_index in indices {
@@ -1212,6 +1239,9 @@ fn render_to_json(
             format: Some(format.to_string()),
             quality: Some(quality),
             output: None,
+            layout_w,
+            layout_h,
+            layout_em,
         };
         let resp = pdf_kozou_core::render::render(&req)?;
         pages.push(serde_json::json!({
