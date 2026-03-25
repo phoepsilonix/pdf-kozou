@@ -99,16 +99,30 @@ pub async fn trim_pdf(request: Value) -> Result<Value> {
 }
 
 /// 非 PDF ファイル（EPUB, XPS, HTML, CBZ, 画像等）を PDF に変換する
+/// layout_w/h/em: リフロー可能文書（DOCX, EPUB, HTML）のレイアウト指定 (pt)
+/// 省略時はデフォルト値（w=450, h=600, em=12）が使用される
 #[tauri::command]
-pub async fn convert_to_pdf(input: String, output: String) -> Result<Value> {
-    call_core_json(
-        "convert",
-        serde_json::json!({
-            "input": input,
-            "output": output,
-        }),
-    )
-    .await
+pub async fn convert_to_pdf(
+    input: String,
+    output: String,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
+) -> Result<Value> {
+    let mut payload = serde_json::json!({
+        "input": input,
+        "output": output,
+    });
+    if let Some(w) = layout_w {
+        payload["layout_w"] = w.into();
+    }
+    if let Some(h) = layout_h {
+        payload["layout_h"] = h.into();
+    }
+    if let Some(em) = layout_em {
+        payload["layout_em"] = em.into();
+    }
+    call_core_json("convert", payload).await
 }
 
 /// MuPDF がそのファイルを開けるか確認する（sidecar 経由）

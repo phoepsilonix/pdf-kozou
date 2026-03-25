@@ -146,9 +146,29 @@ export interface ConvertResponse {
   output_bytes: number;
 }
 
+/** リフロー可能文書（DOCX/EPUB/HTML）のレイアウト設定 */
+export interface ConvertOptions {
+  /** レイアウト幅 (pt)。省略時は 450pt（mutool デフォルト） */
+  layoutW?: number;
+  /** レイアウト高さ (pt)。省略時は 600pt */
+  layoutH?: number;
+  /** ベースフォントサイズ (pt)。省略時は 12pt */
+  layoutEm?: number;
+}
+
 /** 非 PDF ファイル（EPUB, XPS, HTML, CBZ, DOCX, 画像等）を PDF に変換する */
-export async function convertToPdf(input: string, output: string): Promise<ConvertResponse> {
-  return invoke<ConvertResponse>("convert_to_pdf", { input, output });
+export async function convertToPdf(
+  input: string,
+  output: string,
+  options?: ConvertOptions,
+): Promise<ConvertResponse> {
+  return invoke<ConvertResponse>("convert_to_pdf", {
+    input,
+    output,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
 }
 
 /** MuPDF がそのファイルを開けるか確認する */
@@ -213,6 +233,9 @@ export async function trimPdf(
   pages?: string,
   exclude?: string,
   extract?: string,
+  layoutW?: number,
+  layoutH?: number,
+  layoutEm?: number,
 ): Promise<void> {
   await invoke("trim_pdf", {
     request: {
@@ -225,9 +248,12 @@ export async function trimPdf(
         top: margins.top,
       },
       unit: "pt",
-      pages: pages,
-      exclude: exclude,
-      extract: extract,
+      pages,
+      exclude,
+      extract,
+      layout_w: layoutW ?? null,
+      layout_h: layoutH ?? null,
+      layout_em: layoutEm ?? null,
     },
   });
 }
@@ -258,12 +284,18 @@ export async function rotatePdf(
   inputPath: string,
   outputPath: string,
   rotations: PageRotation[],
+  layoutW?: number,
+  layoutH?: number,
+  layoutEm?: number,
 ): Promise<void> {
   await invoke("rotate_pdf", {
     request: {
       input: inputPath,
       output: outputPath,
       rotations,
+      layout_w: layoutW ?? null,
+      layout_h: layoutH ?? null,
+      layout_em: layoutEm ?? null,
     },
   });
 }
@@ -284,6 +316,12 @@ export interface CompressRequest {
   sanitize?: boolean;
   object_stream?: boolean;
   merge_fonts?: boolean;
+  /** リフロー文書変換レイアウト幅 (pt) */
+  layout_w?: number;
+  /** リフロー文書変換レイアウト高さ (pt) */
+  layout_h?: number;
+  /** リフロー文書変換フォントサイズ (pt) */
+  layout_em?: number;
 }
 
 export interface CompressResponse {
@@ -346,9 +384,20 @@ export async function splitPdf(
   outDir: string,
   mode: SplitMode,
   prefix?: string,
+  layoutW?: number,
+  layoutH?: number,
+  layoutEm?: number,
 ): Promise<SplitResponse> {
   return invoke<SplitResponse>("split_pdf", {
-    request: { input: inputPath, out_dir: outDir, mode, prefix: prefix ?? null },
+    request: {
+      input: inputPath,
+      out_dir: outDir,
+      mode,
+      prefix: prefix ?? null,
+      layout_w: layoutW ?? null,
+      layout_h: layoutH ?? null,
+      layout_em: layoutEm ?? null,
+    },
   });
 }
 
@@ -360,9 +409,21 @@ export interface MergeResponse {
   output_bytes: number;
 }
 
-export async function mergePdf(inputs: string[], outputPath: string): Promise<MergeResponse> {
+export async function mergePdf(
+  inputs: string[],
+  outputPath: string,
+  layoutW?: number,
+  layoutH?: number,
+  layoutEm?: number,
+): Promise<MergeResponse> {
   return invoke<MergeResponse>("merge_pdf", {
-    request: { inputs, output: outputPath },
+    request: {
+      inputs,
+      output: outputPath,
+      layout_w: layoutW ?? null,
+      layout_h: layoutH ?? null,
+      layout_em: layoutEm ?? null,
+    },
   });
 }
 

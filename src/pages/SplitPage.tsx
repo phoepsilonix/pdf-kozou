@@ -52,7 +52,7 @@ interface BatchProgress {
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
-  const { setError } = usePdfStore();
+  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
 
   // 現在表示中のファイル（バッチの場合はプレビュー用に切り替え可能）
@@ -147,7 +147,15 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           : modeId === "every"
             ? { type: "EveryN", n: everyN }
             : { type: "Ranges", ranges };
-      const res = await splitPdf(filePath, outDir, mode, prefix || undefined);
+      const res = await splitPdf(
+        filePath,
+        outDir,
+        mode,
+        prefix || undefined,
+        convertLayoutW,
+        convertLayoutH,
+        convertLayoutEm,
+      );
       setResult(res);
       setSavedDir(outDir);
       setPhase("result");
@@ -197,7 +205,15 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         const filePrefix = prefix
           ? `${prefix}_${f.filename.replace(/\.[^/.]+$/, "")}`
           : f.filename.replace(/\.[^/.]+$/, "");
-        const res = await splitPdf(f.path, outDir, mode, filePrefix);
+        const res = await splitPdf(
+          f.path,
+          outDir,
+          mode,
+          filePrefix,
+          convertLayoutW,
+          convertLayoutH,
+          convertLayoutEm,
+        );
         progress.done.push({ file: f.filename, count: res.files.length });
       } catch (e) {
         progress.errors.push({ file: f.filename, msg: String(e) });

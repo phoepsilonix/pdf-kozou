@@ -36,3 +36,11 @@ export function isMupdfExtension(filename: string): boolean {
 export function stemName(filename: string): string {
   return filename.replace(/\.[^/.]+$/, "");
 }
+
+/** ファイルリストに非 PDF（変換が必要な）ファイルが含まれるか判定 */
+export function hasNonPdf(filenames: string[]): boolean {
+  return filenames.some((f) => {
+    const ext = f.split(".").pop()?.toLowerCase() ?? "";
+    return ext !== "pdf";
+  });
+}

@@ -115,6 +115,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     activeCompressMode,
     setActiveCompressMode,
     useGsPreference,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
   } = usePdfStore();
   const { pickSave } = useSaveDialog();
 
@@ -218,6 +221,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           preset,
           merge_fonts: mergeFonts || undefined,
           object_stream: objectStream || undefined,
+          layout_w: convertLayoutW,
+          layout_h: convertLayoutH,
+          layout_em: convertLayoutEm,
         });
         setResult(res);
       }
@@ -316,6 +322,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           preset,
           merge_fonts: mergeFonts || undefined,
           object_stream: objectStream || undefined,
+          layout_w: convertLayoutW,
+          layout_h: convertLayoutH,
+          layout_em: convertLayoutEm,
         });
       }
       if (onDone) onDone();
@@ -404,6 +413,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             preset,
             merge_fonts: mergeFonts || undefined,
             object_stream: objectStream || undefined,
+            layout_w: convertLayoutW,
+            layout_h: convertLayoutH,
+            layout_em: convertLayoutEm,
           });
           ratio = res.ratio;
         }

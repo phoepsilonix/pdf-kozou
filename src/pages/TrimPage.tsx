@@ -49,7 +49,7 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
 
 // ── バッチトリム ──────────────────────────────────────────────────────────────
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
-  const { setError } = usePdfStore();
+  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [outDir, setOutDir] = useState("");
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
@@ -161,7 +161,17 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           excludeSpec,
           extractSpec,
         );
-        const res = await trimPdf(f.path, out, trimMargins, trimPages, excludeSpec, extractSpec);
+        const res = await trimPdf(
+          f.path,
+          out,
+          trimMargins,
+          trimPages,
+          excludeSpec,
+          extractSpec,
+          convertLayoutW,
+          convertLayoutH,
+          convertLayoutEm,
+        );
         console.log("[DEBUG] trim_pdf 結果:", res);
         prog.done.push({ f: f.filename });
       } catch (e) {
@@ -386,6 +396,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     //previewPage,
     //setPreviewPage,
     setError,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
   } = usePdfStore();
 
   const [previewPage, setPreviewPage] = useState(0);
@@ -440,6 +453,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         trimPages,
         excludeSpec,
         extractSpec,
+        convertLayoutW,
+        convertLayoutH,
+        convertLayoutEm,
       );
       /*
       .then(() => { 

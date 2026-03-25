@@ -37,7 +37,7 @@ interface BatchProgress {
 }
 
 export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
-  const { setError } = usePdfStore();
+  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
 
   const [batchIdx, setBatchIdx] = useState(0);
@@ -175,7 +175,14 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     );
     setPhase("processing");
     try {
-      await rotatePdf(filePath, saveTo, changedPages);
+      await rotatePdf(
+        filePath,
+        saveTo,
+        changedPages,
+        convertLayoutW,
+        convertLayoutH,
+        convertLayoutEm,
+      );
       setSavedPath(saveTo);
       setPhase("preview");
     } catch (e) {
@@ -213,7 +220,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .filter((p) => p.angle !== 0);
         if (pages.length > 0) {
           const out = `${outDir}/${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`;
-          await rotatePdf(f.path, out, pages);
+          await rotatePdf(f.path, out, pages, convertLayoutW, convertLayoutH, convertLayoutEm);
         }
         prog.done.push({ file: f.filename });
       } catch (e) {

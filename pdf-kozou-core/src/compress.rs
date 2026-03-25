@@ -867,6 +867,7 @@ pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse
     let mut writer =
         DocumentWriter::new(output, "pdf", opts).map_err(|e| CoreError::MuPdf(e.to_string()))?;
     let scale = Matrix::new_scale(dpi / 72.0, dpi / 72.0);
+    let identity = mupdf::Matrix::IDENTITY;
     for i in 0..page_count {
         let page = doc
             .load_page(i)
@@ -879,17 +880,41 @@ pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse
             .begin_page(bounds)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
+        // デバッグ: 座標を確認
+        eprintln!(
+            "[rasterize] page={i} bounds=({:.1},{:.1},{:.1},{:.1}) pixmap={}x{} px.xy=({},{})",
+            bounds.x0,
+            bounds.y0,
+            bounds.x1,
+            bounds.y1,
+            pixmap.width(),
+            pixmap.height(),
+            pixmap.x(),
+            pixmap.y()
+        );
+
         // PDF 座標系: 左下原点（Y軸 上向き）
         // 画像座標系: 左上原点（Y軸 下向き）
-        // → Y軸を反転し、ページ上端（bounds.y1）に移動する
+        // 変換行列: px = x0 + ix*sx, py = y1 - iy*sy
+        // → Matrix [a=sx, b=0, c=0, d=-sy, e=x0, f=y1]
         let sx = bounds.width() / pixmap.width() as f32;
         let sy = bounds.height() / pixmap.height() as f32;
-        let mut img_ctm = Matrix::new_scale(sx, -sy);
-        img_ctm.pre_translate(bounds.x0, bounds.y1);
+        eprintln!(
+            "[rasterize] sx={sx:.4} sy={sy:.4}  bounds.width={:.1} bounds.height={:.1}",
+            bounds.width(),
+            bounds.height()
+        );
+        let img_ctm = Matrix::new(sx, 0.0, 0.0, -sy, bounds.x0, bounds.y1);
+        eprintln!(
+            "[rasterize] img_ctm=[{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}]",
+            sx, 0.0, 0.0, -sy, bounds.x0, bounds.y1
+        );
 
         let image =
             mupdf::Image::from_pixmap(&pixmap).map_err(|e| CoreError::MuPdf(e.to_string()))?;
         dev.fill_image(&image, &img_ctm, 1.0, mupdf::ColorParams::default())
+            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        page.run(&dev, &identity)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
         writer
             .end_page(dev)

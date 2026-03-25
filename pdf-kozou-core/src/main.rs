@@ -224,6 +224,23 @@ enum Commands {
 
     /// stdin から JSON リクエストを受け取って実行 (Tauri sidecar モード)
     Json,
+
+    /// 非 PDF ファイル（EPUB, DOCX, XPS, HTML, 画像等）を PDF に変換する
+    Convert {
+        /// 入力ファイルパス
+        input: String,
+        /// 出力 PDF ファイルパス
+        output: String,
+        /// リフロー可能文書のレイアウト幅 (pt)。省略時は 450pt
+        #[arg(long, default_value = "450")]
+        layout_w: f32,
+        /// リフロー可能文書のレイアウト高さ (pt)。省略時は 600pt
+        #[arg(long, default_value = "600")]
+        layout_h: f32,
+        /// リフロー可能文書のベースフォントサイズ (pt)。省略時は 12pt
+        #[arg(long, default_value = "12")]
+        layout_em: f32,
+    },
 }
 
 fn main() {
@@ -364,7 +381,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             exclude,
             extract,
         } => {
-            let _tmp = auto_convert_if_needed(&input)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -420,7 +437,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             object_stream,
             merge_fonts,
         } => {
-            let _tmp = auto_convert_if_needed(&input)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -495,7 +512,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Rasterize { input, output, dpi } => {
-            let _tmp = auto_convert_if_needed(&input)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -512,7 +529,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             every,
             ranges,
         } => {
-            let _tmp = auto_convert_if_needed(&input)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -542,7 +559,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let inputs = inputs
                 .into_iter()
                 .map(|inp| {
-                    if let Ok(Some(converted)) = auto_convert_if_needed(&inp) {
+                    if let Ok(Some(converted)) = auto_convert_if_needed(&inp, None, None, None) {
                         let path = converted.1.clone();
                         tmps.push(converted);
                         path
@@ -564,7 +581,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             pages,
             page_angles,
         } => {
-            let _tmp = auto_convert_if_needed(&input)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -615,6 +632,25 @@ fn run(cli: Cli) -> anyhow::Result<()> {
 
         Commands::Json => {
             run_json_mode()?;
+        }
+
+        Commands::Convert {
+            input,
+            output,
+            layout_w,
+            layout_h,
+            layout_em,
+        } => {
+            use pdf_kozou_core::convert::{convert_to_pdf, ConvertRequest};
+            let req = ConvertRequest {
+                input,
+                output,
+                layout_w: Some(layout_w),
+                layout_h: Some(layout_h),
+                layout_em: Some(layout_em),
+            };
+            let resp = convert_to_pdf(&req)?;
+            println!("{}", serde_json::to_string(&resp)?);
         }
     }
     Ok(())
@@ -668,6 +704,9 @@ fn run_json_mode() -> anyhow::Result<()> {
 /// 非 PDF かつ非対応形式ならエラー
 fn auto_convert_if_needed(
     input: &str,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
 ) -> anyhow::Result<Option<(tempfile::NamedTempFile, String)>> {
     use pdf_kozou_core::convert::{convert_to_pdf, is_mupdf_supported, is_pdf, ConvertRequest};
 
@@ -689,9 +728,9 @@ fn auto_convert_if_needed(
     let req = ConvertRequest {
         input: input.to_string(),
         output: tmp_path.clone(),
-        layout_w: None,
-        layout_h: None,
-        layout_em: None,
+        layout_w,
+        layout_h,
+        layout_em,
     };
     convert_to_pdf(&req).map_err(|e| anyhow::anyhow!("convert failed: {e}"))?;
 
@@ -712,6 +751,20 @@ fn dispatch_json(line: &str) -> String {
 
     // ? を使うためにクロージャで包んで即時実行する
     let result: anyhow::Result<String> = (|| {
+        // JSON から layout パラメータを取り出す共通ヘルパー
+        // 各コマンドの JSON に layout_w/h/em が含まれていれば使用する
+        #[derive(serde::Deserialize, Default)]
+        struct LayoutParams {
+            #[serde(default)]
+            layout_w: Option<f32>,
+            #[serde(default)]
+            layout_h: Option<f32>,
+            #[serde(default)]
+            layout_em: Option<f32>,
+        }
+        let lp: LayoutParams = serde_json::from_str(line).unwrap_or_default();
+        let (lw, lh, lem) = (lp.layout_w, lp.layout_h, lp.layout_em);
+
         match tag.cmd.as_str() {
             "info" => {
                 #[derive(serde::Deserialize)]
@@ -736,7 +789,7 @@ fn dispatch_json(line: &str) -> String {
             }
             "trim" => {
                 let mut req: pdf_kozou_core::trim::TrimRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone())?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -765,7 +818,7 @@ fn dispatch_json(line: &str) -> String {
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.inner.input.clone())?;
+                let _tmp = auto_convert_if_needed(&r.inner.input.clone(), lw, lh, lem)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.inner.input = tmp_path.clone();
                 }
@@ -815,7 +868,7 @@ fn dispatch_json(line: &str) -> String {
             }
             "split" => {
                 let mut req: pdf_kozou_core::split::SplitRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone())?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -826,7 +879,7 @@ fn dispatch_json(line: &str) -> String {
                 let mut req: pdf_kozou_core::merge::MergeRequest = serde_json::from_str(line)?;
                 let mut tmps: Vec<(tempfile::NamedTempFile, String)> = Vec::new();
                 for input in req.inputs.iter_mut() {
-                    if let Some(converted) = auto_convert_if_needed(input)? {
+                    if let Some(converted) = auto_convert_if_needed(input, lw, lh, lem)? {
                         *input = converted.1.clone();
                         tmps.push(converted);
                     }
@@ -837,7 +890,7 @@ fn dispatch_json(line: &str) -> String {
             }
             "rotate" => {
                 let mut req: pdf_kozou_core::rotate::RotateRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone())?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -878,7 +931,7 @@ fn dispatch_json(line: &str) -> String {
                     dpi: Option<f32>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.input.clone())?;
+                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.input = tmp_path.clone();
                 }

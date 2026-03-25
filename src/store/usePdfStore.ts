@@ -52,6 +52,12 @@ interface PdfStore {
   lastError: string | null;
   setError: (e: string | null) => void;
   resetTrimState: () => void;
+
+  // --- 変換レイアウト設定（DOCX/EPUB/HTML等リフロー文書用）---
+  convertLayoutW: number;
+  convertLayoutH: number;
+  convertLayoutEm: number;
+  setConvertLayout: (w: number, h: number, em: number) => void;
 }
 
 export const usePdfStore = create<PdfStore>()(
@@ -115,12 +121,21 @@ export const usePdfStore = create<PdfStore>()(
       lastError: null,
       setError: (e) => set({ lastError: e }),
       resetTrimState: () => set({ trimMargins: { left: 0, right: 0, top: 0, bottom: 0 } }),
+
+      convertLayoutW: 450,
+      convertLayoutH: 600,
+      convertLayoutEm: 12,
+      setConvertLayout: (w, h, em) =>
+        set({ convertLayoutW: w, convertLayoutH: h, convertLayoutEm: em }),
     }),
     {
       name: "pdf-kozou-storage",
       partialize: (state) => ({
         useGsPreference: state.useGsPreference,
         lastSaveDir: state.lastSaveDir,
+        convertLayoutW: state.convertLayoutW,
+        convertLayoutH: state.convertLayoutH,
+        convertLayoutEm: state.convertLayoutEm,
       }),
     },
   ),

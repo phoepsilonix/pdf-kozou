@@ -17,7 +17,9 @@ import LicensePage from "./pages/LicensePage";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
-import { isMupdfExtension } from "./lib/fileTypes";
+import { isMupdfExtension, hasNonPdf } from "./lib/fileTypes";
+import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
+import type { ConvertOptions } from "./lib/tauri";
 import pkg from "../package.json";
 
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
@@ -115,6 +117,10 @@ export default function App() {
     setFile,
     setError,
     lastError,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+    setConvertLayout,
   } = usePdfStore();
 
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
@@ -416,6 +422,22 @@ export default function App() {
           ) : (
             <span style={s.sumNone}>ファイルを選択してください</span>
           )}
+        </div>
+      )}
+
+      {/* 非 PDF が含まれる場合にレイアウト設定パネルを表示 */}
+      {hasNonPdf(fileList.map((f) => f.filename)) && (
+        <div style={{ padding: "0 12px" }}>
+          <ConvertOptionsPanel
+            options={{
+              layoutW: convertLayoutW,
+              layoutH: convertLayoutH,
+              layoutEm: convertLayoutEm,
+            }}
+            onChange={(opts) =>
+              setConvertLayout(opts.layoutW ?? 450, opts.layoutH ?? 600, opts.layoutEm ?? 12)
+            }
+          />
         </div>
       )}
 
