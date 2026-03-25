@@ -37,7 +37,10 @@ export interface PdfInfo {
 // ── stext (構造化テキスト) 型 ──────────────────────────────────────────────────
 
 export interface BBox {
-  x0: number; y0: number; x1: number; y1: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 export interface STextChar {
@@ -242,7 +245,12 @@ export async function trimPdf(
     request: {
       input: inputPath,
       output: outputPath,
-      margins: { left: margins.left, right: margins.right, bottom: margins.bottom, top: margins.top },
+      margins: {
+        left: margins.left,
+        right: margins.right,
+        bottom: margins.bottom,
+        top: margins.top,
+      },
       unit: "pt",
       pages,
       exclude,
@@ -386,7 +394,9 @@ export async function splitPdf(
 ): Promise<SplitResponse> {
   return invoke<SplitResponse>("split_pdf", {
     request: {
-      input: inputPath, out_dir: outDir, mode,
+      input: inputPath,
+      out_dir: outDir,
+      mode,
       prefix: prefix ?? null,
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
@@ -412,7 +422,8 @@ export async function mergePdf(
 ): Promise<MergeResponse> {
   return invoke<MergeResponse>("merge_pdf", {
     request: {
-      inputs, output: outputPath,
+      inputs,
+      output: outputPath,
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
       layout_em: layoutEm ?? null,
