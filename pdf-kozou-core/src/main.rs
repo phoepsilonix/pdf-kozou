@@ -762,6 +762,28 @@ fn dispatch_json(line: &str) -> String {
                     &pdf_kozou_core::convert::convert_to_pdf(&req)?,
                 )?)
             }
+            "is_pdf" => {
+                #[derive(serde::Deserialize)]
+                struct Req {
+                    path: String,
+                }
+                let r: Req = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(&serde_json::json!({
+                    "ok": true,
+                    "result": pdf_kozou_core::convert::is_pdf(&r.path)
+                }))?)
+            }
+            "is_mupdf_supported" => {
+                #[derive(serde::Deserialize)]
+                struct Req {
+                    path: String,
+                }
+                let r: Req = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(&serde_json::json!({
+                    "ok": true,
+                    "result": pdf_kozou_core::convert::is_mupdf_supported(&r.path)
+                }))?)
+            }
             cmd => Err(anyhow::anyhow!("unknown command: {cmd}")),
         }
     })();

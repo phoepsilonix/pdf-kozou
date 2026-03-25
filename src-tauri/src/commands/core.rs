@@ -111,16 +111,20 @@ pub async fn convert_to_pdf(input: String, output: String) -> Result<Value> {
     .await
 }
 
-/// MuPDF がそのファイル形式を認識できるか確認する
+/// MuPDF がそのファイルを開けるか確認する（sidecar 経由）
+/// → pdf_kozou_core を直接リンクせず sidecar プロセス経由で呼び出す
 #[tauri::command]
 pub async fn is_mupdf_supported(path: String) -> Result<bool> {
-    Ok(pdf_kozou_core::convert::is_mupdf_supported(&path))
+    let res = call_core_json("is_mupdf_supported", serde_json::json!({ "path": path })).await?;
+    Ok(res["result"].as_bool().unwrap_or(false))
 }
 
-/// ファイルが PDF かどうかを確認する
+/// ファイルが PDF かどうかを確認する（sidecar 経由）
+/// → pdf_kozou_core を直接リンクせず sidecar プロセス経由で呼び出す
 #[tauri::command]
 pub async fn is_pdf_file(path: String) -> Result<bool> {
-    Ok(pdf_kozou_core::convert::is_pdf(&path))
+    let res = call_core_json("is_pdf", serde_json::json!({ "path": path })).await?;
+    Ok(res["result"].as_bool().unwrap_or(false))
 }
 /// テキスト選択・コピーのためのオーバーレイ生成に使用
 #[tauri::command]
