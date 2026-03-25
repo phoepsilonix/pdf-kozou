@@ -9,7 +9,7 @@
 //   - 画像表示後に stext を遅延取得
 //   - 前後1ページをプリフェッチ
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   renderPage,
   getPdfInfo,
@@ -27,7 +27,7 @@ import { F } from "../lib/theme";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 const THUMB_DPI = 52;
-const RENDER_DPI = 120; // 固定。ズームは CSS transform で対応
+const RENDER_DPI = 144; // 固定。ズームは CSS transform で対応
 
 // ── ユーティリティ ────────────────────────────────────────────────────────────
 function pageAspect(info: PdfInfo | null, i: number): number {
@@ -66,57 +66,110 @@ interface TextLayerProps {
 }
 
 function TextLayer({ blocks, containerW, containerH, searchHits, currentHit }: TextLayerProps) {
+  // canvas.measureText で実際のブラウザ描画幅を計測するキャンバス（再利用）
+  const measureCanvas = useMemo(
+    () =>
+      typeof document !== "undefined" ? document.createElement("canvas").getContext("2d") : null,
+    [],
+  );
+
   return (
     <div
       style={{
         position: "absolute",
-        inset: 0,
-        overflow: "hidden",
+        top: 0,
+        left: 0,
         width: containerW,
         height: containerH,
+        overflow: "visible",
       }}
     >
-      {/* テキスト行オーバーレイ */}
+      {/*
+       * テキスト選択オーバーレイ
+       *
+       * 設計:
+       *   - 行ごとに position:absolute の div を配置（ダブルクリック・行選択が機能する）
+       *   - 行テキスト全体を1つの span に入れる（フロー要素なのでブラウザ選択が自然）
+       *   - canvas.measureText で実際の描画幅を計測し scaleX で pdf bbox に合わせる
+       *   - 各行は行の左端 (line.bbox.x0) から始まり、scaleX で右端 (x1) に合わせる
+       *
+       * ダブルクリック動作:
+       *   ブラウザは span 内の連続テキストに対して単語・行選択を行うので
+       *   position:static / inline のテキストなら機能する。
+       */}
       {blocks
         .filter((b) => b.type === "text")
-        .flatMap((block, bi) =>
-          block.lines.map((line, li) => {
-            const text = line.chars.map((c) => c.c).join("");
-            const { x0, y0, x1, y1 } = line.bbox;
-            const w = Math.max(1, x1 - x0);
-            const h = Math.max(1, y1 - y0);
-            // font-size はbbox高さから近似（line-height=1 で一致させる）
-            const fs = h * 0.85;
-            // scaleX で幅を bbox に合わせる（文字数で割って1文字幅を計算）
-            const nChars = Math.max(1, text.length);
-            const naturalW = fs * 0.55 * nChars; // 等幅近似
-            const scaleX = w / naturalW;
-            return (
-              <div
-                key={`${bi}-${li}`}
-                style={{
-                  position: "absolute",
-                  left: x0,
-                  top: y0,
-                  width: w,
-                  height: h,
-                  fontSize: fs,
-                  lineHeight: 1,
-                  color: "transparent",
-                  whiteSpace: "pre",
-                  overflow: "hidden",
-                  transformOrigin: "top left",
-                  transform: `scaleX(${Math.min(scaleX, 3)})`,
-                  cursor: "text",
-                  userSelect: "text",
-                  pointerEvents: "auto",
-                }}
-              >
-                {text}
-              </div>
-            );
-          }),
-        )}
+        .map((block, bi) => (
+          // ブロック（段落・見出しなどの塊）ごとに div でグループ化
+          // → ブロック内でのダブルクリック単語選択・トリプルクリック行選択が機能する
+          <div
+            key={`block-${bi}`}
+            style={{
+              position: "absolute",
+              left: block.bbox.x0,
+              top: block.bbox.y0,
+              width: Math.max(1, block.bbox.x1 - block.bbox.x0),
+              height: Math.max(1, block.bbox.y1 - block.bbox.y0),
+              overflow: "visible",
+              userSelect: "text",
+              pointerEvents: "auto",
+            }}
+          >
+            {block.lines.map((line, li) => {
+              const text = line.chars.map((c) => c.c).join("");
+              if (!text.trim()) return null;
+
+              const { x0, y0, x1, y1 } = line.bbox;
+              const bboxW = Math.max(1, x1 - x0);
+              const bboxH = Math.max(1, y1 - y0);
+              const fs = bboxH * 0.85;
+
+              // canvas.measureText で実際の描画幅を計測
+              let renderedW = fs * 0.55 * text.length;
+              if (measureCanvas) {
+                measureCanvas.font = `${fs}px sans-serif`;
+                const m = measureCanvas.measureText(text).width;
+                if (m > 1) renderedW = m;
+              }
+              const scaleX = bboxW / renderedW;
+
+              // ブロック座標からの相対位置
+              const relX = x0 - block.bbox.x0;
+              const relY = y0 - block.bbox.y0;
+
+              return (
+                <div
+                  key={`line-${li}`}
+                  style={{
+                    position: "absolute",
+                    left: relX,
+                    top: relY,
+                    width: renderedW,
+                    height: bboxH,
+                    lineHeight: `${bboxH}px`,
+                    transformOrigin: "top left",
+                    transform: `scaleX(${scaleX})`,
+                    cursor: "text",
+                    userSelect: "text",
+                    whiteSpace: "pre",
+                    overflow: "visible",
+                    pointerEvents: "auto",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: fs,
+                      color: "transparent",
+                      userSelect: "text",
+                    }}
+                  >
+                    {text}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
 
       {/* 検索ハイライト */}
       {searchHits.map((hit, i) => {
@@ -135,7 +188,7 @@ function TextLayer({ blocks, containerW, containerH, searchHits, currentHit }: T
               top: uly,
               width: urx - ulx,
               height: lly - uly,
-              background: isCurrent ? "rgba(255, 160, 0, 0.65)" : "rgba(255, 220, 0, 0.35)",
+              background: isCurrent ? "rgba(255,160,0,0.65)" : "rgba(255,220,0,0.35)",
               border: isCurrent ? "2px solid rgba(255,120,0,0.8)" : "none",
               borderRadius: 2,
               pointerEvents: "none",
@@ -360,7 +413,7 @@ interface SearchBarProps {
   totalPages: number;
   currentPage: number;
   onNavigate: (page: number, hit: GlobalHit) => void;
-  onHitsForPage: (page: number, hits: GlobalHit[]) => void;
+  onAllHits: (hits: GlobalHit[]) => void;
   onClose: () => void;
 }
 
@@ -369,7 +422,7 @@ function SearchBar({
   totalPages,
   currentPage,
   onNavigate,
-  onHitsForPage,
+  onAllHits,
   onClose,
 }: SearchBarProps) {
   const [q, setQ] = useState("");
@@ -385,7 +438,7 @@ function SearchBar({
       if (!needle.trim()) {
         setAllHits([]);
         setCurrent(0);
-        onHitsForPage(currentPage, []);
+        onAllHits([]);
         return;
       }
 
@@ -412,12 +465,10 @@ function SearchBar({
             if (res.ok && res.hits.length > 0) {
               const pageHits = res.hits.map((h) => ({ page: p, quad: h.quad }));
               hits.push(...pageHits);
-              // ページ番号順に並び替え
               hits.sort((a, b) => a.page - b.page);
               setAllHits([...hits]);
-              // 現在表示中のページのヒットを即座に反映
-              const forThisPage = hits.filter((h) => h.page === currentPage);
-              onHitsForPage(currentPage, forThisPage);
+              // 親に全ヒットを通知（ページフィルタは親側で行う）
+              onAllHits([...hits]);
             }
           } catch {
             /* ページエラーは無視 */
@@ -425,20 +476,16 @@ function SearchBar({
         }
       } finally {
         setSearching(false);
-        // 最初のヒットに移動
         if (hits.length > 0) {
           const firstIdx = hits.findIndex((h) => h.page >= currentPage);
           const idx = firstIdx >= 0 ? firstIdx : 0;
           setCurrent(idx);
           onNavigate(hits[idx].page, hits[idx]);
-          onHitsForPage(
-            hits[idx].page,
-            hits.filter((h) => h.page === hits[idx].page),
-          );
+          onAllHits([...hits]);
         }
       }
     },
-    [path, totalPages, currentPage, onNavigate, onHitsForPage],
+    [path, totalPages, onNavigate, onAllHits],
   );
 
   const go = (delta: number) => {
@@ -447,17 +494,14 @@ function SearchBar({
     setCurrent(next);
     const hit = allHits[next];
     onNavigate(hit.page, hit);
-    onHitsForPage(
-      hit.page,
-      allHits.filter((h) => h.page === hit.page),
-    );
+    onAllHits([...allHits]); // ページが変わっても全ヒットを保持
   };
 
   const handleClose = () => {
     setQ("");
     setAllHits([]);
     setCurrent(0);
-    onHitsForPage(currentPage, []);
+    onAllHits([]);
     onClose();
   };
 
@@ -529,18 +573,65 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   // stext（遅延取得）
   const [textBlocks, setTextBlocks] = useState<STextBlock[]>([]);
   const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
-  // 検索: ページ上のヒット一覧 + カレントヒット
-  const [pageSearchHits, setPageSearchHits] = useState<GlobalHit[]>([]);
+  // 検索: 全ヒット一覧（SearchBar が管理）+ カレントヒット
+  const [allSearchHits, setAllSearchHits] = useState<GlobalHit[]>([]);
   const [currentHit, setCurrentHit] = useState<GlobalHit | null>(null);
+  // viewPage から派生: 現在ページのヒットのみ（別ページのヒット混入を防ぐ）
+  const pageSearchHits = allSearchHits.filter((h) => h.page === viewPage);
 
   // サムネイル
   const thumbCache = useRef<Map<string, (string | undefined)[]>>(new Map());
   const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
   const [fileCoverThumbs, setFileCoverThumbs] = useState<Map<string, string>>(new Map());
 
+  // スクロールコンテナの ref（ヒット位置へのスクロール用）
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // ページジャンプ後にスクロールすべきヒット座標
+  const pendingScrollHit = useRef<GlobalHit | null>(null);
+
+  // ヒット位置へスクロールする共通処理
+  const scrollToHit = useCallback(
+    (hit: GlobalHit) => {
+      if (!scrollRef.current) return;
+      const [ulx, uly, urx, , , lly] = hit.quad;
+      const hitCenterX = ((ulx + urx) / 2) * zoom;
+      const hitCenterY = ((uly + lly) / 2) * zoom;
+      const container = scrollRef.current;
+      container.scrollTo({
+        left: hitCenterX - container.clientWidth / 2 + 24,
+        top: hitCenterY - container.clientHeight / 2 + 24,
+        behavior: "smooth",
+      });
+    },
+    [zoom],
+  );
+
   const activePath = isMulti
     ? fileList[activeIdx]?.path || ""
     : filePath || fileList[0]?.path || "";
+
+  // currentHit が変わったとき（同ページ内移動）スクロール
+  useEffect(() => {
+    if (!currentHit || !scrollRef.current) return;
+    // pendingScrollHit がある場合は onLoad 側で処理（別ページジャンプ直後）
+    if (pendingScrollHit.current) return;
+    scrollToHit(currentHit);
+  }, [currentHit, zoom]);
+
+  // ページジャンプ後、キャッシュ済み画像では onLoad が発火しない場合のフォールバック
+  useEffect(() => {
+    if (!pendingScrollHit.current) return;
+    const hit = pendingScrollHit.current;
+    if (hit.page !== viewPage) return;
+    // 少し待ってから（レンダリング後）スクロール
+    const timer = setTimeout(() => {
+      if (pendingScrollHit.current === hit) {
+        pendingScrollHit.current = null;
+        scrollToHit(hit);
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [viewPage]);
 
   // ── 1. ページ情報 ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -761,16 +852,20 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           totalPages={total}
           currentPage={viewPage}
           onNavigate={(page, hit) => {
-            setViewPage(page);
+            if (page !== viewPage) {
+              // ページが変わる場合: onLoad 後にスクロールするため pending にセット
+              pendingScrollHit.current = hit;
+              setViewPage(page);
+            }
+            // currentHit を更新（同ページの場合は useEffect でスクロール）
             setCurrentHit(hit);
           }}
-          onHitsForPage={(page, hits) => {
-            if (page === viewPage) setPageSearchHits(hits);
-          }}
+          onAllHits={(hits) => setAllSearchHits(hits)}
           onClose={() => {
             setShowSearch(false);
-            setPageSearchHits([]);
+            setAllSearchHits([]);
             setCurrentHit(null);
+            pendingScrollHit.current = null;
           }}
         />
       )}
@@ -865,7 +960,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         {/* メインビュー + ドロワー */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
           <div style={s.mainView}>
-            <div style={s.viewScroll}>
+            <div style={s.viewScroll} ref={scrollRef}>
               <div style={s.viewInner}>
                 {mainLoading && !mainImg && (
                   <div style={s.viewCenter}>
@@ -873,15 +968,14 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                   </div>
                 )}
                 {mainImg && (
-                  /* zoom は CSS transform のみ（再レンダリング不要） */
                   <div
                     style={{
                       position: "relative",
                       display: "inline-block",
-                      boxShadow: "0 4px 32px rgba(0,0,0,0.7)",
+                      boxShadow: `0 4px ${Math.round(32 * zoom)}px rgba(0,0,0,0.7)`,
                       transform: `scale(${zoom})`,
-                      transformOrigin: "top center",
-                      // ズーム後のサイズをレイアウトに反映させるために高さを調整
+                      transformOrigin: "top left",
+                      marginRight: displayW * (zoom - 1),
                       marginBottom: displayH * (zoom - 1),
                     }}
                   >
@@ -893,6 +987,12 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                         const img = e.currentTarget;
                         setImgNaturalW(img.naturalWidth);
                         setImgNaturalH(img.naturalHeight);
+                        // ページジャンプ後のヒット位置へスクロール
+                        const hit = pendingScrollHit.current;
+                        if (hit) {
+                          pendingScrollHit.current = null;
+                          scrollToHit(hit);
+                        }
                       }}
                     />
                     {/* テキストオーバーレイ（stext 取得後に表示） */}
