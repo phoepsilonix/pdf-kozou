@@ -756,6 +756,12 @@ fn dispatch_json(line: &str) -> String {
                     &pdf_kozou_core::stext::get_page_links(&req)?,
                 )?)
             }
+            "convert" => {
+                let req: pdf_kozou_core::convert::ConvertRequest = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::convert::convert_to_pdf(&req)?,
+                )?)
+            }
             cmd => Err(anyhow::anyhow!("unknown command: {cmd}")),
         }
     })();

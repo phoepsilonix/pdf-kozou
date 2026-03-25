@@ -106,40 +106,29 @@ pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
 
 /// PDF の /Info 辞書にメタデータを書き込んで保存する（Rust 実装）
 ///
-/// mupdf クレートの `rotate.rs` と同じパターン:
-///   doc.find_page → page_obj.dict_put → doc.save_with_options
-/// PdfObject は内部でポインタを保持し dict_put は直接変更するため
-/// doc を経由せず変更が反映される。
+/// incremental=true で差分追記するため、Windows でもファイルハンドル競合しない。
 fn write_pdf_info(path: &str, metadata: &[(String, String)]) -> std::result::Result<(), String> {
     use mupdf::pdf::{PdfDocument, PdfObject, PdfWriteOptions};
 
     let doc = PdfDocument::open(path).map_err(|e| format!("open failed: {e}"))?;
 
-    // trailer から /Info を取得
     let trailer = doc.trailer().map_err(|e| format!("trailer failed: {e}"))?;
 
     let info_obj = trailer
         .get_dict("Info")
         .map_err(|e| format!("get Info failed: {e}"))?;
 
-    // /Info 辞書の実体を取得（間接参照を解決）
     let mut info = match info_obj {
-        Some(obj) => {
-            // 間接参照を解決して実体を取得
-            obj.resolve()
-                .map_err(|e| format!("resolve Info failed: {e}"))?
-                .unwrap_or(obj)
-        }
+        Some(obj) => obj
+            .resolve()
+            .map_err(|e| format!("resolve Info failed: {e}"))?
+            .unwrap_or(obj),
         None => {
-            // /Info がない場合は書き込み不可（新規PDFはメタデータなし）
-            // → 呼び出し側でこのケースを考慮する
             eprintln!("[metadata] /Info dict not found in {path}, skipping");
             return Ok(());
         }
     };
 
-    // 各キーを /Info 辞書に書き込む
-    // PdfObject::new_string → pdf_new_text_string → UTF-16 BE 自動変換
     for (key, value) in metadata {
         let val_obj =
             PdfObject::new_string(value).map_err(|e| format!("new_string({key}) failed: {e}"))?;
@@ -147,9 +136,8 @@ fn write_pdf_info(path: &str, metadata: &[(String, String)]) -> std::result::Res
             .map_err(|e| format!("dict_put({key}) failed: {e}"))?;
     }
 
-    // インクリメンタル保存:
-    //   /Info が既存の場合は incremental=true で差分のみ追記が最適
-    //   gc=0: メタデータ変更のみなので gc 不要
+    // incremental=true: 差分追記なので既存ファイルを削除しない
+    // → Windows でも PdfDocument がハンドルを保持したまま保存できる
     let mut opts = PdfWriteOptions::default();
     opts.set_incremental(true)
         .set_compress(true)
@@ -165,17 +153,19 @@ fn write_pdf_info(path: &str, metadata: &[(String, String)]) -> std::result::Res
 
 /// /Info がない新規 PDF にメタデータを書き込む
 ///
-/// 新規 PDF の場合は incremental 保存では /Info を追加できないため
-/// 通常保存（gc=0）を使う。
+/// 新規 /Info は incremental 保存で追加できないため通常保存を使う。
+/// Windows でのファイルハンドル競合を避けるため、一時ファイルに保存後リネームする。
 fn write_pdf_info_new(
     path: &str,
     metadata: &[(String, String)],
 ) -> std::result::Result<(), String> {
     use mupdf::pdf::{PdfDocument, PdfObject, PdfWriteOptions};
 
+    // 一時ファイルのパスを決定（同ディレクトリに作成）
+    let tmp_path = format!("{path}.kozou_tmp");
+
     let mut doc = PdfDocument::open(path).map_err(|e| format!("open failed: {e}"))?;
 
-    // 新規辞書を作成して xref に登録（間接オブジェクトにする）
     let new_dict = doc
         .new_dict()
         .map_err(|e| format!("new_dict failed: {e}"))?;
@@ -183,7 +173,6 @@ fn write_pdf_info_new(
         .add_object(&new_dict)
         .map_err(|e| format!("add_object failed: {e}"))?;
 
-    // trailer の /Info に間接参照をセット
     {
         let mut trailer = doc.trailer().map_err(|e| format!("trailer failed: {e}"))?;
         trailer
@@ -191,9 +180,6 @@ fn write_pdf_info_new(
             .map_err(|e| format!("dict_put Info to trailer failed: {e}"))?;
     }
 
-    // /Info 辞書に各キーを書き込む
-    // info_ref は xref に登録された間接オブジェクトへの参照
-    // resolve して実体を取得してから dict_put する
     let mut info = info_ref
         .resolve()
         .map_err(|e| format!("resolve failed: {e}"))?
@@ -206,15 +192,25 @@ fn write_pdf_info_new(
             .map_err(|e| format!("dict_put({key}) failed: {e}"))?;
     }
 
-    // 通常保存（新規 /Info は xref に追加されるため incremental 不可）
     let mut opts = PdfWriteOptions::default();
     opts.set_incremental(false)
         .set_compress(true)
         .set_garbage_level(0)
         .set_clean(false);
 
-    doc.save_with_options(path, opts)
-        .map_err(|e| format!("save failed: {e}"))?;
+    // 一時ファイルに保存（path ではなく tmp_path）
+    doc.save_with_options(&tmp_path, opts)
+        .map_err(|e| format!("save to tmp failed: {e}"))?;
+
+    // doc を drop してファイルハンドルを解放してからリネーム
+    drop(doc);
+
+    // 一時ファイルを元のパスに移動（Windows でも上書き可能）
+    std::fs::rename(&tmp_path, path).map_err(|e| {
+        // rename が失敗した場合は一時ファイルを削除してエラーを返す
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("rename tmp to {path} failed: {e}")
+    })?;
 
     eprintln!(
         "[metadata] wrote {} keys to {path} (new Info)",

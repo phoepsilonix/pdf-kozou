@@ -195,8 +195,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     .filter(([s, e]) => s <= info.page_count),
                 };
         const filePrefix = prefix
-          ? `${prefix}_${f.filename.replace(/\.pdf$/i, "")}`
-          : f.filename.replace(/\.pdf$/i, "");
+          ? `${prefix}_${f.filename.replace(/\.[^/.]+$/, "")}`
+          : f.filename.replace(/\.[^/.]+$/, "");
         const res = await splitPdf(f.path, outDir, mode, filePrefix);
         progress.done.push({ file: f.filename, count: res.files.length });
       } catch (e) {

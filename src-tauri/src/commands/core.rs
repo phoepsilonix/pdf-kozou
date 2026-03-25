@@ -98,7 +98,30 @@ pub async fn trim_pdf(request: Value) -> Result<Value> {
     call_core_json("trim", request).await
 }
 
-/// ページの構造化テキスト（stext）を取得する
+/// 非 PDF ファイル（EPUB, XPS, HTML, CBZ, 画像等）を PDF に変換する
+#[tauri::command]
+pub async fn convert_to_pdf(input: String, output: String) -> Result<Value> {
+    call_core_json(
+        "convert",
+        serde_json::json!({
+            "input": input,
+            "output": output,
+        }),
+    )
+    .await
+}
+
+/// MuPDF がそのファイル形式を認識できるか確認する
+#[tauri::command]
+pub async fn is_mupdf_supported(path: String) -> Result<bool> {
+    Ok(pdf_kozou_core::convert::is_mupdf_supported(&path))
+}
+
+/// ファイルが PDF かどうかを確認する
+#[tauri::command]
+pub async fn is_pdf_file(path: String) -> Result<bool> {
+    Ok(pdf_kozou_core::convert::is_pdf(&path))
+}
 /// テキスト選択・コピーのためのオーバーレイ生成に使用
 #[tauri::command]
 pub async fn get_page_text(path: String, page: i32, scale: f32) -> Result<Value> {

@@ -169,7 +169,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       filePath
         .split(/[/\\]/)
         .pop()
-        ?.replace(/\.pdf$/i, "") ?? "file";
+        ?.replace(/\.[^/.]+$/, "") ?? "file";
     const saveTo = await getTempPath(`${base}_rotated_tmp.pdf`).catch(
       () => `/tmp/${base}_rotated_tmp.pdf`,
     );
@@ -212,7 +212,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .map((v, idx) => ({ page: idx + 1, angle: v }))
           .filter((p) => p.angle !== 0);
         if (pages.length > 0) {
-          const out = `${outDir}/${f.filename.replace(/\.pdf$/i, "")}_rotated.pdf`;
+          const out = `${outDir}/${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`;
           await rotatePdf(f.path, out, pages);
         }
         prog.done.push({ file: f.filename });
@@ -278,7 +278,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       filePath
         .split(/[/\\]/)
         .pop()
-        ?.replace(/\.pdf$/i, "") ?? "file";
+        ?.replace(/\.[^/.]+$/, "") ?? "file";
     const doSave = async () => {
       const sp = await invoke<string | null>("pick_save_file", {
         defaultName: `${base}_rotated.pdf`,

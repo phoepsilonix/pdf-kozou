@@ -150,7 +150,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       setProgress({ ...prog });
 
       try {
-        const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.pdf$/i, "")}_trimmed.pdf`;
+        const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.[^/.]+$/, "")}_trimmed.pdf`;
 
         console.log(
           "[DEBUG] trim_pdf in out margin pages exclude extract: ",
@@ -503,7 +503,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       filePath
         .split(/[/\\]/)
         .pop()
-        ?.replace(/\.pdf$/i, "") ?? "file";
+        ?.replace(/\.[^/.]+$/, "") ?? "file";
     const sp = await pickSave(`${base}_trimmed.pdf`);
     if (!sp) return;
     await moveFile(outTmp, sp);

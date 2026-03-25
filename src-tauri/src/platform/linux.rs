@@ -77,7 +77,22 @@ pub async fn open_pdf_dialog() -> Option<PathBuf> {
 
     AsyncFileDialog::new()
         .set_title("PDFファイルを開く")
+        .add_filter(
+            "PDF・対応ファイル",
+            &[
+                "pdf", "epub", "xps", "oxps", "cbz", "cbr", "html", "htm", "xhtml", "svg", "jpg",
+                "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp", "docx", "xlsx", "pptx",
+            ],
+        )
         .add_filter("PDF", &["pdf"])
+        .add_filter("EPUB", &["epub"])
+        .add_filter("XPS", &["xps", "oxps"])
+        .add_filter("コミック", &["cbz", "cbr"])
+        .add_filter("HTML", &["html", "htm", "xhtml"])
+        .add_filter(
+            "画像",
+            &["jpg", "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp"],
+        )
         .add_filter("すべてのファイル", &["*"])
         .pick_file()
         .await
@@ -90,7 +105,23 @@ pub async fn open_pdfs_dialog() -> Vec<PathBuf> {
 
     AsyncFileDialog::new()
         .set_title("PDFファイルを開く（複数選択可）")
+        .add_filter(
+            "PDF・対応ファイル",
+            &[
+                "pdf", "epub", "xps", "oxps", "cbz", "cbr", "html", "htm", "xhtml", "svg", "jpg",
+                "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp", "docx", "xlsx", "pptx",
+            ],
+        )
         .add_filter("PDF", &["pdf"])
+        .add_filter("EPUB", &["epub"])
+        .add_filter("XPS", &["xps", "oxps"])
+        .add_filter("コミック", &["cbz", "cbr"])
+        .add_filter("HTML", &["html", "htm", "xhtml"])
+        .add_filter(
+            "画像",
+            &["jpg", "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp"],
+        )
+        .add_filter("すべてのファイル", &["*"])
         .pick_files()
         .await
         .map(|files| files.into_iter().map(|f| f.path().to_path_buf()).collect())

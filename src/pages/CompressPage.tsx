@@ -299,7 +299,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       filePath
         .split(/[/\\]/)
         .pop()
-        ?.replace(/\.pdf$/i, "") ?? "file";
+        ?.replace(/\.[^/.]+$/, "") ?? "file";
     const sp = await pickSave(`${base}_compressed.pdf`);
     if (!sp || (useGs && !gsPath)) return;
     setSaving(true);
@@ -343,7 +343,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       filePath
         .split(/[/\\]/)
         .pop()
-        ?.replace(/\.pdf$/i, "") ?? "file";
+        ?.replace(/\.[^/.]+$/, "") ?? "file";
     const sp = await pickSave(`${base}.pdf`);
     if (!sp) return;
     setSaving(true);
@@ -383,7 +383,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
-      const out = `${outDir}/${f.filename.replace(/\.pdf$/i, "")}_compressed.pdf`;
+      const out = `${outDir}/${f.filename.replace(/\.[^/.]+$/, "")}_compressed.pdf`;
       try {
         let ratio = 0;
 

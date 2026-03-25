@@ -19,7 +19,22 @@ pub use linux::{
 pub async fn open_pdf_dialog() -> Option<std::path::PathBuf> {
     use rfd::AsyncFileDialog;
     AsyncFileDialog::new()
+        .add_filter(
+            "PDF・対応ファイル",
+            &[
+                "pdf", "epub", "xps", "oxps", "cbz", "cbr", "html", "htm", "xhtml", "svg", "jpg",
+                "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp",
+            ],
+        )
         .add_filter("PDF", &["pdf"])
+        .add_filter("EPUB", &["epub"])
+        .add_filter("XPS", &["xps", "oxps"])
+        .add_filter("コミック", &["cbz", "cbr"])
+        .add_filter("HTML", &["html", "htm", "xhtml"])
+        .add_filter(
+            "画像",
+            &["jpg", "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp"],
+        )
         .pick_file()
         .await
         .map(|f| f.path().to_path_buf())
@@ -28,7 +43,22 @@ pub async fn open_pdf_dialog() -> Option<std::path::PathBuf> {
 pub async fn open_pdfs_dialog() -> Vec<std::path::PathBuf> {
     use rfd::AsyncFileDialog;
     AsyncFileDialog::new()
+        .add_filter(
+            "PDF・対応ファイル",
+            &[
+                "pdf", "epub", "xps", "oxps", "cbz", "cbr", "html", "htm", "xhtml", "svg", "jpg",
+                "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp",
+            ],
+        )
         .add_filter("PDF", &["pdf"])
+        .add_filter("EPUB", &["epub"])
+        .add_filter("XPS", &["xps", "oxps"])
+        .add_filter("コミック", &["cbz", "cbr"])
+        .add_filter("HTML", &["html", "htm", "xhtml"])
+        .add_filter(
+            "画像",
+            &["jpg", "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp"],
+        )
         .pick_files()
         .await
         .map(|v| v.into_iter().map(|f| f.path().to_path_buf()).collect())

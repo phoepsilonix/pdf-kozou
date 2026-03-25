@@ -27,6 +27,7 @@ import { CompressPage } from "./CompressPage";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
 import { listen } from "@tauri-apps/api/event";
+import { isMupdfExtension } from "../lib/fileTypes";
 
 interface PdfEntry {
   id: number;
@@ -119,7 +120,7 @@ const handleDrop = useCallback(
 
     // e.dataTransfer.files からパスを取り出す
     const ps = Array.from(e.dataTransfer.files)
-      .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
+      .filter((f) => isMupdfExtension(f.name))
       .map((f) => (f as any).path as string) // Tauri環境ではこれで絶対パスが取れる
       .filter(Boolean);
 
@@ -177,7 +178,7 @@ const handleDrop = useCallback(
 useEffect(() => {
   const unlisten = listen<string[]>("tauri://drag-drop", (event) => {
     if (Array.isArray(event.payload)) {
-      const ps = event.payload.filter(p => p.toLowerCase().endsWith(".pdf"));
+      const ps = event.payload.filter(p => isMupdfExtension(p.split(/[\/\\]/).pop() ?? p));
       if (ps.length) loadPaths(ps);
     }
   });
@@ -497,15 +498,15 @@ useEffect(() => {
               setDropOver(false);
               dragCounter.current = 0;
               const ps = Array.from(e.dataTransfer.files)
-                .filter((f) => f.name.endsWith(".pdf"))
+                .filter((f) => isMupdfExtension(f.name))
                 .map((f) => (f as any).path as string)
                 .filter(Boolean);
               if (ps.length) loadPaths(ps);
             }}
           >
             <span style={s.dropIcon}>⊕</span>
-            <span style={s.dropTitle}>PDFをここにドロップ</span>
-            <span style={s.dropSub}>複数ファイルを一度に追加できます</span>
+            <span style={s.dropTitle}>ファイルをここにドロップ</span>
+            <span style={s.dropSub}>PDF・EPUB・DOCX・画像など複数ファイルを一度に追加できます</span>
             <button style={s.btnAddBig} onClick={pickFiles}>
               ファイルを選択…
             </button>
@@ -611,7 +612,7 @@ useEffect(() => {
                   const files = Array.from(e.dataTransfer.files);
 
                   const ps = files
-                    .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
+                    .filter((f) => isMupdfExtension(f.name))
                     .map((f) => {
                       // Tauri環境下では、Fileオブジェクトに 'path' というプロパティが注入されています
                       return (f as any).path || (f as any).webkitRelativePath || "";

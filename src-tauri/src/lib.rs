@@ -68,6 +68,9 @@ pub fn run() {
             core::get_page_text,
             core::search_page,
             core::get_page_links,
+            core::convert_to_pdf,
+            core::is_mupdf_supported,
+            core::is_pdf_file,
             platform_cmd::get_screen_info,
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
@@ -86,7 +89,30 @@ pub fn run() {
                     let p = std::path::Path::new(a);
                     p.exists()
                         && p.extension()
-                            .map(|e| e.eq_ignore_ascii_case("pdf"))
+                            .map(|e| {
+                                let ext = e.to_string_lossy().to_lowercase();
+                                matches!(
+                                    ext.as_str(),
+                                    "pdf"
+                                        | "epub"
+                                        | "xps"
+                                        | "oxps"
+                                        | "cbz"
+                                        | "cbr"
+                                        | "html"
+                                        | "htm"
+                                        | "xhtml"
+                                        | "svg"
+                                        | "jpg"
+                                        | "jpeg"
+                                        | "png"
+                                        | "bmp"
+                                        | "gif"
+                                        | "tiff"
+                                        | "tif"
+                                        | "webp"
+                                )
+                            })
                             .unwrap_or(false)
                 })
                 .collect();
@@ -111,7 +137,30 @@ pub fn run() {
                             .iter()
                             .filter(|p| {
                                 p.extension()
-                                    .map(|e| e.eq_ignore_ascii_case("pdf"))
+                                    .map(|e| {
+                                        let ext = e.to_string_lossy().to_lowercase();
+                                        matches!(
+                                            ext.as_str(),
+                                            "pdf"
+                                                | "epub"
+                                                | "xps"
+                                                | "oxps"
+                                                | "cbz"
+                                                | "cbr"
+                                                | "html"
+                                                | "htm"
+                                                | "xhtml"
+                                                | "svg"
+                                                | "jpg"
+                                                | "jpeg"
+                                                | "png"
+                                                | "bmp"
+                                                | "gif"
+                                                | "tiff"
+                                                | "tif"
+                                                | "webp"
+                                        )
+                                    })
                                     .unwrap_or(false)
                             })
                             .map(|p| p.display().to_string())

@@ -17,6 +17,7 @@ import LicensePage from "./pages/LicensePage";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
+import { isMupdfExtension } from "./lib/fileTypes";
 import pkg from "../package.json";
 
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
@@ -142,8 +143,8 @@ export default function App() {
 
   const handleAddPaths = useCallback(
     async (paths: string[]) => {
-      // PDFファイルのみに絞り込み
-      const pdfPaths = paths.filter((p) => p.toLowerCase().endsWith(".pdf"));
+      // MuPDF 対応ファイルに絞り込み（PDF, EPUB, DOCX, XPS, CBZ, 画像 等）
+      const pdfPaths = paths.filter((p) => isMupdfExtension(p.split(/[\/\\]/).pop() ?? p));
 
       await Promise.all(
         pdfPaths.map(async (path) => {
@@ -196,7 +197,7 @@ export default function App() {
       dragCounter.current = 0;
       setDragOver(false);
       const paths = Array.from(e.dataTransfer.files)
-        .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
+        .filter((f) => isMupdfExtension(f.name))
         .map((f) => (f as any).path as string)
         .filter(Boolean);
       if (paths.length) await handleAddPaths(paths);

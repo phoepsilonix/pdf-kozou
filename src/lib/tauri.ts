@@ -137,6 +137,30 @@ export type PageSelection =
   | { type: "Odd" }
   | { type: "Range"; pages: number[] };
 
+// ── 形式変換 ──────────────────────────────────────────────────────────────────
+
+export interface ConvertResponse {
+  ok: boolean;
+  page_count: number;
+  input_bytes: number;
+  output_bytes: number;
+}
+
+/** 非 PDF ファイル（EPUB, XPS, HTML, CBZ, DOCX, 画像等）を PDF に変換する */
+export async function convertToPdf(input: string, output: string): Promise<ConvertResponse> {
+  return invoke<ConvertResponse>("convert_to_pdf", { input, output });
+}
+
+/** MuPDF がそのファイルを開けるか確認する */
+export async function isMupdfSupported(path: string): Promise<boolean> {
+  return invoke<boolean>("is_mupdf_supported", { path });
+}
+
+/** ファイルが PDF かどうかを確認する */
+export async function isPdfFile(path: string): Promise<boolean> {
+  return invoke<boolean>("is_pdf_file", { path });
+}
+
 // ── ファイルダイアログ ────────────────────────────────────────────────────────
 
 export async function pickOpenFile(): Promise<string | null> {

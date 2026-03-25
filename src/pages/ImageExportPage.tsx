@@ -171,7 +171,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       progress.currentFile = f.filename;
       setBatchProgress({ ...progress });
       try {
-        const stem = f.filename.replace(/\.pdf$/i, "");
+        const stem = f.filename.replace(/\.[^/.]+$/, "");
         const subDir = `${outDir}/${stem}`;
         const res = await exportImages(
           f.path,

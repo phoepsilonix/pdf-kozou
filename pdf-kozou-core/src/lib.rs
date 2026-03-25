@@ -6,6 +6,7 @@
 // Tauri sidecar / 他クレートから呼べる公開 API
 
 pub mod compress;
+pub mod convert;
 pub mod error;
 pub mod ffi;
 pub mod font_subset;

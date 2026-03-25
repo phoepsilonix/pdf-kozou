@@ -49,6 +49,58 @@ const LicensePage: React.FC = () => {
     <div style={s.container}>
       <h1 style={s.title}>About PDF小僧(PDF Kozou)</h1>
 
+      {/* 対応形式セクション */}
+      <section style={s.section}>
+        <h2 style={s.h2}>📂 対応ファイル形式</h2>
+        <div style={s.card}>
+          <p style={{ marginBottom: 12 }}>
+            PDF小僧は <strong>PDF 以外のファイル形式にも対応しています</strong>。 非 PDF
+            ファイルを開くと内部で自動的に PDF に変換してから、
+            分割・結合・トリミング・圧縮・画像変換などの各操作を行い、 PDF
+            または画像として保存できます。
+          </p>
+          <div style={s.featureGrid}>
+            <div style={s.formatGroup}>
+              <div style={s.formatLabel}>✅ 直接対応（PDF として処理）</div>
+              <div style={s.formatList}>
+                <span style={s.fmtTag}>PDF</span>
+              </div>
+            </div>
+            <div style={s.formatGroup}>
+              <div style={s.formatLabel}>🔄 自動変換して対応</div>
+              <div style={s.formatList}>
+                <span style={s.fmtTag}>EPUB</span>
+                <span style={s.fmtTag}>DOCX</span>
+                <span style={s.fmtTag}>XLSX</span>
+                <span style={s.fmtTag}>PPTX</span>
+                <span style={s.fmtTag}>XPS / OXPS</span>
+                <span style={s.fmtTag}>CBZ / CBR</span>
+                <span style={s.fmtTag}>HTML / XHTML</span>
+                <span style={s.fmtTag}>SVG</span>
+                <span style={s.fmtTag}>JPEG / PNG</span>
+                <span style={s.fmtTag}>BMP / GIF</span>
+                <span style={s.fmtTag}>TIFF / WebP</span>
+              </div>
+            </div>
+          </div>
+          <div style={s.tip}>
+            <strong>💡 変換について:</strong>
+            <br />
+            変換は <strong>MuPDF</strong> エンジンが行います。
+            元ファイルのメタデータ（タイトル・作者・日付等）は、 MuPDF が読み取れる範囲で PDF
+            に引き継がれます。 フォント・レイアウトの再現精度は MuPDF
+            のレンダリング品質に依存します。
+            <br />
+            <span
+              style={{ color: "var(--c-textDim)", fontSize: 11, marginTop: 6, display: "block" }}
+            >
+              ※ DOCX / XLSX / PPTX は MuPDF 1.28 以降で対応。
+              複雑なレイアウトは完全には再現されない場合があります。
+            </span>
+          </div>
+        </div>
+      </section>
+
       {/* GSモードの解説セクション */}
       <section style={s.section}>
         <h2 style={s.h2}>⚡ Ghostscript (GS) と連携して圧縮できます</h2>
@@ -167,7 +219,7 @@ const LicensePage: React.FC = () => {
 
       {/* GSがない場合の説明（オプション） */}
       {gsStatus === "missing" && (
-        <p style={s.hint}>
+        <p style={s.hintSmall}>
           ※ Ghostscriptをインストールすると、ここに優先モードの設定が表示されます。
         </p>
       )}
@@ -345,9 +397,42 @@ const s: Record<string, React.CSSProperties> = {
     lineHeight: "1.4",
   },
   hint: {
+    marginTop: "20px",
+    padding: "12px",
+    background: "rgba(var(--c-accent-rgb), 0.1)",
+    borderRadius: "6px",
+    fontSize: "13px",
+    borderLeft: "4px solid var(--c-accent)",
+  },
+  formatGroup: {
+    marginBottom: 12,
+  },
+  formatLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "var(--c-textDim)",
+    marginBottom: 6,
+    letterSpacing: "0.05em",
+  },
+  formatList: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: 6,
+  },
+  fmtTag: {
+    display: "inline-block",
+    padding: "2px 10px",
+    background: "var(--c-bg)",
+    border: "1px solid var(--c-border)",
+    borderRadius: 12,
+    fontSize: 12,
+    color: "var(--c-text)",
+    fontFamily: "monospace",
+  },
+  hintSmall: {
     fontSize: "11px",
     color: "var(--c-textDim)",
-    textAlign: "center",
+    textAlign: "center" as const,
     marginTop: "20px",
     fontStyle: "italic",
   },
