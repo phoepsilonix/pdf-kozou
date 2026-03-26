@@ -1261,3 +1261,99 @@ void kozou_rasterize(
         set_err(result, fz_caught_message(ctx));
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* kozou_compress_preserving_type3                                     */
+/*                                                                     */
+/* Type3 フォントを含む PDF を圧縮する。                               */
+/* pdf_graft_mapped_object でページと全参照オブジェクト（Type3 の      */
+/* CharProcs を含む）を新規 PDF に移植し、gc=2 で保存する。            */
+/*                                                                     */
+/* gc=2: 未使用オブジェクト削除のみ（フォント統合なし）               */
+/*       Type3 CharProcs は参照されているため削除されない。            */
+/* gc>=3: フォント統合が発生し Type3 が破壊される可能性があるため使用しない */
+/* ------------------------------------------------------------------ */
+void kozou_compress_preserving_type3(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    int          gc,           /* 0-2 推奨。3以上は Type3 破壊リスク */
+    int          compress,     /* 1=ストリーム圧縮 */
+    int          compress_images, /* 1=画像圧縮 */
+    FfiResult   *result)
+{
+    pdf_document *src     = NULL;
+    pdf_document *dst     = NULL;
+    pdf_graft_map *gmap   = NULL;
+
+    fz_var(src);
+    fz_var(dst);
+    fz_var(gmap);
+
+    fz_try(ctx) {
+        /* gc は 0-2 に制限（3以上は Type3 破壊リスク） */
+        if (gc < 0) gc = 0;
+        if (gc > 2) gc = 2;
+
+        src = pdf_open_document(ctx, input);
+        dst = pdf_create_document(ctx);
+
+        int page_count = pdf_count_pages(ctx, src);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+
+        /* graft_map: src→dst のオブジェクト番号マッピングを管理 */
+        /* 同じオブジェクトを複数ページから参照しても1回だけコピーされる */
+        gmap = pdf_new_graft_map(ctx, dst);
+
+        for (int i = 0; i < page_count; i++) {
+            pdf_obj *src_page = NULL;
+            pdf_obj *dst_page = NULL;
+
+            fz_var(src_page);
+            fz_var(dst_page);
+
+            fz_try(ctx) {
+                /* ページオブジェクト取得 */
+                src_page = pdf_lookup_page_obj(ctx, src, i);
+
+                /* pdf_graft_mapped_object:
+                 * src_page が参照する全オブジェクトを再帰的に dst にコピーする。
+                 * Type3 フォントの /CharProcs（グリフ定義ストリーム）も
+                 * 参照チェーンを辿って全てコピーされる。
+                 * gmap により共有オブジェクトの重複コピーを防ぐ。  */
+                dst_page = pdf_graft_mapped_object(ctx, gmap, src_page);
+
+                /* dst の Pages ツリーに挿入 */
+                pdf_insert_page(ctx, dst, -1, dst_page);
+            }
+            fz_always(ctx) {
+                /* src_page は src の xref が管理するので drop 不要 */
+                pdf_drop_obj(ctx, dst_page);
+            }
+            fz_catch(ctx) {
+                fz_rethrow(ctx);
+            }
+        }
+
+        /* 保存オプション */
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_garbage         = gc;
+        opts.do_compress        = compress;
+        opts.do_compress_images = compress_images;
+        opts.do_clean           = 0;   /* sanitize=0: Type3 ストリーム保護 */
+        opts.do_sanitize        = 0;
+
+        pdf_save_document(ctx, dst, output, &opts);
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (gmap) pdf_drop_graft_map(ctx, gmap);
+        if (dst)  pdf_drop_document(ctx, dst);
+        if (src)  pdf_drop_document(ctx, src);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}

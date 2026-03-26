@@ -90,7 +90,19 @@ extern "C" {
         result: *mut FfiResult,
     );
 
-    /// 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。
+    /// Type3 フォントを保持しながら PDF を圧縮する。
+    /// pdf_graft_mapped_object で全オブジェクト（CharProcs 含む）を移植し
+    /// gc=0-2 で保存する（gc>=3 は Type3 破壊リスクがあるため使用しない）。
+    pub fn kozou_compress_preserving_type3(
+        ctx: *mut mupdf_sys::fz_context,
+        input: *const c_char,
+        output: *const c_char,
+        gc: c_int,
+        compress: c_int,
+        compress_images: c_int,
+        result: *mut FfiResult,
+    );
+
     /// Type3 フォントを含む PDF でも動作する（fz_new_draw_device でラスタライズ）。
     /// quality: JPEG 品質 0-100 (0 = デフォルト 85)
     pub fn kozou_rasterize(

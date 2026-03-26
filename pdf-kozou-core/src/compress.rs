@@ -807,44 +807,27 @@ pub fn rewrite(
         }
 
         Some(reason) => {
-            // Type3 → kozou_rasterize で全ページ画像化して PDF に変換
-            // テキスト選択・検索は失われるが高い圧縮率が期待できる
-            eprintln!("[rewrite] Type3 detected ({reason}) → rasterize path");
+            // Type3 → graft 方式で全オブジェクトを保持しながら圧縮
+            // pdf_graft_mapped_object: Type3 CharProcs を含む全参照オブジェクトを移植
+            // gc は 0-2 に制限（3以上はフォント統合で Type3 破壊リスク）
+            eprintln!("[rewrite] Type3 detected ({reason}) → compress_preserving_type3");
 
-            let dpi = fallback.rasterize_dpi.unwrap_or(150.0);
-            let quality = fallback.rasterize_quality.unwrap_or(85);
-            let result = rasterize_with_quality(input, output, dpi, quality);
+            let gc = fallback.garbage_level.unwrap_or(2).clamp(0, 2);
+            let ci = fallback.compress_images.unwrap_or(true);
 
-            match result {
-                Ok(resp) => {
-                    let mut warns = vec![
-                        format!("Type3 フォントを含むため {dpi}dpi でラスタライズしました。テキスト選択・検索不可。"),
-                    ];
+            match compress_preserving_type3(input, output, gc, ci) {
+                Ok(mut resp) => {
+                    let mut warns = vec![format!(
+                        "Type3 フォントを含むため graft 方式で圧縮しました（gc={gc}）。"
+                    )];
                     if let Some(w) = size_increased_warning(resp.input_bytes, resp.output_bytes) {
                         warns.push(w);
                     }
-                    Ok(CompressResponse {
-                        ok: true,
-                        input_bytes: resp.input_bytes,
-                        output_bytes: resp.output_bytes,
-                        ratio: safe_ratio(resp.input_bytes, resp.output_bytes),
-                        params_used: CompressParamsUsed {
-                            compress_images: true,
-                            compress_fonts: false,
-                            garbage_level: 0,
-                            clean: false,
-                            sanitize: false,
-                            font_subset: false,
-                            subset_skipped: false,
-                            merge_fonts: false,
-                            object_stream: false,
-                        },
-                        warning: Some(warns.join(" ")),
-                    })
+                    resp.warning = Some(warns.join(" "));
+                    Ok(resp)
                 }
                 Err(e) => {
-                    // ラスタライズ失敗 → 通常圧縮フォールバック
-                    eprintln!("[rewrite] rasterize failed ({e}) → safe fallback");
+                    eprintln!("[rewrite] compress_preserving_type3 failed ({e}) → safe fallback");
                     rewrite_safe_fallback(input, output, Some(reason), fallback)
                 }
             }
@@ -962,6 +945,80 @@ pub fn rasterize_with_quality(
     })
 }
 
+/// Type3 フォントを保持しながら PDF を圧縮する。
+///
+/// pdf_graft_mapped_object で全オブジェクト（Type3 CharProcs を含む）を
+/// 新規 PDF に移植し、gc=0-2 で保存する。
+///
+/// safe_compress_only との違い:
+///   - graft 方式で未参照オブジェクトをより確実に除去できる
+///   - gc 制限（max 2）は同じだが、graft の性質上フォント統合は発生しない
+pub fn compress_preserving_type3(
+    input: &str,
+    output: &str,
+    gc: i32,
+    compress_images: bool,
+) -> Result<CompressResponse> {
+    use crate::ffi::{
+        kozou_compress_preserving_type3 as ffi_compress, kozou_new_context, FfiResult,
+    };
+    use std::ffi::CString;
+
+    let metadata = collect_metadata(input);
+
+    let c_input =
+        CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output =
+        CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    // gc は 0-2 に制限
+    let gc = gc.clamp(0, 2);
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        ffi_compress(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            gc,
+            1, // compress=1
+            if compress_images { 1 } else { 0 },
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    copy_metadata_after_write(output, &metadata);
+
+    let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
+    let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    Ok(CompressResponse {
+        ok: true,
+        input_bytes: ib,
+        output_bytes: ob,
+        ratio: safe_ratio(ib, ob),
+        params_used: CompressParamsUsed {
+            compress_images,
+            compress_fonts: true,
+            garbage_level: gc,
+            clean: false,
+            sanitize: false,
+            font_subset: false,
+            subset_skipped: false,
+            merge_fonts: false,
+            object_stream: false,
+        },
+        warning: size_increased_warning(ib, ob),
+    })
+}
+
 // ── ユーティリティ ────────────────────────────────────────────────────────────
 
 fn safe_ratio(input_bytes: u64, output_bytes: u64) -> f64 {
@@ -1015,6 +1072,38 @@ pub fn detect_rewrite_unsafe_fonts(input: &str) -> Option<String> {
             unsafe_types.join(", ")
         ))
     }
+}
+
+/// ページ単位で Type3 フォントを含むかどうかを返す（ページ番号のセット）
+fn detect_type3_pages(input: &str) -> Vec<bool> {
+    use mupdf::pdf::PdfDocument;
+    let pdf = match PdfDocument::open(input) {
+        Ok(p) => p,
+        Err(_) => return vec![],
+    };
+    let page_count = pdf.page_count().unwrap_or(0);
+    let mut result = vec![false; page_count as usize];
+    for page_no in 0..page_count {
+        let page_obj = match pdf.find_page(page_no) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let resources = page_obj
+            .get_dict_inheritable("Resources")
+            .or_else(|_| page_obj.get_dict("Resources"))
+            .ok()
+            .flatten();
+        let resources = match resources {
+            Some(r) => r.resolve().ok().flatten().unwrap_or(r),
+            None => continue,
+        };
+        let mut types = Vec::new();
+        collect_unsafe_font_types(&resources, &mut types);
+        if types.iter().any(|t| t.contains("Type3")) {
+            result[page_no as usize] = true;
+        }
+    }
+    result
 }
 
 fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<String>) {
