@@ -675,6 +675,10 @@ pub struct RewriteFallbackParams {
     pub compress_fonts: Option<bool>,
     pub merge_fonts: Option<bool>,
     pub object_stream: Option<bool>,
+    /// Type3 フォント検出時のラスタライズ DPI（None = 150dpi）
+    pub rasterize_dpi: Option<f32>,
+    /// Type3 フォント検出時の JPEG 品質（None = 85）
+    pub rasterize_quality: Option<i32>,
 }
 
 /// DocumentWriter + page.run() による PDF 再書き出し
@@ -803,9 +807,47 @@ pub fn rewrite(
         }
 
         Some(reason) => {
-            // Type3 → 通常圧縮
-            eprintln!("[rewrite] Type3 detected ({reason}) → safe fallback");
-            rewrite_safe_fallback(input, output, Some(reason), fallback)
+            // Type3 → kozou_rasterize で全ページ画像化して PDF に変換
+            // テキスト選択・検索は失われるが高い圧縮率が期待できる
+            eprintln!("[rewrite] Type3 detected ({reason}) → rasterize path");
+
+            let dpi = fallback.rasterize_dpi.unwrap_or(150.0);
+            let quality = fallback.rasterize_quality.unwrap_or(85);
+            let result = rasterize_with_quality(input, output, dpi, quality);
+
+            match result {
+                Ok(resp) => {
+                    let mut warns = vec![
+                        format!("Type3 フォントを含むため {dpi}dpi でラスタライズしました。テキスト選択・検索不可。"),
+                    ];
+                    if let Some(w) = size_increased_warning(resp.input_bytes, resp.output_bytes) {
+                        warns.push(w);
+                    }
+                    Ok(CompressResponse {
+                        ok: true,
+                        input_bytes: resp.input_bytes,
+                        output_bytes: resp.output_bytes,
+                        ratio: safe_ratio(resp.input_bytes, resp.output_bytes),
+                        params_used: CompressParamsUsed {
+                            compress_images: true,
+                            compress_fonts: false,
+                            garbage_level: 0,
+                            clean: false,
+                            sanitize: false,
+                            font_subset: false,
+                            subset_skipped: false,
+                            merge_fonts: false,
+                            object_stream: false,
+                        },
+                        warning: Some(warns.join(" ")),
+                    })
+                }
+                Err(e) => {
+                    // ラスタライズ失敗 → 通常圧縮フォールバック
+                    eprintln!("[rewrite] rasterize failed ({e}) → safe fallback");
+                    rewrite_safe_fallback(input, output, Some(reason), fallback)
+                }
+            }
         }
     }
 }

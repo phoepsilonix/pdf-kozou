@@ -167,6 +167,12 @@ enum Commands {
         object_stream: bool,
         #[arg(long)]
         merge_fonts: bool,
+        /// Type3 フォント検出時のラスタライズ DPI（--rewrite 時のみ有効、デフォルト 150）
+        #[arg(long)]
+        rasterize_dpi: Option<f32>,
+        /// Type3 フォント検出時の JPEG 品質（--rewrite 時のみ有効、デフォルト 85）
+        #[arg(long)]
+        rasterize_quality: Option<i32>,
     },
 
     /// PDF を全ページ画像化して PDF に再出力（ラスタライズ）
@@ -454,6 +460,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             font_subset,
             object_stream,
             merge_fonts,
+            rasterize_dpi,
+            rasterize_quality,
         } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
@@ -465,10 +473,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 let opts = rewrite_options
                     .as_deref()
                     .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
-                // フォールバック時のパラメータ優先順位:
-                //   1. 明示的な CLI フラグ (--gc / --clean / --sanitize / --no-compress-*)
-                //   2. --rewrite-options 文字列から parse（rewrite 失敗時でも同じ設定で圧縮）
-                //   3. デフォルト値
                 let fallback = {
                     use pdf_kozou_core::compress::{
                         parse_rewrite_opt_bool, parse_rewrite_opt_i32, RewriteFallbackParams,
@@ -496,6 +500,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                             merge_fonts
                                 || parse_rewrite_opt_bool(opts, "merge_fonts").unwrap_or(false),
                         ),
+                        rasterize_dpi,
+                        rasterize_quality,
                     }
                 };
                 pdf_kozou_core::compress::rewrite(&input, &output, opts, &fallback)?
@@ -821,8 +827,6 @@ fn dispatch_json(line: &str) -> String {
                     rewrite: bool,
                     #[serde(default)]
                     rewrite_options: Option<String>,
-                    // フォールバック時のパラメータ (JSON API 用)
-                    // CLI の --gc / --clean / --sanitize / --no-compress-* に相当
                     #[serde(default)]
                     fallback_gc: Option<i32>,
                     #[serde(default)]
@@ -833,6 +837,12 @@ fn dispatch_json(line: &str) -> String {
                     fallback_compress_images: Option<bool>,
                     #[serde(default)]
                     fallback_compress_fonts: Option<bool>,
+                    /// Type3 検出時のラスタライズ DPI（省略時 150）
+                    #[serde(default)]
+                    rasterize_dpi: Option<f32>,
+                    /// Type3 検出時の JPEG 品質（省略時 85）
+                    #[serde(default)]
+                    rasterize_quality: Option<i32>,
                     #[serde(flatten)]
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
@@ -847,7 +857,6 @@ fn dispatch_json(line: &str) -> String {
                         .rewrite_options
                         .as_deref()
                         .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
-                    // 優先順位: 明示的な fallback_* フィールド > rewrite_options 文字列 > デフォルト
                     let fallback = {
                         use pdf_kozou_core::compress::{
                             parse_rewrite_opt_bool, parse_rewrite_opt_i32, RewriteFallbackParams,
@@ -872,6 +881,8 @@ fn dispatch_json(line: &str) -> String {
                             object_stream: Some(
                                 parse_rewrite_opt_bool(opts, "object_stream").unwrap_or(false),
                             ),
+                            rasterize_dpi: r.rasterize_dpi,
+                            rasterize_quality: r.rasterize_quality,
                         }
                     };
                     pdf_kozou_core::compress::rewrite(
