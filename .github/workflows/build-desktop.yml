@@ -98,9 +98,8 @@ jobs:
         with:
           name: pdf-kozou-linux-x86_64
           path: |
-            target/release/bundle/*.deb
-            target/release/bundle/*.rpm
-            target/release/bundle/*.AppImage
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
 
   # ===========================================================================
   # Windows x86_64
@@ -146,13 +145,11 @@ jobs:
           rustup default stable-x86_64-pc-windows-gnu
 
       - name: Build (release)
-        shell: bash
         env:
           OS: "mingw"
           HAVE_OBJCOPY: "no"
           USE_MAKE: "1"
         run: |
-          . $HOME/.cargo/env
           cargo tauri build
 
       - name: Upload artifacts
