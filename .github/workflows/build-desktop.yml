@@ -136,10 +136,10 @@ jobs:
           rustup default x86_64-pc-windows-gnu
 
       - name: Build (release)
-         env:
-           OS: "mingw"
-           HAVE_OBJCOPY: "no"
-           USE_MAKE: "1"
+        env:
+          OS: "mingw"
+          HAVE_OBJCOPY: "no"
+          USE_MAKE: "1"
         run: cargo tauri build
 
       - name: Upload artifacts
