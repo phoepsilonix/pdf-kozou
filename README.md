@@ -35,10 +35,11 @@ pdf-kozou/
 | `split`     | 1ページずつ・N ページごと・ページ範囲で分割                       |
 | `merge`     | 複数の PDF を結合                                                 |
 | `rotate`    | ページを 90 / 180 / 270 度回転                                    |
-| `convert`   | MuPDF対応の文書をPDFや画像へ変換                                  |
 | `convert`   | 非 PDF ファイル（EPUB, DOCX, XPS, HTML, 画像等）を PDF に変換する |
 | `rasterize` | PDF を全ページ画像化して PDF に再出力（ラスタライズ）             |
 | `json`      | stdin から JSON リクエストを受け取って実行 (Tauri sidecar モード) |
+
+- convertは、一部レイアウトが崩れる可能性あり。DOCX、XLSXなどでうまく動作しない場合もあります。
 
 ---
 
