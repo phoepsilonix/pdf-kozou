@@ -79,7 +79,11 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
           const thumbs: (string | undefined)[] = [];
           for (let i = 0; i < Math.min(3, info.page_count); i++) {
             try {
-              thumbs[i] = await renderPage(path, i, THUMB_DPI);
+              thumbs[i] = await renderPage(path, i, THUMB_DPI, {
+                layoutW: convertLayoutW,
+                layoutH: convertLayoutH,
+                layoutEm: convertLayoutEm,
+              });
             } catch {
               thumbs[i] = undefined;
             }
@@ -209,7 +213,13 @@ useEffect(() => {
     for (const e of entries) {
       for (let i = 0; i < e.pageCount; i++) {
         try {
-          all.push(await renderPage(e.path, i, PREV_DPI));
+          all.push(
+            await renderPage(e.path, i, PREV_DPI, {
+              layoutW: convertLayoutW,
+              layoutH: convertLayoutH,
+              layoutEm: convertLayoutEm,
+            }),
+          );
         } catch {
           all.push("");
         }

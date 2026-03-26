@@ -854,10 +854,18 @@ fn rewrite_safe_fallback(
 
 /// PDF を全ページ画像化 (テキスト・アウトライン失う — 非推奨)
 pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse> {
+    rasterize_with_quality(input, output, dpi, 85)
+}
+
+pub fn rasterize_with_quality(
+    input: &str,
+    output: &str,
+    dpi: f32,
+    quality: i32,
+) -> Result<CompressResponse> {
     use crate::ffi::{kozou_new_context, kozou_rasterize as ffi_rasterize, FfiResult};
     use std::ffi::CString;
 
-    // メタデータを事前収集
     let metadata = collect_metadata(input);
 
     let c_input =
@@ -871,7 +879,14 @@ pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse
             return Err(CoreError::MuPdf("kozou_new_context failed".into()));
         }
         let mut res = FfiResult::default();
-        ffi_rasterize(ctx, c_input.as_ptr(), c_output.as_ptr(), dpi, &mut res);
+        ffi_rasterize(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            dpi,
+            quality,
+            &mut res,
+        );
         mupdf_sys::fz_drop_context(ctx);
         if res.ok == 0 {
             return Err(CoreError::MuPdf(format!("{res}")));

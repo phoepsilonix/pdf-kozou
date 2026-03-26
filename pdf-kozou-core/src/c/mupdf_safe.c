@@ -1109,6 +1109,7 @@ void kozou_rasterize(
     const char  *input,
     const char  *output,
     float        dpi,
+    int          quality,
     FfiResult   *result)
 {
     fz_document  *doc    = NULL;
@@ -1178,8 +1179,20 @@ void kozou_rasterize(
                     fz_catch(ctx) { fz_rethrow(ctx); }
                 }
 
-                /* pixmap → image → PDF xref に XObject として登録 */
-                image   = fz_new_image_from_pixmap(ctx, pixmap, NULL);
+                /* pixmap → 一時 JPEG ファイル → fz_image
+                 * fz_new_image_from_pixmap は生 RGB データなのでファイルが大きい。
+                 * JPEG ファイル経由にすることで大幅なサイズ削減が可能。
+                 * fz_save_pixmap_as_jpeg(ctx, pixmap, filename, quality)
+                 * quality: 0-100 (85 が高品質・適切なサイズのバランス)        */
+                {
+                    char tmp_img[512];
+                    snprintf(tmp_img, sizeof(tmp_img),
+                             "%s.rasterize_%d.jpg", output, i);
+                    int jpeg_quality = (quality > 0 && quality <= 100) ? quality : 85;
+                    fz_save_pixmap_as_jpeg(ctx, pixmap, tmp_img, jpeg_quality);
+                    image = fz_new_image_from_file(ctx, tmp_img);
+                    remove(tmp_img);
+                }
                 imgref  = pdf_add_image(ctx, pdfout, image);
 
                 /* Resources 辞書: /XObject << /Im0 <imgref> >> */

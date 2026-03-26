@@ -74,7 +74,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     (async () => {
       for (let i = 0; i < n; i++) {
         try {
-          const b64 = await renderPage(curPath, i, THUMB_DPI);
+          const b64 = await renderPage(curPath, i, THUMB_DPI, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           if (cancelled) return;
           setThumbs((p) => {
             const a = [...p];
@@ -96,7 +100,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     (async () => {
       for (let i = 0; i < batchFiles.length; i++) {
         try {
-          const b64 = await renderPage(batchFiles[i].path, 0, 52);
+          const b64 = await renderPage(batchFiles[i].path, 0, 52, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           if (cancelled) return;
           setBatchThumbs((p) => {
             const a = [...p];

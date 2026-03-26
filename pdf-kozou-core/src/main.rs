@@ -947,6 +947,8 @@ fn dispatch_json(line: &str) -> String {
                     output: String,
                     #[serde(default)]
                     dpi: Option<f32>,
+                    #[serde(default)]
+                    quality: Option<i32>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
                 let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem)?;
@@ -954,10 +956,11 @@ fn dispatch_json(line: &str) -> String {
                     r.input = tmp_path.clone();
                 }
                 Ok(serde_json::to_string(
-                    &pdf_kozou_core::compress::rasterize(
+                    &pdf_kozou_core::compress::rasterize_with_quality(
                         &r.input,
                         &r.output,
                         r.dpi.unwrap_or(150.0),
+                        r.quality.unwrap_or(85),
                     )?,
                 )?)
             }

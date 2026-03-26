@@ -230,7 +230,13 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
       setTmpFile(tmp);
       try {
-        setPreview(await renderPage(tmp, 0, 108));
+        setPreview(
+          await renderPage(tmp, 0, 108, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          }),
+        );
       } catch (e) {
         setPreview("");
       }

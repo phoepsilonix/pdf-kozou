@@ -80,7 +80,11 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     (async () => {
       for (let i = 0; i < files.length; i++) {
         try {
-          const b64 = await renderPage(files[i].path, 0, 56);
+          const b64 = await renderPage(files[i].path, 0, 56, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           if (cancelled) return;
           setBatchThumbs((p) => {
             const a = [...p];
@@ -111,7 +115,11 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 
     // プレビュー画像（現在のプレビューページ）
     setPageImage("");
-    renderPage(path, previewPage, PREVIEW_DPI)
+    renderPage(path, previewPage, PREVIEW_DPI, {
+      layoutW: convertLayoutW,
+      layoutH: convertLayoutH,
+      layoutEm: convertLayoutEm,
+    })
       .then((b64) => {
         if (!cancelled) setPageImage(b64);
       })
@@ -425,7 +433,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   // プレビューページ変更時に画像を再取得
   useEffect(() => {
     usePdfStore.getState().resetTrimState();
-    renderPage(filePath, previewPage, PREVIEW_DPI)
+    renderPage(filePath, previewPage, PREVIEW_DPI, {
+      layoutW: convertLayoutW,
+      layoutH: convertLayoutH,
+      layoutEm: convertLayoutEm,
+    })
       .then(setPageImage)
       .catch(() => setPageImage(""));
   }, [filePath, previewPage, pageImage]);
@@ -486,7 +498,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       const imgs: string[] = [];
       for (let i = 0; i < n; i++) {
         try {
-          const b64 = await renderPage(tmpPath, i, RESULT_DPI);
+          const b64 = await renderPage(tmpPath, i, RESULT_DPI, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           imgs.push(b64);
         } catch (e) {
           break;
