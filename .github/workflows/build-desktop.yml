@@ -90,7 +90,6 @@ jobs:
           GTK_USE_PORTAL: "0"
           WEBKIT_DISABLE_DMABUF_RENDERER: "1"
         run: |
-          . $HOME/.cargo/env
           cargo tauri build
 
       - name: Upload artifacts
