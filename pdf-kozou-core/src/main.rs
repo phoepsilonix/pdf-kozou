@@ -267,8 +267,22 @@ fn main() {
             error: e.to_string(),
         };
         println!("{}", serde_json::to_string(&resp).unwrap());
+        // stdout を確実にフラッシュしてから終了
+        let _ = {
+            use std::io::Write;
+            std::io::stdout().flush()
+        };
         std::process::exit(1);
     }
+    // MuPDF コンテキストの Drop 処理が Windows でフリーズすることがある。
+    // （system-fonts feature の font_kit がフォントスキャンスレッドを持ち、
+    //   プロセス終了時のクリーンアップでデッドロックする場合がある）
+    // stdout を明示的にフラッシュしてから強制終了して回避する。
+    let _ = {
+        use std::io::Write;
+        std::io::stdout().flush()
+    };
+    std::process::exit(0);
 }
 
 fn run(cli: Cli) -> anyhow::Result<()> {
@@ -711,8 +725,13 @@ fn run_json_mode() -> anyhow::Result<()> {
         {
             let mut out = stdout.lock();
             writeln!(out, "{response}").ok();
-            out.flush().ok(); // Windows で重要: バッファを即座に送出
+            out.flush().ok();
         }
+        // Windows: 応答後すぐ exit して MuPDF Drop フリーズを回避
+        // （JSON モードは 1リクエスト1プロセスのため EOF後に自然終了でよいが
+        //   font_kit のスレッドが残りフリーズする場合がある）
+        let _ = stdout.lock().flush();
+        std::process::exit(0);
     }
     Ok(())
 }
