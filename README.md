@@ -47,15 +47,14 @@ pdf-kozou/
 
 ### バイナリ (推奨)
 
-準備中。各自ビルドしてください。  
-[Releases](https://github.com/phoepsilonix/pdf-kozou/releases)
-~~ページから各プラットフォーム向けのバイナリをダウンロードしてください。~=
+[Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
+macOS版の提供は未定。動作確認環境がないため。
 
-| プラットフォーム      | ファイル                         |
-| --------------------- | -------------------------------- |
-| Windows (x64)         | `pdf-kozou_windows_x64.zip`      |
-| Linux (x64)           | `pdf-kozou_linux_x64.tar.gz`     |
-| macOS (Apple Silicon) | `pdf-kozou_macos_aarch64.tar.gz` |
+| プラットフォーム      | ファイル                                 |
+| --------------------- | ---------------------------------------- |
+| Windows (x64)         | `pdf-kozou_windows_x64.zip`              |
+| Linux (x64)           | `pdf-kozou_linux_x64.tar.gz`             |
+| macOS (Apple Silicon) | `pdf-kozou_macos_aarch64.tar.gz`（未定） |
 
 ### ソースからビルド
 
