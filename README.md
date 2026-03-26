@@ -57,12 +57,6 @@ pdf-kozou/
 | Linux (x64)           | `pdf-kozou_linux_x64.tar.gz`     |
 | macOS (Apple Silicon) | `pdf-kozou_macos_aarch64.tar.gz` |
 
-### cargo でインストール
-
-```bash
-cargo install pdf-kozou-core
-```
-
 ### ソースからビルド
 
 ```bash
