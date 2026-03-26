@@ -28,7 +28,8 @@ brew install cmake llvm
 
 ### Windows
 
-**cargo-xwin を使用することを推奨します** (Docker 不要、MSVC ABI):
+**cargoでビルドできます。(x86_64-pc-windows-gnu)
+**msvcターゲットの場合、cargo-xwin でできるかもしれません。未調整。できないかも。
 
 ```bash
 cargo install cargo-xwin
@@ -39,6 +40,8 @@ cargo xwin build --release -p pdf-kozou-core --target x86_64-pc-windows-msvc
 
 - [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) をインストール
 - cmake と LLVM (clang) を PATH に追加
+- node.jsなどをインストール
+- make,bashなども用意。
 
 ---
 
@@ -96,16 +99,23 @@ cargo tauri build
 
 ### Linux → Windows (cargo-xwin 推奨)
 
-[cargo-xwin](https://github.com/rust-cross/cargo-xwin) は Docker 不要で Linux から
-Windows MSVC ターゲット向けにビルドできるツールです。
-mupdf-rs の作者 (messense 氏) と同じ開発者が維持しており、mupdf-sys との相性が良好です。
+cargoでビルドできます。MSVCターゲットは未調整。
+[cargo-xwin](https://github.com/rust-cross/cargo-xwin)でできるかも。
+Windowsでのビルド推奨。Linuxでビルドできても、一部で機能不全が起きるかもしれません。
+makeコマンドが必要です。環境変数OSはLinux以外ならなんでもいいです。OBJCOPYがないことを明示してください。
 
 ```bash
 # インストール
 cargo install cargo-xwin
 
 # ビルド
-cargo xwin build --release -p pdf-kozou-core --target x86_64-pc-windows-msvc
+USE_MAKE=1 OS=mingw HAVE_OBJCOPY=no cargo build --release -p pdf-kozou-core --target x86_64-pc-windows-gnu
+```
+
+MSVCターゲット未調整。できないかも。
+
+```
+USE_MAKE=1 OS=mingw HAVE_OBJCOPY=no cargo xwin build --release -p pdf-kozou-core --target x86_64-pc-windows-msvc
 ```
 
 ### Linux → Linux (別アーキテクチャ)
@@ -122,6 +132,7 @@ cross build --release -p pdf-kozou-core --target aarch64-unknown-linux-gnu
 
 ## GitHub Actions での CI/CD
 
+未調整。
 `.github/workflows/release.yml` の例:
 
 ```yaml
@@ -179,5 +190,7 @@ brew install cmake
 
 ### Windows で MSVC のエラー
 
-`cargo-xwin` を使うと Linux 環境から MSVC ABI でビルドでき、ほとんどの問題を回避できます。
+`cargo-xwin` を使うと Linux 環境から MSVC ABI でビルドでき、ほとんどの問題を回避できます。link.exeも必要です。
 ネイティブ Windows ビルドの場合は Visual Studio Build Tools と cmake の PATH 設定を確認してください。
+MSVCターゲットは未調整、未確認です。
+作者はWindows上で、x86_64-pc-windows-gnuでのビルドのみ確認済みです。

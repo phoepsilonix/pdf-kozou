@@ -12,12 +12,13 @@
 PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユーティリティです。
 
 - **pdf-kozou-core** — CLI ツール兼ライブラリ。MuPDF の Rust バインディングで PDF を処理します。
+- **src** — TauriとCLIを繋ぐ部分。
 - **src-tauri** — Tauri v2 製のデスクトップ GUI。pdf-kozou-core を sidecar として呼び出します。
 
 ```
 pdf-kozou/
 ├── pdf-kozou-core/   処理エンジン (CLI + lib)
-├── src/              GUIと処理エンジンをつなぐ部分(lib)
+├── src/              GUI(Tauri)とCLI(処理エンジン)をつなぐ部分(lib)
 └── src-tauri/        デスクトップ GUI (Tauri v2)
 ```
 
@@ -25,16 +26,19 @@ pdf-kozou/
 
 ## 機能
 
-| コマンド   | 内容                                                    |
-| ---------- | ------------------------------------------------------- |
-| `info`     | PDF の基本情報を取得 (ページ数・サイズ・暗号化状態など) |
-| `render`   | ページを JPEG / PNG 画像にレンダリング                  |
-| `trim`     | CropBox を設定してトリミング                            |
-| `compress` | ファイルサイズを最適化・圧縮                            |
-| `split`    | 1ページずつ・N ページごと・ページ範囲で分割             |
-| `merge`    | 複数の PDF を結合                                       |
-| `rotate`   | ページを 90 / 180 / 270 度回転                          |
-| `convert`  | MuPDF対応の文書をPDFや画像へ変換                        |
+| コマンド    | 内容                                                              |
+| ----------- | ----------------------------------------------------------------- |
+| `info`      | PDF の基本情報を取得 (ページ数・サイズ・暗号化状態など)           |
+| `render`    | ページを JPEG / PNG / SVG 画像にレンダリング                      |
+| `trim`      | CropBox を設定してトリミング                                      |
+| `compress`  | ファイルサイズを最適化・圧縮(GSがある環境ではGSも使えます         |
+| `split`     | 1ページずつ・N ページごと・ページ範囲で分割                       |
+| `merge`     | 複数の PDF を結合                                                 |
+| `rotate`    | ページを 90 / 180 / 270 度回転                                    |
+| `convert`   | MuPDF対応の文書をPDFや画像へ変換                                  |
+| `convert`   | 非 PDF ファイル（EPUB, DOCX, XPS, HTML, 画像等）を PDF に変換する |
+| `rasterize` | PDF を全ページ画像化して PDF に再出力（ラスタライズ）             |
+| `json`      | stdin から JSON リクエストを受け取って実行 (Tauri sidecar モード) |
 
 ---
 
@@ -42,8 +46,8 @@ pdf-kozou/
 
 ### バイナリ (推奨)
 
-準備中
-[Releases](https://github.com/phoepsilonix/pdf-kozou/releases) 
+準備中。各自ビルドしてください。
+[Releases](https://github.com/phoepsilonix/pdf-kozou/releases)
 ~~ページから各プラットフォーム向けのバイナリをダウンロードしてください。~=
 
 | プラットフォーム      | ファイル                         |
@@ -64,11 +68,12 @@ cargo install pdf-kozou-core
 git clone https://github.com/phoepsilonix/pdf-kozou.git
 cd pdf-kozou
 cargo build --release -p pdf-kozou-core
+cargo tauri build
 ```
 
-ビルド済みバイナリは `target/release/pdf-kozou-core` に生成されます。
+ビルド済みバイナリは `target/release/pdf-kozou-core` `target/release/pdf-kozou` に生成されます。
 
-> **注意:** ビルドには C/C++ ツールチェーン (cmake, clang など) が必要です。
+> **注意:** ビルドには C/C++ ツールチェーン (cmake, clang, TypeScript など) が必要です。
 > 詳細は [BUILDING.md](BUILDING.md) を参照してください。
 
 ---
