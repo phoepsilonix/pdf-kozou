@@ -1010,6 +1010,7 @@ pub fn compress_preserving_type3(
             gc,
             1, // compress=1
             if compress_images { 1 } else { 0 },
+            1, // clip_to_cropbox=1: CropBox 外の描画をクリップ
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);

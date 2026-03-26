@@ -1269,29 +1269,29 @@ void kozou_rasterize(
 /* pdf_graft_mapped_object でページと全参照オブジェクト（Type3 の      */
 /* CharProcs を含む）を新規 PDF に移植し、gc=2 で保存する。            */
 /*                                                                     */
-/* gc=2: 未使用オブジェクト削除のみ（フォント統合なし）               */
-/*       Type3 CharProcs は参照されているため削除されない。            */
-/* gc>=3: フォント統合が発生し Type3 が破壊される可能性があるため使用しない */
+/* clip_to_cropbox=1 の場合、各ページのコンテンツストリームの前後に    */
+/* CropBox クリッピングパスを挿入する。                                */
+/* これにより CropBox 外の描画が視覚的に除去される。                   */
 /* ------------------------------------------------------------------ */
 void kozou_compress_preserving_type3(
     fz_context  *ctx,
     const char  *input,
     const char  *output,
-    int          gc,           /* 0-2 推奨。3以上は Type3 破壊リスク */
-    int          compress,     /* 1=ストリーム圧縮 */
-    int          compress_images, /* 1=画像圧縮 */
+    int          gc,
+    int          compress,
+    int          compress_images,
+    int          clip_to_cropbox,  /* 1=CropBox クリッピングを適用 */
     FfiResult   *result)
 {
-    pdf_document *src     = NULL;
-    pdf_document *dst     = NULL;
-    pdf_graft_map *gmap   = NULL;
+    pdf_document *src   = NULL;
+    pdf_document *dst   = NULL;
+    pdf_graft_map *gmap = NULL;
 
     fz_var(src);
     fz_var(dst);
     fz_var(gmap);
 
     fz_try(ctx) {
-        /* gc は 0-2 に制限（3以上は Type3 破壊リスク） */
         if (gc < 0) gc = 0;
         if (gc > 2) gc = 2;
 
@@ -1302,8 +1302,6 @@ void kozou_compress_preserving_type3(
         if (page_count <= 0)
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
 
-        /* graft_map: src→dst のオブジェクト番号マッピングを管理 */
-        /* 同じオブジェクトを複数ページから参照しても1回だけコピーされる */
         gmap = pdf_new_graft_map(ctx, dst);
 
         for (int i = 0; i < page_count; i++) {
@@ -1314,21 +1312,117 @@ void kozou_compress_preserving_type3(
             fz_var(dst_page);
 
             fz_try(ctx) {
-                /* ページオブジェクト取得 */
                 src_page = pdf_lookup_page_obj(ctx, src, i);
-
-                /* pdf_graft_mapped_object:
-                 * src_page が参照する全オブジェクトを再帰的に dst にコピーする。
-                 * Type3 フォントの /CharProcs（グリフ定義ストリーム）も
-                 * 参照チェーンを辿って全てコピーされる。
-                 * gmap により共有オブジェクトの重複コピーを防ぐ。  */
                 dst_page = pdf_graft_mapped_object(ctx, gmap, src_page);
-
-                /* dst の Pages ツリーに挿入 */
                 pdf_insert_page(ctx, dst, -1, dst_page);
+
+                /* CropBox クリッピングを適用する場合:
+                 * dst に挿入済みのページオブジェクトを開いてコンテンツを修正する */
+                if (clip_to_cropbox) {
+                    pdf_page *dst_pg = NULL;
+                    fz_var(dst_pg);
+                    fz_try(ctx) {
+                        dst_pg = pdf_load_page(ctx, dst, i);
+
+                        /* CropBox を取得（なければ MediaBox） */
+                        fz_rect cropbox = pdf_bound_page(ctx, dst_pg, FZ_CROP_BOX);
+                        fz_rect mediabox = pdf_bound_page(ctx, dst_pg, FZ_MEDIA_BOX);
+
+                        /* CropBox が MediaBox と同一なら追加不要（クリップ効果なし） */
+                        int need_clip =
+                            cropbox.x0 != mediabox.x0 || cropbox.y0 != mediabox.y0 ||
+                            cropbox.x1 != mediabox.x1 || cropbox.y1 != mediabox.y1;
+
+                        /* または MediaBox 外の領域がある可能性があれば常にクリップ */
+                        /* ここでは常に適用する（コスト低い） */
+                        need_clip = 1;
+
+                        /* クリッピングラッパーを構築:
+                         * q
+                         * x0 y0 x1-x0 y1-y0 re   ← CropBox の矩形パス
+                         * W n                      ← クリップして塗らない
+                         * <元のコンテンツ>
+                         * Q
+                         */
+                        char clip_prefix[256];
+                        int prefix_len = snprintf(clip_prefix, sizeof(clip_prefix),
+                            "q\n%.4f %.4f %.4f %.4f re\nW n\n",
+                            cropbox.x0, cropbox.y0,
+                            cropbox.x1 - cropbox.x0,
+                            cropbox.y1 - cropbox.y0);
+
+                        const char *clip_suffix = "Q\n";
+
+                        /* 既存のコンテンツバッファを取得 */
+                        pdf_obj *page_obj = dst_pg->obj;
+                        pdf_obj *contents = pdf_dict_get(ctx, page_obj, PDF_NAME(Contents));
+
+                        if (contents && need_clip) {
+                            fz_buffer *prefix_buf = fz_new_buffer_from_copied_data(
+                                ctx,
+                                (const unsigned char *)clip_prefix,
+                                (size_t)prefix_len);
+                            fz_buffer *suffix_buf = fz_new_buffer_from_copied_data(
+                                ctx,
+                                (const unsigned char *)clip_suffix,
+                                strlen(clip_suffix));
+
+                            fz_try(ctx) {
+                                /* Contents が配列の場合はラッピングストリームを前後に追加 */
+                                /* 配列でも単一ストリームでも動作するよう配列に統一する   */
+                                pdf_obj *new_contents = pdf_new_array(ctx, dst, 3);
+
+                                fz_try(ctx) {
+                                    /* プレフィックスストリームを追加 */
+                                    pdf_obj *prefix_stream = pdf_add_stream(
+                                        ctx, dst, prefix_buf, NULL, 0);
+                                    pdf_array_push_drop(ctx, new_contents, prefix_stream);
+
+                                    /* 元のコンテンツを追加 */
+                                    if (pdf_is_array(ctx, contents)) {
+                                        int n = pdf_array_len(ctx, contents);
+                                        for (int j = 0; j < n; j++) {
+                                            pdf_obj *item = pdf_array_get(ctx, contents, j);
+                                            pdf_array_push(ctx, new_contents, item);
+                                        }
+                                    } else {
+                                        pdf_array_push(ctx, new_contents, contents);
+                                    }
+
+                                    /* サフィックスストリームを追加 */
+                                    pdf_obj *suffix_stream = pdf_add_stream(
+                                        ctx, dst, suffix_buf, NULL, 0);
+                                    pdf_array_push_drop(ctx, new_contents, suffix_stream);
+
+                                    pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), new_contents);
+                                }
+                                fz_always(ctx) {
+                                    pdf_drop_obj(ctx, new_contents);
+                                }
+                                fz_catch(ctx) {
+                                    fz_rethrow(ctx);
+                                }
+                            }
+                            fz_always(ctx) {
+                                fz_drop_buffer(ctx, prefix_buf);
+                                fz_drop_buffer(ctx, suffix_buf);
+                            }
+                            fz_catch(ctx) {
+                                fz_rethrow(ctx);
+                            }
+                        }
+                    }
+                    fz_always(ctx) {
+                        if (dst_pg) fz_drop_page(ctx, (fz_page *)dst_pg);
+                    }
+                    fz_catch(ctx) {
+                        /* クリッピング失敗は致命的ではない — 続行 */
+                        fz_warn(ctx, "clip_to_cropbox failed for page %d: %s",
+                                i, fz_caught_message(ctx));
+                    }
+                }
             }
             fz_always(ctx) {
-                /* src_page は src の xref が管理するので drop 不要 */
                 pdf_drop_obj(ctx, dst_page);
             }
             fz_catch(ctx) {
@@ -1336,12 +1430,11 @@ void kozou_compress_preserving_type3(
             }
         }
 
-        /* 保存オプション */
         pdf_write_options opts = pdf_default_write_options;
         opts.do_garbage         = gc;
         opts.do_compress        = compress;
         opts.do_compress_images = compress_images;
-        opts.do_clean           = 0;   /* sanitize=0: Type3 ストリーム保護 */
+        opts.do_clean           = 0;
         opts.do_sanitize        = 0;
 
         pdf_save_document(ctx, dst, output, &opts);

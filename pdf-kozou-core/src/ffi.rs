@@ -100,6 +100,7 @@ extern "C" {
         gc: c_int,
         compress: c_int,
         compress_images: c_int,
+        clip_to_cropbox: c_int,
         result: *mut FfiResult,
     );
 
