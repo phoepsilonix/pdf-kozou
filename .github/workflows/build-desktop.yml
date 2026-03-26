@@ -137,7 +137,7 @@ jobs:
         run: |
           rustup toolchain install stable-x86_64-pc-windows-gnu
           rustup target add x86_64-pc-windows-gnu
-          rustup default x86_64-pc-windows-gnu
+          rustup default stable-x86_64-pc-windows-gnu
 
       - name: Build (release)
         env:
