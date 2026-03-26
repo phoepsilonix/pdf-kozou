@@ -36,7 +36,7 @@
   "bundle": {
     "active": true,
     "category": "Utility",
-    "targets": "nsis",
+    "targets": ["deb", "appimage", "msi", "nsis"],
     "license": "../AGPL-3.0-or-later.txt",
     "icon": [
       "icons/32x32.png",
