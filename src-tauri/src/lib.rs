@@ -95,6 +95,9 @@ pub fn run() {
                                     ext.as_str(),
                                     "pdf"
                                         | "epub"
+                                        | "docx"
+                                        | "xlsx"
+                                        | "pptx"
                                         | "xps"
                                         | "oxps"
                                         | "cbz"
@@ -143,6 +146,9 @@ pub fn run() {
                                             ext.as_str(),
                                             "pdf"
                                                 | "epub"
+                                                | "docx"
+                                                | "xlsx"
+                                                | "pptx"
                                                 | "xps"
                                                 | "oxps"
                                                 | "cbz"

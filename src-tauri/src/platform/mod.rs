@@ -22,12 +22,13 @@ pub async fn open_pdf_dialog() -> Option<std::path::PathBuf> {
         .add_filter(
             "PDF・対応ファイル",
             &[
-                "pdf", "epub", "xps", "oxps", "cbz", "cbr", "html", "htm", "xhtml", "svg", "jpg",
-                "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp",
+                "pdf", "epub", "docx", "xlsx", "pptx", "xps", "oxps", "cbz", "cbr", "html", "htm",
+                "xhtml", "svg", "jpg", "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp",
             ],
         )
         .add_filter("PDF", &["pdf"])
         .add_filter("EPUB", &["epub"])
+        .add_filter("Office文書", &["docx", "xlsx", "pptx"])
         .add_filter("XPS", &["xps", "oxps"])
         .add_filter("コミック", &["cbz", "cbr"])
         .add_filter("HTML", &["html", "htm", "xhtml"])
@@ -46,12 +47,13 @@ pub async fn open_pdfs_dialog() -> Vec<std::path::PathBuf> {
         .add_filter(
             "PDF・対応ファイル",
             &[
-                "pdf", "epub", "xps", "oxps", "cbz", "cbr", "html", "htm", "xhtml", "svg", "jpg",
-                "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp",
+                "pdf", "epub", "docx", "xlsx", "pptx", "xps", "oxps", "cbz", "cbr", "html", "htm",
+                "xhtml", "svg", "jpg", "jpeg", "png", "bmp", "gif", "tiff", "tif", "webp",
             ],
         )
         .add_filter("PDF", &["pdf"])
         .add_filter("EPUB", &["epub"])
+        .add_filter("Office文書", &["docx", "xlsx", "pptx"])
         .add_filter("XPS", &["xps", "oxps"])
         .add_filter("コミック", &["cbz", "cbr"])
         .add_filter("HTML", &["html", "htm", "xhtml"])
