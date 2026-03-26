@@ -4,6 +4,13 @@
 
 // pdf-kozou-core/src/info.rs
 // PDF メタ情報取得
+//
+// 設計方針:
+//   - mupdf::Document::open を使わない
+//     → system-fonts feature の font_kit がフォントスキャンを行いメモリ・時間を浪費する
+//   - PdfDocument::open のみ使用
+//     → PDF オブジェクトを直接読み取るため高速・軽量
+//   - フォント情報は --fonts オプション時のみ収集（GUI からは呼ばない）
 
 use crate::error::{CoreError, Result};
 use serde::{Deserialize, Serialize};
@@ -12,7 +19,7 @@ use serde::{Deserialize, Serialize};
 pub struct PageBounds {
     pub w: f32,
     pub h: f32,
-    /// PDF の Rotate 値 (0/90/180/270)。page.bounds() はこれ込みのサイズを返す
+    /// PDF の Rotate 値 (0/90/180/270)
     pub rotate: i32,
 }
 
@@ -42,27 +49,18 @@ pub struct InfoResponse {
     pub page_count: i32,
     pub file_size: u64,
     pub pages: Vec<PageBounds>,
-    /// PDF /Info メタデータ（常に返す）
     pub metadata: PdfMetadata,
-    /// fonts は --fonts オプション指定時のみ Some
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fonts: Option<Vec<FontInfo>>,
 }
 
-/// PDF に含まれるフォント情報 (pdffonts 互換)
 #[derive(Serialize, Clone)]
 pub struct FontInfo {
-    /// フォント名 (/BaseFont または /FontName)
     pub name: String,
-    /// フォント種別: Type1 / TrueType / CIDFontType0 / CIDFontType2 / Type3 / Type0 など
     pub font_type: String,
-    /// フォントデータが PDF 内に埋め込まれているか
     pub embedded: bool,
-    /// サブセット埋め込みか ("ABCDEF+FontName" 形式)
     pub subset: bool,
-    /// 使用されているページ番号一覧 (1始まり)
     pub pages: Vec<i32>,
-    /// PDF オブジェクト番号 (pdffonts の object ID に対応)
     pub object_id: i32,
 }
 
@@ -74,61 +72,87 @@ pub fn info_with_fonts(path: &str) -> Result<InfoResponse> {
     info_impl(path, true)
 }
 
+/// メイン実装。PdfDocument のみを使用（mupdf::Document::open は使わない）。
+///
+/// mupdf::Document::open は system-fonts feature により Windows で
+/// フォントスキャンが走りメモリ増大・タイムアウトの原因になる。
+/// PdfDocument は PDF オブジェクトを直接操作するため高速・軽量。
+///
+/// 非 PDF（DOCX/EPUB 等）は一時 PDF に変換してから処理。
 fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
-    let doc = mupdf::Document::open(path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    use crate::convert::{convert_to_pdf, is_mupdf_supported, is_pdf, ConvertRequest};
+    use mupdf::pdf::PdfDocument;
 
-    let page_count = doc
+    // 非 PDF は一時 PDF に変換してから処理
+    let _tmp_file: Option<tempfile::NamedTempFile>;
+    let tmp_path_str: Option<String>;
+
+    if !is_pdf(path) {
+        if !is_mupdf_supported(path) {
+            return Ok(InfoResponse {
+                ok: true,
+                page_count: 0,
+                file_size: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
+                pages: vec![],
+                metadata: PdfMetadata::default(),
+                fonts: None,
+            });
+        }
+        let kozou_tmp_dir = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&kozou_tmp_dir);
+        let tmp = tempfile::Builder::new()
+            .prefix("info_convert_")
+            .suffix(".pdf")
+            .tempfile_in(&kozou_tmp_dir)
+            .map_err(|e| CoreError::Internal(format!("tempfile: {e}")))?;
+        let tmp_str = tmp.path().to_string_lossy().to_string();
+        let req = ConvertRequest {
+            input: path.to_string(),
+            output: tmp_str.clone(),
+            layout_w: None,
+            layout_h: None,
+            layout_em: None,
+        };
+        if convert_to_pdf(&req).is_err() {
+            return Ok(InfoResponse {
+                ok: true,
+                page_count: 0,
+                file_size: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
+                pages: vec![],
+                metadata: PdfMetadata::default(),
+                fonts: None,
+            });
+        }
+        _tmp_file = Some(tmp);
+        tmp_path_str = Some(tmp_str);
+    } else {
+        _tmp_file = None;
+        tmp_path_str = None;
+    }
+
+    let actual_path = tmp_path_str.as_deref().unwrap_or(path);
+    let pdf = PdfDocument::open(actual_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let page_count = pdf
         .page_count()
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;
 
-    // PdfDocument を一度開いてRotate値をまとめて取得
-    let pdf_opt = mupdf::pdf::PdfDocument::open(path).ok();
-
+    // ── ページ情報（MediaBox/CropBox + Rotate）─────────────────────────────
+    // PDF オブジェクトを直接読み取る → fz_load_page 不要 → フォントスキャン発生しない
     let mut pages = Vec::with_capacity(page_count as usize);
     for i in 0..page_count {
-        let page = doc
-            .load_page(i)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        let b = page.bounds().map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        // page.bounds() は Rotate を考慮した描画サイズを返す (Rotate=90 なら横長)
-        let rotate: i32 = pdf_opt
-            .as_ref()
-            .and_then(|pdf| pdf.find_page(i).ok())
-            .and_then(|pg| {
-                pg.get_dict("Rotate")
-                    .ok()?
-                    .and_then(|o| o.resolve().ok()?.and_then(|r| r.as_int().ok()))
-            })
-            .map(|r: i32| r.rem_euclid(360))
-            .unwrap_or(0);
-        pages.push(PageBounds {
-            w: b.x1 - b.x0,
-            h: b.y1 - b.y0,
-            rotate,
-        });
+        let (w, h, rotate) = page_bounds_from_obj(&pdf, i);
+        pages.push(PageBounds { w, h, rotate });
     }
 
+    // ── ファイルサイズ（OS の stat のみ）──────────────────────────────────
     let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-    // /Info メタデータを収集
-    let meta_pairs = crate::compress::collect_metadata(path);
-    let mut metadata = PdfMetadata::default();
-    for (key, value) in meta_pairs {
-        match key.as_str() {
-            "Title" => metadata.title = Some(value),
-            "Author" => metadata.author = Some(value),
-            "Subject" => metadata.subject = Some(value),
-            "Keywords" => metadata.keywords = Some(value),
-            "Creator" => metadata.creator = Some(value),
-            "Producer" => metadata.producer = Some(value),
-            "CreationDate" => metadata.creation_date = Some(value),
-            "ModDate" => metadata.mod_date = Some(value),
-            _ => {}
-        }
-    }
+    // ── /Info メタデータ（PdfDocument から直接取得）──────────────────────
+    let metadata = collect_metadata_from_pdf(&pdf);
 
+    // ── フォント情報（オプション、GUI からは呼ばない）────────────────────
     let fonts = if include_fonts {
-        Some(collect_fonts(path, page_count)?)
+        Some(collect_fonts(&pdf, page_count)?)
     } else {
         None
     };
@@ -143,22 +167,111 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
     })
 }
 
-/// PDF からフォント情報を収集する
-/// object_id でユニーク化 (pdffonts と同様に同名でも別オブジェクトは別エントリ)
-fn collect_fonts(path: &str, page_count: i32) -> Result<Vec<FontInfo>> {
-    use mupdf::pdf::PdfDocument;
+/// PDF オブジェクトからページのサイズと回転を取得する。
+/// fz_load_page / fz_bound_page を使わずに済む。
+fn page_bounds_from_obj(pdf: &mupdf::pdf::PdfDocument, page_no: i32) -> (f32, f32, i32) {
+    let page_obj = match pdf.find_page(page_no) {
+        Ok(p) => p,
+        Err(_) => return (595.0, 842.0, 0), // A4 デフォルト
+    };
+
+    // CropBox > MediaBox の優先順位で取得
+    let bbox = get_box(&page_obj, "CropBox")
+        .or_else(|| get_box(&page_obj, "MediaBox"))
+        .unwrap_or([0.0, 0.0, 595.0, 842.0]);
+
+    let w = (bbox[2] - bbox[0]).abs();
+    let h = (bbox[3] - bbox[1]).abs();
+
+    // Rotate 値
+    let rotate = page_obj
+        .get_dict("Rotate")
+        .ok()
+        .flatten()
+        .and_then(|o| o.resolve().ok().flatten().or(Some(o)))
+        .and_then(|o| o.as_int().ok())
+        .map(|r: i32| r.rem_euclid(360))
+        .unwrap_or(0);
+
+    // Rotate=90/270 の場合、w と h を入れ替える（描画サイズに合わせる）
+    if rotate == 90 || rotate == 270 {
+        (h, w, rotate)
+    } else {
+        (w, h, rotate)
+    }
+}
+
+/// ページオブジェクトから MediaBox/CropBox を [x0,y0,x1,y1] として取得。
+/// 継承（親ページツリー）も考慮。
+fn get_box(page_obj: &mupdf::pdf::PdfObject, key: &str) -> Option<[f32; 4]> {
+    let arr = page_obj
+        .get_dict_inheritable(key)
+        .ok()
+        .flatten()
+        .or_else(|| page_obj.get_dict(key).ok().flatten())?;
+    let arr = arr.resolve().ok().flatten().unwrap_or(arr);
+
+    let x0 = arr.get_array(0).ok()??.resolve().ok()??.as_float().ok()?;
+    let y0 = arr.get_array(1).ok()??.resolve().ok()??.as_float().ok()?;
+    let x1 = arr.get_array(2).ok()??.resolve().ok()??.as_float().ok()?;
+    let y1 = arr.get_array(3).ok()??.resolve().ok()??.as_float().ok()?;
+    Some([x0, y0, x1, y1])
+}
+
+/// PdfDocument から /Info ディクショナリのメタデータを取得。
+/// collect_metadata（mupdf::Document::open を使う）を呼ばない。
+fn collect_metadata_from_pdf(pdf: &mupdf::pdf::PdfDocument) -> PdfMetadata {
+    let mut meta = PdfMetadata::default();
+
+    // pdf.trailer() → /Info 間接参照 → 辞書
+    let trailer = match pdf.trailer() {
+        Ok(t) => t,
+        Err(_) => return meta,
+    };
+    let info_ref = match trailer.get_dict("Info").ok().flatten() {
+        Some(r) => r,
+        None => return meta,
+    };
+    let info_obj = match info_ref.resolve().ok().flatten() {
+        Some(o) => o,
+        None => return meta,
+    };
+
+    let read = |key: &str| -> Option<String> {
+        let val = info_obj.get_dict(key).ok()??;
+        let val = val.resolve().ok()??;
+        // PDF 文字列は as_string() で UTF-8、または名前として
+        if let Ok(s) = val.as_string() {
+            return Some(s.to_string());
+        }
+        if let Ok(b) = val.as_name() {
+            return Some(String::from_utf8_lossy(b).to_string());
+        }
+        None
+    };
+
+    meta.title = read("Title");
+    meta.author = read("Author");
+    meta.subject = read("Subject");
+    meta.keywords = read("Keywords");
+    meta.creator = read("Creator");
+    meta.producer = read("Producer");
+    meta.creation_date = read("CreationDate");
+    meta.mod_date = read("ModDate");
+    meta
+}
+
+// ── フォント情報収集（--fonts オプション時のみ）────────────────────────────
+
+fn collect_fonts(pdf: &mupdf::pdf::PdfDocument, page_count: i32) -> Result<Vec<FontInfo>> {
     use std::collections::HashMap;
-
-    let pdf = PdfDocument::open(path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
-
-    // object_id → FontInfo
     let mut font_map: HashMap<i32, FontInfo> = HashMap::new();
 
     for page_no in 0..page_count {
-        let page_obj = pdf
-            .find_page(page_no)
-            .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
-
+        let page_obj = match pdf.find_page(page_no) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
         let resources_raw = page_obj
             .get_dict_inheritable("Resources")
             .or_else(|_| page_obj.get_dict("Resources"));
@@ -171,23 +284,19 @@ fn collect_fonts(path: &str, page_count: i32) -> Result<Vec<FontInfo>> {
             .ok()
             .flatten()
             .unwrap_or(resources_raw);
-
         collect_fonts_from_resources(&resources, page_no + 1, &mut font_map);
     }
 
-    // object_id でソート (pdffonts 風の出力順)
     let mut fonts: Vec<FontInfo> = font_map.into_values().collect();
     fonts.sort_by_key(|f| f.object_id);
     Ok(fonts)
 }
 
-/// /Resources オブジェクトからフォントを再帰収集
 fn collect_fonts_from_resources(
     resources: &mupdf::pdf::PdfObject,
     page_1based: i32,
     font_map: &mut std::collections::HashMap<i32, FontInfo>,
 ) {
-    // /Resources/Font
     if let Ok(Some(font_dict_raw)) = resources.get_dict("Font") {
         let font_dict = font_dict_raw
             .resolve()
@@ -196,8 +305,6 @@ fn collect_fonts_from_resources(
             .unwrap_or(font_dict_raw);
         collect_fonts_from_dict(&font_dict, page_1based, font_map);
     }
-
-    // /Resources/XObject → Form XObject を再帰処理
     if let Ok(Some(xobj_dict_raw)) = resources.get_dict("XObject") {
         let xobj_dict = xobj_dict_raw
             .resolve()
@@ -211,7 +318,6 @@ fn collect_fonts_from_resources(
                 None => continue,
             };
             let xobj = xobj_raw.resolve().ok().flatten().unwrap_or(xobj_raw);
-
             let subtype = xobj
                 .get_dict("Subtype")
                 .ok()
@@ -222,7 +328,6 @@ fn collect_fonts_from_resources(
                         .ok()
                         .map(|b| String::from_utf8_lossy(b).to_string())
                 });
-
             if subtype.as_deref() == Some("Form") {
                 if let Ok(Some(inner_res_raw)) = xobj.get_dict("Resources") {
                     let inner_res = inner_res_raw
@@ -237,7 +342,6 @@ fn collect_fonts_from_resources(
     }
 }
 
-/// /Font 辞書からフォント情報を font_map (object_id キー) に追加
 fn collect_fonts_from_dict(
     font_dict: &mupdf::pdf::PdfObject,
     page_1based: i32,
@@ -247,51 +351,37 @@ fn collect_fonts_from_dict(
         Ok(l) => l,
         Err(_) => return,
     };
-
     for i in 0..len as i32 {
-        // 間接参照のまま object_id を取得してからresolve
         let font_ref = match font_dict.get_dict_val(i).ok().flatten() {
             Some(o) => o,
             None => continue,
         };
-
-        // object_id: 間接参照なら as_indirect() で取得
         let object_id = font_ref.as_indirect().unwrap_or(-1);
-
         let font_obj = match font_ref.resolve() {
             Ok(Some(o)) => o,
             _ => continue,
         };
 
-        // /Subtype
         let font_type =
             pdf_name_to_string(&font_obj, "Subtype").unwrap_or_else(|| "Unknown".to_string());
-
-        // /BaseFont (Type3 は持たない場合がある)
         let base_font = pdf_name_to_string(&font_obj, "BaseFont").unwrap_or_default();
-
         let subset = is_subset_font(&base_font);
-
-        // 埋め込み判定
         let embedded = if font_type == "Type3" {
             font_obj.get_dict("CharProcs").ok().flatten().is_some()
         } else {
             check_embedded(&font_obj)
         };
 
-        // Type0 は DescendantFonts から実情報を取得
         let (name, embedded, font_type, oid) = if font_type == "Type0" {
             let cid_name = get_cid_font_name(&font_obj).unwrap_or_else(|| base_font.clone());
             let cid_embedded = check_cid_embedded(&font_obj).unwrap_or(embedded);
             let cid_type = get_cid_font_type(&font_obj).unwrap_or(font_type);
-            // DescendantFonts[0] の object_id を使う
             let cid_oid = get_cid_object_id(&font_obj).unwrap_or(object_id);
             (cid_name, cid_embedded, cid_type, cid_oid)
         } else if font_type == "Type3" {
             let t3_name = if !base_font.is_empty() {
                 base_font
             } else {
-                // /FontDescriptor/FontName を試みる
                 get_font_descriptor_name(&font_obj).unwrap_or_else(|| "(Type3)".to_string())
             };
             (t3_name, embedded, font_type, object_id)
@@ -318,7 +408,6 @@ fn collect_fonts_from_dict(
     }
 }
 
-/// PdfObject のディクショナリから /Name 値を UTF-8 文字列として取得
 fn pdf_name_to_string(obj: &mupdf::pdf::PdfObject, key: &str) -> Option<String> {
     let val = obj.get_dict(key).ok()??;
     let val = val.resolve().ok()??;
@@ -331,7 +420,6 @@ fn pdf_name_to_string(obj: &mupdf::pdf::PdfObject, key: &str) -> Option<String> 
     None
 }
 
-/// フォント名がサブセット形式 ("ABCDEF+Name") かどうか判定
 fn is_subset_font(name: &str) -> bool {
     if let Some((prefix, _)) = name.split_once('+') {
         prefix.len() == 6 && prefix.chars().all(|c| c.is_ascii_uppercase())
@@ -340,7 +428,6 @@ fn is_subset_font(name: &str) -> bool {
     }
 }
 
-/// /FontDescriptor に /FontFile* があれば埋め込みフォントと判定
 fn check_embedded(font_obj: &mupdf::pdf::PdfObject) -> bool {
     let descriptor = match font_obj.get_dict("FontDescriptor") {
         Ok(Some(d)) => d,
@@ -358,14 +445,12 @@ fn check_embedded(font_obj: &mupdf::pdf::PdfObject) -> bool {
     false
 }
 
-/// /FontDescriptor/FontName を取得
 fn get_font_descriptor_name(font_obj: &mupdf::pdf::PdfObject) -> Option<String> {
     let desc = font_obj.get_dict("FontDescriptor").ok()??;
     let desc = desc.resolve().ok()??;
     pdf_name_to_string(&desc, "FontName")
 }
 
-/// Type0 の /DescendantFonts[0]/BaseFont を取得
 fn get_cid_font_name(font_obj: &mupdf::pdf::PdfObject) -> Option<String> {
     let descendants = font_obj.get_dict("DescendantFonts").ok()??;
     let descendants = descendants.resolve().ok()??;
@@ -374,7 +459,6 @@ fn get_cid_font_name(font_obj: &mupdf::pdf::PdfObject) -> Option<String> {
     pdf_name_to_string(&first, "BaseFont")
 }
 
-/// Type0 の DescendantFonts[0] の object_id を取得
 fn get_cid_object_id(font_obj: &mupdf::pdf::PdfObject) -> Option<i32> {
     let descendants = font_obj.get_dict("DescendantFonts").ok()??;
     let descendants = descendants.resolve().ok()??;
@@ -382,7 +466,6 @@ fn get_cid_object_id(font_obj: &mupdf::pdf::PdfObject) -> Option<i32> {
     first_ref.as_indirect().ok()
 }
 
-/// Type0 の DescendantFonts[0] から埋め込み状態を確認
 fn check_cid_embedded(font_obj: &mupdf::pdf::PdfObject) -> Option<bool> {
     let descendants = font_obj.get_dict("DescendantFonts").ok()??;
     let descendants = descendants.resolve().ok()??;
@@ -391,7 +474,6 @@ fn check_cid_embedded(font_obj: &mupdf::pdf::PdfObject) -> Option<bool> {
     Some(check_embedded(&first))
 }
 
-/// Type0 の DescendantFonts[0] の /Subtype を取得
 fn get_cid_font_type(font_obj: &mupdf::pdf::PdfObject) -> Option<String> {
     let descendants = font_obj.get_dict("DescendantFonts").ok()??;
     let descendants = descendants.resolve().ok()??;

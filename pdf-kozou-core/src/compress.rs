@@ -33,9 +33,11 @@ use crate::ffi::merge_duplicate_fonts;
 /// PDFDocEncoding / UTF-16 BE を UTF-8 に変換して返す。
 /// 空文字列が返った場合はそのキーが存在しないことを意味する。
 pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
-    use mupdf::MetadataName;
+    use mupdf::pdf::PdfDocument;
 
-    let doc = match mupdf::Document::open(input) {
+    // mupdf::Document::open は system-fonts feature でフォントスキャンが走るため使用しない。
+    // PdfDocument で /Info 辞書を直接読み取る。
+    let pdf = match PdfDocument::open(input) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("[metadata] collect: open failed for {input}: {e}");
@@ -43,28 +45,49 @@ pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
         }
     };
 
-    // MetadataName enum と文字列キー名の対応
-    let keys: &[(&str, MetadataName)] = &[
-        ("Title", MetadataName::Title),
-        ("Author", MetadataName::Author),
-        ("Subject", MetadataName::Subject),
-        ("Keywords", MetadataName::Keywords),
-        ("Creator", MetadataName::Creator),
-        ("Producer", MetadataName::Producer),
-        ("CreationDate", MetadataName::CreationDate),
-        ("ModDate", MetadataName::ModDate),
+    let trailer = match pdf.trailer() {
+        Ok(t) => t,
+        Err(_) => return vec![],
+    };
+    let info_ref = match trailer.get_dict("Info").ok().flatten() {
+        Some(r) => r,
+        None => return vec![],
+    };
+    let info_obj = match info_ref.resolve().ok().flatten() {
+        Some(o) => o,
+        None => return vec![],
+    };
+
+    let keys = &[
+        "Title",
+        "Author",
+        "Subject",
+        "Keywords",
+        "Creator",
+        "Producer",
+        "CreationDate",
+        "ModDate",
     ];
 
     let mut result = Vec::new();
-    for (key_str, name) in keys {
-        match doc.metadata(*name) {
-            Ok(val) => {
-                let s = val.trim().to_string();
-                if !s.is_empty() {
-                    result.push((key_str.to_string(), s));
-                }
+    for &key in keys {
+        let val = info_obj
+            .get_dict(key)
+            .ok()
+            .flatten()
+            .and_then(|o| o.resolve().ok().flatten().or(Some(o)));
+        if let Some(v) = val {
+            let s = if let Ok(s) = v.as_string() {
+                s.trim().to_string()
+            } else if let Ok(b) = v.as_name() {
+                String::from_utf8_lossy(b).trim().to_string()
+            } else {
+                continue;
+            };
+            if !s.is_empty() {
+                eprintln!("[metadata] {key} = {s}");
+                result.push((key.to_string(), s));
             }
-            Err(e) => eprintln!("[metadata] collect: metadata({key_str}) error: {e}"),
         }
     }
     eprintln!("[metadata] collected {} keys from {input}", result.len());
