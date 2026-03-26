@@ -1,6 +1,6 @@
 # PDF小僧 (pdf-kozou)
 
-> MuPDF ベースの PDF 処理ツール — CLI / デスクトップ GUI / Web 対応
+> MuPDF ベースの PDF 処理ツール — CLI / デスクトップ GUI(Rust with Tauri) / (Web 対応 未定)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
@@ -17,6 +17,7 @@ PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユ�
 ```
 pdf-kozou/
 ├── pdf-kozou-core/   処理エンジン (CLI + lib)
+├── src/              GUIと処理エンジンをつなぐ部分(lib)
 └── src-tauri/        デスクトップ GUI (Tauri v2)
 ```
 
@@ -33,6 +34,7 @@ pdf-kozou/
 | `split`    | 1ページずつ・N ページごと・ページ範囲で分割             |
 | `merge`    | 複数の PDF を結合                                       |
 | `rotate`   | ページを 90 / 180 / 270 度回転                          |
+| `convert`  | MuPDF対応の文書をPDFや画像へ変換                        |
 
 ---
 
@@ -40,7 +42,9 @@ pdf-kozou/
 
 ### バイナリ (推奨)
 
-[Releases](https://github.com/phoepsilonix/pdf-kozou/releases) ページから各プラットフォーム向けのバイナリをダウンロードしてください。
+準備中
+[Releases](https://github.com/phoepsilonix/pdf-kozou/releases) 
+~~ページから各プラットフォーム向けのバイナリをダウンロードしてください。~=
 
 | プラットフォーム      | ファイル                         |
 | --------------------- | -------------------------------- |
