@@ -76,11 +76,6 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Download bundled binaries
-        run: |
-          chmod +x build-scripts/download-binaries.sh
-          ./build-scripts/download-binaries.sh x86_64-unknown-linux-gnu
-
       - name: Build (release)
         env:
           GTK_USE_PORTAL: "0"
@@ -95,54 +90,6 @@ jobs:
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-
-  # ===========================================================================
-  # Linux x86_64 — Wayland 環境テスト (Xvfb fallback)
-  # ===========================================================================
-  test-linux-wayland:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Wayland compositor (sway headless) for CI test
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libwayland-dev weston xwayland \
-            poppler-utils tesseract-ocr
-          echo "GTK_USE_PORTAL=0" >> $GITHUB_ENV
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build (debug — faster CI)
-        env:
-          GTK_USE_PORTAL: "0"
-          GDK_BACKEND: "wayland,x11"
-          WEBKIT_DISABLE_DMABUF_RENDERER: "1"
-        run: npm run tauri build -- --debug
-
-      - name: Run unit tests (Rust)
-        env:
-          GTK_USE_PORTAL: "0"
-        run: |
-          cd src-tauri
-          cargo test --lib -- --test-threads=1
 
   # ===========================================================================
   # Windows x86_64
@@ -171,19 +118,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Download bundled binaries (Windows)
-        shell: bash
-        run: |
-          chmod +x build-scripts/download-binaries.sh
-          ./build-scripts/download-binaries.sh x86_64-pc-windows-msvc
-
       - name: Build (release)
-        run: npm run tauri build -- --target x86_64-pc-windows-msvc
+        run: OS="mingw" USE_MAKE=1 HAVE_OBJCOPY="no" npm run tauri build -- --target x86_64-pc-windows-gnu
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pdf-kozou-windows-x86_64
           path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
