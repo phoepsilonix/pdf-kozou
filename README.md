@@ -47,7 +47,7 @@ pdf-kozou/
 
 ### バイナリ (推奨)
 
-準備中。各自ビルドしてください。
+準備中。各自ビルドしてください。  
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)
 ~~ページから各プラットフォーム向けのバイナリをダウンロードしてください。~=
 
