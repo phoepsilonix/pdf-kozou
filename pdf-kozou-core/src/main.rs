@@ -675,41 +675,37 @@ fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 /// Tauri sidecar モード: stdin から JSON を1行ずつ読んで処理
-/*
+///
+/// Windows 対応のポイント:
+///   1. serde_json::Deserializer::from_reader はストリーム終端まで待つため
+///      Tauri の sidecar（1リクエスト1送信）でブロッキングになる。
+///      → 行単位読み込みに戻す
+///   2. Windows では stdout を明示的に flush しないと
+///      Tauri 側が応答を受け取れない場合がある。
+///   3. stdin は UTF-8 として読む（Windows のデフォルト CP932 対策）
 fn run_json_mode() -> anyhow::Result<()> {
-    use std::io::BufRead;
+    use std::io::{BufRead, Write};
+
     let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+
     for line in stdin.lock().lines() {
-        let line = line?;
-        if line.trim().is_empty() {
+        let line = match line {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("[json-mode] stdin read error: {e}");
+                break;
+            }
+        };
+        let line = line.trim().to_string();
+        if line.is_empty() {
             continue;
         }
         let response = dispatch_json(&line);
-        println!("{response}");
-    }
-    Ok(())
-}
-*/
-fn run_json_mode() -> anyhow::Result<()> {
-    let stdin = std::io::stdin();
-    let reader = std::io::BufReader::new(stdin.lock());
-
-    // 1行ずつではなく、ストリームからJSONオブジェクトを順次読み取る
-    let stream = serde_json::Deserializer::from_reader(reader).into_iter::<serde_json::Value>();
-
-    for value in stream {
-        match value {
-            Ok(v) => {
-                // dispatch_json を &str ではなく Value を受け取るように変更するか
-                // 一旦文字列に戻して渡す（既存の dispatch_json を活かす場合）
-                let line = v.to_string();
-                let response = dispatch_json(&line);
-                println!("{response}");
-            }
-            Err(e) => {
-                eprintln!("JSON parse error: {e}");
-                // 致命的なエラーでなければ継続、あるいは exit
-            }
+        {
+            let mut out = stdout.lock();
+            writeln!(out, "{response}").ok();
+            out.flush().ok(); // Windows で重要: バッファを即座に送出
         }
     }
     Ok(())
@@ -735,10 +731,15 @@ fn auto_convert_if_needed(
         anyhow::bail!("unsupported file format: {input}");
     }
 
-    // 非 PDF → 一時 PDF に変換
+    // <system_temp>/pdf-kozou/ 内に一時ファイルを作成
+    // Tauri 側の kozou_temp_dir() と同じディレクトリで統一する
+    let kozou_tmp_dir = std::env::temp_dir().join("pdf-kozou");
+    let _ = std::fs::create_dir_all(&kozou_tmp_dir);
+
     let tmp = tempfile::Builder::new()
+        .prefix("auto_convert_")
         .suffix(".pdf")
-        .tempfile()
+        .tempfile_in(&kozou_tmp_dir)
         .map_err(|e| anyhow::anyhow!("tempfile: {e}"))?;
     let tmp_path = tmp.path().to_string_lossy().to_string();
 

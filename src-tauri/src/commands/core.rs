@@ -381,13 +381,18 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
 
     use tokio::io::AsyncWriteExt;
     eprintln!("{:?}", json_line);
-    if let Some(stdin) = child.stdin.as_mut() {
+    // stdin に JSON を書き込んだ後、明示的に drop して EOF を送る。
+    // drop しないと run_json_mode の BufRead::lines() が EOF を待ち続けて
+    // フリーズする（特に Windows で顕著）。
+    if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(json_line.as_bytes())
             .await
             .map_err(|e| Error::Core(e.to_string()))?;
         stdin.write_all(b"\n").await.ok();
-    }
+        stdin.flush().await.ok();
+        // ここで stdin を drop → パイプの書き込み端が閉じられ EOF が伝わる
+    } // stdin がスコープを抜けて drop される
 
     let output = child
         .wait_with_output()
