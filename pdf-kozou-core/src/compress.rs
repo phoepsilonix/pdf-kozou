@@ -33,10 +33,15 @@ use crate::ffi::merge_duplicate_fonts;
 /// PDFDocEncoding / UTF-16 BE を UTF-8 に変換して返す。
 /// 空文字列が返った場合はそのキーが存在しないことを意味する。
 pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
+    use crate::convert::is_pdf;
     use mupdf::pdf::PdfDocument;
 
-    // mupdf::Document::open は system-fonts feature でフォントスキャンが走るため使用しない。
-    // PdfDocument で /Info 辞書を直接読み取る。
+    // 非 PDF ファイルは PdfDocument::open でフリーズするため
+    // DOCX/XLSX/PPTX (Office Open XML) は ZIP 内の core.xml から取得
+    if !is_pdf(input) {
+        return collect_metadata_from_ooxml(input);
+    }
+
     let pdf = match PdfDocument::open(input) {
         Ok(d) => d,
         Err(e) => {
@@ -91,6 +96,86 @@ pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
         }
     }
     eprintln!("[metadata] collected {} keys from {input}", result.len());
+    result
+}
+
+/// Office Open XML (DOCX/XLSX/PPTX) の ZIP 内 docProps/core.xml から
+/// Dublin Core メタデータを取得する。
+/// 外部 XML パーサー不要 — タグ名の単純文字列検索で十分。
+fn collect_metadata_from_ooxml(input: &str) -> Vec<(String, String)> {
+    let ext = std::path::Path::new(input)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    // DOCX/XLSX/PPTX のみ対応（ZIP ベースの Office Open XML 形式）
+    if !matches!(ext.as_str(), "docx" | "xlsx" | "pptx") {
+        return vec![];
+    }
+
+    let file = match std::fs::File::open(input) {
+        Ok(f) => f,
+        Err(_) => return vec![],
+    };
+    let mut archive = match zip::ZipArchive::new(file) {
+        Ok(a) => a,
+        Err(_) => return vec![],
+    };
+    let mut xml = match archive.by_name("docProps/core.xml") {
+        Ok(f) => f,
+        Err(_) => return vec![],
+    };
+
+    use std::io::Read;
+    let mut content = String::new();
+    if xml.read_to_string(&mut content).is_err() {
+        return vec![];
+    }
+
+    // タグ内テキストを抽出するシンプルなヘルパー
+    // <dc:title>テキスト</dc:title> → "テキスト"
+    let extract = |tag: &str, xml: &str| -> Option<String> {
+        let open = format!("<{tag}>");
+        let close = format!("</{tag}>");
+        let start = xml.find(&open)? + open.len();
+        let end = xml[start..].find(&close)? + start;
+        let text = xml[start..end].trim().to_string();
+        if text.is_empty() {
+            None
+        } else {
+            Some(text)
+        }
+    };
+
+    // PDF /Info キーと core.xml タグのマッピング
+    // Author:   dc:creator（作成者）、なければ cp:lastModifiedBy（最終編集者）
+    // Creator:  作成アプリ名（DOCX には直接対応なし、dc:creator で代替）
+    // Producer: PDF 生成ツール（変換ツール名なので DOCX からは取得しない）
+    let mappings: &[(&str, &[&str])] = &[
+        ("Title", &["dc:title"]),
+        ("Author", &["dc:creator", "cp:lastModifiedBy"]),
+        ("Subject", &["dc:subject"]),
+        ("Keywords", &["cp:keywords"]),
+        ("Creator", &["dc:creator"]),
+        ("CreationDate", &["dcterms:created"]),
+        ("ModDate", &["dcterms:modified"]),
+    ];
+
+    let mut result = Vec::new();
+    for (pdf_key, tags) in mappings {
+        for &tag in *tags {
+            if let Some(val) = extract(tag, &content) {
+                eprintln!("[metadata] OOXML {tag} → {pdf_key} = {val}");
+                result.push((pdf_key.to_string(), val));
+                break; // 最初にマッチしたタグを使う
+            }
+        }
+    }
+    eprintln!(
+        "[metadata] OOXML collected {} keys from {input}",
+        result.len()
+    );
     result
 }
 
@@ -1099,6 +1184,8 @@ pub fn detect_rewrite_unsafe_fonts(input: &str) -> Option<String> {
 }
 
 /// ページ単位で Type3 フォントを含むかどうかを返す（ページ番号のセット）
+/// ページ単位で Type3 フォントを含むかどうかを返す（将来の最適化用）
+#[allow(dead_code)]
 fn detect_type3_pages(input: &str) -> Vec<bool> {
     use mupdf::pdf::PdfDocument;
     let pdf = match PdfDocument::open(input) {

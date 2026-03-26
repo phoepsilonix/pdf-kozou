@@ -197,8 +197,13 @@ export async function pickOutputDir(): Promise<string | null> {
 
 // ── PDF 情報取得 ──────────────────────────────────────────────────────────────
 
-export async function getPdfInfo(path: string): Promise<PdfInfo> {
-  return invoke<PdfInfo>("get_pdf_info", { path });
+export async function getPdfInfo(path: string, options?: ConvertOptions): Promise<PdfInfo> {
+  return invoke<PdfInfo>("get_pdf_info", {
+    path,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
 }
 
 // ── ページレンダリング ────────────────────────────────────────────────────────

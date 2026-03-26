@@ -58,7 +58,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   useEffect(() => {
     if (!isBatch) return;
     const path = batchFiles![batchIdx].path;
-    getPdfInfo(path)
+    getPdfInfo(path, {
+      layoutW: convertLayoutW,
+      layoutH: convertLayoutH,
+      layoutEm: convertLayoutEm,
+    })
       .then((info) => {
         setCurPageCount(info.page_count);
         setRotations(new Array(info.page_count).fill(globalRot));
@@ -221,7 +225,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       prog.currentFile = f.filename;
       setBatchProgress({ ...prog });
       try {
-        const info = await getPdfInfo(f.path);
+        const info = await getPdfInfo(f.path, {
+          layoutW: convertLayoutW,
+          layoutH: convertLayoutH,
+          layoutEm: convertLayoutEm,
+        });
         const pages = rotations
           .slice(0, info.page_count)
           .map((v, idx) => ({ page: idx + 1, angle: v }))

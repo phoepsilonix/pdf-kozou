@@ -186,9 +186,40 @@ pub fn run() {
     // ── アプリのイベントループ実行（終了時クリーンアップ付き） ────────────
     // Tauri v2: Builder::run() の代わりに build() + App::run() を使うことで
     // RunEvent::Exit を捕捉し、pdf-kozou 一時フォルダを削除できる。
-    app.run(|_app_handle, event| {
-        if let tauri::RunEvent::Exit = event {
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::Exit => {
             crate::tempdir::cleanup_kozou_temp();
+            kill_orphan_core_processes();
         }
+        tauri::RunEvent::WindowEvent {
+            event: tauri::WindowEvent::CloseRequested { .. },
+            ..
+        } => {
+            app_handle.exit(0);
+        }
+        _ => {}
     });
+}
+
+/// 残存する pdf-kozou-core プロセスを終了させる
+fn kill_orphan_core_processes() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "pdf-kozou-core.exe"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", "pdf-kozou-core"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
 }

@@ -82,7 +82,13 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     let cancelled = false;
     setThumbs([]);
     (async () => {
-      const info = isBatch ? await getPdfInfo(previewPath).catch(() => null) : pdfInfo;
+      const info = isBatch
+        ? await getPdfInfo(previewPath, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          }).catch(() => null)
+        : pdfInfo;
       const n = info?.page_count ?? 0;
       for (let i = 0; i < n; i++) {
         try {
@@ -197,7 +203,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       progress.currentFile = f.filename;
       setBatchProgress({ ...progress });
       try {
-        const info = await getPdfInfo(f.path);
+        const info = await getPdfInfo(f.path, {
+          layoutW: convertLayoutW,
+          layoutH: convertLayoutH,
+          layoutEm: convertLayoutEm,
+        });
         const mode: SplitMode =
           modeId === "all"
             ? { type: "AllPages" }

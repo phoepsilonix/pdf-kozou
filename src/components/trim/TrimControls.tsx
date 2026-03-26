@@ -21,6 +21,10 @@ interface Props {
   onApply: () => void;
   onReset: () => void;
   processing: boolean;
+  applyLabel?: string;
+  // バッチ用: 出力フォルダ選択
+  outDir?: string;
+  onPickDir?: () => void;
   // ページ除外指定 (トリミング除外対象)
   excludeSpec: string;
   onExclude: (v: string) => void;
@@ -45,6 +49,9 @@ export function TrimControls({
   onApply,
   onReset,
   processing,
+  applyLabel,
+  outDir,
+  onPickDir,
   excludeSpec,
   onExclude,
   extractSpec,
@@ -150,16 +157,61 @@ export function TrimControls({
         />
       </section>
 
+      {/* バッチ用: 出力フォルダ選択（実行ボタンの直上に配置） */}
+      {onPickDir !== undefined && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--c-textDim)", marginBottom: 4 }}>
+            📁 出力フォルダ
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div
+              style={{
+                flex: 1,
+                fontSize: 11,
+                color: "var(--c-text)",
+                background: "var(--c-bgSub)",
+                border: "1px solid var(--c-border)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {outDir || "未選択"}
+            </div>
+            <button
+              type="button"
+              style={{
+                fontSize: 11,
+                padding: "4px 10px",
+                background: "var(--c-bgCard)",
+                border: "1px solid var(--c-border)",
+                borderRadius: 4,
+                cursor: "pointer",
+                color: "var(--c-text)",
+                whiteSpace: "nowrap",
+              }}
+              onClick={onPickDir}
+              disabled={processing}
+            >
+              選択…
+            </button>
+          </div>
+        </div>
+      )}
+
       <section style={s.actions}>
-        <button style={s.btnReset} onClick={onReset} disabled={processing}>
+        <button type="button" style={s.btnReset} onClick={onReset} disabled={processing}>
           リセット
         </button>
         <button
+          type="button"
           style={{ ...s.btnApply, ...(processing ? s.btnDisabled : {}) }}
-          onClick={onApply}
+          onClick={!outDir && onPickDir ? onPickDir : onApply}
           disabled={processing}
         >
-          {processing ? "処理中…" : "プレビュー →"}
+          {processing ? "処理中…" : (applyLabel ?? "プレビュー →")}
         </button>
       </section>
 

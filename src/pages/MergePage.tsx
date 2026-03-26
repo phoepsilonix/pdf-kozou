@@ -75,7 +75,11 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     async (paths: string[]) => {
       for (const path of paths) {
         try {
-          const info = await getPdfInfo(path);
+          const info = await getPdfInfo(path, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           const thumbs: (string | undefined)[] = [];
           for (let i = 0; i < Math.min(3, info.page_count); i++) {
             try {

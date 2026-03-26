@@ -37,11 +37,24 @@ struct Cli {
 enum Commands {
     /// PDF の基本情報を取得
     Info {
-        /// 入力 PDF ファイルパス
+        /// 入力ファイルパス（PDF/EPUB/DOCX/XPS/CBZ/画像 等）
         path: String,
-        /// 埋め込みフォント情報も取得する
+        /// 埋め込みフォント情報も取得する（PDF のみ有効）
         #[arg(long)]
         fonts: bool,
+        /// 非 PDF ファイルを自動変換してから正確な情報を取得する
+        /// （省略時: 非 PDF はダミー情報を返す）
+        #[arg(long)]
+        convert: bool,
+        /// リフロー可能文書のレイアウト幅 (pt)。--convert 時に使用。省略時は 450pt
+        #[arg(long)]
+        layout_w: Option<f32>,
+        /// リフロー可能文書のレイアウト高さ (pt)。--convert 時に使用。省略時は 600pt
+        #[arg(long)]
+        layout_h: Option<f32>,
+        /// リフロー可能文書のフォントサイズ (pt)。--convert 時に使用。省略時は 12pt
+        #[arg(long)]
+        layout_em: Option<f32>,
     },
 
     /// PDF ページを画像にレンダリング
@@ -287,12 +300,40 @@ fn main() {
 
 fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        Commands::Info { path, fonts } => {
-            let resp = if fonts {
-                pdf_kozou_core::info::info_with_fonts(&path)?
+        Commands::Info {
+            path,
+            fonts,
+            convert,
+            layout_w,
+            layout_h,
+            layout_em,
+        } => {
+            use pdf_kozou_core::convert::is_pdf;
+
+            // --convert または非 PDF の場合は自動変換してから info 取得
+            let needs_convert = convert || !is_pdf(&path);
+            let _tmp = if needs_convert {
+                auto_convert_if_needed(&path, layout_w, layout_h, layout_em)?
             } else {
-                pdf_kozou_core::info::info(&path)?
+                None
             };
+            let actual_path = if let Some((_, ref p)) = _tmp {
+                p.as_str()
+            } else {
+                &path
+            };
+
+            let mut resp = if fonts {
+                pdf_kozou_core::info::info_with_fonts(actual_path)?
+            } else {
+                pdf_kozou_core::info::info(actual_path)?
+            };
+
+            // 変換した場合は file_size を元ファイルのサイズに戻す
+            if _tmp.is_some() {
+                resp.file_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            }
+
             println!("{}", serde_json::to_string(&resp)?);
         }
 
@@ -818,11 +859,26 @@ fn dispatch_json(line: &str) -> String {
                     fonts: bool,
                 }
                 let r: Req = serde_json::from_str(line)?;
-                let resp = if r.fonts {
-                    pdf_kozou_core::info::info_with_fonts(&r.path)?
+
+                // 非 PDF は lw/lh/lem を考慮して一時 PDF に変換してから info 取得
+                let _tmp = auto_convert_if_needed(&r.path, lw, lh, lem)?;
+                let actual_path = if let Some((_, ref p)) = _tmp {
+                    p.as_str()
                 } else {
-                    pdf_kozou_core::info::info(&r.path)?
+                    &r.path
                 };
+
+                let mut resp = if r.fonts {
+                    pdf_kozou_core::info::info_with_fonts(actual_path)?
+                } else {
+                    pdf_kozou_core::info::info(actual_path)?
+                };
+
+                // 変換した場合は file_size を元ファイルのサイズに戻す
+                if _tmp.is_some() {
+                    resp.file_size = std::fs::metadata(&r.path).map(|m| m.len()).unwrap_or(0);
+                }
+
                 Ok(serde_json::to_string(&resp)?)
             }
             "render" => {

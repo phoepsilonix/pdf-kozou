@@ -6,7 +6,7 @@
 // リフロー可能文書（DOCX/EPUB/HTML）変換時のレイアウト設定パネル。
 // 非 PDF ファイルが含まれる場合にのみ表示する。
 
-import React from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { ConvertOptions } from "../lib/tauri";
 
 export interface ConvertOptionsPanelProps {
@@ -22,19 +22,52 @@ const PRESETS: { label: string; w: number; h: number }[] = [
   { label: "US Letter (612×792)", w: 612, h: 792 },
 ];
 
+const DEBOUNCE_MS = 600; // 数値入力確定までの待機時間
+
 export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelProps) {
-  const w = options.layoutW ?? 450;
-  const h = options.layoutH ?? 600;
-  const em = options.layoutEm ?? 12;
+  // 内部 state で入力中の値を保持（props と分離）
+  const [localW, setLocalW] = useState(options.layoutW ?? 450);
+  const [localH, setLocalH] = useState(options.layoutH ?? 600);
+  const [localEm, setLocalEm] = useState(options.layoutEm ?? 12);
 
-  const set = (partial: Partial<ConvertOptions>) => onChange({ ...options, ...partial });
+  // props が外部から変わった場合（初期化時など）に同期
+  const prevOptions = useRef(options);
+  useEffect(() => {
+    if (
+      options.layoutW !== prevOptions.current.layoutW ||
+      options.layoutH !== prevOptions.current.layoutH ||
+      options.layoutEm !== prevOptions.current.layoutEm
+    ) {
+      setLocalW(options.layoutW ?? 450);
+      setLocalH(options.layoutH ?? 600);
+      setLocalEm(options.layoutEm ?? 12);
+      prevOptions.current = options;
+    }
+  }, [options]);
 
+  // debounce タイマー
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const emitDebounced = useCallback(
+    (w: number, h: number, em: number) => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(() => {
+        onChange({ layoutW: w, layoutH: h, layoutEm: em });
+      }, DEBOUNCE_MS);
+    },
+    [onChange],
+  );
+
+  // プリセット選択は即時反映（debounce なし）
   const applyPreset = (idx: number) => {
     const p = PRESETS[idx];
-    set({ layoutW: p.w, layoutH: p.h });
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    setLocalW(p.w);
+    setLocalH(p.h);
+    onChange({ layoutW: p.w, layoutH: p.h, layoutEm: localEm });
   };
 
-  const matchedPreset = PRESETS.findIndex((p) => p.w === w && p.h === h);
+  const matchedPreset = PRESETS.findIndex((p) => p.w === localW && p.h === localH);
 
   return (
     <div style={s.panel}>
@@ -63,7 +96,7 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
         </select>
       </div>
 
-      {/* 幅 / 高さ / em */}
+      {/* 幅 / 高さ / em — 入力中は内部 state のみ更新、確定後に onChange */}
       <div style={s.row}>
         <label style={s.label}>幅 (pt)</label>
         <input
@@ -72,8 +105,12 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
           min={100}
           max={2000}
           step={1}
-          value={w}
-          onChange={(e) => set({ layoutW: Number(e.target.value) })}
+          value={localW}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setLocalW(v);
+            emitDebounced(v, localH, localEm);
+          }}
         />
         <label style={{ ...s.label, marginLeft: 12 }}>高さ (pt)</label>
         <input
@@ -82,8 +119,12 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
           min={100}
           max={2000}
           step={1}
-          value={h}
-          onChange={(e) => set({ layoutH: Number(e.target.value) })}
+          value={localH}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setLocalH(v);
+            emitDebounced(localW, v, localEm);
+          }}
         />
         <label style={{ ...s.label, marginLeft: 12 }}>フォント (pt)</label>
         <input
@@ -92,8 +133,12 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
           min={6}
           max={72}
           step={0.5}
-          value={em}
-          onChange={(e) => set({ layoutEm: Number(e.target.value) })}
+          value={localEm}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setLocalEm(v);
+            emitDebounced(localW, localH, v);
+          }}
         />
       </div>
 

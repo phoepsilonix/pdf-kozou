@@ -121,6 +121,7 @@ export default function App() {
     convertLayoutH,
     convertLayoutEm,
     setConvertLayout,
+    updatePageCount,
   } = usePdfStore();
 
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
@@ -155,7 +156,11 @@ export default function App() {
       await Promise.all(
         pdfPaths.map(async (path) => {
           try {
-            const info = await getPdfInfo(path);
+            const info = await getPdfInfo(path, {
+              layoutW: convertLayoutW,
+              layoutH: convertLayoutH,
+              layoutEm: convertLayoutEm,
+            });
             const stat = await invoke<{ size: number }>("get_file_stat", { path }).catch(() => ({
               size: 0,
             }));
@@ -175,7 +180,7 @@ export default function App() {
         }),
       );
     },
-    [addFiles, setError],
+    [addFiles, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
 
   useEffect(() => {
@@ -217,7 +222,11 @@ export default function App() {
       if (sel.length === 0) return;
       if (toolId !== "merge" && toolId !== "viewer") {
         try {
-          const info = await getPdfInfo(sel[0].path);
+          const info = await getPdfInfo(sel[0].path, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           setFile(sel[0].path, info);
         } catch (e) {
           setError(String(e));
@@ -227,7 +236,7 @@ export default function App() {
       setToolFiles(sel);
       setActiveTool(toolId);
     },
-    [fileList, setFile, setError],
+    [fileList, setFile, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
 
   const handleHome = useCallback(() => {
@@ -241,7 +250,11 @@ export default function App() {
       if (sel.length === 0) return;
       if (t !== "merge" && t !== "viewer") {
         try {
-          const info = await getPdfInfo(sel[0].path);
+          const info = await getPdfInfo(sel[0].path, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           setFile(sel[0].path, info);
         } catch (e) {
           setError(String(e));
@@ -250,7 +263,7 @@ export default function App() {
       }
       setActiveTool(t);
     },
-    [toolFiles, setFile, setError],
+    [toolFiles, setFile, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
 
   const sel = fileList.filter((f) => f.selected);
@@ -270,7 +283,11 @@ export default function App() {
         if (firstSelected.path === filePath) return;
 
         try {
-          const info = await getPdfInfo(firstSelected.path);
+          const info = await getPdfInfo(firstSelected.path, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           setFile(firstSelected.path, info);
         } catch (e) {
           console.error("Failed to sync PDF info:", e);
@@ -434,9 +451,28 @@ export default function App() {
               layoutH: convertLayoutH,
               layoutEm: convertLayoutEm,
             }}
-            onChange={(opts) =>
-              setConvertLayout(opts.layoutW ?? 450, opts.layoutH ?? 600, opts.layoutEm ?? 12)
-            }
+            onChange={async (opts) => {
+              const w = opts.layoutW ?? 450;
+              const h = opts.layoutH ?? 600;
+              const em = opts.layoutEm ?? 12;
+              setConvertLayout(w, h, em);
+              // レイアウト変更後、非 PDF ファイルのページ数を再取得
+              const nonPdfFiles = fileList.filter(
+                (f) => !f.filename.toLowerCase().endsWith(".pdf"),
+              );
+              for (const f of nonPdfFiles) {
+                try {
+                  const info = await getPdfInfo(f.path, { layoutW: w, layoutH: h, layoutEm: em });
+                  updatePageCount(f.path, info.page_count);
+                  // 現在アクティブなファイルの pdfInfo も更新する
+                  if (f.path === filePath) {
+                    setFile(f.path, info);
+                  }
+                } catch {
+                  /* 失敗は無視 */
+                }
+              }
+            }}
           />
         </div>
       )}

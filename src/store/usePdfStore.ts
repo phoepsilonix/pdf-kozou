@@ -58,6 +58,8 @@ interface PdfStore {
   convertLayoutH: number;
   convertLayoutEm: number;
   setConvertLayout: (w: number, h: number, em: number) => void;
+  /// 特定ファイルのページ数を更新（レイアウト変更後に呼ぶ）
+  updatePageCount: (path: string, pageCount: number) => void;
 }
 
 export const usePdfStore = create<PdfStore>()(
@@ -127,6 +129,10 @@ export const usePdfStore = create<PdfStore>()(
       convertLayoutEm: 12,
       setConvertLayout: (w, h, em) =>
         set({ convertLayoutW: w, convertLayoutH: h, convertLayoutEm: em }),
+      updatePageCount: (path, pageCount) =>
+        set((s) => ({
+          fileList: s.fileList.map((f) => (f.path === path ? { ...f, pageCount } : f)),
+        })),
     }),
     {
       name: "pdf-kozou-storage",

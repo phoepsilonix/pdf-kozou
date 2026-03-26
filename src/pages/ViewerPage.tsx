@@ -637,31 +637,69 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   }, [viewPage]);
 
   // ── 1. ページ情報 ──────────────────────────────────────────────────────────
+  // パスまたはレイアウトが変わったときのみ getPdfInfo を呼ぶ
+  const lastInfoKey = useRef<string>("");
+
   useEffect(() => {
-    if (!isMulti) {
+    const path = isMulti ? fileList[activeIdx]?.path || "" : activePath;
+
+    if (!path) {
       if (pdfInfo) {
         setActiveInfo(pdfInfo);
         setTotal(pdfInfo.page_count);
-      } else if (activePath)
-        getPdfInfo(activePath).then((i) => {
-          setActiveInfo(i);
-          setTotal(i.page_count);
-        });
+      }
       return;
     }
-    const p = fileList[activeIdx]?.path;
-    if (p)
-      getPdfInfo(p).then((i) => {
+
+    // パスとレイアウトの組み合わせが変わったときだけ再取得
+    const infoKey = `${path}::${convertLayoutW}x${convertLayoutH}em${convertLayoutEm}`;
+    if (infoKey === lastInfoKey.current) return;
+    lastInfoKey.current = infoKey;
+
+    // PDF かつ pdfInfo が既に渡されていれば再取得不要
+    const isPdf = path.toLowerCase().endsWith(".pdf");
+    if (isPdf && pdfInfo && !isMulti) {
+      setActiveInfo(pdfInfo);
+      setTotal(pdfInfo.page_count);
+      return;
+    }
+
+    getPdfInfo(path, {
+      layoutW: convertLayoutW,
+      layoutH: convertLayoutH,
+      layoutEm: convertLayoutEm,
+    })
+      .then((i) => {
         setActiveInfo(i);
         setTotal(i.page_count);
+      })
+      .catch(() => {
+        if (pdfInfo) {
+          setActiveInfo(pdfInfo);
+          setTotal(pdfInfo.page_count);
+        }
       });
-  }, [activeIdx, isMulti, filePath, pdfInfo, fileList]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIdx, isMulti, activePath, convertLayoutW, convertLayoutH, convertLayoutEm]);
 
+  // レイアウト変更時にレンダリングキャッシュをクリア（非 PDF 用）
+  const lastLayoutKey = useRef(`${convertLayoutW}x${convertLayoutH}em${convertLayoutEm}`);
   useEffect(() => {
-    if (!pdfInfo && filePath) getPdfInfo(filePath).then((i) => setActiveInfo(i));
-    else setActiveInfo(pdfInfo || null);
-  }, [filePath, pdfInfo]);
+    const key = `${convertLayoutW}x${convertLayoutH}em${convertLayoutEm}`;
+    if (key === lastLayoutKey.current) return;
+    lastLayoutKey.current = key;
+    // 非 PDF のキャッシュのみクリア（PDF はレイアウト不変）
+    for (const path of [...imgCache.current.keys()]) {
+      if (!path.toLowerCase().endsWith(".pdf")) {
+        imgCache.current.delete(path);
+        thumbCache.current.delete(path);
+      }
+    }
+    // infoKey もリセットして再取得を促す
+    lastInfoKey.current = "";
+  }, [convertLayoutW, convertLayoutH, convertLayoutEm]);
 
+  // 非 PDF ファイルの変換済みパスキャッシュ（変換は1回だけ）
   // ── 2. メイン画像レンダリング（キャッシュ付き）────────────────────────────
   const getOrRender = useCallback(
     async (path: string, page: number): Promise<string> => {
@@ -725,21 +763,25 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         };
         img.src = `data:image/jpeg;base64,${b64}`;
 
-        // stext を遅延取得（非同期、失敗しても表示には影響なし）
-        const scale = RENDER_DPI / 72.0;
-        getPageText(activePath, viewPage, scale)
-          .then((r) => {
-            if (!cancelled && r.ok) setTextBlocks(r.blocks);
-          })
-          .catch(() => {});
-        getPageLinks(activePath, viewPage, scale)
-          .then((r) => {
-            if (!cancelled && r.ok) setPageLinks(r.links);
-          })
-          .catch(() => {});
+        // PDF のみ stext/links/prefetch を実行（非 PDF は変換のたびにプロセスが起動するため抑制）
+        const isPdf = activePath.toLowerCase().endsWith(".pdf");
+        if (isPdf) {
+          // stext を遅延取得（非同期、失敗しても表示には影響なし）
+          const scale = RENDER_DPI / 72.0;
+          getPageText(activePath, viewPage, scale)
+            .then((r) => {
+              if (!cancelled && r.ok) setTextBlocks(r.blocks);
+            })
+            .catch(() => {});
+          getPageLinks(activePath, viewPage, scale)
+            .then((r) => {
+              if (!cancelled && r.ok) setPageLinks(r.links);
+            })
+            .catch(() => {});
 
-        // 前後プリフェッチ
-        prefetch(activePath, viewPage, total);
+          // 前後プリフェッチ
+          prefetch(activePath, viewPage, total);
+        }
       } catch (e) {
         if (!cancelled) {
           console.error("[viewer] render failed:", e);
@@ -812,6 +854,20 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       if (changed) setFileCoverThumbs(new Map(m));
     })();
   }, [fileList]);
+
+  // ── Ctrl+ホイール でズーム（non-passive で preventDefault を効かせる）──────
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom((z) => +Math.min(4.0, Math.max(0.25, z + delta)).toFixed(2));
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
 
   if (!activeInfo && !mainLoading) return <Spinner label="読み込み中…" />;
   const fname = activePath.split(/[/\\]/).pop() ?? "";
@@ -981,7 +1037,24 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         {/* メインビュー + ドロワー */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
           <div style={s.mainView}>
-            <div style={s.viewScroll} ref={scrollRef}>
+            <div
+              style={s.viewScroll}
+              ref={scrollRef}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (!e.ctrlKey) return;
+                if (e.key === "+" || e.key === "=") {
+                  e.preventDefault();
+                  setZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2));
+                } else if (e.key === "-") {
+                  e.preventDefault();
+                  setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2));
+                } else if (e.key === "0") {
+                  e.preventDefault();
+                  setZoom(1.0);
+                }
+              }}
+            >
               <div style={s.viewInner}>
                 {mainLoading && !mainImg && (
                   <div style={s.viewCenter}>

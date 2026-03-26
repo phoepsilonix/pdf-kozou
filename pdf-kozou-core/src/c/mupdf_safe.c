@@ -1450,3 +1450,209 @@ void kozou_compress_preserving_type3(
         set_err(result, fz_caught_message(ctx));
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* kozou_get_doc_info                                                  */
+/*                                                                     */
+/* ドキュメントの基本情報を取得する（Rust バインディングを使わない）。 */
+/* fz_open_document → fz_layout_document（reflowable のみ）           */
+/* → ページ数・各ページの bounds を取得する。                         */
+/*                                                                     */
+/* page_rects: 呼び出し側が確保した fz_rect の配列                   */
+/*             (max_pages 個分のスペースが必要)                        */
+/* out_page_count: 実際のページ数を返す                               */
+/* ------------------------------------------------------------------ */
+void kozou_get_doc_info(
+    fz_context *ctx,
+    const char *path,
+    float       layout_w,
+    float       layout_h,
+    float       layout_em,
+    float      *page_rects,    /* out: [x0,y0,x1,y1] × max_pages */
+    int        *out_page_count,
+    int         max_pages,
+    FfiResult  *result)
+{
+    fz_document *doc = NULL;
+    fz_var(doc);
+
+    *out_page_count = 0;
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        int is_reflowable = fz_is_document_reflowable(ctx, doc);
+
+        if (is_reflowable) {
+            float w  = (layout_w  > 0) ? layout_w  : 450.0f;
+            float h  = (layout_h  > 0) ? layout_h  : 600.0f;
+            float em = (layout_em > 0) ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        int page_count = fz_count_pages(ctx, doc);
+        *out_page_count = page_count;
+
+        /* page_count だけ取得して bounds はスキップ */
+        /* bounds が必要な場合は別 FFI で取得する    */
+        int limit = (page_count < max_pages) ? page_count : max_pages;
+        for (int i = 0; i < limit; i++) {
+            fz_page *page = NULL;
+            fz_var(page);
+            fz_try(ctx) {
+                page = fz_load_page(ctx, doc, i);
+                fz_rect r = fz_bound_page(ctx, page);
+                page_rects[i * 4 + 0] = r.x0;
+                page_rects[i * 4 + 1] = r.y0;
+                page_rects[i * 4 + 2] = r.x1;
+                page_rects[i * 4 + 3] = r.y1;
+            }
+            fz_always(ctx) {
+                if (page) fz_drop_page(ctx, page);
+            }
+            fz_catch(ctx) {
+                page_rects[i * 4 + 0] = 0.0f;
+                page_rects[i * 4 + 1] = 0.0f;
+                page_rects[i * 4 + 2] = 595.0f;
+                page_rects[i * 4 + 3] = 842.0f;
+            }
+        }
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (doc) fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* kozou_render_page                                                   */
+/*                                                                     */
+/* 指定ページを DPI でレンダリングして JPEG または PNG バイト列を返す。 */
+/* mupdf-rs の Document::open（グローバルコンテキスト）を使わないため  */
+/* Windows での font_kit フリーズが発生しない。                        */
+/*                                                                     */
+/* out_buf: 呼び出し側で確保・解放不要。fz_buffer* を返す。           */
+/*          使用後に kozou_drop_buffer で解放すること。               */
+/* format: 0=JPEG, 1=PNG                                              */
+/* ------------------------------------------------------------------ */
+fz_buffer *kozou_render_page(
+    fz_context *ctx,
+    const char *path,
+    int         page_index,
+    float       dpi,
+    float       layout_w,
+    float       layout_h,
+    float       layout_em,
+    int         format,      /* 0=JPEG, 1=PNG */
+    int         quality,     /* JPEG quality 0-100 */
+    int        *out_width,
+    int        *out_height,
+    float      *out_page_w_pt,
+    float      *out_page_h_pt,
+    FfiResult  *result)
+{
+    fz_document *doc    = NULL;
+    fz_page     *page   = NULL;
+    fz_pixmap   *pixmap = NULL;
+    fz_buffer   *buf    = NULL;
+    fz_output   *out    = NULL;
+
+    fz_var(doc);
+    fz_var(page);
+    fz_var(pixmap);
+    fz_var(buf);
+    fz_var(out);
+
+    *out_width     = 0;
+    *out_height    = 0;
+    *out_page_w_pt = 0.0f;
+    *out_page_h_pt = 0.0f;
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = (layout_w  > 0) ? layout_w  : 450.0f;
+            float h  = (layout_h  > 0) ? layout_h  : 600.0f;
+            float em = (layout_em > 0) ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        page = fz_load_page(ctx, doc, page_index);
+        fz_rect bounds = fz_bound_page(ctx, page);
+
+        *out_page_w_pt = bounds.x1 - bounds.x0;
+        *out_page_h_pt = bounds.y1 - bounds.y0;
+
+        float scale = (dpi > 0) ? dpi / 72.0f : 2.0f;
+        fz_matrix ctm = fz_scale(scale, scale);
+        fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
+
+        fz_colorspace *rgb = fz_device_rgb(ctx);
+        pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
+        fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
+
+        fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
+        fz_try(ctx) {
+            fz_run_page(ctx, page, draw_dev, fz_identity, NULL);
+            fz_close_device(ctx, draw_dev);
+        }
+        fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
+        fz_catch(ctx)  { fz_rethrow(ctx); }
+
+        *out_width  = fz_pixmap_width(ctx, pixmap);
+        *out_height = fz_pixmap_height(ctx, pixmap);
+
+        /* バッファに書き出す */
+        size_t est_size = (size_t)(*out_width) * (*out_height) * 3;
+        buf = fz_new_buffer(ctx, est_size > 4096 ? est_size : 4096);
+        out = fz_new_output_with_buffer(ctx, buf);
+
+        if (format == 1) {
+            /* PNG */
+            fz_write_pixmap_as_png(ctx, out, pixmap);
+        } else {
+            /* JPEG */
+            int q = (quality > 0 && quality <= 100) ? quality : 85;
+            fz_write_pixmap_as_jpeg(ctx, out, pixmap, q, 0);
+        }
+        fz_close_output(ctx, out);
+        fz_drop_output(ctx, out);
+        out = NULL;
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (out)    fz_drop_output(ctx, out);
+        if (pixmap) fz_drop_pixmap(ctx, pixmap);
+        if (page)   fz_drop_page(ctx, page);
+        if (doc)    fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        if (buf) { fz_drop_buffer(ctx, buf); buf = NULL; }
+        set_err(result, fz_caught_message(ctx));
+    }
+    return buf;
+}
+
+void kozou_drop_buffer(fz_context *ctx, fz_buffer *buf)
+{
+    if (buf) fz_drop_buffer(ctx, buf);
+}
+
+/* fz_buffer の内容を取得するヘルパー */
+size_t kozou_buffer_get_data(fz_context *ctx, fz_buffer *buf,
+                              const unsigned char **data_out)
+{
+    if (!buf || !data_out) return 0;
+    unsigned char *data = NULL;
+    size_t len = fz_buffer_storage(ctx, buf, &data);
+    *data_out = data;
+    return len;
+}

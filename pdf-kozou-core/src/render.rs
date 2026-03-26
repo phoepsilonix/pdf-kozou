@@ -6,7 +6,6 @@
 // ページレンダリング (JPEG / PNG / SVG 対応)
 
 use crate::error::{CoreError, Result};
-use crate::pixmap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,46 +43,110 @@ pub struct RenderResponse {
 }
 
 pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
-    let mut doc = mupdf::Document::open(&req.path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    use crate::ffi::{
+        kozou_drop_buffer, kozou_new_context, kozou_render_page as ffi_render, FfiResult,
+    };
+    use std::ffi::CString;
+    use std::os::raw::c_int;
 
-    // リフロー可能な文書（DOCX/EPUB/HTML 等）はレイアウト計算が必要
-    if doc.is_reflowable().unwrap_or(false) {
-        let w = req.layout_w.unwrap_or(450.0);
-        let h = req.layout_h.unwrap_or(600.0);
-        let em = req.layout_em.unwrap_or(12.0);
-        doc.layout(w, h, em)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-    }
-
-    let page = doc
-        .load_page(req.page_index)
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-    let bounds = page.bounds().map_err(|e| CoreError::MuPdf(e.to_string()))?;
     let format = req.format.as_deref().unwrap_or("jpeg");
-    let quality = req.quality.unwrap_or(85);
 
-    // PDF メタデータを収集（画像への埋め込み用）
-    let metadata = crate::compress::collect_metadata(&req.path);
-
+    // SVG は従来の DocumentWriter 方式（Windows では動作しない場合あり）
     if format == "svg" {
+        // SVG の場合は Rust バインディングにフォールバック
+        // TODO: SVG も C FFI 化する
+        let mut doc =
+            mupdf::Document::open(&req.path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        if doc.is_reflowable().unwrap_or(false) {
+            let w = req.layout_w.unwrap_or(450.0);
+            let h = req.layout_h.unwrap_or(600.0);
+            let em = req.layout_em.unwrap_or(12.0);
+            doc.layout(w, h, em)
+                .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        }
+        let page = doc
+            .load_page(req.page_index)
+            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        let bounds = page.bounds().map_err(|e| CoreError::MuPdf(e.to_string()))?;
+        let metadata = crate::compress::collect_metadata(&req.path);
         return render_svg(req, &page, &bounds, &metadata);
     }
 
-    let scale = req.dpi as f32 / 72.0;
-    let matrix = mupdf::Matrix::new_scale(scale, scale);
-    let pm = page
-        .to_pixmap(&matrix, &mupdf::Colorspace::device_rgb(), false, false)
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let c_path = CString::new(req.path.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
-    let image_bytes_raw: Vec<u8> = match format {
-        "png" => pixmap::pixmap_to_png(&pm)?,
-        _ => pixmap::pixmap_to_jpeg(&pm, quality)?,
+    let fmt_code: c_int = if format == "png" { 1 } else { 0 };
+    let quality = req.quality.unwrap_or(85) as c_int;
+    let dpi = req.dpi as f32;
+    let lw = req.layout_w.unwrap_or(0.0);
+    let lh = req.layout_h.unwrap_or(0.0);
+    let lem = req.layout_em.unwrap_or(0.0);
+
+    let mut width: c_int = 0;
+    let mut height: c_int = 0;
+    let mut page_w_pt: f32 = 0.0;
+    let mut page_h_pt: f32 = 0.0;
+    let mut ffi_result = FfiResult::default();
+
+    let buf_ptr = unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let buf = ffi_render(
+            ctx,
+            c_path.as_ptr(),
+            req.page_index,
+            dpi,
+            lw,
+            lh,
+            lem,
+            fmt_code,
+            quality,
+            &mut width,
+            &mut height,
+            &mut page_w_pt,
+            &mut page_h_pt,
+            &mut ffi_result,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        buf
     };
 
-    // メタデータを画像バイト列に埋め込む
-    let image_bytes = match format {
-        "png" => embed_metadata_png(image_bytes_raw, &metadata),
-        _ => embed_metadata_jpeg(image_bytes_raw, &metadata),
+    if ffi_result.ok == 0 {
+        return Err(CoreError::MuPdf(format!("{ffi_result}")));
+    }
+    if buf_ptr.is_null() {
+        return Err(CoreError::MuPdf("render returned null buffer".into()));
+    }
+
+    // fz_buffer からバイト列を取得
+    let raw_bytes: Vec<u8> = unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed (drop)".into()));
+        }
+        let mut data_ptr: *const u8 = std::ptr::null();
+        let len = crate::ffi::kozou_buffer_get_data(ctx, buf_ptr, &mut data_ptr);
+        let bytes = if !data_ptr.is_null() && len > 0 {
+            std::slice::from_raw_parts(data_ptr, len).to_vec()
+        } else {
+            vec![]
+        };
+        kozou_drop_buffer(ctx, buf_ptr);
+        mupdf_sys::fz_drop_context(ctx);
+        bytes
+    };
+
+    // メタデータを画像バイト列に埋め込む（PDF のみ・非 PDF はスキップ）
+    let metadata = crate::compress::collect_metadata(&req.path);
+    let image_bytes = if metadata.is_empty() {
+        raw_bytes
+    } else {
+        match format {
+            "png" => embed_metadata_png(raw_bytes, &metadata),
+            _ => embed_metadata_jpeg(raw_bytes, &metadata),
+        }
     };
 
     if let Some(out_path) = &req.output {
@@ -92,10 +155,10 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
             ok: true,
             image_b64: String::new(),
             format: format.to_string(),
-            width_px: pm.width(),
-            height_px: pm.height(),
-            page_w_pt: bounds.x1 - bounds.x0,
-            page_h_pt: bounds.y1 - bounds.y0,
+            width_px: width as u32,
+            height_px: height as u32,
+            page_w_pt,
+            page_h_pt,
             dpi: req.dpi,
             output: Some(out_path.clone()),
         });
@@ -107,10 +170,10 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
         ok: true,
         image_b64,
         format: format.to_string(),
-        width_px: pm.width(),
-        height_px: pm.height(),
-        page_w_pt: bounds.x1 - bounds.x0,
-        page_h_pt: bounds.y1 - bounds.y0,
+        width_px: width as u32,
+        height_px: height as u32,
+        page_w_pt,
+        page_h_pt,
         dpi: req.dpi,
         output: None,
     })
@@ -139,8 +202,9 @@ fn embed_metadata_jpeg(jpeg_bytes: Vec<u8>, metadata: &[(String, String)]) -> Ve
     };
 
     // COM セグメント（互換性用テキストコメント）を構築
+    // COM は ASCII/Latin-1 のみ対応。非 ASCII は含めない（Windows で文字化け）
     let comment = build_metadata_comment(metadata);
-    let com_seg = if !comment.is_empty() {
+    let com_seg = if !comment.is_empty() && comment.is_ascii() {
         let cb = comment.as_bytes();
         let seg_len = (cb.len() + 2) as u16;
         let mut seg = Vec::with_capacity(4 + cb.len());
@@ -155,6 +219,11 @@ fn embed_metadata_jpeg(jpeg_bytes: Vec<u8>, metadata: &[(String, String)]) -> Ve
     };
 
     // EXIF APP1 セグメントを構築
+    eprintln!(
+        "[exif] CreationDate={:?} ModDate={:?}",
+        get("CreationDate"),
+        get("ModDate")
+    );
     let exif_payload = build_exif_payload(
         get("Title"),
         get("Author"),
@@ -257,10 +326,34 @@ fn build_exif_payload(
         v
     };
 
-    // PDF 日付 "D:YYYYMMDDHHmmSS..." → EXIF 日時 "YYYY:MM:DD HH:MM:SS\0"
+    // 日付文字列 → EXIF 日時 "YYYY:MM:DD HH:MM:SS\0"
+    // PDF 形式: "D:YYYYMMDDHHmmSS"
+    // ISO 8601: "YYYY-MM-DDTHH:MM:SSZ" （DOCX core.xml の dcterms:created）
     let to_exif_date = |s: &str| -> Vec<u8> {
         let s = if s.starts_with("D:") { &s[2..] } else { s };
-        let date = if s.len() >= 14 {
+        let date = if s.contains('-') && s.contains('T') {
+            // ISO 8601: "2024-01-15T09:30:00Z" or "2024-01-15T09:30:00+09:00"
+            let parts: Vec<&str> = s.splitn(2, 'T').collect();
+            let date_part = parts[0].replace('-', ":");
+            let time_part = if parts.len() > 1 {
+                // タイムゾーン記号より前の時刻本体のみ取る
+                let t = parts[1];
+                let time_body = if let Some(pos) = t.find(|c| c == '+' || c == '-' || c == 'Z') {
+                    &t[..pos]
+                } else {
+                    t
+                };
+                if time_body.len() >= 8 {
+                    time_body[..8].to_string()
+                } else {
+                    "00:00:00".to_string()
+                }
+            } else {
+                "00:00:00".to_string()
+            };
+            format!("{date_part} {time_part}")
+        } else if s.len() >= 14 {
+            // PDF 形式 "YYYYMMDDHHMMSS"
             format!(
                 "{}:{}:{} {}:{}:{}",
                 &s[0..4],
@@ -283,37 +376,46 @@ fn build_exif_payload(
     // ── IFD0 タグを構築 ────────────────────────────────────────────────────
     const TYPE_ASCII: u16 = 2;
     const TYPE_BYTE: u16 = 1;
+    const TYPE_SHORT: u16 = 3;
     const TYPE_LONG: u16 = 4;
     const TYPE_UNDEFINED: u16 = 7; // UserComment 用
 
     // (tag_id, type, data)
     let mut ifd0_tags: Vec<(u16, u16, Vec<u8>)> = Vec::new();
 
-    // 0x010E ImageDescription (UTF-8) ← Title
-    // macOS Finder 詳細情報・Linux exiftool・Android ギャラリーで表示
+    // 0x010E ImageDescription (ASCII のみ) ← Title
+    // EXIF 仕様上 ASCII 型で日本語を入れると exiftool 等で文字化けする
+    // 非 ASCII 文字を含む場合は省略し、XPTitle (UTF-16LE) のみ使用する
     if let Some(v) = title {
-        ifd0_tags.push((0x010E, TYPE_ASCII, to_ascii(v)));
-        // Windows 用 XPTitle (UTF-16 LE)
+        let ascii_only = v.is_ascii();
+        if ascii_only {
+            ifd0_tags.push((0x010E, TYPE_ASCII, to_ascii(v)));
+        }
+        // Windows 用 XPTitle (UTF-16 LE) — 日本語対応
         ifd0_tags.push((0x9C9B, TYPE_BYTE, to_utf16le(v)));
     }
 
-    // 0x013B Artist (UTF-8) ← Author
-    // macOS Finder・Android・Windows (Exif Artist) で表示
+    // 0x013B Artist ← Author（ASCII のみ、非 ASCII は XPAuthor に任せる）
     if let Some(v) = artist {
-        ifd0_tags.push((0x013B, TYPE_ASCII, to_ascii(v)));
-        // Windows 用 XPAuthor (UTF-16 LE)
+        if v.is_ascii() {
+            ifd0_tags.push((0x013B, TYPE_ASCII, to_ascii(v)));
+        }
+        // Windows 用 XPAuthor (UTF-16 LE) — 日本語対応
         ifd0_tags.push((0x9C9D, TYPE_BYTE, to_utf16le(v)));
     }
 
-    // 0x8298 Copyright (UTF-8) ← Author を著作権者として格納
-    // macOS Finder「著作権」・多くのビューアで表示
+    // 0x8298 Copyright ← Author（ASCII のみ）
     if let Some(v) = artist {
-        ifd0_tags.push((0x8298, TYPE_ASCII, to_ascii(v)));
+        if v.is_ascii() {
+            ifd0_tags.push((0x8298, TYPE_ASCII, to_ascii(v)));
+        }
     }
 
-    // 0x0131 Software (UTF-8) ← Creator（作成ソフト）
+    // 0x0131 Software ← Creator（ASCII のみ）
     if let Some(v) = software {
-        ifd0_tags.push((0x0131, TYPE_ASCII, to_ascii(v)));
+        if v.is_ascii() {
+            ifd0_tags.push((0x0131, TYPE_ASCII, to_ascii(v)));
+        }
     }
 
     // 0x0132 DateTime (ASCII) ← ModDate
@@ -325,8 +427,15 @@ fn build_exif_payload(
     }
 
     // Windows XP タグ（UTF-16 LE）
+    // XPComment (0x9C9C) → Windows「コメント」プロパティに表示
+    // Subject があればそれを、なければ Keywords を使う
+    {
+        let comment_val = subject.or(keywords);
+        if let Some(v) = comment_val {
+            ifd0_tags.push((0x9C9C, TYPE_BYTE, to_utf16le(v))); // XPComment
+        }
+    }
     if let Some(v) = subject {
-        ifd0_tags.push((0x9C9C, TYPE_BYTE, to_utf16le(v))); // XPComment
         ifd0_tags.push((0x9C9F, TYPE_BYTE, to_utf16le(v))); // XPSubject
     }
     if let Some(v) = keywords {
@@ -339,6 +448,13 @@ fn build_exif_payload(
     // ── Exif SubIFD タグを構築 ─────────────────────────────────────────────
     let mut exif_sub_tags: Vec<(u16, u16, Vec<u8>)> = Vec::new();
 
+    // Windows エクスプローラが「撮影日時」を表示するために必要な標準タグ
+    // FlashPixVersion (0xA000): "0100" → Flashpix 1.0
+    exif_sub_tags.push((0xA000, TYPE_UNDEFINED, b"0100".to_vec()));
+    // ColorSpace (0xA001): 0xFFFF = Uncalibrated
+    // MuPDF の fz_device_rgb は sRGB に近いが ICC プロファイル保証なし
+    exif_sub_tags.push((0xA001, TYPE_SHORT, vec![0xFF, 0xFF]));
+
     // 0x9003 DateTimeOriginal ← CreationDate
     // macOS Finder「作成日」・Android・exiftool で表示
     if let Some(v) = creation_date {
@@ -349,26 +465,36 @@ fn build_exif_payload(
         }
     }
 
-    // 0x9286 UserComment (UNICODE形式 UTF-16 BE) ← Subject + Keywords
-    // macOS・Android・多くのビューアで日本語として表示される
-    // 形式: "UNICODE\0" (8バイト識別子) + UTF-16 BE テキスト
+    // 0x9286 UserComment ← Keywords（主）、Subject（あれば）
+    // UserComment の形式:
+    //   ASCII コンテンツ → "ASCII\0\0\0" (8バイト) + ASCII テキスト
+    //   非 ASCII コンテンツ → "UNICODE\0" (8バイト) + UTF-16BE
+    // Windows は "ASCII\0\0\0" 形式を正しく表示できる
     {
         let comment_parts: Vec<&str> = [
-            subject.map(|s| ("Subject", s)),
-            keywords.map(|s| ("Keywords", s)),
+            subject.filter(|s| !s.is_empty()),
+            keywords.filter(|s| !s.is_empty()),
         ]
         .iter()
         .flatten()
-        .map(|(k, v)| *v)
+        .copied()
         .collect();
 
         if !comment_parts.is_empty() {
             let combined = comment_parts.join("; ");
-            // UserComment: "UNICODE\0" (8バイト) + UTF-16 BE
-            let mut uc: Vec<u8> = b"UNICODE\0".to_vec();
-            for unit in combined.encode_utf16() {
-                uc.extend_from_slice(&unit.to_be_bytes()); // BE
-            }
+            let uc = if combined.is_ascii() {
+                // ASCII 形式: "ASCII\0\0\0" + ASCII テキスト
+                let mut v: Vec<u8> = b"ASCII\0\0\0".to_vec();
+                v.extend_from_slice(combined.as_bytes());
+                v
+            } else {
+                // UNICODE 形式: "UNICODE\0" + UTF-16BE
+                let mut v: Vec<u8> = b"UNICODE\0".to_vec();
+                for unit in combined.encode_utf16() {
+                    v.extend_from_slice(&unit.to_be_bytes());
+                }
+                v
+            };
             exif_sub_tags.push((0x9286, TYPE_UNDEFINED, uc));
         }
     }
@@ -422,7 +548,15 @@ fn build_exif_payload(
     ifd0_entries.extend_from_slice(&(ifd0_n as u16).to_le_bytes());
 
     for (tag, typ, data) in &ifd0_tags {
-        let count = data.len() as u32;
+        // count: 型ごとの「要素数」
+        //   BYTE(1), ASCII(2), UNDEFINED(7) → バイト数 = 要素数
+        //   SHORT(3) → バイト数 ÷ 2 = 要素数
+        //   LONG(4)  → バイト数 ÷ 4 = 要素数
+        let count: u32 = match *typ {
+            3 /* SHORT */    => (data.len() / 2) as u32,
+            4 /* LONG */     => (data.len() / 4) as u32,
+            _ => data.len() as u32,
+        };
         ifd0_entries.extend_from_slice(&tag.to_le_bytes());
         ifd0_entries.extend_from_slice(&typ.to_le_bytes());
         ifd0_entries.extend_from_slice(&count.to_le_bytes());
@@ -443,7 +577,11 @@ fn build_exif_payload(
     if has_exif_sub {
         exif_sub_entries.extend_from_slice(&(exif_sub_n as u16).to_le_bytes());
         for (tag, typ, data) in &exif_sub_tags {
-            let count = data.len() as u32;
+            let count: u32 = match *typ {
+                3 /* SHORT */    => (data.len() / 2) as u32,
+                4 /* LONG */     => (data.len() / 4) as u32,
+                _ => data.len() as u32,
+            };
             exif_sub_entries.extend_from_slice(&tag.to_le_bytes());
             exif_sub_entries.extend_from_slice(&typ.to_le_bytes());
             exif_sub_entries.extend_from_slice(&count.to_le_bytes());
@@ -473,46 +611,99 @@ fn build_exif_payload(
     let mut payload = Vec::with_capacity(6 + tiff.len());
     payload.extend_from_slice(b"Exif\0\0");
     payload.extend_from_slice(&tiff);
+
+    // デバッグ: ExifOffset の値を確認
+    eprintln!(
+        "[exif] ifd0_n={} exif_sub_start={} value_area_start={} payload_len={}",
+        ifd0_n,
+        exif_sub_start,
+        value_area_start,
+        payload.len()
+    );
+
     payload
 }
 
 // ── PNG メタデータ埋め込み ──────────────────────────────────────────────────
 //
-// PNG の tEXt チャンク: keyword + NUL + text
-// keyword には ISO-8859-1 の制約があるため ASCII のみ使用
-// 引き継ぐキー: Title, Author, Subject, Keywords, Creator
-// tEXt チャンクを IDAT の直前に挿入する
+// 複数のチャンクで各環境に対応する:
+//   eXIf: Windows エクスプローラ・macOS Finder・Photoshop（EXIF データ）
+//   iTXt: exiftool・GIMP 等（Title/Author/Keywords 等 UTF-8）
+//   iTXt XML:com.adobe.xmp: Adobe 系・macOS（XMP メタデータ）
+//
+// 全チャンクを IHDR の直後に挿入する
 fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
     if metadata.is_empty() || png_bytes.len() < 33 {
         return png_bytes;
     }
 
-    let sig_ihdr_end = 33; // 8+25
+    let sig_ihdr_end = 33; // 8(シグネチャ) + 25(IHDRチャンク)
 
-    let mut text_chunks = Vec::new();
+    let get = |key: &str| -> Option<&str> {
+        metadata
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    };
+
+    let mut chunks: Vec<u8> = Vec::new();
+
+    // ── 1. eXIf チャンク（EXIF）──────────────────────────────────────────
+    // Windows エクスプローラ・macOS Finder・Photoshop 等で表示される
+    let exif_payload = build_exif_payload(
+        get("Title"),
+        get("Author"),
+        get("Creator"),
+        get("CreationDate"),
+        get("ModDate"),
+        get("Subject"),
+        get("Keywords"),
+    );
+    if !exif_payload.is_empty() {
+        // eXIf チャンク: length | "eXIf" | TIFF-data (Exif\0\0 なし) | CRC
+        // 注意: PNG の eXIf は "Exif\0\0" プレフィックスを含まない
+        //       JPEG APP1 の場合は "Exif\0\0" が先頭に付くが PNG は不要
+        let tiff_data = &exif_payload[6..]; // "Exif\0\0" の6バイトを除いた TIFF 部分
+        let length = tiff_data.len() as u32;
+        let chunk_type = b"eXIf";
+        let crc = png_crc(chunk_type, tiff_data);
+        chunks.extend_from_slice(&length.to_be_bytes());
+        chunks.extend_from_slice(chunk_type);
+        chunks.extend_from_slice(tiff_data);
+        chunks.extend_from_slice(&crc.to_be_bytes());
+    }
+
+    // ── 2. iTXt チャンク（テキストメタデータ）─────────────────────────────
+    // exiftool・GIMP・ImageMagick 等で表示される
     const PNG_TEXT_KEYS: &[(&str, &str)] = &[
         ("Title", "Title"),
         ("Author", "Author"),
         ("Subject", "Subject"),
         ("Keywords", "Keywords"),
         ("Creator", "Software"),
-        ("Producer", "Comment"),
+        ("CreationDate", "Creation Time"),
+        ("ModDate", "Modification Time"),
     ];
-
     for (meta_key, png_key) in PNG_TEXT_KEYS {
-        if let Some((_, value)) = metadata.iter().find(|(k, _)| k == meta_key) {
-            let chunk_data = build_png_itxt_chunk(png_key, value); // ← iTXt に変更
-            text_chunks.extend_from_slice(&chunk_data);
+        if let Some(value) = get(meta_key) {
+            chunks.extend_from_slice(&build_png_itxt_chunk(png_key, value));
         }
     }
 
-    if text_chunks.is_empty() {
+    // ── 3. XMP iTXt チャンク（Adobe/macOS）───────────────────────────────
+    // macOS Finder の詳細情報・Adobe 製品で表示される
+    let xmp = build_xmp_packet(metadata);
+    if !xmp.is_empty() {
+        chunks.extend_from_slice(&build_png_itxt_chunk("XML:com.adobe.xmp", &xmp));
+    }
+
+    if chunks.is_empty() {
         return png_bytes;
     }
 
-    let mut result = Vec::with_capacity(png_bytes.len() + text_chunks.len());
+    let mut result = Vec::with_capacity(png_bytes.len() + chunks.len());
     result.extend_from_slice(&png_bytes[..sig_ihdr_end]);
-    result.extend_from_slice(&text_chunks);
+    result.extend_from_slice(&chunks);
     result.extend_from_slice(&png_bytes[sig_ihdr_end..]);
     result
 }
@@ -575,7 +766,7 @@ fn render_svg(
 
     // MuPDFに書き出させる
     {
-        let mut writer = DocumentWriter::new(&temp_str, "svg", "text=text")
+        let mut writer = DocumentWriter::new(&temp_str, "svg", "text=path")
             .map_err(|e| CoreError::MuPdf(format!("svg writer: {e}")))?;
 
         let dev = writer
@@ -776,6 +967,104 @@ fn xml_escape(s: &str) -> String {
 }
 
 // ── 共通: メタデータをテキストコメント形式にまとめる ────────────────────────
+/// XMP パケットを構築する（Dublin Core + xmp: 名前空間）
+/// macOS Finder・Adobe 製品・多くの画像ビューアで読まれる
+fn build_xmp_packet(metadata: &[(String, String)]) -> String {
+    let get = |key: &str| -> Option<&str> {
+        metadata
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    };
+    let esc = |s: &str| -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    };
+
+    let mut props = String::new();
+    if let Some(v) = get("Title") {
+        props.push_str(&format!("   <dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">{}</rdf:li></rdf:Alt></dc:title>\n", esc(v)));
+    }
+    if let Some(v) = get("Author") {
+        props.push_str(&format!(
+            "   <dc:creator><rdf:Seq><rdf:li>{}</rdf:li></rdf:Seq></dc:creator>\n",
+            esc(v)
+        ));
+    }
+    if let Some(v) = get("Subject") {
+        props.push_str(&format!("   <dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">{}</rdf:li></rdf:Alt></dc:description>\n", esc(v)));
+    }
+    if let Some(v) = get("Keywords") {
+        props.push_str(&format!(
+            "   <dc:subject><rdf:Bag><rdf:li>{}</rdf:li></rdf:Bag></dc:subject>\n",
+            esc(v)
+        ));
+    }
+    if let Some(v) = get("Creator") {
+        props.push_str(&format!(
+            "   <xmp:CreatorTool>{}</xmp:CreatorTool>\n",
+            esc(v)
+        ));
+    }
+    if let Some(v) = get("CreationDate") {
+        // ISO 8601 形式に正規化
+        let date = normalize_to_iso8601(v);
+        if !date.is_empty() {
+            props.push_str(&format!("   <xmp:CreateDate>{date}</xmp:CreateDate>\n"));
+            props.push_str(&format!("   <xmp:MetadataDate>{date}</xmp:MetadataDate>\n"));
+        }
+    }
+    if let Some(v) = get("ModDate") {
+        let date = normalize_to_iso8601(v);
+        if !date.is_empty() {
+            props.push_str(&format!("   <xmp:ModifyDate>{date}</xmp:ModifyDate>\n"));
+        }
+    }
+
+    if props.is_empty() {
+        return String::new();
+    }
+
+    format!(
+        r#"<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+{props}  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="r"?>"#
+    )
+}
+
+/// 日付文字列を ISO 8601 形式 "YYYY-MM-DDTHH:MM:SS" に正規化する
+fn normalize_to_iso8601(s: &str) -> String {
+    let s = if s.starts_with("D:") { &s[2..] } else { s };
+    if s.contains('-') && s.contains('T') {
+        // 既に ISO 8601 → タイムゾーン含めてそのまま（ただし末尾の空白等は除去）
+        s.trim().to_string()
+    } else if s.len() >= 14 {
+        // PDF 形式 "YYYYMMDDHHMMSS"
+        format!(
+            "{}-{}-{}T{}:{}:{}",
+            &s[0..4],
+            &s[4..6],
+            &s[6..8],
+            &s[8..10],
+            &s[10..12],
+            &s[12..14]
+        )
+    } else if s.len() >= 8 {
+        format!("{}-{}-{}T00:00:00", &s[0..4], &s[4..6], &s[6..8])
+    } else {
+        String::new()
+    }
+}
+
 fn build_metadata_comment(metadata: &[(String, String)]) -> String {
     let parts: Vec<String> = metadata
         .iter()

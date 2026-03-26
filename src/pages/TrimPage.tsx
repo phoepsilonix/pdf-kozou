@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 // src/pages/TrimPage.tsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TrimCanvas } from "../components/trim/TrimCanvas";
 import { TrimControls } from "../components/trim/TrimControls";
@@ -67,10 +67,26 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [extractSpec, onExtract] = useState("all");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
+  const [zoom, setZoom] = useState(1.0);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
 
   const currentPage = firstPdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
   const pageH = currentPage.h;
+
+  // Ctrl+ホイール でズーム
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom((z) => +Math.min(4.0, Math.max(0.25, z + delta)).toFixed(2));
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
 
   // バッチ全体のサムネイル（先頭ページ）
   useEffect(() => {
@@ -107,7 +123,11 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     let cancelled = false;
 
     // PDF情報取得
-    getPdfInfo(path)
+    getPdfInfo(path, {
+      layoutW: convertLayoutW,
+      layoutH: convertLayoutH,
+      layoutEm: convertLayoutEm,
+    })
       .then((info) => {
         if (!cancelled) setCurPageInfo(info);
       })
@@ -133,16 +153,13 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const pickDir = useCallback(async () => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
     if (dir) {
-      // 必要なら lastSaveDir を Zustand に保存
+      setOutDir(dir);
       usePdfStore.getState().setLastSaveDir(dir);
     }
   }, []);
 
   const handleExecute = useCallback(async () => {
-    if (!usePdfStore.getState().lastSaveDir) {
-      await pickDir();
-      return;
-    }
+    if (!outDir) return;
 
     setPhase("processing");
     const prog = {
@@ -158,7 +175,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       setProgress({ ...prog });
 
       try {
-        const out = `${usePdfStore.getState().lastSaveDir}/${f.filename.replace(/\.[^/.]+$/, "")}_trimmed.pdf`;
+        const out = `${outDir}/${f.filename.replace(/\.[^/.]+$/, "")}_trimmed.pdf`;
 
         console.log(
           "[DEBUG] trim_pdf in out margin pages exclude extract: ",
@@ -189,7 +206,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     }
 
     setPhase("result");
-  }, [files, trimMargins, trimPages, pickDir]);
+  }, [files, trimMargins, trimPages, excludeSpec, extractSpec, outDir]);
 
   // 処理中画面
   if (phase === "processing") {
@@ -355,15 +372,56 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             gap: 12,
           }}
         >
-          <div style={s.canvasWrap}>
+          {/* ズームコントロール */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <button
+              style={s.zBtn}
+              onClick={() => setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
+            >
+              −
+            </button>
+            <span style={{ fontSize: 11, minWidth: 36, textAlign: "center" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              style={s.zBtn}
+              onClick={() => setZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2))}
+            >
+              ＋
+            </button>
+            <button style={s.zBtn} onClick={() => setZoom(1.0)}>
+              100%
+            </button>
+            <span style={{ fontSize: 10, color: "var(--c-textDim)", marginLeft: 4 }}>
+              Ctrl+ホイールで拡大縮小
+            </span>
+          </div>
+          <div
+            style={{ ...s.canvasWrap, overflow: "auto" }}
+            ref={canvasWrapRef}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (!e.ctrlKey) return;
+              if (e.key === "+" || e.key === "=") {
+                e.preventDefault();
+                setZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2));
+              } else if (e.key === "-") {
+                e.preventDefault();
+                setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2));
+              } else if (e.key === "0") {
+                e.preventDefault();
+                setZoom(1.0);
+              }
+            }}
+          >
             {pageImage ? (
               <TrimCanvas
                 pageImageB64={pageImage}
                 pageWidthPt={curW}
                 pageHeightPt={curH}
-                margins={trimMargins} // ← Zustand から
-                onChange={setTrimMargins} // ← Zustand に更新
-                displayWidth={CANVAS_W}
+                margins={trimMargins}
+                onChange={setTrimMargins}
+                displayWidth={Math.round(CANVAS_W * zoom)}
               />
             ) : (
               <div style={s.ph}>ページ読み込み中...</div>
@@ -384,6 +442,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onApply={handleExecute}
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
+            applyLabel={outDir ? `${files.length}件を一括トリミング →` : "フォルダを選択して実行"}
+            outDir={outDir}
+            onPickDir={pickDir}
             excludeSpec={excludeSpec}
             onExclude={onExclude}
             extractSpec={extractSpec}
@@ -409,6 +470,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     convertLayoutEm,
   } = usePdfStore();
 
+  const [zoom, setZoom] = useState(1.0);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
+
   const [previewPage, setPreviewPage] = useState(0);
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [phase, setPhase] = useState<Phase>("edit");
@@ -418,6 +482,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [isSaving, setIsSaving] = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
   const [tmpPageInfo, setTmpPageInfo] = useState<PdfInfo | null>(null);
+  // 左ペイン各ページのサムネイル
+  const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
 
   const [trimPages, onPages] = useState("all");
   const [excludeSpec, onExclude] = useState("");
@@ -441,6 +507,60 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       .then(setPageImage)
       .catch(() => setPageImage(""));
   }, [filePath, previewPage, pageImage]);
+
+  // 左ペインのサムネイルをバックグラウンドで順次取得
+  useEffect(() => {
+    setThumbs(new Array(pdfInfo.page_count).fill(undefined));
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < pdfInfo.page_count; i++) {
+        try {
+          const b64 = await renderPage(filePath, i, THUMB_DPI, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
+          if (cancelled) return;
+          setThumbs((prev) => {
+            const a = [...prev];
+            a[i] = b64;
+            return a;
+          });
+        } catch {}
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath, pdfInfo.page_count]);
+
+  // Ctrl+ホイール / Ctrl+キーボードでキャンバスズーム
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.15 : 0.15;
+      setZoom((z) => +Math.min(4.0, Math.max(0.25, z + delta)).toFixed(2));
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
+
+  const handleCanvasKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!e.ctrlKey) return;
+    if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      setZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2));
+    } else if (e.key === "-") {
+      e.preventDefault();
+      setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2));
+    } else if (e.key === "0") {
+      e.preventDefault();
+      setZoom(1.0);
+    }
+  }, []);
 
   const handleExecute = useCallback(async () => {
     setPhase("processing");
@@ -472,7 +592,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       /*
       .then(() => { 
         // プレビュー用に結果画像を取得（任意で最大6ページ）
-        getPdfInfo(tmpPath).then(info => {
+        getPdfInfo(tmpPath, { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm }).then(info => {
           setTmpPageInfo(info);
 	  pages = info.page_count;
           console.log("pages1", pages);
@@ -480,7 +600,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       }).catch(() => {});
 */
       let pages = pdfInfo.page_count;
-      await getPdfInfo(tmpPath)
+      await getPdfInfo(tmpPath, {
+        layoutW: convertLayoutW,
+        layoutH: convertLayoutH,
+        layoutEm: convertLayoutEm,
+      })
         .then((info) => {
           setTmpPageInfo(info);
           pages = info.page_count;
@@ -605,10 +729,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               }}
               onClick={() => setPreviewPage(i)}
             >
-              {/* ここで thumbImages を使わず、pageImage をプレビューとして表示（またはサムネイルを別途ロード） */}
-              {i === previewPage && pageImage ? (
+              {thumbs[i] ? (
                 <img
-                  src={`data:image/jpeg;base64,${pageImage}`}
+                  src={`data:image/jpeg;base64,${thumbs[i]}`}
                   style={s.thumbImg}
                   alt={`Page ${i + 1}`}
                 />
@@ -627,16 +750,42 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           <span style={s.pageInd}>
             {previewPage + 1} / {pdfInfo.page_count} ページ
           </span>
+          {/* ズームコントロール */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+            <button
+              style={s.zBtn}
+              onClick={() => setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
+            >
+              −
+            </button>
+            <span style={{ fontSize: 11, minWidth: 36, textAlign: "center" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              style={s.zBtn}
+              onClick={() => setZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2))}
+            >
+              ＋
+            </button>
+            <button style={s.zBtn} onClick={() => setZoom(1.0)}>
+              100%
+            </button>
+          </div>
         </div>
-        <div style={s.canvasWrap}>
+        <div
+          style={{ ...s.canvasWrap, overflow: "auto" }}
+          ref={canvasWrapRef}
+          tabIndex={0}
+          onKeyDown={handleCanvasKeyDown}
+        >
           {pageImage ? (
             <TrimCanvas
               pageImageB64={pageImage}
               pageWidthPt={pageW}
               pageHeightPt={pageH}
               margins={trimMargins}
-              onChange={setTrimMargins} // Zustand に直接更新
-              displayWidth={CANVAS_W}
+              onChange={setTrimMargins}
+              displayWidth={Math.round(CANVAS_W * zoom)}
             />
           ) : (
             <div
@@ -837,6 +986,15 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "center",
+  },
+  zBtn: {
+    fontSize: 12,
+    padding: "2px 6px",
+    background: "var(--c-bgCard)",
+    border: "1px solid var(--c-border)",
+    borderRadius: 4,
+    cursor: "pointer",
+    color: "var(--c-text)",
   },
   ph: {
     display: "flex",

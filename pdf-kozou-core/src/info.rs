@@ -6,12 +6,16 @@
 // PDF・対応ファイルのメタ情報取得
 //
 // 設計方針:
-//   - Document::open で全形式（PDF/EPUB/DOCX/画像等）を一律に開く
+//   - ページ数・サイズは C FFI (kozou_get_doc_info) で取得
+//     → mupdf::Document::open（Rust バインディング）は使わない
+//     → Windows での font_kit フリーズを回避
+//   - Rotate 値は PdfDocument で取得（PDF のみ・フォント触らない）
 //   - フォント情報は --fonts オプション時のみ収集（GUI からは呼ばない）
-//   - プロセス終了時のフリーズは main() の process::exit(0) で対処済み
 
 use crate::error::{CoreError, Result};
 use serde::{Deserialize, Serialize};
+
+const MAX_PAGES: usize = 65536;
 
 #[derive(Serialize, Deserialize)]
 pub struct PageBounds {
@@ -70,31 +74,81 @@ pub fn info_with_fonts(path: &str) -> Result<InfoResponse> {
 }
 
 fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
-    // Document::open は PDF/EPUB/DOCX/XPS/CBZ/画像 を全て開ける
-    let mut doc = mupdf::Document::open(path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    use crate::convert::is_pdf;
+    use crate::ffi::{kozou_get_doc_info, kozou_new_context, FfiResult};
+    use std::ffi::CString;
+    use std::os::raw::c_int;
 
-    // リフロー可能文書（DOCX/EPUB/HTML）はレイアウト計算が必要
-    if doc.is_reflowable().unwrap_or(false) {
-        let _ = doc.layout(450.0, 600.0, 12.0);
+    let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+
+    // 非 PDF（DOCX/EPUB 等）は変換処理で扱うため
+    // info では最低限の情報（ファイルサイズ・デフォルトページ数）だけ返す。
+    // fz_open_document が Windows でフリーズする問題を回避するため
+    // 非 PDF ファイルでは Document::open 系を一切呼ばない。
+    if !is_pdf(path) {
+        return Ok(InfoResponse {
+            ok: true,
+            page_count: 1, // 変換前は不明なので 1 ページとして扱う
+            file_size,
+            pages: vec![PageBounds {
+                w: 450.0,
+                h: 600.0,
+                rotate: 0,
+            }],
+            metadata: PdfMetadata::default(),
+            fonts: None,
+        });
     }
 
-    let page_count = doc
-        .page_count()
-        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let c_path = CString::new(path).map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
-    // ページサイズ・回転情報
-    // PDF の場合は PdfDocument で Rotate を取得、他形式は 0
+    // C FFI でページ数・サイズを取得
+    // Rust バインディング (mupdf::Document::open) は使わない
+    let mut page_rects = vec![0.0f32; MAX_PAGES * 4];
+    let mut page_count: c_int = 0;
+    let mut ffi_result = FfiResult::default();
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        kozou_get_doc_info(
+            ctx,
+            c_path.as_ptr(),
+            0.0,
+            0.0,
+            0.0, // デフォルトレイアウト (450x600 em=12)
+            page_rects.as_mut_ptr(),
+            &mut page_count,
+            MAX_PAGES as c_int,
+            &mut ffi_result,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+    }
+
+    if ffi_result.ok == 0 {
+        return Err(CoreError::MuPdf(format!("{ffi_result}")));
+    }
+
+    let n = page_count as usize;
+
+    // PDF の場合のみ Rotate 値を PdfDocument から取得
+    // PdfDocument::open は pdf_open_document を使いフォントスキャンしない
     let pdf_opt = mupdf::pdf::PdfDocument::open(path).ok();
 
-    let mut pages = Vec::with_capacity(page_count as usize);
-    for i in 0..page_count {
-        let page = doc
-            .load_page(i)
-            .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        let b = page.bounds().map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let mut pages = Vec::with_capacity(n);
+    for i in 0..n {
+        let x0 = page_rects[i * 4];
+        let y0 = page_rects[i * 4 + 1];
+        let x1 = page_rects[i * 4 + 2];
+        let y1 = page_rects[i * 4 + 3];
+        let w = (x1 - x0).abs();
+        let h = (y1 - y0).abs();
+
         let rotate = pdf_opt
             .as_ref()
-            .and_then(|pdf| pdf.find_page(i).ok())
+            .and_then(|pdf| pdf.find_page(i as i32).ok())
             .and_then(|pg| {
                 pg.get_dict("Rotate")
                     .ok()?
@@ -102,16 +156,15 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
             })
             .map(|r: i32| r.rem_euclid(360))
             .unwrap_or(0);
-        pages.push(PageBounds {
-            w: b.x1 - b.x0,
-            h: b.y1 - b.y0,
-            rotate,
-        });
+
+        // Rotate=90/270 の場合、kozou_get_doc_info の bounds はすでに回転済みなので
+        // rotate 値だけ記録する（w/h はそのまま）
+        pages.push(PageBounds { w, h, rotate });
     }
 
     let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-    // メタデータ（PDF は PdfDocument から、他形式は collect_metadata 経由）
+    // メタデータ（collect_metadata は PdfDocument 経由）
     let meta_pairs = crate::compress::collect_metadata(path);
     let mut metadata = PdfMetadata::default();
     for (key, value) in meta_pairs {
@@ -244,7 +297,6 @@ fn collect_fonts_from_dict(
         } else {
             check_embedded(&font_obj)
         };
-
         let (name, emb, ft, id) = if font_type == "Type0" {
             (
                 cid_name(&font_obj).unwrap_or(base_font.clone()),
@@ -271,7 +323,6 @@ fn collect_fonts_from_dict(
                 oid,
             )
         };
-
         let e = font_map.entry(id).or_insert(FontInfo {
             name,
             font_type: ft,
@@ -308,7 +359,7 @@ fn check_embedded(o: &mupdf::pdf::PdfObject) -> bool {
     };
     ["FontFile", "FontFile2", "FontFile3"]
         .iter()
-        .any(|k| d.get_dict(k).ok().flatten().is_some())
+        .any(|k| d.get_dict(*k).ok().flatten().is_some())
 }
 fn desc_name(o: &mupdf::pdf::PdfObject) -> Option<String> {
     let d = o.get_dict("FontDescriptor").ok()??;

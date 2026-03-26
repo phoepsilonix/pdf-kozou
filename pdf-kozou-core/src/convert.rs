@@ -100,16 +100,20 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
 
     eprintln!("[convert] C FFI succeeded");
 
-    // メタデータを引き継ぐ
+    // メタデータを引き継ぐ（非 PDF の入力は collect_metadata が空を返すので安全）
+    eprintln!("[convert] collecting metadata from input...");
     let metadata = crate::compress::collect_metadata(&req.input);
+    eprintln!("[convert] metadata collected: {} keys", metadata.len());
     if !metadata.is_empty() {
+        eprintln!("[convert] writing metadata to output...");
         crate::compress::copy_metadata_after_write(&req.output, &metadata);
+        eprintln!("[convert] metadata written");
     }
 
     let input_bytes = std::fs::metadata(&req.input).map(|m| m.len()).unwrap_or(0);
     let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
 
-    // ページ数は PdfDocument で取得（Document::open は使わない）
+    eprintln!("[convert] getting page_count from output PDF...");
     let page_count = mupdf::pdf::PdfDocument::open(&req.output)
         .and_then(|d| d.page_count())
         .unwrap_or(0);
