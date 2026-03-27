@@ -14,6 +14,9 @@ fn main() {
     {
         // プロセス全体で WebKit のコンポジットモードを調整（真っ黒画面対策）
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // std::env::set_var("GDK_BACKEND", "x11");  // Wayland を強制的に避ける（X11 fallback）
+        // std::env::set_var("WEBKIT_FORCE_SANDBOX", "0"); // 稀に有効
     }
 
     pdf_kozou_lib::setup_platform();
