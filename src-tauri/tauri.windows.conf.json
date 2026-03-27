@@ -49,6 +49,9 @@
     "externalBin": [
        "pdf-kozou-core"
     ],
+    "resources": [
+      "../target/release/WebView2Loader.dll"
+    ],
     "fileAssociations": [
       {
         "ext": ["pdf"],
