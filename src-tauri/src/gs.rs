@@ -9,6 +9,39 @@ use std::os::windows::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
 
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
+#[cfg(target_os = "linux")]
+static FILTERED_LD_PATH: OnceLock<String> = OnceLock::new();
+
+#[cfg(target_os = "linux")]
+fn get_filtered_ld_path() -> &'static str {
+    FILTERED_LD_PATH.get_or_init(|| {
+        let orig = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+        let appdir = std::env::var("APPDIR").ok();
+
+        let filtered: String = orig
+            .split(':')
+            .filter(|p| {
+                let p = p.trim();
+                if p.is_empty() {
+                    return false;
+                }
+                if let Some(ref appdir) = appdir {
+                    if p.starts_with(appdir.as_str()) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect::<Vec<_>>()
+            .join(":");
+
+        filtered
+    })
+}
+
 //#[derive(Debug, Clone, Copy)]
 #[derive(Debug, Deserialize, Serialize)]
 pub enum GsCompressionLevel {
@@ -56,41 +89,21 @@ pub async fn run_gs_optimize(
         }
     }
 
-    // AppImage対策。AppImageで優先されている内部のライブラリを無視して、
-    // システムのライブラリを優先してシステムのgsを呼び出すことで、整合性を保つ
-    let orig_ld = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
-    let appdir = std::env::var("APPDIR").ok(); // AppImage 環境なら設定されていることが多い
-
-    // パスを : 区切りで分割し、AppImage 由来っぽいものを除外
-    let filtered: String = orig_ld
-        .split(':')
-        .filter(|p| {
-            let p = p.trim();
-            if p.is_empty() {
-                return false;
-            }
-            if let Some(ref appdir) = appdir {
-                // APPDIR 配下は除外
-                if p.starts_with(appdir) {
-                    return false;
-                }
-            }
-            // ついでに、明らかにアプリ内専用と分かる独自プレフィックスがあればここで除外
-            true
-        })
-        .collect::<Vec<_>>()
-        .join(":");
-
     let mut cmd = std::process::Command::new(&gs_path);
 
-    // フィルタリングした LD_LIBRARY_PATH を設定。
-    // 空になった場合は、あえて unset するのもアリ。
-    if filtered.is_empty() {
-        cmd.env_remove("LD_LIBRARY_PATH");
-    } else {
-        // AppImageないと思われるLibの優先を取り除いたものを設定する。
-        cmd.env("LD_LIBRARY_PATH", filtered);
+    // AppImage対策。AppImageで優先されている内部のライブラリを無視して、
+    // システムのライブラリを優先してシステムのgsを呼び出すことで、整合性を保つ
+    // --- LD_LIBRARY_PATH フィルタリング（Linux AppImage 対策）---
+    #[cfg(target_os = "linux")]
+    {
+        let filtered = get_filtered_ld_path();
+        if filtered.is_empty() {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        } else {
+            cmd.env("LD_LIBRARY_PATH", filtered);
+        }
     }
+
     // その他の環境変数はそのまま継承（ユーザーのカスタマイズを尊重）
     // args をそのまま渡す
 
