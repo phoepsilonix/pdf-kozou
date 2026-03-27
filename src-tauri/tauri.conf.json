@@ -46,8 +46,8 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
-    "externalBin": [
-       "pdf-kozou-core"
+    "resources": [
+      "../target/release/pdf-kozou-core -> .",
     ],
     "fileAssociations": [
       {

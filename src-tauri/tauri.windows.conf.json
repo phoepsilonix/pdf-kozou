@@ -46,11 +46,9 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
-    "externalBin": [
-       "pdf-kozou-core"
-    ],
     "resources": [
-      "../target/release/WebView2Loader.dll"
+      "../target/release/pdf-kozou-core.exe -> .",
+      "../target/release/WebView2Loader.dll -> ."
     ],
     "fileAssociations": [
       {
@@ -84,7 +82,6 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "both",
-        "installerHooks": "nsis/install.nsh",
         "displayLanguageSelector": true,
         "languages": ["Japanese", "English"]
       }
