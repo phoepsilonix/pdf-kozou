@@ -11,11 +11,10 @@
 
 PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユーティリティです。
 
-
 ### 備考
-トリミングCropBoxをもちいたPDFの圧縮、ファイル削減は、そこまで有能ではありません。  
-そういうタイプのファイルはGhostScript連携の圧縮を試してみてください。  
-※ AppImage版は連携機能は使えません。
+
+トリミングCropBoxをもちいられたPDFのファイルサイズ削減、圧縮は、そこまで有能ではありません。  
+そういうタイプのファイルはGhostScript連携の圧縮を試してみてください。
 
 ---
 
@@ -44,13 +43,12 @@ PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユ�
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
 macOS版の提供は未定。動作確認環境がないため。
-LinuxのAppImage版は、GhostScript連携モードは動きません。（サンドボックス外へのアクセスになるため。）
 
-| プラットフォーム      | ファイル                                                        |
-| --------------------- | --------------------------------------------------------------- |
-| Windows (x64)         | `PDF-Kozou_1.3.0_x64-setup.exe` `PDF-Kozou_1.3.0_x64_en-US.msi` |
-| Linux (x64)           | `PDF-Kozou-1.3.0-1.x86_64.rpm` `PDF-Kozou_1.3.0_amd64.deb`      |
-| macOS (Apple Silicon) | （未定）                                                        |
+| プラットフォーム      | ファイル                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| Windows (x64)         | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`                            |
+| Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb` `PDF-Kozou_${version}.AppImage` |
+| macOS (Apple Silicon) | （未定）                                                                                             |
 
 ### ソースからビルド
 
@@ -113,6 +111,7 @@ pdf-kozou-core <COMMAND> --help
 ```
 
 ## 使い方 (GUI)
+
 ```sh
 pdf-kozou
 ```
