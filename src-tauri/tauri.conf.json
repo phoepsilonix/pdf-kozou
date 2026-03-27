@@ -8,7 +8,7 @@
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "cargo build -p pdf-kozou-core && npm run dev",
     "beforeBundleCommand": "cargo build --release --bin pdf-kozou-core",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "cargo build --release --bin pdf-kozou-core"
   },
   "app": {
     "windows": [
