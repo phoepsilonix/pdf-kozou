@@ -139,7 +139,11 @@ jobs:
           curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
           cargo binstall tauri-cli -y --force
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-      
+
+      #- name: Install cargo-xwin via binstall
+      #  run: |
+      #    cargo binstall -y cargo-xwin --force
+
       - name: rust default target
         run: |
           rustup toolchain install stable-x86_64-pc-windows-gnu
