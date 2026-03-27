@@ -2,7 +2,6 @@
   "bundle": {
     "resources": {
       "../target/release/pdf-kozou-core.exe": "pdf-kozou-core.exe",
-      "../target/release/WebView2Loader.dll": "WebView2Loader.dll"
     }
   }
 }
