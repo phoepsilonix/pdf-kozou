@@ -13,6 +13,13 @@ pub mod tempdir;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
 
+use std::path::PathBuf;
+use std::sync::OnceLock;
+use tauri::Manager;
+
+// パスを保持する静的な入れ物
+static CORE_BIN_PATH: OnceLock<PathBuf> = OnceLock::new();
+
 #[cfg(target_os = "linux")]
 use crate::platform::linux::log_display_environment;
 #[cfg(target_os = "linux")]
@@ -31,6 +38,42 @@ pub fn setup_platform() {
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn setup_platform() {}
+
+fn get_core_bin_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    // 1. 環境変数優先
+    if let Ok(p) = std::env::var("PDF_KOZOU_CORE") {
+        return p.into();
+    }
+
+    // 2. Tauri Resolver (Linux パッケージ(deb,rpm) / AppImage 展開後用)
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let core_name = if cfg!(target_os = "windows") {
+            "pdf-kozou-core.exe"
+        } else {
+            "pdf-kozou-core"
+        };
+        let path = resource_dir.join(core_name);
+        if path.exists() {
+            return path;
+        }
+    }
+
+    // 3. 実行ファイル横 (MSI や 開発時用)
+    if let Ok(exe) = std::env::current_exe() {
+        let sibling = exe.parent().unwrap_or(std::path::Path::new(".")).join(
+            if cfg!(target_os = "windows") {
+                "pdf-kozou-core.exe"
+            } else {
+                "pdf-kozou-core"
+            },
+        );
+        if sibling.exists() {
+            return sibling;
+        }
+    }
+
+    std::path::PathBuf::from("pdf-kozou-core")
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -82,6 +125,10 @@ pub fn run() {
             gs::run_gs_optimize,
         ])
         .setup(|app| {
+            // pdf-kozou-coreのパス取得＆保存
+            let path = get_core_bin_path(app.handle());
+            let _ = CORE_BIN_PATH.set(path);
+
             // ── 起動時引数からPDFファイルパスを取得してフロントに渡す ──────────
             let pdf_paths: Vec<String> = std::env::args()
                 .skip(1)
