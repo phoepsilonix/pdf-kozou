@@ -49,12 +49,13 @@ pdf-kozou/
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
 macOS版の提供は未定。動作確認環境がないため。
+LinuxのAppImage版は、GhostScript連携モードは動きません。（サンドボックス外へのアクセスになるため。）
 
-| プラットフォーム      | ファイル                                 |
-| --------------------- | ---------------------------------------- |
-| Windows (x64)         | `pdf-kozou_windows_x64.zip`              |
-| Linux (x64)           | `pdf-kozou_linux_x64.tar.gz`             |
-| macOS (Apple Silicon) | `pdf-kozou_macos_aarch64.tar.gz`（未定） |
+| プラットフォーム      | ファイル                                                        |
+| --------------------- | --------------------------------------------------------------- |
+| Windows (x64)         | `PDF-Kozou_1.3.0_x64-setup.exe` `PDF-Kozou_1.3.0_x64_en-US.msi` |
+| Linux (x64)           | `PDF-Kozou-1.3.0-1.x86_64.rpm` `PDF-Kozou_1.3.0_amd64.deb`      |
+| macOS (Apple Silicon) | （未定）                                                        |
 
 ### ソースからビルド
 
