@@ -11,8 +11,8 @@ use crate::error::{Error, Result};
 use serde_json::Value;
 
 /// pdf-kozou-core バイナリを呼び出して JSON レスポンスを返す
-async fn call_core(args: Vec<String>) -> Result<Value> {
-    let core_path = core_bin_path();
+async fn call_core(app: tauri::AppHandle, args: Vec<String>) -> Result<Value> {
+    let core_path = core_bin_path(&app);
 
     let child = tokio::process::Command::new(&core_path)
         .args(&args)
@@ -50,7 +50,7 @@ async fn call_core(args: Vec<String>) -> Result<Value> {
 }
 
 /// pdf-kozou-core バイナリのパスを解決
-fn core_bin_path() -> std::path::PathBuf {
+fn core_bin_path(app: &tauri::AppHandle) -> std::path::PathBuf {
     // 1. 環境変数 PDF_KOZOU_CORE で上書き可能 (開発・テスト用)
     if let Ok(p) = std::env::var("PDF_KOZOU_CORE") {
         return p.into();
@@ -282,6 +282,7 @@ pub async fn rotate_pdf(request: Value) -> Result<Value> {
 /// (`{prefix}_{0001..}.{ext}`) を Rust 側で組み立てて返す。
 #[tauri::command]
 pub async fn export_images(
+    app: tauri::AppHandle,
     path: String,
     out_dir: String,
     format: Option<String>,
@@ -336,7 +337,7 @@ pub async fn export_images(
         args.push(em.to_string());
     }
 
-    let output = tokio::process::Command::new(core_bin_path())
+    let output = tokio::process::Command::new(core_bin_path(&app))
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -419,11 +420,11 @@ pub async fn get_file_stat(path: String) -> Result<Value> {
 }
 
 /// JSON モードで core を呼ぶ (stdin 経由)
-async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
+async fn call_core_json(app: tauri::AppHandle, cmd: &str, mut payload: Value) -> Result<Value> {
     payload["cmd"] = serde_json::Value::String(cmd.to_string());
     let json_line = serde_json::to_string(&payload).map_err(|e| Error::Core(e.to_string()))?;
 
-    let core_path = core_bin_path();
+    let core_path = core_bin_path(&app);
 
     let mut child = tokio::process::Command::new(&core_path)
         .arg("json")
