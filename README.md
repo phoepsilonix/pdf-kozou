@@ -11,16 +11,11 @@
 
 PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユーティリティです。
 
-- **pdf-kozou-core** — CLI ツール兼ライブラリ。MuPDF の Rust バインディングで PDF を処理します。
-- **src** — TauriとCLIを繋ぐ部分。
-- **src-tauri** — Tauri v2 製のデスクトップ GUI。pdf-kozou-core を sidecar として呼び出します。
 
-```
-pdf-kozou/
-├── pdf-kozou-core/   処理エンジン (CLI + lib)
-├── src/              GUI(Tauri)とCLI(処理エンジン)をつなぐ部分(lib)
-└── src-tauri/        デスクトップ GUI (Tauri v2)
-```
+### 備考
+トリミングCropBoxをもちいたPDFの圧縮、ファイル削減は、そこまで有能ではありません。  
+そういうタイプのファイルはGhostScript連携の圧縮を試してみてください。  
+※ AppImage版は連携機能は使えません。
 
 ---
 
@@ -58,6 +53,17 @@ LinuxのAppImage版は、GhostScript連携モードは動きません。（サ�
 | macOS (Apple Silicon) | （未定）                                                        |
 
 ### ソースからビルド
+
+- **pdf-kozou-core** — CLI ツール兼ライブラリ。MuPDF の Rust バインディングで PDF を処理します。
+- **src** — TauriとCLIを繋ぐ部分。
+- **src-tauri** — Tauri v2 製のデスクトップ GUI。pdf-kozou-core を sidecar として呼び出します。
+
+```
+pdf-kozou/
+├── pdf-kozou-core/   処理エンジン (CLI + lib)
+├── src/              GUI(Tauri)とCLI(処理エンジン)をつなぐ部分(lib)
+└── src-tauri/        デスクトップ GUI (Tauri v2)
+```
 
 ```bash
 git clone https://github.com/phoepsilonix/pdf-kozou.git
@@ -104,6 +110,11 @@ echo '{"cmd":"info","path":"document.pdf"}' | pdf-kozou-core json
 ```bash
 pdf-kozou-core --help
 pdf-kozou-core <COMMAND> --help
+```
+
+## 使い方 (GUI)
+```sh
+pdf-kozou
 ```
 
 ---
