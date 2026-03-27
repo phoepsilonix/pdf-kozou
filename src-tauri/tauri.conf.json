@@ -46,9 +46,6 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
-    "resources": [
-      "../target/release/pdf-kozou-core -> .",
-    ],
     "fileAssociations": [
       {
         "ext": ["pdf"],
