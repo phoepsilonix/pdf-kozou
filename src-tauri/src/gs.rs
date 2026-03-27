@@ -9,7 +9,6 @@ use std::os::windows::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
 
-use std::path::PathBuf;
 use std::sync::OnceLock;
 
 #[cfg(target_os = "linux")]
