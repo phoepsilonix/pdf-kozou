@@ -79,7 +79,6 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "both",
-        "installerHooks": "nsis/install.nsh",
         "displayLanguageSelector": true,
         "languages": ["Japanese", "English"]
       }
