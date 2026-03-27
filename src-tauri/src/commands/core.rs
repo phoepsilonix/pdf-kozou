@@ -55,7 +55,24 @@ fn core_bin_path() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("PDF_KOZOU_CORE") {
         return p.into();
     }
-    // 2. 自身の実行ファイルと同じディレクトリを探す (同梱 sidecar)
+
+    // 2. Tauri のリソースディレクトリを探す (推奨)
+    // Linux: /usr/lib/<product-name>/
+    // Windows: exe と同じ場所
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let core_name = if cfg!(target_os = "windows") {
+            "pdf-kozou-core.exe"
+        } else {
+            "pdf-kozou-core"
+        };
+
+        let path = resource_dir.join(core_name);
+        if path.exists() {
+            return path;
+        }
+    }
+
+    // 3. 自身の実行ファイルと同じディレクトリを探す (同梱 sidecar)
     if let Ok(exe) = std::env::current_exe() {
         let sibling = exe.parent().unwrap_or(std::path::Path::new(".")).join(
             if cfg!(target_os = "windows") {
