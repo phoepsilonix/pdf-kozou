@@ -44,7 +44,7 @@ PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユ�
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
 macOS版の提供は未定。動作確認環境がないため。
 
-※AppImage版について
+※AppImage版について  
 現時点のAppImage版は、日本語入力やキー入力に制約があります。  
 `GTK_IM_MODULE=gtk-im-context-simple`を設定して、起動すればページ範囲などの数字入力は可能だと思います。  
 現時点では設定しておかないとフリーズすると思います。またビューワーの検索で日本語入力ができないと思います。  
