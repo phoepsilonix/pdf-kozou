@@ -177,6 +177,8 @@ pub fn setup_webkit_env() {
     if ds == DisplayServer::X11 || ds == DisplayServer::WaylandWithXWayland {
         // X11 環境: XComposite が利用可能か確認
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        std::env::set_var("NO_AT_BRIDGE", "1");
     }
 
     // Wayland 環境: GDK バックエンドを明示指定
@@ -208,6 +210,7 @@ pub fn setup_webkit_env() {
                 socket.display()
             );
             std::env::set_var("GDK_BACKEND", "x11");
+            std::env::remove_var("WAYLAND_DISPLAY");
         }
     }
 

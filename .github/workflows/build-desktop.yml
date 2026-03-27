@@ -48,6 +48,7 @@ jobs:
             wget \
             unzip \
             p7zip-full \
+            jq \
             patchelf
           # ── Poppler utils (システムからコピー) ──────────────────────────
           sudo apt-get install -y \
@@ -93,6 +94,31 @@ jobs:
         run: |
           . $HOME/.cargo/env
           cargo tauri build
+
+      - name: appimagetool install
+        run: |
+          curl -LO https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+
+      - name: appimage rebuild
+        run: |
+          APP_VER=$(jq -r ".version" package.json)
+          RELEASE_DIR="target/release/bundle/"
+          chmod +x ${RELAESE_DIR}/appimage/PDF-Kozou_${APP_VER}_amd64.AppImage
+          ${RELAESE_DIR}/appimage/PDF-Kozou_${APP_VER}_amd64.AppImage --appimage-extract
+          # Fixed for WAYLAND Environment
+          cd squashfs-root
+          rm -f usr/lib/libwayland-*.so.*
+          rm -f usr/lib/libepoxy.so.*
+          rm -f usr/lib/libEGL.so.*
+          rm -f usr/lib/libGL.so.*
+          rm -f usr/lib/libGLX.so.*
+          cd ..
+          # added PDF KOZOU CORE
+          cp -a target/release/pdf-kozou-core squashfs-root/usr/bin/
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage squashfs-root PDF-Kozou_${APP_VER}.AppImage
+          mv PDF-Kozou_${APP_VER}.AppImage ${RELEASE_DIR}/appimage/
+          chmod +x ${RELAESE_DIR}/appimage/PDF-Kozou_${APP_VER}_amd64.AppImage
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
