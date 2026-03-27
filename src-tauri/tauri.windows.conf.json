@@ -1,7 +1,7 @@
 {
   "bundle": {
     "resources": {
-      "../target/release/pdf-kozou-core.exe": "pdf-kozou-core.exe",
+      "../target/release/pdf-kozou-core.exe": "pdf-kozou-core.exe"
     }
   }
 }
