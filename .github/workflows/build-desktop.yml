@@ -114,8 +114,8 @@ jobs:
           rm -f usr/lib/libGL.so.*
           rm -f usr/lib/libGLX.so.*
           cd ..
-          ARCH=x86_64 ./appimagetool-x86_64.AppImage squashfs-root PDF-Kozou_${APP_VER}.AppImage
-          mv PDF-Kozou_${APP_VER}.AppImage ${RELEASE_DIR}/appimage/
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage squashfs-root PDF-Kozou_${APP_VER}_amd64.AppImage
+          mv PDF-Kozou_${APP_VER}_amd64.AppImage ${RELEASE_DIR}/appimage/
           chmod +x ${RELEASE_DIR}/appimage/PDF-Kozou_${APP_VER}_amd64.AppImage
 
       - name: Upload artifacts

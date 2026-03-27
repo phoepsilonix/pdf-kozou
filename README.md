@@ -44,11 +44,11 @@ PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユ�
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
 macOS版の提供は未定。動作確認環境がないため。
 
-| プラットフォーム      | ファイル                                                                                             |
-| --------------------- | ---------------------------------------------------------------------------------------------------- |
-| Windows (x64)         | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`                            |
-| Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb` `PDF-Kozou_${version}.AppImage` |
-| macOS (Apple Silicon) | （未定）                                                                                             |
+| プラットフォーム      | ファイル                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Windows (x64)         | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`                                  |
+| Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb` `PDF-Kozou_${version}_amd64.AppImage` |
+| macOS (Apple Silicon) | （未定）                                                                                                   |
 
 ### ソースからビルド
 
