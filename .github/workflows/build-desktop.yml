@@ -16,7 +16,7 @@ jobs:
   # Linux x86_64
   # ===========================================================================
   build-linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +91,8 @@ jobs:
         env:
           GTK_USE_PORTAL: "0"
           WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+          # linuxdeploy に除外させるライブラリを指定
+          LINUXDEPLOY_EXCLUDE_LIBS: "libglib-2.0.so.0:libgobject-2.0.so.0:libgio-2.0.so.0:libgmodule-2.0.so.0:libdbus-1.so.3:libibus-1.0.so.5:libfcitx*.so:libwayland-client.so.0:libwayland-cursor.so.0:libwayland-server.so.0:libwayland-egl.so.1:libEGL.so.1:libGL.so.1:libGLX.so.0:libepoxy.so.0:libpcre2-8.so.0:libmount.so.1:libblkid.so.1"
         run: |
           . $HOME/.cargo/env
           cargo tauri build
@@ -106,13 +108,30 @@ jobs:
           RELEASE_DIR="target/release/bundle/"
           chmod +x ${RELEASE_DIR}/appimage/PDF-Kozou_${APP_VER}_amd64.AppImage
           ${RELEASE_DIR}/appimage/PDF-Kozou_${APP_VER}_amd64.AppImage --appimage-extract
-          # Fixed for WAYLAND Environment
           cd squashfs-root
-          rm -f usr/lib/libwayland-*.so.*
+          # EGL/GL 系
           rm -f usr/lib/libepoxy.so.*
           rm -f usr/lib/libEGL.so.*
           rm -f usr/lib/libGL.so.*
           rm -f usr/lib/libGLX.so.*
+          rm -f usr/lib/libwayland-egl.so.*
+          rm -f usr/lib/libwayland-client.so.*
+          rm -f usr/lib/libwayland-cursor.so.*
+          rm -f usr/lib/libwayland-server.so.*
+          # glib 系（システムの新しいものを使わせる）
+          #rm -f usr/lib/libglib-2.0.so.*
+          #rm -f usr/lib/libgobject-2.0.so.*
+          #rm -f usr/lib/libgio-2.0.so.*
+          #rm -f usr/lib/libgmodule-2.0.so.*
+          #rm -f usr/lib/libgthread-2.0.so.*
+          # glib の依存
+          #rm -f usr/lib/libpcre2-8.so.*
+          #rm -f usr/lib/libmount.so.*
+          #rm -f usr/lib/libblkid.so.*
+          #rm -f usr/lib/libffi.so.*
+          # IM 関連
+          rm -f usr/lib/libibus-1.0.so.*
+          rm -f usr/lib/libfcitx*.so.*
           cd ..
           ARCH=x86_64 ./appimagetool-x86_64.AppImage squashfs-root PDF-Kozou_${APP_VER}_amd64.AppImage
           mv PDF-Kozou_${APP_VER}_amd64.AppImage ${RELEASE_DIR}/appimage/
