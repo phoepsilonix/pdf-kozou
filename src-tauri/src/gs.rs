@@ -9,6 +9,7 @@ use std::os::windows::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "linux")]
 use std::sync::OnceLock;
 
 #[cfg(target_os = "linux")]
