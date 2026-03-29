@@ -65,6 +65,7 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-win
 ```sh
 cargo-xwin tauri build --target x86_64-pc-windows-msvc --bundles nsis
 ```
+
 ```sh
 cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
 ```
@@ -128,7 +129,9 @@ OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo build --release --target x86_64-pc-win
 # Tauri アプリビルド
 OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
 ```
+
 or
+
 ```sh
 OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
 ```

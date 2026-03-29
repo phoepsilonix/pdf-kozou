@@ -26,6 +26,9 @@ import {
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
 //import { CompressPage } from "./CompressPage";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { LiveRegion } from "../components/A11yControls";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
 
@@ -54,6 +57,8 @@ interface BatchProgress {
 export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
+  const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const [statusMsg, setStatusMsg] = useState("");
 
   // 現在表示中のファイル（バッチの場合はプレビュー用に切り替え可能）
   const [previewIdx, setPreviewIdx] = useState(0);
@@ -147,6 +152,17 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (dir) setOutDir(dir);
   }, []);
 
+  // 画面表示時の読み上げ
+  useEffect(() => {
+    announceScreen("screen.split");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ショートカット
+  useKeyboardShortcuts({
+    F1: () => announceKey("shortcut.tool"),
+  });
+
   // ── 実行（単体）────────────────────────────────────────────────────────────
   const handleExecuteSingle = useCallback(async () => {
     if (!outDir) {
@@ -172,13 +188,28 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       );
       setResult(res);
       setSavedDir(outDir);
+      const msg = `${res.files.length}ファイルに分割しました。`;
+      setStatusMsg(msg);
+      announceSuccess("done.split", { count: String(res.files.length) });
       setPhase("result");
     } catch (e) {
+      announceError(String(e));
       setErrMsg(String(e));
       setPhase("error");
       setError(String(e));
     }
-  }, [filePath, outDir, modeId, everyN, ranges, prefix, pickDir, setError]);
+  }, [
+    filePath,
+    outDir,
+    modeId,
+    everyN,
+    ranges,
+    prefix,
+    pickDir,
+    setError,
+    announceSuccess,
+    announceError,
+  ]);
 
   // ── 実行（バッチ）──────────────────────────────────────────────────────────
   const handleExecuteBatch = useCallback(async () => {
@@ -238,8 +269,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       }
       setBatchProgress({ ...progress });
     }
+    announceSuccess("done.split", { count: String(files.length) });
     setPhase("result");
-  }, [batchFiles, outDir, modeId, everyN, ranges, prefix, pickDir]);
+  }, [batchFiles, outDir, modeId, everyN, ranges, prefix, pickDir, announceSuccess]);
 
   // ── グループプレビュー計算 ────────────────────────────────────────────────
   const groups: number[][] = (() => {
@@ -755,6 +787,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           )}
         </div>
       </div>
+      <LiveRegion message={statusMsg} />
     </div>
   );
 }

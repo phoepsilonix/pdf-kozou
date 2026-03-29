@@ -34,9 +34,11 @@ cargo clippy -- -D warnings
 # テスト
 cargo test -p pdf-kozou-core
 ```
+
 ```sh
 prettier -c src
 ```
+
 ```sh
 prettier -w src
 ```

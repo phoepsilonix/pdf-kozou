@@ -19,6 +19,9 @@ import {
   type PdfInfo,
 } from "../lib/tauri";
 import { F } from "../lib/theme";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { LiveRegion } from "../components/A11yControls";
 
 interface Props {
   filePath: string;
@@ -120,6 +123,19 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     convertLayoutEm,
   } = usePdfStore();
   const { pickSave } = useSaveDialog();
+  const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const [statusMsg, setStatusMsg] = useState("");
+
+  // 画面表示時の読み上げ
+  useEffect(() => {
+    announceScreen("screen.compress");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ショートカット
+  useKeyboardShortcuts({
+    F1: () => announceKey("shortcut.tool"),
+  });
 
   const [currentSource, setCurrentSource] = useState(sourceFile ?? filePath);
   const isBatch = (batchFiles?.length ?? 0) > 1;
@@ -240,8 +256,10 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       } catch (e) {
         setPreview("");
       }
+      announceSuccess("done.compress", { ratio: String(Math.round((result?.ratio ?? 1) * 100)) });
       setPhase("result");
     } catch (e) {
+      announceError(String(e));
       setErrMsg(String(e));
       setPhase("error");
       setError(String(e));
@@ -882,6 +900,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           </div>
         )}
       </div>
+      <LiveRegion message={statusMsg} />
     </div>
   );
 }

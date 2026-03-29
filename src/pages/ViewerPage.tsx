@@ -24,6 +24,8 @@ import {
 import { Spinner, PageHeader } from "../components/common";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 const THUMB_DPI = 52;
@@ -554,6 +556,21 @@ interface Props {
 export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const isMulti = fileList.length > 1;
   const [activeIdx, setActiveIdx] = useState(0);
+  const { announceScreen, announceKey, announce } = useA11y();
+
+  // 画面表示時の読み上げ
+  useEffect(() => {
+    announceScreen("screen.viewer");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ショートカット（ビューワー固有）
+  useKeyboardShortcuts({
+    ArrowLeft: () => setViewPage((p) => Math.max(0, p - 1)),
+    ArrowRight: () => setViewPage((p) => Math.min(total - 1, p + 1)),
+    "Ctrl+F": () => setShowSearch((v) => !v),
+    F1: () => announceKey("shortcut.viewer"),
+  });
   const [activeInfo, setActiveInfo] = useState<PdfInfo | null>(pdfInfo ?? null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -796,6 +813,14 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   }, [activePath, viewPage, getOrRender, prefetch, total]);
 
   // ── 4. サムネイル ──────────────────────────────────────────────────────────
+  // ページ移動時に読み上げ
+  useEffect(() => {
+    if (total > 0) {
+      announce(`${viewPage + 1}ページ`, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewPage]);
+
   useEffect(() => {
     if (!activePath || !activeInfo) {
       setThumbs([]);
@@ -889,7 +914,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         <button
           style={{ ...s.zBtn, ...(showSearch ? s.btnOn : {}), marginRight: 4 }}
           onClick={() => setShowSearch((v) => !v)}
-          title="検索"
+          title="検索 (Ctrl+F)"
+          aria-label="検索を開く Ctrl+F"
+          aria-expanded={showSearch}
         >
           🔍
         </button>

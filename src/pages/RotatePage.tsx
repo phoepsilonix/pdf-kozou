@@ -17,6 +17,9 @@ import {
 } from "../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { F } from "../lib/theme";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { LiveRegion } from "../components/A11yControls";
 import { CompressPage } from "./CompressPage";
 
 interface Props {
@@ -39,6 +42,17 @@ interface BatchProgress {
 export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
+  const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const [statusMsg, setStatusMsg] = useState("");
+
+  useEffect(() => {
+    announceScreen("screen.rotate");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useKeyboardShortcuts({
+    F1: () => announceKey("shortcut.tool"),
+  });
 
   const [batchIdx, setBatchIdx] = useState(0);
   const curPath = isBatch ? batchFiles![batchIdx].path : filePath;
@@ -198,11 +212,12 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       setSavedPath(saveTo);
       setPhase("preview");
     } catch (e) {
+      announceError(String(e));
       setErrMsg(String(e));
       setPhase("error");
       setError(String(e));
     }
-  }, [filePath, changedPages, setError]);
+  }, [filePath, changedPages, setError, announceError]);
 
   const handleExecuteBatch = useCallback(async () => {
     if (!outDir) {
@@ -244,8 +259,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       }
       setBatchProgress({ ...prog });
     }
+    announceSuccess("done.rotate", { count: String(changedPages.length) });
     setPhase("result");
-  }, [batchFiles, rotations, outDir, pickDir]);
+  }, [batchFiles, rotations, outDir, pickDir, announceSuccess]);
 
   // ── フェーズ ──────────────────────────────────────────────────────────────
   if (phase === "processing" && !isBatch) return <Spinner label="回転処理中…" />;
@@ -312,6 +328,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         await rotatePdf(filePath, sp, changedPages);
       });
       setSavedPath(sp);
+      announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
       setPhase("result");
     };
     return (
@@ -561,6 +578,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           </div>
         </div>
       </div>
+      <LiveRegion message={statusMsg} />
     </div>
   );
 }

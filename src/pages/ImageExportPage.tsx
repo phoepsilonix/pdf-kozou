@@ -19,6 +19,9 @@ import { renderPage, exportImages, type PdfInfo, type ImageFormat } from "../lib
 import { PageSelector } from "../components/PageSelector";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { LiveRegion } from "../components/A11yControls";
 
 interface Props {
   filePath: string;
@@ -46,6 +49,17 @@ interface BatchProgress {
 
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
+  const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const [statusMsg, setStatusMsg] = useState("");
+
+  useEffect(() => {
+    announceScreen("screen.image");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useKeyboardShortcuts({
+    F1: () => announceKey("shortcut.tool"),
+  });
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const total = pdfInfo.page_count;
   console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
@@ -150,13 +164,29 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       );
       console.log("res", res);
       setImages(res.files);
+      announceSuccess("done.image");
       setPhase("result");
     } catch (e) {
+      announceError(String(e));
       setErrMsg(String(e));
       setPhase("error");
       setError(String(e));
     }
-  }, [filePath, images, outDir, format, dpi, quality, prefix, pages, pickDir, phase, setError]);
+  }, [
+    filePath,
+    images,
+    outDir,
+    format,
+    dpi,
+    quality,
+    prefix,
+    pages,
+    pickDir,
+    phase,
+    setError,
+    announceSuccess,
+    announceError,
+  ]);
 
   // バッチ実行
   const handleExecuteBatch = useCallback(async () => {
@@ -198,8 +228,21 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       }
       setBatchProgress({ ...progress });
     }
+    announceSuccess("done.image");
     setPhase("result");
-  }, [batchFiles, images, outDir, format, dpi, quality, prefix, pages, pickDir, phase]);
+  }, [
+    batchFiles,
+    images,
+    outDir,
+    format,
+    dpi,
+    quality,
+    prefix,
+    pages,
+    pickDir,
+    phase,
+    announceSuccess,
+  ]);
 
   // ─────────── フェーズ ───────────
   if (phase === "processing" && !isBatch) return <Spinner label={`画像変換中… (${total}ページ)`} />;
@@ -549,6 +592,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           )}
         </div>
       </div>
+      <LiveRegion message={statusMsg} />
     </div>
   );
 }

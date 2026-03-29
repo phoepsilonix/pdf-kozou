@@ -26,6 +26,9 @@ import {
 import { CompressPage } from "./CompressPage";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { LiveRegion } from "../components/A11yControls";
 import { listen } from "@tauri-apps/api/event";
 import { isMupdfExtension } from "../lib/fileTypes";
 
@@ -45,6 +48,19 @@ const PREV_DPI = 60;
 
 export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
+  const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const [statusMsg, setStatusMsg] = useState("");
+
+  // 画面表示時の読み上げ
+  useEffect(() => {
+    announceScreen("screen.merge");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ショートカット
+  useKeyboardShortcuts({
+    F1: () => announceKey("shortcut.tool"),
+  });
   const { pickSave } = useSaveDialog();
 
   const [phase, setPhase] = useState<Phase>("edit");
@@ -250,13 +266,15 @@ useEffect(() => {
         convertLayoutEm,
       );
       setResult(res);
+      announceSuccess("done.merge", { count: String(entries.length) });
       setPhase("result");
     } catch (e) {
+      announceError(String(e));
       setErrMsg(String(e));
       setPhase("error");
       setError(String(e));
     }
-  }, [entries, pickSave, setError]);
+  }, [entries, pickSave, setError, announceSuccess, announceError]);
 
   // 圧縮して保存: まず tmp に結合し、CompressPage へ
   const handleSaveWithCompress = useCallback(async () => {
@@ -291,11 +309,12 @@ useEffect(() => {
       setTmpMergedPath(tmp);
       setPhase("compress");
     } catch (e) {
+      announceError(String(e));
       setErrMsg(String(e));
       setPhase("error");
       setError(String(e));
     }
-  }, [entries, setError]);
+  }, [entries, setError, announceError]);
 
   // 後方互換: handleSave
   const handleSave = useCallback(
@@ -681,6 +700,7 @@ useEffect(() => {
           </div>
         )}
       </div>
+      <LiveRegion message={statusMsg} />
     </div>
   );
 }

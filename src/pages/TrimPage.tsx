@@ -20,6 +20,9 @@ import {
   type PdfInfo,
 } from "../lib/tauri";
 import { C, F } from "../lib/theme";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { LiveRegion } from "../components/A11yControls";
 
 interface Props {
   filePath: string;
@@ -50,6 +53,7 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
 // ── バッチトリム ──────────────────────────────────────────────────────────────
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
+  const { announceSuccess, announceError } = useA11y();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [outDir, setOutDir] = useState("");
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
@@ -205,6 +209,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       setProgress({ ...prog });
     }
 
+    announceSuccess("done.trim");
     setPhase("result");
   }, [files, trimMargins, trimPages, excludeSpec, extractSpec, outDir]);
 
@@ -469,6 +474,17 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     convertLayoutH,
     convertLayoutEm,
   } = usePdfStore();
+  const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const [statusMsg, setStatusMsg] = useState("");
+
+  useEffect(() => {
+    announceScreen("screen.trim");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useKeyboardShortcuts({
+    F1: () => announceKey("shortcut.tool"),
+  });
 
   const [zoom, setZoom] = useState(1.0);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -634,9 +650,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       }
       setResultImgs(imgs); // 必要なら状態追加
       //setSavedPath(outTmp);
+      announceSuccess("done.trim");
       setPhase("result");
     } catch (e) {
       console.error("[ERROR] trimPdf エラー:", e);
+      announceError(String(e));
       setErrMsg(String(e));
       setPhase("error");
       setError(String(e));
@@ -816,6 +834,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           onExtract={onExtract}
         />
       </aside>
+      <LiveRegion message={statusMsg} />
     </div>
   );
 }

@@ -21,6 +21,11 @@ import { isMupdfExtension, hasNonPdf } from "./lib/fileTypes";
 import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
 import type { ConvertOptions } from "./lib/tauri";
 import pkg from "../package.json";
+import { A11yControls, LiveRegion } from "./components/A11yControls";
+import { useA11y } from "./hooks/useA11y";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { tts } from "./lib/tts";
+import { useI18n } from "./lib/i18n";
 
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
 import {
@@ -129,12 +134,29 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemeId);
   const dragCounter = useRef(0);
+  const [statusMsg, setStatusMsg] = useState("");
+  const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const { locale, setLocale } = useI18n();
 
   const handleThemeChange = useCallback((id: ThemeId) => {
     setTheme(id);
     setThemeId(id);
     applyThemeCssVars(THEMES[id]);
   }, []);
+
+  // ホーム画面表示時に読み上げ
+  useEffect(() => {
+    if (!activeTool) announceScreen("screen.home");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool]);
+
+  // グローバルショートカット（全画面共通）
+  useKeyboardShortcuts({
+    "Ctrl+O": handlePickFiles,
+    "Alt+T": () => tts.toggle(),
+    "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
+    F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
+  });
 
   useEffect(() => {
     const t = THEMES[themeId];
@@ -165,16 +187,21 @@ export default function App() {
               size: 0,
             }));
 
+            const fname = path.split(/[/\\]/).pop() ?? path;
             addFiles([
               {
                 path,
-                filename: path.split(/[/\\]/).pop() ?? path,
+                filename: fname,
                 pageCount: info.page_count,
                 sizeBytes: stat.size,
                 selected: true,
               },
             ]);
+            const msg = `${fname}を追加しました。${info.page_count}ページ。`;
+            setStatusMsg(msg);
+            announceSuccess("file.added", { name: fname, pages: String(info.page_count) });
           } catch (e) {
+            announceError(String(e));
             setError(`${path.split(/[/\\]/).pop()}: ${e}`);
           }
         }),
@@ -374,7 +401,17 @@ export default function App() {
         </div>
         <span style={{ ...s.tagline, marginBottom: 8, opacity: 0.8 }}>v{pkg.version}</span>
         <span style={s.tagline}>Rust with tauri · MuPDF · オフライン完全動作</span>
-        <div style={{ position: "absolute", top: 16, right: 20 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 20,
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          <A11yControls />
           <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
         </div>
       </header>
@@ -385,7 +422,11 @@ export default function App() {
             {/*            <span style={s.emptyIcon}>⊕</span>
             <span style={s.emptyTitle}>PDFをドロップ、または追加</span>
             <span style={s.emptySub}>複数ファイルを一度に追加できます</span>*/}
-            <button style={s.btnAddBig} onClick={handlePickFiles}>
+            <button
+              style={s.btnAddBig}
+              onClick={handlePickFiles}
+              aria-label="ファイルを選択 Ctrl+O"
+            >
               ファイルを選択…
             </button>
           </div>
@@ -488,6 +529,7 @@ export default function App() {
                 style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
                 onClick={() => enabled && handleLaunchTool(t.id)}
                 disabled={!enabled}
+                aria-label={`${t.label}: ${t.desc}${!enabled ? " (ファイルを選択してください)" : ""}`}
               >
                 <span style={s.toolIcon}>{t.icon}</span>
                 <span style={s.toolLabel}>{t.label}</span>
@@ -509,6 +551,7 @@ export default function App() {
         </div>
       )}*/}
       {lastError && <div style={s.error}>{lastError}</div>}
+      <LiveRegion message={statusMsg} />
     </div>
   );
 }
@@ -651,6 +694,7 @@ function ToolShell({
           </button>
         ))}
         <div style={sh.div} />
+        <A11yControls />
         <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
       </nav>
 
