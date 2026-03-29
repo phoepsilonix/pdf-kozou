@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PDF-Kozou",
   "version": "../package.json",
-  "identifier": "love.phoepsilonix.PDF-Kozou",
+  "identifier": "phoepsilonix.PDF-Kozou",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
