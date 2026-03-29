@@ -449,8 +449,6 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onPages={onPages}
             totalPages={curPages}
             onMargins={setTrimMargins}
-            topInputRef={marginTopRef}
-            rangeInputRef={rangeRef}
             onApply={handleExecute}
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
