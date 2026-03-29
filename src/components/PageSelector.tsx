@@ -16,6 +16,7 @@ export interface PageSelectorProps {
   label?: string;
   type?: string;
   compact?: boolean;
+  rangeInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 type Mode = "" | "all" | "odd" | "even" | "range";
@@ -42,6 +43,7 @@ export function PageSelector({
   label,
   type,
   compact,
+  rangeInputRef,
 }: PageSelectorProps) {
   const { t } = useI18n();
   //const C = getTheme();
@@ -155,6 +157,8 @@ export function PageSelector({
         {mode === "range" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <input
+              ref={rangeInputRef}
+              aria-label={t("aria.range_input")}
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}
@@ -217,6 +221,8 @@ export function PageSelector({
         {mode === "range" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <input
+              ref={rangeInputRef}
+              aria-label={t("aria.range_input")}
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}

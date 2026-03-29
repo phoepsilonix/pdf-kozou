@@ -11,13 +11,20 @@
     "about": "About this application."
   },
   "shortcut": {
-    "home": "Keyboard shortcuts. Ctrl+O to open files. Alt+1 through 7 to launch tools. Alt+H to go home. Alt+T to toggle text to speech. Alt+L to switch language. F1 to repeat this list.",
-    "tool": "Keyboard shortcuts. Ctrl+Enter to execute. Alt+1 through 7 to switch tools. Alt+H to go home. Alt+T to toggle text to speech. F1 to repeat this list.",
-    "viewer": "Keyboard shortcuts. Arrow keys to navigate pages. Ctrl+F to search. Alt+1 through 7 to switch tools. Alt+H to go home. Alt+T to toggle text to speech. F1 to repeat this list.",
+    "home": "Keyboard shortcuts. Ctrl+O to open files. Alt+1 through 7 to launch tools. Alt+H to go home. Alt+T to toggle speech. Alt+L to switch language. F1 to repeat.",
+    "tool": "Keyboard shortcuts. Ctrl+Enter to execute. Ctrl+S to save on result screen. Ctrl+Shift+S to compress and save. Alt+D to select output folder. Alt+R to focus page range. Escape to go back. Alt+1 through 7 to switch tools. F1 to repeat.",
+    "viewer": "Keyboard shortcuts. Arrow keys to navigate. Ctrl+F to search. Alt+1 through 7 to switch tools. Alt+H to go home. Alt+T to toggle speech. F1 to repeat.",
     "tool_announce": "Alt+{{num}} opens {{name}}. Please select a file first.",
     "tool_switched": "Switched to {{name}}.",
     "tool_no_file": "Please select a file to use {{name}}. Press Ctrl+O to open files.",
-    "tool_list": "Alt+1 Split. Alt+2 Merge. Alt+3 Trim. Alt+4 Rotate. Alt+5 Compress. Alt+6 Image Export. Alt+7 Viewer."
+    "tool_list": "Alt+1 Split. Alt+2 Merge. Alt+3 Trim. Alt+4 Rotate. Alt+5 Compress. Alt+6 Image Export. Alt+7 Viewer.",
+    "trim_tool": "Keyboard shortcuts. Ctrl+Enter to execute. Ctrl+S to save. Ctrl+Shift+S to compress and save. Alt+D for output folder. Alt+M to focus margin. Alt+R to focus page range. Escape to go back. F1 to repeat.",
+    "save_done": "Saved.",
+    "back_to_edit": "Back to settings.",
+    "back_to_home": "Back to home.",
+    "executing": "Executing.",
+    "saving": "Saving.",
+    "compress_saving": "Compressing and saving."
   },
   "file": {
     "added": "Added {{name}}. {{pages}} pages.",
@@ -88,7 +95,7 @@
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",
     "select_file": "Select files…",
-    "select_file_hint": "Select files Ctrl+O",
+    "select_file_hint": "Select files. Ctrl+O to open.",
     "select_prompt": "Please select a file",
     "no_file_hint": "Please select files"
   },
@@ -182,7 +189,11 @@
     "done_count": "{{count}} files done",
     "error_count": " · {{count}} errors",
     "bulk_label": "Bulk rotate (apply to {{range}})",
-    "reset_title": "{{action}} selection"
+    "reset_title": "{{action}} selection",
+    "preview_title": "Rotation Preview",
+    "rotated_count": "{{count}} pages rotated",
+    "rotated_result": "{{count}} pages rotated",
+    "select_save_method": "Select how to save"
   },
   "image": {
     "processing": "Converting… (page {{current}})",
@@ -319,5 +330,28 @@
     "select_btn": "Select…",
     "processing": "Processing…",
     "preview": "Preview →"
+  },
+  "aria": {
+    "range_input": "Page range. Example: 1-3,5,8-10. Trailing hyphen means to last page. Alt+R to focus",
+    "exclude_input": "Exclude pages. Example: 1-3,5. Tab to next",
+    "extract_input": "Extract pages. Example: 1-3,5. Tab to next",
+    "margin_top": "Top margin in mm. Alt+M to focus",
+    "margin_left": "Left margin in mm. Tab to next",
+    "margin_right": "Right margin in mm. Tab to next",
+    "margin_bottom": "Bottom margin in mm. Tab to next",
+    "output_dir_btn": "Select output folder. Alt+D to open",
+    "output_dir_display": "Output folder. Alt+D to change",
+    "every_n_input": "Pages per file. Use arrow keys or type",
+    "dpi_input": "Resolution in DPI. Use arrow keys or type",
+    "quality_input": "JPEG quality 1-100. Use arrow keys or type",
+    "prefix_input": "Output filename prefix",
+    "page_range_mode": "Page selection mode. Choose all, odd, even, or range",
+    "save_btn": "Save. Ctrl+S",
+    "compress_save_btn": "Compress and save. Ctrl+Shift+S",
+    "execute_btn": "Execute. Ctrl+Enter"
+  },
+  "home": {
+    "tool_focus": "Alt+{{num}} {{name}}. {{desc}}. Press Enter to launch.",
+    "tool_focus_disabled": "Alt+{{num}} {{name}}. Please select a file first."
   }
 }

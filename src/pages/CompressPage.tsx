@@ -20,6 +20,7 @@ import {
 } from "../lib/tauri";
 import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
+import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
@@ -156,6 +157,29 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
   // ショートカット
   useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        tts.speak(t("shortcut.executing"));
+        handleSaveCompressed();
+      }
+    },
+    "Ctrl+S": () => {
+      if (phase === "result") {
+        tts.speak(t("shortcut.saving"));
+        handleSaveCompressed();
+      }
+    },
+    "Ctrl+Shift+S": () => {},
+    "Alt+D": () => {
+      pickDir?.();
+      tts.speak(t("aria.output_dir_btn"));
+    },
+    Escape: () => {
+      if (phase === "result") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
     F1: () => announceKey("shortcut.tool"),
   });
 

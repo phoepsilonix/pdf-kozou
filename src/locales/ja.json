@@ -12,12 +12,19 @@
   },
   "shortcut": {
     "home": "ショートカット一覧。Ctrl+Oでファイルを開く。Alt+1から7でツールを起動。Alt+Hでホームに戻る。Alt+Tで読み上げのオン・オフ。Alt+Lで言語切り替え。F1でこの一覧を再度読み上げます。",
-    "tool": "ショートカット一覧。Ctrl+Enterで実行。Alt+1から7でツール切り替え。Alt+Hでホームに戻る。Alt+Tで読み上げのオン・オフ。F1でこの一覧を再度読み上げます。",
+    "tool": "ショートカット一覧。Ctrl+Enterで実行。Ctrl+Sで保存（結果画面）。Ctrl+Shift+Sで続けて圧縮保存。Alt+Dで出力先フォルダ選択。Alt+Rでページ範囲入力にフォーカス。Escapeで戻る。Alt+1から7でツール切り替え。F1でこの一覧を再度読み上げます。",
     "viewer": "ショートカット一覧。左右矢印キーでページ移動。Ctrl+Fで検索。Alt+1から7でツール切り替え。Alt+Hでホームに戻る。Alt+Tで読み上げのオン・オフ。F1でこの一覧を再度読み上げます。",
     "tool_announce": "Alt+{{num}}で{{name}}を開きます。ファイルを選択してください。",
     "tool_switched": "{{name}}に切り替えました。",
     "tool_no_file": "{{name}}を使うにはファイルを選択してください。Ctrl+Oでファイルを開けます。",
-    "tool_list": "Alt+1 分割。Alt+2 結合。Alt+3 トリミング。Alt+4 回転。Alt+5 圧縮。Alt+6 画像変換。Alt+7 ビューワー。"
+    "tool_list": "Alt+1 分割。Alt+2 結合。Alt+3 トリミング。Alt+4 回転。Alt+5 圧縮。Alt+6 画像変換。Alt+7 ビューワー。",
+    "trim_tool": "ショートカット一覧。Ctrl+Enterで実行。Ctrl+Sで保存。Ctrl+Shift+Sで続けて圧縮保存。Alt+Dで出力先フォルダ選択。Alt+Mで余白入力にフォーカス。Alt+Rでページ範囲入力にフォーカス。Escapeで戻る。F1でこの一覧を再度読み上げます。",
+    "save_done": "保存しました。",
+    "back_to_edit": "設定画面に戻ります。",
+    "back_to_home": "ホーム画面に戻ります。",
+    "executing": "実行します。",
+    "saving": "保存します。",
+    "compress_saving": "圧縮して保存します。"
   },
   "file": {
     "added": "{{name}}を追加しました。{{pages}}ページ。",
@@ -88,7 +95,7 @@
   "app": {
     "tagline": "Rust with tauri · MuPDF · オフライン完全動作",
     "select_file": "ファイルを選択…",
-    "select_file_hint": "ファイルを選択 Ctrl+O",
+    "select_file_hint": "ファイルを選択。Ctrl+Oでも開けます。",
     "select_prompt": "ファイルを選択してください",
     "no_file_hint": "ファイルを選択してください"
   },
@@ -182,7 +189,11 @@
     "done_count": "{{count}}件処理完了",
     "error_count": " · {{count}}件エラー",
     "bulk_label": "一括回転（{{range}}に適用）",
-    "reset_title": "選択範囲を{{action}}"
+    "reset_title": "選択範囲を{{action}}",
+    "preview_title": "回転プレビュー",
+    "rotated_count": "{{count}}ページを回転済み",
+    "rotated_result": "{{count}}ページを回転しました",
+    "select_save_method": "保存方法を選択してください"
   },
   "image": {
     "processing": "画像変換中… ({{current}}ページ)",
@@ -319,5 +330,28 @@
     "select_btn": "選択…",
     "processing": "処理中…",
     "preview": "プレビュー →"
+  },
+  "aria": {
+    "range_input": "ページ範囲。例: 1から3と5と8から10。ハイフン末尾は最終ページまで。Alt+Rでフォーカス",
+    "exclude_input": "除外ページ。例: 1から3と5。Tabで次へ",
+    "extract_input": "抽出ページ。例: 1から3と5。Tabで次へ",
+    "margin_top": "上の余白（ミリメートル）。Alt+Mでフォーカス",
+    "margin_left": "左の余白（ミリメートル）。Tabで次へ",
+    "margin_right": "右の余白（ミリメートル）。Tabで次へ",
+    "margin_bottom": "下の余白（ミリメートル）。Tabで次へ",
+    "output_dir_btn": "出力先フォルダを選択。Alt+Dで開く",
+    "output_dir_display": "出力先フォルダ。Alt+Dで変更",
+    "every_n_input": "N枚ごと分割の枚数。矢印キーまたは数値入力",
+    "dpi_input": "解像度（DPI）。矢印キーまたは数値入力",
+    "quality_input": "JPEG品質（1〜100）。矢印キーまたは数値入力",
+    "prefix_input": "出力ファイル名のプレフィックス",
+    "page_range_mode": "ページ選択モード。全ページ・奇数・偶数・範囲指定から選択",
+    "save_btn": "保存。Ctrl+Sで実行",
+    "compress_save_btn": "続けて圧縮保存。Ctrl+Shift+Sで実行",
+    "execute_btn": "実行。Ctrl+Enterで実行"
+  },
+  "home": {
+    "tool_focus": "Alt+{{num}} {{name}}。{{desc}}。Enterで起動。",
+    "tool_focus_disabled": "Alt+{{num}} {{name}}。使用するにはファイルを選択してください。"
   }
 }

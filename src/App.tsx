@@ -446,6 +446,7 @@ export default function App() {
               style={s.btnAddBig}
               onClick={handlePickFiles}
               aria-label={t("app.select_file_hint")}
+              onFocus={() => tts.speak(t("app.select_file_hint"))}
             >
               {t("app.select_file")}
             </button>
@@ -550,6 +551,13 @@ export default function App() {
                 onClick={() => enabled && handleLaunchTool(tool.id)}
                 disabled={!enabled}
                 aria-label={`Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1} ${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
+                onFocus={() => {
+                  const num = TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1;
+                  const msg = enabled
+                    ? t("home.tool_focus", { num: String(num), name: tool.label, desc: tool.desc })
+                    : t("home.tool_focus_disabled", { num: String(num), name: tool.label });
+                  tts.speak(msg);
+                }}
               >
                 <span style={s.toolIcon}>{tool.icon}</span>
                 <span style={s.toolLabel}>{tool.label}</span>
@@ -597,7 +605,13 @@ function FileRow({
   const mb = entry.sizeBytes > 0 ? (entry.sizeBytes / 1048576).toFixed(1) + " MB" : "";
   return (
     <div
+      tabIndex={0}
+      role="listitem"
       draggable
+      onFocus={() => {
+        const info = `${entry.filename}、${entry.pageCount}${t("file.pages_unit")}`;
+        tts.speak(info);
+      }}
       onDragStart={(e) => {
         setIsDragging(true);
         e.dataTransfer.setData("fileId", String(entry.id));

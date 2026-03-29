@@ -32,6 +32,8 @@ interface Props {
   // ページ抽出 (出力に含めるページ)
   extractSpec: string;
   onExtract: (v: string) => void;
+  topInputRef?: React.RefObject<HTMLInputElement | null>;
+  rangeInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 const PT_TO_MM = 1 / 2.8346;
@@ -57,7 +59,12 @@ export function TrimControls({
   onExclude,
   extractSpec,
   onExtract,
-}: Props) {
+  topInputRef,
+  rangeInputRef,
+}: Props & {
+  topInputRef?: React.RefObject<HTMLInputElement | null>;
+  rangeInputRef?: React.RefObject<HTMLInputElement | null>;
+}) {
   const { t } = useI18n();
   const set = useCallback(
     (key: keyof TrimMargins, mm: number) => {
@@ -78,18 +85,23 @@ export function TrimControls({
         <div style={s.cross}>
           <div style={s.crossTop}>
             <MmField
+              id="trim-margin-top"
               label={t("trim_controls.top")}
               value={toMm(margins.top)}
               max={toMm(pageH - margins.bottom - MM_TO_PT)}
               onChange={(v) => set("top", v)}
+              ariaLabel={t("aria.margin_top")}
+              inputRef={topInputRef}
             />
           </div>
           <div style={s.crossMid}>
             <MmField
+              id="trim-margin-left"
               label={t("trim_controls.left")}
               value={toMm(margins.left)}
               max={toMm(pageW - margins.right - MM_TO_PT)}
               onChange={(v) => set("left", v)}
+              ariaLabel={t("aria.margin_left")}
             />
             <div style={s.pageBox}>
               <span style={s.pageSize}>
@@ -103,18 +115,22 @@ export function TrimControls({
               <span style={s.pageUnit}>mm (後)</span>
             </div>
             <MmField
+              id="trim-margin-right"
               label={t("trim_controls.right")}
               value={toMm(margins.right)}
               max={toMm(pageW - margins.left - MM_TO_PT)}
               onChange={(v) => set("right", v)}
+              ariaLabel={t("aria.margin_right")}
             />
           </div>
           <div style={s.crossBot}>
             <MmField
+              id="trim-margin-bottom"
               label={t("trim_controls.bottom")}
               value={toMm(margins.bottom)}
               max={toMm(pageH - margins.top - MM_TO_PT)}
               onChange={(v) => set("bottom", v)}
+              ariaLabel={t("aria.margin_bottom")}
             />
           </div>
         </div>
@@ -130,6 +146,7 @@ export function TrimControls({
           label={t("trim_controls.trim_pages_label")}
           type="1"
           compact
+          rangeInputRef={rangeInputRef}
         />
       </section>
       <section style={s.section}>
@@ -196,6 +213,7 @@ export function TrimControls({
               }}
               onClick={onPickDir}
               disabled={processing}
+              aria-label={t("aria.output_dir_btn")}
             >
               {t("trim_controls.select_btn")}
             </button>
@@ -227,22 +245,33 @@ function MmField({
   value,
   max,
   onChange,
+  id,
+  ariaLabel,
+  inputRef,
 }: {
   label: string;
   value: number;
   max: number;
   onChange: (v: number) => void;
+  id?: string;
+  ariaLabel?: string;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   return (
     <div style={s.field}>
-      <label style={s.fieldLabel}>{label}</label>
+      <label style={s.fieldLabel} htmlFor={id}>
+        {label}
+      </label>
       <input
+        id={id}
+        ref={inputRef}
         type="number"
         style={s.input}
         value={value}
         min={0}
         max={max}
         step={0.5}
+        aria-label={ariaLabel ?? label}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
       />
       <span style={s.unit}>mm</span>

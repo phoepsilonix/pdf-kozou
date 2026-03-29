@@ -27,6 +27,7 @@ import { CompressPage } from "./CompressPage";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
+import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
@@ -61,6 +62,30 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
 
   // ショートカット
   useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        tts.speak(t("shortcut.executing"));
+        handleSave();
+      }
+    },
+    "Ctrl+S": () => {
+      if (phase === "edit" || phase === "result") {
+        tts.speak(t("shortcut.saving"));
+        handleSave();
+      }
+    },
+    "Ctrl+Shift+S": () => {
+      if (phase === "edit" || phase === "result") {
+        tts.speak(t("shortcut.compress_saving"));
+        handleSaveWithCompress();
+      }
+    },
+    Escape: () => {
+      if (phase === "result") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
     F1: () => announceKey("shortcut.tool"),
   });
   const { pickSave } = useSaveDialog();
@@ -411,8 +436,12 @@ useEffect(() => {
           <span style={s.title}>結合プレビュー</span>
           <span style={s.sub}>合計 {totalPages}ページ → 1ファイル</span>
           <div style={{ flex: 1 }} />
-          <BtnPrimary onClick={() => handleSave(false)}>{t("merge.save")}</BtnPrimary>
-          <BtnPrimary onClick={() => handleSave(true)}>{t("merge.save_compress")}</BtnPrimary>
+          <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")}>
+            {t("merge.save")}
+          </BtnPrimary>
+          <BtnPrimary onClick={() => handleSave(true)} aria-label={t("aria.compress_save_btn")}>
+            {t("merge.save_compress")}
+          </BtnPrimary>
         </PageHeader>
 
         {/* 統合プレビュー: 大枠で「1つのPDF」を強調 */}
@@ -485,8 +514,12 @@ useEffect(() => {
             }}
           />
           <div style={{ display: "flex", gap: 8 }}>
-            <BtnPrimary onClick={() => handleSave(false)}>{t("merge.save")}</BtnPrimary>
-            <BtnPrimary onClick={() => handleSave(true)}>{t("merge.save_compress")}</BtnPrimary>
+            <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")}>
+              {t("merge.save")}
+            </BtnPrimary>
+            <BtnPrimary onClick={() => handleSave(true)} aria-label={t("aria.compress_save_btn")}>
+              {t("merge.save_compress")}
+            </BtnPrimary>
           </div>
         </div>
       </div>

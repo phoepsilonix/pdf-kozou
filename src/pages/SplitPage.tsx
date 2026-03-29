@@ -4,7 +4,7 @@
 
 // src/pages/SplitPage.tsx  —  単体 & バッチ対応
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Spinner,
@@ -27,6 +27,7 @@ import {
 import { F } from "../lib/theme";
 //import { CompressPage } from "./CompressPage";
 import { useA11y } from "../hooks/useA11y";
+import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
@@ -61,6 +62,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  const rangeRef = useRef<HTMLInputElement | null>(null);
+  const dirBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // 現在表示中のファイル（バッチの場合はプレビュー用に切り替え可能）
   const [previewIdx, setPreviewIdx] = useState(0);
@@ -162,6 +165,29 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // ショートカット
   useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        isBatch ? handleExecuteBatch() : handleExecuteSingle();
+      }
+    },
+    "Ctrl+S": () => {},
+    "Alt+D": () => {
+      pickDir();
+      tts.speak(t("aria.output_dir_btn"));
+    },
+    "Alt+R": () => {
+      setModeId("ranges");
+      setTimeout(() => {
+        rangeRef.current?.focus();
+        tts.speak(t("aria.range_input"));
+      }, 50);
+    },
+    Escape: () => {
+      if (phase === "result" || phase === "compress") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
     F1: () => announceKey("shortcut.tool"),
   });
 
@@ -501,6 +527,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   value={everyN}
                   min={1}
                   max={isBatch ? 999 : total}
+                  aria-label={t("aria.every_n_input")}
                   onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value) || 1))}
                 />
                 <button style={s.stepBtn} onClick={() => setEveryN((v) => v + 1)}>
@@ -531,6 +558,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     <input
                       type="number"
                       style={s.rangeInput}
+                      ref={i === 0 ? rangeRef : undefined}
+                      aria-label={
+                        i === 0 ? t("aria.range_input") : `${t("aria.range_input")} #${i + 1}`
+                      }
                       value={rng[0]}
                       min={1}
                       max={total}
@@ -716,9 +747,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           <div style={s.secLabel}>出力フォルダ</div>
           <div style={s.dirRow}>
             <div style={s.dirPath} title={outDir}>
-              {outDir || t("common.select_dir")}
+              <span aria-label={t("aria.output_dir_btn")}>{outDir || t("common.select_dir")}</span>
             </div>
-            <button style={s.dirPickBtn} onClick={pickDir}>
+            <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
               {t("common.browse")}
             </button>
           </div>

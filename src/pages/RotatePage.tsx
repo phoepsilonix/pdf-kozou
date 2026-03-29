@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 // src/pages/RotatePage.tsx — 単体 & バッチ対応
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Spinner, ErrorView, PageHeader, BtnBack, BtnPrimary } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
@@ -18,6 +18,7 @@ import {
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
+import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
@@ -46,6 +47,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  // Ctrl+S からプレビュー画面の doSave を呼ぶための ref
+  const saveHandlerRef = useRef<(() => void) | null>(null);
+  const compressHandlerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     announceScreen("screen.rotate");
@@ -53,6 +57,34 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   }, []);
 
   useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        tts.speak(t("shortcut.executing"));
+        isBatch ? handleExecuteBatch() : handleExecuteSingle();
+      }
+    },
+    "Ctrl+S": () => {
+      if (phase === "preview") {
+        tts.speak(t("shortcut.saving"));
+        saveHandlerRef.current?.();
+      }
+    },
+    "Ctrl+Shift+S": () => {
+      if (phase === "preview") {
+        tts.speak(t("shortcut.compress_saving"));
+        compressHandlerRef.current?.();
+      }
+    },
+    "Alt+D": () => {
+      pickDir();
+      tts.speak(t("aria.output_dir_btn"));
+    },
+    Escape: () => {
+      if (phase === "preview" || phase === "result") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
     F1: () => announceKey("shortcut.tool"),
   });
 
@@ -336,22 +368,33 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
       setPhase("result");
     };
+    // Ctrl+S でアクセスできるよう ref に登録
+    saveHandlerRef.current = doSave;
+    compressHandlerRef.current = () => setPhase("compress");
     return (
       <div style={s.root}>
         <PageHeader>
           <BtnBack onClick={() => setPhase("edit")} />
-          <span style={s.title}>回転プレビュー</span>
-          <span style={s.sub}>{changedPages.length}ページを回転済み</span>
+          <span style={s.title}>{t("rotate.preview_title")}</span>
+          <span style={s.sub}>
+            {t("rotate.rotated_count", { count: String(changedPages.length) })}
+          </span>
         </PageHeader>
         <div style={s.previewPhase}>
           <span style={{ fontSize: 52, color: "var(--c-accent)" }}>↻</span>
-          <span style={s.previewTitle}>{changedPages.length}ページを回転しました</span>
-          <span style={s.previewSub}>保存方法を選択してください</span>
+          <span style={s.previewTitle}>
+            {t("rotate.rotated_result", { count: String(changedPages.length) })}
+          </span>
+          <span style={s.previewSub}>{t("rotate.select_save_method")}</span>
           <div style={s.previewBtns}>
-            <button style={s.saveBtnPrimary} onClick={doSave}>
+            <button style={s.saveBtnPrimary} onClick={doSave} aria-label={t("aria.save_btn")}>
               {t("rotate.save")}
             </button>
-            <button style={s.compressBtn} onClick={() => setPhase("compress")}>
+            <button
+              style={s.compressBtn}
+              onClick={() => setPhase("compress")}
+              aria-label={t("aria.compress_save_btn")}
+            >
               {t("rotate.save_compress")}
             </button>
           </div>

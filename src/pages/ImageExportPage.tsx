@@ -20,6 +20,7 @@ import { PageSelector } from "../components/PageSelector";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
+import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
@@ -64,7 +65,28 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const pagesInputRef = useRef<HTMLInputElement | null>(null);
   useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        tts.speak(t("shortcut.executing"));
+        isBatch ? handleExecuteBatch() : handleExecuteSingle();
+      }
+    },
+    "Alt+D": () => {
+      pickDir();
+      tts.speak(t("aria.output_dir_btn"));
+    },
+    "Alt+R": () => {
+      pagesInputRef.current?.focus();
+      tts.speak(t("aria.range_input"));
+    },
+    Escape: () => {
+      if (phase === "result") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
     F1: () => announceKey("shortcut.tool"),
   });
   const isBatch = (batchFiles?.length ?? 0) > 1;
@@ -499,6 +521,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             onChange={setPages}
             type="1"
             compact
+            rangeInputRef={pagesInputRef}
           />
 
           <div style={s.secLabel}>ファイル名プレフィックス</div>
@@ -521,7 +544,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.dirPath} title={outDir}>
               {outDir || t("common.select_dir")}
             </div>
-            <button style={s.dirPickBtn} onClick={pickDir}>
+            <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
               {t("common.browse")}
             </button>
           </div>

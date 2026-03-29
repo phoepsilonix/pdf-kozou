@@ -21,6 +21,7 @@ import {
 } from "../lib/tauri";
 import { C, F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
+import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
@@ -481,6 +482,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  const marginTopRef = useRef<HTMLInputElement | null>(null);
+  const rangeRef = useRef<HTMLInputElement | null>(null);
+  // TrimPageSingle では出力先フォルダはファイル保存ダイアログで処理するため
+  // Alt+D は設定中の旨を読み上げるのみ（バッチ側の pickDir とは別）
+  const pickSingle = useSaveDialog().pickSave;
 
   useEffect(() => {
     announceScreen("screen.trim");
@@ -488,7 +494,35 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   }, []);
 
   useKeyboardShortcuts({
-    F1: () => announceKey("shortcut.tool"),
+    "Ctrl+Enter": () => {
+      if (phase === "edit") handleExecute();
+    },
+    "Ctrl+S": () => {
+      if (phase === "result") handleSave();
+    },
+    "Ctrl+Shift+S": () => {
+      if (phase === "result") {
+      }
+    },
+    "Alt+D": () => {
+      // TrimPageSingle では保存先は実行時に選択するため、その旨を読み上げる
+      tts.speak(t("aria.output_dir_btn"));
+    },
+    "Alt+M": () => {
+      marginTopRef.current?.focus();
+      tts.speak(t("aria.margin_top"));
+    },
+    "Alt+R": () => {
+      rangeRef.current?.focus();
+      tts.speak(t("aria.range_input"));
+    },
+    Escape: () => {
+      if (phase === "result") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
+    F1: () => announceKey("shortcut.trim_tool"),
   });
 
   const [zoom, setZoom] = useState(1.0);
@@ -830,6 +864,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           onMargins={setTrimMargins} // Zustand 更新
           trimPages={trimPages}
           onPages={onPages} // Zustand 更新
+          topInputRef={marginTopRef}
+          rangeInputRef={rangeRef}
           onApply={handleExecute}
           onReset={() => setTrimMargins(zero())}
           processing={phase !== "edit"}
