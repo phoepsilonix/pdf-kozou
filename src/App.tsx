@@ -150,14 +150,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTool]);
 
-  // グローバルショートカット（全画面共通）
-  useKeyboardShortcuts({
-    "Ctrl+O": handlePickFiles,
-    "Alt+T": () => tts.toggle(),
-    "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
-    F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
-  });
-
   useEffect(() => {
     const t = THEMES[themeId];
     initThemeCssVars();
@@ -210,6 +202,19 @@ export default function App() {
     [addFiles, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
 
+  const handlePickFiles = useCallback(async () => {
+    const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
+    if (paths.length) await handleAddPaths(paths);
+  }, [handleAddPaths]);
+
+  // グローバルショートカット（全画面共通）
+  useKeyboardShortcuts({
+    "Ctrl+O": handlePickFiles,
+    "Alt+T": () => tts.toggle(),
+    "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
+    F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
+  });
+
   useEffect(() => {
     let unlistenCustom: (() => void) | null = null;
     const setupListeners = async () => {
@@ -224,10 +229,6 @@ export default function App() {
     };
   }, [handleAddPaths]);
 
-  const handlePickFiles = useCallback(async () => {
-    const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
-    if (paths.length) await handleAddPaths(paths);
-  }, [handleAddPaths]);
   /*
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
