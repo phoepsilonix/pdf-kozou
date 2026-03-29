@@ -70,7 +70,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: ""
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -163,7 +163,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: ""
       
       #- name: Setup pnpm
       #  uses: pnpm/action-setup@v4
