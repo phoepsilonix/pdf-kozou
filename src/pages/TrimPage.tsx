@@ -251,7 +251,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         >
           {progress.errors.length ? "⚠" : "✓"}
         </span>
-        <div style={b.title}>バッチトリミング完了 — {progress.done.length}件</div>
+        <div style={b.title}>
+          {t("trim.batch_done_title", { count: String(progress.done.length) })}
+        </div>
         <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>
           {usePdfStore.getState().lastSaveDir}
         </div>
@@ -318,7 +320,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 16, fontWeight: 700 }}>トリミング — {files.length}件バッチ</span>
+        <span style={{ fontSize: 16, fontWeight: 700 }}>
+          {t("trim.batch_title", { count: String(files.length) })}
+        </span>
         <span style={{ fontSize: 13, color: "var(--c-textSub)" }}>{t("trim.apply_all")}</span>
       </div>
 
@@ -430,7 +434,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
                 displayWidth={Math.round(CANVAS_W * zoom)}
               />
             ) : (
-              <div style={s.ph}>ページ読み込み中...</div>
+              <div style={s.ph}>{t("trim.page_loading")}</div>
             )}
           </div>
         </main>
@@ -445,6 +449,8 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onPages={onPages}
             totalPages={curPages}
             onMargins={setTrimMargins}
+            topInputRef={marginTopRef}
+            rangeInputRef={rangeRef}
             onApply={handleExecute}
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
@@ -727,7 +733,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     return (
       <div style={s.center}>
         <div style={s.spinner} />
-        <span style={s.centSub}>トリミング + プレビュー生成中…</span>
+        <span style={s.centSub}>{t("trim.processing_preview")}</span>
       </div>
     );
 
@@ -773,7 +779,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     <div style={s.root}>
       <div style={s.sidebar}>
         <div style={s.sbHead}>
-          <span style={s.sbTitle}>ページ一覧</span>
+          <span style={s.sbTitle}>{t("trim.page_list")}</span>
           <span style={s.sbCount}>{pdfInfo.page_count} ページ</span>
         </div>
         <div style={s.thumbList}>
@@ -803,7 +809,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
 
       <main style={s.main}>
         <div style={s.mainHead}>
-          <span style={s.mainTitle}>トリミング設定</span>
+          <span style={s.mainTitle}>{t("trim.settings_title")}</span>
           <span style={s.pageInd}>
             {previewPage + 1} / {pdfInfo.page_count} ページ
           </span>
@@ -849,7 +855,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               style={{ ...s.ph, width: CANVAS_W, height: Math.round((CANVAS_W * pageH) / pageW) }}
             >
               <div style={s.spinner} />
-              <span style={s.centSub}>読み込み中…</span>
+              <span style={s.centSub}>{t("trim.loading")}</span>
             </div>
           )}
         </div>
@@ -903,7 +909,7 @@ function ResultView({
         <button style={r.btnBack} onClick={onBack}>
           {t("common.back")}
         </button>
-        <span style={r.title}>トリミング結果確認</span>
+        <span style={r.title}>{t("trim.result_title")}</span>
         <span style={r.sub}>
           {t("trim.result_pages", { pages: String(pageCount), shown: String(images.length) })}
         </span>
@@ -927,7 +933,7 @@ function ResultView({
             {b64 ? (
               <img src={`data:image/jpeg;base64,${b64}`} style={r.img} alt="" />
             ) : (
-              <div style={r.imgPh}>プレビュー失敗</div>
+              <div style={r.imgPh}>{t("trim.preview_fail")}</div>
             )}
           </div>
         ))}

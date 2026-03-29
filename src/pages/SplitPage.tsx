@@ -383,7 +383,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               setBatchProgress(null);
             }}
           />
-          <span style={s.title}>バッチ分割完了</span>
+          <span style={s.title}>{t("split.batch_done_title")}</span>
         </PageHeader>
         <div style={s.resultBody}>
           <div style={s.resultIcon}>{batchProgress.errors.length > 0 ? "⚠" : "✓"}</div>
@@ -418,7 +418,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       <div style={s.root}>
         <PageHeader>
           <BtnBack onClick={() => setPhase("edit")} />
-          <span style={s.title}>分割完了 — {result.files.length}ファイルを出力</span>
+          <span style={s.title}>
+            分割完了 — {t("split.output_files", { count: String(result.files.length) })}
+          </span>
         </PageHeader>
         <div style={s.resultBody}>
           <div style={s.resultIcon}>✓</div>
@@ -515,7 +517,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           {modeId === "every" && (
             <>
-              <div style={s.secLabel}>N枚の数</div>
+              <div style={s.secLabel}>{t("split.every_n_label")}</div>
               {isBatch && <div style={s.batchRangeNote}>{t("split.every_apply_all")}</div>}
               <div style={s.numRow}>
                 <button style={s.stepBtn} onClick={() => setEveryN((v) => Math.max(1, v - 1))}>
@@ -533,14 +535,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <button style={s.stepBtn} onClick={() => setEveryN((v) => v + 1)}>
                   ＋
                 </button>
-                <span style={s.numLabel}>ページで1ファイル</span>
+                <span style={s.numLabel}>{t("split.pages_per_file")}</span>
               </div>
             </>
           )}
 
           {modeId === "ranges" && !isBatch && (
             <>
-              <div style={s.secLabel}>ページ範囲</div>
+              <div style={s.secLabel}>{t("split.range_label")}</div>
               {ranges.map((rng, i) => (
                 <div key={i} style={s.rangeRow}>
                   <span style={s.rangeIdx}>#{i + 1}</span>
@@ -732,7 +734,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           )}
 
-          <div style={s.secLabel}>ファイル名プレフィックス</div>
+          <div style={s.secLabel}>{t("split.prefix_label")}</div>
           <div style={s.prefixRow}>
             <input
               type="text"
@@ -768,7 +770,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {isBatch ? (
             // バッチ: ファイル一覧 + 先頭ページサムネイル
             <>
-              <div style={s.previewHead}>対象ファイル — {batchFiles!.length}件</div>
+              <div style={s.previewHead}>
+                {t("split.target_files", { count: String(batchFiles!.length) })}
+              </div>
               <div style={s.batchFileList}>
                 {batchFiles!.map((f, i) => (
                   <div

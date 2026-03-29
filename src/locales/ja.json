@@ -145,7 +145,17 @@
     "success_count": "{{count}}件成功",
     "error_count": "{{count}}件エラー",
     "every_apply_all": "全ファイルに同じN枚設定を適用します",
-    "browse": "参照…"
+    "browse": "参照…",
+    "msg_done": "{{count}}ファイルに分割しました。",
+    "preview_area_title": "プレビュー",
+    "batch_done_title": "バッチ分割完了",
+    "output_files": "{{count}}ファイルを出力",
+    "every_n_label": "N枚の数",
+    "pages_per_file": "ページで1ファイル",
+    "range_label": "ページ範囲",
+    "prefix_label": "ファイル名プレフィックス",
+    "target_files": "対象ファイル — {{count}}件",
+    "batch_label_suffix": "{{count}}件バッチ"
   },
   "merge": {
     "loading": "ファイルを読み込み中…",
@@ -169,7 +179,16 @@
     "execute": "{{count}}件を一括トリミング →",
     "result_pages": "{{pages}}ページ（先頭{{shown}}ページ表示）",
     "apply_label": "{{count}}件を一括トリミング →",
-    "no_dir_apply": "フォルダを選択して実行"
+    "no_dir_apply": "フォルダを選択して実行",
+    "batch_done_title": "バッチトリミング完了 — {{count}}件",
+    "batch_title": "トリミング — {{count}}件バッチ",
+    "page_loading": "ページ読み込み中...",
+    "processing_preview": "トリミング + プレビュー生成中…",
+    "page_list": "ページ一覧",
+    "settings_title": "トリミング設定",
+    "loading": "読み込み中…",
+    "result_title": "トリミング結果確認",
+    "preview_fail": "プレビュー失敗"
   },
   "rotate": {
     "processing": "回転処理中…",
@@ -193,7 +212,8 @@
     "preview_title": "回転プレビュー",
     "rotated_count": "{{count}}ページを回転済み",
     "rotated_result": "{{count}}ページを回転しました",
-    "select_save_method": "保存方法を選択してください"
+    "select_save_method": "保存方法を選択してください",
+    "preview_area": "プレビューエリア"
   },
   "image": {
     "processing": "画像変換中… ({{current}}ページ)",
@@ -315,7 +335,8 @@
     "placeholder": "例: 1-3,5,8-10",
     "hint": "(ハイフン末尾=最終ページまで)",
     "total": "全 {{total}} ページ",
-    "specified": " / 指定: \"{{value}}\""
+    "specified": " / 指定: \"{{value}}\"",
+    "selected_suffix": "。選択中"
   },
   "trim_controls": {
     "top": "上",
@@ -329,7 +350,16 @@
     "not_selected": "未選択",
     "select_btn": "選択…",
     "processing": "処理中…",
-    "preview": "プレビュー →"
+    "preview": "プレビュー →",
+    "margin_heading": "削る余白 (mm)",
+    "margin_original": "mm (元)",
+    "margin_after": "mm (後)",
+    "trim_pages_heading": "トリミング適用ページ",
+    "exclude_heading": "トリミング除外ページ",
+    "extract_heading": "ページ抽出",
+    "extract_optional": "（オプション）",
+    "extract_hint": "トリミング後に残すページを指定。空欄=全ページ保持。",
+    "drag_hint": "💡 画像の枠をドラッグして余白を調整できます"
   },
   "aria": {
     "range_input": "ページ範囲。例: 1から3と5と8から10。ハイフン末尾は最終ページまで。Alt+Rでフォーカス",

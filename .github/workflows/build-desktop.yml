@@ -205,55 +205,46 @@ jobs:
         run: |
           cargo tauri build
 
-      - name: Repackage MSI to MSIX (Multi-language)
+      - name: Debug Directory Structure
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse "target/release/bundle/msi" | Select-Object FullName
+
+      - name: Repackage MSI to MSIX
         shell: pwsh
         run: |
           $makeAppx = "C:\Program Files (x86)\Windows Kits\10\App Build\makeappx.exe"
           $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
-          $bundleDir = "target/release/bundle/msi"
 
-          # 1. 自己署名証明書の作成
+          # 絶対パスを取得
+          $basePath = Resolve-Path "target/release/bundle/msi"
+
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=1CB57BC7-DF63-47F3-83C8-6A33A692A2CF" -KeyUsage DigitalSignature -FriendlyName "StoreCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
 
-          # 2. 各言語フォルダをスキャン
-          Get-ChildItem -Directory $bundleDir | ForEach-Object {
+          Get-ChildItem -Path $basePath -Directory | ForEach-Object {
               $lang = $_.Name
               $sourcePath = $_.FullName
-              $targetMsix = "$bundleDir/PDF-Kozou_$($lang).msix"
-              $manifestPath = "$sourcePath/AppxManifest.xml"
+              $targetMsix = Join-Path $basePath "PDF-Kozou_$($lang).msix"
+              $manifestPath = Join-Path $sourcePath "AppxManifest.xml"
 
-              Write-Host "Processing $lang in $sourcePath..."
+              Write-Host "Creating Manifest for $lang..."
 
-              # 3. AppxManifest.xml の内容をヒアドキュメントを使わずに作成（安全策）
-              $xml = '<?xml version="1.0" encoding="utf-8"?>' + "`n"
-              $xml += '<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap rescap">' + "`n"
-              $xml += '  <Identity Name="phoepsilonix.PDF-Kozou" Publisher="CN=1CB57BC7-DF63-47F3-83C8-6A33A692A2CF" Version="1.4.0.0" ProcessorArchitecture="x64" />' + "`n"
-              $xml += '  <Properties>' + "`n"
-              $xml += '    <DisplayName>PDF-Kozou</DisplayName>' + "`n"
-              $xml += '    <PublisherDisplayName>phoepsilonix</PublisherDisplayName>' + "`n"
-              $xml += '    <Logo>Assets\StoreLogo.png</Logo>' + "`n"
-              $xml += '  </Properties>' + "`n"
-              $xml += '  <Resources>' + "`n"
-              $xml += "    <Resource Language=""$lang"" />`n"
-              $xml += '  </Resources>' + "`n"
-              $xml += '  <Applications>' + "`n"
-              $xml += '    <Application Id="App" Executable="pdf-kozou.exe" EntryPoint="Windows.FullTrustApplication">' + "`n"
-              $xml += '      <uap:VisualElements DisplayName="PDF-Kozou" Description="PDF-Kozou" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">' + "`n"
-              $xml += '        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />' + "`n"
-              $xml += '      </uap:VisualElements>' + "`n"
-              $xml += '    </Application>' + "`n"
-              $xml += '  </Applications>' + "`n"
-              $xml += '  <Capabilities>' + "`n"
-              $xml += '    <rescap:Capability Name="runFullTrust" />' + "`n"
-              $xml += '  </Capabilities>' + "`n"
-              $xml += '</Package>'
+              # ヒアドキュメントを避け、確実に1つの文字列として結合
+              $xml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>`n"
+              $xml += "<Package xmlns=`"http://schemas.microsoft.com/appx/manifest/foundation/windows10`" xmlns:uap=`"http://schemas.microsoft.com/appx/manifest/uap/windows10`" xmlns:rescap=`"http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities`" IgnorableNamespaces=`"uap rescap`">`n"
+              $xml += "  <Identity Name=`"phoepsilonix.PDF-Kozou`" Publisher=`"CN=1CB57BC7-DF63-47F3-83C8-6A33A692A2CF`" Version=`"1.4.0.0`" ProcessorArchitecture=`"x64`" />`n"
+              $xml += "  <Properties><DisplayName>PDF-Kozou</DisplayName><PublisherDisplayName>phoepsilonix</PublisherDisplayName><Logo>Assets\StoreLogo.png</Logo></Properties>`n"
+              $xml += "  <Resources><Resource Language=`"$lang`" /></Resources>`n"
+              $xml += "  <Applications><Application Id=`"App`" Executable=`"pdf-kozou.exe`" EntryPoint=`"Windows.FullTrustApplication`"><uap:VisualElements DisplayName=`"PDF-Kozou`" Description=`"PDF-Kozou`" BackgroundColor=`"transparent`" Square150x150Logo=`"Assets\Square150x150Logo.png`" Square44x44Logo=`"Assets\Square44x44Logo.png`"><uap:DefaultTile Wide310x150Logo=`"Assets\Wide310x150Logo.png`" /></uap:VisualElements></Application></Applications>`n"
+              $xml += "  <Capabilities><rescap:Capability Name=`"runFullTrust`" /></Capabilities>`n"
+              $xml += "</Package>"
 
-              $xml | Out-File -FilePath $manifestPath -Encoding utf8
+              [System.IO.File]::WriteAllText($manifestPath, $xml)
 
-              # 4. パッキング実行 (パスにスペースが含まれる可能性を考慮してクォート)
+              Write-Host "Packing $targetMsix..."
               & $makeAppx pack /d "$sourcePath" /p "$targetMsix" /v
 
-              # 5. 署名実行
+              Write-Host "Signing $targetMsix..."
               & $signtool sign /fd SHA256 /a /f Cert:\CurrentUser\My\$($cert.Thumbprint) "$targetMsix"
           }
 

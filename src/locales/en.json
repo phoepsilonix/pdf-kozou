@@ -145,7 +145,17 @@
     "success_count": "{{count}} succeeded",
     "error_count": "{{count}} errors",
     "every_apply_all": "Apply same N-page setting to all files",
-    "browse": "Browse…"
+    "browse": "Browse…",
+    "msg_done": "Split into {{count}} files.",
+    "preview_area_title": "Preview",
+    "batch_done_title": "Batch split complete",
+    "output_files": "{{count}} files output",
+    "every_n_label": "Pages per N",
+    "pages_per_file": "pages per file",
+    "range_label": "Page ranges",
+    "prefix_label": "Filename prefix",
+    "target_files": "Target files — {{count}}",
+    "batch_label_suffix": "{{count}} files batch"
   },
   "merge": {
     "loading": "Loading files…",
@@ -169,7 +179,16 @@
     "execute": "Trim {{count}} files →",
     "result_pages": "{{pages}} pages (showing first {{shown}})",
     "apply_label": "Trim {{count}} files →",
-    "no_dir_apply": "Select folder to start"
+    "no_dir_apply": "Select folder to start",
+    "batch_done_title": "Batch trim complete — {{count}} files",
+    "batch_title": "Trim — {{count}} files batch",
+    "page_loading": "Loading page...",
+    "processing_preview": "Trimming + generating preview…",
+    "page_list": "Page list",
+    "settings_title": "Trim settings",
+    "loading": "Loading…",
+    "result_title": "Trim result",
+    "preview_fail": "Preview failed"
   },
   "rotate": {
     "processing": "Rotating…",
@@ -193,7 +212,8 @@
     "preview_title": "Rotation Preview",
     "rotated_count": "{{count}} pages rotated",
     "rotated_result": "{{count}} pages rotated",
-    "select_save_method": "Select how to save"
+    "select_save_method": "Select how to save",
+    "preview_area": "Preview area"
   },
   "image": {
     "processing": "Converting… (page {{current}})",
@@ -315,7 +335,8 @@
     "placeholder": "e.g. 1-3,5,8-10",
     "hint": "(trailing hyphen = to last page)",
     "total": "Total {{total}} pages",
-    "specified": " / Specified: \"{{value}}\""
+    "specified": " / Specified: \"{{value}}\"",
+    "selected_suffix": ". Selected"
   },
   "trim_controls": {
     "top": "Top",
@@ -329,7 +350,16 @@
     "not_selected": "Not selected",
     "select_btn": "Select…",
     "processing": "Processing…",
-    "preview": "Preview →"
+    "preview": "Preview →",
+    "margin_heading": "Margins to cut (mm)",
+    "margin_original": "mm (original)",
+    "margin_after": "mm (after)",
+    "trim_pages_heading": "Pages to trim",
+    "exclude_heading": "Pages to exclude",
+    "extract_heading": "Page extraction",
+    "extract_optional": "(optional)",
+    "extract_hint": "Specify pages to keep after trim. Leave empty to keep all.",
+    "drag_hint": "💡 Drag the image border to adjust margins"
   },
   "aria": {
     "range_input": "Page range. Example: 1-3,5,8-10. Trailing hyphen means to last page. Alt+R to focus",

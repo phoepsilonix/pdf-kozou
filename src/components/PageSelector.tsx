@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 import { useI18n } from "../lib/i18n";
+import { tts } from "../lib/tts";
 
 // src/components/PageSelector.tsx — 共通ページ範囲指定コンポーネント
 // 対応表記: "1-3,5,7-", "odd", "even", "-5" (末尾から5ページ), "all"
@@ -160,6 +161,7 @@ export function PageSelector({
               ref={rangeInputRef}
               aria-label={t("aria.range_input")}
               value={rangeText}
+              onFocus={() => tts.speak(t("aria.range_input"))}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}
               style={{
@@ -205,7 +207,24 @@ export function PageSelector({
         )}
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {(["", "odd", "even", "all", "range"] as Mode[]).map((m) => (
-            <button key={m} style={mode === m ? btnOn : btnBase} onClick={() => handleMode(m)}>
+            <button
+              key={m}
+              style={mode === m ? btnOn : btnBase}
+              onClick={() => handleMode(m)}
+              onFocus={() => {
+                const label =
+                  m === ""
+                    ? t("page_selector.exclude_none")
+                    : m === "odd"
+                      ? t("page_selector.odd")
+                      : m === "even"
+                        ? t("page_selector.even")
+                        : m === "all"
+                          ? t("page_selector.all")
+                          : t("page_selector.range");
+                tts.speak(label + (mode === m ? t("page_selector.selected_suffix") : ""));
+              }}
+            >
               {m === ""
                 ? t("page_selector.exclude_none")
                 : m === "odd"
@@ -224,6 +243,7 @@ export function PageSelector({
               ref={rangeInputRef}
               aria-label={t("aria.range_input")}
               value={rangeText}
+              onFocus={() => tts.speak(t("aria.range_input"))}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}
               style={{

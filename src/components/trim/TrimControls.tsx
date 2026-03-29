@@ -10,6 +10,7 @@ import type { TrimMargins, PageSelection } from "../../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../PageSelector";
 import { F } from "../../lib/theme";
 import { useI18n } from "../../lib/i18n";
+import { tts } from "../../lib/tts";
 
 interface Props {
   margins: TrimMargins;
@@ -81,7 +82,7 @@ export function TrimControls({
   return (
     <div style={s.panel}>
       <section style={s.section}>
-        <h3 style={s.heading}>削る余白 (mm)</h3>
+        <h3 style={s.heading}>{t("trim_controls.margin_heading")}</h3>
         <div style={s.cross}>
           <div style={s.crossTop}>
             <MmField
@@ -107,12 +108,12 @@ export function TrimControls({
               <span style={s.pageSize}>
                 {origW} × {origH}
               </span>
-              <span style={s.pageUnit}>mm (元)</span>
+              <span style={s.pageUnit}>{t("trim_controls.margin_original")}</span>
               <span style={s.arrow}>↓</span>
               <span style={{ ...s.pageSize, color: "var(--c-accent)" }}>
                 {trimW} × {trimH}
               </span>
-              <span style={s.pageUnit}>mm (後)</span>
+              <span style={s.pageUnit}>{t("trim_controls.margin_after")}</span>
             </div>
             <MmField
               id="trim-margin-right"
@@ -138,7 +139,7 @@ export function TrimControls({
 
       {/* トリミング適用ページ - PageSelector に置き換え。基本は全ページ適用。 */}
       <section style={s.section}>
-        <h3 style={s.heading}>トリミング適用ページ</h3>
+        <h3 style={s.heading}>{t("trim_controls.trim_pages_heading")}</h3>
         <PageSelector
           totalPages={totalPages}
           value={trimPages}
@@ -150,7 +151,7 @@ export function TrimControls({
         />
       </section>
       <section style={s.section}>
-        <h3 style={s.heading}>トリミング除外ページ</h3>
+        <h3 style={s.heading}>{t("trim_controls.exclude_heading")}</h3>
         <PageSelector
           totalPages={totalPages}
           value={excludeSpec}
@@ -163,9 +164,10 @@ export function TrimControls({
 
       <section style={s.section}>
         <h3 style={s.heading}>
-          ページ抽出 <span style={s.headingOpt}>（オプション）</span>
+          {t("trim_controls.extract_heading")}{" "}
+          <span style={s.headingOpt}>{t("trim_controls.extract_optional")}</span>
         </h3>
-        <p style={s.hint2}>トリミング後に残すページを指定。空欄=全ページ保持。</p>
+        <p style={s.hint2}>{t("trim_controls.extract_hint")}</p>
         <PageSelector
           totalPages={totalPages}
           value={extractSpec}
@@ -235,7 +237,7 @@ export function TrimControls({
         </button>
       </section>
 
-      <p style={s.hint}>💡 画像の枠をドラッグして余白を調整できます</p>
+      <p style={s.hint}>{t("trim_controls.drag_hint")}</p>
     </div>
   );
 }
@@ -272,6 +274,7 @@ function MmField({
         max={max}
         step={0.5}
         aria-label={ariaLabel ?? label}
+        onFocus={() => ariaLabel && tts.speak(ariaLabel)}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
       />
       <span style={s.unit}>mm</span>
