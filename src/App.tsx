@@ -209,10 +209,44 @@ export default function App() {
     if (paths.length) await handleAddPaths(paths);
   }, [handleAddPaths]);
 
+  // ツール番号ショートカット（Alt+1〜7）
+  // ホーム画面: ファイル選択済みならツール起動、未選択なら読み上げで案内
+  // ツール画面: 別ツールへ切り替え
+  const handleToolShortcut = useCallback(
+    (toolId: ToolId, num: number) => {
+      const toolName = TOOLS.find((t) => t.id === toolId)?.label ?? toolId;
+      if (activeTool) {
+        // ツール画面 → 切り替え
+        handleToolChange(toolId);
+        tts.speak(t("shortcut.tool_switched", { name: toolName }));
+      } else {
+        // ホーム画面
+        const sel = fileList.filter((f) => f.selected);
+        if (sel.length === 0) {
+          tts.speak(t("shortcut.tool_no_file", { name: toolName }));
+        } else {
+          handleLaunchTool(toolId);
+        }
+      }
+    },
+    [activeTool, fileList, handleToolChange, handleLaunchTool, TOOLS, t],
+  );
+
   // グローバルショートカット（全画面共通）
   // handlePickFiles の後に置くことで "used before declaration" を回避
   useKeyboardShortcuts({
     "Ctrl+O": handlePickFiles,
+    "Alt+1": () => handleToolShortcut("split", 1),
+    "Alt+2": () => handleToolShortcut("merge", 2),
+    "Alt+3": () => handleToolShortcut("trim", 3),
+    "Alt+4": () => handleToolShortcut("rotate", 4),
+    "Alt+5": () => handleToolShortcut("compress", 5),
+    "Alt+6": () => handleToolShortcut("image", 6),
+    "Alt+7": () => handleToolShortcut("viewer", 7),
+    "Alt+H": () => {
+      handleHome();
+      tts.speak(t("screen.home"));
+    },
     "Alt+T": () => tts.toggle(),
     "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
     F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
@@ -518,7 +552,7 @@ export default function App() {
                 style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
                 onClick={() => enabled && handleLaunchTool(tool.id)}
                 disabled={!enabled}
-                aria-label={`${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
+                aria-label={`Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1} ${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
               >
                 <span style={s.toolIcon}>{tool.icon}</span>
                 <span style={s.toolLabel}>{tool.label}</span>
@@ -639,6 +673,7 @@ function ToolShell({
   onThemeChange: (id: ThemeId) => void;
 }) {
   const { t } = useI18n();
+  const { announceKey } = useA11y();
   const TOOLS = useMemo(
     () => [
       { ...TOOL_DEFS[0], label: t("tool.split"), desc: t("tool.split_desc") },
@@ -653,6 +688,43 @@ function ToolShell({
   );
   const filename = filePath.split(/[/\\]/).pop() ?? "";
   const batchFiles = isBatch ? toolFiles : undefined;
+
+  // ツール画面でのショートカット（切り替え + ホーム）
+  useKeyboardShortcuts({
+    "Alt+1": () => {
+      onToolChange("split");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.split") }));
+    },
+    "Alt+2": () => {
+      onToolChange("merge");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.merge") }));
+    },
+    "Alt+3": () => {
+      onToolChange("trim");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.trim") }));
+    },
+    "Alt+4": () => {
+      onToolChange("rotate");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.rotate") }));
+    },
+    "Alt+5": () => {
+      onToolChange("compress");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.compress") }));
+    },
+    "Alt+6": () => {
+      onToolChange("image");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.image") }));
+    },
+    "Alt+7": () => {
+      onToolChange("viewer");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.viewer") }));
+    },
+    "Alt+H": () => {
+      onHome();
+      tts.speak(t("screen.home"));
+    },
+    F1: () => announceKey("shortcut.tool"),
+  });
 
   return (
     <div style={sh.root}>
@@ -692,7 +764,8 @@ function ToolShell({
               onToolChange(tool.id);
               (e.currentTarget as HTMLButtonElement).blur();
             }}
-            title={tool.label}
+            title={`${tool.label} (Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1})`}
+            aria-label={`${tool.label} Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1}${activeTool === tool.id ? " 現在のツール" : ""}`}
           >
             <span>{tool.icon}</span>
             <span style={sh.tabLabel}>{tool.label}</span>

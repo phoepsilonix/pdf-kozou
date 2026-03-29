@@ -1,6 +1,6 @@
 {
   "screen": {
-    "home": "PDF Kozou home screen. Press Ctrl+O to open files. Alt+T to toggle text to speech. Press F1 for keyboard shortcuts.",
+    "home": "PDF Kozou home screen. Press Ctrl+O to open files. Alt+1 through 7 to launch tools. Alt+T to toggle text to speech. Press F1 for keyboard shortcuts.",
     "trim": "Trim page. Enter margin values and press Ctrl+Enter to execute.",
     "split": "Split page. Select split method and press Ctrl+Enter to execute.",
     "merge": "Merge page. Add files and press Ctrl+Enter to execute.",
@@ -11,9 +11,13 @@
     "about": "About this application."
   },
   "shortcut": {
-    "home": "Keyboard shortcuts. Ctrl+O to open files. Alt+T to toggle text to speech. Alt+L to switch language. F1 to repeat this list.",
-    "tool": "Keyboard shortcuts. Ctrl+Enter to execute. Alt+H to go home. Escape to cancel or go home. Alt+T to toggle text to speech. F1 to repeat this list.",
-    "viewer": "Keyboard shortcuts. Left and right arrow keys to navigate pages. Ctrl+F to search. Alt+H to go home. Alt+T to toggle text to speech. F1 to repeat this list."
+    "home": "Keyboard shortcuts. Ctrl+O to open files. Alt+1 through 7 to launch tools. Alt+H to go home. Alt+T to toggle text to speech. Alt+L to switch language. F1 to repeat this list.",
+    "tool": "Keyboard shortcuts. Ctrl+Enter to execute. Alt+1 through 7 to switch tools. Alt+H to go home. Alt+T to toggle text to speech. F1 to repeat this list.",
+    "viewer": "Keyboard shortcuts. Arrow keys to navigate pages. Ctrl+F to search. Alt+1 through 7 to switch tools. Alt+H to go home. Alt+T to toggle text to speech. F1 to repeat this list.",
+    "tool_announce": "Alt+{{num}} opens {{name}}. Please select a file first.",
+    "tool_switched": "Switched to {{name}}.",
+    "tool_no_file": "Please select a file to use {{name}}. Press Ctrl+O to open files.",
+    "tool_list": "Alt+1 Split. Alt+2 Merge. Alt+3 Trim. Alt+4 Rotate. Alt+5 Compress. Alt+6 Image Export. Alt+7 Viewer."
   },
   "file": {
     "added": "Added {{name}}. {{pages}} pages.",
