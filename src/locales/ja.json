@@ -155,7 +155,8 @@
     "range_label": "ページ範囲",
     "prefix_label": "ファイル名プレフィックス",
     "target_files": "対象ファイル — {{count}}件",
-    "batch_label_suffix": "{{count}}件バッチ"
+    "batch_label_suffix": "{{count}}件バッチ",
+    "preview_head": "グループプレビュー — {{count}}ファイル"
   },
   "merge": {
     "loading": "ファイルを読み込み中…",

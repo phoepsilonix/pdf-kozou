@@ -155,7 +155,8 @@
     "range_label": "Page ranges",
     "prefix_label": "Filename prefix",
     "target_files": "Target files — {{count}}",
-    "batch_label_suffix": "{{count}} files batch"
+    "batch_label_suffix": "{{count}} files batch",
+    "preview_head": "Group preview — {{count}} files"
   },
   "merge": {
     "loading": "Loading files…",

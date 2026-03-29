@@ -807,7 +807,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           ) : (
             // 単体: グループプレビュー
             <>
-              <div style={s.previewHead}>グループプレビュー — {groups.length}ファイル</div>
+              <div style={s.previewHead}>
+                {t("split.preview_head", { count: String(groups.length) })}
+              </div>
               <div style={s.groupList}>
                 {groups.map((pages, gi) => (
                   <div key={gi} style={s.group}>
@@ -821,7 +823,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                       </span>
                     </div>
                     <div style={s.groupThumbs}>
-                      {pages.slice(0, 6).map((pi) => {
+                      {pages.slice(0, 8).map((pi) => {
                         const pb = pdfInfo?.pages[pi];
                         const aspect = pb ? pb.w / pb.h : undefined;
                         return (
@@ -829,12 +831,12 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                             key={pi}
                             b64={thumbs[pi]}
                             pageNum={pi + 1}
-                            width={90}
+                            width={70}
                             aspectRatio={aspect}
                           />
                         );
                       })}
-                      {pages.length > 6 && <div style={s.groupMore}>+{pages.length - 6}</div>}
+                      {pages.length > 8 && <div style={s.groupMore}>+{pages.length - 8}</div>}
                     </div>
                   </div>
                 ))}
@@ -1154,16 +1156,19 @@ const s: Record<string, React.CSSProperties> = {
   groupList: {
     flex: 1,
     overflowY: "auto",
+    overflowX: "hidden",
     padding: 14,
     display: "flex",
     flexDirection: "column",
     gap: 8,
+    minHeight: 0, // flex child がスクロール可能になる必須設定
   },
   group: {
     background: "var(--c-bgCard)",
     border: `1px solid var(--c-border)`,
     borderRadius: 9,
     overflow: "hidden",
+    flexShrink: 0, // カードが縦に潰れないようにする
   },
   groupLabel: {
     display: "flex",
@@ -1176,10 +1181,15 @@ const s: Record<string, React.CSSProperties> = {
   groupNum: { fontSize: 12, fontWeight: 700, color: "var(--c-accent)", minWidth: 28 },
   groupPages: { fontSize: 11, color: "var(--c-textSub)" },
   groupRange: { fontSize: 11, color: "var(--c-textDim)", marginLeft: "auto" },
-  groupThumbs: { display: "flex", gap: 8, padding: "10px 12px", flexWrap: "wrap" as const },
+  groupThumbs: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))",
+    gap: 6,
+    padding: "10px 12px",
+    maxHeight: 130, // サムネイル2行分の高さ上限
+    overflow: "hidden",
+  },
   groupMore: {
-    width: 70,
-    height: 99,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1187,6 +1197,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     fontSize: 12,
     color: "var(--c-textSub)",
+    minHeight: 60,
   },
 
   // 結果
