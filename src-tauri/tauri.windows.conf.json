@@ -4,6 +4,7 @@
       "../target/release/pdf-kozou-core.exe": "pdf-kozou-core.exe"
     },
     "publisher": "CN=1CB57BC7-DF63-47F3-83C8-6A33A692A2CF",
+    "targets": ["msix", "nsis"],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256"

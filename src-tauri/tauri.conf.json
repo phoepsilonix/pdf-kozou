@@ -37,7 +37,7 @@
   "bundle": {
     "active": true,
     "category": "Utility",
-    "targets": ["deb", "appimage", "rpm", "msi", "nsis"],
+    "targets": ["deb", "appimage", "rpm"],
     "license": "../AGPL-3.0-or-later.txt",
     "icon": [
       "icons/32x32.png",

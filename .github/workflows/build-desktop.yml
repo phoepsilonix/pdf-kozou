@@ -198,6 +198,7 @@ jobs:
           OS: "mingw"
           HAVE_OBJCOPY: "no"
           USE_MAKE: "1"
+          CI: true
         run: |
           cargo tauri build
 
