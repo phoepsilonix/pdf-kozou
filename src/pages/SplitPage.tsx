@@ -362,8 +362,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.resultBody}>
           <div style={s.resultIcon}>{batchProgress.errors.length > 0 ? "⚠" : "✓"}</div>
           <div style={s.resultStat}>
-            {batchProgress.done.length}件成功
-            {batchProgress.errors.length > 0 && ` · ${batchProgress.errors.length}件エラー`}
+            {t("split.success_count", { count: String(batchProgress.done.length) })}
+            {batchProgress.errors.length > 0 &&
+              t("split.error_count", { count: String(batchProgress.errors.length) })}
           </div>
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
@@ -407,14 +408,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div
                 style={{ fontSize: 12, color: "var(--c-textDim)", textAlign: "center", padding: 8 }}
               >
-                … 他 {result.files.length - 20} ファイル
+                {t("split.other_files", { count: String(result.files.length - 20) })}
               </div>
             )}
           </div>
           <div
             style={{ fontSize: 12, color: "var(--c-textDim)", marginTop: 4, textAlign: "center" }}
           >
-            ※ 分割ファイルは圧縮ツールでまとめて処理できます
+            {t("split.result_hint")}
           </div>
         </div>
       </div>
@@ -432,7 +433,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         {!isBatch && <span style={s.pageBadge}>{total}ページ</span>}
         <div style={{ flex: 1 }} />
         <span style={s.groupCount}>
-          {isBatch ? `各ファイルに同じ設定を適用` : `→ ${groups.length}ファイル`}
+          {isBatch
+            ? t("split.apply_all")
+            : t("split.preview_count", { count: String(groups.length) })}
         </span>
       </PageHeader>
 
@@ -487,7 +490,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {modeId === "every" && (
             <>
               <div style={s.secLabel}>N枚の数</div>
-              {isBatch && <div style={s.batchRangeNote}>全ファイルに同じN枚設定を適用します</div>}
+              {isBatch && <div style={s.batchRangeNote}>{t("split.every_apply_all")}</div>}
               <div style={s.numRow}>
                 <button style={s.stepBtn} onClick={() => setEveryN((v) => Math.max(1, v - 1))}>
                   −
@@ -600,16 +603,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   (e.currentTarget as HTMLButtonElement).blur();
                 }}
               >
-                ＋ 範囲を追加
+                {t("split.add_range")}
               </button>
             </>
           )}
 
           {modeId === "ranges" && isBatch && (
             <>
-              <div style={s.batchRangeNote}>
-                ⚠ バッチ時: 各ファイルのページ数に合わせて範囲を自動クリップします
-              </div>
+              <div style={s.batchRangeNote}>{t("split.batch_clip_hint")}</div>
               {ranges.map((rng, i) => (
                 <div key={i} style={s.rangeRow}>
                   <span style={s.rangeIdx}>#{i + 1}</span>
@@ -695,7 +696,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   (e.currentTarget as HTMLButtonElement).blur();
                 }}
               >
-                ＋ 範囲を追加
+                {t("split.add_range")}
               </button>
             </>
           )}
@@ -718,15 +719,15 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               {outDir || t("common.select_dir")}
             </div>
             <button style={s.dirPickBtn} onClick={pickDir}>
-              参照…
+              {t("common.browse")}
             </button>
           </div>
 
           <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
             {outDir
               ? isBatch
-                ? `✂ ${batchFiles!.length}件をまとめて分割`
-                : `✂ 分割実行 → ${groups.length}ファイル`
+                ? t("split.execute_batch", { count: String(batchFiles!.length) })
+                : t("split.execute", { count: String(groups.length) })
               : t("common.no_dir_btn")}
           </BtnPrimary>
         </div>

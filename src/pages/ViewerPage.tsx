@@ -24,6 +24,7 @@ import {
 import { Spinner, PageHeader } from "../components/common";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
+import { useI18n } from "../lib/i18n";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 
@@ -294,18 +295,18 @@ function InfoDrawer({
 
   const handleCopyAll = () => {
     const lines = [
-      fileName && `ファイル名: ${fileName}`,
-      filePath && `パス: ${filePath}`,
-      info?.file_size && `サイズ: ${formatBytes(info.file_size)}`,
-      info?.page_count && `ページ数: ${info.page_count}`,
+      fileName && `${t("viewer.meta_filename")}: ${fileName}`,
+      filePath && `${t("viewer.meta_path")}: ${filePath}`,
+      info?.file_size && `${t("viewer.meta_size")}: ${formatBytes(info.file_size)}`,
+      info?.page_count && `${t("viewer.meta_pages")}: ${info.page_count}`,
       meta.title && `タイトル: ${meta.title}`,
-      meta.author && `作成者: ${meta.author}`,
-      meta.subject && `件名: ${meta.subject}`,
+      meta.author && `${t("viewer.meta_author")}: ${meta.author}`,
+      meta.subject && `${t("viewer.meta_subject")}: ${meta.subject}`,
       meta.keywords && `キーワード: ${meta.keywords}`,
       meta.creator && `アプリ: ${meta.creator}`,
-      meta.producer && `変換: ${meta.producer}`,
-      meta.creation_date && `作成日: ${formatDate(meta.creation_date)}`,
-      meta.mod_date && `更新日: ${formatDate(meta.mod_date)}`,
+      meta.producer && `${t("viewer.meta_producer")}: ${meta.producer}`,
+      meta.creation_date && `${t("viewer.meta_created")}: ${formatDate(meta.creation_date)}`,
+      meta.mod_date && `${t("viewer.meta_modified")}: ${formatDate(meta.mod_date)}`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -330,23 +331,23 @@ function InfoDrawer({
           style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
           onClick={handleCopyAll}
         >
-          {allCopied ? "✓ コピー済" : "全コピー"}
+          {allCopied ? t("viewer.copied") : t("viewer.copy_all")}
         </button>
         <button style={ds.closeBtn} onClick={onClose}>
           ✕
         </button>
       </div>
       <div style={ds.drawerBody}>
-        <div style={ds.section}>ファイル</div>
+        <div style={ds.section}>{t("viewer.file_section")}</div>
         <div style={ds.row}>
-          <span style={ds.label}>ファイル名</span>
+          <span style={ds.label}>{t("viewer.meta_filename")}</span>
           <span style={{ ...ds.value, wordBreak: "break-all" }}>{fileName}</span>
           <button style={ds.copyBtn} onClick={() => navigator.clipboard.writeText(fileName)}>
             ⎘
           </button>
         </div>
         <div style={ds.row}>
-          <span style={ds.label}>パス</span>
+          <span style={ds.label}>{t("viewer.meta_path")}</span>
           <span style={{ ...ds.value, wordBreak: "break-all", fontSize: 10 }}>{filePath}</span>
           <button style={ds.copyBtn} onClick={() => navigator.clipboard.writeText(filePath)}>
             ⎘
@@ -354,36 +355,41 @@ function InfoDrawer({
         </div>
         {info?.file_size != null && (
           <div style={ds.row}>
-            <span style={ds.label}>サイズ</span>
+            <span style={ds.label}>{t("viewer.meta_size")}</span>
             <span style={ds.value}>{formatBytes(info.file_size)}</span>
           </div>
         )}
         {info?.page_count != null && (
           <div style={ds.row}>
-            <span style={ds.label}>ページ数</span>
-            <span style={ds.value}>{info.page_count} ページ</span>
+            <span style={ds.label}>{t("viewer.meta_pages")}</span>
+            <span style={ds.value}>
+              {info.page_count} {t("viewer.meta_pages")}
+            </span>
           </div>
         )}
         {pageSize && (
           <div style={ds.row}>
-            <span style={ds.label}>ページサイズ</span>
+            <span style={ds.label}>{t("viewer.meta_page_size")}</span>
             <span style={ds.value}>{pageSize}</span>
           </div>
         )}
-        <div style={{ ...ds.section, marginTop: 14 }}>メタデータ</div>
+        <div style={{ ...ds.section, marginTop: 14 }}>{t("viewer.meta_section")}</div>
         {hasAnyMeta ? (
           <>
-            <MetaRow label="タイトル" value={meta.title} />
-            <MetaRow label="作成者" value={meta.author} />
-            <MetaRow label="件名" value={meta.subject} />
-            <MetaRow label="キーワード" value={meta.keywords} />
-            <MetaRow label="アプリ" value={meta.creator} />
-            <MetaRow label="変換" value={meta.producer} />
+            <MetaRow label={t("viewer.meta_title")} value={meta.title} />
+            <MetaRow label={t("viewer.meta_author")} value={meta.author} />
+            <MetaRow label={t("viewer.meta_subject")} value={meta.subject} />
+            <MetaRow label={t("viewer.meta_keywords")} value={meta.keywords} />
+            <MetaRow label={t("viewer.meta_creator")} value={meta.creator} />
+            <MetaRow label={t("viewer.meta_producer")} value={meta.producer} />
             <MetaRow
-              label="作成日"
+              label={t("viewer.meta_created")}
               value={meta.creation_date ? formatDate(meta.creation_date) : undefined}
             />
-            <MetaRow label="更新日" value={meta.mod_date ? formatDate(meta.mod_date) : undefined} />
+            <MetaRow
+              label={t("viewer.meta_modified")}
+              value={meta.mod_date ? formatDate(meta.mod_date) : undefined}
+            />
           </>
         ) : (
           <div
@@ -394,7 +400,7 @@ function InfoDrawer({
               textAlign: "center",
             }}
           >
-            メタデータなし
+            {t("viewer.no_meta")}
           </div>
         )}
       </div>
@@ -427,6 +433,7 @@ function SearchBar({
   onAllHits,
   onClose,
 }: SearchBarProps) {
+  const { t } = useI18n();
   const [q, setQ] = useState("");
   const [allHits, setAllHits] = useState<GlobalHit[]>([]);
   const [current, setCurrent] = useState(0);
@@ -520,21 +527,28 @@ function SearchBar({
           if (e.key === "Enter") go(e.shiftKey ? -1 : 1);
           if (e.key === "Escape") handleClose();
         }}
-        placeholder="全ページ検索… (Enter で次へ)"
+        placeholder={t("viewer.search_placeholder")}
         autoFocus
       />
-      {searching && <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>検索中…</span>}
+      {searching && (
+        <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>{t("viewer.searching")}</span>
+      )}
       {!searching && q && (
         <span style={ss.count}>
-          {allHits.length === 0 ? "0件" : `${current + 1} / ${allHits.length} 件`}
+          {allHits.length === 0
+            ? t("viewer.no_hits")
+            : t("viewer.hit_count", {
+                current: String(current + 1),
+                total: String(allHits.length),
+              })}
         </span>
       )}
       {allHits.length > 0 && (
         <>
-          <button style={ss.navBtn} onClick={() => go(-1)} title="前のヒット (Shift+Enter)">
+          <button style={ss.navBtn} onClick={() => go(-1)} title={t("viewer.prev_hit")}>
             ◀
           </button>
-          <button style={ss.navBtn} onClick={() => go(1)} title="次のヒット (Enter)">
+          <button style={ss.navBtn} onClick={() => go(1)} title={t("viewer.next_hit")}>
             ▶
           </button>
         </>
@@ -557,6 +571,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const isMulti = fileList.length > 1;
   const [activeIdx, setActiveIdx] = useState(0);
   const { announceScreen, announceKey, announce } = useA11y();
+  const { t } = useI18n();
 
   // 画面表示時の読み上げ
   useEffect(() => {
@@ -894,7 +909,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  if (!activeInfo && !mainLoading) return <Spinner label="読み込み中…" />;
+  if (!activeInfo && !mainLoading) return <Spinner label={t("viewer.loading")} />;
   const fname = activePath.split(/[/\\]/).pop() ?? "";
   const THUMB_W = 104;
 
@@ -914,8 +929,8 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         <button
           style={{ ...s.zBtn, ...(showSearch ? s.btnOn : {}), marginRight: 4 }}
           onClick={() => setShowSearch((v) => !v)}
-          title="検索 (Ctrl+F)"
-          aria-label="検索を開く Ctrl+F"
+          title={t("viewer.search_btn")}
+          aria-label={t("viewer.search_btn")}
           aria-expanded={showSearch}
         >
           🔍
@@ -923,7 +938,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         <button
           style={{ ...s.zBtn, ...(infoOpen ? s.btnOn : {}), marginRight: 8 }}
           onClick={() => setInfoOpen((v) => !v)}
-          title="ファイル情報"
+          title={t("viewer.info_btn")}
         >
           ℹ
         </button>
@@ -1005,7 +1020,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                     </div>
                     <div style={s.filePaneInfo}>
                       <div style={s.filePaneName} title={f.filename}>
-                        {f.filename || "無題"}
+                        {f.filename || t("viewer.untitled")}
                       </div>
                       <div style={s.filePaneMeta}>{f.pageCount}p</div>
                     </div>

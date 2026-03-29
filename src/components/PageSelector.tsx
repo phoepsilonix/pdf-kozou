@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
+import { useI18n } from "../lib/i18n";
 
 // src/components/PageSelector.tsx — 共通ページ範囲指定コンポーネント
 // 対応表記: "1-3,5,7-", "odd", "even", "-5" (末尾から5ページ), "all"
@@ -42,6 +43,7 @@ export function PageSelector({
   type,
   compact,
 }: PageSelectorProps) {
+  const { t } = useI18n();
   //const C = getTheme();
   const F = "'JetBrains Mono','Noto Sans JP',monospace";
   let mode;
@@ -140,7 +142,13 @@ export function PageSelector({
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {(["all", "odd", "even", "range"] as Mode[]).map((m) => (
             <button key={m} style={mode === m ? btnOn : btnBase} onClick={() => handleMode(m)}>
-              {m === "all" ? "全ページ" : m === "odd" ? "奇数" : m === "even" ? "偶数" : "範囲指定"}
+              {m === "all"
+                ? t("page_selector.all")
+                : m === "odd"
+                  ? t("page_selector.odd")
+                  : m === "even"
+                    ? t("page_selector.even")
+                    : t("page_selector.range")}
             </button>
           ))}
         </div>
@@ -149,7 +157,7 @@ export function PageSelector({
             <input
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
-              placeholder="例: 1-3,5,8-10"
+              placeholder={t("page_selector.placeholder")}
               style={{
                 padding: "6px 10px",
                 background: "var(--c-bgCard)",
@@ -164,14 +172,14 @@ export function PageSelector({
             />
             <span style={{ fontSize: 11, color: "var(--c-textDim)", lineHeight: 1.5 }}>
               書式: <code style={{ color: "var(--c-textSub)" }}>1-3,5,8-</code>{" "}
-              (ハイフン末尾=最終ページまで)
+              {t("page_selector.hint")}
             </span>
           </div>
         )}
         {totalPages > 0 && (
           <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
-            全 {totalPages} ページ
-            {value && value !== "all" && ` / 指定: "${value}"`}
+            {t("page_selector.total", { total: String(totalPages) })}
+            {value && value !== "all" && t("page_selector.specified", { value })}
           </span>
         )}
       </div>
@@ -195,14 +203,14 @@ export function PageSelector({
           {(["", "odd", "even", "all", "range"] as Mode[]).map((m) => (
             <button key={m} style={mode === m ? btnOn : btnBase} onClick={() => handleMode(m)}>
               {m === ""
-                ? "除外なし"
+                ? t("page_selector.exclude_none")
                 : m === "odd"
-                  ? "奇数"
+                  ? t("page_selector.odd")
                   : m === "even"
-                    ? "偶数"
+                    ? t("page_selector.even")
                     : m === "all"
-                      ? "全ページ"
-                      : "範囲指定"}
+                      ? t("page_selector.all")
+                      : t("page_selector.range")}
             </button>
           ))}
         </div>
@@ -211,7 +219,7 @@ export function PageSelector({
             <input
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
-              placeholder="例: 1-3,5,8-10"
+              placeholder={t("page_selector.placeholder")}
               style={{
                 padding: "6px 10px",
                 background: "var(--c-bgCard)",
@@ -226,14 +234,14 @@ export function PageSelector({
             />
             <span style={{ fontSize: 11, color: "var(--c-textDim)", lineHeight: 1.5 }}>
               書式: <code style={{ color: "var(--c-textSub)" }}>1-3,5,8-</code>{" "}
-              (ハイフン末尾=最終ページまで)
+              {t("page_selector.hint")}
             </span>
           </div>
         )}
         {totalPages > 0 && (
           <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
-            全 {totalPages} ページ
-            {value && value !== "all" && ` / 指定: "${value}"`}
+            {t("page_selector.total", { total: String(totalPages) })}
+            {value && value !== "all" && t("page_selector.specified", { value })}
           </span>
         )}
       </div>

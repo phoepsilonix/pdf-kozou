@@ -392,7 +392,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             <>
               <div style={s.resultStat}>
                 {t("rotate.done_count", { count: String(batchProgress.done.length) })}
-                {batchProgress.errors.length > 0 ? ` · ${batchProgress.errors.length}件エラー` : ""}
+                {batchProgress.errors.length > 0
+                  ? t("rotate.error_count", { count: String(batchProgress.errors.length) })
+                  : ""}
               </div>
               <div style={s.resultDir}>{outDir}</div>
             </>
@@ -474,14 +476,16 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 </button>
               </div>
               <BtnPrimary onClick={handleExecuteBatch} disabled={changedPages.length === 0}>
-                {outDir ? `↻ ${batchFiles!.length}件まとめて回転` : t("common.no_dir_btn")}
+                {outDir
+                  ? t("rotate.execute_batch", { count: String(batchFiles!.length) })
+                  : t("common.no_dir_btn")}
               </BtnPrimary>
             </>
           ) : (
             <BtnPrimary onClick={handleExecuteSingle} disabled={changedPages.length === 0}>
               {changedPages.length === 0
                 ? t("rotate.no_change")
-                : `↻ ${changedPages.length}ページを回転して保存`}
+                : t("rotate.execute", { count: String(changedPages.length) })}
             </BtnPrimary>
           )}
         </div>
@@ -491,7 +495,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           {/* 一括回転ボタンをここに移動（プレビューを見ながら操作しやすい） */}
           <div style={s.globalBtnsWrapper}>
             <div style={s.secLabel}>
-              一括回転（{pageSpec.trim() === "" ? "全ページ" : "選択範囲"}に適用）
+              {t("rotate.bulk_label", {
+                range: pageSpec.trim() === "" ? t("rotate.all_pages") : t("rotate.selected_range"),
+              })}
             </div>
             <div style={s.globalBtns}>
               {([0, 90, 180, 270] as const).map((deg) => (
@@ -502,10 +508,16 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                     ...(globalRot === deg ? s.globalBtnOn : {}),
                   }}
                   onClick={() => applyGlobal(deg)}
-                  title={`選択範囲を${deg === 0 ? "元に戻す" : deg + "°回転"}`}
+                  title={
+                    deg === 0 ? t("rotate.reset_to") : t("rotate.rotate_deg", { deg: String(deg) })
+                  }
                 >
                   <span style={s.rotIcon}>{rotIcon(deg)}</span>
-                  <span>{deg === 0 ? "元に戻す" : `${deg}°`}</span>
+                  <span>
+                    {deg === 0
+                      ? t("rotate.reset_to")
+                      : t("rotate.rotate_deg", { deg: String(deg) })}
+                  </span>
                 </button>
               ))}
             </div>

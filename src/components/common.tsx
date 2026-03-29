@@ -5,6 +5,7 @@
 // src/components/common.tsx — 共通 UI コンポーネント
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
+import { useI18n } from "../lib/i18n";
 
 export function Spinner({ label }: { label?: string }) {
   return (
@@ -80,7 +81,7 @@ export function ErrorView({ msg, onBack }: { msg: string; onBack: () => void }) 
         }}
         onClick={onBack}
       >
-        ← 戻る
+        {t("common.back_btn")}
       </button>
     </div>
   );
@@ -110,6 +111,7 @@ export function BtnBack({
 }: {
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
+  const { t } = useI18n();
   return (
     <button
       onClick={onClick}
@@ -124,7 +126,7 @@ export function BtnBack({
         fontFamily: F,
       }}
     >
-      ← 戻る
+      {t("common.back_btn")}
     </button>
   );
 }

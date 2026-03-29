@@ -322,7 +322,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           </span>
           <div style={s.bpTitle}>
             {t("image.done_count", { count: String(batchProgress.done.length) })}
-            {batchProgress.errors.length > 0 ? ` · ${batchProgress.errors.length}件エラー` : ""}
+            {batchProgress.errors.length > 0
+              ? t("image.error_count", { count: String(batchProgress.errors.length) })
+              : ""}
           </div>
           <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
           <div style={s.bpLog}>
@@ -377,7 +379,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div
                 style={{ fontSize: 12, color: "var(--c-textDim)", textAlign: "center", padding: 8 }}
               >
-                … 他 {images.length - 20}ファイル
+                {t("image.other_files", { count: String(images.length - 20) })}
               </div>
             )}
           </div>
@@ -527,8 +529,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
             {outDir
               ? isBatch
-                ? `🖼 ${batchFiles!.length}件を変換`
-                : `🖼 変換実行 → ${total}ファイル`
+                ? t("image.execute_batch", { count: String(batchFiles!.length) })
+                : t("image.execute", { count: String(total) })
               : t("common.no_dir_btn")}
           </BtnPrimary>
         </div>
@@ -574,7 +576,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       <span style={s.batchFileName}>{f.filename}</span>
                       <span style={s.batchFileMeta}>{f.pageCount}ページ</span>
                       <span style={s.batchFileMeta}>
-                        → {f.pageCount}枚の{format === "jpeg" ? "JPG" : format.toUpperCase()}
+                        {t("image.result_suffix", {
+                          pages: String(f.pageCount),
+                          format: format === "jpeg" ? "JPG" : format.toUpperCase(),
+                        })}
                       </span>
                     </div>
                   </button>

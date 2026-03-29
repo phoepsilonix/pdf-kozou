@@ -343,7 +343,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               background: "var(--c-bgCard)",
             }}
           >
-            プレビュー対象
+            {t("trim.preview_target")}
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
             {files.map((f, i) => (
@@ -447,7 +447,11 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onApply={handleExecute}
             onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
-            applyLabel={outDir ? `${files.length}件を一括トリミング →` : "フォルダを選択して実行"}
+            applyLabel={
+              outDir
+                ? t("trim.apply_label", { count: String(files.length) })
+                : t("trim.no_dir_apply")
+            }
             outDir={outDir}
             onPickDir={pickDir}
             excludeSpec={excludeSpec}
@@ -865,7 +869,7 @@ function ResultView({
         </button>
         <span style={r.title}>トリミング結果確認</span>
         <span style={r.sub}>
-          {pageCount}ページ（先頭{images.length}ページ表示）
+          {t("trim.result_pages", { pages: String(pageCount), shown: String(images.length) })}
         </span>
         <div style={{ flex: 1 }} />
         <button style={r.btnCompress} onClick={onCompress}>

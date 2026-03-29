@@ -4,9 +4,9 @@
 
 // src/pages/CompressPage.tsx
 // フロー（単体）: プリセット選択 → プレビュー実行 → 結果確認 → [圧縮保存 / 圧縮せず保存]
-// フロー（バッチ）: プリセット選択 → 出力フォルダ選択 → 全件処理 → 結果
+// フロー（バッチ）: プリセット選択 → 出力{t("compress.select_folder")} → 全件処理 → 結果
 
-import { useState, useCallback, useEffect } from "react"; // useEffectを追加
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { usePdfStore } from "../store/usePdfStore";
@@ -45,39 +45,39 @@ const PRESETS: {
   {
     id: "light",
     icon: "☁",
-    label: "軽め",
-    desc: "GC=1、画像圧縮なし",
-    note: "フォント完全保護。効果小さめ",
+    labelKey: "compress.preset_light_label",
+    descKey: "compress.preset_light_desc",
+    noteKey: "compress.preset_light_note",
     color: "#3a7a4a",
   },
   {
     id: "standard",
     icon: "⚖",
-    label: "標準",
-    desc: "GC=2、画像圧縮あり",
-    note: "バランス重視。ほとんどのPDFに安全",
+    labelKey: "compress.preset_standard_label",
+    descKey: "compress.preset_standard_desc",
+    noteKey: "compress.preset_standard_note",
     color: "#2a5a9a",
   },
   {
     id: "aggressive",
     icon: "⚡",
-    label: "強め",
-    desc: "GC=3、sanitize",
-    note: "⚠ 埋め込みフォントに影響する場合あり",
+    labelKey: "compress.preset_aggressive_label",
+    descKey: "compress.preset_aggressive_label",
+    noteKey: "compress.preset_aggressive_note",
     color: "#7a5a1a",
   },
   {
     id: "maximum",
     icon: "🔥",
-    label: "最大",
-    desc: "GC=3、sanitize,clean",
-    note: "⚠ 最大圧縮",
+    labelKey: "compress.preset_maximum_label",
+    descKey: "compress.preset_maximum_label",
+    noteKey: "compress.preset_maximum_note",
     color: "#7a2020",
   },
 ];
 
 // --- 追加：GS専用のプリセット定義 ---
-const GS_PRESETS: {
+const GS_PRESETS_KEYS: {
   id: "Prepress" | "Printer" | "Ebook";
   icon: string;
   label: string;
@@ -88,25 +88,25 @@ const GS_PRESETS: {
   {
     id: "Prepress",
     icon: "✨",
-    label: "高品質(prepress)",
-    desc: "300dpi / 低圧縮",
-    note: "印刷・商業印刷向け。画質を最優先",
+    labelKey: "compress.gs_prepress_label",
+    descKey: "compress.gs_prepress_desc",
+    noteKey: "compress.gs_prepress_note",
     color: "#2a5a9a",
   },
   {
     id: "Printer",
     icon: "🖨️",
-    label: "プリント(printer)",
-    desc: "300dpi / 中圧縮",
-    note: "一般的な配布・印刷用。標準的",
+    labelKey: "compress.standard_mupdf",
+    descKey: "compress.gs_printer_desc",
+    noteKey: "compress.gs_printer_note",
     color: "#3a7a4a",
   },
   {
     id: "Ebook",
     icon: "📱",
-    label: "電子書籍,Web向け(ebook)",
-    desc: "150dpi / 高圧縮",
-    note: "Web閲覧用・メール送信用。軽量化",
+    labelKey: "compress.gs_ebook_label",
+    descKey: "compress.gs_ebook_desc",
+    noteKey: "compress.gs_ebook_note",
     color: "#7a5a1a",
   },
 ];
@@ -127,6 +127,26 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  const PRESET_OPTIONS_I18N = useMemo(
+    () =>
+      PRESET_OPTIONS_KEYS.map((p) => ({
+        ...p,
+        label: t(p.labelKey),
+        desc: t(p.descKey),
+        note: t(p.noteKey),
+      })),
+    [t],
+  );
+  const GS_PRESETS_I18N = useMemo(
+    () =>
+      GS_PRESETS_KEYS.map((p) => ({
+        ...p,
+        label: t(p.labelKey),
+        desc: t(p.descKey),
+        note: t(p.noteKey),
+      })),
+    [t],
+  );
 
   // 画面表示時の読み上げ
   useEffect(() => {
@@ -198,7 +218,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
   const handlePreview = useCallback(async () => {
     if (useGs && !gsPath) {
-      setError("Ghostscriptが見つかりません。");
+      setError(t("compress.err_gs_not_found"));
       return;
     }
     setPhase("processing");
@@ -224,7 +244,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         const inSize = inStat.size;
         const outSize = outStat.size;
         if (inSize === 0 || outSize === 0) {
-          throw new Error("GS出力ファイルのサイズが0です。変換に失敗した可能性があります。");
+          throw new Error(t("compress.err_gs_output_empty"));
         }
 
         setResult({
@@ -302,7 +322,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       setUseGs(!useGs);
       //setPreview("");            // プレビューも一旦クリア
     } catch (e) {
-      setError("連携ファイルの作成に失敗しました: " + String(e));
+      setError(t("compress.err_chain_failed") + String(e));
     }
   }, [tmpFile, useGs, setError]);
 
@@ -399,7 +419,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       return;
     }
     if (useGs && !gsPath) {
-      setError("Ghostscriptのパスが見つかりません。");
+      setError(t("compress.err_gs_path_not_found"));
       return;
     }
 
@@ -455,11 +475,14 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
 
           prog.errors.push({
             file: f.filename,
-            msg: `圧縮エラーのため未圧縮でコピーしました (${String(e)})`,
+            msg: `${t("compress.err_compress_fallback")} (${String(e)})`,
           });
         } catch (copyErr) {
           // コピーすら失敗した場合（ディスクフルや権限エラーなど）
-          prog.errors.push({ file: f.filename, msg: `致命的なエラー: ${String(copyErr)}` });
+          prog.errors.push({
+            file: f.filename,
+            msg: `${t("compress.err_fatal")}${String(copyErr)}`,
+          });
         }
       }
       setBatchProg({ ...prog });
@@ -490,7 +513,10 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     return (
       <div style={c.center}>
         <div style={c.bpTitle}>
-          圧縮処理中… {batchProg.cur}/{batchProg.total}
+          {t("compress.processing", {
+            current: String(batchProg.cur),
+            total: String(batchProg.total),
+          })}
         </div>
         <div style={c.bpBarWrap}>
           <div style={{ ...c.bpBar, width: `${(batchProg.cur / batchProg.total) * 100}%` }} />
@@ -512,7 +538,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             setErrMsg("");
           }}
         >
-          ← 戻る
+          {t("compress.back")}
         </button>
       </div>
     );
@@ -553,7 +579,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             setBatchProg(null);
           }}
         >
-          ← 設定に戻る
+          {t("compress.back2")}
         </button>
       </div>
     );
@@ -570,7 +596,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       <div style={c.root}>
         <div style={c.header}>
           <button style={c.btnBack} onClick={() => setPhase("edit")}>
-            ← 設定に戻る
+            {t("compress.back2")}
           </button>
           <span style={c.title}>圧縮プレビュー結果</span>
         </div>
@@ -627,12 +653,30 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                   <span style={c.paramsHd}>パラメータ</span>
                   <PRow label="プリセット" val={preset} />
                   <PRow label="GCレベル" val={String(p.garbage_level)} />
-                  <PRow label="画像圧縮" val={p.compress_images ? "あり" : "なし"} />
-                  <PRow label="フォント圧縮" val={p.compress_fonts ? "あり" : "なし"} />
-                  <PRow label="sanitize" val={p.sanitize ? "あり" : "なし"} />
-                  <PRow label="clean" val={p.clean ? "あり" : "なし"} />
-                  <PRow label="merge_fonts" val={p.merge_fonts ? "あり" : "なし"} />
-                  <PRow label="object_stream" val={p.object_stream ? "あり" : "なし"} />
+                  <PRow
+                    label={t("compress.img_compress")}
+                    val={p.compress_images ? t("common.yes") : t("common.no")}
+                  />
+                  <PRow
+                    label={t("compress.font_compress")}
+                    val={p.compress_fonts ? t("common.yes") : t("common.no")}
+                  />
+                  <PRow
+                    label={t("compress.sanitize")}
+                    val={p.sanitize ? t("common.yes") : t("common.no")}
+                  />
+                  <PRow
+                    label={t("compress.clean")}
+                    val={p.clean ? t("common.yes") : t("common.no")}
+                  />
+                  <PRow
+                    label={t("compress.merge_fonts")}
+                    val={p.merge_fonts ? t("common.yes") : t("common.no")}
+                  />
+                  <PRow
+                    label={t("compress.object_stream")}
+                    val={p.object_stream ? t("common.yes") : t("common.no")}
+                  />
                 </>
               )}
             </div>
@@ -656,15 +700,13 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                     marginBottom: 6,
                   }}
                 >
-                  🔗 連続圧縮モード
+                  {t("compress.chain_mode")}
                 </div>
                 <button style={c.btnChain} onClick={handleChainNext}>
-                  {useGs
-                    ? "この結果を MuPDF でさらに最適化する"
-                    : "この結果を GS でさらに再構築する"}
+                  {useGs ? t("compress.chain_hint_mupdf") : t("compress.chain_hint_gs")}
                 </button>
                 <div style={{ fontSize: 10, color: "var(--c-textDim)", marginTop: 4 }}>
-                  ※ 現在の圧縮結果を「入力ファイル」として再セットします
+                  {t("compress.chain_note")}
                 </div>
               </div>
             )}
@@ -712,7 +754,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         <span style={c.fileSub} title={fname}>
           {currentSource !== (sourceFile ?? filePath) ? `🔗 ${fname}` : fname}
         </span>
-        {currentSource && <span style={c.chainBadge}>✂ 連携ファイルを圧縮</span>}
+        {currentSource && <span style={c.chainBadge}>{t("compress.chain_badge")}</span>}
         <span style={c.title}>圧縮設定</span>
 
         {gsAvailable && (
@@ -730,7 +772,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               }}
               onClick={() => setUseGs(false)}
             >
-              標準 (MuPDF)
+              {t("compress.standard_mupdf")}
             </button>
             <button
               style={{
@@ -766,7 +808,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             }}
             onClick={handleResetSource}
           >
-            ↩ 連携を解除して最初からやり直す
+            {t("compress.reset_chain")}
           </button>
         )}
 
@@ -807,9 +849,11 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                   onChange={(e) => setObjectStream(e.target.checked)}
                   style={{ marginRight: 6 }}
                 />
-                オブジェクトのストリーム圧縮
+                {t("compress.obj_stream_label")}
               </label>
-              <span style={c.optHint}>{objectStream ? "有効 (リスク小)" : "無効"}</span>
+              <span style={c.optHint}>
+                {objectStream ? "有効 (リスク小)" : t("compress.merge_fonts_off")}
+              </span>
             </div>
             <div style={c.optRow}>
               <label style={c.optLabel}>
@@ -819,12 +863,10 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                   onChange={(e) => setMergeFonts(e.target.checked)}
                   style={{ marginRight: 6 }}
                 />
-                CIDフォント統合 (merge-fonts)
+                {t("compress.merge_fonts_label")}
               </label>
               <span style={c.optHint}>
-                {mergeFonts
-                  ? "有効 (リスク大。フォントを再利用して削減。主に単一ページ向け。)"
-                  : "無効"}
+                {mergeFonts ? t("compress.merge_fonts_on") : t("compress.merge_fonts_off")}
               </span>
             </div>
           </>
@@ -832,7 +874,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           <>
             {/* 新設：GSプリセット表示 */}
             <div style={c.presetGrid}>
-              {GS_PRESETS.map((p) => (
+              {GS_PRESETS_I18N.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => setGsPreset(p.id)} // GS用のステートを更新
@@ -859,11 +901,11 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               }}
             >
               <div style={{ marginBottom: 4, color: "var(--c-textSub)", fontWeight: 700 }}>
-                Ghostscript プロモードについて
+                {t("compress.gs_info_title")}
               </div>
-              <div>• 外部プログラムのGhostScriptを呼び出して、高度な再構築を行います。</div>
-              <div>• MuPDFに比べて処理時間はかかりますが、互換性の高いPDFが生成されます。</div>
-              <div>• 特にトリミングされたPDFにおいて、高い圧縮効果が期待できます。</div>
+              <div>{t("compress.gs_info_1")}</div>
+              <div>{t("compress.gs_info_2")}</div>
+              <div>{t("compress.gs_info_3")}</div>
             </div>
           </>
         )}
@@ -875,7 +917,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             <div style={c.dirRow}>
               <div style={c.dirPath}>{outDir || "出力先フォルダを選択してください..."}</div>
               <button style={c.dirPickBtn} onClick={pickDir}>
-                フォルダ選択
+                {t("compress.select_folder")}
               </button>
             </div>
             <button
@@ -885,8 +927,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               disabled={!outDir || (useGs && !gsPath)}
             >
               {useGs
-                ? `プロモードで一括圧縮 (${batchFiles!.length}個)`
-                : `一括圧縮を開始 (${batchFiles!.length}個)`}
+                ? t("compress.batch_gs", { count: String(batchFiles!.length) })
+                : t("compress.batch_mupdf", { count: String(batchFiles!.length) })}
             </button>
           </div>
         ) : (
@@ -897,7 +939,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               // GSモードでも gsPath が見つかっていれば有効化
               disabled={useGs && !gsPath}
             >
-              {useGs ? "プロモードで全ページ圧縮" : "プレビューを実行する"}
+              {useGs ? t("compress.gs_mode") : t("compress.preview_btn")}
             </button>
           </div>
         )}

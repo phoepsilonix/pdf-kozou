@@ -485,8 +485,8 @@ useEffect(() => {
             }}
           />
           <div style={{ display: "flex", gap: 8 }}>
-            <BtnPrimary onClick={() => handleSave(false)}>💾 保存</BtnPrimary>
-            <BtnPrimary onClick={() => handleSave(true)}>⊙ 保存して圧縮</BtnPrimary>
+            <BtnPrimary onClick={() => handleSave(false)}>{t("merge.save")}</BtnPrimary>
+            <BtnPrimary onClick={() => handleSave(true)}>{t("merge.save_compress")}</BtnPrimary>
           </div>
         </div>
       </div>
@@ -549,7 +549,7 @@ useEffect(() => {
             <span style={s.dropTitle}>ファイルをここにドロップ</span>
             <span style={s.dropSub}>PDF・EPUB・DOCX・画像など複数ファイルを一度に追加できます</span>
             <button style={s.btnAddBig} onClick={pickFiles}>
-              ファイルを選択…
+              {t("merge.select_placeholder")}
             </button>
           </div>
         ) : (
@@ -606,7 +606,7 @@ useEffect(() => {
                       style={s.moveBtn}
                       onClick={() => moveUp(i)}
                       disabled={i === 0}
-                      title="上へ"
+                      title={t("common.up")}
                     >
                       ↑
                     </button>
@@ -614,7 +614,7 @@ useEffect(() => {
                       style={s.moveBtn}
                       onClick={() => moveDown(i)}
                       disabled={i === entries.length - 1}
-                      title="下へ"
+                      title={t("common.down")}
                     >
                       ↓
                     </button>
@@ -697,7 +697,7 @@ useEffect(() => {
                   {t("merge.execute_compress_btn")}
                 </BtnPrimary>
               </div>
-              {entries.length < 2 && <span style={s.execHint}>2ファイル以上必要です</span>}
+              {entries.length < 2 && <span style={s.execHint}>{t("merge.need_min")}</span>}
             </div>
           </div>
         )}

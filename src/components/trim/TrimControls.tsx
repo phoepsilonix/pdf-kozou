@@ -9,6 +9,7 @@ import { useCallback } from "react";
 import type { TrimMargins, PageSelection } from "../../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../PageSelector";
 import { F } from "../../lib/theme";
+import { useI18n } from "../../lib/i18n";
 
 interface Props {
   margins: TrimMargins;
@@ -57,6 +58,7 @@ export function TrimControls({
   extractSpec,
   onExtract,
 }: Props) {
+  const { t } = useI18n();
   const set = useCallback(
     (key: keyof TrimMargins, mm: number) => {
       onMargins({ ...margins, [key]: toPt(Math.max(0, mm)) });
@@ -76,7 +78,7 @@ export function TrimControls({
         <div style={s.cross}>
           <div style={s.crossTop}>
             <MmField
-              label="上"
+              label={t("trim_controls.top")}
               value={toMm(margins.top)}
               max={toMm(pageH - margins.bottom - MM_TO_PT)}
               onChange={(v) => set("top", v)}
@@ -84,7 +86,7 @@ export function TrimControls({
           </div>
           <div style={s.crossMid}>
             <MmField
-              label="左"
+              label={t("trim_controls.left")}
               value={toMm(margins.left)}
               max={toMm(pageW - margins.right - MM_TO_PT)}
               onChange={(v) => set("left", v)}
@@ -101,7 +103,7 @@ export function TrimControls({
               <span style={s.pageUnit}>mm (後)</span>
             </div>
             <MmField
-              label="右"
+              label={t("trim_controls.right")}
               value={toMm(margins.right)}
               max={toMm(pageW - margins.left - MM_TO_PT)}
               onChange={(v) => set("right", v)}
@@ -109,7 +111,7 @@ export function TrimControls({
           </div>
           <div style={s.crossBot}>
             <MmField
-              label="下"
+              label={t("trim_controls.bottom")}
               value={toMm(margins.bottom)}
               max={toMm(pageH - margins.top - MM_TO_PT)}
               onChange={(v) => set("bottom", v)}
@@ -125,7 +127,7 @@ export function TrimControls({
           totalPages={totalPages}
           value={trimPages}
           onChange={onPages}
-          label="トリミング適用ページ (all/even/odd/1-5,7)"
+          label={t("trim_controls.trim_pages_label")}
           type="1"
           compact
         />
@@ -136,7 +138,7 @@ export function TrimControls({
           totalPages={totalPages}
           value={excludeSpec}
           onChange={onExclude}
-          label="除外ページ (all/even/odd/1-5,7)"
+          label={t("trim_controls.exclude_label")}
           type="2"
           compact
         />
@@ -151,7 +153,7 @@ export function TrimControls({
           totalPages={totalPages}
           value={extractSpec}
           onChange={onExtract}
-          label="抽出ページ (all/even/odd/1-5,7)"
+          label={t("trim_controls.extract_label")}
           type="1"
           compact
         />
@@ -161,7 +163,7 @@ export function TrimControls({
       {onPickDir !== undefined && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: "var(--c-textDim)", marginBottom: 4 }}>
-            📁 出力フォルダ
+            {t("trim_controls.output_folder")}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <div
@@ -178,7 +180,7 @@ export function TrimControls({
                 whiteSpace: "nowrap",
               }}
             >
-              {outDir || "未選択"}
+              {outDir || t("trim_controls.not_selected")}
             </div>
             <button
               type="button"
@@ -195,7 +197,7 @@ export function TrimControls({
               onClick={onPickDir}
               disabled={processing}
             >
-              選択…
+              {t("trim_controls.select_btn")}
             </button>
           </div>
         </div>
@@ -211,7 +213,7 @@ export function TrimControls({
           onClick={!outDir && onPickDir ? onPickDir : onApply}
           disabled={processing}
         >
-          {processing ? "処理中…" : (applyLabel ?? "プレビュー →")}
+          {processing ? t("trim_controls.processing") : (applyLabel ?? t("trim_controls.preview"))}
         </button>
       </section>
 
