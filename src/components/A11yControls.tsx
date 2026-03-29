@@ -37,7 +37,9 @@ export function TtsToggleButton() {
     // setEnabled は listener 経由で自動更新される
   }, []);
 
-  if (!tts.supported) return null;
+  // デバッグ: speechSynthesis の状態をコンソールに出力
+  // Tauri WebKit で speechSynthesis が使えない場合はボタンをグレーアウト表示する
+  const isSupported = tts.supported;
 
   const btnStyle: React.CSSProperties = {
     padding: "4px 10px",
@@ -58,14 +60,25 @@ export function TtsToggleButton() {
   return (
     <button
       onClick={toggle}
-      style={btnStyle}
-      title={`${enabled ? t("tts.disabled_hint") : t("tts.enabled_hint")} (Alt+T)`}
+      style={{
+        ...btnStyle,
+        opacity: isSupported ? 1 : 0.4,
+        cursor: isSupported ? "pointer" : "not-allowed",
+      }}
+      title={
+        !isSupported
+          ? "このブラウザ/環境では音声読み上げに対応していません"
+          : `${enabled ? t("tts.disabled_hint") : t("tts.enabled_hint")} (Alt+T)`
+      }
       aria-label={
-        enabled
-          ? `${t("tts.label")} オン。Alt+Tでオフにできます`
-          : `${t("tts.label")} オフ。Alt+Tでオンにできます`
+        !isSupported
+          ? "音声読み上げ非対応環境"
+          : enabled
+            ? `${t("tts.label")} オン。Alt+Tでオフにできます`
+            : `${t("tts.label")} オフ。Alt+Tでオンにできます`
       }
       aria-pressed={enabled}
+      aria-disabled={!isSupported}
     >
       <span style={{ fontSize: 14 }}>{enabled ? "🔊" : "🔇"}</span>
       <span>{t("tts.label")}</span>

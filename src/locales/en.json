@@ -21,16 +21,31 @@
     "selected": "{{count}} file(s) selected.",
     "none_selected": "No files selected.",
     "open_dialog": "Opening file dialog.",
-    "drop_hint": "Drop PDF files here or press Ctrl+O to add files."
+    "drop_hint": "Drop PDF files here or press Ctrl+O to add files.",
+    "batch_suffix": " files batch",
+    "sel_count": "{{count}} file(s) selected",
+    "sel_pages": "{{pages}} pages",
+    "add": "+ Add",
+    "select_all": "Select All",
+    "deselect": "Deselect",
+    "clear": "Clear",
+    "pages_unit": " pages"
   },
   "tool": {
     "split": "Split",
+    "split_desc": "Split pages",
     "merge": "Merge",
+    "merge_desc": "Combine PDFs",
     "trim": "Trim",
+    "trim_desc": "Crop margins",
     "rotate": "Rotate",
+    "rotate_desc": "Rotate pages",
     "compress": "Compress",
+    "compress_desc": "Reduce file size",
     "image": "Image Export",
-    "viewer": "Viewer"
+    "image_desc": "Export as images",
+    "viewer": "Viewer",
+    "viewer_desc": "View PDF"
   },
   "done": {
     "trim": "Trimming complete.",
@@ -65,5 +80,12 @@
   },
   "locale": {
     "label": "Language"
+  },
+  "app": {
+    "tagline": "Rust with tauri · MuPDF · Fully offline",
+    "select_file": "Select files…",
+    "select_file_hint": "Select files Ctrl+O",
+    "select_prompt": "Please select a file",
+    "no_file_hint": "Please select files"
   }
 }

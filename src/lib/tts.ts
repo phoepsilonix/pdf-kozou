@@ -30,6 +30,8 @@ class TtsService {
   private _listeners: Set<EnabledListener> = new Set();
 
   constructor() {
+    // _supported は初期値として設定するが、getter で毎回チェックする
+    // Tauri WebKit では起動直後に speechSynthesis が未定義の場合がある
     this._supported = typeof window !== "undefined" && "speechSynthesis" in window;
     const stored = localStorage.getItem(STORAGE_ENABLED_KEY);
     this._enabled = stored === "true"; // デフォルト無効
@@ -37,8 +39,9 @@ class TtsService {
     this._pitch = parseFloat(localStorage.getItem(STORAGE_PITCH_KEY) ?? "1.0");
   }
 
+  /** speechSynthesis が実際に使えるか毎回確認する */
   get supported(): boolean {
-    return this._supported;
+    return typeof window !== "undefined" && "speechSynthesis" in window;
   }
   get enabled(): boolean {
     return this._enabled;
@@ -74,8 +77,11 @@ class TtsService {
   toggle(): boolean {
     const next = !this._enabled;
     this.setEnabled(next);
-    // トグル後の状態を即座に読み上げる（setEnabled 前にキャンセルしない）
-    if (next && this._supported) {
+
+    const isSupported = this.supported;
+    console.log("[TTS] toggle:", next, "supported:", isSupported);
+
+    if (next && isSupported) {
       this.stop();
       const lang = getCurrentLocale() === "ja" ? "ja-JP" : "en-US";
       const msg =
@@ -84,12 +90,17 @@ class TtsService {
       utt.lang = lang;
       utt.rate = this._rate;
       utt.pitch = this._pitch;
-      utt.onerror = () => {};
+      utt.onerror = (e) => {
+        console.warn("[TTS] utterance error:", e);
+      };
+      console.log("[TTS] speaking:", msg, "lang:", lang);
       try {
         window.speechSynthesis.speak(utt);
-      } catch {
-        /* ignore */
+      } catch (e) {
+        console.error("[TTS] speak error:", e);
       }
+    } else if (!isSupported) {
+      console.warn("[TTS] speechSynthesis not available in this environment");
     }
     return next;
   }

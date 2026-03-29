@@ -21,16 +21,31 @@
     "selected": "{{count}}件のファイルが選択されています。",
     "none_selected": "ファイルが選択されていません。",
     "open_dialog": "ファイル選択ダイアログを開きます。",
-    "drop_hint": "PDFファイルをドロップするか、Ctrl+Oで追加してください。"
+    "drop_hint": "PDFファイルをドロップするか、Ctrl+Oで追加してください。",
+    "batch_suffix": "件一括",
+    "sel_count": "{{count}}ファイル選択中",
+    "sel_pages": "{{pages}}ページ",
+    "add": "＋ 追加",
+    "select_all": "全選択",
+    "deselect": "解除",
+    "clear": "クリア",
+    "pages_unit": "ページ"
   },
   "tool": {
     "split": "分割",
+    "split_desc": "ページを分割",
     "merge": "結合",
+    "merge_desc": "複数PDFを合体",
     "trim": "トリミング",
+    "trim_desc": "余白をカット",
     "rotate": "回転",
+    "rotate_desc": "ページを回転",
     "compress": "圧縮",
+    "compress_desc": "ファイルを軽量化",
     "image": "画像変換",
-    "viewer": "ビューワー"
+    "image_desc": "ページを画像に",
+    "viewer": "ビューワー",
+    "viewer_desc": "PDFを確認・閲覧"
   },
   "done": {
     "trim": "トリミングが完了しました。",
@@ -65,5 +80,12 @@
   },
   "locale": {
     "label": "言語"
+  },
+  "app": {
+    "tagline": "Rust with tauri · MuPDF · オフライン完全動作",
+    "select_file": "ファイルを選択…",
+    "select_file_hint": "ファイルを選択 Ctrl+O",
+    "select_prompt": "ファイルを選択してください",
+    "no_file_hint": "ファイルを選択してください"
   }
 }

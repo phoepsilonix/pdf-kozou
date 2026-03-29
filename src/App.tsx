@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 // src/App.tsx
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { TrimPage } from "./pages/TrimPage";
 import { CompressPage } from "./pages/CompressPage";
@@ -71,42 +71,16 @@ export type ToolId =
   | "viewer"
   | "about";
 
-const TOOLS: {
-  id: ToolId;
-  icon: string;
-  label: string;
-  desc: string;
-  minFiles: number;
-  maxFiles: number | null;
-}[] = [
-  { id: "split", icon: "⊗", label: "分割", desc: "ページを分割", minFiles: 1, maxFiles: null },
-  { id: "merge", icon: "⊕", label: "結合", desc: "複数PDFを合体", minFiles: 2, maxFiles: null },
-  { id: "trim", icon: "✂", label: "トリミング", desc: "余白をカット", minFiles: 1, maxFiles: null },
-  { id: "rotate", icon: "↻", label: "回転", desc: "ページを回転", minFiles: 1, maxFiles: null },
-  {
-    id: "compress",
-    icon: "⊙",
-    label: "圧縮",
-    desc: "ファイルを軽量化",
-    minFiles: 1,
-    maxFiles: null,
-  },
-  {
-    id: "image",
-    icon: "🖼",
-    label: "画像変換",
-    desc: "ページを画像に",
-    minFiles: 1,
-    maxFiles: null,
-  },
-  {
-    id: "viewer",
-    icon: "👁",
-    label: "ビューワー",
-    desc: "PDFを確認・閲覧",
-    minFiles: 1,
-    maxFiles: null,
-  },
+// TOOLS の静的定義 (アイコン・minFiles・maxFiles のみ)
+// ラベルと説明は App コンポーネント内で useI18n() を使って動的生成する
+const TOOL_DEFS: { id: ToolId; icon: string; minFiles: number; maxFiles: number | null }[] = [
+  { id: "split", icon: "⊗", minFiles: 1, maxFiles: null },
+  { id: "merge", icon: "⊕", minFiles: 2, maxFiles: null },
+  { id: "trim", icon: "✂", minFiles: 1, maxFiles: null },
+  { id: "rotate", icon: "↻", minFiles: 1, maxFiles: null },
+  { id: "compress", icon: "⊙", minFiles: 1, maxFiles: null },
+  { id: "image", icon: "🖼", minFiles: 1, maxFiles: null },
+  { id: "viewer", icon: "👁", minFiles: 1, maxFiles: null },
 ];
 
 export default function App() {
@@ -136,7 +110,21 @@ export default function App() {
   const dragCounter = useRef(0);
   const [statusMsg, setStatusMsg] = useState("");
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
-  const { locale, setLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
+
+  // TOOLS を言語に応じて動的生成（言語切り替え時に再レンダリングされる）
+  const TOOLS = useMemo(
+    () => [
+      { ...TOOL_DEFS[0], label: t("tool.split"), desc: t("tool.split_desc") },
+      { ...TOOL_DEFS[1], label: t("tool.merge"), desc: t("tool.merge_desc") },
+      { ...TOOL_DEFS[2], label: t("tool.trim"), desc: t("tool.trim_desc") },
+      { ...TOOL_DEFS[3], label: t("tool.rotate"), desc: t("tool.rotate_desc") },
+      { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
+      { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
+      { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
+    ],
+    [t],
+  );
 
   const handleThemeChange = useCallback((id: ThemeId) => {
     setTheme(id);
@@ -189,8 +177,8 @@ export default function App() {
                 selected: true,
               },
             ]);
-            const msg = `${fname}を追加しました。${info.page_count}ページ。`;
-            setStatusMsg(msg);
+            const addedMsg = t("file.added", { name: fname, pages: String(info.page_count) });
+            setStatusMsg(addedMsg);
             announceSuccess("file.added", { name: fname, pages: String(info.page_count) });
           } catch (e) {
             announceError(String(e));
@@ -201,19 +189,6 @@ export default function App() {
     },
     [addFiles, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
-
-  const handlePickFiles = useCallback(async () => {
-    const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
-    if (paths.length) await handleAddPaths(paths);
-  }, [handleAddPaths]);
-
-  // グローバルショートカット（全画面共通）
-  useKeyboardShortcuts({
-    "Ctrl+O": handlePickFiles,
-    "Alt+T": () => tts.toggle(),
-    "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
-    F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
-  });
 
   useEffect(() => {
     let unlistenCustom: (() => void) | null = null;
@@ -229,6 +204,19 @@ export default function App() {
     };
   }, [handleAddPaths]);
 
+  const handlePickFiles = useCallback(async () => {
+    const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
+    if (paths.length) await handleAddPaths(paths);
+  }, [handleAddPaths]);
+
+  // グローバルショートカット（全画面共通）
+  // handlePickFiles の後に置くことで "used before declaration" を回避
+  useKeyboardShortcuts({
+    "Ctrl+O": handlePickFiles,
+    "Alt+T": () => tts.toggle(),
+    "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
+    F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
+  });
   /*
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -401,7 +389,7 @@ export default function App() {
           </button>
         </div>
         <span style={{ ...s.tagline, marginBottom: 8, opacity: 0.8 }}>v{pkg.version}</span>
-        <span style={s.tagline}>Rust with tauri · MuPDF · オフライン完全動作</span>
+        <span style={s.tagline}>{t("app.tagline")}</span>
         <div
           style={{
             position: "absolute",
@@ -426,9 +414,9 @@ export default function App() {
             <button
               style={s.btnAddBig}
               onClick={handlePickFiles}
-              aria-label="ファイルを選択 Ctrl+O"
+              aria-label={t("app.select_file_hint")}
             >
-              ファイルを選択…
+              {t("app.select_file")}
             </button>
           </div>
         ) : (
@@ -447,17 +435,17 @@ export default function App() {
             </div>
             <div style={s.listFooter}>
               <button style={s.btnAdd} onClick={handlePickFiles}>
-                ＋ 追加
+                {t("file.add")}
               </button>
               <button style={s.btnSm} onClick={selectAll}>
-                全選択
+                {t("file.select_all")}
               </button>
               <button style={s.btnSm} onClick={selectNone}>
-                解除
+                {t("file.deselect")}
               </button>
               <div style={{ flex: 1 }} />
               <button style={s.btnClear} onClick={clearList}>
-                クリア
+                {t("file.clear")}
               </button>
             </div>
           </>
@@ -468,9 +456,9 @@ export default function App() {
         <div style={s.summary}>
           {selCount > 0 ? (
             <>
-              <span style={s.sumSel}>{selCount}ファイル選択中</span>
+              <span style={s.sumSel}>{t("file.sel_count", { count: String(selCount) })}</span>
               <span style={s.sumDot}>·</span>
-              <span style={s.sumInfo}>{selPages}ページ</span>
+              <span style={s.sumInfo}>{t("file.sel_pages", { pages: String(selPages) })}</span>
               {selBytes > 0 && (
                 <>
                   <span style={s.sumDot}>·</span>
@@ -479,7 +467,7 @@ export default function App() {
               )}
             </>
           ) : (
-            <span style={s.sumNone}>ファイルを選択してください</span>
+            <span style={s.sumNone}>{t("app.no_file_hint")}</span>
           )}
         </div>
       )}
@@ -521,23 +509,23 @@ export default function App() {
 
       {fileList.length > 0 && (
         <div style={s.toolBar}>
-          {TOOLS.map((t) => {
+          {TOOLS.map((tool) => {
             const enabled =
-              selCount >= t.minFiles && (t.maxFiles == null || selCount <= t.maxFiles);
+              selCount >= tool.minFiles && (tool.maxFiles == null || selCount <= tool.maxFiles);
             return (
               <button
-                key={t.id}
+                key={tool.id}
                 style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
-                onClick={() => enabled && handleLaunchTool(t.id)}
+                onClick={() => enabled && handleLaunchTool(tool.id)}
                 disabled={!enabled}
-                aria-label={`${t.label}: ${t.desc}${!enabled ? " (ファイルを選択してください)" : ""}`}
+                aria-label={`${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
               >
-                <span style={s.toolIcon}>{t.icon}</span>
-                <span style={s.toolLabel}>{t.label}</span>
+                <span style={s.toolIcon}>{tool.icon}</span>
+                <span style={s.toolLabel}>{tool.label}</span>
                 <span style={s.toolDesc}>
-                  {selCount > 1 && !["merge", "viewer"].includes(t.id)
-                    ? `${selCount}件一括`
-                    : t.desc}
+                  {selCount > 1 && !["merge", "viewer"].includes(tool.id)
+                    ? `${selCount}${t("file.batch_suffix") || "件一括"}`
+                    : tool.desc}
                 </span>
               </button>
             );
@@ -572,6 +560,7 @@ function FileRow({
   onRemove: () => void;
   onDragReorder: (f: number, t: number) => void;
 }) {
+  const { t } = useI18n();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const mb = entry.sizeBytes > 0 ? (entry.sizeBytes / 1048576).toFixed(1) + " MB" : "";
@@ -614,7 +603,9 @@ function FileRow({
           {entry.filename}
         </span>
         <span style={fr.meta}>
-          {entry.pageCount}ページ{mb ? "  " + mb : ""}
+          {entry.pageCount}
+          {t("file.pages_unit")}
+          {mb ? "  " + mb : ""}
         </span>
       </div>
       <button style={fr.del} onClick={onRemove} title="削除">
@@ -647,6 +638,19 @@ function ToolShell({
   themeId: ThemeId;
   onThemeChange: (id: ThemeId) => void;
 }) {
+  const { t } = useI18n();
+  const TOOLS = useMemo(
+    () => [
+      { ...TOOL_DEFS[0], label: t("tool.split"), desc: t("tool.split_desc") },
+      { ...TOOL_DEFS[1], label: t("tool.merge"), desc: t("tool.merge_desc") },
+      { ...TOOL_DEFS[2], label: t("tool.trim"), desc: t("tool.trim_desc") },
+      { ...TOOL_DEFS[3], label: t("tool.rotate"), desc: t("tool.rotate_desc") },
+      { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
+      { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
+      { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
+    ],
+    [t],
+  );
   const filename = filePath.split(/[/\\]/).pop() ?? "";
   const batchFiles = isBatch ? toolFiles : undefined;
 
@@ -680,18 +684,18 @@ function ToolShell({
           </span>
         )}
         <div style={{ flex: 1 }} />
-        {TOOLS.map((t) => (
+        {TOOLS.map((tool) => (
           <button
-            key={t.id}
-            style={{ ...sh.tab, ...(activeTool === t.id ? sh.tabOn : {}) }}
+            key={tool.id}
+            style={{ ...sh.tab, ...(activeTool === tool.id ? sh.tabOn : {}) }}
             onClick={(e) => {
-              onToolChange(t.id);
+              onToolChange(tool.id);
               (e.currentTarget as HTMLButtonElement).blur();
             }}
-            title={t.label}
+            title={tool.label}
           >
-            <span>{t.icon}</span>
-            <span style={sh.tabLabel}>{t.label}</span>
+            <span>{tool.icon}</span>
+            <span style={sh.tabLabel}>{tool.label}</span>
           </button>
         ))}
         <div style={sh.div} />
