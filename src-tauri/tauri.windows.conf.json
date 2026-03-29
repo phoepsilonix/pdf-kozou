@@ -17,6 +17,7 @@
         "languages": ["Japanese", "English"]
       },
       "wix": {
+        "template": "./wix/wix-template.xml",
         "language": ["ja-JP", "en-US"]
       },
       "certificateThumbprint": null,
