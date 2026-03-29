@@ -209,48 +209,6 @@ export default function App() {
     if (paths.length) await handleAddPaths(paths);
   }, [handleAddPaths]);
 
-  // ツール番号ショートカット（Alt+1〜7）
-  // ホーム画面: ファイル選択済みならツール起動、未選択なら読み上げで案内
-  // ツール画面: 別ツールへ切り替え
-  const handleToolShortcut = useCallback(
-    (toolId: ToolId, num: number) => {
-      const toolName = TOOLS.find((t) => t.id === toolId)?.label ?? toolId;
-      if (activeTool) {
-        // ツール画面 → 切り替え
-        handleToolChange(toolId);
-        tts.speak(t("shortcut.tool_switched", { name: toolName }));
-      } else {
-        // ホーム画面
-        const sel = fileList.filter((f) => f.selected);
-        if (sel.length === 0) {
-          tts.speak(t("shortcut.tool_no_file", { name: toolName }));
-        } else {
-          handleLaunchTool(toolId);
-        }
-      }
-    },
-    [activeTool, fileList, handleToolChange, handleLaunchTool, TOOLS, t],
-  );
-
-  // グローバルショートカット（全画面共通）
-  // handlePickFiles の後に置くことで "used before declaration" を回避
-  useKeyboardShortcuts({
-    "Ctrl+O": handlePickFiles,
-    "Alt+1": () => handleToolShortcut("split", 1),
-    "Alt+2": () => handleToolShortcut("merge", 2),
-    "Alt+3": () => handleToolShortcut("trim", 3),
-    "Alt+4": () => handleToolShortcut("rotate", 4),
-    "Alt+5": () => handleToolShortcut("compress", 5),
-    "Alt+6": () => handleToolShortcut("image", 6),
-    "Alt+7": () => handleToolShortcut("viewer", 7),
-    "Alt+H": () => {
-      handleHome();
-      tts.speak(t("screen.home"));
-    },
-    "Alt+T": () => tts.toggle(),
-    "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
-    F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
-  });
   /*
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -315,6 +273,45 @@ export default function App() {
     },
     [toolFiles, setFile, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
+
+  // ツール番号ショートカット（Alt+1〜7）
+  // handleLaunchTool・handleToolChange の後に定義して "used before declaration" を回避
+  const handleToolShortcut = useCallback(
+    (toolId: ToolId, _num: number) => {
+      const toolName = TOOLS.find((tool) => tool.id === toolId)?.label ?? toolId;
+      if (activeTool) {
+        handleToolChange(toolId);
+        tts.speak(t("shortcut.tool_switched", { name: toolName }));
+      } else {
+        const selected = fileList.filter((f) => f.selected);
+        if (selected.length === 0) {
+          tts.speak(t("shortcut.tool_no_file", { name: toolName }));
+        } else {
+          handleLaunchTool(toolId);
+        }
+      }
+    },
+    [activeTool, fileList, handleToolChange, handleLaunchTool, TOOLS, t],
+  );
+
+  // グローバルショートカット（全画面共通）
+  useKeyboardShortcuts({
+    "Ctrl+O": handlePickFiles,
+    "Alt+1": () => handleToolShortcut("split", 1),
+    "Alt+2": () => handleToolShortcut("merge", 2),
+    "Alt+3": () => handleToolShortcut("trim", 3),
+    "Alt+4": () => handleToolShortcut("rotate", 4),
+    "Alt+5": () => handleToolShortcut("compress", 5),
+    "Alt+6": () => handleToolShortcut("image", 6),
+    "Alt+7": () => handleToolShortcut("viewer", 7),
+    "Alt+H": () => {
+      handleHome();
+      tts.speak(t("screen.home"));
+    },
+    "Alt+T": () => tts.toggle(),
+    "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
+    F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
+  });
 
   const sel = fileList.filter((f) => f.selected);
   const selCount = sel.length;

@@ -38,6 +38,7 @@ export function Spinner({ label }: { label?: string }) {
 }
 
 export function ErrorView({ msg, onBack }: { msg: string; onBack: () => void }) {
+  const { t } = useI18n();
   return (
     <div
       style={{
@@ -52,7 +53,7 @@ export function ErrorView({ msg, onBack }: { msg: string; onBack: () => void }) 
       }}
     >
       <span style={{ fontSize: 42, color: "var(--c-err)" }}>✕</span>
-      <span style={{ fontSize: 16, fontWeight: 600, color: "#ff7070" }}>エラーが発生しました</span>
+      <span style={{ fontSize: 16, fontWeight: 600, color: "#ff7070" }}>{t("error.prefix")}</span>
       <pre
         style={{
           fontSize: 12,

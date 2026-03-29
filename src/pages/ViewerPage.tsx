@@ -278,6 +278,7 @@ function InfoDrawer({
   filePath: string;
   fileName: string;
 }) {
+  const { t } = useI18n();
   const [allCopied, setAllCopied] = useState(false);
   const meta: PdfMetadata = info?.metadata ?? {};
   const firstPage = info?.pages?.[0];

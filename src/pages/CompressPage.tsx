@@ -34,12 +34,12 @@ interface Props {
 
 type Phase = "edit" | "processing" | "result" | "batchResult" | "error";
 
-const PRESETS: {
+const PRESET_OPTIONS_KEYS: {
   id: CompressPreset;
   icon: string;
-  label: string;
-  desc: string;
-  note: string;
+  labelKey: string;
+  descKey: string;
+  noteKey: string;
   color: string;
 }[] = [
   {
@@ -80,9 +80,9 @@ const PRESETS: {
 const GS_PRESETS_KEYS: {
   id: "Prepress" | "Printer" | "Ebook";
   icon: string;
-  label: string;
-  desc: string;
-  note: string;
+  labelKey: string;
+  descKey: string;
+  noteKey: string;
   color: string;
 }[] = [
   {
@@ -823,7 +823,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         {!useGs ? (
           <>
             <div style={c.presetGrid}>
-              {PRESETS.map((p) => (
+              {PRESET_OPTIONS_I18N.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => setPreset(p.id)}
