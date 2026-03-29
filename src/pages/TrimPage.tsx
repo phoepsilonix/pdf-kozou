@@ -23,6 +23,7 @@ import { C, F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
+import { useI18n } from "../lib/i18n";
 
 interface Props {
   filePath: string;
@@ -54,6 +55,7 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceSuccess, announceError } = useA11y();
+  const { t } = useI18n();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [outDir, setOutDir] = useState("");
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
@@ -119,7 +121,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     };
   }, [files]);
 
-  // プレビュー対象ファイルの情報 + 画像取得
+  // {t("trim.preview_target")}ファイルの情報 + 画像取得
   useEffect(() => {
     const path = files[previewIdx]?.path;
     if (!path) return;
@@ -219,7 +221,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     return (
       <div style={b.center}>
         <div style={b.title}>
-          トリミング中… {progress.current}/{files.length}
+          {t("trim.processing", { current: String(progress.current), total: String(files.length) })}
         </div>
         <div style={b.barWrap}>
           <div style={{ ...b.bar, width: `${pct}%` }} />
@@ -280,7 +282,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             setPhase("edit");
           }}
         >
-          ← 設定に戻る
+          {t("common.back")}
         </button>
       </div>
     );
@@ -316,9 +318,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         }}
       >
         <span style={{ fontSize: 16, fontWeight: 700 }}>トリミング — {files.length}件バッチ</span>
-        <span style={{ fontSize: 13, color: "var(--c-textSub)" }}>
-          同じ余白設定を全ファイルに適用
-        </span>
+        <span style={{ fontSize: 13, color: "var(--c-textSub)" }}>{t("trim.apply_all")}</span>
       </div>
 
       {/* 本体 */}
@@ -398,7 +398,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               100%
             </button>
             <span style={{ fontSize: 10, color: "var(--c-textDim)", marginLeft: 4 }}>
-              Ctrl+ホイールで拡大縮小
+              {t("trim.scroll_hint")}
             </span>
           </div>
           <div
@@ -475,6 +475,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     convertLayoutEm,
   } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
 
   useEffect(() => {
@@ -705,7 +706,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             setErrMsg("");
           }}
         >
-          ← 設定に戻る
+          {t("common.back")}
         </button>
       </div>
     );
@@ -855,11 +856,12 @@ function ResultView({
   onCompress: () => void;
   isSaving: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div style={r.root}>
       <div style={r.header}>
         <button style={r.btnBack} onClick={onBack}>
-          ← 設定に戻る
+          {t("common.back")}
         </button>
         <span style={r.title}>トリミング結果確認</span>
         <span style={r.sub}>
@@ -867,14 +869,14 @@ function ResultView({
         </span>
         <div style={{ flex: 1 }} />
         <button style={r.btnCompress} onClick={onCompress}>
-          ⚡ 続けて圧縮
+          {t("common.compress_then_save")}
         </button>
         <button
           style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
           onClick={onSave}
           disabled={isSaving}
         >
-          {isSaving ? "保存中…" : "💾 PDFを保存"}
+          {isSaving ? t("common.saving") : t("common.save_pdf")}
         </button>
       </div>
 
@@ -893,17 +895,17 @@ function ResultView({
 
       <div style={r.footer}>
         <button style={r.btnBack} onClick={onBack}>
-          ← 設定に戻る
+          {t("common.back")}
         </button>
         <button style={r.btnCompress} onClick={onCompress}>
-          ⚡ 続けて圧縮
+          {t("common.compress_then_save")}
         </button>
         <button
           style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
           onClick={onSave}
           disabled={isSaving}
         >
-          {isSaving ? "保存中…" : "💾 PDFを保存"}
+          {isSaving ? t("common.saving") : t("common.save_pdf")}
         </button>
       </div>
     </div>

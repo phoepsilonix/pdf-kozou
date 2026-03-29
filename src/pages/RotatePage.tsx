@@ -20,6 +20,7 @@ import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
+import { useI18n } from "../lib/i18n";
 import { CompressPage } from "./CompressPage";
 
 interface Props {
@@ -43,6 +44,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
 
   useEffect(() => {
@@ -264,14 +266,17 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   }, [batchFiles, rotations, outDir, pickDir, announceSuccess]);
 
   // ── フェーズ ──────────────────────────────────────────────────────────────
-  if (phase === "processing" && !isBatch) return <Spinner label="回転処理中…" />;
+  if (phase === "processing" && !isBatch) return <Spinner label={t("rotate.processing")} />;
 
   if (phase === "processing" && isBatch && batchProgress)
     return (
       <div style={s.root}>
         <div style={s.batchProgress}>
           <div style={s.bpTitle}>
-            回転処理中… {batchProgress.current}/{batchProgress.total}
+            {t("rotate.batch_processing", {
+              current: String(batchProgress.current),
+              total: String(batchProgress.total),
+            })}
           </div>
           <div style={s.bpBarWrap}>
             <div
@@ -344,14 +349,14 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           <span style={s.previewSub}>保存方法を選択してください</span>
           <div style={s.previewBtns}>
             <button style={s.saveBtnPrimary} onClick={doSave}>
-              💾 そのまま保存
+              {t("rotate.save")}
             </button>
             <button style={s.compressBtn} onClick={() => setPhase("compress")}>
-              ⊙ 圧縮してから保存
+              {t("rotate.save_compress")}
             </button>
           </div>
           <button style={s.btnBack2} onClick={() => setPhase("edit")}>
-            ← やり直す
+            {t("rotate.redo")}
           </button>
         </div>
       </div>
@@ -386,7 +391,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           {isBatch && batchProgress ? (
             <>
               <div style={s.resultStat}>
-                {batchProgress.done.length}件処理完了
+                {t("rotate.done_count", { count: String(batchProgress.done.length) })}
                 {batchProgress.errors.length > 0 ? ` · ${batchProgress.errors.length}件エラー` : ""}
               </div>
               <div style={s.resultDir}>{outDir}</div>
@@ -452,7 +457,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           <div style={s.secLabel}>個別設定</div>
           <p style={s.hint}>各ページの ↺↻ ボタンで個別回転できます。</p>
           <button style={s.resetBtn} onClick={resetAll}>
-            選択範囲をリセット
+            {t("rotate.reset_range")}
           </button>
 
           <div style={{ flex: 1 }} />
@@ -462,20 +467,20 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               <div style={s.secLabel}>出力フォルダ</div>
               <div style={s.dirRow}>
                 <div style={s.dirPath} title={outDir}>
-                  {outDir || "（未選択）"}
+                  {outDir || t("common.select_dir")}
                 </div>
                 <button style={s.dirPickBtn} onClick={pickDir}>
-                  参照…
+                  {t("common.browse")}
                 </button>
               </div>
               <BtnPrimary onClick={handleExecuteBatch} disabled={changedPages.length === 0}>
-                {outDir ? `↻ ${batchFiles!.length}件まとめて回転` : "📁 出力先を選択して実行"}
+                {outDir ? `↻ ${batchFiles!.length}件まとめて回転` : t("common.no_dir_btn")}
               </BtnPrimary>
             </>
           ) : (
             <BtnPrimary onClick={handleExecuteSingle} disabled={changedPages.length === 0}>
               {changedPages.length === 0
-                ? "回転なし"
+                ? t("rotate.no_change")
                 : `↻ ${changedPages.length}ページを回転して保存`}
             </BtnPrimary>
           )}

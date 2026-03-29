@@ -4,7 +4,7 @@
 
 // src/pages/ImageExportPage.tsx — 単体 & バッチ対応
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Spinner,
@@ -22,6 +22,7 @@ import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
+import { useI18n } from "../lib/i18n";
 
 interface Props {
   filePath: string;
@@ -32,11 +33,12 @@ interface Props {
 type Phase = "edit" | "processing" | "result" | "error";
 const THUMB_DPI = 56;
 
-const DPI_PRESETS = [
-  { label: "72", val: 72, desc: "画面用" },
-  { label: "144", val: 144, desc: "標準" },
-  { label: "300", val: 300, desc: "印刷" },
-  { label: "600", val: 600, desc: "高精細" },
+// DPI プリセット (desc は翻訳キー)
+const DPI_PRESET_KEYS = [
+  { label: "72", val: 72, descKey: "image.dpi_screen" },
+  { label: "144", val: 144, descKey: "image.dpi_standard" },
+  { label: "300", val: 300, descKey: "image.dpi_print" },
+  { label: "600", val: 600, descKey: "image.dpi_hires" },
 ];
 
 interface BatchProgress {
@@ -50,7 +52,12 @@ interface BatchProgress {
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  const DPI_PRESETS = useMemo(
+    () => DPI_PRESET_KEYS.map((p) => ({ ...p, desc: t(p.descKey) })),
+    [t],
+  );
 
   useEffect(() => {
     announceScreen("screen.image");
@@ -245,14 +252,18 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   ]);
 
   // ─────────── フェーズ ───────────
-  if (phase === "processing" && !isBatch) return <Spinner label={`画像変換中… (${total}ページ)`} />;
+  if (phase === "processing" && !isBatch)
+    return <Spinner label={t("image.processing", { current: String(total) })} />;
 
   if (phase === "processing" && isBatch && batchProgress)
     return (
       <div style={s.root}>
         <div style={s.center}>
           <div style={s.bpTitle}>
-            画像変換中… {batchProgress.current}/{batchProgress.total}
+            {t("image.batch_processing", {
+              current: String(batchProgress.current),
+              total: String(batchProgress.total),
+            })}
           </div>
           <div style={s.bpBar}>
             <div
@@ -310,7 +321,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             {batchProgress.errors.length ? "⚠" : "✓"}
           </span>
           <div style={s.bpTitle}>
-            {batchProgress.done.length}件成功
+            {t("image.done_count", { count: String(batchProgress.done.length) })}
             {batchProgress.errors.length > 0 ? ` · ${batchProgress.errors.length}件エラー` : ""}
           </div>
           <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
@@ -405,10 +416,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.fmtName}>{f.toUpperCase()}</span>
                 <span style={s.fmtDesc}>
                   {f === "jpeg"
-                    ? "小・写真向き"
+                    ? t("image.jpeg_small")
                     : f === "png"
-                      ? "可逆・透過対応"
-                      : "ベクター・印刷最適"}
+                      ? t("image.png_desc")
+                      : t("image.svg_desc")}
                 </span>
               </button>
             ))}
@@ -457,7 +468,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           {format === "jpeg" && (
             <>
               <div style={s.secLabel}>
-                JPEG品質{" "}
+                {t("image.quality_label")}{" "}
                 <span style={{ fontSize: 20, fontWeight: 700, color: "var(--c-text)" }}>
                   {quality}
                 </span>
@@ -473,8 +484,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 style={{ width: "100%", accentColor: "var(--c-accent)" }}
               />
               <div style={s.rangeLabels}>
-                <span>低品質</span>
-                <span>高品質</span>
+                <span>{t("image.quality_low")}</span>
+                <span>{t("image.quality_high")}</span>
               </div>
             </>
           )}
@@ -506,10 +517,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           <div style={s.secLabel}>出力フォルダ</div>
           <div style={s.dirRow}>
             <div style={s.dirPath} title={outDir}>
-              {outDir || "（未選択）"}
+              {outDir || t("common.select_dir")}
             </div>
             <button style={s.dirPickBtn} onClick={pickDir}>
-              参照…
+              {t("common.browse")}
             </button>
           </div>
 
@@ -518,7 +529,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               ? isBatch
                 ? `🖼 ${batchFiles!.length}件を変換`
                 : `🖼 変換実行 → ${total}ファイル`
-              : "📁 出力先を選択して実行"}
+              : t("common.no_dir_btn")}
           </BtnPrimary>
         </div>
 

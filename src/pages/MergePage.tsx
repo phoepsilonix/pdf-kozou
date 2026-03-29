@@ -29,6 +29,7 @@ import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
+import { useI18n } from "../lib/i18n";
 import { listen } from "@tauri-apps/api/event";
 import { isMupdfExtension } from "../lib/fileTypes";
 
@@ -49,6 +50,7 @@ const PREV_DPI = 60;
 export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
 
   // 画面表示時の読み上げ
@@ -327,8 +329,8 @@ useEffect(() => {
 
   const totalPages = entries.reduce((s, e) => s + e.pageCount, 0);
 
-  if (initLoading) return <Spinner label="ファイルを読み込み中…" />;
-  if (phase === "processing") return <Spinner label="結合処理中…" />;
+  if (initLoading) return <Spinner label={t("merge.loading")} />;
+  if (phase === "processing") return <Spinner label={t("merge.processing")} />;
   if (phase === "error")
     return (
       <ErrorView
@@ -409,8 +411,8 @@ useEffect(() => {
           <span style={s.title}>結合プレビュー</span>
           <span style={s.sub}>合計 {totalPages}ページ → 1ファイル</span>
           <div style={{ flex: 1 }} />
-          <BtnPrimary onClick={() => handleSave(false)}>💾 保存</BtnPrimary>
-          <BtnPrimary onClick={() => handleSave(true)}>⊙ 保存して圧縮</BtnPrimary>
+          <BtnPrimary onClick={() => handleSave(false)}>{t("merge.save")}</BtnPrimary>
+          <BtnPrimary onClick={() => handleSave(true)}>{t("merge.save_compress")}</BtnPrimary>
         </PageHeader>
 
         {/* 統合プレビュー: 大枠で「1つのPDF」を強調 */}
@@ -438,7 +440,7 @@ useEffect(() => {
                 gap: 6,
               }}
             >
-              <span>⊕ 結合後: 1ファイル ({totalPages}ページ)</span>
+              <span>{t("merge.result_label", { pages: String(totalPages) })}</span>
             </div>
             {/* ファイルごとのブロック */}
             {segments.map((seg, si) => (
@@ -499,7 +501,7 @@ useEffect(() => {
         {entries.length > 0 && (
           <>
             <span style={s.sub}>
-              {entries.length}ファイル · 合計 {totalPages}ページ
+              {t("merge.file_count", { count: String(entries.length), pages: String(totalPages) })}
             </span>
             <div style={{ flex: 1 }} />
             <button
@@ -666,7 +668,7 @@ useEffect(() => {
                 }}
               >
                 <button style={s.btnAdd} onClick={pickFiles}>
-                  ＋ PDFを追加
+                  {t("merge.add_btn")}
                 </button>
                 {/*<span style={s.addHint}>ここにドロップしても追加できます</span>*/}
               </div>
@@ -686,13 +688,13 @@ useEffect(() => {
                   onClick={handlePreview}
                   disabled={entries.length < 2}
                 >
-                  👁 プレビュー確認
+                  {t("merge.preview_btn")}
                 </button>
                 <BtnPrimary onClick={() => handleSave(false)} disabled={entries.length < 2}>
-                  ⊕ 結合して保存
+                  {t("merge.execute_btn")}
                 </BtnPrimary>
                 <BtnPrimary onClick={() => handleSave(true)} disabled={entries.length < 2}>
-                  ⊙ 結合して圧縮保存
+                  {t("merge.execute_compress_btn")}
                 </BtnPrimary>
               </div>
               {entries.length < 2 && <span style={s.execHint}>2ファイル以上必要です</span>}

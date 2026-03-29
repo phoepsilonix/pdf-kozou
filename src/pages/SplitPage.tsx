@@ -29,6 +29,7 @@ import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
+import { useI18n } from "../lib/i18n";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
 
   // 現在表示中のファイル（バッチの場合はプレビュー用に切り替え可能）
@@ -291,7 +293,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   })();
 
   // ── フェーズ分岐 ──────────────────────────────────────────────────────────
-  if (phase === "processing" && !isBatch) return <Spinner label="分割処理中…" />;
+  if (phase === "processing" && !isBatch) return <Spinner label={t("split.processing")} />;
 
   // バッチ処理中
   if (phase === "processing" && isBatch && batchProgress)
@@ -299,7 +301,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       <div style={s.root}>
         <div style={s.batchProgress}>
           <div style={s.bpTitle}>
-            分割処理中… {batchProgress.current}/{batchProgress.total}
+            {t("split.batch_processing", {
+              current: String(batchProgress.current),
+              total: String(batchProgress.total),
+            })}
           </div>
           <div style={s.bpBar}>
             <div
@@ -438,9 +443,24 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           <div style={s.modeList}>
             {(
               [
-                { id: "all", icon: "⧉", label: "1ページずつ", desc: "全ページを個別ファイルに" },
-                { id: "every", icon: "⊞", label: "N枚ごと", desc: "指定枚数をひとまとめに" },
-                { id: "ranges", icon: "⊟", label: "範囲指定", desc: "ページ範囲を自由に指定" },
+                {
+                  id: "all",
+                  icon: "⧉",
+                  label: t("split.mode_all"),
+                  desc: t("split.mode_all_desc"),
+                },
+                {
+                  id: "every",
+                  icon: "⊞",
+                  label: t("split.mode_every"),
+                  desc: t("split.mode_every_desc"),
+                },
+                {
+                  id: "ranges",
+                  icon: "⊟",
+                  label: t("split.mode_ranges"),
+                  desc: t("split.mode_ranges_desc"),
+                },
               ] as const
             ).map((m) => (
               <button
@@ -695,7 +715,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           <div style={s.secLabel}>出力フォルダ</div>
           <div style={s.dirRow}>
             <div style={s.dirPath} title={outDir}>
-              {outDir || "（未選択）"}
+              {outDir || t("common.select_dir")}
             </div>
             <button style={s.dirPickBtn} onClick={pickDir}>
               参照…
@@ -707,7 +727,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               ? isBatch
                 ? `✂ ${batchFiles!.length}件をまとめて分割`
                 : `✂ 分割実行 → ${groups.length}ファイル`
-              : "📁 出力先を選択して実行"}
+              : t("common.no_dir_btn")}
           </BtnPrimary>
         </div>
 
@@ -741,7 +761,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           ? `→ ${f.pageCount}ファイル`
                           : modeId === "every"
                             ? `→ ${Math.ceil(f.pageCount / everyN)}ファイル`
-                            : "→ 範囲指定"}
+                            : t("split.select_as_ranges")}
                       </span>
                     </div>
                   </div>

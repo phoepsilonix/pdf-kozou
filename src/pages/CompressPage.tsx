@@ -22,6 +22,7 @@ import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
+import { useI18n } from "../lib/i18n";
 
 interface Props {
   filePath: string;
@@ -124,6 +125,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   } = usePdfStore();
   const { pickSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
+  const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
 
   // 画面表示時の読み上げ
