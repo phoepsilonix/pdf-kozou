@@ -16,8 +16,8 @@
         "displayLanguageSelector": true,
         "languages": ["Japanese", "English"]
       },
-      "msi": {
-        "installScope": "perUser"
+      "wix": {
+        "language": ["ja-JP", "en-US"]
       },
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256"
