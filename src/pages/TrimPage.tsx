@@ -25,6 +25,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
   filePath: string;
@@ -770,6 +771,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         }}
         onCompress={() => setPhase("compress")}
         isSaving={isSaving}
+        savedPath={savedPath}
       />
     );
 
@@ -892,6 +894,7 @@ function ResultView({
   onBack,
   onCompress,
   isSaving,
+  savedPath,
 }: {
   images: string[];
   pageCount: number;
@@ -899,8 +902,10 @@ function ResultView({
   onBack: () => void;
   onCompress: () => void;
   isSaving: boolean;
+  savedPath?: string;
 }) {
   const { t } = useI18n();
+  const [metaEditOpen, setMetaEditOpen] = useState(false);
   return (
     <div style={r.root}>
       <div style={r.header}>
@@ -915,6 +920,16 @@ function ResultView({
         <button style={r.btnCompress} onClick={onCompress}>
           {t("common.compress_then_save")}
         </button>
+        {savedPath && (
+          <button
+            style={r.btnMeta}
+            onClick={() => setMetaEditOpen(true)}
+            title={t("meta_edit.title")}
+            aria-label={t("meta_edit.title")}
+          >
+            ✏️ {t("meta_edit.title")}
+          </button>
+        )}
         <button
           style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
           onClick={onSave}
@@ -944,6 +959,16 @@ function ResultView({
         <button style={r.btnCompress} onClick={onCompress}>
           {t("common.compress_then_save")}
         </button>
+        {savedPath && (
+          <button
+            style={r.btnMeta}
+            onClick={() => setMetaEditOpen(true)}
+            title={t("meta_edit.title")}
+            aria-label={t("meta_edit.title")}
+          >
+            ✏️ {t("meta_edit.title")}
+          </button>
+        )}
         <button
           style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
           onClick={onSave}
@@ -952,6 +977,14 @@ function ResultView({
           {isSaving ? t("common.saving") : t("common.save_pdf")}
         </button>
       </div>
+
+      {metaEditOpen && savedPath && (
+        <MetadataEditModal
+          filePath={savedPath}
+          initialMeta={{}}
+          onClose={() => setMetaEditOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1132,6 +1165,16 @@ const r: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: 13,
     fontFamily: F,
+  },
+  btnMeta: {
+    padding: "6px 12px",
+    background: "transparent",
+    border: "1px solid var(--c-accent)",
+    borderRadius: 7,
+    color: "var(--c-accent)",
+    cursor: "pointer",
+    fontSize: 12,
+    fontFamily: "inherit",
   },
   btnSave: {
     padding: "9px 22px",

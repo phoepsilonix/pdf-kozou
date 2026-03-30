@@ -25,6 +25,7 @@ import { Spinner, PageHeader } from "../components/common";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
 import { useI18n } from "../lib/i18n";
+import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 
@@ -280,7 +281,20 @@ function InfoDrawer({
 }) {
   const { t } = useI18n();
   const [allCopied, setAllCopied] = useState(false);
+  const [metaEditOpen, setMetaEditOpen] = useState(false);
   const meta: PdfMetadata = info?.metadata ?? {};
+
+  // PdfMetadata → PdfMeta 変換（MetadataEditModal 用）
+  const toPdfMeta = (): PdfMeta => ({
+    title: meta.title,
+    author: meta.author,
+    subject: meta.subject,
+    keywords: meta.keywords,
+    creator: meta.creator,
+    producer: meta.producer,
+    creationDate: meta.creation_date,
+    modDate: meta.mod_date,
+  });
   const firstPage = info?.pages?.[0];
   const pageSize = firstPage ? `${ptToMm(firstPage.w)} × ${ptToMm(firstPage.h)} mm` : null;
   const hasAnyMeta = !!(
@@ -326,8 +340,16 @@ function InfoDrawer({
       }}
     >
       <div style={ds.drawerHead}>
-        <span style={ds.drawerTitle}>ℹ ファイル情報</span>
+        <span style={ds.drawerTitle}>ℹ {t("viewer.info_title")}</span>
         <div style={{ flex: 1 }} />
+        <button
+          style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
+          onClick={() => setMetaEditOpen(true)}
+          title={t("meta_edit.title")}
+          aria-label={t("meta_edit.title")}
+        >
+          ✏️
+        </button>
         <button
           style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
           onClick={handleCopyAll}
@@ -405,6 +427,13 @@ function InfoDrawer({
           </div>
         )}
       </div>
+      {metaEditOpen && (
+        <MetadataEditModal
+          filePath={filePath}
+          initialMeta={toPdfMeta()}
+          onClose={() => setMetaEditOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -31,6 +31,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { MetadataEditModal } from "../components/MetadataEditModal";
 import { listen } from "@tauri-apps/api/event";
 import { isMupdfExtension } from "../lib/fileTypes";
 
@@ -53,6 +54,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  const [metaEditOpen, setMetaEditOpen] = useState(false);
 
   // 画面表示時の読み上げ
   useEffect(() => {
@@ -390,7 +392,7 @@ useEffect(() => {
               setResult(null);
             }}
           />
-          <span style={s.title}>結合完了</span>
+          <span style={s.title}>{t("merge.done_title")}</span>
         </PageHeader>
         <div style={s.resultBody}>
           <div style={s.resultIcon}>✓</div>
@@ -398,8 +400,24 @@ useEffect(() => {
             {result.page_count}ページ / {mb} MB
           </div>
           <div style={s.resultSub}>{savePath.split(/[/\\]/).pop()}</div>
-          <div style={s.resultDetail}>{entries.length}ファイルを結合しました</div>
+          <div style={s.resultDetail}>
+            {t("merge.done_detail", { count: String(entries.length) })}
+          </div>
+          <button
+            style={s.btnMeta}
+            onClick={() => setMetaEditOpen(true)}
+            aria-label={t("meta_edit.title")}
+          >
+            ✏️ {t("meta_edit.title")}
+          </button>
         </div>
+        {metaEditOpen && savePath && (
+          <MetadataEditModal
+            filePath={savePath}
+            initialMeta={{}}
+            onClose={() => setMetaEditOpen(false)}
+          />
+        )}
       </div>
     );
   }
@@ -433,8 +451,8 @@ useEffect(() => {
               (e.currentTarget as HTMLButtonElement).blur();
             }}
           />
-          <span style={s.title}>結合プレビュー</span>
-          <span style={s.sub}>合計 {totalPages}ページ → 1ファイル</span>
+          <span style={s.title}>{t("merge.preview_title")}</span>
+          <span style={s.sub}>{t("merge.preview_sub", { pages: String(totalPages) })}</span>
           <div style={{ flex: 1 }} />
           <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")}>
             {t("merge.save")}
@@ -496,7 +514,9 @@ useEffect(() => {
                           width={110}
                           aspectRatio={aspect}
                         />
-                        <span style={s.prevLocalNum}>元{p.localNum}p</span>
+                        <span style={s.prevLocalNum}>
+                          {t("merge.local_page", { n: String(p.localNum) })}
+                        </span>
                       </div>
                     );
                   })}
@@ -530,7 +550,7 @@ useEffect(() => {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>PDFを結合</span>
+        <span style={s.title}>{t("merge.edit_title")}</span>
         {entries.length > 0 && (
           <>
             <span style={s.sub}>
@@ -579,8 +599,8 @@ useEffect(() => {
             }}
           >
             <span style={s.dropIcon}>⊕</span>
-            <span style={s.dropTitle}>ファイルをここにドロップ</span>
-            <span style={s.dropSub}>PDF・EPUB・DOCX・画像など複数ファイルを一度に追加できます</span>
+            <span style={s.dropTitle}>{t("merge.drop_title")}</span>
+            <span style={s.dropSub}>{t("merge.drop_sub")}</span>
             <button style={s.btnAddBig} onClick={pickFiles}>
               {t("merge.select_placeholder")}
             </button>
@@ -652,7 +672,11 @@ useEffect(() => {
                       ↓
                     </button>
                   </div>
-                  <button style={s.delBtn} onClick={() => remove(entry.id)} title="削除">
+                  <button
+                    style={s.delBtn}
+                    onClick={() => remove(entry.id)}
+                    title={t("merge.delete_btn")}
+                  >
                     ✕
                   </button>
                 </div>
@@ -711,7 +735,9 @@ useEffect(() => {
               <div style={s.summaryRow}>
                 <span style={s.sumFile}>{entries.length}ファイル</span>
                 <span style={s.sumDot}>·</span>
-                <span style={s.sumPages}>合計 {totalPages}ページ</span>
+                <span style={s.sumPages}>
+                  {t("merge.total_pages", { pages: String(totalPages) })}
+                </span>
                 <span style={s.sumArrow}>→</span>
                 <span style={s.sumOut}>1ファイル</span>
               </div>
@@ -977,5 +1003,16 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: 15,
     fontFamily: F,
+  },
+  btnMeta: {
+    marginTop: 8,
+    padding: "7px 16px",
+    background: "transparent",
+    border: "1px solid var(--c-accent)",
+    borderRadius: 7,
+    color: "var(--c-accent)",
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: "inherit",
   },
 };

@@ -170,7 +170,17 @@
     "execute_btn": "⊕ 結合して保存",
     "execute_compress_btn": "⊙ 結合して圧縮保存",
     "select_placeholder": "ファイルを選択…",
-    "need_min": "2ファイル以上必要です"
+    "need_min": "2ファイル以上必要です",
+    "done_title": "結合完了",
+    "done_detail": "{{count}}ファイルを結合しました",
+    "preview_title": "結合プレビュー",
+    "preview_sub": "合計 {{pages}}ページ → 1ファイル",
+    "local_page": "元{{n}}p",
+    "edit_title": "PDFを結合",
+    "drop_title": "ファイルをここにドロップ",
+    "drop_sub": "PDF・EPUB・DOCX・画像など複数ファイルを一度に追加できます",
+    "delete_btn": "削除",
+    "total_pages": "合計 {{pages}}ページ"
   },
   "trim": {
     "processing": "トリミング中… {{current}}/{{total}}",
@@ -325,7 +335,8 @@
     "meta_keywords": "キーワード",
     "meta_creator": "アプリ",
     "prev_hit": "前のヒット (Shift+Enter)",
-    "next_hit": "次のヒット (Enter)"
+    "next_hit": "次のヒット (Enter)",
+    "info_title": "ファイル情報"
   },
   "page_selector": {
     "all": "全ページ",
@@ -425,5 +436,24 @@
     "source_heading": "🐙 Source Code",
     "source_body": "PDF小僧はオープンソースプロジェクトとして開発されています。機能要望やバグ報告、最新のソースコードの確認はリポジトリまで。",
     "github_btn": "GitHub"
+  },
+  "meta_edit": {
+    "title": "メタデータを編集",
+    "modal_opened": "メタデータ編集画面です。編集してCtrl+Enterで保存、Escapeで閉じます。",
+    "title_field": "タイトル",
+    "author": "作者",
+    "subject": "件名",
+    "keywords": "キーワード",
+    "creator": "作成アプリ",
+    "producer": "変換アプリ",
+    "creation_date": "作成日",
+    "mod_date": "更新日",
+    "readonly_heading": "読み取り専用",
+    "empty_hint": "（空白 = 削除）",
+    "close": "閉じる",
+    "save": "上書き保存",
+    "saving": "保存中…",
+    "saved": "保存しました。",
+    "save_error": "保存に失敗しました"
   }
 }

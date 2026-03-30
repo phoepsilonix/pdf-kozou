@@ -517,3 +517,15 @@ export async function runGsPreview(
 ): Promise<void> {
   await invoke("run_gs_preview", { gs_path, input, output, levelStr: level });
 }
+
+// ── メタデータ編集 ────────────────────────────────────────────────────────────
+
+export interface MetadataField {
+  key: string;
+  value: string;
+}
+
+/** PDF のメタデータを上書き保存する。value が空文字列のフィールドは削除。 */
+export async function setPdfMetadata(path: string, metadata: MetadataField[]): Promise<void> {
+  await invoke("set_pdf_metadata", { path, metadata });
+}

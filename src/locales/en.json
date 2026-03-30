@@ -170,7 +170,17 @@
     "execute_btn": "⊕ Merge & Save",
     "execute_compress_btn": "⊙ Merge & Compress",
     "select_placeholder": "Select files…",
-    "need_min": "2 or more files required"
+    "need_min": "2 or more files required",
+    "done_title": "Merge complete",
+    "done_detail": "Merged {{count}} files",
+    "preview_title": "Merge preview",
+    "preview_sub": "Total {{pages}} pages → 1 file",
+    "local_page": "orig {{n}}p",
+    "edit_title": "Merge PDFs",
+    "drop_title": "Drop files here",
+    "drop_sub": "Add multiple PDFs, EPUBs, DOCXs, images, and more at once",
+    "delete_btn": "Delete",
+    "total_pages": "Total {{pages}} pages"
   },
   "trim": {
     "processing": "Trimming… {{current}}/{{total}}",
@@ -325,7 +335,8 @@
     "meta_keywords": "Keywords",
     "meta_creator": "App",
     "prev_hit": "Previous hit (Shift+Enter)",
-    "next_hit": "Next hit (Enter)"
+    "next_hit": "Next hit (Enter)",
+    "info_title": "File Info"
   },
   "page_selector": {
     "all": "All pages",
@@ -425,5 +436,24 @@
     "source_heading": "🐙 Source Code",
     "source_body": "PDF Kozou is an open source project. Feature requests, bug reports, and the latest source code are available at the repository.",
     "github_btn": "GitHub"
+  },
+  "meta_edit": {
+    "title": "Edit Metadata",
+    "modal_opened": "Metadata editor. Edit fields and press Ctrl+Enter to save, or Escape to close.",
+    "title_field": "Title",
+    "author": "Author",
+    "subject": "Subject",
+    "keywords": "Keywords",
+    "creator": "Creator app",
+    "producer": "Producer app",
+    "creation_date": "Creation date",
+    "mod_date": "Modified date",
+    "readonly_heading": "Read-only",
+    "empty_hint": "(empty = delete)",
+    "close": "Close",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved.",
+    "save_error": "Failed to save"
   }
 }
