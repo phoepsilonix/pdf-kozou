@@ -22,7 +22,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@choochmeque/tauri-windows-bundle": "^0.1.17",
+    "tauri-windows-bundle": "github:phoepsilonix/tauri-windows-bundle#gnu",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
