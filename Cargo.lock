@@ -2647,7 +2647,7 @@ dependencies = [
 [[package]]
 name = "mupdf"
 version = "0.6.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=cc041ec8f44e563cca9ea2706aa243e1c072934d#cc041ec8f44e563cca9ea2706aa243e1c072934d"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=3c6faa946a42b347d458eeac70374d4aa5c40506#3c6faa946a42b347d458eeac70374d4aa5c40506"
 dependencies = [
  "bitflags 2.11.0",
  "font-kit",
@@ -2659,7 +2659,7 @@ dependencies = [
 [[package]]
 name = "mupdf-sys"
 version = "0.6.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=cc041ec8f44e563cca9ea2706aa243e1c072934d#cc041ec8f44e563cca9ea2706aa243e1c072934d"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=3c6faa946a42b347d458eeac70374d4aa5c40506#3c6faa946a42b347d458eeac70374d4aa5c40506"
 dependencies = [
  "bindgen",
  "cc",
@@ -3073,7 +3073,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "arboard",

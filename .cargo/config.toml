@@ -5,4 +5,5 @@ rustflags = [
 #    "-C", "link-arg=-static-libgcc",
 #    "-C", "link-arg=-lmupdf",
 #    "-C", "debug-assertions=false",
+"-C","link-arg=-fuse-ld=lld",
 ]
