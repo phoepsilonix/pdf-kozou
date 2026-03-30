@@ -75,11 +75,13 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 'lts/*'
           cache: npm
 
       - name: Install npm dependencies
         run: npm ci
+      - name: Build Frontend
+        run: npm run build
 
       - name: Install tauri-cli via binstall
         run: |
@@ -158,24 +160,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-msvc
+          #targets: x86_64-pc-windows-gnu
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "pdf-kozou-v1"
       
-      #- name: Setup pnpm
-      #  uses: pnpm/action-setup@v4
-
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 'lts/*'
           cache: npm
 
       - name: Install npm dependencies
         run: npm ci
+      - name: Build Frontend
+        run: npm run build
 
       - name: Install make
         run: choco install make
@@ -186,67 +188,66 @@ jobs:
           cargo binstall tauri-cli -y --force
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      #- name: Install cargo-xwin via binstall
-      #  run: |
-      #    cargo binstall -y cargo-xwin --force
+      - name: Install cargo-xwin via binstall
+        run: |
+          cargo binstall -y cargo-xwin --force
 
       - name: rust default target
         run: |
-          rustup toolchain install stable-x86_64-pc-windows-gnu
-          rustup target add x86_64-pc-windows-gnu
-          rustup default stable-x86_64-pc-windows-gnu
+          rustup toolchain install stable-x86_64-pc-windows-msvc
+          #rustup toolchain install stable-x86_64-pc-windows-gnu
+          rustup target add x86_64-pc-windows-msvc
+          rustup default stable-x86_64-pc-windows-msvc
+          #rustup target add x86_64-pc-windows-gnu
+          #rustup default stable-x86_64-pc-windows-gnu
 
       - name: Build (release)
+        shell: bash
         env:
           OS: "mingw"
           HAVE_OBJCOPY: "no"
           USE_MAKE: "1"
           CI: true
         run: |
-          cargo tauri build
+          cargo-xwin tauri build
 
-      - name: Debug Directory Structure
+      - name: Decode PFX Certificate
         shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.MSIX_PFX_BASE64 }}
         run: |
-          Get-ChildItem -Recurse "target/release/bundle/msi" | Select-Object FullName
+          $pfxPath = "src-tauri/gen/windows/dev.pfx"
+          $pfxBytes = [System.Convert]::FromBase64String($env:PFX_BASE64)
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
 
-      - name: Repackage MSI to MSIX
+        # CI環境上で動的に bundle.config.json をセットアップ
+      - name: Configure bundle.config.json for Signing
         shell: pwsh
+        env:
+          PFX_PASSWORD: ${{ secrets.MSIX_PFX_PASSWORD }}
         run: |
-          $makeAppx = "C:\Program Files (x86)\Windows Kits\10\App Build\makeappx.exe"
-          $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
+          $configPath = "src-tauri/gen/windows/bundle.config.json"
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          $config.signing.pfx = "src-tauri/gen/windows/dev.pfx"
+          $config.signing.pfxPassword = $env:PFX_PASSWORD
+          # MakePri を有効にする（透過アイコン等に必須）
+          $config | Add-Member -MemberType NoteProperty -Name "resourceIndex" -Value @{ enabled = $true } -Force
+          $config | ConvertTo-Json -Depth 10 | Set-Content $configPath
 
-          # 絶対パスを取得
-          $basePath = Resolve-Path "target/release/bundle/msi"
+      - name: Install msixbundle-cli
+        shell: bash
+        run: cargo-xwin install msixbundle-cli || true
+        continue-on-error: true
 
-          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=1CB57BC7-DF63-47F3-83C8-6A33A692A2CF" -KeyUsage DigitalSignature -FriendlyName "StoreCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
-
-          Get-ChildItem -Path $basePath -Directory | ForEach-Object {
-              $lang = $_.Name
-              $sourcePath = $_.FullName
-              $targetMsix = Join-Path $basePath "PDF-Kozou_$($lang).msix"
-              $manifestPath = Join-Path $sourcePath "AppxManifest.xml"
-
-              Write-Host "Creating Manifest for $lang..."
-
-              # ヒアドキュメントを避け、確実に1つの文字列として結合
-              $xml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>`n"
-              $xml += "<Package xmlns=`"http://schemas.microsoft.com/appx/manifest/foundation/windows10`" xmlns:uap=`"http://schemas.microsoft.com/appx/manifest/uap/windows10`" xmlns:rescap=`"http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities`" IgnorableNamespaces=`"uap rescap`">`n"
-              $xml += "  <Identity Name=`"phoepsilonix.PDF-Kozou`" Publisher=`"CN=1CB57BC7-DF63-47F3-83C8-6A33A692A2CF`" Version=`"1.4.0.0`" ProcessorArchitecture=`"x64`" />`n"
-              $xml += "  <Properties><DisplayName>PDF-Kozou</DisplayName><PublisherDisplayName>phoepsilonix</PublisherDisplayName><Logo>Assets\StoreLogo.png</Logo></Properties>`n"
-              $xml += "  <Resources><Resource Language=`"$lang`" /></Resources>`n"
-              $xml += "  <Applications><Application Id=`"App`" Executable=`"pdf-kozou.exe`" EntryPoint=`"Windows.FullTrustApplication`"><uap:VisualElements DisplayName=`"PDF-Kozou`" Description=`"PDF-Kozou`" BackgroundColor=`"transparent`" Square150x150Logo=`"Assets\Square150x150Logo.png`" Square44x44Logo=`"Assets\Square44x44Logo.png`"><uap:DefaultTile Wide310x150Logo=`"Assets\Wide310x150Logo.png`" /></uap:VisualElements></Application></Applications>`n"
-              $xml += "  <Capabilities><rescap:Capability Name=`"runFullTrust`" /></Capabilities>`n"
-              $xml += "</Package>"
-
-              [System.IO.File]::WriteAllText($manifestPath, $xml)
-
-              Write-Host "Packing $targetMsix..."
-              & $makeAppx pack /d "$sourcePath" /p "$targetMsix" /v
-
-              Write-Host "Signing $targetMsix..."
-              & $signtool sign /fd SHA256 /a /f Cert:\CurrentUser\My\$($cert.Thumbprint) "$targetMsix"
-          }
+     # MSIX バンドルのビルド（--arch でマルチアーキ出力・バンドル化を指定）
+      - name: Build MSIX bundle
+        env:
+          OS: "mingw"
+          HAVE_OBJCOPY: "no"
+          USE_MAKE: "1"
+          CI: true
+        run: |
+          npm run tauri:windows:build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -256,6 +257,7 @@ jobs:
             target/release/bundle/nsis/*.exe
             target/release/bundle/msi/*.msi
             target/release/bundle/msi/*.msix
+            target/release/msix/*.msixbundle
 
   publish-release:
     runs-on: ubuntu-latest

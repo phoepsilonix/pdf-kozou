@@ -25,6 +25,7 @@
   </Dependencies>
 
   <Resources>
+    <Resource Language="ja-jp" />
     <Resource Language="en-us" />
   </Resources>
 
