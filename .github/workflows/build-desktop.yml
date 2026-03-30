@@ -160,8 +160,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-pc-windows-msvc
-          #targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-gnu
+          #targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -188,18 +188,18 @@ jobs:
           cargo binstall tauri-cli -y --force
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install cargo-xwin via binstall
-        run: |
-          cargo binstall -y cargo-xwin --force
+      #- name: Install cargo-xwin via binstall
+      #  run: |
+      #    cargo binstall -y cargo-xwin --force
 
       - name: rust default target
         run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc
-          #rustup toolchain install stable-x86_64-pc-windows-gnu
-          rustup target add x86_64-pc-windows-msvc
-          rustup default stable-x86_64-pc-windows-msvc
-          #rustup target add x86_64-pc-windows-gnu
-          #rustup default stable-x86_64-pc-windows-gnu
+          #rustup toolchain install stable-x86_64-pc-windows-msvc
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+          #rustup target add x86_64-pc-windows-msvc
+          #rustup default stable-x86_64-pc-windows-msvc
+          rustup target add x86_64-pc-windows-gnu
+          rustup default stable-x86_64-pc-windows-gnu
 
       - name: Build (release)
         shell: bash
@@ -209,7 +209,7 @@ jobs:
           USE_MAKE: "1"
           CI: true
         run: |
-          cargo-xwin tauri build
+          cargo tauri build
 
       - name: Decode PFX Certificate
         shell: pwsh
@@ -236,7 +236,7 @@ jobs:
 
       - name: Install msixbundle-cli
         shell: bash
-        run: cargo-xwin install msixbundle-cli || true
+        run: cargo install msixbundle-cli || true
         continue-on-error: true
 
      # MSIX バンドルのビルド（--arch でマルチアーキ出力・バンドル化を指定）
