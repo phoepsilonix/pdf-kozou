@@ -10,6 +10,18 @@
 ## 概要
 
 PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユーティリティです。
+分割、結合、回転、トリミング、圧縮、画像変換、簡易ビューワーなどの機能を備えています。
+
+PDF小僧は、標準で強力な MuPDF エンジンを搭載しており、インストール後すぐに PDF の分割・結合・圧縮が可能です。  
+さらに、より高度な画質調整やクリーンアップを求めるプロユーザー向けに、外部エンジン（Ghostscript）との連携オプションも提供しています。
+
+The app is a fully functional PDF tool out-of-the-box using the built-in MuPDF engine.  
+Ghostscript is strictly an optional enhancement for advanced users.  
+We have updated the UI to clarify that all core features, including compression, work without any external software.
+
+## プロ(GS連携)モード利用のシステム要件
+GhostScriptがセットアップされているシステムの場合（パスなどでGSが検出されましたら）利用可能になります。  
+Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。  
 
 ### 備考
 

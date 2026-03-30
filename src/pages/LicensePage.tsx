@@ -173,23 +173,21 @@ const LicensePage: React.FC = () => {
 
           {gsStatus === "missing" && (
             <div style={s.downloadBox}>
-              <p style={{ fontSize: "13px", marginBottom: "10px" }}>
-                GSモードを使用するには、Ghostscriptのインストールが必要です。
-                Windowsをご利用の場合は <strong>"Ghostscript 64-bit for Windows"</strong>{" "}
-                を選択してください。
+              <p style={{ fontSize: "13px", marginBottom: "10px", lineHeight: "1.6" }}>
+                <strong>標準モード（MuPDF）で動作中:</strong>
                 <br />
-                Windows上級者向けTips
+                現在、標準のエンジンで PDF
+                の最適化・圧縮が可能です。通常の使用には十分な性能を備えています。
                 <br />
-                管理者権限がない場合には、GhostScriptのインストールファイルを7zip
-                FileManagerなどで展開して中身を取り出し、どこかに配置した上で、そこにPATHを通してください。
-                PATHが通る場所にGhostScriptがあれば、PDF小僧側から認識できると思います。
+                <br />
+                さらに高度な「プロモード（Ghostscript 連携）」を利用したい場合は、システムに
+                Ghostscript を導入することで、画像の再サンプリング等の拡張機能が有効になります。
+                <br />
+                詳細はプロジェクトのリポジトリ（GitHub）を参照してください。
               </p>
-              <span
-                style={s.linkBtn}
-                onClick={() => openUrl("https://ghostscript.com/releases/gsdnld.html")}
-              >
-                Ghostscript 公式サイトからダウンロード (外部サイト)
-              </span>
+              <button onClick={openGitHub} style={s.btnSmall}>
+                GitHub で技術仕様を確認
+              </button>
             </div>
           )}
         </div>
