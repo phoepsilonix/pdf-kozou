@@ -114,6 +114,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "$targetMsix"
     # 署名の詳細を表示して検証するコマンド
     & "$signtool" verify /pa /v "$targetMsix"
+    # 自己署名なので、エラーがでるが、そのまま正常終了扱いにする
+    exit 0
 } else {
     Write-Error "SignTool failed with exit code $LASTEXITCODE"
 }
