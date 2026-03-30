@@ -26,14 +26,6 @@ $manifestVersion = "${PackageVersion}.0" # MSIX用 (x.x.x.0)
 $pfxPath = "src-tauri/gen/windows/dev.pfx"
 $pfxPassword = $PfxPassword
 
-# Wide310x150Logo.png がない場合に作成 (ImageMagickを使用)
-$wideLogoPath = "$SourceDir\Assets\Wide310x150Logo.png"
-if (-not (Test-Path $wideLogoPath)) {
-    Write-Host "--- Generating Wide Logo using ImageMagick ---"
-    # 150x150のロゴを中央に配置して310x150に広げる
-    magick "public\app-icon.svg" -resize 150x150 -gravity center -background transparent -extent 310x150 $wideLogoPath
-}
-
 # --- ツールパスの自動取得 (これがないと '&' でエラーになります) ---
 $makeAppx = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makeappx.exe" | Select-Object -First 1 -ExpandProperty FullName
 $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -First 1 -ExpandProperty FullName
@@ -44,6 +36,28 @@ if (-not $makeAppx -or -not $signtool) {
 }
 
 Write-Host "--- Creating Universal MSIX (ja-JP & en-US) ---"
+
+# 1. Assetsフォルダの作成
+New-Item -Path "$SourceDir\Assets" -ItemType Directory -Force -ErrorAction SilentlyContinue
+
+# 2. 実行ファイルのコピー
+Copy-Item "target\release\pdf-kozou.exe" -Destination "$SourceDir\" -Force
+Copy-Item "target\release\pdf-kozou-core.exe" -Destination "$SourceDir\" -Force
+Copy-Item "target\release\WebView2Loader.dll" -Destination "$SourceDir\" -Force
+
+# 3. アイコンのコピー（Tauri標準のパスから）
+if (Test-Path "src-tauri\icons") {
+    Get-ChildItem "src-tauri\icons\*.png" | Copy-Item -Destination "$SourceDir\Assets\" -Force
+}
+
+# Wide310x150Logo.png がない場合に作成 (ImageMagickを使用)
+$wideLogoPath = "$SourceDir\Assets\Wide310x150Logo.png"
+if (-not (Test-Path $wideLogoPath)) {
+    Write-Host "--- Generating Wide Logo using ImageMagick ---"
+    # 150x150のロゴを中央に配置して310x150に広げる
+    magick "public\app-icon.svg" -resize 150x150 -gravity center -background transparent -extent 310x150 $wideLogoPath
+}
+
 
 # 1. マニフェスト作成
 $xml = @"
