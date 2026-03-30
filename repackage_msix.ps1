@@ -1,4 +1,3 @@
-PowerShell
 param (
     [Parameter(Mandatory=$true)]
     [string]$PfxPassword
