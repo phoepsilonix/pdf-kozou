@@ -264,7 +264,7 @@ jobs:
         env:
           PFX_PASSWORD: ${{ secrets.MSIX_PFX_PASSWORD }}
         run: |
-          ./repackage_msix.ps1 -PfxPassword "${{ secrets.PFX_PASSWORD }}"
+          ./repackage_msix.ps1 -PfxPassword "${{ env.PFX_PASSWORD }}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
