@@ -160,8 +160,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-pc-windows-msvc
-          #targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-gnu
+          #targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -188,9 +188,9 @@ jobs:
           echo "CC=$safePath" >> $env:GITHUB_ENV
           echo "CXX=$safePath" >> $env:GITHUB_ENV
 
-      - name: Fix Perl dependencies
-        run: |
-          cpan -i Pod::Usage
+      #- name: Fix Perl dependencies
+      #  run: |
+      #    cpan -i Pod::Usage
           # Strawberry Perl のパスが含まれないように PATH を再設定
           #export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
           #cpan -i Pod::Usage
@@ -221,12 +221,12 @@ jobs:
 
       - name: rust default target
         run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc
-          #rustup toolchain install stable-x86_64-pc-windows-gnu
-          rustup target add x86_64-pc-windows-msvc
-          rustup default stable-x86_64-pc-windows-msvc
-          #rustup target add x86_64-pc-windows-gnu
-          #rustup default stable-x86_64-pc-windows-gnu
+          #rustup toolchain install stable-x86_64-pc-windows-msvc
+          #rustup target add x86_64-pc-windows-msvc
+          #rustup default stable-x86_64-pc-windows-msvc
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+          rustup target add x86_64-pc-windows-gnu
+          rustup default stable-x86_64-pc-windows-gnu
 
       - name: Build (release)
         shell: bash
@@ -234,20 +234,21 @@ jobs:
           OS: "mingw"
           HAVE_OBJCOPY: "no"
           CI: true
-          CC: "gcc"
-          CXX: "g++"
+          CC: "clang"
+          CXX: "clang++"
           USE_MAKE: "1"
         run: |
           #export PATH="/usr/bin:/c/Program Files/LLVM/bin:/c/Strawberry/perl/bin":"$PATH"
-          export PATH="/c/Program Files/LLVM/bin:/c/Strawberry/perl/bin":/usr/bin:/bin:"$PATH"
-          export CC=gcc
-          export CXX=g++
-          unset PERL5LIB  # Git Bash 側のライブラリを見に行かないようにする
-          unset PERLLIB  # Git Bash 側のライブラリを見に行かないようにする
-          export PERL_JSON_BACKEND=JSON::PP
-          which perl
-          which clang
-          USE_MAKE=1 CC="gcc" CXX="g++" HAVE_OBJCOPY="no" OS="mingw" cargo tauri build
+          #export PATH="/c/Program Files/LLVM/bin:/c/Strawberry/perl/bin":/usr/bin:/bin:"$PATH"
+          #export CC=gcc
+          #export CXX=g++
+          #unset PERL5LIB  # Git Bash 側のライブラリを見に行かないようにする
+          #unset PERLLIB  # Git Bash 側のライブラリを見に行かないようにする
+          #export PERL_JSON_BACKEND=JSON::PP
+          #which perl
+          #which clang
+          #USE_MAKE=1 CC="gcc" CXX="g++" HAVE_OBJCOPY="no" OS="mingw" cargo tauri build
+          cargo tauri build
 
       - name: Decode PFX Certificate
         shell: pwsh
@@ -258,46 +259,12 @@ jobs:
           $pfxBytes = [System.Convert]::FromBase64String($env:PFX_BASE64)
           [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
 
-        # CI環境上で動的に bundle.config.json をセットアップ
-      - name: Configure bundle.config.json for Signing
+      - name: Package and Sign MSIX
         shell: pwsh
         env:
           PFX_PASSWORD: ${{ secrets.MSIX_PFX_PASSWORD }}
         run: |
-          $configPath = "src-tauri/gen/windows/bundle.config.json"
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json
-          $config.signing.pfx = "src-tauri/gen/windows/dev.pfx"
-          $config.signing.pfxPassword = $env:PFX_PASSWORD
-          # MakePri を有効にする（透過アイコン等に必須）
-          $config | Add-Member -MemberType NoteProperty -Name "resourceIndex" -Value @{ enabled = $true } -Force
-          $config | ConvertTo-Json -Depth 10 | Set-Content $configPath
-
-      - name: Install msixbundle-cli
-        run: cargo install msixbundle-cli || true
-        continue-on-error: true
-
-     # MSIX バンドルのビルド（--arch でマルチアーキ出力・バンドル化を指定）
-      - name: Build MSIX bundle
-        shell: bash
-        env:
-          OS: "mingw"
-          HAVE_OBJCOPY: "no"
-          CI: true
-          CC: "gcc"
-          CXX: "g++"
-          USE_MAKE: "1"
-        run: |
-          #export PATH="/c/Strawberry/perl/site/bin:/c/Strawberry/perl/bin:/c/Strawberry/c/bin:$PATH"
-          export PATH="/c/Program Files/LLVM/bin:/c/Strawberry/perl/bin":/usr/bin:/bin:"$PATH"
-          export CC=gcc
-          export CXX=g++
-          unset PERL5LIB  # Git Bash 側のライブラリを見に行かないようにする
-          unset PERLLIB  # Git Bash 側のライブラリを見に行かないようにする
-          export PERL_JSON_BACKEND=JSON::PP
-          npm run tauri:windows:build
-          # msix用ワイドアイコン生成
-          # 中央にロゴを配置し、背景を透過または指定色で埋める
-          # magick public/app-icon.svg -resize 150x150 -gravity center -background transparent -extent 310x150 ready_to_pack/Assets/Wide310x150Logo.png
+          ./repackage_msix.ps1 -PfxPassword "${{ secrets.PFX_PASSWORD }}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -307,7 +274,6 @@ jobs:
             target/release/bundle/nsis/*.exe
             target/release/bundle/msi/*.msi
             target/release/bundle/msi/*.msix
-            target/release/msix/*.msixbundle
 
   publish-release:
     runs-on: ubuntu-latest
