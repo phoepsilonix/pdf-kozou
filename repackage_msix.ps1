@@ -99,6 +99,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "--- Success! ---"
     Write-Host "Please upload this single file to Microsoft Store:"
     Write-Host "$targetMsix"
+    # 署名の詳細を表示して検証するコマンド
+    & "$signtool" verify /pa /v "$targetMsix"
 } else {
     Write-Error "SignTool failed with exit code $LASTEXITCODE"
 }
