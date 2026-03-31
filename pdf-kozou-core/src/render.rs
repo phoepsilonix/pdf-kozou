@@ -488,10 +488,11 @@ fn build_exif_payload(
                 v.extend_from_slice(combined.as_bytes());
                 v
             } else {
-                // UNICODE 形式: "UNICODE\0" + UTF-16BE
+                // UNICODE 形式: "UNICODE\0" (8バイト) + UTF-16LE
+                // Windows ExifPropertyHandler は UTF-16LE を期待する
                 let mut v: Vec<u8> = b"UNICODE\0".to_vec();
                 for unit in combined.encode_utf16() {
-                    v.extend_from_slice(&unit.to_be_bytes());
+                    v.extend_from_slice(&unit.to_le_bytes()); // BE→LE に修正
                 }
                 v
             };
