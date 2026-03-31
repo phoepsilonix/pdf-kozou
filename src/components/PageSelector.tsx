@@ -206,26 +206,9 @@ export function PageSelector({
           </span>
         )}
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-          {(["", "odd", "even", "all", "range"] as Mode[]).map((m) => (
-            <button
-              key={m}
-              style={mode === m ? btnOn : btnBase}
-              onClick={() => handleMode(m)}
-              onFocus={() => {
-                const label =
-                  m === ""
-                    ? t("page_selector.exclude_none")
-                    : m === "odd"
-                      ? t("page_selector.odd")
-                      : m === "even"
-                        ? t("page_selector.even")
-                        : m === "all"
-                          ? t("page_selector.all")
-                          : t("page_selector.range");
-                tts.speak(label + (mode === m ? t("page_selector.selected_suffix") : ""));
-              }}
-            >
-              {m === ""
+          {(["", "odd", "even", "all", "range"] as Mode[]).map((m) => {
+            const modeLabel =
+              m === ""
                 ? t("page_selector.exclude_none")
                 : m === "odd"
                   ? t("page_selector.odd")
@@ -233,9 +216,20 @@ export function PageSelector({
                     ? t("page_selector.even")
                     : m === "all"
                       ? t("page_selector.all")
-                      : t("page_selector.range")}
-            </button>
-          ))}
+                      : t("page_selector.range");
+            return (
+              <button
+                key={m}
+                style={mode === m ? btnOn : btnBase}
+                onClick={() => handleMode(m)}
+                onFocus={() =>
+                  tts.speak(modeLabel + (mode === m ? t("page_selector.selected_suffix") : ""))
+                }
+              >
+                {modeLabel}
+              </button>
+            );
+          })}
         </div>
         {mode === "range" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>

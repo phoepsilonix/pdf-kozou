@@ -97,7 +97,11 @@
     "select_file": "Select files…",
     "select_file_hint": "Select files. Ctrl+O to open.",
     "select_prompt": "Please select a file",
-    "no_file_hint": "Please select files"
+    "no_file_hint": "Please select files",
+    "drag_text": "Drop PDFs here to add",
+    "about_label": "ℹ️ About",
+    "delete_file": "Delete",
+    "current_tool": "current tool"
   },
   "common": {
     "processing": "Processing…",
@@ -160,7 +164,12 @@
     "meta_edit_btn": "Edit metadata before splitting (optional)",
     "meta_edit_set": "Metadata set ✓ (click to re-edit)",
     "meta_clear": "Clear metadata settings",
-    "meta_confirm": "Confirm"
+    "meta_confirm": "Confirm",
+    "mode_label": "Split mode",
+    "output_dir": "Output folder",
+    "done_title": "Split complete — {{count}}",
+    "title_batch": "Split — {{count}} files batch",
+    "title_single": "Split"
   },
   "merge": {
     "loading": "Loading files…",
@@ -228,7 +237,20 @@
     "rotated_count": "{{count}} pages rotated",
     "rotated_result": "{{count}} pages rotated",
     "select_save_method": "Select how to save",
-    "preview_area": "Preview area"
+    "preview_area": "Preview area",
+    "batch_done_title": "Batch rotation complete",
+    "done_title": "Rotation complete",
+    "done_stat": "{{count}} pages rotated and saved",
+    "title_batch": "Rotate — {{count}} files batch",
+    "title_single": "Rotate",
+    "change_badge": "{{count}} pages changed",
+    "target_files": "Target files ({{count}})",
+    "target_pages": "Target pages",
+    "individual_settings": "Individual settings",
+    "individual_hint": "Use ↺↻ buttons on each page for individual rotation.",
+    "output_dir": "Output folder",
+    "rotate_left": "Left 90°",
+    "rotate_right": "Right 90°"
   },
   "image": {
     "processing": "Converting… (page {{current}})",
@@ -248,10 +270,22 @@
     "png_desc": "Lossless, transparency",
     "svg_desc": "Vector, print optimized",
     "done_count": "{{count}} succeeded",
-    "error_count": " · {{count}} errors"
+    "error_count": " · {{count}} errors",
+    "batch_done_title": "Batch image export complete",
+    "done_title": "Image export complete",
+    "output_count": "{{count}} files output",
+    "pages_count": "→ {{count}} pages",
+    "title_batch": "Image export — {{count}} files batch",
+    "title_single": "Image export",
+    "dpi_label": "Resolution (DPI)",
+    "page_label": "Page range",
+    "prefix_label": "Filename prefix",
+    "subfolder_note": "📁 Creates a subfolder per file",
+    "output_dir": "Output folder",
+    "target_files": "Target files — {{count}}"
   },
   "compress": {
-    "processing": "Compressing… {{current}}/{{total}}",
+    "processing": "Compressing…",
     "save_compressed": "Save compressed",
     "save_original": "Save original file",
     "preview_btn": "Run preview",
@@ -309,7 +343,18 @@
     "err_chain_failed": "Failed to create chain file: ",
     "err_gs_path_not_found": "Ghostscript path not found.",
     "err_compress_fallback": "Copied without compression due to error",
-    "err_fatal": "Fatal error: "
+    "err_fatal": "Fatal error: ",
+    "batch_done_title": "Batch compression complete — {{count}} files",
+    "result_title": "Compression preview result",
+    "preview_none": "No preview",
+    "stat_label": "File size change",
+    "save_compressed_main": "Save compressed",
+    "save_compressed_sub": "Save the optimized file",
+    "save_original_main": "Save without compressing",
+    "save_original_sub": "Copy the original file and save",
+    "settings_title": "Compression settings",
+    "object_stream_on": "Enabled (low risk)",
+    "no_dir_placeholder": "Select an output folder..."
   },
   "viewer": {
     "search_placeholder": "Search all pages… (Enter for next)",

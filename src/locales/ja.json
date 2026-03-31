@@ -97,7 +97,11 @@
     "select_file": "ファイルを選択…",
     "select_file_hint": "ファイルを選択。Ctrl+Oでも開けます。",
     "select_prompt": "ファイルを選択してください",
-    "no_file_hint": "ファイルを選択してください"
+    "no_file_hint": "ファイルを選択してください",
+    "drag_text": "PDFをドロップして追加",
+    "about_label": "ℹ️ アプリについて",
+    "delete_file": "削除",
+    "current_tool": "現在のツール"
   },
   "common": {
     "processing": "処理中…",
@@ -160,7 +164,12 @@
     "meta_edit_btn": "メタデータを編集してから分割（任意）",
     "meta_edit_set": "メタデータ設定済み ✓（クリックで再編集）",
     "meta_clear": "メタデータ設定をクリア",
-    "meta_confirm": "確定"
+    "meta_confirm": "確定",
+    "mode_label": "分割モード",
+    "output_dir": "出力フォルダ",
+    "done_title": "分割完了 — {{count}}",
+    "title_batch": "分割 — {{count}}件バッチ",
+    "title_single": "分割"
   },
   "merge": {
     "loading": "ファイルを読み込み中…",
@@ -228,7 +237,20 @@
     "rotated_count": "{{count}}ページを回転済み",
     "rotated_result": "{{count}}ページを回転しました",
     "select_save_method": "保存方法を選択してください",
-    "preview_area": "プレビューエリア"
+    "preview_area": "プレビューエリア",
+    "batch_done_title": "バッチ回転完了",
+    "done_title": "回転完了",
+    "done_stat": "{{count}}ページを回転して保存しました",
+    "title_batch": "回転 — {{count}}件バッチ",
+    "title_single": "回転",
+    "change_badge": "{{count}}ページ変更",
+    "target_files": "対象ファイル ({{count}}件)",
+    "target_pages": "対象ページ",
+    "individual_settings": "個別設定",
+    "individual_hint": "各ページの ↺↻ ボタンで個別回転できます。",
+    "output_dir": "出力フォルダ",
+    "rotate_left": "左90°",
+    "rotate_right": "右90°"
   },
   "image": {
     "processing": "画像変換中… ({{current}}ページ)",
@@ -248,10 +270,22 @@
     "png_desc": "可逆・透過対応",
     "svg_desc": "ベクター・印刷最適",
     "done_count": "{{count}}件成功",
-    "error_count": " · {{count}}件エラー"
+    "error_count": " · {{count}}件エラー",
+    "batch_done_title": "バッチ画像変換完了",
+    "done_title": "画像変換完了",
+    "output_count": "{{count}}ファイルを出力",
+    "pages_count": "→ {{count}}枚",
+    "title_batch": "画像変換 — {{count}}件バッチ",
+    "title_single": "画像変換",
+    "dpi_label": "解像度 (DPI)",
+    "page_label": "ページ指定",
+    "prefix_label": "ファイル名プレフィックス",
+    "subfolder_note": "📁 ファイルごとにサブフォルダを作成して出力します",
+    "output_dir": "出力フォルダ",
+    "target_files": "対象ファイル — {{count}}件"
   },
   "compress": {
-    "processing": "圧縮処理中… {{current}}/{{total}}",
+    "processing": "圧縮処理中…",
     "save_compressed": "圧縮して保存",
     "save_original": "元のファイルを保存",
     "preview_btn": "プレビューを実行する",
@@ -309,7 +343,18 @@
     "err_chain_failed": "連携ファイルの作成に失敗しました: ",
     "err_gs_path_not_found": "Ghostscriptのパスが見つかりません。",
     "err_compress_fallback": "圧縮エラーのため未圧縮でコピーしました",
-    "err_fatal": "致命的なエラー: "
+    "err_fatal": "致命的なエラー: ",
+    "batch_done_title": "バッチ圧縮完了 — {{count}}件",
+    "result_title": "圧縮プレビュー結果",
+    "preview_none": "プレビューなし",
+    "stat_label": "ファイルサイズ変化",
+    "save_compressed_main": "圧縮して保存",
+    "save_compressed_sub": "最適化されたファイルを保存します",
+    "save_original_main": "圧縮せず保存",
+    "save_original_sub": "元のファイルをコピーして保存します",
+    "settings_title": "圧縮設定",
+    "object_stream_on": "有効 (リスク小)",
+    "no_dir_placeholder": "出力先フォルダを選択してください..."
   },
   "viewer": {
     "search_placeholder": "全ページ検索… (Enter で次へ)",
