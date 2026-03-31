@@ -67,10 +67,29 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - name: Cache Rust target
+        uses: actions/cache@v4
         with:
-          shared-key: "pdf-kozou-v1"
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          # 1. 完全一致を目指すキー（Cargo.lockのハッシュを含む）
+          key: ${{ runner.os }}-rust-v1-${{ hashFiles('**/Cargo.lock') }}
+          # 2. 完全一致がない場合に、前方一致で探しに行くリスト
+          restore-keys: |
+            ${{ runner.os }}-rust-v1-
+            ${{ runner.os }}-rust-
+            v0-rust-pdf-kozou-v1-${{ runner.os }}-
+
+      #- name: Rust cache
+      #  uses: Swatinem/rust-cache@v2
+      #  with:
+      #    add-job-id-key: false
+      #    shared-key: pdf-kozou-v1
+      #    prefix-key: v0-rust
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -163,10 +182,29 @@ jobs:
           targets: x86_64-pc-windows-gnu
           #targets: x86_64-pc-windows-msvc
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - name: Cache Rust target
+        uses: actions/cache@v4
         with:
-          shared-key: "pdf-kozou-v1"
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          # 1. 完全一致を目指すキー（Cargo.lockのハッシュを含む）
+          key: ${{ runner.os }}-rust-v1-${{ hashFiles('**/Cargo.lock') }}
+          # 2. 完全一致がない場合に、前方一致で探しに行くリスト
+          restore-keys: |
+            ${{ runner.os }}-rust-v1-
+            ${{ runner.os }}-rust-
+            v0-rust-pdf-kozou-v1-${{ runner.os }}-
+
+#      - name: Rust cache
+#        uses: Swatinem/rust-cache@v2
+#        with:
+#          add-job-id-key: false
+#          shared-key: pdf-kozou-v1
+#          prefix-key: v0-rust
 
       - name: Locate MSVC and Set Safe Path
         shell: pwsh
