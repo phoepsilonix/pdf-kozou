@@ -20,7 +20,7 @@ pub async fn find_gs_executable() -> Option<String> {
     let bins = vec!["gs"];
     #[cfg(target_os = "windows")]
     let bins = vec!["gswin64c", "gswin32c", "gs"];
-    let envs = vec!["GHOSTSCRIPTHOME", "PDF_KOZOU_GS_HOME"];
+    let envs = vec!["PDF_KOZOU_GS_HOME", "GHOSTSCRIPTHOME" ];
 
     // 環境変数GHOSTSCRIPTHOME またはPDF_KOZOU_GS_HOME下のbinフォルダ 優先
     for env_key in &envs {

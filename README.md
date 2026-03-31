@@ -27,7 +27,7 @@ Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases
 [Ghostscript Portable](https://portableapps.com/apps/utilities/ghostscript_portable)  
 
 v1.4.5以降  
-インストール後、ユーザー環境変数のPATHに`gswin64c`がある場所のPATHを設定するか、あるいは環境変数`GHOSTSCRIPTHOME`または`PDF_KOZOU_GS_HOME`にGhostScriptをインストールしたフォルダ(gswin64cがある一つ上のフォルダ)のPATHを設定してみてください。
+インストール後、ユーザー環境変数のPATHに`gswin64c`がある場所のPATHを設定するか、あるいは環境変数`PDF_KOZOU_GS_HOME`または`GHOSTSCRIPTHOME`にGhostScriptをインストールしたフォルダ(gswin64cがある一つ上のフォルダ)のPATHを設定してみてください。
 
 ### 備考
 
