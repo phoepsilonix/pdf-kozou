@@ -254,7 +254,14 @@ export default function App() {
 
   const handleToolChange = useCallback(
     async (t: ToolId) => {
+      // about への切り替えはファイル不要
+      if (t === "about") {
+        setActiveTool("about");
+        return;
+      }
       const sel = toolFiles;
+      // about 画面からの切り替え時は toolFiles が空でも許可
+      // （ファイルが選択済みかどうかは handleLaunchTool で担保済み）
       if (sel.length === 0) return;
       if (t !== "merge" && t !== "viewer") {
         try {
@@ -280,6 +287,11 @@ export default function App() {
     (toolId: ToolId, _num: number) => {
       const toolName = TOOLS.find((tool) => tool.id === toolId)?.label ?? toolId;
       if (activeTool) {
+        // about 画面からの切り替えはファイルが必要
+        if (activeTool === "about" && toolFiles.length === 0) {
+          tts.speak(t("shortcut.tool_no_file", { name: toolName }));
+          return;
+        }
         handleToolChange(toolId);
         tts.speak(t("shortcut.tool_switched", { name: toolName }));
       } else {
@@ -291,7 +303,7 @@ export default function App() {
         }
       }
     },
-    [activeTool, fileList, handleToolChange, handleLaunchTool, TOOLS, t],
+    [activeTool, fileList, toolFiles, handleToolChange, handleLaunchTool, TOOLS, t],
   );
 
   // グローバルショートカット（全画面共通）
