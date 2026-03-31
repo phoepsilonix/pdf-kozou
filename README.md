@@ -20,8 +20,9 @@ Ghostscript is strictly an optional enhancement for advanced users.
 We have updated the UI to clarify that all core features, including compression, work without any external software.
 
 ## プロ(GS連携)モード利用のシステム要件
+
 GhostScriptがセットアップされているシステムの場合（パスなどでGSが検出されましたら）利用可能になります。  
-Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。  
+Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。
 
 ### 備考
 
