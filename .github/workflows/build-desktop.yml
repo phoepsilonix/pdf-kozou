@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+          save_cache:
+            description: 'キャッシュを保存しますか？'
+            required: false
+            default: 'false'
+            type: boolean
 
 permissions:
   contents: write
@@ -90,6 +96,7 @@ jobs:
           add-job-id-key: false
           shared-key: pdf-kozou-v1
           prefix-key: v0-rust
+          save-always: ${{ github.event.inputs.save_cache == 'true' }}
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -205,6 +212,7 @@ jobs:
           add-job-id-key: false
           shared-key: pdf-kozou-v1
           prefix-key: v0-rust
+          save-always: ${{ github.event.inputs.save_cache == 'true' }}
 
       - name: Locate MSVC and Set Safe Path
         shell: pwsh
