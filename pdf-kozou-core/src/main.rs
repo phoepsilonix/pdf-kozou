@@ -628,6 +628,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 out_dir,
                 prefix: Some(prefix),
                 mode,
+                override_metadata: None,
             };
             let resp = pdf_kozou_core::split::split(&req)?;
             println!("{}", serde_json::to_string(&resp)?);
