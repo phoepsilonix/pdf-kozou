@@ -70,6 +70,11 @@ export function MetadataEditModal({ filePath, initialMeta, onClose, onSaved }: P
     tts.speak(t("meta_edit.modal_opened"));
   }, [t]);
 
+  const handleChange = useCallback((key: keyof PdfMeta, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  }, []);
+
   const handleSave = useCallback(async () => {
     setSaving(true);
     setError(null);
@@ -91,7 +96,7 @@ export function MetadataEditModal({ filePath, initialMeta, onClose, onSaved }: P
     }
   }, [filePath, form, t, onSaved]);
 
-  // Escape で閉じる / Ctrl+Enter で保存
+  // Escape で閉じる / Ctrl+Enter で保存（handleSave の後に定義）
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -106,11 +111,6 @@ export function MetadataEditModal({ filePath, initialMeta, onClose, onSaved }: P
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose, handleSave]);
-
-  const handleChange = useCallback((key: keyof PdfMeta, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    setSaved(false);
-  }, []);
 
   return (
     <>

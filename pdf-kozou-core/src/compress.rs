@@ -1430,3 +1430,88 @@ pub fn parse_rewrite_opt_bool(options: &str, key: &str) -> Option<bool> {
 
 // MuPDF 1.28: compress-fonts オプションは廃止 (compress=yes 時は自動的に圧縮)
 pub const REWRITE_OPTIONS_DEFAULT: &str = "compress=yes,compress-images=yes,garbage=2";
+
+/// PDF のメタデータを直接編集して上書き保存する。
+/// /Info dict が存在すれば incremental 更新、なければ新規作成。
+/// 空文字列のフィールドは「削除」として扱う。
+pub fn set_metadata(path: &str, metadata: &[(String, String)]) -> std::result::Result<(), String> {
+    // 空でない項目だけ書き込む、空は削除扱い（削除は write_pdf_info_clear で対応）
+    let to_write: Vec<(String, String)> = metadata
+        .iter()
+        .filter(|(_, v)| !v.trim().is_empty())
+        .cloned()
+        .collect();
+
+    // /Info dict があるか確認して分岐
+    let has_info = {
+        use mupdf::pdf::PdfDocument;
+        match PdfDocument::open(path) {
+            Ok(doc) => doc
+                .trailer()
+                .ok()
+                .and_then(|t| t.get_dict("Info").ok().flatten())
+                .is_some(),
+            Err(_) => false,
+        }
+    };
+
+    if has_info {
+        // 既存 /Info を incremental 更新
+        write_pdf_info_with_delete(path, metadata)
+    } else {
+        // /Info なし → 新規作成（to_write のみ書く）
+        if to_write.is_empty() {
+            return Ok(());
+        }
+        write_pdf_info_new(path, &to_write)
+    }
+}
+
+/// /Info dict を incremental 更新。空文字列フィールドはキー削除。
+fn write_pdf_info_with_delete(
+    path: &str,
+    metadata: &[(String, String)],
+) -> std::result::Result<(), String> {
+    use mupdf::pdf::{PdfDocument, PdfObject, PdfWriteOptions};
+
+    let doc = PdfDocument::open(path).map_err(|e| format!("open failed: {e}"))?;
+    let trailer = doc.trailer().map_err(|e| format!("trailer failed: {e}"))?;
+    let info_obj = trailer
+        .get_dict("Info")
+        .map_err(|e| format!("get Info failed: {e}"))?;
+
+    let mut info = match info_obj {
+        Some(obj) => obj
+            .resolve()
+            .map_err(|e| format!("resolve Info failed: {e}"))?
+            .unwrap_or(obj),
+        None => return Ok(()),
+    };
+
+    for (key, value) in metadata {
+        if value.trim().is_empty() {
+            // 空文字列 → キーを削除
+            let _ = info.dict_delete(key.as_str());
+        } else {
+            let val_obj = PdfObject::new_string(value)
+                .map_err(|e| format!("new_string({key}) failed: {e}"))?;
+            info.dict_put(key.as_str(), val_obj)
+                .map_err(|e| format!("dict_put({key}) failed: {e}"))?;
+        }
+    }
+
+    let mut opts = PdfWriteOptions::default();
+    opts.set_incremental(true)
+        .set_compress(true)
+        .set_garbage_level(0)
+        .set_clean(false);
+
+    doc.save_with_options(path, opts)
+        .map_err(|e| format!("save failed: {e}"))?;
+
+    eprintln!(
+        "[metadata] set_metadata wrote {} keys to {path}",
+        metadata.len()
+    );
+    Ok(())
+}

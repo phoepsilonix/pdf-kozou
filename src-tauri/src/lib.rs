@@ -112,6 +112,7 @@ pub fn run() {
             core::search_page,
             core::get_page_links,
             core::convert_to_pdf,
+            core::set_pdf_metadata,
             core::is_mupdf_supported,
             core::is_pdf_file,
             platform_cmd::get_screen_info,

@@ -491,3 +491,27 @@ pub async fn remove_file(path: String) -> Result<()> {
         Err(e) => Err(Error::Core(format!("remove {path}: {e}"))),
     }
 }
+
+/// PDF のメタデータ（タイトル・作者・件名・キーワード等）を直接編集して上書き保存する。
+/// metadata は [{ key: "Title", value: "..." }, ...] 形式の JSON 配列。
+/// value が空文字列のフィールドは削除扱い。
+#[tauri::command]
+pub async fn set_pdf_metadata(path: String, metadata: Value) -> Result<()> {
+    let pairs: Vec<(String, String)> = metadata
+        .as_array()
+        .ok_or_else(|| Error::Core("metadata must be an array".into()))?
+        .iter()
+        .filter_map(|item| {
+            let key = item.get("key")?.as_str()?.to_string();
+            let value = item.get("value")?.as_str()?.to_string();
+            Some((key, value))
+        })
+        .collect();
+
+    tokio::task::spawn_blocking(move || {
+        pdf_kozou_core::compress::set_metadata(&path, &pairs)
+            .map_err(|e| Error::Core(format!("set_metadata: {e}")))
+    })
+    .await
+    .map_err(|e| Error::Core(format!("spawn_blocking: {e}")))?
+}
