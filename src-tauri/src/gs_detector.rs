@@ -6,6 +6,7 @@
 
 #[cfg(target_os = "windows")]
 use std::path::Path;
+use std::path::PathBuf;
 
 #[tauri::command]
 pub async fn check_ghostscript_installed() -> bool {
@@ -19,7 +20,28 @@ pub async fn find_gs_executable() -> Option<String> {
     let bins = vec!["gs"];
     #[cfg(target_os = "windows")]
     let bins = vec!["gswin64c", "gswin32c", "gs"];
+    let envs = vec!["GHOSTSCRIPTHOME", "PDF_KOZOU_GS_HOME"];
 
+    // 環境変数GHOSTSCRIPTHOME またはPDF_KOZOU_GS_HOME下のbinフォルダ 優先
+    for env_key in &envs {
+        // 1. 環境変数を取得（Result型なので if let で正常系のみ取り出す）
+        if let Ok(env_val) = std::env::var(env_key) {
+            for bin in &bins {
+                let mut exe_path = PathBuf::from(env_val.clone()).join("bin");
+                let exe_name = if cfg!(target_os = "windows") {
+                    format!("{bin}.exe")
+                } else {
+                    bin.to_string()
+                };
+                exe_path.push(exe_name);
+                if exe_path.exists() {
+                    return Some(exe_path.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+
+    // PATHの通っている場所を探す
     for bin in bins {
         if let Ok(path) = which::which(bin) {
             return Some(path.to_string_lossy().into_owned());
