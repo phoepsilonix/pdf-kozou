@@ -107,7 +107,7 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
-      - name: Build Frontend
+      - name: Build Frontend check
         run: npm run build
 
       - name: Install tauri-cli via binstall
@@ -251,7 +251,7 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
-      - name: Build Frontend
+      - name: Build Frontend check
         run: npm run build
 
       - name: Install make
