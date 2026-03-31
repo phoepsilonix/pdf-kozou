@@ -156,7 +156,11 @@
     "prefix_label": "Filename prefix",
     "target_files": "Target files — {{count}}",
     "batch_label_suffix": "{{count}} files batch",
-    "preview_head": "Group preview — {{count}} files"
+    "preview_head": "Group preview — {{count}} files",
+    "meta_edit_btn": "Edit metadata before splitting (optional)",
+    "meta_edit_set": "Metadata set ✓ (click to re-edit)",
+    "meta_clear": "Clear metadata settings",
+    "meta_confirm": "Confirm"
   },
   "merge": {
     "loading": "Loading files…",

@@ -388,6 +388,12 @@ export interface SplitResponse {
   files: string[];
 }
 
+/** 分割前に編集したメタデータ。key は PDF /Info キー名（"Title", "Author" 等）。*/
+export interface OverrideMeta {
+  key: string;
+  value: string;
+}
+
 export async function splitPdf(
   inputPath: string,
   outDir: string,
@@ -396,6 +402,7 @@ export async function splitPdf(
   layoutW?: number,
   layoutH?: number,
   layoutEm?: number,
+  overrideMetadata?: OverrideMeta[],
 ): Promise<SplitResponse> {
   return invoke<SplitResponse>("split_pdf", {
     request: {
@@ -406,6 +413,7 @@ export async function splitPdf(
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
       layout_em: layoutEm ?? null,
+      override_metadata: overrideMetadata ? overrideMetadata.map((m) => [m.key, m.value]) : null,
     },
   });
 }

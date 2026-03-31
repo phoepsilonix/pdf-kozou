@@ -40,6 +40,8 @@ interface Props {
   onSaved?: (meta: PdfMeta) => void;
   /** true = 処理後の出力ファイル（元ファイル不変を明示）、false/省略 = 元ファイルを直接編集 */
   isOutputFile?: boolean;
+  /** 保存ボタンのラベルを上書きする（例: 「確定」）。省略時は t("meta_edit.save") */
+  saveLabel?: string;
 }
 
 // ── 編集可能フィールド定義 ──────────────────────────────────────────────────
@@ -66,6 +68,7 @@ export function MetadataEditModal({
   onClose,
   onSaved,
   isOutputFile = false,
+  saveLabel,
 }: Props) {
   const { t } = useI18n();
   const [form, setForm] = useState<PdfMeta>(initialMeta ?? {});
@@ -114,6 +117,13 @@ export function MetadataEditModal({
     setSaving(true);
     setError(null);
     try {
+      if (saveLabel) {
+        // saveLabel がある場合はファイル保存せず onSaved に form を渡すだけ
+        // （SplitPage など「確定」モードで使用）
+        onSaved?.(form);
+        setSaving(false);
+        return;
+      }
       const metadata = EDITABLE_FIELDS.map(({ key, pdfKey }) => ({
         key: pdfKey,
         value: form[key] ?? "",
@@ -129,7 +139,7 @@ export function MetadataEditModal({
     } finally {
       setSaving(false);
     }
-  }, [filePath, form, t, onSaved]);
+  }, [filePath, form, t, onSaved, saveLabel]);
 
   // Escape で閉じる / Ctrl+Enter で保存（handleSave の後に定義）
   useEffect(() => {
@@ -245,7 +255,7 @@ export function MetadataEditModal({
             aria-label={t("meta_edit.save") + " Ctrl+Enter"}
             onFocus={() => tts.speak(t("meta_edit.save") + "。Ctrl+Enterでも実行できます。")}
           >
-            {saving ? t("meta_edit.saving") : t("meta_edit.save")}
+            {saving ? t("meta_edit.saving") : (saveLabel ?? t("meta_edit.save"))}
           </button>
         </div>
       </div>

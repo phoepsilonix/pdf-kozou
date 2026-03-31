@@ -156,7 +156,11 @@
     "prefix_label": "ファイル名プレフィックス",
     "target_files": "対象ファイル — {{count}}件",
     "batch_label_suffix": "{{count}}件バッチ",
-    "preview_head": "グループプレビュー — {{count}}ファイル"
+    "preview_head": "グループプレビュー — {{count}}ファイル",
+    "meta_edit_btn": "メタデータを編集してから分割（任意）",
+    "meta_edit_set": "メタデータ設定済み ✓（クリックで再編集）",
+    "meta_clear": "メタデータ設定をクリア",
+    "meta_confirm": "確定"
   },
   "merge": {
     "loading": "ファイルを読み込み中…",

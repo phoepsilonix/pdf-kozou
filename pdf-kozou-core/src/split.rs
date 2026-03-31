@@ -20,6 +20,10 @@ pub struct SplitRequest {
     pub out_dir: String,
     pub prefix: Option<String>,
     pub mode: SplitMode,
+    /// 分割前に編集したメタデータ。Some の場合は元ファイルのメタデータより優先して使用。
+    /// None の場合は元ファイルのメタデータをそのまま引き継ぐ。
+    #[serde(default)]
+    pub override_metadata: Option<Vec<(String, String)>>,
 }
 
 #[derive(Serialize)]
@@ -40,8 +44,13 @@ pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
     let out_dir = std::path::Path::new(&req.out_dir);
     std::fs::create_dir_all(out_dir)?;
 
-    // 入力 PDF のメタデータを一度だけ収集し、各出力ファイルに引き継ぐ
-    let metadata = crate::compress::collect_metadata(&req.input);
+    // メタデータ: override_metadata が指定されていればそれを優先、
+    // なければ入力 PDF からそのまま引き継ぐ
+    let metadata: Vec<(String, String)> = if let Some(ref ov) = req.override_metadata {
+        ov.clone()
+    } else {
+        crate::compress::collect_metadata(&req.input)
+    };
 
     let ranges: Vec<Vec<i32>> = match &req.mode {
         SplitMode::AllPages => (0..page_count).map(|i| vec![i]).collect(),

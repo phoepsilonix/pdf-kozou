@@ -22,7 +22,9 @@ import {
   type SplitMode,
   type SplitResponse,
   type PdfInfo,
+  type OverrideMeta,
 } from "../lib/tauri";
+import { MetadataEditModal } from "../components/MetadataEditModal";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
 //import { CompressPage } from "./CompressPage";
@@ -64,6 +66,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [statusMsg, setStatusMsg] = useState("");
   const rangeRef = useRef<HTMLInputElement | null>(null);
   const dirBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [metaEditOpen, setMetaEditOpen] = useState(false);
+  const [overrideMetadata, setOverrideMetadata] = useState<OverrideMeta[] | undefined>(undefined);
 
   // 現在表示中のファイル（バッチの場合はプレビュー用に切り替え可能）
   const [previewIdx, setPreviewIdx] = useState(0);
@@ -213,6 +217,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         convertLayoutW,
         convertLayoutH,
         convertLayoutEm,
+        overrideMetadata,
       );
       setResult(res);
       setSavedDir(outDir);
@@ -234,6 +239,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     ranges,
     prefix,
     pickDir,
+    overrideMetadata,
     setError,
     announceSuccess,
     announceError,
@@ -290,6 +296,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           convertLayoutW,
           convertLayoutH,
           convertLayoutEm,
+          overrideMetadata,
         );
         progress.done.push({ file: f.filename, count: res.files.length });
       } catch (e) {
@@ -299,7 +306,17 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     }
     announceSuccess("done.split", { count: String(files.length) });
     setPhase("result");
-  }, [batchFiles, outDir, modeId, everyN, ranges, prefix, pickDir, announceSuccess]);
+  }, [
+    batchFiles,
+    outDir,
+    modeId,
+    everyN,
+    ranges,
+    prefix,
+    pickDir,
+    overrideMetadata,
+    announceSuccess,
+  ]);
 
   // ── グループプレビュー計算 ────────────────────────────────────────────────
   const groups: number[][] = (() => {
@@ -756,6 +773,27 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </button>
           </div>
 
+          {/* メタデータを分割前に編集（任意）*/}
+          <div style={s.metaEditRow}>
+            <button
+              style={s.btnMetaEdit}
+              onClick={() => setMetaEditOpen(true)}
+              aria-label={t("split.meta_edit_btn")}
+            >
+              ✏️ {overrideMetadata ? t("split.meta_edit_set") : t("split.meta_edit_btn")}
+            </button>
+            {overrideMetadata && (
+              <button
+                style={s.btnMetaClear}
+                onClick={() => setOverrideMetadata(undefined)}
+                title={t("split.meta_clear")}
+                aria-label={t("split.meta_clear")}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
           <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
             {outDir
               ? isBatch
@@ -763,6 +801,27 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 : t("split.execute", { count: String(groups.length) })
               : t("common.no_dir_btn")}
           </BtnPrimary>
+
+          {/* メタデータ編集モーダル */}
+          {metaEditOpen && (
+            <MetadataEditModal
+              filePath={filePath}
+              onClose={() => setMetaEditOpen(false)}
+              onSaved={(meta) => {
+                // 保存ではなく「確定」として overrideMetadata に保持
+                const fields = [
+                  { key: "Title", value: meta.title ?? "" },
+                  { key: "Author", value: meta.author ?? "" },
+                  { key: "Subject", value: meta.subject ?? "" },
+                  { key: "Keywords", value: meta.keywords ?? "" },
+                  { key: "Creator", value: meta.creator ?? "" },
+                ].filter((f) => f.value.trim() !== "");
+                setOverrideMetadata(fields.length ? fields : undefined);
+                setMetaEditOpen(false);
+              }}
+              saveLabel={t("split.meta_confirm")}
+            />
+          )}
         </div>
 
         {/* ── 右: プレビューエリア ── */}
@@ -1049,6 +1108,34 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontFamily: F,
     flexShrink: 0,
+  },
+  metaEditRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  btnMetaEdit: {
+    flex: 1,
+    padding: "6px 10px",
+    background: "transparent",
+    border: "1px solid var(--c-accent)",
+    borderRadius: 7,
+    color: "var(--c-accent)",
+    cursor: "pointer",
+    fontSize: 12,
+    fontFamily: "inherit",
+    textAlign: "left" as const,
+  },
+  btnMetaClear: {
+    padding: "4px 8px",
+    background: "transparent",
+    border: "1px solid var(--c-border)",
+    borderRadius: 6,
+    color: "var(--c-textDim)",
+    cursor: "pointer",
+    fontSize: 11,
+    fontFamily: "inherit",
   },
 
   // バッチ進捗
