@@ -23,6 +23,7 @@ We have updated the UI to clarify that all core features, including compression,
 
 GhostScriptがセットアップされているシステムの場合（パスなどでGSが検出されましたら）利用可能になります。  
 Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。
+[Ghostscript Portable](https://portableapps.com/apps/utilities/ghostscript_portable)もPATHが通っていれば利用できるかもしれません。
 
 ### 備考
 
