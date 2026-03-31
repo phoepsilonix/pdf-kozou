@@ -301,7 +301,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file}</span>
-                <span style={s.bpMeta}>→ {d.count}枚</span>
+                <span style={s.bpMeta}>{t("image.pages_count", { count: String(d.count) })}</span>
               </div>
             ))}
           </div>
@@ -331,7 +331,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               setBatchProgress(null);
             }}
           />
-          <span style={s.title}>バッチ画像変換完了</span>
+          <span style={s.title}>{t("image.batch_done_title")}</span>
         </PageHeader>
         <div style={s.center}>
           <span
@@ -354,7 +354,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file}</span>
-                <span style={s.bpMeta}>→ {d.count}枚</span>
+                <span style={s.bpMeta}>{t("image.pages_count", { count: String(d.count) })}</span>
               </div>
             ))}
             {batchProgress.errors.map((e, i) => (
@@ -384,11 +384,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               (e.currentTarget as HTMLButtonElement).blur();
             }}
           />
-          <span style={s.title}>画像変換完了</span>
+          <span style={s.title}>{t("image.done_title")}</span>
         </PageHeader>
         <div style={s.center}>
           <span style={{ fontSize: 56, color: "var(--c-accent)" }}>✓</span>
-          <div style={s.bpTitle}>{images.length}ファイルを出力</div>
+          <div style={s.bpTitle}>{t("image.output_count", { count: String(images.length) })}</div>
           <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
           <div style={s.bpLog}>
             {images.slice(0, 20).map((f, i) => (
@@ -413,7 +413,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>画像変換{isBatch ? ` — ${batchFiles!.length}件バッチ` : ""}</span>
+        <span style={s.title}>
+          {isBatch
+            ? t("image.title_batch", { count: String(batchFiles!.length) })
+            : t("image.title_single")}
+        </span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
         {!isBatch && <span style={s.pageBadge}>{total}ページ</span>}
         <div style={{ flex: 1 }} />
@@ -451,7 +455,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           {format !== "svg" && (
             <>
-              <div style={s.secLabel}>解像度 (DPI)</div>
+              <div style={s.secLabel}>{t("image.dpi_label")}</div>
               <div style={s.dpiGrid}>
                 {DPI_PRESETS.map((p) => (
                   <button
@@ -514,7 +518,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           )}
 
-          <div style={s.secLabel}>ページ指定</div>
+          <div style={s.secLabel}>{t("image.page_label")}</div>
           <PageSelector
             totalPages={isBatch ? 0 : total}
             value={pages}
@@ -536,10 +540,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <span style={s.prefixSuffix}>0001.{format === "jpeg" ? "jpg" : format}</span>
           </div>
 
-          {isBatch && (
-            <div style={s.batchNote}>📁 ファイルごとにサブフォルダを作成して出力します</div>
-          )}
-          <div style={s.secLabel}>出力フォルダ</div>
+          {isBatch && <div style={s.batchNote}>{t("image.subfolder_note")}</div>}
+          <div style={s.secLabel}>{t("image.output_dir")}</div>
           <div style={s.dirRow}>
             <div style={s.dirPath} title={outDir}>
               {outDir || t("common.select_dir")}
@@ -562,7 +564,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={s.preview}>
           {isBatch ? (
             <>
-              <div style={s.previewHead}>対象ファイル — {batchFiles!.length}件</div>
+              <div style={s.previewHead}>
+                {t("image.target_files", { count: String(batchFiles!.length) })}
+              </div>
               <div style={s.batchFileList}>
                 {batchFiles!.map((f, i) => (
                   <button

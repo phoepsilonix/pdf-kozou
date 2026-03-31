@@ -533,7 +533,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     return (
       <div style={c.center}>
         <div style={c.spinner} />
-        <span style={c.spinSub}>圧縮処理中…</span>
+        <span style={c.spinSub}>{t("compress.processing")}</span>
       </div>
     );
   }
@@ -582,7 +582,9 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         >
           {batchProg.errors.length ? "⚠" : "✓"}
         </span>
-        <div style={c.bpTitle}>バッチ圧縮完了 — {batchProg.done.length}件</div>
+        <div style={c.bpTitle}>
+          {t("compress.batch_done_title", { count: String(batchProg.done.length) })}
+        </div>
         <div style={{ height: 10 }} />
         <div style={c.bpLog}>
           {batchProg.done.map((d, i) => (
@@ -626,14 +628,14 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           <button style={c.btnBack} onClick={() => setPhase("edit")}>
             {t("compress.back2")}
           </button>
-          <span style={c.title}>圧縮プレビュー結果</span>
+          <span style={c.title}>{t("compress.result_title")}</span>
         </div>
         <div style={c.resultBody}>
           <div style={c.prevCol}>
             {preview ? (
               <img src={`data:image/jpeg;base64,${preview}`} style={c.prevImg} alt="preview" />
             ) : (
-              <div style={c.prevPh}>プレビューなし</div>
+              <div style={c.prevPh}>{t("compress.preview_none")}</div>
             )}
           </div>
           <div style={c.statsCol}>
@@ -641,7 +643,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               {gain ? `−${pct}%` : `+${Math.abs(Number(pct))}%`}
             </div>
             <div style={c.statInfo}>
-              <div style={c.statLabel}>ファイルサイズ変化</div>
+              <div style={c.statLabel}>{t("compress.stat_label")}</div>
               <div style={c.statVal}>
                 {inMB} MB →{" "}
                 <span style={{ color: gain ? "#4fe090" : "#ff6060", fontWeight: 700 }}>
@@ -760,8 +762,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                   >
                     <span style={c.saveBtnIcon}>📦</span>
                     <div>
-                      <div style={c.saveBtnMain}>圧縮して保存</div>
-                      <div style={c.saveBtnSub}>最適化されたファイルを保存します</div>
+                      <div style={c.saveBtnMain}>{t("compress.save_compressed_main")}</div>
+                      <div style={c.saveBtnSub}>{t("compress.save_compressed_sub")}</div>
                     </div>
                   </div>
                 </button>
@@ -771,8 +773,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                   >
                     <span style={c.saveBtnIcon}>📄</span>
                     <div>
-                      <div style={c.saveBtnMain}>圧縮せず保存</div>
-                      <div style={c.saveBtnSub}>元のファイルをコピーして保存します</div>
+                      <div style={c.saveBtnMain}>{t("compress.save_original_main")}</div>
+                      <div style={c.saveBtnSub}>{t("compress.save_original_sub")}</div>
                     </div>
                   </div>
                 </button>
@@ -799,7 +801,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           {currentSource !== (sourceFile ?? filePath) ? `🔗 ${fname}` : fname}
         </span>
         {currentSource && <span style={c.chainBadge}>{t("compress.chain_badge")}</span>}
-        <span style={c.title}>圧縮設定</span>
+        <span style={c.title}>{t("compress.settings_title")}</span>
 
         {gsAvailable && (
           <div style={{ display: "flex", gap: 4, marginLeft: 16 }}>
@@ -896,7 +898,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 {t("compress.obj_stream_label")}
               </label>
               <span style={c.optHint}>
-                {objectStream ? "有効 (リスク小)" : t("compress.merge_fonts_off")}
+                {objectStream ? t("compress.object_stream_on") : t("compress.merge_fonts_off")}
               </span>
             </div>
             <div style={c.optRow}>
@@ -959,7 +961,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         {isBatch ? (
           <div style={c.batchExecBox}>
             <div style={c.dirRow}>
-              <div style={c.dirPath}>{outDir || "出力先フォルダを選択してください..."}</div>
+              <div style={c.dirPath}>{outDir || t("compress.no_dir_placeholder")}</div>
               <button style={c.dirPickBtn} onClick={pickDir}>
                 {t("compress.select_folder")}
               </button>

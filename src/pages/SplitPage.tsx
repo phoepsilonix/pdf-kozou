@@ -473,7 +473,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>分割{isBatch ? ` — ${batchFiles!.length}件バッチ` : ""}</span>
+        <span style={s.title}>
+          {isBatch
+            ? t("split.title_batch", { count: String(batchFiles!.length) })
+            : t("split.title_single")}
+        </span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
         {!isBatch && <span style={s.pageBadge}>{total}ページ</span>}
         <div style={{ flex: 1 }} />
@@ -487,7 +491,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       <div style={s.body}>
         {/* ── 左パネル: 設定 ── */}
         <div style={s.panel}>
-          <div style={s.secLabel}>分割モード</div>
+          <div style={s.secLabel}>{t("split.mode_label")}</div>
           <div style={s.modeList}>
             {(
               [
@@ -763,7 +767,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             <span style={s.prefixSuffix}>_0001.pdf</span>
           </div>
 
-          <div style={s.secLabel}>出力フォルダ</div>
+          <div style={s.secLabel}>{t("split.output_dir")}</div>
           <div style={s.dirRow}>
             <div style={s.dirPath} title={outDir}>
               <span aria-label={t("aria.output_dir_btn")}>{outDir || t("common.select_dir")}</span>

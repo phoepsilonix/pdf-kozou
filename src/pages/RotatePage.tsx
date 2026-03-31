@@ -443,7 +443,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               setSavedPath("");
             }}
           />
-          <span style={s.title}>{isBatch ? "バッチ回転完了" : "回転完了"}</span>
+          <span style={s.title}>
+            {isBatch ? t("rotate.batch_done_title") : t("rotate.done_title")}
+          </span>
         </PageHeader>
         <div style={s.resultBody}>
           <div style={s.resultIcon}>{batchProgress?.errors.length ? "⚠" : "✓"}</div>
@@ -458,7 +460,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               <div style={s.resultDir}>{outDir}</div>
             </>
           ) : (
-            <div style={s.resultStat}>{changedPages.length}ページを回転して保存しました</div>
+            <div style={s.resultStat}>
+              {t("rotate.done_stat", { count: String(changedPages.length) })}
+            </div>
           )}
         </div>
       </div>
@@ -468,19 +472,27 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>回転{isBatch ? ` — ${batchFiles!.length}件バッチ` : ""}</span>
+        <span style={s.title}>
+          {isBatch
+            ? t("rotate.title_batch", { count: String(batchFiles!.length) })
+            : t("rotate.title_single")}
+        </span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
         <span style={s.pageBadge}>{n}ページ</span>
         <div style={{ flex: 1 }} />
         {changedPages.length > 0 && (
-          <span style={s.changeBadge}>{changedPages.length}ページ変更</span>
+          <span style={s.changeBadge}>
+            {t("rotate.change_badge", { count: String(changedPages.length) })}
+          </span>
         )}
       </PageHeader>
 
       {/* バッチモード時の上部ファイル選択リスト（前の提案通り） */}
       {isBatch && (
         <div style={s.batchFileSelector}>
-          <div style={s.secLabel}>対象ファイル ({batchFiles!.length}件)</div>
+          <div style={s.secLabel}>
+            {t("rotate.target_files", { count: String(batchFiles!.length) })}
+          </div>
           <div style={s.batchFileListHorizontal}>
             {batchFiles!.map((f, i) => (
               <button
@@ -512,11 +524,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       <div style={s.body}>
         {/* 左パネル（対象ページ・個別設定・出力など） */}
         <div style={s.panel}>
-          <div style={s.secLabel}>対象ページ</div>
+          <div style={s.secLabel}>{t("rotate.target_pages")}</div>
           <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} type="1" compact />
 
-          <div style={s.secLabel}>個別設定</div>
-          <p style={s.hint}>各ページの ↺↻ ボタンで個別回転できます。</p>
+          <div style={s.secLabel}>{t("rotate.individual_settings")}</div>
+          <p style={s.hint}>{t("rotate.individual_hint")}</p>
           <button style={s.resetBtn} onClick={resetAll}>
             {t("rotate.reset_range")}
           </button>
@@ -525,7 +537,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
 
           {isBatch ? (
             <>
-              <div style={s.secLabel}>出力フォルダ</div>
+              <div style={s.secLabel}>{t("rotate.output_dir")}</div>
               <div style={s.dirRow}>
                 <div style={s.dirPath} title={outDir}>
                   {outDir || t("common.select_dir")}
@@ -640,10 +652,18 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                     <span style={s.pageNum}>p.{i + 1}</span>
                     {changed && <span style={s.rotBadge}>{rot}°</span>}
                     <div style={s.rotateBtns}>
-                      <button style={s.rotBtn} onClick={() => rotate(i, -90)} title="左90°">
+                      <button
+                        style={s.rotBtn}
+                        onClick={() => rotate(i, -90)}
+                        title={t("rotate.rotate_left")}
+                      >
                         ↺
                       </button>
-                      <button style={s.rotBtn} onClick={() => rotate(i, 90)} title="右90°">
+                      <button
+                        style={s.rotBtn}
+                        onClick={() => rotate(i, 90)}
+                        title={t("rotate.rotate_right")}
+                      >
                         ↻
                       </button>
                     </div>

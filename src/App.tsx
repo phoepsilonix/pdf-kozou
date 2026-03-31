@@ -588,7 +588,7 @@ export default function App() {
                 <span style={s.toolLabel}>{tool.label}</span>
                 <span style={s.toolDesc}>
                   {selCount > 1 && !["merge", "viewer"].includes(tool.id)
-                    ? `${selCount}${t("file.batch_suffix") || "件一括"}`
+                    ? `${selCount}${t("file.batch_suffix")}`
                     : tool.desc}
                 </span>
               </button>
@@ -600,7 +600,7 @@ export default function App() {
       {dragOver && (
         <div style={s.dragOverlay}>
           <span style={s.dragIcon}>⊕</span>
-          <span style={s.dragText}>PDFをドロップして追加</span>
+          <span style={s.dragText}>{t("app.drag_text")}</span>
         </div>
       )}*/}
       {lastError && <div style={s.error}>{lastError}</div>}
@@ -678,7 +678,7 @@ function FileRow({
           {mb ? "  " + mb : ""}
         </span>
       </div>
-      <button style={fr.del} onClick={onRemove} title="削除">
+      <button style={fr.del} onClick={onRemove} title={t("app.delete_file")}>
         ×
       </button>
     </div>
@@ -783,7 +783,7 @@ function ToolShell({
         </button>
         <div style={sh.div} />
         {activeTool === "about" ? (
-          <span style={sh.batchLabel}>ℹ️ アプリについて</span>
+          <span style={sh.batchLabel}>{t("app.about_label")}</span>
         ) : isBatch ? (
           <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
         ) : (
