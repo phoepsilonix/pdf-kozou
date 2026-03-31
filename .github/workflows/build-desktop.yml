@@ -82,7 +82,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-v1-
             ${{ runner.os }}-rust-
-            v0-rust-pdf-kozou-v1-${{ runner.os }}-
+            v0-rust-pdf-kozou-v1-${{ runner.os }}
 
       #- name: Rust cache
       #  uses: Swatinem/rust-cache@v2
@@ -197,7 +197,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-v1-
             ${{ runner.os }}-rust-
-            v0-rust-pdf-kozou-v1-${{ runner.os }}-
+            v0-rust-pdf-kozou-v1-${{ runner.os }}
 
 #      - name: Rust cache
 #        uses: Swatinem/rust-cache@v2
