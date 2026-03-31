@@ -981,8 +981,8 @@ function ResultView({
       {metaEditOpen && savedPath && (
         <MetadataEditModal
           filePath={savedPath}
-          initialMeta={{}}
           onClose={() => setMetaEditOpen(false)}
+          isOutputFile
         />
       )}
     </div>

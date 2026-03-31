@@ -15,7 +15,7 @@
 //   />
 
 import { useState, useCallback, useEffect } from "react";
-import { setPdfMetadata } from "../lib/tauri";
+import { setPdfMetadata, getPdfInfo } from "../lib/tauri";
 import { useI18n } from "../lib/i18n";
 import { tts } from "../lib/tts";
 import { F } from "../lib/theme";
@@ -35,9 +35,11 @@ export interface PdfMeta {
 
 interface Props {
   filePath: string;
-  initialMeta: PdfMeta;
+  initialMeta?: PdfMeta;
   onClose: () => void;
   onSaved?: (meta: PdfMeta) => void;
+  /** true = 処理後の出力ファイル（元ファイル不変を明示）、false/省略 = 元ファイルを直接編集 */
+  isOutputFile?: boolean;
 }
 
 // ── 編集可能フィールド定義 ──────────────────────────────────────────────────
@@ -58,12 +60,45 @@ const READONLY_FIELDS: { key: keyof PdfMeta; labelKey: string }[] = [
 
 // ── コンポーネント ─────────────────────────────────────────────────────────
 
-export function MetadataEditModal({ filePath, initialMeta, onClose, onSaved }: Props) {
+export function MetadataEditModal({
+  filePath,
+  initialMeta,
+  onClose,
+  onSaved,
+  isOutputFile = false,
+}: Props) {
   const { t } = useI18n();
-  const [form, setForm] = useState<PdfMeta>({ ...initialMeta });
+  const [form, setForm] = useState<PdfMeta>(initialMeta ?? {});
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // filePath からメタデータを読み込んで初期値にする
+  // initialMeta が渡されていない or 空の場合は getPdfInfo で取得
+  useEffect(() => {
+    const isEmpty = !initialMeta || Object.values(initialMeta).every((v) => !v);
+    if (!isEmpty) return; // initialMeta が埋まっていれば取得不要
+    setLoading(true);
+    getPdfInfo(filePath, {})
+      .then((info) => {
+        const m = info.metadata ?? {};
+        setForm({
+          title: m.title,
+          author: m.author,
+          subject: m.subject,
+          keywords: m.keywords,
+          creator: m.creator,
+          producer: m.producer,
+          creationDate: m.creation_date,
+          modDate: m.mod_date,
+        });
+      })
+      .catch(() => {
+        /* 取得失敗は無視して空のまま */
+      })
+      .finally(() => setLoading(false));
+  }, [filePath, initialMeta]);
 
   // モーダルを開いた時に読み上げ
   useEffect(() => {
@@ -121,7 +156,9 @@ export function MetadataEditModal({ filePath, initialMeta, onClose, onSaved }: P
       <div role="dialog" aria-modal="true" aria-label={t("meta_edit.title")} style={s.modal}>
         {/* ヘッダ */}
         <div style={s.header}>
-          <span style={s.headerTitle}>{t("meta_edit.title")}</span>
+          <span style={s.headerTitle}>
+            {isOutputFile ? t("meta_edit.title_output") : t("meta_edit.title_source")}
+          </span>
           <button
             style={s.closeBtn}
             onClick={onClose}
@@ -133,10 +170,21 @@ export function MetadataEditModal({ filePath, initialMeta, onClose, onSaved }: P
         </div>
 
         {/* ファイルパス */}
-        <div style={s.filepath}>{filePath.split(/[/\\]/).pop()}</div>
+        <div style={s.filepath}>
+          <span style={{ color: "var(--c-textDim)", marginRight: 6, fontSize: 10 }}>
+            {isOutputFile ? t("meta_edit.file_label_output") : t("meta_edit.file_label_source")}
+          </span>
+          <span>{filePath.split(/[/\\]/).pop()}</span>
+        </div>
+        {isOutputFile && <div style={s.outputNote}>✅ {t("meta_edit.output_note")}</div>}
 
         {/* 編集フォーム */}
         <div style={s.body}>
+          {loading && (
+            <div style={{ color: "var(--c-textDim)", fontSize: 13, padding: "8px 0" }}>
+              {t("meta_edit.loading")}
+            </div>
+          )}
           {EDITABLE_FIELDS.map(({ key, labelKey }) => (
             <div key={key} style={s.fieldRow}>
               <label style={s.label} htmlFor={`meta-${key}`}>
@@ -156,14 +204,14 @@ export function MetadataEditModal({ filePath, initialMeta, onClose, onSaved }: P
           ))}
 
           {/* 読み取り専用フィールド */}
-          {READONLY_FIELDS.some(({ key }) => initialMeta[key]) && (
+          {READONLY_FIELDS.some(({ key }) => form[key]) && (
             <div style={s.readonlySection}>
               <div style={s.readonlyHeading}>{t("meta_edit.readonly_heading")}</div>
               {READONLY_FIELDS.map(({ key, labelKey }) =>
-                initialMeta[key] ? (
+                form[key] ? (
                   <div key={key} style={s.fieldRow}>
                     <span style={s.label}>{t(labelKey)}</span>
-                    <span style={{ ...s.input, ...s.readonlyValue }}>{initialMeta[key]}</span>
+                    <span style={{ ...s.input, ...s.readonlyValue }}>{form[key]}</span>
                   </div>
                 ) : null,
               )}
@@ -367,5 +415,13 @@ const s: Record<string, React.CSSProperties> = {
   saveBtnDisabled: {
     opacity: 0.5,
     cursor: "not-allowed",
+  },
+  outputNote: {
+    padding: "6px 18px",
+    fontSize: 11,
+    color: "var(--c-ok, #4caf50)",
+    background: "rgba(76,175,80,0.08)",
+    borderBottom: "1px solid var(--c-border)",
+    flexShrink: 0,
   },
 };

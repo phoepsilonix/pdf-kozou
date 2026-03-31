@@ -24,6 +24,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
   filePath: string;
@@ -128,6 +129,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  const [metaEditOpen, setMetaEditOpen] = useState(false);
+  const [savedFilePath, setSavedFilePath] = useState<string | null>(null);
   const PRESET_OPTIONS_I18N = useMemo(
     () =>
       PRESET_OPTIONS_KEYS.map((p) => ({
@@ -397,6 +400,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
           layout_em: convertLayoutEm,
         });
       }
+      setSavedFilePath(sp);
       if (onDone) onDone();
     } catch (e) {
       setError(String(e));
@@ -736,6 +740,15 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             )}
 
             <div style={c.saveChoiceBox}>
+              {savedFilePath && (
+                <button
+                  style={c.btnMetaEdit}
+                  onClick={() => setMetaEditOpen(true)}
+                  aria-label={t("meta_edit.title")}
+                >
+                  ✏️ {t("meta_edit.title")}
+                </button>
+              )}
               <div style={c.saveChoiceBtns}>
                 <button
                   style={c.btnSaveCompressed}
@@ -767,6 +780,13 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             </div>
           </div>
         </div>
+        {metaEditOpen && savedFilePath && (
+          <MetadataEditModal
+            filePath={savedFilePath}
+            onClose={() => setMetaEditOpen(false)}
+            isOutputFile
+          />
+        )}
       </div>
     );
   }

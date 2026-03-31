@@ -454,7 +454,13 @@
     "save": "Save",
     "saving": "Saving…",
     "saved": "Saved.",
-    "save_error": "Failed to save"
+    "save_error": "Failed to save",
+    "loading": "Loading…",
+    "title_output": "Edit output file metadata",
+    "title_source": "Edit file metadata",
+    "file_label_output": "Output file",
+    "file_label_source": "Target file",
+    "output_note": "The original file is not modified. Only the output file will be updated."
   },
   "shortcuts": {
     "section_title": "⌨️ Keyboard Shortcuts",

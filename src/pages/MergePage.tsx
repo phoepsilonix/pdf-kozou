@@ -414,8 +414,8 @@ useEffect(() => {
         {metaEditOpen && savePath && (
           <MetadataEditModal
             filePath={savePath}
-            initialMeta={{}}
             onClose={() => setMetaEditOpen(false)}
+            isOutputFile
           />
         )}
       </div>

@@ -23,6 +23,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
 import { CompressPage } from "./CompressPage";
+import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
   filePath: string;
@@ -47,6 +48,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
+  const [metaEditOpen, setMetaEditOpen] = useState(false);
   // Ctrl+S からプレビュー画面の doSave を呼ぶための ref
   const saveHandlerRef = useRef<(() => void) | null>(null);
   const compressHandlerRef = useRef<(() => void) | null>(null);
@@ -397,11 +399,25 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             >
               {t("rotate.save_compress")}
             </button>
+            <button
+              style={s.metaBtn}
+              onClick={() => setMetaEditOpen(true)}
+              aria-label={t("meta_edit.title")}
+            >
+              ✏️ {t("meta_edit.title")}
+            </button>
           </div>
           <button style={s.btnBack2} onClick={() => setPhase("edit")}>
             {t("rotate.redo")}
           </button>
         </div>
+        {metaEditOpen && (
+          <MetadataEditModal
+            filePath={savedPath}
+            onClose={() => setMetaEditOpen(false)}
+            isOutputFile
+          />
+        )}
       </div>
     );
   }
