@@ -1073,6 +1073,24 @@ fn dispatch_json(line: &str) -> String {
                     "result": pdf_kozou_core::convert::is_mupdf_supported(&r.path)
                 }))?)
             }
+            "set_metadata" => {
+                #[derive(serde::Deserialize)]
+                struct MetaField {
+                    key: String,
+                    value: String,
+                }
+                #[derive(serde::Deserialize)]
+                struct Req {
+                    path: String,
+                    metadata: Vec<MetaField>,
+                }
+                let r: Req = serde_json::from_str(line)?;
+                let pairs: Vec<(String, String)> =
+                    r.metadata.into_iter().map(|f| (f.key, f.value)).collect();
+                pdf_kozou_core::compress::set_metadata(&r.path, &pairs)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)
+            }
             cmd => Err(anyhow::anyhow!("unknown command: {cmd}")),
         }
     })();
