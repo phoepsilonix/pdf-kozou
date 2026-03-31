@@ -69,6 +69,10 @@ macOS版の提供は未定。動作確認環境がないため。
 | Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb` `PDF-Kozou_${version}_amd64.AppImage` |
 | macOS (Apple Silicon) | （未定）                                                                                                   |
 
+### Microsoft Store(Windows)
+
+[PDF-Kozou](https://apps.microsoft.com/detail/9P2HDLPTT5WR?hl=ja-jp&gl=JP&ocid=pdpshare)
+
 ### ソースからビルド
 
 - **pdf-kozou-core** — CLI ツール兼ライブラリ。MuPDF の Rust バインディングで PDF を処理します。
