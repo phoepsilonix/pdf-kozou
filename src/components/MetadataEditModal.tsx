@@ -78,10 +78,10 @@ export function MetadataEditModal({
   const [saved, setSaved] = useState(false);
 
   // filePath からメタデータを読み込んで初期値にする
-  // initialMeta が渡されていない or 空の場合は getPdfInfo で取得
+  // initialMeta が undefined の場合のみ getPdfInfo で自動取得する
+  // （明示的に渡された場合はたとえ空でも自動取得しない）
   useEffect(() => {
-    const isEmpty = !initialMeta || Object.values(initialMeta).every((v) => !v);
-    if (!isEmpty) return; // initialMeta が埋まっていれば取得不要
+    if (initialMeta !== undefined) return; // 明示的に渡された場合はスキップ
     setLoading(true);
     getPdfInfo(filePath, {})
       .then((info) => {
@@ -273,21 +273,23 @@ const s: Record<string, React.CSSProperties> = {
     zIndex: 200,
   },
   modal: {
+    // position: fixed + right:0 でウィンドウ右端に寄せる
+    // ドロワー内から開いても右側が切れない
     position: "fixed",
     top: "50%",
-    left: "50%",
-    transform: "translate(-50%, -50%)",
+    right: 0,
+    transform: "translateY(-50%)",
     zIndex: 201,
-    width: "min(520px, calc(100vw - 32px))",
-    maxWidth: "calc(100vw - 32px)",
-    // maxHeight を小さめに抑えて footer が確実に見えるようにする
-    maxHeight: "80vh",
+    width: "min(480px, 100vw)",
+    maxWidth: "100vw",
+    maxHeight: "90vh",
     display: "flex",
     flexDirection: "column",
     background: "var(--c-bgCard)",
     border: "1px solid var(--c-borderHi)",
-    borderRadius: 12,
-    boxShadow: "0 12px 48px rgba(0,0,0,0.4)",
+    borderLeft: "3px solid var(--c-accent)",
+    borderRadius: "12px 0 0 12px",
+    boxShadow: "-4px 0 32px rgba(0,0,0,0.5)",
     fontFamily: F,
     overflow: "hidden",
     boxSizing: "border-box" as const,

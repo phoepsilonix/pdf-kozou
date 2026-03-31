@@ -473,11 +473,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>
-          {isBatch
-            ? t("split.title_batch", { count: String(batchFiles!.length) })
-            : t("split.title_single")}
-        </span>
+        <span style={s.title}>{isBatch ? t("split.title_batch", { count: String(batchFiles!.length) }) : t("split.title_single")}</span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
         {!isBatch && <span style={s.pageBadge}>{total}ページ</span>}
         <div style={{ flex: 1 }} />
@@ -810,15 +806,23 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {metaEditOpen && (
             <MetadataEditModal
               filePath={filePath}
+              initialMeta={overrideMetadata ? {
+                // 確定済みの overrideMetadata を initialMeta に変換して引き継ぐ
+                title:    overrideMetadata.find(f => f.key === "Title")?.value,
+                author:   overrideMetadata.find(f => f.key === "Author")?.value,
+                subject:  overrideMetadata.find(f => f.key === "Subject")?.value,
+                keywords: overrideMetadata.find(f => f.key === "Keywords")?.value,
+                creator:  overrideMetadata.find(f => f.key === "Creator")?.value,
+              } : undefined}
               onClose={() => setMetaEditOpen(false)}
               onSaved={(meta) => {
                 // 保存ではなく「確定」として overrideMetadata に保持
                 const fields = [
-                  { key: "Title", value: meta.title ?? "" },
-                  { key: "Author", value: meta.author ?? "" },
-                  { key: "Subject", value: meta.subject ?? "" },
+                  { key: "Title",    value: meta.title    ?? "" },
+                  { key: "Author",   value: meta.author   ?? "" },
+                  { key: "Subject",  value: meta.subject  ?? "" },
                   { key: "Keywords", value: meta.keywords ?? "" },
-                  { key: "Creator", value: meta.creator ?? "" },
+                  { key: "Creator",  value: meta.creator  ?? "" },
                 ].filter((f) => f.value.trim() !== "");
                 setOverrideMetadata(fields.length ? fields : undefined);
                 setMetaEditOpen(false);
