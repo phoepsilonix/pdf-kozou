@@ -29,6 +29,25 @@ Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases
 v1.4.5以降  
 インストール後、ユーザー環境変数のPATHに`gswin64c`がある場所のPATHを設定するか、あるいは環境変数`PDF_KOZOU_GS_HOME`または`GHOSTSCRIPTHOME`にGhostScriptをインストールしたフォルダ(gswin64cがある一つ上のフォルダ)のPATHを設定してみてください。
 
+### PowerShellのターミナル
+#### 環境変数の設定
+Downloadsフォルダの下に展開してインストールした例。user_nameは適宜、置き換えてください。
+```pwsh
+[Environment]::SetEnvironmentVariable("PDF_KOZOU_GS_HOME", "C:\Users\user_name\Downloads\Ghostscript", "User")
+```
+#### 環境変数の確認
+```pwsh
+[Environment]::GetEnvironmentVariable("PDF_KOZOU_GS_HOME", "User")
+```
+#### 環境変数の取り消し
+```pwsh
+[Environment]::SetEnvironmentVariable("PDF_KOZOU_GS_HOME", "", "User")
+```
+または
+```pwsh
+[Environment]::SetEnvironmentVariable("PDF_KOZOU_GS_HOME", $null, "User")
+```
+
 ### 備考
 
 トリミングCropBoxをもちいられたPDFのファイルサイズ削減、圧縮は、そこまで有能ではありません。  
