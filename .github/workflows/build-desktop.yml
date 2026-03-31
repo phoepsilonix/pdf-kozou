@@ -183,6 +183,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install make
+        run: choco install make
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -253,9 +256,6 @@ jobs:
         run: npm ci
       - name: Build Frontend check
         run: npm run build
-
-      - name: Install make
-        run: choco install make
 
       - name: Install tauri-cli via binstall
         run: |
