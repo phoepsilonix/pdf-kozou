@@ -9,6 +9,99 @@ import React, { useEffect, useState } from "react";
 import { usePdfStore } from "../store/usePdfStore";
 import { useI18n } from "../lib/i18n";
 
+// ── ShortcutGroup サブコンポーネント ────────────────────────────────────────
+
+interface ShortcutRow {
+  keys: string[];
+  desc: string;
+}
+
+function ShortcutGroup({
+  heading,
+  badge,
+  rows,
+}: {
+  heading: string;
+  badge?: string;
+  rows: ShortcutRow[];
+}) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "var(--c-textSub)",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {heading}
+        </span>
+        {badge && (
+          <span
+            style={{
+              fontSize: 10,
+              padding: "1px 6px",
+              background: "rgba(var(--c-accent-rgb),0.15)",
+              color: "var(--c-accent)",
+              borderRadius: 3,
+            }}
+          >
+            {badge}
+          </span>
+        )}
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid var(--c-border)" }}>
+              <td style={{ padding: "5px 0", width: "44%", verticalAlign: "middle" }}>
+                {row.keys.map((k, j) =>
+                  k === "〜" || k === "/" ? (
+                    <span
+                      key={j}
+                      style={{ fontSize: 11, color: "var(--c-textDim)", margin: "0 3px" }}
+                    >
+                      {k}
+                    </span>
+                  ) : (
+                    <kbd
+                      key={j}
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 7px",
+                        background: "var(--c-bg)",
+                        border: "1px solid var(--c-borderHi)",
+                        borderRadius: 4,
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                        color: "var(--c-text)",
+                        marginRight: 3,
+                      }}
+                    >
+                      {k}
+                    </kbd>
+                  ),
+                )}
+              </td>
+              <td
+                style={{
+                  padding: "5px 0 5px 12px",
+                  color: "var(--c-textSub)",
+                  verticalAlign: "middle",
+                }}
+              >
+                {row.desc}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 const LicensePage: React.FC = () => {
   const [gsStatus, setGsStatus] = useState<"checking" | "found" | "missing">("checking");
   const [gsVersion, setGsVersion] = useState("");
@@ -230,6 +323,64 @@ const LicensePage: React.FC = () => {
             </tr>
           </tbody>
         </table>
+      </section>
+
+      {/* キーボードショートカット */}
+      <section style={s.section}>
+        <h2 style={s.h2}>{t("shortcuts.section_title")}</h2>
+        <div style={s.card}>
+          <ShortcutGroup
+            heading={t("shortcuts.group_global")}
+            badge={t("shortcuts.always_badge")}
+            rows={[
+              { keys: ["Alt+T"], desc: t("shortcuts.tts_toggle") },
+              { keys: ["Alt+L"], desc: t("shortcuts.lang_toggle") },
+              { keys: ["Alt+H"], desc: t("shortcuts.go_home") },
+              { keys: ["F1"], desc: t("shortcuts.show_shortcuts") },
+            ]}
+          />
+          <ShortcutGroup
+            heading={t("shortcuts.group_home")}
+            rows={[
+              { keys: ["Ctrl+O"], desc: t("shortcuts.open_file") },
+              { keys: ["Alt+1"], desc: t("shortcuts.tool_1") },
+              { keys: ["Alt+2"], desc: t("shortcuts.tool_2") },
+              { keys: ["Alt+3"], desc: t("shortcuts.tool_3") },
+              { keys: ["Alt+4"], desc: t("shortcuts.tool_4") },
+              { keys: ["Alt+5"], desc: t("shortcuts.tool_5") },
+              { keys: ["Alt+6"], desc: t("shortcuts.tool_6") },
+              { keys: ["Alt+7"], desc: t("shortcuts.tool_7") },
+            ]}
+          />
+          <ShortcutGroup
+            heading={t("shortcuts.group_tool")}
+            rows={[
+              { keys: ["Ctrl+Enter"], desc: t("shortcuts.execute") },
+              { keys: ["Ctrl+S"], desc: t("shortcuts.save") },
+              { keys: ["Ctrl+Shift+S"], desc: t("shortcuts.save_compress") },
+              { keys: ["Alt+D"], desc: t("shortcuts.output_dir") },
+              { keys: ["Alt+R"], desc: t("shortcuts.range_focus") },
+              { keys: ["Alt+M"], desc: t("shortcuts.margin_focus") },
+              { keys: ["Escape"], desc: t("shortcuts.escape_desc") },
+              { keys: ["Alt+1", "〜", "Alt+7"], desc: t("shortcuts.switch_tool") },
+            ]}
+          />
+          <ShortcutGroup
+            heading={t("shortcuts.group_viewer")}
+            rows={[
+              { keys: ["←", "→"], desc: t("shortcuts.prev_next_page") },
+              { keys: ["Ctrl+F"], desc: t("shortcuts.search") },
+              { keys: ["Ctrl+Wheel"], desc: t("shortcuts.zoom") },
+            ]}
+          />
+          <ShortcutGroup
+            heading={t("shortcuts.group_modal")}
+            rows={[
+              { keys: ["Ctrl+Enter"], desc: t("shortcuts.modal_save") },
+              { keys: ["Escape"], desc: t("shortcuts.modal_close") },
+            ]}
+          />
+        </div>
       </section>
 
       {/* ソースコード */}

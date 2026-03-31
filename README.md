@@ -137,6 +137,60 @@ pdf-kozou
 
 ---
 
+## キーボードショートカット / Keyboard Shortcuts
+
+### 全画面共通 / Global (always active, even while typing)
+
+| キー / Key | 動作 / Action                                         |
+| ---------- | ----------------------------------------------------- |
+| `Alt+T`    | 読み上げ ON/OFF / Toggle text-to-speech               |
+| `Alt+L`    | 言語切り替え / Switch language (JA ↔ EN)              |
+| `Alt+H`    | ホームに戻る / Go back to home                        |
+| `F1`       | ショートカット一覧を読み上げ / Read out shortcut list |
+
+### ホーム画面 / Home screen
+
+| キー / Key | 動作 / Action                             |
+| ---------- | ----------------------------------------- |
+| `Ctrl+O`   | ファイルを開く / Open files               |
+| `Alt+1`    | 分割ツールを起動 / Launch split tool      |
+| `Alt+2`    | 結合ツールを起動 / Launch merge tool      |
+| `Alt+3`    | トリミングを起動 / Launch trim tool       |
+| `Alt+4`    | 回転ツールを起動 / Launch rotate tool     |
+| `Alt+5`    | 圧縮ツールを起動 / Launch compress tool   |
+| `Alt+6`    | 画像変換を起動 / Launch image export tool |
+| `Alt+7`    | ビューワーを起動 / Launch viewer          |
+
+### 各ツール画面（共通）/ Tool screens (common)
+
+| キー / Key         | 動作 / Action                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `Ctrl+Enter`       | 実行 / プレビュー / Execute or preview                                                |
+| `Ctrl+S`           | 保存（結果画面で有効）/ Save (active on result screen)                                |
+| `Ctrl+Shift+S`     | 続けて圧縮して保存 / Compress then save                                               |
+| `Alt+D`            | 出力先フォルダを選択 / Select output folder (D = Destination)                         |
+| `Alt+R`            | ページ範囲入力にフォーカス / Focus page range input (R = Range)                       |
+| `Alt+M`            | 余白入力にフォーカス（TrimPage のみ）/ Focus margin input (M = Margin, TrimPage only) |
+| `Escape`           | 結果 → 設定 / 設定 → ホーム / Result → settings / settings → home                     |
+| `Alt+1` 〜 `Alt+7` | 別のツールに切り替え / Switch to another tool                                         |
+
+### ビューワー / Viewer
+
+| キー / Key                     | 動作 / Action                              |
+| ------------------------------ | ------------------------------------------ |
+| `←` `→`                        | 前 / 次のページ / Previous / next page     |
+| `Ctrl+F`                       | 全ページ検索を開く / Open full-page search |
+| `Ctrl+ホイール` / `Ctrl+Wheel` | ズームイン / ズームアウト / Zoom in / out  |
+
+### メタデータ編集モーダル / Metadata editor modal
+
+| キー / Key   | 動作 / Action  |
+| ------------ | -------------- |
+| `Ctrl+Enter` | 保存 / Save    |
+| `Escape`     | 閉じる / Close |
+
+---
+
 ## ライセンス
 
 このプロジェクトは **GNU Affero General Public License v3.0 (AGPL-3.0)** のもとで公開されています。
