@@ -272,12 +272,14 @@ function InfoDrawer({
   info,
   filePath,
   fileName,
+  onMetaSaved,
 }: {
   open: boolean;
   onClose: () => void;
   info: PdfInfo | null;
   filePath: string;
   fileName: string;
+  onMetaSaved?: () => void;
 }) {
   const { t } = useI18n();
   const [allCopied, setAllCopied] = useState(false);
@@ -432,6 +434,10 @@ function InfoDrawer({
           filePath={filePath}
           initialMeta={toPdfMeta()}
           onClose={() => setMetaEditOpen(false)}
+          onSaved={() => {
+            setMetaEditOpen(false);
+            onMetaSaved?.();
+          }}
         />
       )}
     </div>
@@ -1217,6 +1223,15 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
             info={activeInfo}
             filePath={activePath}
             fileName={fname}
+            onMetaSaved={async () => {
+              // メタデータ保存後に getPdfInfo を再取得して表示を更新
+              try {
+                const refreshed = await getPdfInfo(activePath, {});
+                setActiveInfo(refreshed);
+              } catch {
+                /* 更新失敗は無視 */
+              }
+            }}
           />
         </div>
       </div>

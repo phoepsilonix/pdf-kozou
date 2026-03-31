@@ -220,8 +220,8 @@ const s: Record<string, React.CSSProperties> = {
     left: "50%",
     transform: "translate(-50%, -50%)",
     zIndex: 201,
-    width: "min(520px, 92vw)",
-    maxHeight: "85vh",
+    width: "min(560px, 96vw)", // 少し広げて余裕を持たせる
+    maxHeight: "88vh",
     display: "flex",
     flexDirection: "column",
     background: "var(--c-bgCard)",
@@ -230,6 +230,7 @@ const s: Record<string, React.CSSProperties> = {
     boxShadow: "0 12px 48px rgba(0,0,0,0.4)",
     fontFamily: F,
     overflow: "hidden",
+    boxSizing: "border-box" as const,
   },
   header: {
     display: "flex",
@@ -277,7 +278,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 10,
   },
   label: {
-    width: 90,
+    width: 82,
     flexShrink: 0,
     fontSize: 12,
     color: "var(--c-textSub)",
@@ -335,10 +336,11 @@ const s: Record<string, React.CSSProperties> = {
   footer: {
     display: "flex",
     justifyContent: "flex-end",
-    gap: 10,
-    padding: "12px 18px",
+    gap: 12,
+    padding: "14px 20px",
     borderTop: "1px solid var(--c-border)",
     flexShrink: 0,
+    background: "var(--c-bgCard)",
   },
   cancelBtn: {
     padding: "7px 18px",
@@ -351,15 +353,16 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   saveBtn: {
-    padding: "7px 22px",
+    padding: "8px 28px",
     background: "var(--c-accent)",
     border: "none",
     borderRadius: 7,
     color: "#000",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
     fontFamily: F,
+    minWidth: 90,
   },
   saveBtnDisabled: {
     opacity: 0.5,

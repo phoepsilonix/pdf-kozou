@@ -209,6 +209,21 @@ export default function App() {
     if (paths.length) await handleAddPaths(paths);
   }, [handleAddPaths]);
 
+  /*
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      dragCounter.current = 0;
+      setDragOver(false);
+      const paths = Array.from(e.dataTransfer.files)
+        .filter((f) => isMupdfExtension(f.name))
+        .map((f) => (f as any).path as string)
+        .filter(Boolean);
+      if (paths.length) await handleAddPaths(paths);
+    },
+    [handleAddPaths],
+  );*/
+
   const handleLaunchTool = useCallback(
     async (toolId: ToolId) => {
       const sel = fileList.filter((f) => f.selected);
@@ -232,9 +247,21 @@ export default function App() {
     [fileList, setFile, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
 
+  const handleHome = useCallback(() => {
+    setActiveTool(null);
+    setToolFiles([]);
+  }, []);
+
   const handleToolChange = useCallback(
     async (t: ToolId) => {
-      const sel = toolFiles;
+      // about への切り替えはファイル不要
+      if (t === "about") {
+        setActiveTool("about");
+        return;
+      }
+      // about 画面からの切り替えは toolFiles を使う
+      // toolFiles が空なら fileList の選択ファイルを代わりに使う
+      const sel = toolFiles.length > 0 ? toolFiles : fileList.filter((f) => f.selected);
       if (sel.length === 0) return;
       if (t !== "merge" && t !== "viewer") {
         try {
@@ -249,36 +276,50 @@ export default function App() {
           return;
         }
       }
+      // about から切り替える場合は toolFiles を更新
+      if (toolFiles.length === 0 && sel.length > 0) {
+        setToolFiles(sel);
+      }
       setActiveTool(t);
     },
-    [toolFiles, setFile, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
+    [
+      toolFiles,
+      fileList,
+      setFile,
+      setError,
+      setToolFiles,
+      convertLayoutW,
+      convertLayoutH,
+      convertLayoutEm,
+    ],
   );
 
   // ツール番号ショートカット（Alt+1〜7）
-  // ホーム画面: ファイル選択済みならツール起動、未選択なら読み上げで案内
-  // ツール画面: 別ツールへ切り替え
+  // handleLaunchTool・handleToolChange の後に定義して "used before declaration" を回避
   const handleToolShortcut = useCallback(
-    (toolId: ToolId, num: number) => {
-      const toolName = TOOLS.find((t) => t.id === toolId)?.label ?? toolId;
+    (toolId: ToolId, _num: number) => {
+      const toolName = TOOLS.find((tool) => tool.id === toolId)?.label ?? toolId;
       if (activeTool) {
-        // ツール画面 → 切り替え
+        // about 画面からの切り替えはファイルが必要
+        if (activeTool === "about" && toolFiles.length === 0) {
+          tts.speak(t("shortcut.tool_no_file", { name: toolName }));
+          return;
+        }
         handleToolChange(toolId);
         tts.speak(t("shortcut.tool_switched", { name: toolName }));
       } else {
-        // ホーム画面
-        const sel = fileList.filter((f) => f.selected);
-        if (sel.length === 0) {
+        const selected = fileList.filter((f) => f.selected);
+        if (selected.length === 0) {
           tts.speak(t("shortcut.tool_no_file", { name: toolName }));
         } else {
           handleLaunchTool(toolId);
         }
       }
     },
-    [activeTool, fileList, handleToolChange, handleLaunchTool, TOOLS, t],
+    [activeTool, fileList, toolFiles, handleToolChange, handleLaunchTool, TOOLS, t],
   );
 
   // グローバルショートカット（全画面共通）
-  // handlePickFiles の後に置くことで "used before declaration" を回避
   useKeyboardShortcuts({
     "Ctrl+O": handlePickFiles,
     "Alt+1": () => handleToolShortcut("split", 1),
@@ -296,25 +337,6 @@ export default function App() {
     "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
     F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
   });
-  /*
-  const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault();
-      dragCounter.current = 0;
-      setDragOver(false);
-      const paths = Array.from(e.dataTransfer.files)
-        .filter((f) => isMupdfExtension(f.name))
-        .map((f) => (f as any).path as string)
-        .filter(Boolean);
-      if (paths.length) await handleAddPaths(paths);
-    },
-    [handleAddPaths],
-  );*/
-
-  const handleHome = useCallback(() => {
-    setActiveTool(null);
-    setToolFiles([]);
-  }, []);
 
   const sel = fileList.filter((f) => f.selected);
   const selCount = sel.length;
@@ -449,6 +471,7 @@ export default function App() {
               style={s.btnAddBig}
               onClick={handlePickFiles}
               aria-label={t("app.select_file_hint")}
+              onFocus={() => tts.speak(t("app.select_file_hint"))}
             >
               {t("app.select_file")}
             </button>
@@ -553,6 +576,13 @@ export default function App() {
                 onClick={() => enabled && handleLaunchTool(tool.id)}
                 disabled={!enabled}
                 aria-label={`Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1} ${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
+                onFocus={() => {
+                  const num = TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1;
+                  const msg = enabled
+                    ? t("home.tool_focus", { num: String(num), name: tool.label, desc: tool.desc })
+                    : t("home.tool_focus_disabled", { num: String(num), name: tool.label });
+                  tts.speak(msg);
+                }}
               >
                 <span style={s.toolIcon}>{tool.icon}</span>
                 <span style={s.toolLabel}>{tool.label}</span>
@@ -600,7 +630,13 @@ function FileRow({
   const mb = entry.sizeBytes > 0 ? (entry.sizeBytes / 1048576).toFixed(1) + " MB" : "";
   return (
     <div
+      tabIndex={0}
+      role="listitem"
       draggable
+      onFocus={() => {
+        const info = `${entry.filename}、${entry.pageCount}${t("file.pages_unit")}`;
+        tts.speak(info);
+      }}
       onDragStart={(e) => {
         setIsDragging(true);
         e.dataTransfer.setData("fileId", String(entry.id));
