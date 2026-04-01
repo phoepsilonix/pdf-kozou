@@ -47,7 +47,7 @@ interface Props {
 // ── 編集可能フィールド定義 ──────────────────────────────────────────────────
 
 const EDITABLE_FIELDS: { key: keyof PdfMeta; labelKey: string; pdfKey: string }[] = [
-  { key: "title", labelKey: "meta_edit.title", pdfKey: "Title" },
+  { key: "title", labelKey: "meta_edit.title_field", pdfKey: "Title" },
   { key: "author", labelKey: "meta_edit.author", pdfKey: "Author" },
   { key: "subject", labelKey: "meta_edit.subject", pdfKey: "Subject" },
   { key: "keywords", labelKey: "meta_edit.keywords", pdfKey: "Keywords" },

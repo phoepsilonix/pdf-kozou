@@ -330,14 +330,15 @@
     "preset_aggressive_note": "⚠ 埋め込みフォントに影響する場合あり",
     "preset_maximum_label": "最大",
     "preset_maximum_note": "⚠ 最大圧縮",
-    "gs_prepress_label": "高品質(prepress)",
+    "gs_prepress_label": "商業印刷品質(prepress)",
     "gs_prepress_desc": "300dpi / 低圧縮",
     "gs_prepress_note": "印刷・商業印刷向け。画質を最優先",
+    "gs_printer_label": "高品質(printer)",
     "gs_printer_desc": "300dpi / 中圧縮",
     "gs_printer_note": "一般的な配布・印刷用。標準的",
     "gs_ebook_label": "電子書籍,Web向け(ebook)",
-    "gs_ebook_desc": "150dpi / 高圧縮",
-    "gs_ebook_note": "Web閲覧用・メール送信用。軽量化",
+    "gs_ebook_desc": "144dpi / 高圧縮",
+    "gs_ebook_note": "Web閲覧用・メール送信用・電子書籍。軽量化",
     "err_gs_not_found": "Ghostscriptが見つかりません。",
     "err_gs_output_empty": "GS出力ファイルのサイズが0です。変換に失敗した可能性があります。",
     "err_chain_failed": "連携ファイルの作成に失敗しました: ",
@@ -354,7 +355,8 @@
     "save_original_sub": "元のファイルをコピーして保存します",
     "settings_title": "圧縮設定",
     "object_stream_on": "有効 (リスク小)",
-    "no_dir_placeholder": "出力先フォルダを選択してください..."
+    "no_dir_placeholder": "出力先フォルダを選択してください...",
+    "pro_gs": "プロ (GS)"
   },
   "viewer": {
     "search_placeholder": "全ページ検索… (Enter で次へ)",

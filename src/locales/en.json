@@ -330,14 +330,15 @@
     "preset_aggressive_note": "⚠ May affect embedded fonts",
     "preset_maximum_label": "Maximum",
     "preset_maximum_note": "⚠ Maximum compression",
-    "gs_prepress_label": "High quality (prepress)",
+    "gs_prepress_label": "Press quality (prepress)",
     "gs_prepress_desc": "300dpi / low compression",
     "gs_prepress_note": "For printing & commercial use. Quality first.",
+    "gs_printer_label": "High quality (prepress)",
     "gs_printer_desc": "300dpi / medium compression",
     "gs_printer_note": "Standard distribution/print.",
     "gs_ebook_label": "eBook/Web (ebook)",
-    "gs_ebook_desc": "150dpi / high compression",
-    "gs_ebook_note": "For web/email. Lightweight.",
+    "gs_ebook_desc": "144dpi / high compression",
+    "gs_ebook_note": "For web/email/ebook. Lightweight.",
     "err_gs_not_found": "Ghostscript not found.",
     "err_gs_output_empty": "GS output file is empty. Conversion may have failed.",
     "err_chain_failed": "Failed to create chain file: ",
@@ -354,7 +355,8 @@
     "save_original_sub": "Copy the original file and save",
     "settings_title": "Compression settings",
     "object_stream_on": "Enabled (low risk)",
-    "no_dir_placeholder": "Select an output folder..."
+    "no_dir_placeholder": "Select an output folder...",
+    "pro_gs": "Pro (GS)"
   },
   "viewer": {
     "search_placeholder": "Search all pages… (Enter for next)",

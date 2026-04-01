@@ -26,6 +26,7 @@ GhostScriptがセットアップされているシステムの場合（パスな
 自動認識よりも、ユーザーが指定したものが優先使用されます。
 
 ### Windows
+
 Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。  
 管理者権限でのインストールが難しい場合、ユーザー権限でPortable版をインストールすることもご検討ください。  
 [Ghostscript Portable](https://portableapps.com/apps/utilities/ghostscript_portable)

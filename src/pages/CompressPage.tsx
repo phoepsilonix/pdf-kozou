@@ -98,7 +98,7 @@ const GS_PRESETS_KEYS: {
   {
     id: "Printer",
     icon: "🖨️",
-    labelKey: "compress.standard_mupdf",
+    labelKey: "compress.gs_printer_label",
     descKey: "compress.gs_printer_desc",
     noteKey: "compress.gs_printer_note",
     color: "#3a7a4a",
@@ -117,11 +117,11 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const {
     setError,
     gsAvailable,
-    customGsPath,
     setGsAvailable,
     activeCompressMode,
     setActiveCompressMode,
     useGsPreference,
+    customGsPath,
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
@@ -223,6 +223,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   }, [gsAvailable, useGsPreference]);
 
   useEffect(() => {
+    // find_gs_executable で GS パスを取得し gsAvailable を設定
+    // customGsPath を最優先で使用（Tauri が camelCase→snake_case 変換: customGsPath→custom_gs_path）
     invoke<string | null>("find_gs_executable", {
       customGsPath: customGsPath || null,
     })
@@ -230,14 +232,11 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         setGsPath(path);
         setGsAvailable(!!path);
       })
-      .catch(() => setGsAvailable(false));
-  }, [customGsPath]);
-
-  useEffect(() => {
-    invoke<boolean>("check_ghostscript_installed")
-      .then(setGsAvailable)
-      .catch(() => setGsAvailable(false));
-  }, []);
+      .catch(() => {
+        setGsPath(null);
+        setGsAvailable(false);
+      });
+  }, [customGsPath]); // customGsPath が変わったら再検出
   // ----------------
 
   const pickDir = useCallback(async () => {
@@ -835,7 +834,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               }}
               onClick={() => setUseGs(true)}
             >
-              プロ (GS)
+              {t("compress.pro_gs")}
             </button>
           </div>
         )}
