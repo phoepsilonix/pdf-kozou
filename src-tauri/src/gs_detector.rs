@@ -167,16 +167,21 @@ pub async fn verify_gs_path(path: String) -> Result<String, String> {
 pub async fn pick_gs_executable(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
+    // Windows のみ .exe フィルターを適用する
+    // Linux/macOS は実行ファイルに拡張子がないため add_filter しない（全ファイル表示）
     #[cfg(target_os = "windows")]
-    let exts = &["exe"];
-    #[cfg(not(target_os = "windows"))]
-    let exts: &[&str] = &[];
-
     let path = app
         .dialog()
         .file()
-        .set_title("GS 実行ファイルを選択 (gswin64c.exe / gs)")
-        .add_filter("Ghostscript executable", exts)
+        .set_title("GS 実行ファイルを選択 (gswin64c.exe)")
+        .add_filter("Ghostscript executable", &["exe"])
+        .blocking_pick_file();
+
+    #[cfg(not(target_os = "windows"))]
+    let path = app
+        .dialog()
+        .file()
+        .set_title("GS 実行ファイルを選択 (gs)")
         .blocking_pick_file();
 
     Ok(path.map(|p| p.to_string()))
