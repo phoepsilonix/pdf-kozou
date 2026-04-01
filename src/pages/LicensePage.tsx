@@ -3,6 +3,7 @@
 // -------------------------------------------------------------------------
 
 import { invoke } from "@tauri-apps/api/core";
+import { verifyGsPath, pickGsExecutable, findGsExecutable } from "../lib/tauri";
 import { open } from "@tauri-apps/plugin-shell";
 import React, { useEffect, useState } from "react";
 
@@ -103,24 +104,25 @@ function ShortcutGroup({
 }
 
 const LicensePage: React.FC = () => {
+  const { useGsPreference, setUseGsPreference, customGsPath, setCustomGsPath } = usePdfStore();
+  const { t } = useI18n();
   const [gsStatus, setGsStatus] = useState<"checking" | "found" | "missing">("checking");
   const [gsVersion, setGsVersion] = useState("");
-  const { useGsPreference, setUseGsPreference, customGsPath, setCustomGsPath } = usePdfStore();
   const [gsPathInput, setGsPathInput] = useState(customGsPath);
-  const [verifyStatus, setVerifyStatus] = useState<"idle" | "ok" | "error">("idle");
-  const [verifyMsg, setVerifyMsg] = useState("");
-  const { t } = useI18n();
+  const [gsVerifyMsg, setGsVerifyMsg] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [gsVerifying, setGsVerifying] = useState(false);
 
   const openUrl = async (url: string) => {
     await open(url);
   };
 
-  const checkGs = async () => {
+  const checkGs = async (path?: string) => {
     setGsStatus("checking");
     try {
-      const res = await invoke<string | null>("find_gs_executable", {
-        customGsPath: customGsPath || null,
-      });
+      // path が明示的に渡された場合はそれを使う（undefined は「引数なし」）
+      // 渡されない場合は store の customGsPath を使い、空文字なら undefined
+      const gsPath = path !== undefined ? path : customGsPath || undefined;
+      const res = await findGsExecutable(gsPath);
       if (res) {
         setGsStatus("found");
         setGsVersion(res);
@@ -132,32 +134,41 @@ const LicensePage: React.FC = () => {
     }
   };
 
-  const handlePickGs = async () => {
-    const picked = await invoke<string | null>("pick_gs_executable").catch(() => null);
-    if (picked) setGsPathInput(picked);
+  const handleVerify = async () => {
+    if (!gsPathInput.trim()) return;
+    setGsVerifying(true);
+    setGsVerifyMsg(null);
+    try {
+      const version = await verifyGsPath(gsPathInput.trim());
+      setGsVerifyMsg({ ok: true, msg: `✅ GS ${version}` });
+      setCustomGsPath(gsPathInput.trim());
+      await checkGs(gsPathInput.trim());
+    } catch (e) {
+      setGsVerifyMsg({ ok: false, msg: `❌ ${String(e)}` });
+    } finally {
+      setGsVerifying(false);
+    }
   };
 
-  const handleVerifyAndSave = async () => {
-    const p = gsPathInput.trim();
-    if (!p) {
-      // 空文字でクリア
-      setCustomGsPath("");
-      setVerifyStatus("idle");
-      setVerifyMsg("");
-      await checkGs();
-      return;
-    }
-    setVerifyStatus("idle");
+  const handlePickGs = async () => {
     try {
-      const version = await invoke<string>("verify_gs_path", { path: p });
-      setCustomGsPath(p);
-      setVerifyStatus("ok");
-      setVerifyMsg(`GS ${version}`);
-      await checkGs();
-    } catch (e) {
-      setVerifyStatus("error");
-      setVerifyMsg(String(e));
+      const picked = await pickGsExecutable();
+      if (picked) {
+        setGsPathInput(picked);
+        setGsVerifyMsg(null);
+      }
+    } catch {
+      /* キャンセルは無視 */
     }
+  };
+
+  const handleClearCustomGs = async () => {
+    setGsPathInput("");
+    setGsVerifyMsg(null);
+    setCustomGsPath("");
+    // store 更新は非同期なので、空文字を明示的に渡して自動検索させる
+    // path="" → gsPath="" → findGsExecutable(null) → 自動検索
+    await checkGs("");
   };
 
   useEffect(() => {
@@ -174,6 +185,7 @@ const LicensePage: React.FC = () => {
 
   return (
     <div style={s.container}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <h1 style={s.title}>{t("license.title")}</h1>
 
       {/* 対応形式セクション */}
@@ -273,75 +285,38 @@ const LicensePage: React.FC = () => {
               <span
                 style={{
                   marginLeft: 8,
-                  color: gsStatus === "found" ? "var(--c-ok)" : "var(--c-err)",
+                  color:
+                    gsVerifying || gsStatus === "checking"
+                      ? "var(--c-textDim)"
+                      : gsStatus === "found"
+                        ? "var(--c-ok)"
+                        : "var(--c-err)",
                 }}
               >
-                {gsStatus === "checking" && t("license.diag_checking")}
-                {gsStatus === "found" && t("license.diag_found", { version: gsVersion })}
-                {gsStatus === "missing" && t("license.diag_missing")}
+                {(gsVerifying || gsStatus === "checking") && (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>
+                      ⏳
+                    </span>
+                    {t("license.diag_checking")}
+                  </span>
+                )}
+                {!gsVerifying &&
+                  gsStatus === "found" &&
+                  t("license.diag_found", { version: gsVersion })}
+                {!gsVerifying && gsStatus === "missing" && t("license.diag_missing")}
               </span>
             </div>
-            <button onClick={checkGs} style={s.btnSmall}>
-              {t("license.diag_recheck")}
+            <button
+              onClick={() => checkGs()}
+              style={{
+                ...s.btnSmall,
+                ...(gsVerifying || gsStatus === "checking" ? s.btnDisabled : {}),
+              }}
+              disabled={gsVerifying || gsStatus === "checking"}
+            >
+              {gsStatus === "checking" ? t("license.diag_checking") : t("license.diag_recheck")}
             </button>
-          </div>
-
-          {/* GS パス手動指定 */}
-          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 12, color: "var(--c-textSub)", marginBottom: 2 }}>
-              {t("license.custom_gs_path_label")}
-            </div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <input
-                type="text"
-                value={gsPathInput}
-                onChange={(e) => {
-                  setGsPathInput(e.target.value);
-                  setVerifyStatus("idle");
-                }}
-                placeholder={t("license.custom_gs_path_placeholder")}
-                style={{
-                  flex: 1,
-                  padding: "5px 8px",
-                  background: "var(--c-bg)",
-                  border: "1px solid var(--c-border)",
-                  borderRadius: 6,
-                  color: "var(--c-text)",
-                  fontSize: 12,
-                  fontFamily: "inherit",
-                }}
-              />
-              <button onClick={handlePickGs} style={s.btnSmall}>
-                {t("license.custom_gs_browse")}
-              </button>
-              <button onClick={handleVerifyAndSave} style={s.btnSmall}>
-                {t("license.custom_gs_apply")}
-              </button>
-              {customGsPath && (
-                <button
-                  onClick={() => {
-                    setCustomGsPath("");
-                    setGsPathInput("");
-                    setVerifyStatus("idle");
-                    checkGs();
-                  }}
-                  style={{ ...s.btnSmall, color: "var(--c-err)" }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            {verifyStatus === "ok" && (
-              <span style={{ fontSize: 11, color: "var(--c-ok)" }}>✅ {verifyMsg}</span>
-            )}
-            {verifyStatus === "error" && (
-              <span style={{ fontSize: 11, color: "var(--c-err)" }}>❌ {verifyMsg}</span>
-            )}
-            {customGsPath && verifyStatus === "idle" && (
-              <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
-                📌 {t("license.custom_gs_saved")}: {customGsPath.split(/[/\\]/).pop()}
-              </span>
-            )}
           </div>
 
           {gsStatus === "missing" && (
@@ -357,6 +332,68 @@ const LicensePage: React.FC = () => {
               <button onClick={openGitHub} style={s.btnSmall}>
                 {t("license.diag_github_btn")}
               </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* GS パス手動指定セクション（常時表示） */}
+      <section style={s.section}>
+        <h2 style={s.h2}>{t("license.gs_path_heading")}</h2>
+        <div style={s.settingsCard}>
+          <div style={s.settingText}>
+            <div style={s.settingTitle}>{t("license.gs_path_title")}</div>
+            <div style={s.settingDesc}>{t("license.gs_path_desc")}</div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              marginTop: 8,
+              alignItems: "center",
+              flexWrap: "wrap" as const,
+            }}
+          >
+            <input
+              type="text"
+              value={gsPathInput}
+              onChange={(e) => {
+                setGsPathInput(e.target.value);
+                setGsVerifyMsg(null);
+              }}
+              placeholder={t("license.gs_path_placeholder")}
+              style={s.pathInput}
+              spellCheck={false}
+            />
+            <button style={s.btnSmall} onClick={handlePickGs}>
+              📂 {t("license.gs_path_browse")}
+            </button>
+            <button
+              style={{ ...s.btnSmall, ...(gsVerifying ? s.btnDisabled : {}) }}
+              onClick={handleVerify}
+              disabled={gsVerifying || !gsPathInput.trim()}
+            >
+              ✔ {gsVerifying ? t("license.gs_path_verifying") : t("license.gs_path_verify")}
+            </button>
+            {customGsPath && (
+              <button style={{ ...s.btnSmall, ...s.btnClear }} onClick={handleClearCustomGs}>
+                ✕ {t("license.gs_path_clear")}
+              </button>
+            )}
+          </div>
+          {gsVerifyMsg && (
+            <div
+              style={{
+                ...s.verifyMsg,
+                color: gsVerifyMsg.ok ? "var(--c-ok, #4caf50)" : "var(--c-err, #e55)",
+              }}
+            >
+              {gsVerifyMsg.msg}
+            </div>
+          )}
+          {customGsPath && (
+            <div style={s.currentPath}>
+              {t("license.gs_path_current")}: <code>{customGsPath}</code>
             </div>
           )}
         </div>
@@ -540,15 +577,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-textSub)",
   },
   td: { padding: "8px", borderBottom: "1px solid var(--c-border)" },
-  btnSmall: {
-    padding: "4px 12px",
-    borderRadius: "4px",
-    border: "1px solid var(--c-border)",
-    background: "none",
-    color: "var(--c-text)",
-    cursor: "pointer",
-    fontSize: "12px",
-  },
+  // btnSmall は後方で定義（下記参照）
   downloadBox: {
     marginTop: "16px",
     padding: "16px",
@@ -606,6 +635,33 @@ const s: Record<string, React.CSSProperties> = {
     marginTop: "20px",
     fontStyle: "italic",
   },
+  pathInput: {
+    flex: 1,
+    minWidth: 0,
+    padding: "6px 10px",
+    background: "var(--c-bg)",
+    border: "1px solid var(--c-border)",
+    borderRadius: 6,
+    color: "var(--c-text)",
+    fontSize: 12,
+    fontFamily: "monospace",
+  },
+  btnSmall: {
+    padding: "5px 12px",
+    background: "transparent",
+    border: "1px solid var(--c-border)",
+    borderRadius: 6,
+    color: "var(--c-textSub)",
+    cursor: "pointer",
+    fontSize: 12,
+    fontFamily: "inherit",
+    whiteSpace: "nowrap" as const,
+    flexShrink: 0,
+  },
+  btnClear: { borderColor: "var(--c-err, #e55)", color: "var(--c-err, #e55)" },
+  btnDisabled: { opacity: 0.5, cursor: "not-allowed" as const },
+  verifyMsg: { marginTop: 6, fontSize: 12, fontWeight: 600 },
+  currentPath: { marginTop: 6, fontSize: 11, color: "var(--c-textDim)" },
   footer: { textAlign: "center", marginTop: "48px", fontSize: "11px", color: "var(--c-textDim)" },
 };
 

@@ -537,3 +537,23 @@ export interface MetadataField {
 export async function setPdfMetadata(path: string, metadata: MetadataField[]): Promise<void> {
   await invoke("set_pdf_metadata", { path, metadata });
 }
+
+// ── GS パス管理 ───────────────────────────────────────────────────────────────
+
+/** 指定パスが有効な GS か検証し、バージョン文字列を返す */
+export async function verifyGsPath(path: string): Promise<string> {
+  return invoke<string>("verify_gs_path", { path });
+}
+
+/** ファイル選択ダイアログで GS 実行ファイルを選択する */
+export async function pickGsExecutable(): Promise<string | null> {
+  return invoke<string | null>("pick_gs_executable");
+}
+
+/** カスタムパスを含めて GS を検索する */
+export async function findGsExecutable(customGsPath?: string): Promise<string | null> {
+  return invoke<string | null>("find_gs_executable", {
+    // Tauri は camelCase → snake_case に変換: customGsPath → custom_gs_path
+    customGsPath: customGsPath || null, // 空文字は null として扱う
+  });
+}

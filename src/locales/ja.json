@@ -485,11 +485,15 @@
     "source_heading": "🐙 Source Code",
     "source_body": "PDF小僧はオープンソースプロジェクトとして開発されています。機能要望やバグ報告、最新のソースコードの確認はリポジトリまで。",
     "github_btn": "GitHub",
-    "custom_gs_path_label": "GS 実行ファイルのパスを手動指定（任意）",
-    "custom_gs_path_placeholder": "例: C:\\gs\\gs10.07.0\\bin\\gswin64c.exe",
-    "custom_gs_browse": "参照…",
-    "custom_gs_apply": "適用・保存",
-    "custom_gs_saved": "保存済み"
+    "gs_path_heading": "🔧 GS パスの手動指定",
+    "gs_path_title": "Ghostscript 実行ファイルを指定",
+    "gs_path_desc": "Portable 版 GS など、自動検出できない場合はここで実行ファイルを直接指定できます。指定したパスが最優先で使用されます。",
+    "gs_path_placeholder": "例: C:\\gs\\bin\\gswin64c.exe",
+    "gs_path_browse": "参照",
+    "gs_path_verify": "確認して保存",
+    "gs_path_verifying": "確認中…",
+    "gs_path_clear": "クリア",
+    "gs_path_current": "現在の設定"
   },
   "meta_edit": {
     "title": "メタデータを編集",
