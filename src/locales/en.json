@@ -493,7 +493,12 @@
     "gs_path_verify": "Verify & Save",
     "gs_path_verifying": "Verifying…",
     "gs_path_clear": "Clear",
-    "gs_path_current": "Current setting"
+    "gs_path_current": "Current setting",
+    "gs_browse_folder": "Search in folder",
+    "gs_browse_folder_hint": "Select the GS installation folder to auto-detect the executable",
+    "gs_found_in_dir": "Found",
+    "gs_not_found_in_dir": "GS not found in the selected folder",
+    "gs_candidates": "Detected candidates"
   },
   "meta_edit": {
     "title": "Edit Metadata",

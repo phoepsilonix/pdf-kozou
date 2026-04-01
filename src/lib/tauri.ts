@@ -557,3 +557,13 @@ export async function findGsExecutable(customGsPath?: string): Promise<string | 
     customGsPath: customGsPath || null, // 空文字は null として扱う
   });
 }
+
+/** 指定フォルダ以下で GS を自動検索する */
+export async function findGsInDir(dir: string): Promise<string | null> {
+  return invoke<string | null>("find_gs_in_dir", { dir });
+}
+
+/** OS のデフォルトインストール先から GS 候補を返す */
+export async function suggestGsCandidates(): Promise<string[]> {
+  return invoke<string[]>("suggest_gs_candidates");
+}

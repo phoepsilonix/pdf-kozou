@@ -3,7 +3,13 @@
 // -------------------------------------------------------------------------
 
 import { invoke } from "@tauri-apps/api/core";
-import { verifyGsPath, pickGsExecutable, findGsExecutable } from "../lib/tauri";
+import {
+  verifyGsPath,
+  pickGsExecutable,
+  findGsExecutable,
+  findGsInDir,
+  suggestGsCandidates,
+} from "../lib/tauri";
 import { open } from "@tauri-apps/plugin-shell";
 import React, { useEffect, useState } from "react";
 
@@ -111,6 +117,7 @@ const LicensePage: React.FC = () => {
   const [gsPathInput, setGsPathInput] = useState(customGsPath);
   const [gsVerifyMsg, setGsVerifyMsg] = useState<{ ok: boolean; msg: string } | null>(null);
   const [gsVerifying, setGsVerifying] = useState(false);
+  const [gsCandidates, setGsCandidates] = useState<string[]>([]);
 
   const openUrl = async (url: string) => {
     await open(url);
@@ -162,6 +169,30 @@ const LicensePage: React.FC = () => {
     }
   };
 
+  const handlePickGsFolder = async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+      if (!dir) return;
+      setGsVerifying(true);
+      setGsVerifyMsg(null);
+      const found = await findGsInDir(dir);
+      if (found) {
+        setGsPathInput(found);
+        setGsVerifyMsg({
+          ok: true,
+          msg: `✅ ${t("license.gs_found_in_dir")}: ${found.split(/[/\\]/).pop()}`,
+        });
+      } else {
+        setGsVerifyMsg({ ok: false, msg: `❌ ${t("license.gs_not_found_in_dir")}` });
+      }
+    } catch {
+      /* キャンセルは無視 */
+    } finally {
+      setGsVerifying(false);
+    }
+  };
+
   const handleClearCustomGs = async () => {
     setGsPathInput("");
     setGsVerifyMsg(null);
@@ -173,6 +204,10 @@ const LicensePage: React.FC = () => {
 
   useEffect(() => {
     checkGs();
+    // OS のデフォルト候補を取得
+    suggestGsCandidates()
+      .then(setGsCandidates)
+      .catch(() => {});
   }, []);
 
   const openGitHub = async () => {
@@ -365,8 +400,19 @@ const LicensePage: React.FC = () => {
               style={s.pathInput}
               spellCheck={false}
             />
-            <button style={s.btnSmall} onClick={handlePickGs}>
-              📂 {t("license.gs_path_browse")}
+            <button
+              style={s.btnSmall}
+              onClick={handlePickGsFolder}
+              title={t("license.gs_browse_folder_hint")}
+            >
+              📁 {t("license.gs_browse_folder")}
+            </button>
+            <button
+              style={{ ...s.btnSmall, ...s.btnSecondary }}
+              onClick={handlePickGs}
+              title={t("license.gs_path_browse")}
+            >
+              🔍
             </button>
             <button
               style={{ ...s.btnSmall, ...(gsVerifying ? s.btnDisabled : {}) }}
@@ -381,6 +427,27 @@ const LicensePage: React.FC = () => {
               </button>
             )}
           </div>
+          {/* 候補パス */}
+          {gsCandidates.length > 0 && (
+            <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap" as const, gap: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--c-textDim)", alignSelf: "center" }}>
+                {t("license.gs_candidates")}:
+              </span>
+              {gsCandidates.map((c) => (
+                <button
+                  key={c}
+                  style={s.candidateBtn}
+                  onClick={() => {
+                    setGsPathInput(c);
+                    setGsVerifyMsg(null);
+                  }}
+                  title={c}
+                >
+                  {c.split(/[/\\]/).pop()}
+                </button>
+              ))}
+            </div>
+          )}
           {gsVerifyMsg && (
             <div
               style={{
@@ -659,6 +726,21 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   btnClear: { borderColor: "var(--c-err, #e55)", color: "var(--c-err, #e55)" },
+  btnSecondary: { padding: "5px 8px", opacity: 0.7 },
+  candidateBtn: {
+    padding: "3px 8px",
+    background: "var(--c-accentBg)",
+    border: "1px solid var(--c-accentBd)",
+    borderRadius: 4,
+    color: "var(--c-accent)",
+    cursor: "pointer",
+    fontSize: 11,
+    fontFamily: "inherit",
+    maxWidth: 180,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
   btnDisabled: { opacity: 0.5, cursor: "not-allowed" as const },
   verifyMsg: { marginTop: 6, fontSize: 12, fontWeight: 600 },
   currentPath: { marginTop: 6, fontSize: 11, color: "var(--c-textDim)" },

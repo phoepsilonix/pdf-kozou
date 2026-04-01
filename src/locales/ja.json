@@ -493,7 +493,12 @@
     "gs_path_verify": "確認して保存",
     "gs_path_verifying": "確認中…",
     "gs_path_clear": "クリア",
-    "gs_path_current": "現在の設定"
+    "gs_path_current": "現在の設定",
+    "gs_browse_folder": "フォルダから検索",
+    "gs_browse_folder_hint": "GS のインストールフォルダを選ぶと自動で実行ファイルを検索します",
+    "gs_found_in_dir": "見つかりました",
+    "gs_not_found_in_dir": "フォルダ内に GS が見つかりませんでした",
+    "gs_candidates": "検出された候補"
   },
   "meta_edit": {
     "title": "メタデータを編集",

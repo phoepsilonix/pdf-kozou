@@ -181,8 +181,118 @@ pub async fn pick_gs_executable(app: tauri::AppHandle) -> Result<Option<String>,
     let path = app
         .dialog()
         .file()
-        .set_title("GS 実行ファイルを選択 (gs)")
+        .set_title("GS 実行ファイルを選択 (gs / gswin64c)")
         .blocking_pick_file();
 
     Ok(path.map(|p| p.to_string()))
+}
+
+/// 指定フォルダ以下で GS 実行ファイルを自動検索する
+/// フォルダ選択 → この関数で GS を探す、という UX のために使用
+#[tauri::command]
+pub async fn find_gs_in_dir(dir: String) -> Option<String> {
+    let base = std::path::Path::new(&dir);
+    if !base.is_dir() {
+        return None;
+    }
+
+    #[cfg(target_os = "windows")]
+    let candidates = vec![
+        base.join("bin").join("gswin64c.exe"),
+        base.join("bin").join("gswin32c.exe"),
+        base.join("gswin64c.exe"),
+        base.join("gswin32c.exe"),
+    ];
+    #[cfg(not(target_os = "windows"))]
+    let candidates = vec![base.join("bin").join("gs"), base.join("gs")];
+
+    for p in &candidates {
+        if p.exists() && p.is_file() && verify_gs(&p.to_string_lossy()) {
+            return Some(p.to_string_lossy().into_owned());
+        }
+    }
+
+    // 1段階だけ深く探す（例: gs10.07.0/bin/gswin64c.exe）
+    if let Ok(entries) = std::fs::read_dir(base) {
+        for entry in entries.flatten() {
+            let sub = entry.path();
+            if !sub.is_dir() {
+                continue;
+            }
+
+            #[cfg(target_os = "windows")]
+            let sub_candidates = vec![
+                sub.join("bin").join("gswin64c.exe"),
+                sub.join("bin").join("gswin32c.exe"),
+                sub.join("gswin64c.exe"),
+            ];
+            #[cfg(not(target_os = "windows"))]
+            let sub_candidates = vec![sub.join("bin").join("gs"), sub.join("gs")];
+
+            for p in &sub_candidates {
+                if p.exists() && p.is_file() && verify_gs(&p.to_string_lossy()) {
+                    return Some(p.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// OS のデフォルトインストール先から GS 候補パスを返す
+#[tauri::command]
+pub async fn suggest_gs_candidates() -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        // C:\Program Files\gs\ 以下のバージョンフォルダを探す
+        let base_dirs = [r"C:\Program Files\gs", r"C:\Program Files (x86)\gs"];
+        for base in &base_dirs {
+            let base_path = std::path::Path::new(base);
+            if let Ok(entries) = std::fs::read_dir(base_path) {
+                let mut versions: Vec<_> =
+                    entries.flatten().filter(|e| e.path().is_dir()).collect();
+                // バージョン番号降順（新しいものを先頭に）
+                versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+                for entry in versions {
+                    let exe = entry.path().join("bin").join("gswin64c.exe");
+                    if exe.exists() && verify_gs(&exe.to_string_lossy()) {
+                        candidates.push(exe.to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let paths = [
+            "/usr/bin/gs",
+            "/usr/local/bin/gs",
+            "/opt/ghostscript/bin/gs",
+        ];
+        for p in &paths {
+            if std::path::Path::new(p).exists() && verify_gs(p) {
+                candidates.push(p.to_string());
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let paths = [
+            "/usr/local/bin/gs",
+            "/opt/homebrew/bin/gs",
+            "/opt/local/bin/gs",
+        ];
+        for p in &paths {
+            if std::path::Path::new(p).exists() && verify_gs(p) {
+                candidates.push(p.to_string());
+            }
+        }
+    }
+
+    candidates
 }
