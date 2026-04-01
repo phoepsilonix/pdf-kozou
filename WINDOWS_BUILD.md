@@ -23,39 +23,40 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc
 # Tauri アプリのビルド
 
 ```sh
-OS=mingw USE_MAKE=1 HAVE_OBJCOPY=no cargo tauri build --target x86_64-pc-windows-gnu
+OS="mingw" USE_MAKE=1 HAVE_OBJCOPY="no" cargo tauri build --target x86_64-pc-windows-gnu
 
 ```
 
 未調整
 
 ```sh
-OS=mingw USE_MAKE=1 HAVE_OBJCOPY=no cargo-xwin tauri build --target x86_64-pc-windows-msvc
+OS="mingw" USE_MAKE=1 HAVE_OBJCOPY="no" cargo-xwin tauri build --target x86_64-pc-windows-msvc
 ```
 
 ## 方法1: cargo (推奨・Linux/macOSから)
 
 クロスコンパイル方法。xwin,cross不要。なくてもrustのツールチェインでクロスビルド可能。
 msvcをターゲットにする場合、cargo xwinを用いる。
-ビルドできても、動作不安定な場合あり。クロスビルドは非推奨。
+ビルドが仮にできても、動作不安定な場合あり。クロスビルドは非推奨。
 
-# ターゲット追加
+# ツールチェインインストール＆ターゲット追加
 
+```sh
+rustup toolchain install stable-x86_64-pc-windows-gnu
 rustup target add x86_64-pc-windows-gnu
+```
 
 # ビルド
 
 ```sh
 cd pdf-kozou
 #USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY"
-OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
 
 # Tauri アプリのビルド
-#PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe \
+#PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe ./target/debug/pdf-kozou
 OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
 ```
-
-> 初回実行時に Windows SDK (~3GB) を自動ダウンロードします。
 
 # NSISインストーラー
 
@@ -63,46 +64,14 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-win
 (nsisパッケージ(makensis)をインストールすれば一応はビルドはできます。)
 
 ```sh
-cargo-xwin tauri build --target x86_64-pc-windows-msvc --bundles nsis
-```
-
-```sh
-cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
 ```
 
 ---
 
 ## 方法3: GitHub Actions (CI/CD)
 
-未調整。準備中。
-`.github/workflows/release.yml` でビルドを自動化する。
-
-```yaml
-name: Release
-on:
-  push:
-    tags: ["v*"]
-jobs:
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm ci
-        working-directory: pdf-kozou
-      - run: |
-          cd pdf-kozou
-          cargo build --release -p pdf-kozou-core
-          $env:PDF_KOZOU_CORE="./target/release/pdf-kozou-core.exe"
-          cargo tauri build
-        shell: pwsh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pdf-kozou-windows
-          path: pdf-kozou/src-tauri/target/release/bundle/
-```
+`.github/workflows/build-desktop.yml` を参考にして下さい。
 
 ---
 
@@ -115,31 +84,24 @@ makeコマンド、node.jsなどもインストールしておく。
 
 ```sh
 # 前提: Visual Studio Build Tools + Rust + Node.js 20
-
 # リポジトリをクローン
 git clone <repo>
-cd pdf-kozou/pdf-kozou
+cd pdf-kozou
 
 # 依存インストール
 npm install
 
 # コアをビルド
-OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core
 
 # Tauri アプリビルド
-OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
-```
-
-or
-
-```sh
-OS=mingw HAVE_OBJCOPY=no USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu --bundles nsis
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-windows-gnu
 ```
 
 ### 成果物
 
 ```
-src-tauri/target/release/bundle/
+target/release/bundle/
 ├── msi/          ← Windows インストーラー (.msi)
 └── nsis/         ← NSIS インストーラー (.exe)
 ```
@@ -148,9 +110,9 @@ src-tauri/target/release/bundle/
 
 ## MuPDF の Windows 対応
 
-mupdf-sys 0.6.0 は Linux/macOS/Windows 全対応。
+mupdf-sys 0.6.0 は Linux/macOS/Windows 全対応?
 
-- WebView2がインストールされていない環境では、インストールが必要だが、それ以外は不要。
+- WebView2がインストールされていない環境では、インストールが必要です。
 - exe自体のクロスビルドは可能になったが、インストーラーのクロスビルドも一応はできる。ただ動作が怪しい場合があるので非推奨。
 
 ## ToDo
