@@ -168,7 +168,7 @@ jobs:
       - name: tar.bz2 packages
         run: |
           APP_VER=$(jq -r ".version" package.json)
-          PKG_NAME="PDF-Kozou_${APP_VER}_amd64"
+          PKG_NAME="PDF-Kozou_${APP_VER}_amd64-linux"
           mkdir -p pdf-kozou
           cp -a target/release/pdf-kozou pdf-kozou/
           cp -a target/release/pdf-kozou-core pdf-kozou/
