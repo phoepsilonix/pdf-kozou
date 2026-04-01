@@ -34,8 +34,9 @@ v1.4.5以降
 インストール後、ユーザー環境変数のPATHに`gswin64c`がある場所のPATHを設定するか、あるいは環境変数`PDF_KOZOU_GS_HOME`または`GHOSTSCRIPTHOME`にGhostScriptをインストールしたフォルダ(gswin64cがある一つ上のフォルダ)のPATHを設定してみてください。
 
 v1.4.6以降
-PDF小僧が使用するGhostScriptをユーザーが指定できるようにしました。  
-GhostScriptがインストールされているフォルダを指定するなどで、GhostScriptを認識させることができます。
+PDF小僧が使用するGhostScriptをユーザーが明示的に指定できるようにしました。  
+GhostScriptがインストールされているフォルダを指定するなどで、GhostScriptを認識させることができます。  
+複数バージョン混在の環境でも、ユーザーが明示的に指定したものを用いる形になります。
 
 ### 環境変数の設定例
 
