@@ -352,7 +352,7 @@
     "gs_prepress_label": "Press quality (prepress)",
     "gs_prepress_desc": "300dpi / low compression",
     "gs_prepress_note": "For printing & commercial use. Quality first.",
-    "gs_printer_label": "High quality (prepress)",
+    "gs_printer_label": "High quality (printer)",
     "gs_printer_desc": "300dpi / medium compression",
     "gs_printer_note": "Standard distribution/print.",
     "gs_ebook_label": "eBook/Web (ebook)",
