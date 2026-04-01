@@ -121,6 +121,12 @@ pub async fn run_gs_optimize(
         &input,
     ]);
 
+    // stdin/stdout/stderr をすべて明示する
+    // Windows GUI サブシステムでは未指定だと INVALID_HANDLE_VALUE が渡される
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
     #[cfg(target_os = "windows")]
     {
         // CREATE_NO_WINDOW フラグ (0x08000000)

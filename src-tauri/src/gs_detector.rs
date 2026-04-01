@@ -103,9 +103,14 @@ pub async fn find_gs_executable(custom_gs_path: Option<String>) -> Option<String
 }
 
 /// GS として有効か検証する（--version が通るか）
+/// Windows GUI サブシステムアプリから呼ぶ場合、stdin/stdout/stderr を
+/// すべて明示しないと INVALID_HANDLE_VALUE が渡されてクラッシュする可能性がある。
 fn verify_gs(path: &str) -> bool {
     let mut cmd = std::process::Command::new(path);
-    cmd.arg("--version");
+    cmd.arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
 
     #[cfg(target_os = "windows")]
     {
@@ -113,11 +118,7 @@ fn verify_gs(path: &str) -> bool {
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    cmd.stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    cmd.status().map(|s| s.success()).unwrap_or(false)
 }
 
 /// 指定したパスが有効な GS かどうか検証し、バージョン文字列を返す
@@ -136,14 +137,17 @@ pub async fn verify_gs_path(path: String) -> Result<String, String> {
     }
 
     let mut cmd = std::process::Command::new(p);
+    // stdin/stdout/stderr をすべて明示する
+    // Windows GUI サブシステムでは未指定だと INVALID_HANDLE_VALUE が渡される
     cmd.arg("--version")
-        .stdin(std::process::Stdio::null())   // stdin を明示的に閉じる
-        .stdout(std::process::Stdio::piped()) // stdout を取得
-        .stderr(std::process::Stdio::piped()); // stderr を取得
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
 
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: コンソールウィンドウを表示しない
         cmd.creation_flags(0x08000000);
     }
 
