@@ -87,10 +87,19 @@
     "enabled_hint": "Turn on text to speech",
     "disabled_hint": "Turn off text to speech",
     "enabled": "Text to speech enabled.",
-    "disabled": "Text to speech disabled."
+    "disabled": "Text to speech disabled.",
+    "not_supported_title": "Text-to-speech is not supported in this browser/environment",
+    "not_supported_aria": "Text-to-speech not supported",
+    "on_aria": "{{label}} on. Press Alt+T to turn off",
+    "off_aria": "{{label}} off. Press Alt+T to turn on",
+    "enabled_msg": "Text to speech enabled"
   },
   "locale": {
-    "label": "Language"
+    "label": "Language",
+    "select_aria": "Select display language (Alt+L)",
+    "select_title": "Switch language (Alt+L)",
+    "changed_ja": "言語を日本語に変更しました",
+    "changed_en": "Language changed to English"
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",
@@ -560,5 +569,15 @@
     "zoom": "Zoom in / out",
     "modal_save": "Save",
     "modal_close": "Close"
+  },
+  "convert_options": {
+    "panel_title": "📐 Reflow Document Layout",
+    "hint": "Page size for DOCX / EPUB / HTML",
+    "preset_label": "Preset",
+    "custom": "Custom",
+    "width_pt": "Width (pt)",
+    "height_pt": "Height (pt)",
+    "font_pt": "Font (pt)",
+    "note": "※ Does not affect PDF / images / CBZ and other fixed-layout formats"
   }
 }

@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { ConvertOptions } from "../lib/tauri";
+import { useI18n } from "../lib/i18n";
 
 export interface ConvertOptionsPanelProps {
   options: ConvertOptions;
@@ -15,8 +16,9 @@ export interface ConvertOptionsPanelProps {
 }
 
 // A4: 595 x 842 pt, A5: 420 x 595 pt, US Letter: 612 x 792 pt
+// ラベルは翻訳不要（サイズ表記は世界共通）
 const PRESETS: { label: string; w: number; h: number }[] = [
-  { label: "mutool デフォルト (450×600)", w: 450, h: 600 },
+  { label: "mutool default (450×600)", w: 450, h: 600 },
   { label: "A4 (595×842)", w: 595, h: 842 },
   { label: "A5 (420×595)", w: 420, h: 595 },
   { label: "US Letter (612×792)", w: 612, h: 792 },
@@ -25,6 +27,7 @@ const PRESETS: { label: string; w: number; h: number }[] = [
 const DEBOUNCE_MS = 600; // 数値入力確定までの待機時間
 
 export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelProps) {
+  const { t } = useI18n();
   // 内部 state で入力中の値を保持（props と分離）
   const [localW, setLocalW] = useState(options.layoutW ?? 450);
   const [localH, setLocalH] = useState(options.layoutH ?? 600);
@@ -72,13 +75,13 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
   return (
     <div style={s.panel}>
       <div style={s.header}>
-        📐 リフロー文書レイアウト設定
-        <span style={s.hint}>DOCX / EPUB / HTML のページサイズ指定</span>
+        {t("convert_options.panel_title")}
+        <span style={s.hint}>{t("convert_options.hint")}</span>
       </div>
 
       {/* プリセット選択 */}
       <div style={s.row}>
-        <label style={s.label}>プリセット</label>
+        <label style={s.label}>{t("convert_options.preset_label")}</label>
         <select
           style={s.select}
           value={matchedPreset >= 0 ? matchedPreset : "custom"}
@@ -92,13 +95,13 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
               {p.label}
             </option>
           ))}
-          {matchedPreset < 0 && <option value="custom">カスタム</option>}
+          {matchedPreset < 0 && <option value="custom">{t("convert_options.custom")}</option>}
         </select>
       </div>
 
       {/* 幅 / 高さ / em — 入力中は内部 state のみ更新、確定後に onChange */}
       <div style={s.row}>
-        <label style={s.label}>幅 (pt)</label>
+        <label style={s.label}>{t("convert_options.width_pt")}</label>
         <input
           type="number"
           style={s.numInput}
@@ -112,7 +115,7 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
             emitDebounced(v, localH, localEm);
           }}
         />
-        <label style={{ ...s.label, marginLeft: 12 }}>高さ (pt)</label>
+        <label style={{ ...s.label, marginLeft: 12 }}>{t("convert_options.height_pt")}</label>
         <input
           type="number"
           style={s.numInput}
@@ -126,7 +129,7 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
             emitDebounced(localW, v, localEm);
           }}
         />
-        <label style={{ ...s.label, marginLeft: 12 }}>フォント (pt)</label>
+        <label style={{ ...s.label, marginLeft: 12 }}>{t("convert_options.font_pt")}</label>
         <input
           type="number"
           style={s.numInput}
@@ -142,7 +145,7 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
         />
       </div>
 
-      <div style={s.note}>※ PDF / 画像 / CBZ などレイアウト固定の形式には影響しません</div>
+      <div style={s.note}>{t("convert_options.note")}</div>
     </div>
   );
 }

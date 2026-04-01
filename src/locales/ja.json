@@ -87,10 +87,19 @@
     "enabled_hint": "読み上げをオンにする",
     "disabled_hint": "読み上げをオフにする",
     "enabled": "読み上げ機能をオンにしました。",
-    "disabled": "読み上げ機能をオフにしました。"
+    "disabled": "読み上げ機能をオフにしました。",
+    "not_supported_title": "このブラウザ/環境では音声読み上げに対応していません",
+    "not_supported_aria": "音声読み上げ非対応環境",
+    "on_aria": "{{label}} オン。Alt+Tでオフにできます",
+    "off_aria": "{{label}} オフ。Alt+Tでオンにできます",
+    "enabled_msg": "読み上げをオンにしました"
   },
   "locale": {
-    "label": "言語"
+    "label": "言語",
+    "select_aria": "表示言語を選択 (Alt+L)",
+    "select_title": "言語切り替え (Alt+L)",
+    "changed_ja": "言語を日本語に変更しました",
+    "changed_en": "Language changed to English"
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · オフライン完全動作",
@@ -560,5 +569,15 @@
     "zoom": "ズームイン / ズームアウト",
     "modal_save": "保存",
     "modal_close": "閉じる"
+  },
+  "convert_options": {
+    "panel_title": "📐 リフロー文書レイアウト設定",
+    "hint": "DOCX / EPUB / HTML のページサイズ指定",
+    "preset_label": "プリセット",
+    "custom": "カスタム",
+    "width_pt": "幅 (pt)",
+    "height_pt": "高さ (pt)",
+    "font_pt": "フォント (pt)",
+    "note": "※ PDF / 画像 / CBZ などレイアウト固定の形式には影響しません"
   }
 }

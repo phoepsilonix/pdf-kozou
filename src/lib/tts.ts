@@ -13,7 +13,7 @@
 //   - 前の読み上げを中断して新しい読み上げを優先
 //   - 読み上げ中にエラーが起きても UI に影響しない
 
-import { getCurrentLocale } from "./i18n";
+import { getCurrentLocale, translate } from "./i18n";
 
 const STORAGE_ENABLED_KEY = "pdf-kozou-tts-enabled";
 const STORAGE_RATE_KEY = "pdf-kozou-tts-rate";
@@ -84,8 +84,7 @@ class TtsService {
     if (next && isSupported) {
       this.stop();
       const lang = getCurrentLocale() === "ja" ? "ja-JP" : "en-US";
-      const msg =
-        getCurrentLocale() === "ja" ? "読み上げをオンにしました" : "Text to speech enabled";
+      const msg = translate(getCurrentLocale(), "tts.enabled_msg");
       const utt = new SpeechSynthesisUtterance(msg);
       utt.lang = lang;
       utt.rate = this._rate;

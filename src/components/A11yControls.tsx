@@ -67,15 +67,15 @@ export function TtsToggleButton() {
       }}
       title={
         !isSupported
-          ? "このブラウザ/環境では音声読み上げに対応していません"
+          ? t("tts.not_supported_title")
           : `${enabled ? t("tts.disabled_hint") : t("tts.enabled_hint")} (Alt+T)`
       }
       aria-label={
         !isSupported
-          ? "音声読み上げ非対応環境"
+          ? t("tts.not_supported_aria")
           : enabled
-            ? `${t("tts.label")} オン。Alt+Tでオフにできます`
-            : `${t("tts.label")} オフ。Alt+Tでオンにできます`
+            ? t("tts.on_aria", { label: t("tts.label") })
+            : t("tts.off_aria", { label: t("tts.label") })
       }
       aria-pressed={enabled}
       aria-disabled={!isSupported}
@@ -90,7 +90,7 @@ export function TtsToggleButton() {
 // select 要素を使うことでキーボード操作・スクリーンリーダーが確実に動く
 
 export function LocaleSelector() {
-  const { locale, setLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -98,7 +98,7 @@ export function LocaleSelector() {
       // 変更後の言語で読み上げ
       setTimeout(() => {
         const next = e.target.value as Locale;
-        const msg = next === "ja" ? "言語を日本語に変更しました" : "Language changed to English";
+        const msg = next === "ja" ? t("locale.changed_ja") : t("locale.changed_en");
         tts.speak(msg);
       }, 50);
     },
@@ -122,8 +122,8 @@ export function LocaleSelector() {
       value={locale}
       onChange={handleChange}
       style={selectStyle}
-      aria-label="表示言語を選択 (Alt+L)"
-      title="言語切り替え (Alt+L)"
+      aria-label={t("locale.select_aria")}
+      title={t("locale.select_title")}
     >
       {SUPPORTED_LOCALES.map((loc) => (
         <option key={loc} value={loc}>
