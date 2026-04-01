@@ -1,4 +1,4 @@
-# PDF小僧 (pdf-kozou)
+# PDF小僧 (PDF-Kozou)
 
 > MuPDF ベースの PDF 処理ツール — CLI / デスクトップ GUI(Rust with Tauri) / (Web 対応 未定)
 
@@ -118,7 +118,7 @@ macOS版の提供は未定。動作確認環境がないため。
 
 ### Microsoft Store(Windows)
 
-[PDF-Kozou](https://apps.microsoft.com/detail/9P2HDLPTT5WR?hl=ja-jp&gl=JP&ocid=pdpshare)
+[PDF-Kozou(PDF小僧)](https://apps.microsoft.com/detail/9P2HDLPTT5WR?hl=ja-jp&gl=JP&ocid=pdpshare)
 
 ### ソースからビルド
 

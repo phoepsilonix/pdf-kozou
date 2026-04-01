@@ -2,7 +2,7 @@
 
 ## このプロジェクトのライセンス
 
-PDF小僧 (pdf-kozou) は **GNU Affero General Public License v3.0 (AGPL-3.0)** のもとで公開されています。
+PDF小僧 (PDF-Kozou) は **GNU Affero General Public License v3.0 (AGPL-3.0)** のもとで公開されています。
 
 AGPL-3.0 の全文は [LICENSE](AGPL-3.0-or-later.txt) ファイルを参照してください。
 
