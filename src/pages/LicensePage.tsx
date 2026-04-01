@@ -171,7 +171,6 @@ const LicensePage: React.FC = () => {
 
   const handlePickGsFolder = async () => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
       if (!dir) return;
       setGsVerifying(true);

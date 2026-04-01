@@ -1085,6 +1085,7 @@ fn dispatch_json(line: &str) -> String {
                     path: String,
                     metadata: Vec<MetaField>,
                 }
+                //eprintln!("set_metadata");
                 let r: Req = serde_json::from_str(line)?;
                 let pairs: Vec<(String, String)> =
                     r.metadata.into_iter().map(|f| (f.key, f.value)).collect();

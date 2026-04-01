@@ -720,13 +720,17 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     }
 
     // パスとレイアウトの組み合わせが変わったときだけ再取得
+    // lastInfoKey が "" の場合はメタデータ更新後の強制再取得なのでスキップしない
     const infoKey = `${path}::${convertLayoutW}x${convertLayoutH}em${convertLayoutEm}`;
     if (infoKey === lastInfoKey.current) return;
     lastInfoKey.current = infoKey;
 
-    // PDF かつ pdfInfo が既に渡されていれば再取得不要
+    // PDF かつ pdfInfo が既に渡されていれば通常は再取得不要
+    // ただし onMetaSaved で lastInfoKey を "" にリセットした場合は強制再取得
+    // （infoKey !== "" なので再取得フローに入ってきているはず）
     const isPdf = path.toLowerCase().endsWith(".pdf");
-    if (isPdf && pdfInfo && !isMulti) {
+    const forceRefresh = lastInfoKey.current === infoKey && infoKey !== "";
+    if (isPdf && pdfInfo && !isMulti && !forceRefresh) {
       setActiveInfo(pdfInfo);
       setTotal(pdfInfo.page_count);
       return;
@@ -1224,10 +1228,20 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
             filePath={activePath}
             fileName={fname}
             onMetaSaved={async () => {
-              // メタデータ保存後に getPdfInfo を再取得して表示を更新
+              // メタデータ保存後に getPdfInfo を直接再取得して activeInfo を更新
+              // lastInfoKey を空にリセットすることで useEffect の pdfInfo early return をバイパス
               try {
-                const refreshed = await getPdfInfo(activePath, {});
+                const refreshed = await getPdfInfo(activePath, {
+                  layoutW: convertLayoutW,
+                  layoutH: convertLayoutH,
+                  layoutEm: convertLayoutEm,
+                });
+                // まず activeInfo を更新
                 setActiveInfo(refreshed);
+                // キャッシュをリセット：次の useEffect 実行時に pdfInfo で上書きされないよう
+                // infoKey と異なる値にしておく（useEffect は依存が変わらないと再実行されないため
+                // ここでは直接 setActiveInfo した refreshed を使い続ける）
+                lastInfoKey.current = "__meta_updated__";
               } catch {
                 /* 更新失敗は無視 */
               }
