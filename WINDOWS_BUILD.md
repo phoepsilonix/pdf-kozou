@@ -7,7 +7,7 @@ rustの基本機能でOK。
 そのためWindows向けはWindowsでビルドすることを推奨します。
 Windowsにrust(cargo,tauri-cli),make,mingw(gcc) or llvm(clang)、そしてmakensis.exeもインストールする。node.jsも。
 パス解釈の影響を減らすために、GIT Bashなどで、ターゲットアーキテクチャはx86_64-pc-windows-gnuでビルドを行う。
-nmake,link.exeは、クロスビルドでは用いない。msvcターゲットの場合には、cargo-xwinを使うとできるかもしれませんが、link.exeが必要になるので、msvcターゲットでのビルド挑戦は、Windows上で試してください。
+nmake,link.exeは、クロスビルドでは用いない。msvcターゲットの場合には、cargo-xwinを使うとできるかもしれませんが、link.exeが必要になるので、msvcターゲットでのビルド挑戦は、Windows上で試してください。作者はx86_64-pc-windows-gnuターゲットで開発して、msvcターゲットは未調整です。
 
 # ビルド
 
