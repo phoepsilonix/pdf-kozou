@@ -21,6 +21,8 @@ sudo apt install build-essential cmake clang libclang-dev pkg-config \
 
 ### macOS
 
+未調整
+
 ```bash
 xcode-select --install
 brew install cmake llvm
@@ -28,12 +30,12 @@ brew install cmake llvm
 
 ### Windows
 
-**cargoでビルドできます。(x86_64-pc-windows-gnu)
-**msvcターゲットの場合、cargo-xwin でできるかもしれません。未調整。できないかも。
+**cargoでビルドできます。(x86_64-pc-windows-gnu)  
+**msvcターゲットの場合、cargo-xwin でできるかもしれません。未調整。できないかも。  
+詳しくは[WINDOWS_BUILD.md](WINDOWS_BUILD.md)をご覧ください。
 
-```bash
-cargo install cargo-xwin
-cargo xwin build --release -p pdf-kozou-core --target x86_64-pc-windows-msvc
+```sh
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release -p pdf-kozou-core --target x86_64-pc-windows-gnu
 ```
 
 通常の Windows 環境でビルドする場合:
