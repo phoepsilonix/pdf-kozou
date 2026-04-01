@@ -2,7 +2,7 @@
 
 > MuPDF ベースの PDF 処理ツール — CLI / デスクトップ GUI(Rust with Tauri) / (Web 対応 未定)
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSES.md)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 
 ---
@@ -246,11 +246,11 @@ pdf-kozou
 
 このプロジェクトは **GNU Affero General Public License v3.0 (AGPL-3.0)** のもとで公開されています。
 
-詳細は [LICENSE](LICENSE) および [LICENSES.md](LICENSES.md) を参照してください。
+詳細は [LICENSES](LICENSES.md) を参照してください。
 
 > **商用利用について:** MuPDF は AGPL-3.0 のため、このソフトウェアを組み込んだ
-> プロプライエタリ製品を配布する場合は Artifex 社との商用ライセンス契約が必要です。
-> 詳細は [LICENSES.md](LICENSES.md) の「商用利用」セクションを参照してください。
+> プロプライエタリ製品を(クローズド)配布する場合は Artifex 社との商用ライセンス契約が必要です。
+> 詳細は [LICENSES](LICENSES.md) の「商用利用」セクションを参照してください。
 
 ---
 
