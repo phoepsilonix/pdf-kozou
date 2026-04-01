@@ -123,6 +123,8 @@ pub fn run() {
             platform_cmd::pick_output_dir,
             gs_detector::check_ghostscript_installed,
             gs_detector::find_gs_executable,
+            gs_detector::verify_gs_path,
+            gs_detector::pick_gs_executable,
             gs::run_gs_optimize,
         ])
         .setup(|app| {

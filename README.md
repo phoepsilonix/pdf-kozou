@@ -24,27 +24,37 @@ We have updated the UI to clarify that all core features, including compression,
 GhostScriptがセットアップされているシステムの場合（パスなどでGSが検出されましたら）利用可能になります。  
 Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。  
 管理者権限でのインストールが難しい場合、ユーザー権限でPortable版をインストールすることもご検討ください。  
-[Ghostscript Portable](https://portableapps.com/apps/utilities/ghostscript_portable)  
+[Ghostscript Portable](https://portableapps.com/apps/utilities/ghostscript_portable)
 
 v1.4.5以降  
 インストール後、ユーザー環境変数のPATHに`gswin64c`がある場所のPATHを設定するか、あるいは環境変数`PDF_KOZOU_GS_HOME`または`GHOSTSCRIPTHOME`にGhostScriptをインストールしたフォルダ(gswin64cがある一つ上のフォルダ)のPATHを設定してみてください。
 
 ### 環境変数の設定例
+
 #### Windows
+
 ##### 環境変数の設定
+
 Downloadsフォルダの下に展開してインストールした例。user_nameは適宜、置き換えてください。
+
 ```pwsh
 [Environment]::SetEnvironmentVariable("PDF_KOZOU_GS_HOME", "C:\Users\user_name\Downloads\Ghostscript", "User")
 ```
+
 ##### 環境変数の確認
+
 ```pwsh
 [Environment]::GetEnvironmentVariable("PDF_KOZOU_GS_HOME", "User")
 ```
+
 ##### 環境変数の取り消し
+
 ```pwsh
 [Environment]::SetEnvironmentVariable("PDF_KOZOU_GS_HOME", "", "User")
 ```
+
 または
+
 ```pwsh
 [Environment]::SetEnvironmentVariable("PDF_KOZOU_GS_HOME", $null, "User")
 ```

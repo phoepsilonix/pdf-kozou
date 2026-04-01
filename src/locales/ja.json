@@ -484,7 +484,12 @@
     "license_usage_tauri": "アプリフレームワーク",
     "source_heading": "🐙 Source Code",
     "source_body": "PDF小僧はオープンソースプロジェクトとして開発されています。機能要望やバグ報告、最新のソースコードの確認はリポジトリまで。",
-    "github_btn": "GitHub"
+    "github_btn": "GitHub",
+    "custom_gs_path_label": "GS 実行ファイルのパスを手動指定（任意）",
+    "custom_gs_path_placeholder": "例: C:\\gs\\gs10.07.0\\bin\\gswin64c.exe",
+    "custom_gs_browse": "参照…",
+    "custom_gs_apply": "適用・保存",
+    "custom_gs_saved": "保存済み"
   },
   "meta_edit": {
     "title": "メタデータを編集",

@@ -40,6 +40,9 @@ interface PdfStore {
   activeCompressMode: "mupdf" | "gs";
   setActiveCompressMode: (mode: "mupdf" | "gs") => void;
   initCompressMode: () => void;
+  /** ユーザーが明示指定した GS 実行ファイルのパス（空文字列 = 未指定） */
+  customGsPath: string;
+  setCustomGsPath: (path: string) => void;
 
   trimMargins: TrimMargins;
   setTrimMargins: (m: TrimMargins) => void;
@@ -111,6 +114,8 @@ export const usePdfStore = create<PdfStore>()(
         const { gsAvailable, useGsPreference } = get();
         set({ activeCompressMode: gsAvailable && useGsPreference ? "gs" : "mupdf" });
       },
+      customGsPath: "",
+      setCustomGsPath: (path) => set({ customGsPath: path }),
 
       trimMargins: { left: 0, right: 0, top: 0, bottom: 0 },
       setTrimMargins: (m) => set({ trimMargins: m }),
@@ -138,6 +143,7 @@ export const usePdfStore = create<PdfStore>()(
       name: "pdf-kozou-storage",
       partialize: (state) => ({
         useGsPreference: state.useGsPreference,
+        customGsPath: state.customGsPath,
         lastSaveDir: state.lastSaveDir,
         convertLayoutW: state.convertLayoutW,
         convertLayoutH: state.convertLayoutH,

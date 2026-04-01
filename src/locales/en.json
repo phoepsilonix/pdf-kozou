@@ -484,7 +484,12 @@
     "license_usage_tauri": "Application framework",
     "source_heading": "🐙 Source Code",
     "source_body": "PDF Kozou is an open source project. Feature requests, bug reports, and the latest source code are available at the repository.",
-    "github_btn": "GitHub"
+    "github_btn": "GitHub",
+    "custom_gs_path_label": "Manually specify GS executable path (optional)",
+    "custom_gs_path_placeholder": "e.g. C:\\gs\\gs10.07.0\\bin\\gswin64c.exe",
+    "custom_gs_browse": "Browse…",
+    "custom_gs_apply": "Apply & Save",
+    "custom_gs_saved": "Saved"
   },
   "meta_edit": {
     "title": "Edit Metadata",

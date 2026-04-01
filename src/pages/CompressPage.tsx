@@ -117,6 +117,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const {
     setError,
     gsAvailable,
+    customGsPath,
     setGsAvailable,
     activeCompressMode,
     setActiveCompressMode,
@@ -222,14 +223,15 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   }, [gsAvailable, useGsPreference]);
 
   useEffect(() => {
-    invoke<string | null>("find_gs_executable")
+    invoke<string | null>("find_gs_executable", {
+      customGsPath: customGsPath || null,
+    })
       .then((path) => {
         setGsPath(path);
-        // パスが見つかれば GS 利用可能とする
         setGsAvailable(!!path);
       })
       .catch(() => setGsAvailable(false));
-  }, []);
+  }, [customGsPath]);
 
   useEffect(() => {
     invoke<boolean>("check_ghostscript_installed")

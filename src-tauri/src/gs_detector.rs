@@ -2,38 +2,58 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-// pdf-kozou-core/src/gs_detector.rs
+// src-tauri/src/gs_detector.rs
 
 #[cfg(target_os = "windows")]
 use std::path::Path;
 use std::path::PathBuf;
 
 #[tauri::command]
-pub async fn check_ghostscript_installed() -> bool {
-    find_gs_executable().await.is_some()
+pub async fn check_ghostscript_installed(custom_gs_path: Option<String>) -> bool {
+    find_gs_executable(custom_gs_path).await.is_some()
 }
 
+/// GS 実行ファイルを優先順位に従って検索する。
+///
+/// 優先順位:
+///   1. ユーザーが明示指定したパス（custom_gs_path）
+///   2. 環境変数 PDF_KOZOU_GS_HOME / GHOSTSCRIPTHOME 配下の bin/
+///   3. PATH 上の gs / gswin64c
+///   4. Windows レジストリ（Windows のみ）
 #[tauri::command]
-pub async fn find_gs_executable() -> Option<String> {
-    // 1. PATH上の実行ファイルを優先 (gs, gswin64c, gswin32c)
+pub async fn find_gs_executable(custom_gs_path: Option<String>) -> Option<String> {
     #[cfg(not(target_os = "windows"))]
     let bins = vec!["gs"];
     #[cfg(target_os = "windows")]
     let bins = vec!["gswin64c", "gswin32c", "gs"];
-    let envs = vec!["PDF_KOZOU_GS_HOME", "GHOSTSCRIPTHOME" ];
 
-    // 環境変数GHOSTSCRIPTHOME またはPDF_KOZOU_GS_HOME下のbinフォルダ 優先
+    // 1. ユーザーが明示指定したパスを最優先
+    //    - 設定されていて有効なら → それを使う（終了）
+    //    - 設定されていても無効（ファイルなし等）→ 自動検索へフォールスルー
+    //    - 設定なし（None / 空文字）→ 自動検索へフォールスルー
+    if let Some(ref custom) = custom_gs_path {
+        let trimmed = custom.trim();
+        if !trimmed.is_empty() {
+            let p = std::path::Path::new(trimmed);
+            if p.exists() && p.is_file() && verify_gs(trimmed) {
+                // 有効なパス → 使用する
+                return Some(trimmed.to_string());
+            }
+            // 無効なパスは無視して自動検索へ続行
+        }
+    }
+
+    // 2. 環境変数 PDF_KOZOU_GS_HOME / GHOSTSCRIPTHOME 配下の bin/
+    let envs = ["PDF_KOZOU_GS_HOME", "GHOSTSCRIPTHOME"];
     for env_key in &envs {
-        // 1. 環境変数を取得（Result型なので if let で正常系のみ取り出す）
         if let Ok(env_val) = std::env::var(env_key) {
             for bin in &bins {
-                let mut exe_path = PathBuf::from(env_val.clone()).join("bin");
                 let exe_name = if cfg!(target_os = "windows") {
                     format!("{bin}.exe")
                 } else {
                     bin.to_string()
                 };
-                exe_path.push(exe_name);
+                let exe_path = PathBuf::from(env_val.clone()).join("bin").join(&exe_name);
                 if exe_path.exists() {
                     return Some(exe_path.to_string_lossy().into_owned());
                 }
@@ -41,14 +61,14 @@ pub async fn find_gs_executable() -> Option<String> {
         }
     }
 
-    // PATHの通っている場所を探す
-    for bin in bins {
+    // 3. PATH 上を探す
+    for bin in &bins {
         if let Ok(path) = which::which(bin) {
             return Some(path.to_string_lossy().into_owned());
         }
     }
 
-    // 2. Windowsの場合のみレジストリを深掘り
+    // 4. Windows レジストリ
     #[cfg(target_os = "windows")]
     {
         use winreg::enums::*;
@@ -64,7 +84,6 @@ pub async fn find_gs_executable() -> Option<String> {
                     for version in gs_key.enum_keys().map(|x| x.unwrap_or_default()) {
                         if let Ok(ver_key) = gs_key.open_subkey(&version) {
                             if let Ok(dll_path) = ver_key.get_value::<String, _>("GS_DLL") {
-                                // DLLのパスから実行ファイル(exe)のパスを推測
                                 let exe_path = dll_path
                                     .to_lowercase()
                                     .replace("gsdll64.dll", "gswin64c.exe")
@@ -79,5 +98,82 @@ pub async fn find_gs_executable() -> Option<String> {
             }
         }
     }
+
     None
+}
+
+/// GS として有効か検証する（--version が通るか）
+fn verify_gs(path: &str) -> bool {
+    let mut cmd = std::process::Command::new(path);
+    cmd.arg("--version");
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    cmd.stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// 指定したパスが有効な GS かどうか検証し、バージョン文字列を返す
+#[tauri::command]
+pub async fn verify_gs_path(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("パスが空です".to_string());
+    }
+    let p = std::path::Path::new(trimmed);
+    if !p.exists() {
+        return Err(format!("ファイルが見つかりません: {trimmed}"));
+    }
+    if !p.is_file() {
+        return Err(format!("ファイルではありません: {trimmed}"));
+    }
+
+    let mut cmd = std::process::Command::new(p);
+    cmd.arg("--version")
+        .stdin(std::process::Stdio::null())   // stdin を明示的に閉じる
+        .stdout(std::process::Stdio::piped()) // stdout を取得
+        .stderr(std::process::Stdio::piped()); // stderr を取得
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let out = cmd.output().map_err(|e| format!("GS の実行に失敗: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(format!(
+            "GS の応答が不正: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// ファイル選択ダイアログで GS 実行ファイルを選ぶ
+#[tauri::command]
+pub async fn pick_gs_executable(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    #[cfg(target_os = "windows")]
+    let exts = &["exe"];
+    #[cfg(not(target_os = "windows"))]
+    let exts: &[&str] = &[];
+
+    let path = app
+        .dialog()
+        .file()
+        .set_title("GS 実行ファイルを選択 (gswin64c.exe / gs)")
+        .add_filter("Ghostscript executable", exts)
+        .blocking_pick_file();
+
+    Ok(path.map(|p| p.to_string()))
 }

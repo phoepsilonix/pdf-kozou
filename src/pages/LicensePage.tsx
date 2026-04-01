@@ -105,7 +105,10 @@ function ShortcutGroup({
 const LicensePage: React.FC = () => {
   const [gsStatus, setGsStatus] = useState<"checking" | "found" | "missing">("checking");
   const [gsVersion, setGsVersion] = useState("");
-  const { useGsPreference, setUseGsPreference } = usePdfStore();
+  const { useGsPreference, setUseGsPreference, customGsPath, setCustomGsPath } = usePdfStore();
+  const [gsPathInput, setGsPathInput] = useState(customGsPath);
+  const [verifyStatus, setVerifyStatus] = useState<"idle" | "ok" | "error">("idle");
+  const [verifyMsg, setVerifyMsg] = useState("");
   const { t } = useI18n();
 
   const openUrl = async (url: string) => {
@@ -115,7 +118,9 @@ const LicensePage: React.FC = () => {
   const checkGs = async () => {
     setGsStatus("checking");
     try {
-      const res = await invoke<string | null>("find_gs_executable");
+      const res = await invoke<string | null>("find_gs_executable", {
+        customGsPath: customGsPath || null,
+      });
       if (res) {
         setGsStatus("found");
         setGsVersion(res);
@@ -124,6 +129,34 @@ const LicensePage: React.FC = () => {
       }
     } catch {
       setGsStatus("missing");
+    }
+  };
+
+  const handlePickGs = async () => {
+    const picked = await invoke<string | null>("pick_gs_executable").catch(() => null);
+    if (picked) setGsPathInput(picked);
+  };
+
+  const handleVerifyAndSave = async () => {
+    const p = gsPathInput.trim();
+    if (!p) {
+      // 空文字でクリア
+      setCustomGsPath("");
+      setVerifyStatus("idle");
+      setVerifyMsg("");
+      await checkGs();
+      return;
+    }
+    setVerifyStatus("idle");
+    try {
+      const version = await invoke<string>("verify_gs_path", { path: p });
+      setCustomGsPath(p);
+      setVerifyStatus("ok");
+      setVerifyMsg(`GS ${version}`);
+      await checkGs();
+    } catch (e) {
+      setVerifyStatus("error");
+      setVerifyMsg(String(e));
     }
   };
 
@@ -251,6 +284,64 @@ const LicensePage: React.FC = () => {
             <button onClick={checkGs} style={s.btnSmall}>
               {t("license.diag_recheck")}
             </button>
+          </div>
+
+          {/* GS パス手動指定 */}
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 12, color: "var(--c-textSub)", marginBottom: 2 }}>
+              {t("license.custom_gs_path_label")}
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="text"
+                value={gsPathInput}
+                onChange={(e) => {
+                  setGsPathInput(e.target.value);
+                  setVerifyStatus("idle");
+                }}
+                placeholder={t("license.custom_gs_path_placeholder")}
+                style={{
+                  flex: 1,
+                  padding: "5px 8px",
+                  background: "var(--c-bg)",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: 6,
+                  color: "var(--c-text)",
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                }}
+              />
+              <button onClick={handlePickGs} style={s.btnSmall}>
+                {t("license.custom_gs_browse")}
+              </button>
+              <button onClick={handleVerifyAndSave} style={s.btnSmall}>
+                {t("license.custom_gs_apply")}
+              </button>
+              {customGsPath && (
+                <button
+                  onClick={() => {
+                    setCustomGsPath("");
+                    setGsPathInput("");
+                    setVerifyStatus("idle");
+                    checkGs();
+                  }}
+                  style={{ ...s.btnSmall, color: "var(--c-err)" }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {verifyStatus === "ok" && (
+              <span style={{ fontSize: 11, color: "var(--c-ok)" }}>✅ {verifyMsg}</span>
+            )}
+            {verifyStatus === "error" && (
+              <span style={{ fontSize: 11, color: "var(--c-err)" }}>❌ {verifyMsg}</span>
+            )}
+            {customGsPath && verifyStatus === "idle" && (
+              <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
+                📌 {t("license.custom_gs_saved")}: {customGsPath.split(/[/\\]/).pop()}
+              </span>
+            )}
           </div>
 
           {gsStatus === "missing" && (
