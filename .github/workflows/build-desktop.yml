@@ -173,7 +173,7 @@ jobs:
           cp -a target/release/pdf-kozou pdf-kozou/
           cp -a target/release/pdf-kozou-core pdf-kozou/
           tar cf ${PKG_NAME}.tar pdf-kozou/
-          bzip2 -z -9 -f --best ${PKG_NAME}.tar 
+          bzip2 -z -9 -f --best ${PKG_NAME}.tar
           mkdir -p target/release/bundle/tbz/
           mv ${PKG_NAME}.tar.bz2 target/release/bundle/tbz/
 
