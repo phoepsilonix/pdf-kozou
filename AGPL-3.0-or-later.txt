@@ -1,4 +1,4 @@
-PDF小僧 v1.0.0
+PDF小僧(PDF-Kozou) v1.4.7
 Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
 
                     GNU AFFERO GENERAL PUBLIC LICENSE
