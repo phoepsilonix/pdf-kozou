@@ -192,7 +192,9 @@ brew install cmake
 
 ### Windows で MSVC のエラー
 
-`cargo-xwin` を使うと Linux 環境から MSVC ABI でビルドでき、ほとんどの問題を回避できます。link.exeも必要です。
+`cargo-xwin` を使うと Linux 環境から MSVC ABI でビルドでき、ほとんどの問題を回避できます。  
+ただmupdf-sysは、link.exeも必要で、うまくいかないと思います。特にクロスビルドは難しいと思います。  
+また、すべての他のライブラリも含めてビルドできないと、最終的にリンクできないので、調整できていません。  
 ネイティブ Windows ビルドの場合は Visual Studio Build Tools と cmake の PATH 設定を確認してください。
 MSVCターゲットは未調整、未確認です。
 作者はWindows上で、x86_64-pc-windows-gnuでのビルドのみ確認済みです。
