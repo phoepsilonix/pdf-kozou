@@ -863,7 +863,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
         <span style={c.fileSub} title={fname}>
           {fname}
         </span>
-        <span style={c.pageSub}>{pdfInfo.page_count}ページ</span>
+        <span style={c.pageSub}>{t("common.pages", { count: String(pdfInfo.page_count) })}</span>
       </div>
 
       <div style={c.scrollArea}>

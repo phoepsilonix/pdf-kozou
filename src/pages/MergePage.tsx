@@ -397,7 +397,7 @@ useEffect(() => {
         <div style={s.resultBody}>
           <div style={s.resultIcon}>✓</div>
           <div style={s.resultStat}>
-            {result.page_count}ページ / {mb} MB
+            {t("common.pages", { count: String(result.page_count) })} / {mb} MB
           </div>
           <div style={s.resultSub}>{savePath.split(/[/\\]/).pop()}</div>
           <div style={s.resultDetail}>
@@ -497,7 +497,10 @@ useEffect(() => {
                   <div style={s.segLine} />
                   <span style={s.segLabel}>
                     {si + 1}. {seg.label}
-                    <span style={s.segPageCount}> ({seg.pages.length}ページ)</span>
+                    <span style={s.segPageCount}>
+                      {" "}
+                      ({t("common.pages", { count: String(seg.pages.length) })})
+                    </span>
                   </span>
                   <div style={s.segLine} />
                 </div>
@@ -652,7 +655,9 @@ useEffect(() => {
                     <span style={s.itemName} title={entry.path}>
                       {entry.filename}
                     </span>
-                    <span style={s.itemPages}>{entry.pageCount}ページ</span>
+                    <span style={s.itemPages}>
+                      {t("common.pages", { count: String(entry.pageCount) })}
+                    </span>
                   </div>
                   <div style={s.moveBtns}>
                     <button
@@ -733,13 +738,15 @@ useEffect(() => {
 
             <div style={s.execArea}>
               <div style={s.summaryRow}>
-                <span style={s.sumFile}>{entries.length}ファイル</span>
+                <span style={s.sumFile}>
+                  {t("common.files", { count: String(entries.length) })}
+                </span>
                 <span style={s.sumDot}>·</span>
                 <span style={s.sumPages}>
                   {t("merge.total_pages", { pages: String(totalPages) })}
                 </span>
                 <span style={s.sumArrow}>→</span>
-                <span style={s.sumOut}>1ファイル</span>
+                <span style={s.sumOut}>{t("common.file_single")}</span>
               </div>
               <div style={s.execBtns}>
                 <button

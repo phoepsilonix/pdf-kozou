@@ -221,7 +221,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       );
       setResult(res);
       setSavedDir(outDir);
-      const msg = `${res.files.length}ファイルに分割しました。`;
+      const msg = t("common.files_split_done", { count: String(res.files.length) });
       setStatusMsg(msg);
       announceSuccess("done.split", { count: String(res.files.length) });
       setPhase("result");
@@ -363,7 +363,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file}</span>
-                <span style={s.bpLogMeta}>→ {d.count}ファイル</span>
+                <span style={s.bpLogMeta}>
+                  {t("common.files_arrow", { count: String(d.count) })}
+                </span>
               </div>
             ))}
             {batchProgress.errors.map((e, i) => (
@@ -414,7 +416,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file}</span>
-                <span style={s.bpLogMeta}>→ {d.count}ファイル</span>
+                <span style={s.bpLogMeta}>
+                  {t("common.files_arrow", { count: String(d.count) })}
+                </span>
               </div>
             ))}
             {batchProgress.errors.map((e, i) => (
@@ -479,7 +483,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             : t("split.title_single")}
         </span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
-        {!isBatch && <span style={s.pageBadge}>{total}ページ</span>}
+        {!isBatch && <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>}
         <div style={{ flex: 1 }} />
         <span style={s.groupCount}>
           {isBatch
@@ -869,9 +873,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                       <span style={s.batchFileMeta}>{f.pageCount}p</span>
                       <span style={s.batchFileMeta}>
                         {modeId === "all"
-                          ? `→ ${f.pageCount}ファイル`
+                          ? t("common.files_arrow", { count: String(f.pageCount) })
                           : modeId === "every"
-                            ? `→ ${Math.ceil(f.pageCount / everyN)}ファイル`
+                            ? t("common.files_arrow", {
+                                count: String(Math.ceil(f.pageCount / everyN)),
+                              })
                             : t("split.select_as_ranges")}
                       </span>
                     </div>
@@ -890,7 +896,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   <div key={gi} style={s.group}>
                     <div style={s.groupLabel}>
                       <span style={s.groupNum}>#{gi + 1}</span>
-                      <span style={s.groupPages}>{pages.length}ページ</span>
+                      <span style={s.groupPages}>
+                        {t("common.pages", { count: String(pages.length) })}
+                      </span>
                       <span style={s.groupRange}>
                         {pages.length === 1
                           ? `p.${pages[0] + 1}`

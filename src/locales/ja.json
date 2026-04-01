@@ -135,7 +135,17 @@
     "error_count_suffix": " · {{count}}件エラー",
     "other_files": "… 他 {{count}} ファイル",
     "success_count2": "{{count}}件成功",
-    "back_btn": "← 戻る"
+    "back_btn": "← 戻る",
+    "pages": "{{count}}ページ",
+    "page_n": "ページ {{n}}",
+    "page_of": "{{current}} / {{total}} ページ",
+    "page_placeholder": "ページ {{n}}",
+    "files": "{{count}}ファイル",
+    "file_single": "1ファイル",
+    "files_split_done": "{{count}}ファイルに分割しました。",
+    "files_arrow": "→ {{count}}ファイル",
+    "pane_files": "ファイル ({{count}})",
+    "preview_pages": "プレビュー — {{count}}ページ"
   },
   "split": {
     "processing": "分割処理中…",
@@ -396,7 +406,10 @@
     "meta_creator": "アプリ",
     "prev_hit": "前のヒット (Shift+Enter)",
     "next_hit": "次のヒット (Enter)",
-    "info_title": "ファイル情報"
+    "info_title": "ファイル情報",
+    "title_single": "ビューワー",
+    "announce_page": "{{n}}ページ",
+    "page_alt": "ページ {{n}}"
   },
   "page_selector": {
     "all": "全ページ",

@@ -419,7 +419,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             : t("image.title_single")}
         </span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
-        {!isBatch && <span style={s.pageBadge}>{total}ページ</span>}
+        {!isBatch && <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>}
         <div style={{ flex: 1 }} />
         <span style={s.outBadge}>
           → {format.toUpperCase()} {pw}×{ph}px
@@ -528,7 +528,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             rangeInputRef={pagesInputRef}
           />
 
-          <div style={s.secLabel}>ファイル名プレフィックス</div>
+          <div style={s.secLabel}>{t("image.prefix_label")}</div>
           <div style={s.prefixRow}>
             <input
               type="text"
@@ -601,7 +601,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     )}
                     <div style={s.batchFileInfo}>
                       <span style={s.batchFileName}>{f.filename}</span>
-                      <span style={s.batchFileMeta}>{f.pageCount}ページ</span>
+                      <span style={s.batchFileMeta}>
+                        {t("common.pages", { count: String(f.pageCount) })}
+                      </span>
                       <span style={s.batchFileMeta}>
                         {t("image.result_suffix", {
                           pages: String(f.pageCount),
@@ -615,7 +617,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           ) : (
             <>
-              <div style={s.previewHead}>プレビュー — {total}ページ</div>
+              <div style={s.previewHead}>{t("common.preview_pages", { count: String(total) })}</div>
               <div style={s.thumbGrid}>
                 {Array.from({ length: total }, (_, i) => {
                   const pb = pdfInfo.pages?.[i];

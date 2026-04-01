@@ -871,7 +871,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   // ページ移動時に読み上げ
   useEffect(() => {
     if (total > 0) {
-      announce(`${viewPage + 1}ページ`, false);
+      announce(t("viewer.announce_page", { n: String(viewPage + 1) }), false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewPage]);
@@ -960,11 +960,11 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>ビューワー</span>
+        <span style={s.title}>{t("viewer.title_single")}</span>
         <span style={s.fileSub} title={activePath}>
           {fname}
         </span>
-        <span style={s.pageBadge}>{total}ページ</span>
+        <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>
         <div style={{ flex: 1 }} />
         <button
           style={{ ...s.zBtn, ...(showSearch ? s.btnOn : {}), marginRight: 4 }}
@@ -1033,7 +1033,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         {/* 左ペイン */}
         {isMulti && (
           <div style={s.filePane}>
-            <div style={s.paneHead}>ファイル ({fileList.length})</div>
+            <div style={s.paneHead}>
+              {t("common.pane_files", { count: String(fileList.length) })}
+            </div>
             <div style={{ flex: 1, overflowY: "auto" }}>
               {fileList.map((f, i) => {
                 const cover = fileCoverThumbs.get(f.path);
@@ -1157,7 +1159,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                   >
                     <img
                       src={`data:image/jpeg;base64,${mainImg}`}
-                      alt={`ページ ${viewPage + 1}`}
+                      alt={t("viewer.page_alt", { n: String(viewPage + 1) })}
                       style={{ display: "block" }}
                       onLoad={(e) => {
                         const img = e.currentTarget;

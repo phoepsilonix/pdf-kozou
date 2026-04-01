@@ -780,7 +780,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       <div style={s.sidebar}>
         <div style={s.sbHead}>
           <span style={s.sbTitle}>{t("trim.page_list")}</span>
-          <span style={s.sbCount}>{pdfInfo.page_count} ページ</span>
+          <span style={s.sbCount}>{t("common.pages", { count: String(pdfInfo.page_count) })}</span>
         </div>
         <div style={s.thumbList}>
           {Array.from({ length: pdfInfo.page_count }, (_, i) => (
@@ -799,7 +799,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
                   alt={`Page ${i + 1}`}
                 />
               ) : (
-                <div style={s.thumbPh}>ページ {i + 1}</div>
+                <div style={s.thumbPh}>{t("common.page_placeholder", { n: String(i + 1) })}</div>
               )}
               <span style={s.thumbN}>{i + 1}</span>
             </button>
@@ -811,7 +811,10 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         <div style={s.mainHead}>
           <span style={s.mainTitle}>{t("trim.settings_title")}</span>
           <span style={s.pageInd}>
-            {previewPage + 1} / {pdfInfo.page_count} ページ
+            {t("common.page_of", {
+              current: String(previewPage + 1),
+              total: String(pdfInfo.page_count),
+            })}
           </span>
           {/* ズームコントロール */}
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
@@ -942,7 +945,7 @@ function ResultView({
       <div style={r.gallery}>
         {images.map((b64, i) => (
           <div key={i} style={r.card}>
-            <span style={r.pageN}>{i + 1} ページ</span>
+            <span style={r.pageN}>{t("common.page_n", { n: String(i + 1) })}</span>
             {b64 ? (
               <img src={`data:image/jpeg;base64,${b64}`} style={r.img} alt="" />
             ) : (

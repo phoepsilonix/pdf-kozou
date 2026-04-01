@@ -135,7 +135,17 @@
     "error_count_suffix": " · {{count}} errors",
     "other_files": "… {{count}} more files",
     "success_count2": "{{count}} succeeded",
-    "back_btn": "← Back"
+    "back_btn": "← Back",
+    "pages": "{{count}} pages",
+    "page_n": "Page {{n}}",
+    "page_of": "{{current}} / {{total}} pages",
+    "page_placeholder": "Page {{n}}",
+    "files": "{{count}} files",
+    "file_single": "1 file",
+    "files_split_done": "Split into {{count}} files.",
+    "files_arrow": "→ {{count}} files",
+    "pane_files": "Files ({{count}})",
+    "preview_pages": "Preview — {{count}} pages"
   },
   "split": {
     "processing": "Splitting…",
@@ -396,7 +406,10 @@
     "meta_creator": "App",
     "prev_hit": "Previous hit (Shift+Enter)",
     "next_hit": "Next hit (Enter)",
-    "info_title": "File Info"
+    "info_title": "File Info",
+    "title_single": "Viewer",
+    "announce_page": "Page {{n}}",
+    "page_alt": "Page {{n}}"
   },
   "page_selector": {
     "all": "All pages",

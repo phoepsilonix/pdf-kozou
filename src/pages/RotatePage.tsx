@@ -478,7 +478,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             : t("rotate.title_single")}
         </span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
-        <span style={s.pageBadge}>{n}ページ</span>
+        <span style={s.pageBadge}>{t("common.pages", { count: String(n) })}</span>
         <div style={{ flex: 1 }} />
         {changedPages.length > 0 && (
           <span style={s.changeBadge}>
