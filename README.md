@@ -22,12 +22,20 @@ We have updated the UI to clarify that all core features, including compression,
 ## プロ(GS連携)モード利用のシステム要件
 
 GhostScriptがセットアップされているシステムの場合（パスなどでGSが検出されましたら）利用可能になります。  
+またGhostScriptがインストールされているフォルダなどを手動で指定する機能も追加しました。
+自動認識よりも、ユーザーが指定したものが優先使用されます。
+
+### Windows
 Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。  
 管理者権限でのインストールが難しい場合、ユーザー権限でPortable版をインストールすることもご検討ください。  
 [Ghostscript Portable](https://portableapps.com/apps/utilities/ghostscript_portable)
 
 v1.4.5以降  
 インストール後、ユーザー環境変数のPATHに`gswin64c`がある場所のPATHを設定するか、あるいは環境変数`PDF_KOZOU_GS_HOME`または`GHOSTSCRIPTHOME`にGhostScriptをインストールしたフォルダ(gswin64cがある一つ上のフォルダ)のPATHを設定してみてください。
+
+v1.4.6以降
+PDF小僧が使用するGhostScriptをユーザーが指定できるようにしました。  
+GhostScriptがインストールされているフォルダを指定するなどで、GhostScriptを認識させることができます。
 
 ### 環境変数の設定例
 
