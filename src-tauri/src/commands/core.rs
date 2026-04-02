@@ -505,3 +505,21 @@ pub async fn set_pdf_metadata(path: String, metadata: Value) -> Result<()> {
     call_core_json("set_metadata", payload).await?;
     Ok(())
 }
+
+/// 画像ファイル（JPEG/PNG/SVG）のメタデータを読み込む
+#[tauri::command]
+pub async fn get_image_metadata(path: String) -> Result<Value> {
+    let payload = serde_json::json!({ "path": path });
+    call_core_json("get_image_metadata", payload).await
+}
+
+/// 画像ファイル（JPEG/PNG/SVG）のメタデータを上書き保存する
+#[tauri::command]
+pub async fn set_image_metadata(path: String, metadata: Value) -> Result<()> {
+    let payload = serde_json::json!({
+        "path": path,
+        "metadata": metadata,
+    });
+    call_core_json("set_image_metadata", payload).await?;
+    Ok(())
+}

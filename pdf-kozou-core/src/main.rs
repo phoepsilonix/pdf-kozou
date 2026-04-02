@@ -1093,6 +1093,33 @@ fn dispatch_json(line: &str) -> String {
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
                 Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)
             }
+            "get_image_metadata" => {
+                #[derive(serde::Deserialize)]
+                struct Req { path: String }
+                let r: Req = serde_json::from_str(line)?;
+                let pairs = pdf_kozou_core::render::read_image_metadata(&r.path);
+                eprintln!("[get_image_metadata] path={} found={} pairs", r.path, pairs.len());
+                for (k, v) in &pairs { eprintln!("  {k}={v:?}"); }
+                let metadata: Vec<serde_json::Value> = pairs
+                    .into_iter()
+                    .map(|(k, v)| serde_json::json!({ "key": k, "value": v }))
+                    .collect();
+                Ok(serde_json::to_string(&serde_json::json!({ "metadata": metadata }))?)
+            }
+            "set_image_metadata" => {
+                #[derive(serde::Deserialize)]
+                struct MetaField { key: String, value: String }
+                #[derive(serde::Deserialize)]
+                struct Req { path: String, metadata: Vec<MetaField> }
+                let r: Req = serde_json::from_str(line)?;
+                let pairs: Vec<(String, String)> = r.metadata
+                    .into_iter()
+                    .map(|f| (f.key, f.value))
+                    .collect();
+                pdf_kozou_core::render::write_image_metadata(&r.path, &pairs)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)
+            }
             cmd => Err(anyhow::anyhow!("unknown command: {cmd}")),
         }
     })();

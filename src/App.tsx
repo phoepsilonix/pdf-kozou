@@ -380,7 +380,6 @@ export default function App() {
     const isBatch = toolFiles.length > 1;
     return (
       <ToolShell
-        key={themeId}
         activeTool={activeTool}
         toolFiles={toolFiles}
         filePath={filePath ?? ""} // 修正後（全フィールドを埋める）

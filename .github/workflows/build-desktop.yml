@@ -165,17 +165,31 @@ jobs:
           mv PDF-Kozou_${APP_VER}_amd64.AppImage ${RELEASE_DIR}/appimage/
           chmod +x ${RELEASE_DIR}/appimage/PDF-Kozou_${APP_VER}_amd64.AppImage
 
-      - name: tar.bz2 packages
+      - name: 7zip packages
         run: |
           APP_VER=$(jq -r ".version" package.json)
           PKG_NAME="PDF-Kozou_${APP_VER}_amd64-linux"
-          mkdir -p pdf-kozou
-          cp -a target/release/pdf-kozou pdf-kozou/
-          cp -a target/release/pdf-kozou-core pdf-kozou/
-          tar cf ${PKG_NAME}.tar pdf-kozou/
-          bzip2 -z -9 -f --best ${PKG_NAME}.tar
-          mkdir -p target/release/bundle/tbz/
-          mv ${PKG_NAME}.tar.bz2 target/release/bundle/tbz/
+          PKG_FOLDER="PDF-Kozou"
+          mkdir -p ${PKG_FOLDER}
+          cp -a target/release/pdf-kozou ${PKG_FOLDER}
+          cp -a target/release/pdf-kozou-core ${PKG_FOLDER}
+
+          # tar.bz2
+          # tar cf ${PKG_NAME}.tar ${PKG_FOLDER}/
+          # bzip2 -z -9 -f --best ${PKG_NAME}.tar
+          # mkdir -p target/release/bundle/tbz/
+          # mv ${PKG_NAME}.tar.bz2 target/release/bundle/tbz/
+
+          # zip
+          # 7z a -mx=9 -m0=lzma:fb273:mc441:lc3:pb2 ${PKG_NAME}.zip ${PKG_FOLDER}/
+          # mkdir -p target/release/bundle/zip/
+          # mv ${PKG_NAME}.zip target/release/bundle/zip/
+
+          # 7zip
+          mkdir -p target/release/bundle/7z/
+          #7z a -mx=9 -m0=lzma:fb273:mc369:lc2:pb2 ${PKG_NAME}.7z PDF-Kozou/
+          7z a -mx=9 -m0=lzma:fb230:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
+          mv ${PKG_NAME}.7z target/release/bundle/7z/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
@@ -185,7 +199,9 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
-            target/release/bundle/tbz/*.tar.bz2
+            target/release/bundle/7z/*.7z
+            #target/release/bundle/tbz/*.tar.bz2
+            #target/release/bundle/zip/*.zip
 
   # ===========================================================================
   # Windows x86_64
@@ -354,7 +370,7 @@ jobs:
             ./dist/linux-artifacts/**/*.AppImage
             ./dist/linux-artifacts/**/*.deb
             ./dist/linux-artifacts/**/*.rpm
-            ./dist/linux-artifacts/**/*.tar.bz2
+            ./dist/linux-artifacts/**/*.7z
             ./dist/windows-artifacts/**/*.exe
             ./dist/windows-artifacts/**/*.msi
             ./dist/windows-artifacts/**/*.msix

@@ -15,7 +15,7 @@
 //   />
 
 import { useState, useCallback, useEffect } from "react";
-import { setPdfMetadata, getPdfInfo } from "../lib/tauri";
+import { setPdfMetadata, getPdfInfo, getImageMetadata, setImageMetadata } from "../lib/tauri";
 import { useI18n } from "../lib/i18n";
 import { tts } from "../lib/tts";
 import { F } from "../lib/theme";
@@ -62,6 +62,12 @@ const READONLY_FIELDS: { key: keyof PdfMeta; labelKey: string }[] = [
 
 // ── コンポーネント ─────────────────────────────────────────────────────────
 
+const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "svg"]);
+function isImageFile(path: string): boolean {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTS.has(ext);
+}
+
 export function MetadataEditModal({
   filePath,
   initialMeta,
@@ -83,24 +89,46 @@ export function MetadataEditModal({
   useEffect(() => {
     if (initialMeta !== undefined) return; // 明示的に渡された場合はスキップ
     setLoading(true);
-    getPdfInfo(filePath, {})
-      .then((info) => {
-        const m = info.metadata ?? {};
-        setForm({
-          title: m.title,
-          author: m.author,
-          subject: m.subject,
-          keywords: m.keywords,
-          creator: m.creator,
-          producer: m.producer,
-          creationDate: m.creation_date,
-          modDate: m.mod_date,
-        });
-      })
-      .catch(() => {
-        /* 取得失敗は無視して空のまま */
-      })
-      .finally(() => setLoading(false));
+    if (isImageFile(filePath)) {
+      // 画像ファイル: getImageMetadata で EXIF/XMP を読み込む
+      getImageMetadata(filePath)
+        .then((fields) => {
+          const m: PdfMeta = {};
+          for (const { key, value } of fields) {
+            if (key === "Title") m.title = value;
+            else if (key === "Author") m.author = value;
+            else if (key === "Subject") m.subject = value;
+            else if (key === "Keywords") m.keywords = value;
+            else if (key === "Creator") m.creator = value;
+            else if (key === "CreationDate") m.creationDate = value;
+            else if (key === "ModDate") m.modDate = value;
+          }
+          setForm(m);
+        })
+        .catch(() => {
+          /* 取得失敗は無視 */
+        })
+        .finally(() => setLoading(false));
+    } else {
+      getPdfInfo(filePath, {})
+        .then((info) => {
+          const m = info.metadata ?? {};
+          setForm({
+            title: m.title,
+            author: m.author,
+            subject: m.subject,
+            keywords: m.keywords,
+            creator: m.creator,
+            producer: m.producer,
+            creationDate: m.creation_date,
+            modDate: m.mod_date,
+          });
+        })
+        .catch(() => {
+          /* 取得失敗は無視して空のまま */
+        })
+        .finally(() => setLoading(false));
+    }
   }, [filePath, initialMeta]);
 
   // モーダルを開いた時に読み上げ
@@ -128,7 +156,11 @@ export function MetadataEditModal({
         key: pdfKey,
         value: form[key] ?? "",
       }));
-      await setPdfMetadata(filePath, metadata);
+      if (isImageFile(filePath)) {
+        await setImageMetadata(filePath, metadata);
+      } else {
+        await setPdfMetadata(filePath, metadata);
+      }
       setSaved(true);
       tts.speak(t("meta_edit.saved"));
       onSaved?.(form);

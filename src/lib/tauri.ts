@@ -567,3 +567,18 @@ export async function findGsInDir(dir: string): Promise<string | null> {
 export async function suggestGsCandidates(): Promise<string[]> {
   return invoke<string[]>("suggest_gs_candidates");
 }
+
+// ── 画像メタデータ ────────────────────────────────────────────────────────
+
+/** 画像ファイル（JPEG/PNG/SVG）のメタデータを読み込む */
+export async function getImageMetadata(path: string): Promise<MetadataField[]> {
+  const res = await invoke<{ metadata: { key: string; value: string }[] }>("get_image_metadata", {
+    path,
+  });
+  return res.metadata.map(({ key, value }) => ({ key, value }));
+}
+
+/** 画像ファイル（JPEG/PNG/SVG）のメタデータを上書き保存する */
+export async function setImageMetadata(path: string, metadata: MetadataField[]): Promise<void> {
+  await invoke("set_image_metadata", { path, metadata });
+}

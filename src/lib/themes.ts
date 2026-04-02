@@ -19,6 +19,7 @@ export interface Theme {
   accent: string;
   accentBg: string;
   accentBd: string;
+  accentText: string; // アクセント色の上に載るテキスト色
   green: string;
   warn: string;
   warnBg: string;
@@ -49,6 +50,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     accent: "#5dd68a",
     accentBg: "#18321f",
     accentBd: "#3d9055",
+    accentText: "#fff",
     green: "#4fe090",
     warn: "#d4b84a",
     warnBg: "#2c2808",
@@ -76,6 +78,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     accent: "#4fa8f0",
     accentBg: "#0d2040",
     accentBd: "#2a60a0",
+    accentText: "#fff",
     green: "#4fd090",
     warn: "#d4b84a",
     warnBg: "#282208",
@@ -103,6 +106,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     accent: "#8b9cf4",
     accentBg: "#181c3c",
     accentBd: "#4050a0",
+    accentText: "#fff",
     green: "#64d080",
     warn: "#d4b84a",
     warnBg: "#26200a",
@@ -130,6 +134,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     accent: "#c084f0",
     accentBg: "#26143c",
     accentBd: "#7030a0",
+    accentText: "#fff",
     green: "#64d090",
     warn: "#d4b84a",
     warnBg: "#28200c",
@@ -157,6 +162,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     accent: "#f0a050",
     accentBg: "#3c2010",
     accentBd: "#a05828",
+    accentText: "#fff",
     green: "#70d090",
     warn: "#e8c840",
     warnBg: "#2c2408",
@@ -184,6 +190,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     accent: "#2a6e4a",
     accentBg: "#d8ede2",
     accentBd: "#5aad7a",
+    accentText: "#000",
     green: "#2a8a50",
     warn: "#9a7a10",
     warnBg: "#fdf3d0",
@@ -211,6 +218,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     accent: "#5e81ac",
     accentBg: "#dce6f2",
     accentBd: "#81a1c1",
+    accentText: "#000",
     green: "#4c9a6a",
     warn: "#8a6a10",
     warnBg: "#fdf0d0",
@@ -288,6 +296,7 @@ export function applyThemeCssVars(t: Theme) {
   root.style.setProperty("--c-accent", t.accent);
   root.style.setProperty("--c-accentBg", t.accentBg);
   root.style.setProperty("--c-accentBd", t.accentBd);
+  root.style.setProperty("--c-accentText", t.accentText);
   root.style.setProperty("--c-green", t.green);
   root.style.setProperty("--c-warn", t.warn);
   root.style.setProperty("--c-warnBg", t.warnBg);

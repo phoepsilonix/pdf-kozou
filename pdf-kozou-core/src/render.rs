@@ -1115,3 +1115,533 @@ fn build_png_itxt_chunk(keyword: &str, text: &str) -> Vec<u8> {
     chunk.extend_from_slice(&crc.to_be_bytes());
     chunk
 }
+
+// ── 画像メタデータ読み込み ─────────────────────────────────────────────────
+//
+// JPEG: APP1 セグメントから TIFF/EXIF を自前パース
+// PNG : eXIf チャンク（TIFF）+ iTXt チャンク（テキスト）を自前パース
+// SVG : XMP の <dc:*> タグを自前パース
+//
+// 書き込みは既存の embed_metadata_jpeg / embed_metadata_png / embed_metadata_svg を流用。
+
+/// 画像ファイルのメタデータを読み込む。
+/// JPEG / PNG / SVG に対応。
+/// 戻り値は [(pdf_key, value)] のリスト。
+pub fn read_image_metadata(path: &str) -> Vec<(String, String)> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[image_meta] read failed: {e}");
+            return vec![];
+        }
+    };
+
+    match ext.as_str() {
+        "jpg" | "jpeg" => read_jpeg_metadata(&bytes),
+        "png"          => read_png_metadata(&bytes),
+        "svg"          => read_svg_metadata(&bytes),
+        other => {
+            eprintln!("[image_meta] unsupported format: {other}");
+            vec![]
+        }
+    }
+}
+
+/// 画像ファイルのメタデータを上書き保存する。
+/// JPEG / PNG / SVG に対応。一時ファイル経由でアトミックに保存。
+pub fn write_image_metadata(
+    path: &str,
+    metadata: &[(String, String)],
+) -> std::result::Result<(), String> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let original = std::fs::read(path).map_err(|e| format!("read failed: {e}"))?;
+
+    let updated = match ext.as_str() {
+        "jpg" | "jpeg" => embed_metadata_jpeg(original, metadata),
+        "png"          => embed_metadata_png(original, metadata),
+        "svg"          => {
+            let s = String::from_utf8(original)
+                .map_err(|e| format!("SVG is not valid UTF-8: {e}"))?;
+            embed_metadata_svg(s, metadata).into_bytes()
+        }
+        other => return Err(format!("unsupported image format: {other}")),
+    };
+
+    let tmp = format!("{path}.kozou_tmp");
+    std::fs::write(&tmp, &updated).map_err(|e| format!("write tmp failed: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename failed: {e}")
+    })?;
+    Ok(())
+}
+
+// ── JPEG 読み込み ─────────────────────────────────────────────────────────
+
+fn read_jpeg_metadata(data: &[u8]) -> Vec<(String, String)> {
+    // SOI マーカー確認 (FF D8)
+    if data.len() < 4 || data[0] != 0xFF || data[1] != 0xD8 {
+        return vec![];
+    }
+
+    // APP1(EXIF) セグメント (FF E1) を探す
+    // JPEG セグメント構造: FF <marker> <len_hi> <len_lo> <data...>
+    // len はデータ長 + 2（len フィールド自身を含む）
+    let mut pos = 2;
+    while pos + 1 < data.len() {
+        // FF バイトを探す（パディングバイト FF FF はスキップ）
+        if data[pos] != 0xFF {
+            break;
+        }
+        // パディングバイト（FF FF）をスキップ
+        let mut marker_pos = pos + 1;
+        while marker_pos < data.len() && data[marker_pos] == 0xFF {
+            marker_pos += 1;
+        }
+        if marker_pos >= data.len() {
+            break;
+        }
+        let marker = data[marker_pos];
+
+        // 長さフィールドのないマーカー: SOI/EOI/RST* → 2バイトで終わり
+        if marker == 0xD8 || marker == 0xD9 || (marker >= 0xD0 && marker <= 0xD7) {
+            pos = marker_pos + 1;
+            continue;
+        }
+
+        // 長さフィールドあり
+        let len_pos = marker_pos + 1;
+        if len_pos + 2 > data.len() {
+            break;
+        }
+        let seg_len = ((data[len_pos] as usize) << 8) | (data[len_pos + 1] as usize);
+        if seg_len < 2 {
+            break;
+        }
+        let data_start = len_pos + 2;
+        let data_end = len_pos + seg_len; // seg_len には len フィールド自身の 2 バイトを含む
+        if data_end > data.len() {
+            break;
+        }
+
+        eprintln!("[jpeg_meta] marker=FF{:02X} seg_len={}", marker, seg_len);
+        if marker == 0xE1 {
+            // APP1: EXIF または XMP
+            let payload = &data[data_start..data_end];
+            eprintln!("[jpeg_meta] APP1 prefix={:?}", &payload[..payload.len().min(8)]);
+            if payload.len() >= 6 && &payload[..6] == b"Exif  " {
+                return parse_tiff_exif(&payload[6..]);
+            }
+            // XMP は今回未対応（必要なら追加）
+        }
+
+        // SOS (FF DA) 以降はデータ領域なのでスキャン終了
+        if marker == 0xDA {
+            break;
+        }
+
+        pos = data_end;
+    }
+    vec![]
+}
+
+// ── PNG 読み込み ──────────────────────────────────────────────────────────
+
+fn read_png_metadata(data: &[u8]) -> Vec<(String, String)> {
+    // PNG シグネチャ確認
+    if data.len() < 8 || &data[..8] != b"\x89PNG\r\n\x1a\n" {
+        return vec![];
+    }
+
+    let mut result: Vec<(String, String)> = Vec::new();
+    let mut pos = 8;
+
+    while pos + 12 <= data.len() {
+        let length = u32::from_be_bytes([data[pos], data[pos+1], data[pos+2], data[pos+3]]) as usize;
+        if pos + 8 + length + 4 > data.len() { break; }
+        let chunk_type = &data[pos+4..pos+8];
+        let chunk_data = &data[pos+8..pos+8+length];
+
+        eprintln!("[png_meta] chunk={} len={}", String::from_utf8_lossy(chunk_type), length);
+
+        match chunk_type {
+            b"eXIf" => {
+                // eXIf チャンクは "Exif\0\0" プレフィックスなしの TIFF 直接
+                let mut tiff_result = parse_tiff_exif(chunk_data);
+                result.append(&mut tiff_result);
+            }
+            b"iTXt" => {
+                let mut itxt_result = parse_png_itxt(chunk_data);
+                result.append(&mut itxt_result);
+            }
+            b"tEXt" => {
+                let mut text_result = parse_png_text(chunk_data);
+                result.append(&mut text_result);
+            }
+            b"IEND" => break,
+            _ => {}
+        }
+        pos += 12 + length;
+    }
+
+    // 重複を除去（後の値を優先）
+    dedup_metadata(result)
+}
+
+// ── SVG 読み込み ──────────────────────────────────────────────────────────
+
+fn read_svg_metadata(data: &[u8]) -> Vec<(String, String)> {
+    let text = match std::str::from_utf8(data) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    let mut result = Vec::new();
+
+    eprintln!("[svg_meta] text preview: {:?}", &text[..text.len().min(200)]);
+
+    // <dc:title>, <dc:creator>, <dc:description>, <dc:subject> 等を抽出
+    let dc_map: &[(&str, &str)] = &[
+        ("dc:title",       "Title"),
+        ("dc:creator",     "Author"),
+        ("dc:description", "Subject"),
+        ("dc:subject",     "Keywords"),
+    ];
+    for (tag, pdf_key) in dc_map {
+        if let Some(val) = extract_xml_text(text, tag) {
+            if !val.is_empty() {
+                result.push((pdf_key.to_string(), val));
+            }
+        }
+    }
+
+    // <xmp:CreateDate>, <xmp:ModifyDate>
+    let date_map: &[(&str, &str)] = &[
+        ("xmp:CreateDate", "CreationDate"),
+        ("xmp:ModifyDate", "ModDate"),
+        ("xmp:CreatorTool", "Creator"),
+    ];
+    for (tag, pdf_key) in date_map {
+        if let Some(val) = extract_xml_text(text, tag) {
+            if !val.is_empty() {
+                result.push((pdf_key.to_string(), val));
+            }
+        }
+    }
+
+    dedup_metadata(result)
+}
+
+/// XML テキストノードを単純抽出（属性なし・ネストなし）
+fn extract_xml_text(xml: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}");
+    let close = format!("</{tag}>");
+    let start = xml.find(&open)?;
+    // タグの終わり '>' を探す
+    let content_start = xml[start..].find('>')? + start + 1;
+    let end = xml[content_start..].find(&close)? + content_start;
+    let val = xml[content_start..end].trim().to_string();
+    // <rdf:Alt><rdf:li> などのネストがある場合は内部テキストを取る
+    if val.starts_with('<') {
+        // 最初のタグの内容を抽出
+        let inner_start = val.find('>')? + 1;
+        let inner_end = val[inner_start..].find('<')? + inner_start;
+        Some(val[inner_start..inner_end].trim().to_string())
+    } else {
+        Some(val)
+    }
+}
+
+// ── TIFF/EXIF パーサー ────────────────────────────────────────────────────
+
+fn parse_tiff_exif(tiff: &[u8]) -> Vec<(String, String)> {
+    if tiff.len() < 8 { return vec![]; }
+
+    // バイトオーダー確認
+    let le = match &tiff[..2] {
+        b"II" => true,
+        b"MM" => false,
+        _ => return vec![],
+    };
+    let read_u16 = |pos: usize| -> Option<u16> {
+        if pos + 2 > tiff.len() { return None; }
+        Some(if le {
+            u16::from_le_bytes([tiff[pos], tiff[pos+1]])
+        } else {
+            u16::from_be_bytes([tiff[pos], tiff[pos+1]])
+        })
+    };
+    let read_u32 = |pos: usize| -> Option<u32> {
+        if pos + 4 > tiff.len() { return None; }
+        Some(if le {
+            u32::from_le_bytes([tiff[pos], tiff[pos+1], tiff[pos+2], tiff[pos+3]])
+        } else {
+            u32::from_be_bytes([tiff[pos], tiff[pos+1], tiff[pos+2], tiff[pos+3]])
+        })
+    };
+
+    // TIFF マジック確認
+    if read_u16(2) != Some(0x002A) && read_u16(2) != Some(0x002A) { }
+    let ifd0_offset = match read_u32(4) { Some(v) => v as usize, None => return vec![] };
+
+    let mut result = Vec::new();
+    parse_ifd(tiff, ifd0_offset, le, &read_u16, &read_u32, &mut result);
+    dedup_metadata(result)
+}
+
+fn parse_ifd(
+    tiff: &[u8],
+    offset: usize,
+    le: bool,
+    read_u16: &impl Fn(usize) -> Option<u16>,
+    read_u32: &impl Fn(usize) -> Option<u32>,
+    result: &mut Vec<(String, String)>,
+) {
+    if offset + 2 > tiff.len() { return; }
+    let count = match read_u16(offset) { Some(v) => v as usize, None => return };
+
+    for i in 0..count {
+        let entry_pos = offset + 2 + i * 12;
+        if entry_pos + 12 > tiff.len() { break; }
+
+        let tag   = match read_u16(entry_pos)     { Some(v) => v, None => continue };
+        let typ   = match read_u16(entry_pos + 2) { Some(v) => v, None => continue };
+        let count = match read_u32(entry_pos + 4) { Some(v) => v as usize, None => continue };
+        let value_or_offset = entry_pos + 8;
+
+        // タグ値のバイト列を取得
+        let byte_len: usize = match typ {
+            1 | 7 => count,           // BYTE / UNDEFINED
+            2     => count,           // ASCII
+            3     => count * 2,       // SHORT
+            4 | 9 => count * 4,       // LONG / SLONG
+            _     => count,
+        };
+
+        let data: &[u8] = if byte_len <= 4 {
+            &tiff[value_or_offset..std::cmp::min(value_or_offset + byte_len, tiff.len())]
+        } else {
+            let off = match read_u32(value_or_offset) { Some(v) => v as usize, None => continue };
+            if off + byte_len > tiff.len() { continue; }
+            &tiff[off..off + byte_len]
+        };
+
+        match tag {
+            // IFD0 標準タグ
+            0x010E => { // ImageDescription → Title (ASCII)
+                if let Some(s) = ascii_to_string(data) {
+                    result.push(("Title".into(), s));
+                }
+            }
+            0x013B => { // Artist → Author (ASCII)
+                if let Some(s) = ascii_to_string(data) {
+                    result.push(("Author".into(), s));
+                }
+            }
+            0x0131 => { // Software → Creator (ASCII)
+                if let Some(s) = ascii_to_string(data) {
+                    result.push(("Creator".into(), s));
+                }
+            }
+            0x8298 => { // Copyright → Subject (ASCII)
+                if let Some(s) = ascii_to_string(data) {
+                    result.push(("Subject".into(), s));
+                }
+            }
+            0x0132 => { // DateTime → ModDate
+                if let Some(s) = ascii_to_string(data) {
+                    result.push(("ModDate".into(), s));
+                }
+            }
+            // Windows XP 拡張タグ（UTF-16LE）優先
+            0x9C9B => { // XPTitle → Title
+                if let Some(s) = utf16le_to_string(data) {
+                    // XP タグは標準タグより後で処理 → dedup で上書き
+                    result.push(("Title".into(), s));
+                }
+            }
+            0x9C9D => { // XPAuthor → Author
+                if let Some(s) = utf16le_to_string(data) {
+                    result.push(("Author".into(), s));
+                }
+            }
+            0x9C9C => { // XPComment → Subject
+                if let Some(s) = utf16le_to_string(data) {
+                    result.push(("Subject".into(), s));
+                }
+            }
+            0x9C9E => { // XPKeywords → Keywords
+                if let Some(s) = utf16le_to_string(data) {
+                    result.push(("Keywords".into(), s));
+                }
+            }
+            0x9C9F => { // XPSubject → Subject (XPComment より優先)
+                if let Some(s) = utf16le_to_string(data) {
+                    result.push(("Subject".into(), s));
+                }
+            }
+            // ExifSubIFD ポインタ
+            0x8769 => {
+                let sub_offset = match read_u32(value_or_offset) {
+                    Some(v) => v as usize, None => continue
+                };
+                parse_ifd(tiff, sub_offset, le, read_u16, read_u32, result);
+            }
+            // ExifSubIFD 内タグ
+            0x9003 => { // DateTimeOriginal → CreationDate
+                if let Some(s) = ascii_to_string(data) {
+                    result.push(("CreationDate".into(), s));
+                }
+            }
+            0x9286 => { // UserComment → Keywords（Subject と合わせる）
+                if let Some(s) = parse_user_comment(data) {
+                    result.push(("Keywords".into(), s));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// ASCII タグ（NUL終端）を String に変換
+fn ascii_to_string(data: &[u8]) -> Option<String> {
+    let s = data.iter()
+        .take_while(|&&b| b != 0)
+        .copied()
+        .collect::<Vec<u8>>();
+    if s.is_empty() { return None; }
+    // UTF-8 として試みる（書き出し時に UTF-8 を ASCII 型に入れているため）
+    String::from_utf8(s.clone())
+        .ok()
+        .or_else(|| String::from_utf8_lossy(&s).into_owned().into())
+        .filter(|s| !s.is_empty())
+}
+
+/// UTF-16LE（NUL終端ペア）を String に変換
+fn utf16le_to_string(data: &[u8]) -> Option<String> {
+    if data.len() < 2 { return None; }
+    let units: Vec<u16> = data.chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|&u| u != 0)
+        .collect();
+    if units.is_empty() { return None; }
+    String::from_utf16(&units).ok().filter(|s| !s.is_empty())
+}
+
+/// UserComment バイト列をデコード
+/// 先頭8バイトが文字セット識別子
+fn parse_user_comment(data: &[u8]) -> Option<String> {
+    if data.len() < 8 { return None; }
+    let charset = &data[..8];
+    let content = &data[8..];
+    if charset == b"ASCII\0\0\0" {
+        ascii_to_string(content)
+    } else if charset == b"UNICODE\0" {
+        // 書き出し側が UTF-16LE で書いているため LE で読む
+        utf16le_to_string(content)
+    } else {
+        // charset 不明 → UTF-8 として試みる
+        let s: String = content.iter().take_while(|&&b| b != 0)
+            .copied().collect::<Vec<_>>()
+            .pipe(|v| String::from_utf8_lossy(&v).trim().to_string());
+        if s.is_empty() { None } else { Some(s) }
+    }
+}
+
+// ── PNG チャンクパーサー ──────────────────────────────────────────────────
+
+/// iTXt チャンクから PDF キーに対応するテキストを取り出す
+fn parse_png_itxt(data: &[u8]) -> Vec<(String, String)> {
+    parse_png_itxt_inner(data).unwrap_or_default()
+}
+
+fn parse_png_itxt_inner(data: &[u8]) -> Option<Vec<(String, String)>> {
+    // 構造: keyword\0 compression_flag(1) compression_method(1)
+    //       language_tag\0 translated_keyword\0 text(UTF-8)
+    let kw_end = data.iter().position(|&b| b == 0)?;
+    let keyword = std::str::from_utf8(&data[..kw_end]).ok()?.trim();
+
+    if data.len() < kw_end + 5 { return Some(vec![]); }
+    // compression_flag == 0: 非圧縮のみ対応
+    if data[kw_end + 1] != 0 { return Some(vec![]); }
+
+    // language_tag\0 と translated_keyword\0 をスキップ
+    let mut pos = kw_end + 3;
+    // language tag
+    while pos < data.len() && data[pos] != 0 { pos += 1; }
+    pos += 1;
+    // translated keyword
+    while pos < data.len() && data[pos] != 0 { pos += 1; }
+    pos += 1;
+
+    if pos > data.len() { return Some(vec![]); }
+    let text = std::str::from_utf8(&data[pos..]).ok()?.trim().to_string();
+    if text.is_empty() { return Some(vec![]); }
+
+    // キーワードを PDF キーにマッピング
+    let pdf_key = match keyword {
+        "Title"             => "Title",
+        "Author"            => "Author",
+        "Subject"           => "Subject",
+        "Keywords"          => "Keywords",
+        "Software"          => "Creator",
+        "Creation Time"     => "CreationDate",
+        "Modification Time" => "ModDate",
+        _ => return Some(vec![]),
+    };
+    Some(vec![(pdf_key.to_string(), text)])
+}
+
+/// tEXt チャンク（Latin-1 キー + テキスト）
+fn parse_png_text(data: &[u8]) -> Vec<(String, String)> {
+    parse_png_text_inner(data).unwrap_or_default()
+}
+
+fn parse_png_text_inner(data: &[u8]) -> Option<Vec<(String, String)>> {
+    let sep = data.iter().position(|&b| b == 0)?;
+    let keyword = std::str::from_utf8(&data[..sep]).ok()?.trim();
+    let text = std::str::from_utf8(&data[sep+1..]).ok()?.trim().to_string();
+    if text.is_empty() { return Some(vec![]); }
+
+    let pdf_key = match keyword {
+        "Title"    => "Title",
+        "Author"   => "Author",
+        "Subject"  => "Subject",
+        "Keywords" => "Keywords",
+        "Software" => "Creator",
+        _          => return Some(vec![]),
+    };
+    Some(vec![(pdf_key.to_string(), text)])
+}
+
+// ── ユーティリティ ────────────────────────────────────────────────────────
+
+/// 重複キーを除去（後の値を優先）
+fn dedup_metadata(pairs: Vec<(String, String)>) -> Vec<(String, String)> {
+    let mut seen: Vec<String> = Vec::new();
+    let mut result: Vec<(String, String)> = Vec::new();
+    // 後ろから処理して先頭に詰める（後の値を優先）
+    for (k, v) in pairs.into_iter().rev() {
+        if !seen.contains(&k) {
+            seen.push(k.clone());
+            result.push((k, v));
+        }
+    }
+    result.reverse();
+    result
+}
+
+// pipe ヘルパー（Rust 1.76+以前の互換）
+trait Pipe: Sized {
+    fn pipe<F, R>(self, f: F) -> R where F: FnOnce(Self) -> R { f(self) }
+}
+impl<T> Pipe for T {}

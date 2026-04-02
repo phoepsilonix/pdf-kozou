@@ -95,18 +95,16 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     return () => ro.disconnect();
   }, []);
 
-  // Ctrl+ホイール でズーム
+  // Ctrl+ホイール でズーム（document レベルで捕捉して WebView のピンチズームより先に処理）
   useEffect(() => {
-    const el = canvasWrapRef.current;
-    if (!el) return;
     const handler = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
       setZoom((z) => +Math.min(4.0, Math.max(0.25, z + delta)).toFixed(2));
     };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
+    window.addEventListener("wheel", handler, { passive: false });
+    return () => window.removeEventListener("wheel", handler);
   }, []);
 
   // バッチ全体のサムネイル（先頭ページ）
@@ -626,18 +624,16 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     };
   }, [filePath, pdfInfo.page_count]);
 
-  // Ctrl+ホイール / Ctrl+キーボードでキャンバスズーム
+  // Ctrl+ホイール / Ctrl+キーボードでキャンバスズーム（document レベルで捕捉）
   useEffect(() => {
-    const el = canvasWrapRef.current;
-    if (!el) return;
     const handler = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.15 : 0.15;
       setZoom((z) => +Math.min(4.0, Math.max(0.25, z + delta)).toFixed(2));
     };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
+    window.addEventListener("wheel", handler, { passive: false });
+    return () => window.removeEventListener("wheel", handler);
   }, []);
 
   const handleCanvasKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -943,8 +939,37 @@ function ResultView({
   isSaving: boolean;
   savedPath?: string;
 }) {
+  const [localZoom, setLocalZoom] = useState(0.5);
+  const galleryRef = useRef<HTMLDivElement>(null);
+  const [cardWidth, setCardWidth] = useState(400);
+
+  // ギャラリーコンテナ幅に追従して1枚あたりのカード幅を算出
+  useEffect(() => {
+    const el = galleryRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 800;
+      // 余白 48px（padding 24px×2）を引いて1枚分の幅にする
+      setCardWidth(Math.max(200, Math.floor(w - 48)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const { t } = useI18n();
   const [metaEditOpen, setMetaEditOpen] = useState(false);
+
+  // Ctrl+ホイールでズーム
+  useEffect(() => {
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setLocalZoom((z) => +Math.min(4.0, Math.max(0.25, z + delta)).toFixed(2));
+    };
+    window.addEventListener("wheel", handler, { passive: false });
+    return () => window.removeEventListener("wheel", handler);
+  }, []);
+
   return (
     <div style={r.root}>
       <div style={r.header}>
@@ -956,6 +981,27 @@ function ResultView({
           {t("trim.result_pages", { pages: String(pageCount), shown: String(images.length) })}
         </span>
         <div style={{ flex: 1 }} />
+        {/* ズームコントロール */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <button
+            style={r.btnBack}
+            onClick={() => setLocalZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
+          >
+            −
+          </button>
+          <span style={{ fontSize: 11, minWidth: 36, textAlign: "center" }}>
+            {Math.round(localZoom * 100)}%
+          </span>
+          <button
+            style={r.btnBack}
+            onClick={() => setLocalZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2))}
+          >
+            ＋
+          </button>
+          <button style={r.btnBack} onClick={() => setLocalZoom(1.0)}>
+            100%
+          </button>
+        </div>
         <button style={r.btnCompress} onClick={onCompress}>
           {t("common.compress_then_save")}
         </button>
@@ -978,12 +1024,16 @@ function ResultView({
         </button>
       </div>
 
-      <div style={r.gallery}>
+      <div style={r.gallery} ref={galleryRef}>
         {images.map((b64, i) => (
           <div key={i} style={r.card}>
             <span style={r.pageN}>{t("common.page_n", { n: String(i + 1) })}</span>
             {b64 ? (
-              <img src={`data:image/jpeg;base64,${b64}`} style={r.img} alt="" />
+              <img
+                src={`data:image/jpeg;base64,${b64}`}
+                style={{ ...r.img, width: Math.round(cardWidth * localZoom), maxWidth: "none" }}
+                alt=""
+              />
             ) : (
               <div style={r.imgPh}>{t("trim.preview_fail")}</div>
             )}
@@ -1233,11 +1283,10 @@ const r: Record<string, React.CSSProperties> = {
     flex: 1,
     overflowY: "auto",
     display: "flex",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: 20,
     padding: 24,
-    alignContent: "flex-start",
-    justifyContent: "center",
+    alignItems: "center",
   },
   card: {
     display: "flex",
@@ -1250,7 +1299,7 @@ const r: Record<string, React.CSSProperties> = {
     padding: 14,
   },
   pageN: { fontSize: 11, color: "var(--c-textSub)" },
-  img: { maxWidth: 290, maxHeight: 390, display: "block", borderRadius: 4 },
+  img: { display: "block", borderRadius: 4, height: "auto" },
   imgPh: {
     width: 200,
     height: 260,
