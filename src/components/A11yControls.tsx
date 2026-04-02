@@ -87,26 +87,30 @@ export function TtsToggleButton() {
 }
 
 // ── 言語切り替えセレクター ────────────────────────────────────────────────────
-// select 要素を使うことでキーボード操作・スクリーンリーダーが確実に動く
+// <select> は Linux WebKitGTK でネイティブスタイルが優先されテーマ連動しないため
+// ThemeSwitcher と同じカスタムドロップダウン方式に変更
 
 export function LocaleSelector() {
   const { locale, setLocale, t } = useI18n();
+  const [open, setOpen] = useState(false);
 
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setLocale(e.target.value as Locale);
-      // 変更後の言語で読み上げ
+  const handlePick = useCallback(
+    (loc: Locale) => {
+      setLocale(loc);
+      setOpen(false);
       setTimeout(() => {
-        const next = e.target.value as Locale;
-        const msg = next === "ja" ? t("locale.changed_ja") : t("locale.changed_en");
+        const msg = loc === "ja" ? t("locale.changed_ja") : t("locale.changed_en");
         tts.speak(msg);
       }, 50);
     },
-    [setLocale],
+    [setLocale, t],
   );
 
-  const selectStyle: React.CSSProperties = {
-    padding: "4px 8px",
+  const btnStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "4px 10px",
     background: "transparent",
     border: "1px solid var(--c-borderHi)",
     borderRadius: 7,
@@ -118,19 +122,67 @@ export function LocaleSelector() {
   };
 
   return (
-    <select
-      value={locale}
-      onChange={handleChange}
-      style={selectStyle}
-      aria-label={t("locale.select_aria")}
-      title={t("locale.select_title")}
-    >
-      {SUPPORTED_LOCALES.map((loc) => (
-        <option key={loc} value={loc}>
-          {LOCALE_LABELS[loc]}
-        </option>
-      ))}
-    </select>
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={btnStyle}
+        aria-label={t("locale.select_aria")}
+        title={t("locale.select_title")}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>{LOCALE_LABELS[locale]}</span>
+        <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
+      </button>
+
+      {open && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 999 }}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="listbox"
+            style={{
+              position: "absolute",
+              top: "calc(100% + 4px)",
+              right: 0,
+              zIndex: 1000,
+              background: "var(--c-bgCard)",
+              border: "1px solid var(--c-border)",
+              borderRadius: 8,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+              overflow: "hidden",
+              minWidth: 110,
+            }}
+          >
+            {SUPPORTED_LOCALES.map((loc) => (
+              <button
+                key={loc}
+                role="option"
+                aria-selected={loc === locale}
+                onClick={() => handlePick(loc)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "8px 14px",
+                  background: loc === locale ? "var(--c-accentBg)" : "transparent",
+                  border: "none",
+                  color: loc === locale ? "var(--c-accent)" : "var(--c-text)",
+                  fontWeight: loc === locale ? 700 : 400,
+                  cursor: "pointer",
+                  fontFamily: F,
+                  fontSize: 13,
+                  textAlign: "left" as const,
+                }}
+              >
+                {LOCALE_LABELS[loc]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

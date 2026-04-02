@@ -187,8 +187,8 @@ jobs:
 
           # 7zip
           mkdir -p target/release/bundle/7z/
-          #7z a -mx=9 -m0=lzma:fb273:mc369:lc2:pb2 ${PKG_NAME}.7z PDF-Kozou/
-          7z a -mx=9 -m0=lzma:fb230:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
+          7z a -mx=9 -m0=lzma:fb273:mc369:lc2:pb2 ${PKG_NAME}.7z PDF-Kozou/
+          #7z a -mx=9 -m0=lzma:fb230:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
           mv ${PKG_NAME}.7z target/release/bundle/7z/
 
       - name: Upload artifacts
