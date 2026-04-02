@@ -6,6 +6,7 @@
 import { useState, useCallback } from "react";
 //import { THEMES, getTheme, type ThemeId } from "../lib/themes";
 import { THEMES, type ThemeId } from "../lib/themes";
+import { useI18n } from "../lib/i18n";
 
 interface Props {
   currentId: ThemeId;
@@ -14,6 +15,7 @@ interface Props {
 
 export function ThemeSwitcher({ currentId, onChange }: Props) {
   const [open, setOpen] = useState(false);
+  const { t } = useI18n();
   //const C = getTheme();
   const F = "'JetBrains Mono','Noto Sans JP',monospace";
   const cur = THEMES[currentId];
@@ -44,7 +46,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
           fontSize: 12,
           transition: "all 0.12s",
         }}
-        title="テーマ切り替え"
+        title={t("theme.switcher_title")}
       >
         <span style={{ fontSize: 15 }}>{cur.emoji}</span>
         <span>{cur.name}</span>
@@ -81,19 +83,19 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
                 background: "var(--c-bgHover)",
               }}
             >
-              🎨 テーマ
+              {t("theme.switcher_label")}
             </div>
-            {(Object.values(THEMES) as Array<(typeof THEMES)[ThemeId]>).map((t) => (
+            {(Object.values(THEMES) as Array<(typeof THEMES)[ThemeId]>).map((theme) => (
               <button
-                key={t.id}
-                onClick={() => handlePick(t.id as ThemeId)}
+                key={theme.id}
+                onClick={() => handlePick(theme.id as ThemeId)}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 10,
                   width: "100%",
                   padding: "10px 14px",
-                  background: t.id === currentId ? "var(--c-accentBg)" : "transparent",
+                  background: theme.id === currentId ? "var(--c-accentBg)" : "transparent",
                   border: "none",
                   borderBottom: `1px solid var(--c-border)`,
                   cursor: "pointer",
@@ -104,7 +106,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
               >
                 {/* カラースウォッチ */}
                 <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-                  {[t.bg, t.bgCard, t.accent].map((col, i) => (
+                  {[theme.bg, theme.bgCard, theme.accent].map((col, i) => (
                     <div
                       key={i}
                       style={{
@@ -112,22 +114,22 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
                         height: 11,
                         borderRadius: "50%",
                         background: col,
-                        border: `1px solid ${t.borderHi}`,
+                        border: `1px solid ${theme.borderHi}`,
                       }}
                     />
                   ))}
                 </div>
-                <span style={{ fontSize: 14 }}>{t.emoji}</span>
+                <span style={{ fontSize: 14 }}>{theme.emoji}</span>
                 <span
                   style={{
                     fontSize: 13,
-                    color: t.id === currentId ? "var(--c-accent)" : "var(--c-text)",
-                    fontWeight: t.id === currentId ? 700 : 400,
+                    color: theme.id === currentId ? "var(--c-accent)" : "var(--c-text)",
+                    fontWeight: theme.id === currentId ? 700 : 400,
                   }}
                 >
-                  {t.name}
+                  {t(`theme.${theme.id}`)}
                 </span>
-                {t.id === currentId && (
+                {theme.id === currentId && (
                   <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--c-accent)" }}>
                     ✓
                   </span>

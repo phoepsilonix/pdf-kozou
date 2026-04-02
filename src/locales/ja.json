@@ -592,5 +592,16 @@
     "height_pt": "高さ (pt)",
     "font_pt": "フォント (pt)",
     "note": "※ PDF / 画像 / CBZ などレイアウト固定の形式には影響しません"
+  },
+  "theme": {
+    "moss": "モスグリーン",
+    "ocean": "オーシャン",
+    "slate": "スレート",
+    "dusk": "ダスク",
+    "ember": "エンバー",
+    "paper": "ペーパー",
+    "nordic": "ノルディック",
+    "switcher_label": "テーマ",
+    "switcher_title": "テーマ切り替え"
   }
 }

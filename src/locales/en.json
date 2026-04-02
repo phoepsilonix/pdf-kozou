@@ -592,5 +592,16 @@
     "height_pt": "Height (pt)",
     "font_pt": "Font (pt)",
     "note": "※ Does not affect PDF / images / CBZ and other fixed-layout formats"
+  },
+  "theme": {
+    "moss": "Moss Green",
+    "ocean": "Ocean",
+    "slate": "Slate",
+    "dusk": "Dusk",
+    "ember": "Ember",
+    "paper": "Paper",
+    "nordic": "Nordic",
+    "switcher_label": "Theme",
+    "switcher_title": "Switch theme"
   }
 }
