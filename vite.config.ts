@@ -1,17 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import legacy from "@vitejs/plugin-legacy";
 
 export default defineConfig({
   base: "./",
-  plugins: [
-    react(),
-    legacy({
-      // 互換性が必要なブラウザをここに集約
-      targets: ["defaults", "chrome 105", "safari 13", "not IE 11"],
-      modernPolyfills: true,
-    }),
-  ],
+  plugins: [react()],
   clearScreen: false,
   server: {
     port: 1420,
@@ -20,7 +12,7 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
-    target: [ "es2021" ],
+    target: ["es2021", "chrome105", "safari13"],
     minify: "esbuild",
     sourcemap: !!process.env.TAURI_DEBUG,
     cssMinify: true,
