@@ -231,7 +231,7 @@ export const THEMES: Record<ThemeId, Theme> = {
   },
 };
 
-export const DEFAULT_THEME: ThemeId = "moss";
+export const DEFAULT_THEME: ThemeId = "nordic";
 const STORAGE_KEY = "pdf-kozou-theme";
 
 // ── 永続化 ───────────────────────────────────────────────────────────────────

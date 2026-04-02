@@ -47,11 +47,30 @@ function formatBytes(b: number) {
   if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1048576).toFixed(2)} MB`;
 }
-function formatDate(d: string) {
-  const s = d.startsWith("D:") ? d.slice(2) : d;
-  if (s.length >= 8) {
-    const [y, m, dd] = [s.slice(0, 4), s.slice(4, 6), s.slice(6, 8)];
-    if (s.length >= 14) return `${y}/${m}/${dd} ${s.slice(8, 10)}:${s.slice(10, 12)}`;
+function formatDate(d: string): string {
+  // PDF形式: D:YYYYMMDDHHmmSS+HH'MM'
+  if (d.startsWith("D:")) {
+    const s = d.slice(2);
+    if (s.length >= 8) {
+      const y = s.slice(0, 4),
+        m = s.slice(4, 6),
+        dd = s.slice(6, 8);
+      if (s.length >= 14) return `${y}/${m}/${dd} ${s.slice(8, 10)}:${s.slice(10, 12)}`;
+      return `${y}/${m}/${dd}`;
+    }
+  }
+  // EXIF形式: YYYY:MM:DD HH:MM:SS
+  if (/^\d{4}:\d{2}:\d{2}/.test(d)) {
+    const [datePart, timePart] = d.split(" ");
+    const [y, m, dd] = datePart.split(":");
+    if (timePart) return `${y}/${m}/${dd} ${timePart.slice(0, 5)}`;
+    return `${y}/${m}/${dd}`;
+  }
+  // ISO8601形式: YYYY-MM-DDTHH:MM:SS
+  if (/^\d{4}-\d{2}-\d{2}/.test(d)) {
+    const [datePart, timePart] = d.split("T");
+    const [y, m, dd] = datePart.split("-");
+    if (timePart) return `${y}/${m}/${dd} ${timePart.slice(0, 5)}`;
     return `${y}/${m}/${dd}`;
   }
   return d;

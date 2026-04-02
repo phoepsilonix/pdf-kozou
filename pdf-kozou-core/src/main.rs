@@ -1118,10 +1118,29 @@ fn dispatch_json(line: &str) -> String {
                 struct Req {
                     path: String,
                     metadata: Vec<MetaField>,
+                    /// true の場合: 指定しなかったフィールドは既存値を保持（マージ）
+                    /// false/省略: 渡したフィールドのみ書き込む（GUI のデフォルト動作）
+                    #[serde(default)]
+                    merge: bool,
                 }
                 let r: Req = serde_json::from_str(line)?;
-                let pairs: Vec<(String, String)> =
+                let mut pairs: Vec<(String, String)> =
                     r.metadata.into_iter().map(|f| (f.key, f.value)).collect();
+                if r.merge {
+                    // 既存メタデータを読み込んで new_fields でマージ
+                    let existing = pdf_kozou_core::render::read_image_metadata(&r.path);
+                    let mut merged = existing;
+                    for (new_key, new_val) in &pairs {
+                        if new_val.trim().is_empty() {
+                            merged.retain(|(k, _)| k != new_key);
+                        } else if let Some(entry) = merged.iter_mut().find(|(k, _)| k == new_key) {
+                            entry.1 = new_val.clone();
+                        } else {
+                            merged.push((new_key.clone(), new_val.clone()));
+                        }
+                    }
+                    pairs = merged;
+                }
                 pdf_kozou_core::render::write_image_metadata(&r.path, &pairs)
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
                 Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)

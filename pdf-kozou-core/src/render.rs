@@ -331,7 +331,14 @@ fn build_exif_payload(
     // ISO 8601: "YYYY-MM-DDTHH:MM:SSZ" （DOCX core.xml の dcterms:created）
     let to_exif_date = |s: &str| -> Vec<u8> {
         let s = if s.starts_with("D:") { &s[2..] } else { s };
-        let date = if s.contains('-') && s.contains('T') {
+        // すでに EXIF 形式 "YYYY:MM:DD HH:MM:SS" ならそのまま使う
+        let date = if s.len() >= 19
+            && s.chars().nth(4) == Some(':')
+            && s.chars().nth(7) == Some(':')
+            && s.chars().nth(10) == Some(' ')
+        {
+            s[..19].to_string()
+        } else if s.contains('-') && s.contains('T') {
             // ISO 8601: "2024-01-15T09:30:00Z" or "2024-01-15T09:30:00+09:00"
             let parts: Vec<&str> = s.splitn(2, 'T').collect();
             let date_part = parts[0].replace('-', ":");
@@ -687,7 +694,18 @@ fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<
     ];
     for (meta_key, png_key) in PNG_TEXT_KEYS {
         if let Some(value) = get(meta_key) {
-            chunks.extend_from_slice(&build_png_itxt_chunk(png_key, value));
+            // 日付フィールドは ISO 8601 に正規化
+            let iso;
+            let val = if *meta_key == "CreationDate" || *meta_key == "ModDate" {
+                iso = normalize_to_iso8601(value);
+                if iso.is_empty() {
+                    continue;
+                }
+                iso.as_str()
+            } else {
+                value
+            };
+            chunks.extend_from_slice(&build_png_itxt_chunk(png_key, val));
         }
     }
 
@@ -702,10 +720,33 @@ fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<
         return png_bytes;
     }
 
-    let mut result = Vec::with_capacity(png_bytes.len() + chunks.len());
+    // IHDR 以降から既存の eXIf / iTXt / tEXt チャンクを除去してから挿入
+    let mut rest: Vec<u8> = Vec::new();
+    let mut pos = sig_ihdr_end;
+    while pos + 12 <= png_bytes.len() {
+        let length = u32::from_be_bytes([
+            png_bytes[pos],
+            png_bytes[pos + 1],
+            png_bytes[pos + 2],
+            png_bytes[pos + 3],
+        ]) as usize;
+        if pos + 8 + length + 4 > png_bytes.len() {
+            rest.extend_from_slice(&png_bytes[pos..]);
+            break;
+        }
+        let chunk_type = &png_bytes[pos + 4..pos + 8];
+        // eXIf / iTXt / tEXt は上書きするので既存チャンクをスキップ
+        let skip = matches!(chunk_type, b"eXIf" | b"iTXt" | b"tEXt");
+        if !skip {
+            rest.extend_from_slice(&png_bytes[pos..pos + 12 + length]);
+        }
+        pos += 12 + length;
+    }
+
+    let mut result = Vec::with_capacity(sig_ihdr_end + chunks.len() + rest.len());
     result.extend_from_slice(&png_bytes[..sig_ihdr_end]);
     result.extend_from_slice(&chunks);
-    result.extend_from_slice(&png_bytes[sig_ihdr_end..]);
+    result.extend_from_slice(&rest);
     result
 }
 
@@ -872,12 +913,14 @@ fn render_svg(
 
 /// SVG 文字列の <svg ...> タグの直後に <metadata> ブロックを挿入する
 fn embed_metadata_svg(svg: String, metadata: &[(String, String)]) -> String {
-    // <svg ...> の閉じ `>` を探し、その直後に <metadata> を挿入
-    // MuPDF が生成する SVG は必ず <svg で始まる
+    // 既存の <metadata>...</metadata> ブロックを除去
+    let svg = remove_svg_metadata_block(svg);
+
+    // <svg ...> の閉じ `>` を探し、その直後に新しい <metadata> を挿入
     let insert_after = if let Some(pos) = find_svg_tag_end(&svg) {
         pos
     } else {
-        return svg; // SVG タグが見つからなければそのまま返す
+        return svg;
     };
 
     let meta_block = build_svg_metadata(metadata);
@@ -886,6 +929,23 @@ fn embed_metadata_svg(svg: String, metadata: &[(String, String)]) -> String {
     result.push('\n');
     result.push_str(&meta_block);
     result.push_str(&svg[insert_after..]);
+    result
+}
+
+/// SVG から既存の <metadata>...</metadata> ブロックを全て除去する
+fn remove_svg_metadata_block(svg: String) -> String {
+    let mut result = svg.clone();
+    loop {
+        let start = match result.find("<metadata") {
+            Some(p) => p,
+            None => break,
+        };
+        let end = match result[start..].find("</metadata>") {
+            Some(p) => start + p + "</metadata>".len(),
+            None => break,
+        };
+        result = format!("{}{}", &result[..start], &result[end..]);
+    }
     result
 }
 
@@ -924,7 +984,18 @@ fn build_svg_metadata(metadata: &[(String, String)]) -> String {
     lines.push(r#"    <rdf:Description>"#.to_string());
 
     for (key, value) in metadata {
-        let escaped = xml_escape(value);
+        // 日付フィールドは ISO 8601 に正規化してから書く
+        let normalized;
+        let val = if key == "CreationDate" || key == "ModDate" {
+            normalized = normalize_to_iso8601(value);
+            if normalized.is_empty() {
+                continue;
+            }
+            &normalized
+        } else {
+            value.as_str()
+        };
+        let escaped = xml_escape(val);
         let dc_key = pdf_key_to_dc(key);
         if let Some(dk) = dc_key {
             lines.push(format!("      <dc:{dk}>{escaped}</dc:{dk}>"));
@@ -1046,8 +1117,15 @@ fn build_xmp_packet(metadata: &[(String, String)]) -> String {
 fn normalize_to_iso8601(s: &str) -> String {
     let s = if s.starts_with("D:") { &s[2..] } else { s };
     if s.contains('-') && s.contains('T') {
-        // 既に ISO 8601 → タイムゾーン含めてそのまま（ただし末尾の空白等は除去）
+        // 既に ISO 8601 → タイムゾーン含めてそのまま
         s.trim().to_string()
+    } else if s.len() >= 19
+        && s.chars().nth(4) == Some(':')
+        && s.chars().nth(7) == Some(':')
+        && s.chars().nth(10) == Some(' ')
+    {
+        // EXIF 形式 "YYYY:MM:DD HH:MM:SS" → ISO 8601
+        format!("{}-{}-{}T{}", &s[0..4], &s[5..7], &s[8..10], &s[11..19])
     } else if s.len() >= 14 {
         // PDF 形式 "YYYYMMDDHHMMSS"
         format!(
@@ -1312,6 +1390,9 @@ fn read_svg_metadata(data: &[u8]) -> Vec<(String, String)> {
         ("dc:creator", "Author"),
         ("dc:description", "Subject"),
         ("dc:subject", "Keywords"),
+        ("dc:source", "Creator"), // pdf_key_to_dc の逆
+        ("dc:publisher", "Producer"),
+        ("dc:date", "CreationDate"),
     ];
     for (tag, pdf_key) in dc_map {
         if let Some(val) = extract_xml_text(text, tag) {
@@ -1348,14 +1429,24 @@ fn extract_xml_text(xml: &str, tag: &str) -> Option<String> {
     let end = xml[content_start..].find(&close)? + content_start;
     let val = xml[content_start..end].trim().to_string();
     // <rdf:Alt><rdf:li> などのネストがある場合は内部テキストを取る
-    if val.starts_with('<') {
-        // 最初のタグの内容を抽出
+    let raw = if val.starts_with('<') {
         let inner_start = val.find('>')? + 1;
         let inner_end = val[inner_start..].find('<')? + inner_start;
-        Some(val[inner_start..inner_end].trim().to_string())
+        val[inner_start..inner_end].trim().to_string()
     } else {
-        Some(val)
-    }
+        val
+    };
+    // XML エンティティをデコードして返す
+    Some(xml_unescape(&raw))
+}
+
+/// XML エンティティを文字にデコードする
+fn xml_unescape(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\x22")
+        .replace("&apos;", "\x27")
 }
 
 // ── TIFF/EXIF パーサー ────────────────────────────────────────────────────

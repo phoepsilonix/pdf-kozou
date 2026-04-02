@@ -152,14 +152,21 @@ export function MetadataEditModal({
         setSaving(false);
         return;
       }
-      const metadata = EDITABLE_FIELDS.map(({ key, pdfKey }) => ({
+      const editableMetadata = EDITABLE_FIELDS.map(({ key, pdfKey }) => ({
         key: pdfKey,
         value: form[key] ?? "",
       }));
       if (isImageFile(filePath)) {
-        await setImageMetadata(filePath, metadata);
+        // 画像の場合: readonly フィールドも含めて全フィールドを送る
+        // （コア側は渡されたフィールドのみ上書き→渡さないと消える）
+        const readonlyMetadata: { key: string; value: string }[] = [
+          { key: "Producer", value: form.producer ?? "" },
+          { key: "CreationDate", value: form.creationDate ?? "" },
+          { key: "ModDate", value: form.modDate ?? "" },
+        ].filter(({ value }) => value !== "");
+        await setImageMetadata(filePath, [...editableMetadata, ...readonlyMetadata]);
       } else {
-        await setPdfMetadata(filePath, metadata);
+        await setPdfMetadata(filePath, editableMetadata);
       }
       setSaved(true);
       tts.speak(t("meta_edit.saved"));
