@@ -75,7 +75,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [extractSpec, onExtract] = useState("all");
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
-  const [zoom, setZoom] = useState(1.0);
+  const [zoom, setZoom] = useState(0.75);
   const [canvasWidth, setCanvasWidth] = useState(CANVAS_W_DEFAULT);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
@@ -547,7 +547,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     F1: () => announceKey("shortcut.trim_tool"),
   });
 
-  const [zoom, setZoom] = useState(1.0);
+  const [zoom, setZoom] = useState(0.75);
   const [canvasWidth, setCanvasWidth] = useState(CANVAS_W_DEFAULT);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
