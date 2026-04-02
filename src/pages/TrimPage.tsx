@@ -36,7 +36,7 @@ interface Props {
 const PREVIEW_DPI = 72;
 const RESULT_DPI = 96;
 const THUMB_DPI = 40;
-const CANVAS_W = 520;
+const CANVAS_W_DEFAULT = 520;
 
 type Phase = "edit" | "processing" | "result" | "error" | "compress" | "batchResult";
 const zero = (): TrimMargins => ({ left: 0, right: 0, top: 0, bottom: 0 });
@@ -76,11 +76,24 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [zoom, setZoom] = useState(1.0);
+  const [canvasWidth, setCanvasWidth] = useState(CANVAS_W_DEFAULT);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
   const currentPage = firstPdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
   const pageH = currentPage.h;
+
+  // コンテナ幅に追従してプレビューサイズを動的更新
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? CANVAS_W_DEFAULT;
+      setCanvasWidth(Math.max(300, Math.floor(w - 24)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Ctrl+ホイール でズーム
   useEffect(() => {
@@ -424,6 +437,12 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
                 setZoom(1.0);
               }
             }}
+            onWheel={(e) => {
+              if (!e.ctrlKey) return;
+              e.preventDefault();
+              const delta = e.deltaY > 0 ? -0.1 : 0.1;
+              setZoom((z) => +Math.max(0.25, Math.min(4.0, z + delta)).toFixed(2));
+            }}
           >
             {pageImage ? (
               <TrimCanvas
@@ -432,7 +451,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
                 pageHeightPt={curH}
                 margins={trimMargins}
                 onChange={setTrimMargins}
-                displayWidth={Math.round(CANVAS_W * zoom)}
+                displayWidth={Math.round(canvasWidth * zoom)}
               />
             ) : (
               <div style={s.ph}>{t("trim.page_loading")}</div>
@@ -531,7 +550,20 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   });
 
   const [zoom, setZoom] = useState(1.0);
+  const [canvasWidth, setCanvasWidth] = useState(CANVAS_W_DEFAULT);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
+
+  // コンテナ幅追従
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? CANVAS_W_DEFAULT;
+      setCanvasWidth(Math.max(300, Math.floor(w - 24)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const [previewPage, setPreviewPage] = useState(0);
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
@@ -851,11 +883,15 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               pageHeightPt={pageH}
               margins={trimMargins}
               onChange={setTrimMargins}
-              displayWidth={Math.round(CANVAS_W * zoom)}
+              displayWidth={Math.round(canvasWidth * zoom)}
             />
           ) : (
             <div
-              style={{ ...s.ph, width: CANVAS_W, height: Math.round((CANVAS_W * pageH) / pageW) }}
+              style={{
+                ...s.ph,
+                width: canvasWidth,
+                height: Math.round((canvasWidth * pageH) / pageW),
+              }}
             >
               <div style={s.spinner} />
               <span style={s.centSub}>{t("trim.loading")}</span>

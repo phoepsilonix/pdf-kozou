@@ -2,7 +2,7 @@
 
 export const F = "'JetBrains Mono','Noto Sans JP',monospace";
 
-export type ThemeId = "moss" | "ocean" | "slate" | "dusk" | "ember";
+export type ThemeId = "moss" | "ocean" | "slate" | "dusk" | "ember" | "paper" | "nordic";
 
 export interface Theme {
   id: ThemeId;
@@ -166,6 +166,60 @@ export const THEMES: Record<ThemeId, Theme> = {
     errBd: "#601818",
     navBg: "#281e14",
     navBd: "#4e3824",
+  },
+
+  /** 6. ペーパー — 明るめ・文書閲覧向けライトテーマ */
+  paper: {
+    id: "paper",
+    name: "ペーパー",
+    emoji: "📄",
+    bg: "#f5f2ec",
+    bgCard: "#ffffff",
+    bgHover: "#ede9e0",
+    border: "#d8d0c4",
+    borderHi: "#b8a898",
+    text: "#2c2420",
+    textSub: "#6b5e52",
+    textDim: "#9e8e82",
+    accent: "#2a6e4a",
+    accentBg: "#d8ede2",
+    accentBd: "#5aad7a",
+    green: "#2a8a50",
+    warn: "#9a7a10",
+    warnBg: "#fdf3d0",
+    warnBd: "#c8a830",
+    err: "#c03030",
+    errBg: "#fde8e8",
+    errBd: "#e07070",
+    navBg: "#ede8e0",
+    navBd: "#d0c8bc",
+  },
+
+  /** 7. ノルディック — 落ち着いたグレーブルーのライトテーマ */
+  nordic: {
+    id: "nordic",
+    name: "ノルディック",
+    emoji: "🏔️",
+    bg: "#eceff4",
+    bgCard: "#ffffff",
+    bgHover: "#e4e8f0",
+    border: "#d0d8e4",
+    borderHi: "#a8b8cc",
+    text: "#2e3440",
+    textSub: "#4c5a6e",
+    textDim: "#88a0b8",
+    accent: "#5e81ac",
+    accentBg: "#dce6f2",
+    accentBd: "#81a1c1",
+    green: "#4c9a6a",
+    warn: "#8a6a10",
+    warnBg: "#fdf0d0",
+    warnBd: "#c8a030",
+    err: "#bf4040",
+    errBg: "#fce8e8",
+    errBd: "#e08888",
+    navBg: "#e4e8f2",
+    navBd: "#c8d0e0",
   },
 };
 
