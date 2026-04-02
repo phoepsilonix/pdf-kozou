@@ -790,7 +790,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "transparent",
     border: `1px solid var(--c-errBd)`,
     borderRadius: 6,
-    color: "#aa4040",
+    color: "var(--c-err)",
     cursor: "pointer",
     fontSize: 12,
     fontFamily: F,

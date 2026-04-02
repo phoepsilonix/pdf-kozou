@@ -109,6 +109,11 @@ fn collect_metadata_from_ooxml(input: &str) -> Vec<(String, String)> {
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
 
+    // 画像ファイル（JPEG/PNG/SVG）は EXIF/XMP から取得
+    if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "svg") {
+        return crate::render::read_image_metadata(input);
+    }
+
     // DOCX/XLSX/PPTX のみ対応（ZIP ベースの Office Open XML 形式）
     if !matches!(ext.as_str(), "docx" | "xlsx" | "pptx") {
         return vec![];

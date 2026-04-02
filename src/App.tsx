@@ -854,7 +854,7 @@ const s: Record<string, React.CSSProperties> = {
     position: "relative",
     transition: "background 0.15s",
   },
-  rootDrag: { background: "#0e1510" },
+  rootDrag: { background: "var(--c-accentBg)" },
   header: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
   logo: {
     fontSize: 52,
@@ -976,7 +976,7 @@ const s: Record<string, React.CSSProperties> = {
   dragOverlay: {
     position: "fixed" as const, // fixedにすることで他の要素を動かさない
     inset: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    backgroundColor: "var(--c-accentBg)",
     border: "3px dashed var(--c-accent)",
     zIndex: 9999,
     display: "flex",
@@ -992,7 +992,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-errBg)",
     border: `1px solid var(--c-errBd)`,
     borderRadius: 9,
-    color: "#ff7070",
+    color: "var(--c-err)",
     fontSize: 13,
     maxWidth: 460,
     textAlign: "center" as const,
@@ -1010,7 +1010,7 @@ const fr: Record<string, React.CSSProperties> = {
     transition: "background 0.08s",
     userSelect: "none",
   },
-  rowSel: { background: "#192b1e" },
+  rowSel: { background: "var(--c-accentBg)" },
   rowDO: { background: "var(--c-accentBg)", borderColor: "var(--c-accent)" },
   rowDrag: { opacity: 0.4 },
   check: {
@@ -1028,7 +1028,7 @@ const fr: Record<string, React.CSSProperties> = {
     transition: "all 0.1s",
   },
   checkOn: { background: "var(--c-accent)", borderColor: "var(--c-accent)" },
-  checkMark: { fontSize: 13, color: "#000", fontWeight: 700, lineHeight: 1 },
+  checkMark: { fontSize: 13, color: "var(--c-accentText)", fontWeight: 700, lineHeight: 1 },
   handle: { fontSize: 16, color: "var(--c-borderHi)", cursor: "grab", flexShrink: 0 },
   num: {
     fontSize: 13,

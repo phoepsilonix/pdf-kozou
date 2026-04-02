@@ -1089,8 +1089,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   batchRangeNote: {
     padding: "9px 11px",
-    background: "#1a2a1a",
-    border: `1px solid #3a5a2a`,
+    background: "var(--c-accentBg)",
+    border: `1px solid var(--c-accentBd)`,
     borderRadius: 7,
     fontSize: 11,
     color: "var(--c-textSub)",

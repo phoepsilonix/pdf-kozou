@@ -266,6 +266,11 @@ function MetaRow({ label, value }: { label: string; value?: string }) {
   );
 }
 
+const IMAGE_EXTS_VIEWER = new Set(["jpg", "jpeg", "png", "svg"]);
+function isImagePath(p: string) {
+  return IMAGE_EXTS_VIEWER.has(p.split(".").pop()?.toLowerCase() ?? "");
+}
+
 function InfoDrawer({
   open,
   onClose,
@@ -344,14 +349,16 @@ function InfoDrawer({
       <div style={ds.drawerHead}>
         <span style={ds.drawerTitle}>ℹ {t("viewer.info_title")}</span>
         <div style={{ flex: 1 }} />
-        <button
-          style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
-          onClick={() => setMetaEditOpen(true)}
-          title={t("meta_edit.title")}
-          aria-label={t("meta_edit.title")}
-        >
-          ✏️
-        </button>
+        {(filePath.toLowerCase().endsWith(".pdf") || isImagePath(filePath)) && (
+          <button
+            style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
+            onClick={() => setMetaEditOpen(true)}
+            title={t("meta_edit.title")}
+            aria-label={t("meta_edit.title")}
+          >
+            ✏️
+          </button>
+        )}
         <button
           style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
           onClick={handleCopyAll}
@@ -432,7 +439,7 @@ function InfoDrawer({
       {metaEditOpen && (
         <MetadataEditModal
           filePath={filePath}
-          initialMeta={toPdfMeta()}
+          initialMeta={isImagePath(filePath) ? undefined : toPdfMeta()}
           onClose={() => setMetaEditOpen(false)}
           onSaved={() => {
             setMetaEditOpen(false);
@@ -1230,19 +1237,16 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
             filePath={activePath}
             fileName={fname}
             onMetaSaved={async () => {
-              // メタデータ保存後に getPdfInfo を直接再取得して activeInfo を更新
-              // lastInfoKey を空にリセットすることで useEffect の pdfInfo early return をバイパス
+              // 画像ファイルの場合: 元ファイルを書き換えるので getPdfInfo 再取得は不要
+              if (isImagePath(activePath)) return;
+              // PDF の場合: getPdfInfo を再取得して表示を更新
               try {
                 const refreshed = await getPdfInfo(activePath, {
                   layoutW: convertLayoutW,
                   layoutH: convertLayoutH,
                   layoutEm: convertLayoutEm,
                 });
-                // まず activeInfo を更新
                 setActiveInfo(refreshed);
-                // キャッシュをリセット：次の useEffect 実行時に pdfInfo で上書きされないよう
-                // infoKey と異なる値にしておく（useEffect は依存が変わらないと再実行されないため
-                // ここでは直接 setActiveInfo した refreshed を使い続ける）
                 lastInfoKey.current = "__meta_updated__";
               } catch {
                 /* 更新失敗は無視 */

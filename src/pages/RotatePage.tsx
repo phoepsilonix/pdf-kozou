@@ -919,7 +919,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-accent)",
     border: "none",
     borderRadius: 9,
-    color: "#0a1a10",
+    color: "var(--c-accentText)",
     fontWeight: 700,
     cursor: "pointer",
     fontSize: 15,
