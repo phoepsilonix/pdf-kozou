@@ -76,28 +76,299 @@ function formatDate(d: string): string {
   return d;
 }
 
+// Linux WebKitGTK かどうか（テキスト選択の実装切り替えに使用）
+const IS_LINUX_WEBKIT =
+  typeof navigator !== "undefined" &&
+  navigator.userAgent.includes("Linux") &&
+  navigator.userAgent.includes("WebKit") &&
+  !navigator.userAgent.includes("Chrome"); // Chromium ベースを除外
+
 // ── TextLayer ─────────────────────────────────────────────────────────────────
-// 行単位の透明 div を配置するだけ。
-// ブラウザのテキスト選択は div の中の textContent で行われる。
-// 文字ごとの span は廃止（DOM 重い・フォント依存のズレが大きい）
+// カスタムテキスト選択（char.quad ベース）
+// ::selection に依存せずハイライトも位置も正確に制御する。
+
+interface SelChar {
+  c: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  lineIdx: number;
+  blockIdx: number;
+}
+
 interface TextLayerProps {
   blocks: STextBlock[];
   containerW: number;
   containerH: number;
+  zoom: number;
   searchHits: GlobalHit[];
   currentHit?: GlobalHit | null;
 }
 
-function TextLayer({ blocks, containerW, containerH, searchHits, currentHit }: TextLayerProps) {
-  // canvas.measureText で実際のブラウザ描画幅を計測するキャンバス（再利用）
-  const measureCanvas = useMemo(
-    () =>
-      typeof document !== "undefined" ? document.createElement("canvas").getContext("2d") : null,
-    [],
+function LinuxTextLayer({
+  blocks,
+  containerW,
+  containerH,
+  zoom,
+  searchHits,
+  currentHit,
+}: TextLayerProps) {
+  // 全文字フラットリスト（座標順ソート・一度だけ構築）
+  const allChars = useMemo<SelChar[]>(() => {
+    const list: SelChar[] = [];
+    let lineIdx = 0;
+    [...blocks]
+      .filter((b) => b.type === "text")
+      .sort((a, b) =>
+        Math.abs(a.bbox.y0 - b.bbox.y0) > 5 ? a.bbox.y0 - b.bbox.y0 : a.bbox.x0 - b.bbox.x0,
+      )
+      .forEach((block, bi) => {
+        [...block.lines]
+          .sort((a, b) => a.bbox.y0 - b.bbox.y0)
+          .forEach((line) => {
+            [...line.chars]
+              .sort((a, b) => a.quad[0] - b.quad[0])
+              .forEach((ch) => {
+                const [ulx, uly, urx, , , lly] = ch.quad;
+                list.push({
+                  c: ch.c,
+                  x0: ulx * zoom,
+                  y0: uly * zoom,
+                  x1: urx * zoom,
+                  y1: lly * zoom,
+                  lineIdx,
+                  blockIdx: bi,
+                });
+              });
+            lineIdx++;
+          });
+      });
+    return list;
+  }, [blocks, zoom]);
+
+  // 行インデックス（高速検索）
+  const lineRanges = useMemo(() => {
+    const map = new Map<number, { start: number; end: number; y0: number; y1: number }>();
+    allChars.forEach((ch, i) => {
+      const r = map.get(ch.lineIdx);
+      if (!r) map.set(ch.lineIdx, { start: i, end: i, y0: ch.y0, y1: ch.y1 });
+      else {
+        r.end = i;
+        r.y0 = Math.min(r.y0, ch.y0);
+        r.y1 = Math.max(r.y1, ch.y1);
+      }
+    });
+    return map;
+  }, [allChars]);
+
+  const [selStart, setSelStart] = useState<number | null>(null);
+  const [selEnd, setSelEnd] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastMove = useRef(0);
+
+  const charAtPoint = useCallback(
+    (x: number, y: number): number | null => {
+      if (!allChars.length) return null;
+
+      // Step1: y が bbox 内に完全に収まる行を候補にする
+      const inRow: number[] = [];
+      lineRanges.forEach((r, li) => {
+        if (y >= r.y0 && y <= r.y1) inRow.push(li);
+      });
+
+      // Step2: bbox 内の行がなければ y 距離が最小の行
+      let hitLine = -1;
+      if (inRow.length > 0) {
+        // 複数行ヒットした場合は x 方向でも最近傍を選ぶ
+        let bestDx = Infinity;
+        for (const li of inRow) {
+          const { start, end } = lineRanges.get(li)!;
+          for (let i = start; i <= end; i++) {
+            const dx = Math.abs(x - (allChars[i].x0 + allChars[i].x1) / 2);
+            if (dx < bestDx) {
+              bestDx = dx;
+              hitLine = li;
+            }
+          }
+        }
+      } else {
+        let bestDy = Infinity;
+        lineRanges.forEach((r, li) => {
+          const dy = Math.min(Math.abs(y - r.y0), Math.abs(y - r.y1));
+          if (dy < bestDy) {
+            bestDy = dy;
+            hitLine = li;
+          }
+        });
+      }
+
+      if (hitLine < 0) return null;
+      const { start, end } = lineRanges.get(hitLine)!;
+      let best = start,
+        bestDx = Infinity;
+      for (let i = start; i <= end; i++) {
+        const dx = Math.abs(x - (allChars[i].x0 + allChars[i].x1) / 2);
+        if (dx < bestDx) {
+          bestDx = dx;
+          best = i;
+        }
+      }
+      return best;
+    },
+    [allChars, lineRanges],
   );
+
+  const relPos = useCallback((e: React.MouseEvent): [number, number] => {
+    const r = containerRef.current!.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  }, []);
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      // クリック時にコンテナにフォーカスを移す（検索窓などからフォーカスを外す）
+      containerRef.current?.focus();
+      const [x, y] = relPos(e);
+      const idx = charAtPoint(x, y);
+      if (idx === null) return;
+      if (e.detail === 2) {
+        // ダブルクリック: 単語選択
+        const isBound = (c: string) => /[\s　、。]/.test(c);
+        let s = idx,
+          en = idx;
+        while (
+          s > 0 &&
+          allChars[s - 1].lineIdx === allChars[idx].lineIdx &&
+          !isBound(allChars[s - 1].c)
+        )
+          s--;
+        while (
+          en < allChars.length - 1 &&
+          allChars[en + 1].lineIdx === allChars[idx].lineIdx &&
+          !isBound(allChars[en + 1].c)
+        )
+          en++;
+        setSelStart(s);
+        setSelEnd(en);
+      } else if (e.detail === 3) {
+        // トリプルクリック: 行選択
+        const li = allChars[idx].lineIdx;
+        const r = lineRanges.get(li);
+        if (r) {
+          setSelStart(r.start);
+          setSelEnd(r.end);
+        }
+      } else if (e.detail >= 4) {
+        // 4クリック: ブロック選択
+        const bi = allChars[idx].blockIdx;
+        const s = allChars.findIndex((c) => c.blockIdx === bi);
+        let en = s;
+        while (en < allChars.length - 1 && allChars[en + 1].blockIdx === bi) en++;
+        setSelStart(s);
+        setSelEnd(en);
+      } else {
+        setSelStart(idx);
+        setSelEnd(idx);
+        setIsDragging(true);
+      }
+      e.preventDefault();
+    },
+    [charAtPoint, relPos, allChars, lineRanges],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isDragging) return;
+      const now = e.timeStamp;
+      if (now - lastMove.current < 32) return;
+      lastMove.current = now;
+      const [x, y] = relPos(e);
+      const idx = charAtPoint(x, y);
+      if (idx !== null) setSelEnd(idx);
+    },
+    [isDragging, charAtPoint, relPos],
+  );
+
+  const handleMouseUp = useCallback(() => setIsDragging(false), []);
+
+  // 選択テキスト
+  const selectedText = useMemo(() => {
+    if (selStart === null || selEnd === null) return "";
+    const a = Math.min(selStart, selEnd),
+      b = Math.max(selStart, selEnd);
+    let text = "",
+      prevLine = allChars[a]?.lineIdx,
+      prevBlock = allChars[a]?.blockIdx;
+    for (let i = a; i <= b; i++) {
+      const ch = allChars[i];
+      if (!ch) continue;
+      if (ch.blockIdx !== prevBlock) {
+        text += "\n\n";
+        prevBlock = ch.blockIdx;
+        prevLine = ch.lineIdx;
+      } else if (ch.lineIdx !== prevLine) {
+        text += "\n";
+        prevLine = ch.lineIdx;
+      }
+      text += ch.c;
+    }
+    return text;
+  }, [selStart, selEnd, allChars]);
+
+  // selectedText を ref で保持（イベントハンドラから常に最新値を参照）
+  const selectedTextRef = useRef("");
+  selectedTextRef.current = selectedText; // render のたびに同期更新（useEffect 不要）
+
+  // Ctrl+C / Ctrl+A（一度だけ登録）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      if (e.ctrlKey && e.key === "c") {
+        const text = selectedTextRef.current;
+        if (text) {
+          navigator.clipboard.writeText(text).catch(() => {});
+          e.preventDefault();
+        }
+      }
+      if (e.ctrlKey && e.key === "a") {
+        if (allChars.length > 0) {
+          setSelStart(0);
+          setSelEnd(allChars.length - 1);
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [allChars]);
+
+  // 選択ハイライト（行単位矩形）
+  const selRects = useMemo(() => {
+    if (selStart === null || selEnd === null) return [];
+    const a = Math.min(selStart, selEnd),
+      b = Math.max(selStart, selEnd);
+    const lineMap = new Map<number, { x0: number; x1: number; y0: number; y1: number }>();
+    for (let i = a; i <= b; i++) {
+      const ch = allChars[i];
+      if (!ch) continue;
+      const r = lineMap.get(ch.lineIdx);
+      if (!r) lineMap.set(ch.lineIdx, { x0: ch.x0, x1: ch.x1, y0: ch.y0, y1: ch.y1 });
+      else {
+        r.x0 = Math.min(r.x0, ch.x0);
+        r.x1 = Math.max(r.x1, ch.x1);
+        r.y0 = Math.min(r.y0, ch.y0);
+        r.y1 = Math.max(r.y1, ch.y1);
+      }
+    }
+    return Array.from(lineMap.values());
+  }, [selStart, selEnd, allChars]);
 
   return (
     <div
+      ref={containerRef}
       style={{
         position: "absolute",
         top: 0,
@@ -105,94 +376,30 @@ function TextLayer({ blocks, containerW, containerH, searchHits, currentHit }: T
         width: containerW,
         height: containerH,
         overflow: "visible",
+        cursor: "text",
+        userSelect: "none",
       }}
+      tabIndex={-1}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
     >
-      {/*
-       * テキスト選択オーバーレイ
-       *
-       * 設計:
-       *   - 行ごとに position:absolute の div を配置（ダブルクリック・行選択が機能する）
-       *   - 行テキスト全体を1つの span に入れる（フロー要素なのでブラウザ選択が自然）
-       *   - canvas.measureText で実際の描画幅を計測し scaleX で pdf bbox に合わせる
-       *   - 各行は行の左端 (line.bbox.x0) から始まり、scaleX で右端 (x1) に合わせる
-       *
-       * ダブルクリック動作:
-       *   ブラウザは span 内の連続テキストに対して単語・行選択を行うので
-       *   position:static / inline のテキストなら機能する。
-       */}
-      {blocks
-        .filter((b) => b.type === "text")
-        .map((block, bi) => (
-          // ブロック（段落・見出しなどの塊）ごとに div でグループ化
-          // → ブロック内でのダブルクリック単語選択・トリプルクリック行選択が機能する
-          <div
-            key={`block-${bi}`}
-            style={{
-              position: "absolute",
-              left: block.bbox.x0,
-              top: block.bbox.y0,
-              width: Math.max(1, block.bbox.x1 - block.bbox.x0),
-              height: Math.max(1, block.bbox.y1 - block.bbox.y0),
-              overflow: "visible",
-              userSelect: "text",
-              pointerEvents: "auto",
-            }}
-          >
-            {block.lines.map((line, li) => {
-              const text = line.chars.map((c) => c.c).join("");
-              if (!text.trim()) return null;
-
-              const { x0, y0, x1, y1 } = line.bbox;
-              const bboxW = Math.max(1, x1 - x0);
-              const bboxH = Math.max(1, y1 - y0);
-              const fs = bboxH * 0.85;
-
-              // canvas.measureText で実際の描画幅を計測
-              let renderedW = fs * 0.55 * text.length;
-              if (measureCanvas) {
-                measureCanvas.font = `${fs}px sans-serif`;
-                const m = measureCanvas.measureText(text).width;
-                if (m > 1) renderedW = m;
-              }
-              const scaleX = bboxW / renderedW;
-
-              // ブロック座標からの相対位置
-              const relX = x0 - block.bbox.x0;
-              const relY = y0 - block.bbox.y0;
-
-              return (
-                <div
-                  key={`line-${li}`}
-                  style={{
-                    position: "absolute",
-                    left: relX,
-                    top: relY,
-                    width: renderedW,
-                    height: bboxH,
-                    lineHeight: `${bboxH}px`,
-                    transformOrigin: "top left",
-                    transform: `scaleX(${scaleX})`,
-                    cursor: "text",
-                    userSelect: "text",
-                    whiteSpace: "pre",
-                    overflow: "visible",
-                    pointerEvents: "auto",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: fs,
-                      color: "transparent",
-                      userSelect: "text",
-                    }}
-                  >
-                    {text}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+      {/* 選択ハイライト（char.quad 座標で正確に描画） */}
+      {selRects.map((r, i) => (
+        <div
+          key={`sel-${i}`}
+          style={{
+            position: "absolute",
+            left: r.x0,
+            top: r.y0,
+            width: Math.max(1, r.x1 - r.x0),
+            height: Math.max(1, r.y1 - r.y0),
+            background: "rgba(100,160,255,0.4)",
+            pointerEvents: "none",
+          }}
+        />
+      ))}
 
       {/* 検索ハイライト */}
       {searchHits.map((hit, i) => {
@@ -207,10 +414,10 @@ function TextLayer({ blocks, containerW, containerH, searchHits, currentHit }: T
             key={i}
             style={{
               position: "absolute",
-              left: ulx,
-              top: uly,
-              width: urx - ulx,
-              height: lly - uly,
+              left: ulx * zoom,
+              top: uly * zoom,
+              width: (urx - ulx) * zoom,
+              height: (lly - uly) * zoom,
               background: isCurrent ? "rgba(255,160,0,0.65)" : "rgba(255,220,0,0.35)",
               border: isCurrent ? "2px solid rgba(255,120,0,0.8)" : "none",
               borderRadius: 2,
@@ -223,8 +430,141 @@ function TextLayer({ blocks, containerW, containerH, searchHits, currentHit }: T
   );
 }
 
+// ── Windows/Mac 用ネイティブ選択 TextLayer ───────────────────────────────────────
+function NativeTextLayer({
+  blocks,
+  containerW,
+  containerH,
+  zoom,
+  searchHits,
+  currentHit,
+}: TextLayerProps) {
+  const measureCanvas = useMemo(
+    () =>
+      typeof document !== "undefined" ? document.createElement("canvas").getContext("2d") : null,
+    [],
+  );
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: containerW,
+        height: containerH,
+        overflow: "visible",
+      }}
+    >
+      {[...blocks]
+        .filter((b) => b.type === "text")
+        .sort((a, b) =>
+          Math.abs(a.bbox.y0 - b.bbox.y0) > 5 ? a.bbox.y0 - b.bbox.y0 : a.bbox.x0 - b.bbox.x0,
+        )
+        .map((block, bi) => (
+          <div
+            key={`block-${bi}`}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              width: containerW,
+              height: containerH,
+              overflow: "visible",
+              userSelect: "text",
+              pointerEvents: "none",
+            }}
+          >
+            {[...block.lines]
+              .sort((a, b) => a.bbox.y0 - b.bbox.y0)
+              .map((line, li) => {
+                const text = [...line.chars]
+                  .sort((a, b) => a.quad[0] - b.quad[0])
+                  .map((c) => c.c)
+                  .join("");
+                if (!text.trim()) return null;
+                const { x0, y0, x1, y1 } = line.bbox;
+                const bboxW = Math.max(1, (x1 - x0) * zoom);
+                const bboxH = Math.max(1, (y1 - y0) * zoom);
+                const fs = bboxH;
+                let renderedW = fs * 0.55 * text.length;
+                if (measureCanvas) {
+                  measureCanvas.font = `${fs}px sans-serif`;
+                  const m = measureCanvas.measureText(text).width;
+                  if (m > 1) renderedW = m;
+                }
+                return (
+                  <div
+                    key={`line-${li}`}
+                    style={{
+                      position: "absolute",
+                      left: x0 * zoom,
+                      top: y0 * zoom,
+                      width: bboxW,
+                      height: bboxH,
+                      fontSize: bboxH,
+                      lineHeight: `${bboxH}px`,
+                      letterSpacing:
+                        text.length > 1
+                          ? `${(bboxW - renderedW) / Math.max(1, text.length - 1)}px`
+                          : "normal",
+                      cursor: "text",
+                      userSelect: "text",
+                      whiteSpace: "pre",
+                      overflow: "hidden",
+                      pointerEvents: "auto",
+                      color: "transparent",
+                    }}
+                  >
+                    {text}
+                  </div>
+                );
+              })}
+          </div>
+        ))}
+      {/* 検索ハイライト */}
+      {searchHits.map((hit, i) => {
+        const [ulx, uly, urx, , , lly] = hit.quad;
+        const isCurrent =
+          currentHit &&
+          hit.page === currentHit.page &&
+          hit.quad[0] === currentHit.quad[0] &&
+          hit.quad[1] === currentHit.quad[1];
+        return (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              left: ulx * zoom,
+              top: uly * zoom,
+              width: (urx - ulx) * zoom,
+              height: (lly - uly) * zoom,
+              background: isCurrent ? "rgba(255,160,0,0.65)" : "rgba(255,220,0,0.35)",
+              border: isCurrent ? "2px solid rgba(255,120,0,0.8)" : "none",
+              borderRadius: 2,
+              pointerEvents: "none",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ── TextLayer: OS によって実装を切り替え ──────────────────────────────────────
+function TextLayer(props: TextLayerProps) {
+  return IS_LINUX_WEBKIT ? <LinuxTextLayer {...props} /> : <NativeTextLayer {...props} />;
+}
+
 // ── LinkLayer ─────────────────────────────────────────────────────────────────
-function LinkLayer({ links, onNavigate }: { links: PageLink[]; onNavigate: (p: number) => void }) {
+function LinkLayer({
+  links,
+  onNavigate,
+  zoom = 1,
+}: {
+  links: PageLink[];
+  onNavigate: (p: number) => void;
+  zoom?: number;
+}) {
   return (
     <>
       {links.map((link, i) => {
@@ -245,10 +585,10 @@ function LinkLayer({ links, onNavigate }: { links: PageLink[]; onNavigate: (p: n
             }
             style={{
               position: "absolute",
-              left: x0,
-              top: y0,
-              width: x1 - x0,
-              height: y1 - y0,
+              left: x0 * zoom,
+              top: y0 * zoom,
+              width: (x1 - x0) * zoom,
+              height: (y1 - y0) * zoom,
               cursor: "pointer",
               display: "block",
             }}
@@ -568,6 +908,8 @@ function SearchBar({
     onAllHits([...allHits]); // ページが変わっても全ヒットを保持
   };
 
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const handleClose = () => {
     setQ("");
     setAllHits([]);
@@ -579,6 +921,7 @@ function SearchBar({
   return (
     <div style={ss.bar}>
       <input
+        ref={inputRef}
         style={ss.input}
         value={q}
         onChange={(e) => {
@@ -588,8 +931,23 @@ function SearchBar({
         onKeyDown={(e) => {
           if (e.key === "Enter") go(e.shiftKey ? -1 : 1);
           if (e.key === "Escape") handleClose();
+          if (e.ctrlKey && (e.key === "f" || e.key === "F")) {
+            e.preventDefault();
+            inputRef.current?.focus();
+            inputRef.current?.select();
+          }
+          // Ctrl+Z / Ctrl+Y: WebKitGTK でネイティブが効かない場合の fallback
+          if (e.ctrlKey && (e.key === "z" || e.key === "Z")) {
+            e.stopPropagation();
+            document.execCommand("undo");
+          }
+          if (e.ctrlKey && (e.key === "y" || e.key === "Y")) {
+            e.stopPropagation();
+            document.execCommand("redo");
+          }
         }}
         placeholder={t("viewer.search_placeholder")}
+        className="search-input"
         autoFocus
       />
       {searching && (
@@ -645,7 +1003,16 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   useKeyboardShortcuts({
     ArrowLeft: () => setViewPage((p) => Math.max(0, p - 1)),
     ArrowRight: () => setViewPage((p) => Math.min(total - 1, p + 1)),
-    "Ctrl+F": () => setShowSearch((v) => !v),
+    "Ctrl+F": () => {
+      if (showSearch) {
+        // すでに開いていれば検索窓にフォーカスを戻すだけ
+        const input = document.querySelector<HTMLInputElement>(".search-input");
+        input?.focus();
+        input?.select();
+      } else {
+        setShowSearch(true);
+      }
+    },
     F1: () => announceKey("shortcut.viewer"),
   });
   const [activeInfo, setActiveInfo] = useState<PdfInfo | null>(pdfInfo ?? null);
@@ -979,9 +1346,10 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const fname = activePath.split(/[/\\]/).pop() ?? "";
   const THUMB_W = 104;
 
-  // 表示サイズ（zoom は CSS transform で）
-  const displayW = imgNaturalW;
-  const displayH = imgNaturalH;
+  // 表示サイズ（zoom を直接サイズに反映して transform: scale を使わない）
+  // → Linux WebKitGTK で transform: scale 内のテキスト選択座標がずれる問題を回避
+  const displayW = Math.round(imgNaturalW * zoom);
+  const displayH = Math.round(imgNaturalH * zoom);
 
   return (
     <div style={s.root}>
@@ -1177,16 +1545,12 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                       position: "relative",
                       display: "inline-block",
                       boxShadow: `0 4px ${Math.round(32 * zoom)}px rgba(0,0,0,0.7)`,
-                      transform: `scale(${zoom})`,
-                      transformOrigin: "top left",
-                      marginRight: displayW * (zoom - 1),
-                      marginBottom: displayH * (zoom - 1),
                     }}
                   >
                     <img
                       src={`data:image/jpeg;base64,${mainImg}`}
                       alt={t("viewer.page_alt", { n: String(viewPage + 1) })}
-                      style={{ display: "block" }}
+                      style={{ display: "block", width: displayW, height: displayH }}
                       onLoad={(e) => {
                         const img = e.currentTarget;
                         setImgNaturalW(img.naturalWidth);
@@ -1205,6 +1569,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                         blocks={textBlocks}
                         containerW={displayW}
                         containerH={displayH}
+                        zoom={zoom}
                         searchHits={pageSearchHits}
                         currentHit={currentHit}
                       />
@@ -1219,7 +1584,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                           height: displayH,
                         }}
                       >
-                        <LinkLayer links={pageLinks} onNavigate={setViewPage} />
+                        <LinkLayer links={pageLinks} onNavigate={setViewPage} zoom={zoom} />
                       </div>
                     )}
                   </div>
