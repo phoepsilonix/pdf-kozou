@@ -194,8 +194,11 @@ const s: Record<string, React.CSSProperties> = {
   },
   numInput: {
     width: 64,
+    height: 28,
     fontSize: 12,
-    padding: "3px 6px",
+    lineHeight: "28px",
+    padding: "0 6px",
+    boxSizing: "border-box" as const,
     borderRadius: 4,
     border: "1px solid var(--c-border)",
     background: "var(--c-bg)",
