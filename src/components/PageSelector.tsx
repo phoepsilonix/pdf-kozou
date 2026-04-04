@@ -171,7 +171,7 @@ export function PageSelector({
                 borderRadius: 6,
                 color: "var(--c-text)",
                 fontSize: 16,
-		height: 36,
+                height: 36,
                 fontFamily: F,
                 width: "100%",
                 boxSizing: "border-box",
