@@ -39,6 +39,7 @@ import {
 } from "./lib/theme";
 import { ThemeSwitcher } from "./components/ThemeSwitcher";
 import type { ThemeId } from "./lib/themes";
+import { THEMES } from "./lib/themes";
 
 // GLOBAL_CSS は関数にして themeId 変更時に再評価
 function makeGlobalCss(t: typeof C) {
@@ -419,9 +420,54 @@ export default function App() {
         }
       }}
     >
-      <header style={s.header}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img src="/app-icon.svg" style={{ width: 48, height: 48, borderRadius: 10 }} alt="logo" />
+      {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
+      {THEMES[themeId].customBg && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundImage: `url(${THEMES[themeId].customBg})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            opacity: 0.07,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
+      <header
+        style={{
+          ...s.header,
+          // 募集テーマのヘッダー画像を背景に表示
+          ...(THEMES[themeId].customHeader
+            ? {
+                backgroundImage: `url(${THEMES[themeId].customHeader})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                backgroundRepeat: "no-repeat",
+                position: "relative" as const,
+              }
+            : {}),
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          <img
+            src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
+            style={{ width: 48, height: 48, borderRadius: 10 }}
+            alt="logo"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = "/app-icon.svg";
+            }}
+          />
           <span style={s.logo}>
             PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
             　　
@@ -443,8 +489,44 @@ export default function App() {
             ℹ️ About
           </button>
         </div>
-        <span style={{ ...s.tagline, marginBottom: 8, opacity: 0.8 }}>v{pkg.version}</span>
-        <span style={s.tagline}>{t("app.tagline")}</span>
+        <span
+          style={{ ...s.tagline, marginBottom: 8, opacity: 0.8, position: "relative", zIndex: 1 }}
+        >
+          v{pkg.version}
+        </span>
+        <span style={{ ...s.tagline, position: "relative", zIndex: 1 }}>{t("app.tagline")}</span>
+        {/* 募集テーマのクレジット表示 */}
+        {THEMES[themeId].cupTitle && (
+          <div
+            style={{
+              position: "relative",
+              zIndex: 1,
+              marginTop: 4,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1,
+            }}
+          >
+            <span style={{ fontSize: 10, color: "var(--c-accent)", fontWeight: 700 }}>
+              🏆 {THEMES[themeId].cupTitle}
+            </span>
+            {THEMES[themeId].customIconCredit && (
+              <span style={{ fontSize: 9, color: "var(--c-textDim)" }}>
+                icon: © {THEMES[themeId].customIconYear} {THEMES[themeId].customIconCredit}
+              </span>
+            )}
+            {THEMES[themeId].customHeaderCredit && (
+              <span style={{ fontSize: 9, color: "var(--c-textDim)" }}>
+                header: © {THEMES[themeId].customHeaderYear} {THEMES[themeId].customHeaderCredit}
+              </span>
+            )}
+            {THEMES[themeId].customBgCredit && (
+              <span style={{ fontSize: 9, color: "var(--c-textDim)" }}>
+                bg: © {THEMES[themeId].customBgYear} {THEMES[themeId].customBgCredit}
+              </span>
+            )}
+          </div>
+        )}
         <div
           style={{
             position: "absolute",

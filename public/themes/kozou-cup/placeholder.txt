@@ -1,0 +1,11 @@
+このディレクトリに以下のファイルを配置してください：
+
+  icon.png   - アプリアイコン（推奨: 512×512 px、PNG透過推奨）
+  header.png - ヘッダー画像（推奨: 1280×80 px）
+  bg.png     - ホーム背景画像（推奨: 1920×1080 px）
+
+画像を配置後、src/lib/themes.ts の kozou-cup エントリの
+customIconCredit / customHeaderCredit / customBgCredit に
+作者名を記入してください。
+
+ファイルが存在しない場合はデフォルト（app-icon.svg）が使われます。

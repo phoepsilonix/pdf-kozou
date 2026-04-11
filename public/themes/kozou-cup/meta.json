@@ -1,0 +1,29 @@
+{
+  "_comment": "PDF小僧杯 募集テーマ設定ファイル",
+  "_howto": "themes.ts の kozou-cup エントリの customXxxCredit / customXxxYear を更新してください",
+  "cupTitle": "PDF小僧杯",
+  "images": {
+    "icon": {
+      "file": "icon.png",
+      "recommended_size": "512x512 px",
+      "format": "PNG (透過推奨)",
+      "credit": "",
+      "year": null
+    },
+    "header": {
+      "file": "header.png",
+      "recommended_size": "1280x80 px",
+      "format": "PNG",
+      "credit": "",
+      "year": null
+    },
+    "bg": {
+      "file": "bg.png",
+      "recommended_size": "1920x1080 px",
+      "format": "PNG または JPEG",
+      "credit": "",
+      "year": null
+    }
+  },
+  "license_note": "応募作品はアプリへの組み込みを許諾するものとします"
+}

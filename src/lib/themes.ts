@@ -2,7 +2,15 @@
 
 export const F = "'JetBrains Mono','Noto Sans JP',monospace";
 
-export type ThemeId = "moss" | "ocean" | "slate" | "dusk" | "ember" | "paper" | "nordic";
+export type ThemeId =
+  | "moss"
+  | "ocean"
+  | "slate"
+  | "dusk"
+  | "ember"
+  | "paper"
+  | "nordic"
+  | "kozou-cup";
 
 export interface Theme {
   id: ThemeId;
@@ -29,6 +37,19 @@ export interface Theme {
   errBd: string;
   navBg: string;
   navBd: string;
+  // ── 募集テーマ用オプションフィールド（通常テーマでは undefined）──────────
+  // 画像パスは Tauri の asset protocol 経由で読み込む
+  // 例: "/themes/kozou-cup/icon.png"
+  customIcon?: string; // ホームアイコン画像パス
+  customIconCredit?: string; // アイコン作者名
+  customIconYear?: number; // アイコン応募年度
+  customHeader?: string; // ヘッダー画像パス
+  customHeaderCredit?: string; // ヘッダー作者名
+  customHeaderYear?: number; // ヘッダー応募年度
+  customBg?: string; // ホーム背景画像パス
+  customBgCredit?: string; // 背景画像作者名
+  customBgYear?: number; // 背景画像応募年度
+  cupTitle?: string; // 大会名称（例: "PDF小僧杯 2026"）
 }
 
 // ── テーマ定義 ────────────────────────────────────────────────────────────────
@@ -228,6 +249,48 @@ export const THEMES: Record<ThemeId, Theme> = {
     errBd: "#e08888",
     navBg: "#e4e8f2",
     navBd: "#c8d0e0",
+  },
+
+  /** 8. PDF小僧杯 — 募集テーマ（年度ごとに画像・クレジットを差し替え） */
+  "kozou-cup": {
+    id: "kozou-cup",
+    name: "PDF小僧杯",
+    emoji: "🏆",
+    // カラーは moss ベース（画像で個性を出すので色は落ち着かせる）
+    bg: "#19221c",
+    bgCard: "#222e26",
+    bgHover: "#283624",
+    border: "#33483a",
+    borderHi: "#45634e",
+    text: "#e4f2e8",
+    textSub: "#94c4a4",
+    textDim: "#5e8a6e",
+    accent: "#5dd68a",
+    accentBg: "#18321f",
+    accentBd: "#3d9055",
+    accentText: "#fff",
+    green: "#4fe090",
+    warn: "#d4b84a",
+    warnBg: "#2c2808",
+    warnBd: "#5a4a14",
+    err: "#e06060",
+    errBg: "#2a1212",
+    errBd: "#602020",
+    navBg: "#1f2c22",
+    navBd: "#33483a",
+    // ── 募集テーマ画像（年度ごとに差し替える） ──
+    // 画像ファイルは src/assets/themes/kozou-cup/ に配置
+    // ビルド時に dist/themes/kozou-cup/ にコピーされる
+    cupTitle: "PDF小僧杯",
+    customIcon: "/themes/kozou-cup/icon.png",
+    customIconCredit: undefined, // 例: "作者ハンドル名"
+    customIconYear: undefined, // 例: 2026
+    customHeader: "/themes/kozou-cup/header.png",
+    customHeaderCredit: undefined,
+    customHeaderYear: undefined,
+    customBg: "/themes/kozou-cup/bg.png",
+    customBgCredit: undefined,
+    customBgYear: undefined,
   },
 };
 
