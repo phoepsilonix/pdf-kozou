@@ -39,7 +39,6 @@ import {
 } from "./lib/theme";
 import { ThemeSwitcher } from "./components/ThemeSwitcher";
 import type { ThemeId } from "./lib/themes";
-import { THEMES } from "./lib/themes";
 
 // GLOBAL_CSS は関数にして themeId 変更時に再評価
 function makeGlobalCss(t: typeof C) {
