@@ -419,22 +419,6 @@ export default function App() {
         }
       }}
     >
-      {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
-      {THEMES[themeId].customBg && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundImage: `url(${THEMES[themeId].customBg})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat",
-            opacity: 0.07,
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-      )}
       <header
         style={{
           ...s.header,
@@ -445,11 +429,26 @@ export default function App() {
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 backgroundRepeat: "no-repeat",
-                position: "relative" as const,
               }
             : {}),
         }}
       >
+        {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
+        {THEMES[themeId].customBg && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundImage: `url(${THEMES[themeId].customBg})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              opacity: 0.2,
+              pointerEvents: "none",
+              zIndex: 9999,
+            }}
+          />
+        )}
         <div
           style={{
             display: "flex",
@@ -541,6 +540,38 @@ export default function App() {
         </div>
       </header>
 
+      {fileList.length > 0 && (
+        <div style={s.toolBar}>
+          {TOOLS.map((tool) => {
+            const enabled =
+              selCount >= tool.minFiles && (tool.maxFiles == null || selCount <= tool.maxFiles);
+            return (
+              <button
+                key={tool.id}
+                style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
+                onClick={() => enabled && handleLaunchTool(tool.id)}
+                disabled={!enabled}
+                aria-label={`Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1} ${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
+                onFocus={() => {
+                  const num = TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1;
+                  const msg = enabled
+                    ? t("home.tool_focus", { num: String(num), name: tool.label, desc: tool.desc })
+                    : t("home.tool_focus_disabled", { num: String(num), name: tool.label });
+                  tts.speak(msg);
+                }}
+              >
+                <span style={s.toolIcon}>{tool.icon}</span>
+                <span style={s.toolLabel}>{tool.label}</span>
+                <span style={s.toolDesc}>
+                  {selCount > 1 && !["merge", "viewer"].includes(tool.id)
+                    ? `${selCount}${t("file.batch_suffix")}`
+                    : tool.desc}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div style={s.listCard}>
         {fileList.length === 0 ? (
           <div style={s.emptyZone}>
@@ -644,38 +675,6 @@ export default function App() {
         </div>
       )}
 
-      {fileList.length > 0 && (
-        <div style={s.toolBar}>
-          {TOOLS.map((tool) => {
-            const enabled =
-              selCount >= tool.minFiles && (tool.maxFiles == null || selCount <= tool.maxFiles);
-            return (
-              <button
-                key={tool.id}
-                style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
-                onClick={() => enabled && handleLaunchTool(tool.id)}
-                disabled={!enabled}
-                aria-label={`Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1} ${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
-                onFocus={() => {
-                  const num = TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1;
-                  const msg = enabled
-                    ? t("home.tool_focus", { num: String(num), name: tool.label, desc: tool.desc })
-                    : t("home.tool_focus_disabled", { num: String(num), name: tool.label });
-                  tts.speak(msg);
-                }}
-              >
-                <span style={s.toolIcon}>{tool.icon}</span>
-                <span style={s.toolLabel}>{tool.label}</span>
-                <span style={s.toolDesc}>
-                  {selCount > 1 && !["merge", "viewer"].includes(tool.id)
-                    ? `${selCount}${t("file.batch_suffix")}`
-                    : tool.desc}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
       {/*
       {dragOver && (
         <div style={s.dragOverlay}>
@@ -936,7 +935,12 @@ const s: Record<string, React.CSSProperties> = {
     transition: "background 0.15s",
   },
   rootDrag: { background: "var(--c-accentBg)" },
-  header: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
+  header: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 6,
+  },
   logo: {
     fontSize: 52,
     fontWeight: 800,
