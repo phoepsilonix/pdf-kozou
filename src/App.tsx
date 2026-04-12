@@ -465,7 +465,7 @@ export default function App() {
             position: "relative",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <img
               src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
               style={{ width: 48, height: 48, borderRadius: 10 }}
@@ -483,80 +483,64 @@ export default function App() {
               style={{
                 background: "var(--c-bgSub)",
                 border: "1px solid var(--c-border)",
-                borderRadius: "20px",
+                borderRadius: "18px",
                 padding: "4px 12px",
                 fontSize: "12px",
                 color: "var(--c-textSub)",
                 cursor: "pointer",
-                marginTop: "10px",
+                marginTop: "4px",
               }}
             >
               ℹ️ About
             </button>
           </div>
-          <span style={{ ...s.tagline, opacity: 0.8 }}>v{pkg.version}</span>
-          <span style={s.tagline}>{t("app.tagline")}</span>
-        </div>
+          <span style={{ ...s.tagline, position: "relative", width: "20%" }}>v{pkg.version}</span>
 
-        {/* ヘッダー画像エリア（募集テーマのみ表示） */}
-        {THEMES[themeId].customHeader && (
-          <div
-            style={{
-              width: "100%",
-              height: 80,
-              backgroundImage: `url(${THEMES[themeId].customHeader})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center top",
-              backgroundRepeat: "no-repeat",
-              position: "relative",
-            }}
-          >
-            {/* クレジット表示（ヘッダー画像の右下） */}
-            {THEMES[themeId].cupTitle && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 4,
-                  right: 8,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  gap: 1,
-                  background: "rgba(0,0,0,0.45)",
-                  borderRadius: 4,
-                  padding: "2px 6px",
-                }}
-              >
-                <span style={{ fontSize: 10, color: "#fff", fontWeight: 700 }}>
-                  🏆 {THEMES[themeId].cupTitle}
-                </span>
-                {THEMES[themeId].customIconCredit && (
-                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
-                    icon © {THEMES[themeId].customIconYear} {THEMES[themeId].customIconCredit}
+          {/* 背景画像クレジット */}
+          {THEMES[themeId].customBg && (
+            <div
+              style={{
+                width: "100%",
+                height: 24,
+                position: "relative",
+              }}
+            >
+              {/* クレジット表示（ヘッダー画像の右下） */}
+              {THEMES[themeId].cupTitle && (
+                <div
+                  style={{
+                    position: "absolute",
+                    alignItems: "left",
+                    bottom: 22,
+                    right: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
+                    gap: 1,
+                    background: "rgba(0,0,0,0.45)",
+                    borderRadius: 4,
+                    padding: "2px 6px",
+                  }}
+                >
+                  <span style={{ fontSize: 10, color: "#fff", fontWeight: 700 }}>
+                    🏆 {THEMES[themeId].cupTitle}
                   </span>
-                )}
-                {THEMES[themeId].customHeaderCredit && (
-                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
-                    header © {THEMES[themeId].customHeaderYear} {THEMES[themeId].customHeaderCredit}
-                  </span>
-                )}
-                {THEMES[themeId].customBgCredit && (
-                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
-                    bg © {THEMES[themeId].customBgYear} {THEMES[themeId].customBgCredit}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        {/* ヘッダー画像なし・小僧杯テーマの場合のクレジット */}
-        {THEMES[themeId].cupTitle && !THEMES[themeId].customHeader && (
-          <div
-            style={{ fontSize: 10, color: "var(--c-accent)", fontWeight: 700, paddingBottom: 4 }}
-          >
-            🏆 {THEMES[themeId].cupTitle}
-          </div>
-        )}
+                  {THEMES[themeId].customIconCredit && (
+                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
+                      icon © {THEMES[themeId].customIconYear} {THEMES[themeId].customIconCredit}
+                    </span>
+                  )}
+                  {THEMES[themeId].customBgCredit && (
+                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
+                      bg © {THEMES[themeId].customBgYear} {THEMES[themeId].customBgCredit}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <span style={{ ...s.tagline }}>{t("app.tagline")}</span>
+        </div>
       </header>
 
       {fileList.length > 0 && (

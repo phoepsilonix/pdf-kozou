@@ -43,9 +43,6 @@ export interface Theme {
   customIcon?: string; // ホームアイコン画像パス
   customIconCredit?: string; // アイコン作者名
   customIconYear?: number; // アイコン応募年度
-  customHeader?: string; // ヘッダー画像パス
-  customHeaderCredit?: string; // ヘッダー作者名
-  customHeaderYear?: number; // ヘッダー応募年度
   customBg?: string; // ホーム背景画像パス
   customBgCredit?: string; // 背景画像作者名
   customBgYear?: number; // 背景画像応募年度
@@ -285,9 +282,6 @@ export const THEMES: Record<ThemeId, Theme> = {
     customIcon: "/themes/kozou-cup/icon.png",
     customIconCredit: "phoepsilonix", // 例: "作者ハンドル名"
     customIconYear: 2026, // 例: 2026
-    customHeader: "/themes/kozou-cup/header.png",
-    customHeaderCredit: undefined,
-    customHeaderYear: undefined,
     customBg: "/themes/kozou-cup/bg.png",
     customBgCredit: "phoepsilonix",
     customBgYear: 2026,
