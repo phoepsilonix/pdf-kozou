@@ -419,125 +419,144 @@ export default function App() {
         }
       }}
     >
-      <header
+      {/* 読み上げ・言語・テーマ選択 */}
+      <div
         style={{
-          ...s.header,
-          // 募集テーマのヘッダー画像を背景に表示
-          ...(THEMES[themeId].customHeader
-            ? {
-                backgroundImage: `url(${THEMES[themeId].customHeader})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                backgroundRepeat: "no-repeat",
-              }
-            : {}),
+          position: "absolute",
+          top: 16,
+          right: 20,
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          zIndex: 1,
         }}
       >
-        {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
-        {THEMES[themeId].customBg && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              backgroundImage: `url(${THEMES[themeId].customBg})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              backgroundRepeat: "no-repeat",
-              opacity: 0.2,
-              pointerEvents: "none",
-              zIndex: 9999,
-            }}
-          />
-        )}
+        <A11yControls />
+        <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
+      </div>
+
+      {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
+      {THEMES[themeId].customBg && (
         <div
           style={{
+            position: "fixed",
+            inset: 0,
+            backgroundImage: `url(${THEMES[themeId].customBg})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            opacity: 1,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
+      <header style={s.header}>
+        {/* アプリ名エリア（常に不透明背景） */}
+        <div
+          style={{
+            width: "100%",
+            background: "var(--c-bg)",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             gap: 12,
+            padding: "24px 8px 8px",
             position: "relative",
-            zIndex: 1,
           }}
         >
-          <img
-            src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
-            style={{ width: 48, height: 48, borderRadius: 10 }}
-            alt="logo"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = "/app-icon.svg";
-            }}
-          />
-          <span style={s.logo}>
-            PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-            　　
-          </span>
-          {/* Aboutボタンを追加 */}
-          <button
-            onClick={() => setActiveTool("about")}
-            style={{
-              background: "var(--c-bgSub)",
-              border: "1px solid var(--c-border)",
-              borderRadius: "20px",
-              padding: "4px 12px",
-              fontSize: "12px",
-              color: "var(--c-textSub)",
-              cursor: "pointer",
-              marginTop: "10px",
-            }}
-          >
-            ℹ️ About
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <img
+              src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
+              style={{ width: 48, height: 48, borderRadius: 10 }}
+              alt="logo"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/app-icon.svg";
+              }}
+            />
+            <span style={s.logo}>
+              PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
+            </span>
+            {/* Aboutボタン */}
+            <button
+              onClick={() => setActiveTool("about")}
+              style={{
+                background: "var(--c-bgSub)",
+                border: "1px solid var(--c-border)",
+                borderRadius: "20px",
+                padding: "4px 12px",
+                fontSize: "12px",
+                color: "var(--c-textSub)",
+                cursor: "pointer",
+                marginTop: "10px",
+              }}
+            >
+              ℹ️ About
+            </button>
+          </div>
+          <span style={{ ...s.tagline, opacity: 0.8 }}>v{pkg.version}</span>
+          <span style={s.tagline}>{t("app.tagline")}</span>
         </div>
-        <span
-          style={{ ...s.tagline, marginBottom: 8, opacity: 0.8, position: "relative", zIndex: 1 }}
-        >
-          v{pkg.version}
-        </span>
-        <span style={{ ...s.tagline, position: "relative", zIndex: 1 }}>{t("app.tagline")}</span>
-        {/* 募集テーマのクレジット表示 */}
-        {THEMES[themeId].cupTitle && (
+
+        {/* ヘッダー画像エリア（募集テーマのみ表示） */}
+        {THEMES[themeId].customHeader && (
           <div
             style={{
+              width: "100%",
+              height: 80,
+              backgroundImage: `url(${THEMES[themeId].customHeader})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center top",
+              backgroundRepeat: "no-repeat",
               position: "relative",
-              zIndex: 1,
-              marginTop: 4,
-              display: "flex",
-              flexDirection: "column",
-              gap: 1,
             }}
           >
-            <span style={{ fontSize: 10, color: "var(--c-accent)", fontWeight: 700 }}>
-              🏆 {THEMES[themeId].cupTitle}
-            </span>
-            {THEMES[themeId].customIconCredit && (
-              <span style={{ fontSize: 9, color: "var(--c-textDim)" }}>
-                icon: © {THEMES[themeId].customIconYear} {THEMES[themeId].customIconCredit}
-              </span>
-            )}
-            {THEMES[themeId].customHeaderCredit && (
-              <span style={{ fontSize: 9, color: "var(--c-textDim)" }}>
-                header: © {THEMES[themeId].customHeaderYear} {THEMES[themeId].customHeaderCredit}
-              </span>
-            )}
-            {THEMES[themeId].customBgCredit && (
-              <span style={{ fontSize: 9, color: "var(--c-textDim)" }}>
-                bg: © {THEMES[themeId].customBgYear} {THEMES[themeId].customBgCredit}
-              </span>
+            {/* クレジット表示（ヘッダー画像の右下） */}
+            {THEMES[themeId].cupTitle && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 4,
+                  right: 8,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 1,
+                  background: "rgba(0,0,0,0.45)",
+                  borderRadius: 4,
+                  padding: "2px 6px",
+                }}
+              >
+                <span style={{ fontSize: 10, color: "#fff", fontWeight: 700 }}>
+                  🏆 {THEMES[themeId].cupTitle}
+                </span>
+                {THEMES[themeId].customIconCredit && (
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
+                    icon © {THEMES[themeId].customIconYear} {THEMES[themeId].customIconCredit}
+                  </span>
+                )}
+                {THEMES[themeId].customHeaderCredit && (
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
+                    header © {THEMES[themeId].customHeaderYear} {THEMES[themeId].customHeaderCredit}
+                  </span>
+                )}
+                {THEMES[themeId].customBgCredit && (
+                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
+                    bg © {THEMES[themeId].customBgYear} {THEMES[themeId].customBgCredit}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         )}
-        <div
-          style={{
-            position: "absolute",
-            top: 16,
-            right: 20,
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-          }}
-        >
-          <A11yControls />
-          <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
-        </div>
+        {/* ヘッダー画像なし・小僧杯テーマの場合のクレジット */}
+        {THEMES[themeId].cupTitle && !THEMES[themeId].customHeader && (
+          <div
+            style={{ fontSize: 10, color: "var(--c-accent)", fontWeight: 700, paddingBottom: 4 }}
+          >
+            🏆 {THEMES[themeId].cupTitle}
+          </div>
+        )}
       </header>
 
       {fileList.length > 0 && (
@@ -572,6 +591,7 @@ export default function App() {
           })}
         </div>
       )}
+
       <div style={s.listCard}>
         {fileList.length === 0 ? (
           <div style={s.emptyZone}>
@@ -940,13 +960,16 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
     gap: 6,
+    position: "relative" as const,
   },
   logo: {
     fontSize: 52,
     fontWeight: 800,
+    height: 78,
+    lineHeight: 2,
     color: "var(--c-text)",
+    padding: "4pt",
     letterSpacing: "-0.02em",
-    lineHeight: 1,
   },
   tagline: {
     fontSize: 12,
@@ -962,6 +985,8 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     overflow: "hidden",
     minHeight: 180,
+    position: "relative" as const,
+    zIndex: 1, // 背景画像より前面に
   },
   emptyZone: {
     display: "flex",
@@ -1030,7 +1055,15 @@ const s: Record<string, React.CSSProperties> = {
   sumDot: { color: "var(--c-textDim)" },
   sumInfo: { fontSize: 15, color: "var(--c-textSub)" },
   sumNone: { fontSize: 14, color: "var(--c-textDim)" },
-  toolBar: { display: "flex", gap: 9, width: "100%", maxWidth: 720, flexWrap: "wrap" },
+  toolBar: {
+    display: "flex",
+    gap: 9,
+    width: "100%",
+    maxWidth: 720,
+    flexWrap: "wrap",
+    position: "relative" as const,
+    zIndex: 1,
+  },
   toolBtn: {
     flex: "1 1 88px",
     display: "flex",
@@ -1161,7 +1194,6 @@ const sh: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid var(--c-navBd)`,
     flexShrink: 0,
     fontFamily: F,
-    position: "relative",
     zIndex: 10,
     overflow: "visible",
   },

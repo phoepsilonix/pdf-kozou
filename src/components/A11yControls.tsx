@@ -43,7 +43,7 @@ export function TtsToggleButton() {
 
   const btnStyle: React.CSSProperties = {
     padding: "4px 10px",
-    background: enabled ? "var(--c-accentBg)" : "transparent",
+    background: enabled ? "var(--c-bg)" : "var(--c-accentBg)",
     border: `1px solid ${enabled ? "var(--c-accent)" : "var(--c-borderHi)"}`,
     borderRadius: 7,
     color: enabled ? "var(--c-accent)" : "var(--c-textSub)",
@@ -62,7 +62,7 @@ export function TtsToggleButton() {
       onClick={toggle}
       style={{
         ...btnStyle,
-        opacity: isSupported ? 1 : 0.4,
+        opacity: isSupported ? 1 : 0.6,
         cursor: isSupported ? "pointer" : "not-allowed",
       }}
       title={
@@ -111,7 +111,7 @@ export function LocaleSelector() {
     alignItems: "center",
     gap: 4,
     padding: "4px 10px",
-    background: "transparent",
+    background: "var(--c-bg)",
     border: "1px solid var(--c-borderHi)",
     borderRadius: 7,
     color: "var(--c-textSub)",

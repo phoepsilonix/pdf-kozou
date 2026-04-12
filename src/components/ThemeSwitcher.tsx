@@ -37,7 +37,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
           alignItems: "center",
           gap: 6,
           padding: "5px 12px",
-          background: "transparent",
+          background: "var(--c-bg)",
           border: `1px solid var(--c-borderHi)`,
           borderRadius: 7,
           color: "var(--c-textSub)",
