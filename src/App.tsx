@@ -436,7 +436,7 @@ export default function App() {
       </div>
 
       {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
-      {THEMES[themeId].customBg && (
+      {THEMES[themeId].cupTitle && THEMES[themeId].customBg && (
         <div
           style={{
             position: "fixed",
@@ -494,14 +494,16 @@ export default function App() {
               ℹ️ About
             </button>
           </div>
-          <span style={{ ...s.tagline, position: "relative", width: "20%" }}>v{pkg.version}</span>
+
+          {(THEMES[themeId].cupTitle && (
+            <span style={{ ...s.tagline, position: "relative", width: "30%" }}>v{pkg.version}</span>
+          )) || <span style={{ ...s.tagline, position: "relative" }}>v{pkg.version}</span>}
 
           {/* 背景画像クレジット */}
           {THEMES[themeId].customBg && (
             <div
               style={{
                 width: "100%",
-                height: 24,
                 position: "relative",
               }}
             >
@@ -510,29 +512,30 @@ export default function App() {
                 <div
                   style={{
                     position: "absolute",
-                    alignItems: "left",
-                    bottom: 22,
                     right: 0,
+                    bottom: -6,
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "flex-end",
                     gap: 1,
                     background: "rgba(0,0,0,0.45)",
                     borderRadius: 4,
-                    padding: "2px 6px",
+                    padding: "6px 6px 10px 10px",
                   }}
                 >
                   <span style={{ fontSize: 10, color: "#fff", fontWeight: 700 }}>
-                    🏆 {THEMES[themeId].cupTitle}
+                    {t("theme.kozou-cup")}
                   </span>
                   {THEMES[themeId].customIconCredit && (
                     <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
-                      icon © {THEMES[themeId].customIconYear} {THEMES[themeId].customIconCredit}
+                      {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
+                      {THEMES[themeId].customIconCredit}
                     </span>
                   )}
                   {THEMES[themeId].customBgCredit && (
                     <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
-                      bg © {THEMES[themeId].customBgYear} {THEMES[themeId].customBgCredit}
+                      {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
+                      {THEMES[themeId].customBgCredit}
                     </span>
                   )}
                 </div>

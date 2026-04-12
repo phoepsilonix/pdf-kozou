@@ -601,7 +601,10 @@
     "ember": "Ember",
     "paper": "Paper",
     "nordic": "Nordic",
-    "kozou-cup": "PDF-Kozou Cup🏆️",
+    "kozou-cup": "PDF-Kozou Cup🏆️ 2026",
+    "icon": "Icon",
+    "bg": "Image",
+    "switcher_label": "テーマ",
     "switcher_label": "Theme",
     "switcher_title": "Switch theme"
   }

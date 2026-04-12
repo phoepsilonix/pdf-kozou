@@ -2,15 +2,8 @@
 
 export const F = "'JetBrains Mono','Noto Sans JP',monospace";
 
-export type ThemeId =
-  | "moss"
-  | "ocean"
-  | "slate"
-  | "dusk"
-  | "ember"
-  | "paper"
-  | "nordic"
-  | "kozou-cup";
+export type ThemeId = "moss" | "ocean" | "slate" | "dusk" | "ember" | "paper" | "nordic";
+//| "kozou-cup
 
 export interface Theme {
   id: ThemeId;
@@ -249,6 +242,7 @@ export const THEMES: Record<ThemeId, Theme> = {
   },
 
   /** 8. PDF小僧杯 — 募集テーマ（年度ごとに画像・クレジットを差し替え） */
+  /*
   "kozou-cup": {
     id: "kozou-cup",
     name: "PDF小僧杯",
@@ -276,16 +270,16 @@ export const THEMES: Record<ThemeId, Theme> = {
     navBg: "#ede8e0",
     navBd: "#d0c8bc",
     // ── 募集テーマ画像（年度ごとに差し替える） ──
-    // 画像ファイルは src/assets/themes/kozou-cup/ に配置
-    // ビルド時に dist/themes/kozou-cup/ にコピーされる
+    // 画像ファイルは public/themes/kozou-cup/ に配置
     cupTitle: "PDF小僧杯",
+    //cupTitle: undefined,
     customIcon: "/themes/kozou-cup/icon.png",
     customIconCredit: "phoepsilonix", // 例: "作者ハンドル名"
     customIconYear: 2026, // 例: 2026
     customBg: "/themes/kozou-cup/bg.png",
     customBgCredit: "phoepsilonix",
     customBgYear: 2026,
-  },
+  },*/
 };
 
 export const DEFAULT_THEME: ThemeId = "nordic";
