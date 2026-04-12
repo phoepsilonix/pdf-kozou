@@ -461,14 +461,14 @@ export default function App() {
             flexDirection: "column",
             alignItems: "center",
             gap: 12,
-            padding: "24px 8px 8px",
+            padding: "12px 8px 8px",
             position: "relative",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <img
               src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
-              style={{ width: 48, height: 48, borderRadius: 10 }}
+              style={{ width: "48px", height: "48px", lineHeight: 2, gap: 6, borderRadius: 10 }}
               alt="logo"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = "/app-icon.svg";
@@ -484,11 +484,12 @@ export default function App() {
                 background: "var(--c-bgSub)",
                 border: "1px solid var(--c-border)",
                 borderRadius: "18px",
-                padding: "4px 12px",
+                padding: "4px 4px",
                 fontSize: "12px",
                 color: "var(--c-textSub)",
                 cursor: "pointer",
-                marginTop: "4px",
+                marginTop: "24px",
+		lineHeight: 2,
               }}
             >
               ℹ️ About
@@ -496,52 +497,62 @@ export default function App() {
           </div>
 
           {(THEMES[themeId].cupTitle && (
-            <span style={{ ...s.tagline, position: "relative", width: "30%" }}>v{pkg.version}</span>
-          )) || <span style={{ ...s.tagline, position: "relative" }}>v{pkg.version}</span>}
-
-          {/* 背景画像クレジット */}
-          {THEMES[themeId].customBg && (
             <div
               style={{
-                width: "100%",
-                position: "relative",
+                display: "flex",
+                height: "60px",
               }}
             >
-              {/* クレジット表示（ヘッダー画像の右下） */}
-              {THEMES[themeId].cupTitle && (
+              <span style={{ ...s.tagline, position: "absolute", width: "70%", right: 0 }}>
+                v{pkg.version}
+              </span>
+              {/* 背景画像クレジット */}
+              {THEMES[themeId].customBg && (
                 <div
                   style={{
                     position: "absolute",
                     right: 0,
-                    bottom: -6,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-end",
-                    gap: 1,
-                    background: "rgba(0,0,0,0.45)",
-                    borderRadius: 4,
-                    padding: "6px 6px 10px 10px",
+                    width: "50%",
+                    height: "54px",
                   }}
                 >
-                  <span style={{ fontSize: 10, color: "#fff", fontWeight: 700 }}>
-                    {t("theme.kozou-cup")}
-                  </span>
-                  {THEMES[themeId].customIconCredit && (
-                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
-                      {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
-                      {THEMES[themeId].customIconCredit}
-                    </span>
-                  )}
-                  {THEMES[themeId].customBgCredit && (
-                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)" }}>
-                      {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
-                      {THEMES[themeId].customBgCredit}
-                    </span>
+                  {/* クレジット表示（ヘッダー画像の右下） */}
+                  {THEMES[themeId].cupTitle && (
+                    <div
+                      style={{
+                        position: "relative",
+                        right: "6px",
+                        bottom: "6px",
+                        padding: "6px 6px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
+                        gap: 3,
+                        background: "rgba(0,0,0,0.45)",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: "12px", color: "#fff", fontWeight: 700 }}>
+                        {t("theme.kozou-cup")}
+                      </span>
+                      {THEMES[themeId].customIconCredit && (
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+                          {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
+                          {THEMES[themeId].customIconCredit}
+                        </span>
+                      )}
+                      {THEMES[themeId].customBgCredit && (
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+                          {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
+                          {THEMES[themeId].customBgCredit}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
             </div>
-          )}
+          )) || <span style={{ ...s.tagline, position: "relative" }}>v{pkg.version}</span>}
           <span style={{ ...s.tagline }}>{t("app.tagline")}</span>
         </div>
       </header>
@@ -950,16 +961,16 @@ const s: Record<string, React.CSSProperties> = {
     position: "relative" as const,
   },
   logo: {
-    fontSize: 52,
+    fontSize: "52px",
     fontWeight: 800,
-    height: 78,
-    lineHeight: 2,
+    height: "68px",
+    lineHeight: "80px",
     color: "var(--c-text)",
-    padding: "4pt",
+    padding: "8pt",
     letterSpacing: "-0.02em",
   },
   tagline: {
-    fontSize: 12,
+    fontSize: "12px",
     color: "var(--c-textDim)",
     letterSpacing: "0.12em",
     //    textTransform: "uppercase",
@@ -994,7 +1005,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 700,
     cursor: "pointer",
-    fontSize: 15,
+    fontSize: "15px",
     fontFamily: F,
   },
   fileRows: { display: "flex", flexDirection: "column" },
