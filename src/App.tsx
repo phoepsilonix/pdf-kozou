@@ -489,7 +489,7 @@ export default function App() {
                 color: "var(--c-textSub)",
                 cursor: "pointer",
                 marginTop: "24px",
-		lineHeight: 2,
+                lineHeight: 2,
               }}
             >
               ℹ️ About
