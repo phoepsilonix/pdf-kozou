@@ -4,12 +4,17 @@
 
 ### Linux
 
-```bash
-# tar.gz をダウンロードして展開
-tar xzf pdf-kozou_linux_x64.tar.gz
+7zip版アーカイブをダウンロード。
 
+```sh
+wget https://github.com/phoepsilonix/pdf-kozou/releases/download/v1.5.4/PDF-Kozou_1.5.4_amd64-linux.7z
+7z x PDF-Kozou_1.5.4_amd64-linux.7z
+./PDF-Kozou/pdf-kozou
+```
+
+```sh
 # パスの通った場所に配置 (例)
-sudo mv pdf-kozou-core /usr/local/bin/
+sudo mv PDF-Kozou/pdf-kozou-core /usr/local/bin/
 
 # 動作確認
 pdf-kozou-core --version
@@ -17,30 +22,19 @@ pdf-kozou-core --version
 
 ### Windows
 
-1. `pdf-kozou_windows_x64.zip` をダウンロード
-2. 任意のフォルダに展開 (例: `C:\tools\pdf-kozou\`)
-3. `pdf-kozou-core.exe` のあるフォルダを**システムの環境変数 PATH** に追加
+https://github.com/phoepsilonix/pdf-kozou/releases/download/v1.5.4/PDF-Kozou_1.5.4_x64-setup.exe
+
+1. インストーラーをダウンロード
+2. インストール先のフォルダ`pdf-kozou-core.exe` のあるフォルダを**システムの環境変数 PATH** に追加
    - スタートメニュー →「環境変数を編集」→ Path → 新規
-4. コマンドプロンプト / PowerShell で確認:
+3. コマンドプロンプト / PowerShell で確認:
    ```
    pdf-kozou-core --version
    ```
 
 ### macOS
 
-```bash
-# tar.gz をダウンロードして展開
-tar xzf pdf-kozou_macos_aarch64.tar.gz
-
-# パスの通った場所に配置
-sudo mv pdf-kozou-core /usr/local/bin/
-
-# Gatekeeper の確認ダイアログが出た場合
-xattr -d com.apple.quarantine /usr/local/bin/pdf-kozou-core
-
-# 動作確認
-pdf-kozou-core --version
-```
+未定
 
 ---
 
@@ -48,50 +42,44 @@ pdf-kozou-core --version
 
 ### Linux
 
+`webkit2gtk-4.1`があれば、7-zip版アーカイブのバイナリも動作するかもしれません。Arch系でも動いています。
+
+```sh
+wget https://github.com/phoepsilonix/pdf-kozou/releases/download/v1.5.4/PDF-Kozou_1.5.4_amd64-linux.7z
+7z x PDF-Kozou_1.5.4_amd64-linux.7z
+./PDF-Kozou/pdf-kozou
+```
+
+環境によって制約がありますがAppImage版。
+
 ```bash
+wget https://github.com/phoepsilonix/pdf-kozou/releases/download/v1.5.4/PDF-Kozou_1.5.4_amd64.AppImage
 # AppImage
-chmod +x pdf-kozou_linux_x64.AppImage
-./pdf-kozou_linux_x64.AppImage
+chmod +x PDF-Kozou_1.5.4_amd64.AppImage
+./PDF-Kozou_1.5.4_amd64.AppImage
 ```
 
 ### Windows
 
-`pdf-kozou_windows_x64_setup.exe` を実行してインストーラの指示に従ってください。
+[MicrosoftStore](https://apps.microsoft.com/detail/9P2HDLPTT5WR?hl=ja-jp&gl=JP&ocid=pdpshare)からインストールできます。  
+Githubからの場合には`PDF-Kozou_1.5.4_x64-setup.exe`または`PDF-Kozou_1.5.4_x64_ja-JP.msi`をダウンロードして、インストールしてください。
 
 ### macOS
 
-`pdf-kozou_macos.dmg` を開き、アプリケーションフォルダにドラッグしてください。
+未定
 
 ---
 
-## Web 版 (計画中)
+## Web 版（未定）
 
-Web 版は GitHub Pages で提供予定です。ブラウザでアクセスするだけで使用でき、
-初回アクセス後はオフラインでも動作します。
-
-```
-https://phoepsilonix.github.io/pdf-kozou/
-```
-
-**対応ブラウザ:** Chrome / Firefox / Safari (最新版)
-
-**iOS / Android:** ホーム画面に追加するとアプリライクに使えます。
-
----
-
-## cargo でインストール (開発者向け)
-
-Rust 環境がある場合、cargo から直接インストールできます:
-
-```bash
-cargo install pdf-kozou-core
-```
-
-ビルドには cmake と clang が必要です。詳細は [BUILDING.md](BUILDING.md) を参照してください。
+未定。
 
 ---
 
 ## アンインストール
+
+Windows版は、Windowsの設定画面のアプリから、アンインストールできます。  
+Linux版は、バイナリを削除してください。
 
 ### CLI
 

@@ -10,15 +10,8 @@
       "credit": "",
       "year": null
     },
-    "header": {
-      "file": "header.png",
-      "recommended_size": "1280x80 px",
-      "format": "PNG",
-      "credit": "",
-      "year": null
-    },
     "bg": {
-      "file": "bg.png",
+      "file": "bg.jpg",
       "recommended_size": "1920x1080 px",
       "format": "PNG または JPEG",
       "credit": "",
