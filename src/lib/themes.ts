@@ -10,7 +10,7 @@ export type ThemeId =
   | "ember"
   | "paper"
   | "nordic"
-  | "kozou-cup";
+  | "omuro-zakura"; //"kozou-cup";
 
 export interface Theme {
   id: ThemeId;
@@ -248,8 +248,47 @@ export const THEMES: Record<ThemeId, Theme> = {
     navBd: "#c8d0e0",
   },
 
-  /** 8. PDF小僧杯 — 募集テーマ（年度ごとに画像・クレジットを差し替え） */
+  /** 8. 御室桜 */
 
+  "omuro-zakura": {
+    id: "omuro-zakura",
+    name: "御室桜",
+    emoji: "🌸",
+    // カラーは paper ベース（明るく親しみやすい雰囲気）
+    bg: "#f5f2ec",
+    bgCard: "#ffffff",
+    bgHover: "#ede9e0",
+    border: "#d8d0c4",
+    borderHi: "#b8a898",
+    text: "#2c2420",
+    textSub: "#6b5e52",
+    textDim: "#9e8e82",
+    accent: "#2a6e4a",
+    accentBg: "#d8ede2",
+    accentBd: "#5aad7a",
+    accentText: "#000",
+    green: "#2a8a50",
+    warn: "#9a7a10",
+    warnBg: "#fdf3d0",
+    warnBd: "#c8a830",
+    err: "#c03030",
+    errBg: "#fde8e8",
+    errBd: "#e07070",
+    navBg: "#ede8e0",
+    navBd: "#d0c8bc",
+    // ── 募集テーマ画像（年度ごとに差し替える） ──
+    // 画像ファイルは public/themes/kozou-cup/ に配置
+    cupTitle: "🌸御室桜🌸",
+    //cupTitle: undefined,
+    customIcon: "/themes/omuro-zakura/icon.png",
+    customIconCredit: "phoepsilonix", // 例: "作者ハンドル名"
+    customIconYear: 2026, // 例: 2026
+    customBg: "/themes/omuro-zakura/bg.jpg",
+    customBgCredit: "phoepsilonix",
+    customBgYear: 2026,
+  },
+  /** 8. PDF小僧杯 — 募集テーマ（年度ごとに画像・クレジットを差し替え） */
+/*
   "kozou-cup": {
     id: "kozou-cup",
     name: "PDF小僧杯",
@@ -286,7 +325,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     customBg: "/themes/kozou-cup/bg.jpg",
     customBgCredit: "phoepsilonix",
     customBgYear: 2026,
-  },
+  },*/
 };
 
 export const DEFAULT_THEME: ThemeId = "nordic";
