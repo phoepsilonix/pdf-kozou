@@ -40,6 +40,15 @@ import {
 import { ThemeSwitcher } from "./components/ThemeSwitcher";
 import type { ThemeId } from "./lib/themes";
 
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("URL copied!");
+  } catch (err) {
+    console.error("Failed to copy: ", err);
+  }
+};
+
 // GLOBAL_CSS は関数にして themeId 変更時に再評価
 function makeGlobalCss(t: typeof C) {
   return `
@@ -436,7 +445,7 @@ export default function App() {
       </div>
 
       {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
-      {THEMES[themeId].cupTitle && THEMES[themeId].customBg && (
+      {THEMES[themeId].customBg && (
         <div
           style={{
             position: "fixed",
@@ -496,7 +505,7 @@ export default function App() {
             </button>
           </div>
 
-          {(THEMES[themeId].cupTitle && (
+          {(THEMES[themeId].customBg && (
             <div
               style={{
                 display: "flex",
@@ -517,7 +526,7 @@ export default function App() {
                   }}
                 >
                   {/* クレジット表示（ヘッダー画像の右下） */}
-                  {THEMES[themeId].cupTitle && (
+                  {
                     <div
                       style={{
                         position: "relative",
@@ -533,22 +542,61 @@ export default function App() {
                       }}
                     >
                       <span style={{ fontSize: "12px", color: "#fff", fontWeight: 700 }}>
-                        {t("theme.kozou-cup")}
+                        {t(`theme.${themeId}`)}
                       </span>
                       {THEMES[themeId].customIconCredit && (
                         <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
                           {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
-                          {THEMES[themeId].customIconCredit}
+                          {THEMES[themeId].customIconCreditURL ? (
+                            <span
+                              onClick={async (e) => {
+                                e.stopPropagation(); // 親要素へのイベント伝播を止める
+                                await copyToClipboard(THEMES[themeId].customIconCreditURL || "");
+                              }}
+                              style={{
+                                color: "inherit",
+                                textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
+                                display: "inline-block", // クリック領域を確保
+                                position: "relative", // 重なり順を安定させる
+                                cursor: "pointer",
+                              }}
+                              title={THEMES[themeId].customIconCreditURL} // マウスホバーで説明を出す
+                            >
+                              {THEMES[themeId].customIconCredit}
+                            </span>
+                          ) : (
+                            THEMES[themeId].customIconCredit
+                          )}
                         </span>
                       )}
+
                       {THEMES[themeId].customBgCredit && (
                         <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
                           {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
-                          {THEMES[themeId].customBgCredit}
+                          {THEMES[themeId].customBgCreditURL ? (
+                            <span
+                              onClick={async (e) => {
+                                e.stopPropagation(); // 親要素へのイベント伝播を止める
+                                await copyToClipboard(THEMES[themeId].customBgCreditURL || "");
+                              }}
+                              style={{
+                                color: "inherit",
+                                textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
+                                display: "inline-block", // クリック領域を確保
+                                position: "relative", // 重なり順を安定させる
+                                cursor: "pointer",
+                              }}
+                              title={THEMES[themeId].customBgCreditURL} // マウスホバーで説明を出す
+                            >
+                              {THEMES[themeId].customBgCredit}
+                            </span>
+                          ) : (
+                            THEMES[themeId].customBgCredit
+                          )}
                         </span>
                       )}
                     </div>
-                  )}
+                  }
                 </div>
               )}
             </div>

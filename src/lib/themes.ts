@@ -2,15 +2,7 @@
 
 export const F = "'JetBrains Mono','Noto Sans JP',monospace";
 
-export type ThemeId =
-  | "moss"
-  | "ocean"
-  | "slate"
-  | "dusk"
-  | "ember"
-  | "paper"
-  | "nordic"
-  | "omuro-zakura"; //"kozou-cup";
+export type ThemeId = "moss" | "ocean" | "slate" | "dusk" | "ember" | "paper" | "nordic" | "spring"; //"kozou-cup";
 
 export interface Theme {
   id: ThemeId;
@@ -42,9 +34,11 @@ export interface Theme {
   // 例: "/themes/kozou-cup/icon.png"
   customIcon?: string; // ホームアイコン画像パス
   customIconCredit?: string; // アイコン作者名
+  customIconCreditURL?: string; // アイコン作者名
   customIconYear?: number; // アイコン応募年度
   customBg?: string; // ホーム背景画像パス
   customBgCredit?: string; // 背景画像作者名
+  customBgCreditURL?: string; // 背景画像作者名
   customBgYear?: number; // 背景画像応募年度
   cupTitle?: string; // 大会名称（例: "PDF小僧杯 2026"）
 }
@@ -248,11 +242,11 @@ export const THEMES: Record<ThemeId, Theme> = {
     navBd: "#c8d0e0",
   },
 
-  /** 8. 御室桜 */
+  /** 8. 春 */
 
-  "omuro-zakura": {
-    id: "omuro-zakura",
-    name: "御室桜",
+  spring: {
+    id: "spring",
+    name: "春",
     emoji: "🌸",
     // カラーは paper ベース（明るく親しみやすい雰囲気）
     bg: "#f5f2ec",
@@ -278,17 +272,19 @@ export const THEMES: Record<ThemeId, Theme> = {
     navBd: "#d0c8bc",
     // ── 募集テーマ画像（年度ごとに差し替える） ──
     // 画像ファイルは public/themes/kozou-cup/ に配置
-    cupTitle: "🌸御室桜🌸",
-    //cupTitle: undefined,
-    customIcon: "/themes/omuro-zakura/icon.png",
-    customIconCredit: "phoepsilonix", // 例: "作者ハンドル名"
-    customIconYear: 2026, // 例: 2026
-    customBg: "/themes/omuro-zakura/bg.jpg",
-    customBgCredit: "phoepsilonix",
-    customBgYear: 2026,
+    //cupTitle: "春",
+    cupTitle: undefined,
+    customIcon: undefined, //"/themes/omuro-zakura/icon.png",
+    customIconCredit: undefined, // 例: "作者ハンドル名"
+    customIconCreditURL: undefined, // 例: "作者ハンドル名"
+    customIconYear: undefined, // 例: 2026
+    customBg: "/themes/spring/bg.jpg",
+    customBgCredit: "etsumi / Pexels",
+    customBgCreditURL: "https://www.pexels.com/@etsumi-64451990",
+    customBgYear: undefined,
   },
   /** 8. PDF小僧杯 — 募集テーマ（年度ごとに画像・クレジットを差し替え） */
-/*
+  /*
   "kozou-cup": {
     id: "kozou-cup",
     name: "PDF小僧杯",
