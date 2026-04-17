@@ -19,10 +19,8 @@ tempfile   = "3"
 tracing    = "0.1"
 
 [patch.crates-io]
-#mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "3c6faa946a42b347d458eeac70374d4aa5c40506" }
-#mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "3c6faa946a42b347d458eeac70374d4aa5c40506" }
-mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "9f8115ee1239a45bf421dd6bc431d33b72fc218c" }
-mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "9f8115ee1239a45bf421dd6bc431d33b72fc218c" }
+mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "43d89c2d5adaef3f99e99d2cabf365dd56b12cb7" }
+mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "43d89c2d5adaef3f99e99d2cabf365dd56b12cb7" }
 
 [profile.release]
 strip = "symbols"
