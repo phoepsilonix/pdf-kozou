@@ -98,16 +98,20 @@ jobs:
           prefix-key: v0-rust
           save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
 
-      - name: Install Node.js
-        uses: actions/setup-node@v6
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 'lts/*'
-          cache: npm
+          bun-version-file: ".bun-version"
 
-      - name: Install npm dependencies
-        run: npm ci
+      #- name: Install Node.js
+      #  uses: actions/setup-node@v6
+      #  with:
+      #    node-version: 'lts/*'
+      #    cache: npm
+
+      - name: Install dependencies
+        run: bun ci
       - name: Build Frontend check
-        run: npm run build
+        run: bun run build
 
       - name: Install tauri-cli via binstall
         run: |
@@ -276,16 +280,19 @@ jobs:
           #export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
           #cpan -i Pod::Usage
 
-      - name: Install Node.js
-        uses: actions/setup-node@v6
+      #- name: Install Node.js
+      #  uses: actions/setup-node@v6
+      #  with:
+      #    node-version: 'lts/*'
+      #    cache: npm
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 'lts/*'
-          cache: npm
+          bun-version-file: ".bun-version"
 
-      - name: Install npm dependencies
-        run: npm ci
+      - name: Install dependencies
+        run: bun ci
       - name: Build Frontend check
-        run: npm run build
+        run: bun run build
 
       - name: Install tauri-cli via binstall
         run: |
