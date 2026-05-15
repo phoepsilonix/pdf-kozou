@@ -267,6 +267,18 @@ export async function trimPdf(
   });
 }
 
+// ── パスの同一性チェック ──────────────────────────────────────────────────────
+
+export async function checkPathConflict(params: {
+  inputPath: string;
+  outDir: string;
+  pdfName?: string;
+  isBatch: boolean;
+  batchFiles?: Array<[string, string]> | null;
+}): Promise<string[]> {
+  return await invoke("check_path_conflict", params);
+}
+
 // ── スクリーン情報 ────────────────────────────────────────────────────────────
 
 export interface ScreenInfo {

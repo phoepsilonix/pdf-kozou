@@ -15,7 +15,14 @@ import {
   BtnPrimary,
 } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
-import { renderPage, exportImages, exportImagePdf, type PdfInfo, type ImageFormat } from "../lib/tauri";
+import {
+  renderPage,
+  exportImages,
+  exportImagePdf,
+  checkPathConflict,
+  type PdfInfo,
+  type ImageFormat,
+} from "../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
@@ -112,21 +119,41 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   );
 
   // 画像PDFモード時: 出力先が元ファイルと同じになる競合を検出
-  const conflictPaths = useMemo(() => {
-    if (outputMode !== "pdf" || !outDir) return [];
-    if (isBatch && batchFiles) {
-      return batchFiles
-        .map((f) => {
-          const stem = f.filename.replace(/\.[^/.]+$/, "");
-          const outPath = `${outDir}/${stem}.pdf`;
-          return outPath === f.path ? f.filename : null;
-        })
-        .filter((x): x is string => x !== null);
-    } else {
-      const outPath = `${outDir}/${pdfName || "output"}.pdf`;
-      return outPath === filePath ? [filePath.split(/[/\\]/).pop() ?? ""] : [];
-    }
+  // 状態管理
+  const [conflictPaths, setConflictPaths] = useState<string[]>([]);
+
+  // 衝突チェック
+  useEffect(() => {
+    const checkConflict = async () => {
+      if (outputMode !== "pdf" || !outDir) {
+        setConflictPaths([]);
+        return;
+      }
+
+      try {
+        let batchInfo: Array<[string, string]> | null = null;
+        if (isBatch && batchFiles) {
+          batchInfo = batchFiles.map((f) => [f.filename, f.path]);
+        }
+
+        const conflicts = await checkPathConflict({
+          inputPath: filePath, // ← input_path → inputPath
+          outDir: outDir, // ← out_dir → outDir
+          pdfName: isBatch ? undefined : pdfName || undefined,
+          isBatch: isBatch, // ← is_batch → isBatch
+          batchFiles: batchInfo, // ← batch_files → batchFiles
+        });
+
+        setConflictPaths(conflicts);
+      } catch (e) {
+        console.error("Conflict check failed", e);
+        setConflictPaths([]);
+      }
+    };
+
+    checkConflict();
   }, [outputMode, outDir, pdfName, filePath, isBatch, batchFiles]);
+
   const [images, setImages] = useState<string[]>([]);
   const [pdfOutPath, setPdfOutPath] = useState("");
   const [pdfPageCount, setPdfPageCount] = useState(0);
@@ -300,7 +327,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             pages || undefined,
             { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
           );
-          const pageCount = resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount || 0;
+          const pageCount =
+            resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount || 0;
           progress.done.push({ file: f.filename, count: pageCount, pdfPath: outPath });
           if (res.warning) console.warn(res.warning);
         } else {
@@ -369,7 +397,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.bpFile}>{d.file}</span>
                 <span style={s.bpMeta}>
                   {d.pdfPath
-                    ? t("image.output_pdf", { name: d.pdfPath.split(/[\/\\]/).pop() ?? "", count: String(d.count) })
+                    ? t("image.output_pdf", {
+                        name: d.pdfPath.split(/[\/\\]/).pop() ?? "",
+                        count: String(d.count),
+                      })
                     : t("image.pages_count", { count: String(d.count) })}
                 </span>
               </div>
@@ -426,7 +457,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.bpFile}>{d.file}</span>
                 <span style={s.bpMeta}>
                   {d.pdfPath
-                    ? t("image.output_pdf", { name: d.pdfPath.split(/[\/\\]/).pop() ?? "", count: String(d.count) })
+                    ? t("image.output_pdf", {
+                        name: d.pdfPath.split(/[\/\\]/).pop() ?? "",
+                        count: String(d.count),
+                      })
                     : t("image.pages_count", { count: String(d.count) })}
                 </span>
               </div>
@@ -491,7 +525,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           ) : (
             <>
-              <div style={s.bpTitle}>{t("image.output_count", { count: String(images.length) })}</div>
+              <div style={s.bpTitle}>
+                {t("image.output_count", { count: String(images.length) })}
+              </div>
               <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
               <div style={s.bpLog}>
                 {images.slice(0, 20).map((f, i) => (
@@ -502,7 +538,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 ))}
                 {images.length > 20 && (
                   <div
-                    style={{ fontSize: 12, color: "var(--c-textDim)", textAlign: "center", padding: 8 }}
+                    style={{
+                      fontSize: 12,
+                      color: "var(--c-textDim)",
+                      textAlign: "center",
+                      padding: 8,
+                    }}
                   >
                     {t("image.other_files", { count: String(images.length - 20) })}
                   </div>
@@ -524,7 +565,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             : t("image.title_single")}
         </span>
         {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
-        {!isBatch && <span style={s.pageBadge}>{t("common.pages", { count: String(resolvedPageCount) })}</span>}
+        {!isBatch && (
+          <span style={s.pageBadge}>{t("common.pages", { count: String(resolvedPageCount) })}</span>
+        )}
         <div style={{ flex: 1 }} />
         <span style={s.outBadge}>
           → {format.toUpperCase()} {pw}×{ph}px
@@ -677,24 +720,31 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               </div>
             </>
           ) : (
-            <>
-              <div style={s.secLabel}>{t("image.pdf_filename")}</div>
-              <div style={s.prefixRow}>
-                <input
-                  type="text"
-                  style={{
-                    ...s.textInput,
-                    ...(conflictPaths.length > 0 && !isBatch
-                      ? { borderColor: "var(--c-err)", background: "var(--c-errBg)" }
-                      : {}),
-                  }}
-                  value={pdfName}
-                  placeholder="output"
-                  onChange={(e) => setPdfName(e.target.value)}
-                />
-                <span style={s.prefixSuffix}>.pdf</span>
-              </div>
-            </>
+            // PDFモードの場合
+            outputMode === "pdf" &&
+            !isBatch && (
+              <>
+                <div style={s.secLabel}>{t("image.pdf_filename")}</div>
+                <div style={s.prefixRow}>
+                  <input
+                    type="text"
+                    style={{
+                      ...s.textInput,
+                      ...(conflictPaths.length > 0
+                        ? {
+                            borderColor: "var(--c-err)",
+                            background: "var(--c-errBg)",
+                          }
+                        : {}),
+                    }}
+                    value={pdfName}
+                    placeholder="output"
+                    onChange={(e) => setPdfName(e.target.value)}
+                  />
+                  <span style={s.prefixSuffix}>.pdf</span>
+                </div>
+              </>
+            )
           )}
 
           {/* 競合警告バナー */}
@@ -784,10 +834,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       <span style={s.batchFileMeta}>
                         {outputMode === "pdf"
                           ? t("image.result_suffix_pdf", {
-                              pages: String(resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount),
+                              pages: String(
+                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
+                                  f.pageCount,
+                              ),
                             })
                           : t("image.result_suffix", {
-                              pages: String(resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount),
+                              pages: String(
+                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
+                                  f.pageCount,
+                              ),
                               format: format === "jpeg" ? "JPG" : format.toUpperCase(),
                             })}
                       </span>
@@ -798,7 +854,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           ) : (
             <>
-              <div style={s.previewHead}>{t("common.preview_pages", { count: String(resolvedPageCount) })}</div>
+              <div style={s.previewHead}>
+                {t("common.preview_pages", { count: String(resolvedPageCount) })}
+              </div>
               <div style={s.thumbGrid}>
                 {resolvePageSpec(pages || "", total).map((i) => {
                   const pb = pdfInfo.pages?.[i];

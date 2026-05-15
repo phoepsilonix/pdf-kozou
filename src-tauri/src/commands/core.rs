@@ -392,6 +392,94 @@ pub async fn export_image_pdf(
     call_core_json("rasterize", request).await
 }
 
+#[tauri::command]
+pub async fn check_path_conflict(
+    input_path: String,
+    out_dir: String,
+    pdf_name: Option<String>,
+    is_batch: bool,
+    batch_files: Option<Vec<(String, String)>>,
+) -> Result<Vec<String>> {
+    use std::path::Path;
+
+    let mut conflicts = Vec::new();
+
+    let normalize = |p: &str| -> Result<String> {
+        let path = Path::new(p);
+        match std::fs::canonicalize(path) {
+            Ok(canon) => {
+                let s = canon.to_string_lossy().to_string();
+                Ok(s)
+            }
+            Err(_e) => {
+                let abs = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    std::env::current_dir().unwrap_or_default().join(path)
+                };
+                let normalized = abs.to_string_lossy().replace('\\', "/").to_lowercase();
+                Ok(normalized)
+            }
+        }
+    };
+
+    // out_dir の正規化
+    let out_dir_norm = match std::fs::canonicalize(&out_dir) {
+        Ok(p) => {
+            p
+        }
+        Err(_) => {
+            let p = std::path::PathBuf::from(&out_dir);
+            p
+        }
+    };
+
+    if is_batch {
+        if let Some(files) = batch_files {
+            for (filename, path) in files {
+                let stem = Path::new(&filename)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&filename);
+
+                let out_path = out_dir_norm.join(format!("{}.pdf", stem));
+
+                let input_norm = normalize(&path)?;
+                let output_norm = match std::fs::canonicalize(&out_path) {
+                    Ok(c) => c.to_string_lossy().to_string(),
+                    Err(_) => out_path.to_string_lossy().replace('\\', "/").to_lowercase(),
+                };
+
+                if input_norm.eq_ignore_ascii_case(&output_norm) {
+                    conflicts.push(filename);
+                }
+            }
+        }
+    } else {
+        let name = pdf_name.unwrap_or_else(|| "output".to_string());
+        let out_path = out_dir_norm.join(format!("{}.pdf", name));
+
+        let input_norm = normalize(&input_path)?;
+        let output_norm = match std::fs::canonicalize(&out_path) {
+            Ok(c) => c.to_string_lossy().to_string(),
+            Err(_) => out_path.to_string_lossy().replace('\\', "/").to_lowercase(),
+        };
+
+
+        if input_norm.eq_ignore_ascii_case(&output_norm) {
+            conflicts.push(
+                Path::new(&input_path)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("input.pdf")
+                    .to_string(),
+            );
+        }
+    }
+
+    Ok(conflicts)
+}
+
 /// デフォルト保存ディレクトリを返す
 ///
 /// `dirs` クレートが OS 標準 API を使って取得する:

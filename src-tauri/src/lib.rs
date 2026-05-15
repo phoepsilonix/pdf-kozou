@@ -118,6 +118,7 @@ pub fn run() {
             core::set_image_metadata,
             core::is_mupdf_supported,
             core::is_pdf_file,
+            core::check_path_conflict,
             platform_cmd::get_screen_info,
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
