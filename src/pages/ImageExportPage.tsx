@@ -31,6 +31,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { useSaveDialog } from "../hooks/useSaveDialog";
 
 interface Props {
   filePath: string;
@@ -62,6 +63,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
+  const { pickSave } = useSaveDialog();
   const [statusMsg, setStatusMsg] = useState("");
   const DPI_PRESETS = useMemo(
     () => DPI_PRESET_KEYS.map((p) => ({ ...p, desc: t(p.descKey) })),
@@ -109,7 +111,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [quality, setQuality] = useState(85);
   const [prefix, setPrefix] = useState("page_");
   const [outputMode, setOutputMode] = useState<OutputMode>("images");
-  const [pdfName, setPdfName] = useState("output");
+  const [pdfName, setPdfName] = useState("");
   const [outDir, setOutDir] = useState("");
   const [pages, setPages] = useState(""); // "" = 全ページ
   // pages 指定を正確に展開したページ数（odd/even/末尾省略も対応）
@@ -121,6 +123,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 画像PDFモード時: 出力先が元ファイルと同じになる競合を検出
   // 状態管理
   const [conflictPaths, setConflictPaths] = useState<string[]>([]);
+
+  const rasterizedDefaultName = useMemo(() => {
+    const base = filePath
+      .split(/[/\\]/)
+      .pop()
+      ?.replace(/\.pdf$/i, "");
+    return `${base || "output"}_rasterized.pdf`;
+  }, [filePath]);
 
   // 衝突チェック
   useEffect(() => {
@@ -228,7 +238,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // 単体実行
   const handleExecuteSingle = useCallback(async () => {
-    if (!outDir) {
+    if (outputMode === "images" && !outDir) {
       await pickDir();
       return;
     }
@@ -236,8 +246,19 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     setPhase("processing");
     try {
       if (outputMode === "pdf") {
-        // 画像PDFモード: pick_save_file_in で保存先を確定済みの outDir を使う
-        const outPath = `${outDir}/${pdfName || "output"}.pdf`;
+        const outPath = await pickSave(rasterizedDefaultName);
+
+        if (!outPath) {
+          setPdfName("");
+          setPhase("edit");
+          return;
+        }
+
+        const dir = outPath.replace(/[/\\][^/\\]+$/, "");
+        if (dir) {
+          setOutDir(dir);
+        }
+
         const res = await exportImagePdf(
           filePath,
           outPath,
@@ -248,6 +269,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
         setPdfOutPath(outPath);
         setPdfPageCount(resolvedPageCount);
+        setPdfName("");
         if (res.warning) setStatusMsg(res.warning);
         announceSuccess("done.image");
         setPhase("result");
@@ -286,6 +308,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     pages,
     resolvedPageCount,
     conflictPaths,
+    rasterizedDefaultName,
+    pickSave,
     pickDir,
     setError,
     announceSuccess,
@@ -720,31 +744,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               </div>
             </>
           ) : (
-            // PDFモードの場合
-            outputMode === "pdf" &&
-            !isBatch && (
-              <>
-                <div style={s.secLabel}>{t("image.pdf_filename")}</div>
-                <div style={s.prefixRow}>
-                  <input
-                    type="text"
-                    style={{
-                      ...s.textInput,
-                      ...(conflictPaths.length > 0
-                        ? {
-                            borderColor: "var(--c-err)",
-                            background: "var(--c-errBg)",
-                          }
-                        : {}),
-                    }}
-                    value={pdfName}
-                    placeholder="output"
-                    onChange={(e) => setPdfName(e.target.value)}
-                  />
-                  <span style={s.prefixSuffix}>.pdf</span>
-                </div>
-              </>
-            )
+            ""
           )}
 
           {/* 競合警告バナー */}
@@ -761,15 +761,24 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               {outputMode === "pdf" ? t("image.subfolder_note_pdf") : t("image.subfolder_note")}
             </div>
           )}
-          <div style={s.secLabel}>{t("image.output_dir")}</div>
-          <div style={s.dirRow}>
-            <div style={s.dirPath} title={outDir}>
-              {outDir || t("common.select_dir")}
-            </div>
-            <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
-              {t("common.browse")}
-            </button>
-          </div>
+
+          {(isBatch || outputMode === "images") && (
+            <>
+              <div style={s.secLabel}>{t("image.output_dir")}</div>
+              <div style={s.dirRow}>
+                <div style={s.dirPath} title={outDir}>
+                  {outDir || t("common.select_dir")}
+                </div>
+                <button
+                  style={s.dirPickBtn}
+                  onClick={pickDir}
+                  aria-label={t("aria.output_dir_btn")}
+                >
+                  {t("common.browse")}
+                </button>
+              </div>
+            </>
+          )}
 
           <BtnPrimary
             onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
@@ -783,7 +792,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 : outputMode === "pdf"
                   ? t("image.execute_pdf")
                   : t("image.execute", { count: String(resolvedPageCount) })
-              : t("common.no_dir_btn")}
+              : isBatch
+                ? t("common.no_dir_btn")
+                : outputMode === "pdf"
+                  ? t("image.execute_pdf")
+                  : t("common.no_dir_btn")}
           </BtnPrimary>
         </div>
 
