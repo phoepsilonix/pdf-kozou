@@ -186,12 +186,16 @@ extern "C" {
 
     /// 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。
     /// quality: JPEG 品質 0-100
+    /// page_indices: 0ベースのページ番号配列。NULL の場合は全ページ対象。
+    /// page_indices_len: page_indices の要素数。
     pub fn kozou_rasterize(
         ctx: *mut mupdf_sys::fz_context,
         input: *const c_char,
         output: *const c_char,
         dpi: f32,
         quality: i32,
+        page_indices: *const c_int,
+        page_indices_len: c_int,
         result: *mut FfiResult,
     );
 }

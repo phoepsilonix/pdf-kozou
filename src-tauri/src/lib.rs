@@ -104,6 +104,7 @@ pub fn run() {
             core::merge_pdf,
             core::rotate_pdf,
             core::export_images,
+            core::export_image_pdf,
             core::get_temp_path,
             core::move_file,
             core::copy_file,

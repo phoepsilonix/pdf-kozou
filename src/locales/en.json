@@ -301,7 +301,24 @@
     "prefix_label": "Filename prefix",
     "subfolder_note": "📁 Creates a subfolder per file",
     "output_dir": "Output folder",
-    "target_files": "Target files — {{count}}"
+    "target_files": "Target files — {{count}}",
+    "output_mode": "Output mode",
+    "mode_images": "Image files",
+    "mode_images_sub": "1 page = 1 file",
+    "mode_pdf": "Image PDF",
+    "mode_pdf_sub": "All pages in one PDF",
+    "pdf_options": "PDF options",
+    "pdf_quality": "JPEG quality",
+    "pdf_filename": "Output filename",
+    "execute_pdf": "🗒 Create image PDF",
+    "done_title_pdf": "Image PDF created",
+    "output_pdf": "{{name}} ({{count}} pages) exported",
+    "rasterize_warning": "⚠ Text selection and search are not available in image PDFs",
+    "result_suffix_pdf": "→ 1 PDF ({{pages}} pages)",
+    "subfolder_note_pdf": "📄 One image PDF per file",
+    "execute_batch_pdf": "🗒 Create image PDFs ({{count}} files)",
+    "conflict_single": "⚠ Output path is the same as the source file. Please change the filename before running.",
+    "conflict_batch": "⚠ The following files would overwrite the source: {{files}}. Please change the output folder."
   },
   "compress": {
     "processing": "Compressing…",
@@ -605,7 +622,6 @@
     "spring": "Spring",
     "icon": "Icon",
     "bg": "Image",
-    "switcher_label": "テーマ",
     "switcher_label": "Theme",
     "switcher_title": "Switch theme"
   }

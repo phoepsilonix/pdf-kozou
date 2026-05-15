@@ -202,6 +202,12 @@ enum Commands {
         /// 解像度 DPI (デフォルト: 150)
         #[arg(long, default_value = "150")]
         dpi: f32,
+        /// JPEG 品質 0-100 (デフォルト: 85)
+        #[arg(long, default_value = "85")]
+        quality: i32,
+        /// ページ指定 "1-3,5" 形式 (1ベース)。省略時は全ページ。
+        #[arg(long)]
+        page: Option<String>,
     },
 
     /// PDF を分割
@@ -590,14 +596,17 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Rasterize { input, output, dpi } => {
+        Commands::Rasterize { input, output, dpi, quality, page } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
                 input
             };
-            let resp = pdf_kozou_core::compress::rasterize(&input, &output, dpi)?;
+            let pages = page.as_deref().map(parse_page_list).transpose()?;
+            let resp = pdf_kozou_core::compress::rasterize_with_quality(
+                &input, &output, dpi, quality, pages.as_deref(),
+            )?;
             println!("{}", serde_json::to_string(&resp)?);
         }
 
@@ -1037,18 +1046,23 @@ fn dispatch_json(line: &str) -> String {
                     dpi: Option<f32>,
                     #[serde(default)]
                     quality: Option<i32>,
+                    /// "1-3,5" 形式の1ベースページ指定。省略時は全ページ。
+                    #[serde(default)]
+                    pages: Option<String>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
                 let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.input = tmp_path.clone();
                 }
+                let pages = r.pages.as_deref().map(parse_page_list).transpose()?;
                 Ok(serde_json::to_string(
                     &pdf_kozou_core::compress::rasterize_with_quality(
                         &r.input,
                         &r.output,
                         r.dpi.unwrap_or(150.0),
                         r.quality.unwrap_or(85),
+                        pages.as_deref(),
                     )?,
                 )?)
             }

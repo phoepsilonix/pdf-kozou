@@ -992,17 +992,20 @@ fn rewrite_safe_fallback(
 
 /// PDF を全ページ画像化 (テキスト・アウトライン失う — 非推奨)
 pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse> {
-    rasterize_with_quality(input, output, dpi, 85)
+    rasterize_with_quality(input, output, dpi, 85, None)
 }
 
+/// pages: 1ベースのページ番号リスト。None の場合は全ページ。
 pub fn rasterize_with_quality(
     input: &str,
     output: &str,
     dpi: f32,
     quality: i32,
+    pages: Option<&[i32]>,
 ) -> Result<CompressResponse> {
     use crate::ffi::{kozou_new_context, kozou_rasterize as ffi_rasterize, FfiResult};
     use std::ffi::CString;
+    use std::os::raw::c_int;
 
     let metadata = collect_metadata(input);
 
@@ -1010,6 +1013,16 @@ pub fn rasterize_with_quality(
         CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output =
         CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    // 1ベース → 0ベースに変換
+    let page_indices_0based: Vec<c_int> = pages
+        .map(|ps| ps.iter().map(|&p| (p - 1) as c_int).collect())
+        .unwrap_or_default();
+    let (indices_ptr, indices_len) = if page_indices_0based.is_empty() {
+        (std::ptr::null(), 0)
+    } else {
+        (page_indices_0based.as_ptr(), page_indices_0based.len() as c_int)
+    };
 
     unsafe {
         let ctx = kozou_new_context();
@@ -1023,6 +1036,8 @@ pub fn rasterize_with_quality(
             c_output.as_ptr(),
             dpi,
             quality,
+            indices_ptr,
+            indices_len,
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);

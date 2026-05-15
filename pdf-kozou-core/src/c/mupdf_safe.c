@@ -1103,6 +1103,9 @@ void kozou_convert_to_pdf(
 /*   3. pdf_add_image で PDF の xref に XObject として登録             */
 /*   4. コンテンツストリームに cm + Do オペレータを手動で書く          */
 /*   5. pdf_add_page + pdf_insert_page でページを追加                 */
+/*                                                                     */
+/* page_indices: 0ベースのページ番号配列。NULL の場合は全ページ対象。  */
+/* page_indices_len: page_indices の要素数。                           */
 /* ------------------------------------------------------------------ */
 void kozou_rasterize(
     fz_context  *ctx,
@@ -1110,6 +1113,8 @@ void kozou_rasterize(
     const char  *output,
     float        dpi,
     int          quality,
+    const int   *page_indices,
+    int          page_indices_len,
     FfiResult   *result)
 {
     fz_document  *doc    = NULL;
@@ -1134,9 +1139,37 @@ void kozou_rasterize(
         if (dpi <= 0.0f) dpi = 150.0f;
         float scale = dpi / 72.0f;
 
+        /* ページリストを構築: page_indices が NULL なら全ページ */
+        int  *pages_to_render     = NULL;
+        int   pages_to_render_len = 0;
+        int   allocated           = 0;
+
+        if (page_indices != NULL && page_indices_len > 0) {
+            pages_to_render     = (int *)malloc(sizeof(int) * page_indices_len);
+            pages_to_render_len = 0;
+            allocated           = 1;
+            for (int k = 0; k < page_indices_len; k++) {
+                int idx = page_indices[k];
+                if (idx >= 0 && idx < page_count) {
+                    pages_to_render[pages_to_render_len++] = idx;
+                }
+            }
+            if (pages_to_render_len == 0)
+                fz_throw(ctx, FZ_ERROR_ARGUMENT,
+                         "page_indices: no valid pages in range");
+        } else {
+            /* 全ページ: 0..page_count-1 */
+            pages_to_render     = (int *)malloc(sizeof(int) * page_count);
+            pages_to_render_len = page_count;
+            allocated           = 1;
+            for (int k = 0; k < page_count; k++)
+                pages_to_render[k] = k;
+        }
+
         pdfout = pdf_create_document(ctx);
 
-        for (int i = 0; i < page_count; i++) {
+        for (int ii = 0; ii < pages_to_render_len; ii++) {
+            int i = pages_to_render[ii];
             fz_page    *page      = NULL;
             fz_pixmap  *pixmap    = NULL;
             fz_image   *image     = NULL;
@@ -1251,6 +1284,7 @@ void kozou_rasterize(
         opts.do_clean           = 0;
         pdf_save_document(ctx, pdfout, output, &opts);
 
+        if (allocated) free(pages_to_render);
         set_ok(result);
     }
     fz_always(ctx) {

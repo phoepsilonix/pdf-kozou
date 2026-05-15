@@ -353,6 +353,45 @@ pub async fn export_images(
     Ok(json!({ "ok": true, "files": files }))
 }
 
+/// 指定ページを DPI でラスタライズして 1 つの画像 PDF に書き出す。
+///
+/// pages: "1-3,5" 形式の 1 ベースページ指定。None で全ページ。
+/// out_path: 出力先のフルパス (.pdf)
+#[tauri::command]
+pub async fn export_image_pdf(
+    path: String,
+    out_path: String,
+    dpi: Option<f32>,
+    quality: Option<i32>,
+    pages: Option<String>,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
+) -> Result<Value> {
+    use serde_json::json;
+
+    // 出力先ディレクトリを自動作成
+    if let Some(parent) = std::path::Path::new(&out_path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+        }
+    }
+
+    let request = json!({
+        "input":   path,
+        "output":  out_path,
+        "dpi":     dpi.unwrap_or(150.0),
+        "quality": quality.unwrap_or(85),
+        "pages":   pages,
+        "layout_w":  layout_w,
+        "layout_h":  layout_h,
+        "layout_em": layout_em,
+    });
+
+    call_core_json("rasterize", request).await
+}
+
 /// デフォルト保存ディレクトリを返す
 ///
 /// `dirs` クレートが OS 標準 API を使って取得する:

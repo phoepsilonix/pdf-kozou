@@ -488,6 +488,35 @@ export async function exportImages(
 // ── 回転 (tauri.ts 既存の rotatePdf は PageRotation[] 形式) ──────────────────
 // rotate_pdf コマンドは invoke("rotate_pdf", { request: { input, output, angle?, rotations? } })
 
+export interface ExportImagePdfResponse {
+  ok: boolean;
+  output_bytes: number;
+  warning?: string;
+}
+
+/// 指定ページを DPI でラスタライズして 1 つの画像 PDF に書き出す。
+/// pages: "1-3,5" 形式の 1 ベース指定。undefined で全ページ。
+/// outPath: 出力先フルパス (.pdf)
+export async function exportImagePdf(
+  path: string,
+  outPath: string,
+  dpi: number,
+  quality: number,
+  pages?: string,
+  options?: ConvertOptions,
+): Promise<ExportImagePdfResponse> {
+  return invoke<ExportImagePdfResponse>("export_image_pdf", {
+    path,
+    outPath,
+    dpi,
+    quality,
+    pages: pages ?? null,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
+}
+
 // ── ファイル操作ユーティリティ ──────────────────────────────────────────────
 
 export async function moveFile(src: string, dst: string): Promise<void> {
