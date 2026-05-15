@@ -624,5 +624,10 @@
     "bg": "背景画像",
     "switcher_label": "テーマ",
     "switcher_title": "テーマ切り替え"
+  },
+  "preview": {
+    "hide": "プレビュー非表示",
+    "show": "プレビュー表示",
+    "hidden_note": "プレビューは非表示です"
   }
 }

@@ -22,6 +22,8 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { PreviewPane } from "../components/PreviewPane";
+import { usePreview } from "../hooks/usePreview";
 import { CompressPage } from "./CompressPage";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
@@ -49,6 +51,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
+  const { enabled: previewEnabled } = usePreview("rotate");
   // Ctrl+S からプレビュー画面の doSave を呼ぶための ref
   const saveHandlerRef = useRef<(() => void) | null>(null);
   const compressHandlerRef = useRef<(() => void) | null>(null);
@@ -122,6 +125,10 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   }, [batchIdx, isBatch]);
 
   useEffect(() => {
+    if (!previewEnabled) {
+      setThumbs([]);
+      return;
+    }
     let cancelled = false;
     setThumbs([]);
     const n = isBatch ? curPageCount : pdfInfo.page_count;
@@ -145,10 +152,14 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [curPath, curPageCount]);
+  }, [curPath, curPageCount, previewEnabled]);
 
   useEffect(() => {
     if (!isBatch || !batchFiles) return;
+    if (!previewEnabled) {
+      setBatchThumbs([]);
+      return;
+    }
     let cancelled = false;
     setBatchThumbs(new Array(batchFiles.length).fill(undefined));
     (async () => {
@@ -171,7 +182,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isBatch, batchFiles]);
+  }, [isBatch, batchFiles, previewEnabled]);
 
   const n = isBatch ? curPageCount : pdfInfo.page_count;
 
@@ -595,83 +606,85 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           </div>
 
           {/* ページグリッド（仮想化なしのまま、元のスタイル） */}
-          <div style={s.grid}>
-            {Array.from({ length: n }, (_, i) => {
-              const rot = rotations[i] ?? 0;
-              const changed = rot !== 0;
-              const inTarget = targetIndices.includes(i);
-              const isLandscape = rot === 90 || rot === 270;
-              const cardW = isLandscape ? 168 : 120;
-              const cardH = isLandscape ? 120 : 168;
-              const imgW = isLandscape ? 150 : 106;
-              const imgH = isLandscape ? 106 : 150;
+          <PreviewPane pageKey="rotate" label={t("common.preview_pages", { count: String(n) })}>
+            <div style={s.grid}>
+              {Array.from({ length: n }, (_, i) => {
+                const rot = rotations[i] ?? 0;
+                const changed = rot !== 0;
+                const inTarget = targetIndices.includes(i);
+                const isLandscape = rot === 90 || rot === 270;
+                const cardW = isLandscape ? 168 : 120;
+                const cardH = isLandscape ? 120 : 168;
+                const imgW = isLandscape ? 150 : 106;
+                const imgH = isLandscape ? 106 : 150;
 
-              return (
-                <div
-                  key={i}
-                  style={{
-                    ...s.pageCard,
-                    ...(changed ? s.pageCardChanged : {}),
-                    ...(!inTarget ? s.pageCardDimmed : {}),
-                    width: cardW,
-                  }}
-                >
+                return (
                   <div
+                    key={i}
                     style={{
-                      ...s.pageImgWrap,
+                      ...s.pageCard,
+                      ...(changed ? s.pageCardChanged : {}),
+                      ...(!inTarget ? s.pageCardDimmed : {}),
                       width: cardW,
-                      height: cardH,
-                      overflow: "hidden",
-                      transition: "all 0.3s",
                     }}
                   >
-                    {thumbs[i] ? (
-                      <img
-                        src={`data:image/jpeg;base64,${thumbs[i]}`}
-                        style={{
-                          width: imgW,
-                          height: imgH,
-                          objectFit: "contain",
-                          transform: `rotate(${rot}deg)`,
-                          transition: "transform 0.3s",
-                        }}
-                        alt=""
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: imgW,
-                          height: imgH,
-                          background: "var(--c-border)",
-                          borderRadius: 3,
-                        }}
-                      />
-                    )}
-                  </div>
-                  <div style={s.pageCardBottom}>
-                    <span style={s.pageNum}>p.{i + 1}</span>
-                    {changed && <span style={s.rotBadge}>{rot}°</span>}
-                    <div style={s.rotateBtns}>
-                      <button
-                        style={s.rotBtn}
-                        onClick={() => rotate(i, -90)}
-                        title={t("rotate.rotate_left")}
-                      >
-                        ↺
-                      </button>
-                      <button
-                        style={s.rotBtn}
-                        onClick={() => rotate(i, 90)}
-                        title={t("rotate.rotate_right")}
-                      >
-                        ↻
-                      </button>
+                    <div
+                      style={{
+                        ...s.pageImgWrap,
+                        width: cardW,
+                        height: cardH,
+                        overflow: "hidden",
+                        transition: "all 0.3s",
+                      }}
+                    >
+                      {thumbs[i] ? (
+                        <img
+                          src={`data:image/jpeg;base64,${thumbs[i]}`}
+                          style={{
+                            width: imgW,
+                            height: imgH,
+                            objectFit: "contain",
+                            transform: `rotate(${rot}deg)`,
+                            transition: "transform 0.3s",
+                          }}
+                          alt=""
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: imgW,
+                            height: imgH,
+                            background: "var(--c-border)",
+                            borderRadius: 3,
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div style={s.pageCardBottom}>
+                      <span style={s.pageNum}>p.{i + 1}</span>
+                      {changed && <span style={s.rotBadge}>{rot}°</span>}
+                      <div style={s.rotateBtns}>
+                        <button
+                          style={s.rotBtn}
+                          onClick={() => rotate(i, -90)}
+                          title={t("rotate.rotate_left")}
+                        >
+                          ↺
+                        </button>
+                        <button
+                          style={s.rotBtn}
+                          onClick={() => rotate(i, 90)}
+                          title={t("rotate.rotate_right")}
+                        >
+                          ↻
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </PreviewPane>
         </div>
       </div>
       <LiveRegion message={statusMsg} />

@@ -63,6 +63,10 @@ interface PdfStore {
   setConvertLayout: (w: number, h: number, em: number) => void;
   /// 特定ファイルのページ数を更新（レイアウト変更後に呼ぶ）
   updatePageCount: (path: string, pageCount: number) => void;
+
+  /// 機能ごとのプレビュー表示フラグ（未設定 = true 扱い）
+  previewEnabled: Record<string, boolean>;
+  setPreviewEnabled: (page: string, enabled: boolean) => void;
 }
 
 export const usePdfStore = create<PdfStore>()(
@@ -138,6 +142,10 @@ export const usePdfStore = create<PdfStore>()(
         set((s) => ({
           fileList: s.fileList.map((f) => (f.path === path ? { ...f, pageCount } : f)),
         })),
+
+      previewEnabled: {},
+      setPreviewEnabled: (page, enabled) =>
+        set((s) => ({ previewEnabled: { ...s.previewEnabled, [page]: enabled } })),
     }),
     {
       name: "pdf-kozou-storage",
@@ -148,6 +156,7 @@ export const usePdfStore = create<PdfStore>()(
         convertLayoutW: state.convertLayoutW,
         convertLayoutH: state.convertLayoutH,
         convertLayoutEm: state.convertLayoutEm,
+        previewEnabled: state.previewEnabled,
       }),
     },
   ),

@@ -32,6 +32,8 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
 import { useSaveDialog } from "../hooks/useSaveDialog";
+import { PreviewPane } from "../components/PreviewPane";
+import { usePreview } from "../hooks/usePreview";
 
 interface Props {
   filePath: string;
@@ -100,6 +102,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     F1: () => announceKey("shortcut.tool"),
   });
   const isBatch = (batchFiles?.length ?? 0) > 1;
+  const { enabled: previewEnabled } = usePreview("image");
   const total = pdfInfo.page_count;
   console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
   console.log("Image: total(pages)", total);
@@ -172,9 +175,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [previewIdx, setPreviewIdx] = useState(0);
 
-  // 単体: サムネイル
+  // 単体: サムネイル（プレビュー有効時のみ）
   useEffect(() => {
     if (isBatch) return;
+    if (!previewEnabled) {
+      setThumbs([]);
+      return;
+    }
     let cancelled = false;
     setThumbs([]);
     (async () => {
@@ -197,11 +204,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [filePath, isBatch]);
+  }, [filePath, isBatch, previewEnabled]);
 
-  // バッチ: 先頭ページサムネイル
+  // バッチ: 先頭ページサムネイル（プレビュー有効時のみ）
   useEffect(() => {
     if (!isBatch || !batchFiles) return;
+    if (!previewEnabled) {
+      setBatchThumbs([]);
+      return;
+    }
     let cancelled = false;
     setBatchThumbs(new Array(batchFiles.length).fill(undefined));
     (async () => {
@@ -224,7 +235,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isBatch, batchFiles]);
+  }, [isBatch, batchFiles, previewEnabled]);
 
   const pickDir = useCallback(async () => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
@@ -801,93 +812,88 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
 
         {/* プレビューエリア */}
-        <div style={s.preview}>
+        <PreviewPane
+          pageKey="image"
+          label={
+            isBatch
+              ? t("image.target_files", { count: String(batchFiles!.length) })
+              : t("common.preview_pages", { count: String(resolvedPageCount) })
+          }
+        >
           {isBatch ? (
-            <>
-              <div style={s.previewHead}>
-                {t("image.target_files", { count: String(batchFiles!.length) })}
-              </div>
-              <div style={s.batchFileList}>
-                {batchFiles!.map((f, i) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    style={{
-                      ...s.batchFileItem,
-                      ...(i === previewIdx ? s.batchFileItemOn : {}),
-                      appearance: "none",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      width: "100%", // 推奨: リスト項目として横幅を広げる
-                      outline: "none", // フォーカス時の枠を消す（任意）
-                    }}
-                    onClick={(e) => {
-                      const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-                      setPreviewIdx(i);
-                      itemRefs.current[i]?.blur();
-                    }}
-                  >
-                    {batchThumbs[i] ? (
-                      <img
-                        src={`data:image/jpeg;base64,${batchThumbs[i]}`}
-                        style={s.batchThumb}
-                        alt=""
-                      />
-                    ) : (
-                      <div style={s.batchThumbPh} />
-                    )}
-                    <div style={s.batchFileInfo}>
-                      <span style={s.batchFileName}>{f.filename}</span>
-                      <span style={s.batchFileMeta}>
-                        {t("common.pages", { count: String(f.pageCount) })}
-                      </span>
-                      <span style={s.batchFileMeta}>
-                        {outputMode === "pdf"
-                          ? t("image.result_suffix_pdf", {
-                              pages: String(
-                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
-                                  f.pageCount,
-                              ),
-                            })
-                          : t("image.result_suffix", {
-                              pages: String(
-                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
-                                  f.pageCount,
-                              ),
-                              format: format === "jpeg" ? "JPG" : format.toUpperCase(),
-                            })}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={s.previewHead}>
-                {t("common.preview_pages", { count: String(resolvedPageCount) })}
-              </div>
-              <div style={s.thumbGrid}>
-                {resolvePageSpec(pages || "", total).map((i) => {
-                  const pb = pdfInfo.pages?.[i];
-                  const aspect = pb ? pb.w / pb.h : undefined;
-                  return (
-                    <ThumbCard
-                      key={i}
-                      b64={thumbs[i]}
-                      pageNum={i + 1}
-                      width={130}
-                      aspectRatio={aspect}
+            <div style={s.batchFileList}>
+              {batchFiles!.map((f, i) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  style={{
+                    ...s.batchFileItem,
+                    ...(i === previewIdx ? s.batchFileItemOn : {}),
+                    appearance: "none",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    width: "100%", // 推奨: リスト項目として横幅を広げる
+                    outline: "none", // フォーカス時の枠を消す（任意）
+                  }}
+                  onClick={(e) => {
+                    const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+                    setPreviewIdx(i);
+                    itemRefs.current[i]?.blur();
+                  }}
+                >
+                  {batchThumbs[i] ? (
+                    <img
+                      src={`data:image/jpeg;base64,${batchThumbs[i]}`}
+                      style={s.batchThumb}
+                      alt=""
                     />
-                  );
-                })}
-              </div>
-            </>
+                  ) : (
+                    <div style={s.batchThumbPh} />
+                  )}
+                  <div style={s.batchFileInfo}>
+                    <span style={s.batchFileName}>{f.filename}</span>
+                    <span style={s.batchFileMeta}>
+                      {t("common.pages", { count: String(f.pageCount) })}
+                    </span>
+                    <span style={s.batchFileMeta}>
+                      {outputMode === "pdf"
+                        ? t("image.result_suffix_pdf", {
+                            pages: String(
+                              resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount,
+                            ),
+                          })
+                        : t("image.result_suffix", {
+                            pages: String(
+                              resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount,
+                            ),
+                            format: format === "jpeg" ? "JPG" : format.toUpperCase(),
+                          })}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={s.thumbGrid}>
+              {resolvePageSpec(pages || "", total).map((i) => {
+                const pb = pdfInfo.pages?.[i];
+                const aspect = pb ? pb.w / pb.h : undefined;
+                return (
+                  <ThumbCard
+                    key={i}
+                    b64={thumbs[i]}
+                    pageNum={i + 1}
+                    width={130}
+                    aspectRatio={aspect}
+                  />
+                );
+              })}
+            </div>
           )}
-        </div>
+        </PreviewPane>
       </div>
       <LiveRegion message={statusMsg} />
     </div>

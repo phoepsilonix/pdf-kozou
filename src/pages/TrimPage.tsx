@@ -25,6 +25,8 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { PreviewPane } from "../components/PreviewPane";
+import { usePreview } from "../hooks/usePreview";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
@@ -598,8 +600,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       .catch(() => setPageImage(""));
   }, [filePath, previewPage, pageImage]);
 
+  const { enabled: previewEnabled } = usePreview("trim");
+
   // 左ペインのサムネイルをバックグラウンドで順次取得
   useEffect(() => {
+    if (!previewEnabled) {
+      setThumbs([]);
+      return;
+    }
     setThumbs(new Array(pdfInfo.page_count).fill(undefined));
     let cancelled = false;
     (async () => {
@@ -622,7 +630,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     return () => {
       cancelled = true;
     };
-  }, [filePath, pdfInfo.page_count]);
+  }, [filePath, pdfInfo.page_count, previewEnabled]);
 
   // Ctrl+ホイール / Ctrl+キーボードでキャンバスズーム（document レベルで捕捉）
   useEffect(() => {
@@ -806,33 +814,34 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   return (
     <div style={s.root}>
       <div style={s.sidebar}>
-        <div style={s.sbHead}>
-          <span style={s.sbTitle}>{t("trim.page_list")}</span>
-          <span style={s.sbCount}>{t("common.pages", { count: String(pdfInfo.page_count) })}</span>
-        </div>
-        <div style={s.thumbList}>
-          {Array.from({ length: pdfInfo.page_count }, (_, i) => (
-            <button
-              key={i}
-              style={{
-                ...s.thumb,
-                ...(previewPage === i ? s.thumbOn : {}),
-              }}
-              onClick={() => setPreviewPage(i)}
-            >
-              {thumbs[i] ? (
-                <img
-                  src={`data:image/jpeg;base64,${thumbs[i]}`}
-                  style={s.thumbImg}
-                  alt={`Page ${i + 1}`}
-                />
-              ) : (
-                <div style={s.thumbPh}>{t("common.page_placeholder", { n: String(i + 1) })}</div>
-              )}
-              <span style={s.thumbN}>{i + 1}</span>
-            </button>
-          ))}
-        </div>
+        <PreviewPane
+          pageKey="trim"
+          label={t("common.pages", { count: String(pdfInfo.page_count) })}
+        >
+          <div style={s.thumbList}>
+            {Array.from({ length: pdfInfo.page_count }, (_, i) => (
+              <button
+                key={i}
+                style={{
+                  ...s.thumb,
+                  ...(previewPage === i ? s.thumbOn : {}),
+                }}
+                onClick={() => setPreviewPage(i)}
+              >
+                {thumbs[i] ? (
+                  <img
+                    src={`data:image/jpeg;base64,${thumbs[i]}`}
+                    style={s.thumbImg}
+                    alt={`Page ${i + 1}`}
+                  />
+                ) : (
+                  <div style={s.thumbPh}>{t("common.page_placeholder", { n: String(i + 1) })}</div>
+                )}
+                <span style={s.thumbN}>{i + 1}</span>
+              </button>
+            ))}
+          </div>
+        </PreviewPane>
       </div>
 
       <main style={s.main}>

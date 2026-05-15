@@ -33,6 +33,8 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { PreviewPane } from "../components/PreviewPane";
+import { usePreview } from "../hooks/usePreview";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
 
@@ -85,6 +87,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
   const [result, setResult] = useState<SplitResponse | null>(null);
   const [errMsg, setErrMsg] = useState("");
+  const { enabled: previewEnabled } = usePreview("split");
 
   // バッチ用
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
@@ -93,6 +96,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // ── サムネイル取得（プレビュー対象ファイル） ─────────────────────────────
   useEffect(() => {
+    if (!previewEnabled) {
+      setThumbs([]);
+      return;
+    }
     let cancelled = false;
     setThumbs([]);
     (async () => {
@@ -125,11 +132,15 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [previewPath, isBatch]);
+  }, [previewPath, isBatch, previewEnabled]);
 
   // ── バッチ用: 各ファイルの先頭ページサムネイル ──────────────────────────
   useEffect(() => {
     if (!isBatch || !batchFiles) return;
+    if (!previewEnabled) {
+      setBatchThumbs([]);
+      return;
+    }
     let cancelled = false;
     setBatchThumbs(new Array(batchFiles.length).fill(undefined));
     (async () => {
@@ -154,7 +165,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isBatch, batchFiles]);
+  }, [isBatch, batchFiles, previewEnabled]);
 
   const pickDir = useCallback(async () => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
@@ -845,88 +856,85 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
 
         {/* ── 右: プレビューエリア ── */}
-        <div style={s.preview}>
+        <PreviewPane
+          pageKey="split"
+          label={
+            isBatch
+              ? t("split.target_files", { count: String(batchFiles!.length) })
+              : t("split.preview_head", { count: String(groups.length) })
+          }
+        >
           {isBatch ? (
             // バッチ: ファイル一覧 + 先頭ページサムネイル
-            <>
-              <div style={s.previewHead}>
-                {t("split.target_files", { count: String(batchFiles!.length) })}
-              </div>
-              <div style={s.batchFileList}>
-                {batchFiles!.map((f, i) => (
-                  <div
-                    key={f.id}
-                    style={{ ...s.batchFileItem, ...(i === previewIdx ? s.batchFileItemOn : {}) }}
-                    onClick={() => setPreviewIdx(i)}
-                  >
-                    {batchThumbs[i] ? (
-                      <img
-                        src={`data:image/jpeg;base64,${batchThumbs[i]}`}
-                        style={s.batchThumb}
-                        alt=""
-                      />
-                    ) : (
-                      <div style={s.batchThumbPh} />
-                    )}
-                    <div style={s.batchFileInfo}>
-                      <span style={s.batchFileName}>{f.filename}</span>
-                      <span style={s.batchFileMeta}>{f.pageCount}p</span>
-                      <span style={s.batchFileMeta}>
-                        {modeId === "all"
-                          ? t("common.files_arrow", { count: String(f.pageCount) })
-                          : modeId === "every"
-                            ? t("common.files_arrow", {
-                                count: String(Math.ceil(f.pageCount / everyN)),
-                              })
-                            : t("split.select_as_ranges")}
-                      </span>
-                    </div>
+            <div style={s.batchFileList}>
+              {batchFiles!.map((f, i) => (
+                <div
+                  key={f.id}
+                  style={{ ...s.batchFileItem, ...(i === previewIdx ? s.batchFileItemOn : {}) }}
+                  onClick={() => setPreviewIdx(i)}
+                >
+                  {batchThumbs[i] ? (
+                    <img
+                      src={`data:image/jpeg;base64,${batchThumbs[i]}`}
+                      style={s.batchThumb}
+                      alt=""
+                    />
+                  ) : (
+                    <div style={s.batchThumbPh} />
+                  )}
+                  <div style={s.batchFileInfo}>
+                    <span style={s.batchFileName}>{f.filename}</span>
+                    <span style={s.batchFileMeta}>{f.pageCount}p</span>
+                    <span style={s.batchFileMeta}>
+                      {modeId === "all"
+                        ? t("common.files_arrow", { count: String(f.pageCount) })
+                        : modeId === "every"
+                          ? t("common.files_arrow", {
+                              count: String(Math.ceil(f.pageCount / everyN)),
+                            })
+                          : t("split.select_as_ranges")}
+                    </span>
                   </div>
-                ))}
-              </div>
-            </>
+                </div>
+              ))}
+            </div>
           ) : (
             // 単体: グループプレビュー
-            <>
-              <div style={s.previewHead}>
-                {t("split.preview_head", { count: String(groups.length) })}
-              </div>
-              <div style={s.groupList}>
-                {groups.map((pages, gi) => (
-                  <div key={gi} style={s.group}>
-                    <div style={s.groupLabel}>
-                      <span style={s.groupNum}>#{gi + 1}</span>
-                      <span style={s.groupPages}>
-                        {t("common.pages", { count: String(pages.length) })}
-                      </span>
-                      <span style={s.groupRange}>
-                        {pages.length === 1
-                          ? `p.${pages[0] + 1}`
-                          : `p.${pages[0] + 1}〜${pages[pages.length - 1] + 1}`}
-                      </span>
-                    </div>
-                    <div style={s.groupThumbs}>
-                      {pages.slice(0, 8).map((pi) => {
-                        const pb = pdfInfo?.pages[pi];
-                        const aspect = pb ? pb.w / pb.h : undefined;
-                        return (
-                          <ThumbCard
-                            key={pi}
-                            b64={thumbs[pi]}
-                            pageNum={pi + 1}
-                            width={70}
-                            aspectRatio={aspect}
-                          />
-                        );
-                      })}
-                      {pages.length > 8 && <div style={s.groupMore}>+{pages.length - 8}</div>}
-                    </div>
+            <div style={s.groupList}>
+              {groups.map((pages, gi) => (
+                <div key={gi} style={s.group}>
+                  <div style={s.groupLabel}>
+                    <span style={s.groupNum}>#{gi + 1}</span>
+                    <span style={s.groupPages}>
+                      {t("common.pages", { count: String(pages.length) })}
+                    </span>
+                    <span style={s.groupRange}>
+                      {pages.length === 1
+                        ? `p.${pages[0] + 1}`
+                        : `p.${pages[0] + 1}〜${pages[pages.length - 1] + 1}`}
+                    </span>
                   </div>
-                ))}
-              </div>
-            </>
+                  <div style={s.groupThumbs}>
+                    {pages.slice(0, 8).map((pi) => {
+                      const pb = pdfInfo?.pages[pi];
+                      const aspect = pb ? pb.w / pb.h : undefined;
+                      return (
+                        <ThumbCard
+                          key={pi}
+                          b64={thumbs[pi]}
+                          pageNum={pi + 1}
+                          width={70}
+                          aspectRatio={aspect}
+                        />
+                      );
+                    })}
+                    {pages.length > 8 && <div style={s.groupMore}>+{pages.length - 8}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
+        </PreviewPane>
       </div>
       <LiveRegion message={statusMsg} />
     </div>

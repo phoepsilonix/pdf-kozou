@@ -624,5 +624,10 @@
     "bg": "Image",
     "switcher_label": "Theme",
     "switcher_title": "Switch theme"
+  },
+  "preview": {
+    "hide": "Hide preview",
+    "show": "Show preview",
+    "hidden_note": "Preview is hidden"
   }
 }
