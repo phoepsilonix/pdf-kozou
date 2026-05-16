@@ -109,6 +109,7 @@ pub fn run() {
             core::move_file,
             core::copy_file,
             core::remove_file,
+            core::detect_transparent_text,
             core::get_page_text,
             core::search_page,
             core::get_page_links,

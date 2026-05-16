@@ -165,6 +165,20 @@ extern "C" {
 
     pub fn kozou_drop_buffer(ctx: *mut mupdf_sys::fz_context, buf: *mut mupdf_sys::fz_buffer);
 
+    /// ページ内の透明テキスト（alpha <= alpha_threshold）を検出して JSON を out に書く。
+    /// alpha_threshold: 0=完全透明のみ, 25=10%未満も対象, など 0-255 で指定。
+    pub fn kozou_detect_transparent_text(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const c_char,
+        page_index: c_int,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        alpha_threshold: c_int,
+        out: *mut mupdf_sys::fz_output,
+        result: *mut FfiResult,
+    );
+
     /// fz_buffer の内容ポインタと長さを返す
     pub fn kozou_buffer_get_data(
         ctx: *mut mupdf_sys::fz_context,

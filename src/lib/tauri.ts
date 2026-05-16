@@ -91,6 +91,52 @@ export interface PageLinksResponse {
   links: PageLink[];
 }
 
+// ── 隠しテキスト検出 ────────────────────────────────────────────────────────────
+
+/** 透明テキスト検出の1文字分の結果 */
+export interface TransparentChar {
+  /** Unicode 文字 */
+  char: string;
+  /** アルファ値 0-255（0=完全透明） */
+  alpha: number;
+  /** RGB 色 [R, G, B] 各 0-255 */
+  color_rgb: [number, number, number];
+  /** 文字の原点座標 [x, y] pt 単位 */
+  origin: [number, number];
+  /** 文字の四隅座標 [ul.x,ul.y, ur.x,ur.y, ll.x,ll.y, lr.x,lr.y] */
+  quad: [number, number, number, number, number, number, number, number];
+  /** フォントサイズ pt */
+  size: number;
+}
+
+export interface DetectTransparentResponse {
+  ok: boolean;
+  page: number;
+  hits: TransparentChar[];
+}
+
+/**
+ * ページ内の透明テキストを検出する。
+ * @param alphaThreshold この値以下の alpha を透明と見なす（0-255）。
+ *   0 = 完全透明のみ（デフォルト）
+ *  25 = alpha < 10% も検出
+ */
+export async function detectTransparentText(
+  path: string,
+  page: number,
+  alphaThreshold?: number,
+  options?: ConvertOptions,
+): Promise<DetectTransparentResponse> {
+  return invoke<DetectTransparentResponse>("detect_transparent_text", {
+    path,
+    page,
+    alphaThreshold: alphaThreshold ?? null,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
+}
+
 // ── stext コマンド ────────────────────────────────────────────────────────────
 
 /** ページの構造化テキストを取得（テキスト選択オーバーレイ用） */

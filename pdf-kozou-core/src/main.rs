@@ -1016,6 +1016,14 @@ fn dispatch_json(line: &str) -> String {
                     &req,
                 )?)?)
             }
+            "detect_transparent" => {
+                let req: pdf_kozou_core::stext::DetectTransparentRequest =
+                    serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::detect_transparent_text(&req)?,
+                )?)
+            }
+
             "page_text" => {
                 let req: pdf_kozou_core::stext::PageTextRequest = serde_json::from_str(line)?;
                 Ok(serde_json::to_string(

@@ -178,6 +178,30 @@ pub async fn is_pdf_file(path: String) -> Result<bool> {
     let res = call_core_json("is_pdf", serde_json::json!({ "path": path })).await?;
     Ok(res["result"].as_bool().unwrap_or(false))
 }
+/// ページ内の透明テキストを検出（alpha <= alpha_threshold の文字を返す）
+#[tauri::command]
+pub async fn detect_transparent_text(
+    path: String,
+    page: i32,
+    alpha_threshold: Option<u8>,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
+) -> Result<Value> {
+    call_core_json(
+        "detect_transparent",
+        serde_json::json!({
+            "path": path,
+            "page": page,
+            "alpha_threshold": alpha_threshold,
+            "layout_w": layout_w,
+            "layout_h": layout_h,
+            "layout_em": layout_em,
+        }),
+    )
+    .await
+}
+
 /// テキスト選択・コピーのためのオーバーレイ生成に使用
 #[tauri::command]
 pub async fn get_page_text(path: String, page: i32, scale: f32) -> Result<Value> {

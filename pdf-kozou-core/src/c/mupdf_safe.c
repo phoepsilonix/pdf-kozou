@@ -1733,3 +1733,175 @@ size_t kozou_buffer_get_data(fz_context *ctx, fz_buffer *buf,
     *data_out = data;
     return len;
 }
+
+/* ================================================================== */
+/* 隠しテキスト検出                                                     */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* kozou_detect_transparent_text                                       */
+/*                                                                     */
+/* ページ内の透明テキスト（alpha=0）を検出して JSON で返す。           */
+/*                                                                     */
+/* fz_stext_char.color は上位8bit が alpha、残り24bit が RGB。         */
+/* alpha == 0 → 完全透明（不可視）。                                   */
+/* alpha > 0 かつ alpha < threshold → 半透明（ほぼ不可視）。           */
+/*                                                                     */
+/* 出力 JSON 形式（fz_output *out に書き込む）:                        */
+/* {                                                                   */
+/*   "ok": true,                                                       */
+/*   "page": <page_index>,                                             */
+/*   "hits": [                                                         */
+/*     {                                                               */
+/*       "char": "<Unicode文字>",                                      */
+/*       "alpha": <0-255>,       // 0=完全透明                        */
+/*       "color_rgb": [R, G, B], // 0-255                             */
+/*       "origin": [x, y],       // pt 単位                           */
+/*       "quad": [ul.x,ul.y, ur.x,ur.y, ll.x,ll.y, lr.x,lr.y],       */
+/*       "size": <float>         // フォントサイズ pt                  */
+/*     }, ...                                                          */
+/*   ]                                                                 */
+/* }                                                                   */
+/*                                                                     */
+/* alpha_threshold: この値以下（0-255）を透明とみなす。                */
+/*   0 = 完全透明のみ検出                                              */
+/*  25 = alpha < 10% も検出                                            */
+/* ------------------------------------------------------------------ */
+void kozou_detect_transparent_text(
+    fz_context  *ctx,
+    const char  *path,
+    int          page_index,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    int          alpha_threshold, /* 0-255: この値以下を検出 */
+    fz_output   *out,
+    FfiResult   *result)
+{
+    fz_document       *doc       = NULL;
+    fz_page           *page      = NULL;
+    fz_stext_page     *stext     = NULL;
+
+    fz_var(doc);
+    fz_var(page);
+    fz_var(stext);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = (layout_w  > 0) ? layout_w  : 450.0f;
+            float h  = (layout_h  > 0) ? layout_h  : 600.0f;
+            float em = (layout_em > 0) ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        page = fz_load_page(ctx, doc, page_index);
+
+        /* PRESERVE_WHITESPACE | ACCURATE_BBOXES */
+        fz_stext_options opts = { FZ_STEXT_PRESERVE_WHITESPACE |
+                                  FZ_STEXT_ACCURATE_BBOXES, 0 };
+        stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+        /* alpha_threshold を 0-255 にクランプ */
+        if (alpha_threshold < 0)   alpha_threshold = 0;
+        if (alpha_threshold > 255) alpha_threshold = 255;
+
+        int hit_count = 0;
+
+        fz_printf(ctx, out, "{\"ok\":true,\"page\":%d,\"hits\":[", page_index);
+
+        for (fz_stext_block *block = stext->first_block;
+             block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+
+            for (fz_stext_line *line = block->u.t.first_line;
+                 line; line = line->next) {
+
+                for (fz_stext_char *ch = line->first_char;
+                     ch; ch = ch->next) {
+
+                    /* color: ARGB packed int (0xAARRGGBB) */
+                    unsigned int packed = (unsigned int)ch->color;
+                    int alpha = (packed >> 24) & 0xFF;
+                    int r     = (packed >> 16) & 0xFF;
+                    int g     = (packed >>  8) & 0xFF;
+                    int b     =  packed        & 0xFF;
+
+                    if (alpha > alpha_threshold) continue;
+
+                    /* Unicode コードポイント → UTF-8 */
+                    char utf8[8] = {0};
+                    int cp = ch->c;
+                    if (cp < 0x80) {
+                        utf8[0] = (char)cp;
+                    } else if (cp < 0x800) {
+                        utf8[0] = (char)(0xC0 | (cp >> 6));
+                        utf8[1] = (char)(0x80 | (cp & 0x3F));
+                    } else if (cp < 0x10000) {
+                        utf8[0] = (char)(0xE0 | (cp >> 12));
+                        utf8[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+                        utf8[2] = (char)(0x80 | (cp & 0x3F));
+                    } else {
+                        utf8[0] = (char)(0xF0 | (cp >> 18));
+                        utf8[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+                        utf8[2] = (char)(0x80 | ((cp >>  6) & 0x3F));
+                        utf8[3] = (char)(0x80 | (cp & 0x3F));
+                    }
+
+                    /* JSON エスケープが必要な文字を処理 */
+                    char escaped[32] = {0};
+                    if (cp == '"')       { escaped[0]='\\'; escaped[1]='"';  }
+                    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
+                    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
+                    else if (cp == '\r') { escaped[0]='\\'; escaped[1]='r';  }
+                    else if (cp == '\t') { escaped[0]='\\'; escaped[1]='t';  }
+                    else if (cp < 0x20) {
+                        /* 制御文字は \uXXXX */
+                        snprintf(escaped, sizeof(escaped), "\\u%04X", cp);
+                    } else {
+                        int i;
+                        for (i = 0; utf8[i]; i++) escaped[i] = utf8[i];
+                    }
+
+                    fz_quad q  = ch->quad;
+                    fz_point o = ch->origin;
+
+                    if (hit_count > 0) fz_printf(ctx, out, ",");
+
+                    fz_printf(ctx, out,
+                        "{"
+                        "\"char\":\"%s\","
+                        "\"alpha\":%d,"
+                        "\"color_rgb\":[%d,%d,%d],"
+                        "\"origin\":[%.3f,%.3f],"
+                        "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
+                        "\"size\":%.3f"
+                        "}",
+                        escaped, alpha, r, g, b,
+                        o.x, o.y,
+                        q.ul.x, q.ul.y,
+                        q.ur.x, q.ur.y,
+                        q.ll.x, q.ll.y,
+                        q.lr.x, q.lr.y,
+                        ch->size
+                    );
+
+                    hit_count++;
+                }
+            }
+        }
+
+        fz_printf(ctx, out, "]}");
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (stext) fz_drop_stext_page(ctx, stext);
+        if (page)  fz_drop_page(ctx, page);
+        if (doc)   fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
