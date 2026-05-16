@@ -274,7 +274,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           filePath,
           outPath,
           dpi,
-          format === "jpeg" ? quality : 85,
+          quality,
+          format === "png",
           pages || undefined,
           { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
         );
@@ -358,7 +359,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             f.path,
             outPath,
             dpi,
-            format === "jpeg" ? quality : 85,
+            quality,
+            format === "png",
             pages || undefined,
             { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
           );
@@ -619,6 +621,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 key={f}
                 onClick={(e) => {
                   setFormat(f);
+                  if (f === "svg") setOutputMode("images"); // SVGは画像PDF非対応
                   (e.currentTarget as HTMLButtonElement).blur();
                 }}
                 style={{ ...s.fmtBtn, ...(format === f ? s.fmtBtnOn : {}) }}

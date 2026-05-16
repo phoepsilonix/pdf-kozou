@@ -992,7 +992,7 @@ fn rewrite_safe_fallback(
 
 /// PDF を全ページ画像化 (テキスト・アウトライン失う — 非推奨)
 pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse> {
-    rasterize_with_quality(input, output, dpi, 85, None)
+    rasterize_with_quality(input, output, dpi, 85, false, None)
 }
 
 /// pages: 1ベースのページ番号リスト。None の場合は全ページ。
@@ -1001,6 +1001,7 @@ pub fn rasterize_with_quality(
     output: &str,
     dpi: f32,
     quality: i32,
+    use_png: bool,
     pages: Option<&[i32]>,
 ) -> Result<CompressResponse> {
     use crate::ffi::{kozou_new_context, kozou_rasterize as ffi_rasterize, FfiResult};
@@ -1013,6 +1014,15 @@ pub fn rasterize_with_quality(
         CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output =
         CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    // 一時ファイルを pdf-kozou 専用 temp ディレクトリに置く
+    let tmp_dir = {
+        let base = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&base);
+        base
+    };
+    let c_tmp_dir = CString::new(tmp_dir.to_string_lossy().as_ref())
+        .map_err(|_| CoreError::InvalidArg("invalid tmp_dir path".into()))?;
 
     // 1ベース → 0ベースに変換
     let page_indices_0based: Vec<c_int> = pages
@@ -1036,6 +1046,8 @@ pub fn rasterize_with_quality(
             c_output.as_ptr(),
             dpi,
             quality,
+            if use_png { 1 } else { 0 },
+            c_tmp_dir.as_ptr(),
             indices_ptr,
             indices_len,
             &mut res,

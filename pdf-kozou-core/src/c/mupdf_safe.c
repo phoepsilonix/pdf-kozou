@@ -14,6 +14,16 @@
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
+/* プラットフォーム共通インクルード */
+#ifdef _WIN32
+#  include <process.h>      /* _getpid */
+#  define getpid() ((int)_getpid())
+#  define KOZOU_PATH_SEP "\\"
+#else
+#  include <unistd.h>       /* getpid */
+#  define KOZOU_PATH_SEP "/"
+#endif
+
 typedef struct {
     int  ok;
     char message[512];
@@ -1099,12 +1109,17 @@ void kozou_convert_to_pdf(
 /*                                                                     */
 /* 方式:                                                               */
 /*   1. fz_new_draw_device でページを pixmap にレンダリング             */
-/*   2. fz_new_image_from_pixmap で fz_image を作成                   */
-/*   3. pdf_add_image で PDF の xref に XObject として登録             */
-/*   4. コンテンツストリームに cm + Do オペレータを手動で書く          */
-/*   5. pdf_add_page + pdf_insert_page でページを追加                 */
+/*   2. pixmap を tmp_dir 内の一時ファイル (JPEG/PNG) に保存           */
+/*   3. fz_new_image_from_file で fz_image を作成                     */
+/*   4. pdf_add_image で PDF の xref に XObject として登録             */
+/*   5. コンテンツストリームに cm + Do オペレータを手動で書く          */
+/*   6. pdf_add_page + pdf_insert_page でページを追加                 */
+/*   7. fz_always ブロックで一時ファイルを必ず削除                    */
 /*                                                                     */
-/* page_indices: 0ベースのページ番号配列。NULL の場合は全ページ対象。  */
+/* use_png      : 0=JPEG, 1=PNG                                       */
+/* tmp_dir      : 一時ファイルを置くディレクトリ (pdf-kozou temp dir)  */
+/*                NULL の場合は output と同じディレクトリを使う        */
+/* page_indices : 0ベースのページ番号配列。NULL の場合は全ページ対象。 */
 /* page_indices_len: page_indices の要素数。                           */
 /* ------------------------------------------------------------------ */
 void kozou_rasterize(
@@ -1113,6 +1128,8 @@ void kozou_rasterize(
     const char  *output,
     float        dpi,
     int          quality,
+    int          use_png,
+    const char  *tmp_dir,
     const int   *page_indices,
     int          page_indices_len,
     FfiResult   *result)
@@ -1166,6 +1183,14 @@ void kozou_rasterize(
                 pages_to_render[k] = k;
         }
 
+        /* 一時ファイルのベースディレクトリ:
+         * tmp_dir が指定されていればそちら、なければ output の親ディレクトリ。
+         * tmp_dir は pdf-kozou 専用 temp フォルダ (<system_temp>/pdf-kozou/) を
+         * Rust 側から渡す。これにより一時ファイルが出力先に残らず、
+         * アプリ終了時のクリーンアップでも確実に削除される。               */
+        const char *base_tmp = (tmp_dir && tmp_dir[0]) ? tmp_dir : output;
+        const char *ext      = use_png ? "png" : "jpg";
+
         pdfout = pdf_create_document(ctx);
 
         for (int ii = 0; ii < pages_to_render_len; ii++) {
@@ -1178,6 +1203,12 @@ void kozou_rasterize(
             pdf_obj    *resources = NULL;
             pdf_obj    *xobj_dict = NULL;
             pdf_obj    *page_obj  = NULL;
+
+            /* 一時ファイルパスを fz_try の外側で宣言しておき、
+             * fz_always ブロックで確実に remove できるようにする。
+             * tmp_img[0] == '\0' ならファイルは未作成。                    */
+            char tmp_img[1024];
+            tmp_img[0] = '\0';
 
             fz_var(page);
             fz_var(pixmap);
@@ -1212,25 +1243,35 @@ void kozou_rasterize(
                     fz_catch(ctx) { fz_rethrow(ctx); }
                 }
 
-                /* pixmap → 一時 JPEG ファイル → fz_image
-                 * fz_new_image_from_pixmap は生 RGB データなのでファイルが大きい。
-                 * JPEG ファイル経由にすることで大幅なサイズ削減が可能。
-                 * fz_save_pixmap_as_jpeg(ctx, pixmap, filename, quality)
-                 * quality: 0-100 (85 が高品質・適切なサイズのバランス)        */
-                {
-                    char tmp_img[512];
-                    snprintf(tmp_img, sizeof(tmp_img),
-                             "%s.rasterize_%d.jpg", output, i);
+                /* pixmap → 一時ファイル (JPEG or PNG) → fz_image
+                 *
+                 * JPEG: fz_save_pixmap_as_jpeg で圧縮保存（サイズ削減）
+                 * PNG : fz_write_pixmap_as_png で可逆保存（品質無劣化）
+                 *
+                 * 一時ファイルパスは tmp_dir (pdf-kozou専用tempフォルダ) 内に
+                 * 置くことで出力先ディレクトリを汚染しない。
+                 * fz_always ブロックで必ず remove する。                    */
+                snprintf(tmp_img, sizeof(tmp_img),
+                         "%s" KOZOU_PATH_SEP "kozou_rasterize_%d_%d.%s",
+                         base_tmp, (int)getpid(), i, ext);
+
+                if (use_png) {
+                    fz_output *fout = fz_new_output_with_path(ctx, tmp_img, 0);
+                    fz_try(ctx) {
+                        fz_write_pixmap_as_png(ctx, fout, pixmap);
+                        fz_close_output(ctx, fout);
+                    }
+                    fz_always(ctx) { fz_drop_output(ctx, fout); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                } else {
                     int jpeg_quality = (quality > 0 && quality <= 100) ? quality : 85;
                     fz_save_pixmap_as_jpeg(ctx, pixmap, tmp_img, jpeg_quality);
-                    image = fz_new_image_from_file(ctx, tmp_img);
-                    remove(tmp_img);
                 }
+
+                image   = fz_new_image_from_file(ctx, tmp_img);
                 imgref  = pdf_add_image(ctx, pdfout, image);
 
                 /* Resources 辞書: /XObject << /Im0 <imgref> >> */
-                /* pdf_dict_put はキー・値の参照をコピーする（所有権を移さない）  */
-                /* pdf_dict_put_drop はキーと値の参照を消費するので二重 drop に注意 */
                 resources = pdf_new_dict(ctx, pdfout, 1);
                 xobj_dict = pdf_new_dict(ctx, pdfout, 1);
                 {
@@ -1245,9 +1286,6 @@ void kozou_rasterize(
                  *   pw 0 0 ph 0 0 cm   ← MediaBox サイズに拡大
                  *   /Im0 Do             ← 画像を描画
                  *   Q
-                 *
-                 * PDF 座標系は左下原点なので (0,0) が左下。
-                 * cm でページ全体に画像を配置する。
                  */
                 char cs_buf[256];
                 int cs_len = snprintf(cs_buf, sizeof(cs_buf),
@@ -1256,12 +1294,16 @@ void kozou_rasterize(
                 contents = fz_new_buffer_from_copied_data(ctx,
                     (const unsigned char *)cs_buf, (size_t)cs_len);
 
-                /* MediaBox = bounds（元のページサイズを維持） */
                 fz_rect mediabox = { 0, 0, pw_pt, ph_pt };
                 page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
                 pdf_insert_page(ctx, pdfout, -1, page_obj);
             }
             fz_always(ctx) {
+                /* 一時ファイルを必ず削除（エラー時も含む） */
+                if (tmp_img[0] != '\0') {
+                    remove(tmp_img);
+                    tmp_img[0] = '\0';
+                }
                 pdf_drop_obj(ctx, page_obj);
                 pdf_drop_obj(ctx, xobj_dict);
                 pdf_drop_obj(ctx, resources);
@@ -1277,9 +1319,10 @@ void kozou_rasterize(
             }
         }
 
+        /* PNG埋め込み時は do_compress_images を無効にして無劣化を維持 */
         pdf_write_options opts = pdf_default_write_options;
         opts.do_compress        = 1;
-        opts.do_compress_images = 1;
+        opts.do_compress_images = use_png ? 0 : 1;
         opts.do_garbage         = 0;
         opts.do_clean           = 0;
         pdf_save_document(ctx, pdfout, output, &opts);

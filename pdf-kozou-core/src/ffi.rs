@@ -185,7 +185,9 @@ extern "C" {
     );
 
     /// 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。
-    /// quality: JPEG 品質 0-100
+    /// quality: JPEG 品質 0-100 (use_png=1 のときは無視)
+    /// use_png: 0=JPEG埋め込み, 1=PNG埋め込み（可逆・無劣化）
+    /// tmp_dir: 一時ファイルを置く pdf-kozou 専用 temp ディレクトリのパス
     /// page_indices: 0ベースのページ番号配列。NULL の場合は全ページ対象。
     /// page_indices_len: page_indices の要素数。
     pub fn kozou_rasterize(
@@ -194,6 +196,8 @@ extern "C" {
         output: *const c_char,
         dpi: f32,
         quality: i32,
+        use_png: c_int,
+        tmp_dir: *const c_char,
         page_indices: *const c_int,
         page_indices_len: c_int,
         result: *mut FfiResult,

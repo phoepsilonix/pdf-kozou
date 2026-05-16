@@ -208,6 +208,9 @@ enum Commands {
         /// ページ指定 "1-3,5" 形式 (1ベース)。省略時は全ページ。
         #[arg(long)]
         page: Option<String>,
+        /// PNG 埋め込みで画像 PDF を生成（可逆・無劣化）
+        #[arg(long, default_value = "false")]
+        png: bool,
     },
 
     /// PDF を分割
@@ -596,7 +599,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Rasterize { input, output, dpi, quality, page } => {
+        Commands::Rasterize { input, output, dpi, quality, page, png } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
@@ -605,7 +608,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             let pages = page.as_deref().map(parse_page_list).transpose()?;
             let resp = pdf_kozou_core::compress::rasterize_with_quality(
-                &input, &output, dpi, quality, pages.as_deref(),
+                &input, &output, dpi, quality, png, pages.as_deref(),
             )?;
             println!("{}", serde_json::to_string(&resp)?);
         }
@@ -1046,6 +1049,9 @@ fn dispatch_json(line: &str) -> String {
                     dpi: Option<f32>,
                     #[serde(default)]
                     quality: Option<i32>,
+                    /// true=PNG埋め込み（可逆）, false/省略=JPEG埋め込み
+                    #[serde(default)]
+                    use_png: Option<bool>,
                     /// "1-3,5" 形式の1ベースページ指定。省略時は全ページ。
                     #[serde(default)]
                     pages: Option<String>,
@@ -1062,6 +1068,7 @@ fn dispatch_json(line: &str) -> String {
                         &r.output,
                         r.dpi.unwrap_or(150.0),
                         r.quality.unwrap_or(85),
+                        r.use_png.unwrap_or(false),
                         pages.as_deref(),
                     )?,
                 )?)

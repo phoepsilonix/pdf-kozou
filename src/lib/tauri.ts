@@ -514,6 +514,7 @@ export async function exportImagePdf(
   outPath: string,
   dpi: number,
   quality: number,
+  usePng: boolean,
   pages?: string,
   options?: ConvertOptions,
 ): Promise<ExportImagePdfResponse> {
@@ -522,6 +523,7 @@ export async function exportImagePdf(
     outPath,
     dpi,
     quality,
+    usePng,
     pages: pages ?? null,
     layoutW: options?.layoutW ?? null,
     layoutH: options?.layoutH ?? null,
