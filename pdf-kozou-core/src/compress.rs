@@ -1031,7 +1031,10 @@ pub fn rasterize_with_quality(
     let (indices_ptr, indices_len) = if page_indices_0based.is_empty() {
         (std::ptr::null(), 0)
     } else {
-        (page_indices_0based.as_ptr(), page_indices_0based.len() as c_int)
+        (
+            page_indices_0based.as_ptr(),
+            page_indices_0based.len() as c_int,
+        )
     };
 
     unsafe {

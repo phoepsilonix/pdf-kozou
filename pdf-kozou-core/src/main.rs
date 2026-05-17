@@ -599,7 +599,14 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Rasterize { input, output, dpi, quality, page, png } => {
+        Commands::Rasterize {
+            input,
+            output,
+            dpi,
+            quality,
+            page,
+            png,
+        } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
@@ -608,7 +615,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             let pages = page.as_deref().map(parse_page_list).transpose()?;
             let resp = pdf_kozou_core::compress::rasterize_with_quality(
-                &input, &output, dpi, quality, png, pages.as_deref(),
+                &input,
+                &output,
+                dpi,
+                quality,
+                png,
+                pages.as_deref(),
             )?;
             println!("{}", serde_json::to_string(&resp)?);
         }

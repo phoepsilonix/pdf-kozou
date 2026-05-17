@@ -101,6 +101,20 @@ export interface TransparentChar {
   alpha: number;
   /** RGB 色 [R, G, B] 各 0-255 */
   color_rgb: [number, number, number];
+  /**
+   * fz_stext_char.flags
+   * FZ_STEXT_FILLED=16, FZ_STEXT_STROKED=32
+   * flags=0  → Tr=3/7 由来の invisible（描画モードなし）
+   * flags=16 → 通常描画だが alpha=0（ExtGState ca=0 による透明）
+   */
+  flags: number;
+  /**
+   * 検出理由
+   * "invisible_mode" → Tr=3: 完全不可視（描画なし）
+   * "clip_only_mode" → Tr=7: クリップパスのみ（塗りなし）
+   * "transparent"    → ExtGState の fill alpha=0 による透明
+   */
+  reason: "invisible_mode" | "clip_only_mode" | "transparent";
   /** 文字の原点座標 [x, y] pt 単位 */
   origin: [number, number];
   /** 文字の四隅座標 [ul.x,ul.y, ur.x,ur.y, ll.x,ll.y, lr.x,lr.y] */

@@ -1743,7 +1743,9 @@ size_t kozou_buffer_get_data(fz_context *ctx, fz_buffer *buf,
 /*                                                                     */
 /* ページ内の透明テキスト（alpha=0）を検出して JSON で返す。           */
 /*                                                                     */
-/* fz_stext_char.color は上位8bit が alpha、残り24bit が RGB。         */
+/* fz_stext_char.argb は上位8bit が alpha、残り24bit が RGB。          */
+/* fz_stext_char.flags: FZ_STEXT_FILLED=16, FZ_STEXT_STROKED=32        */
+/*   flags=0 → Tr=3/7 invisible, flags=16 → 通常描画                  */
 /* alpha == 0 → 完全透明（不可視）。                                   */
 /* alpha > 0 かつ alpha < threshold → 半透明（ほぼ不可視）。           */
 /*                                                                     */
@@ -1810,7 +1812,7 @@ void kozou_detect_transparent_text(
 
         int hit_count = 0;
 
-        fz_printf(ctx, out, "{\"ok\":true,\"page\":%d,\"hits\":[", page_index);
+        fz_write_printf(ctx, out, "{\"ok\":true,\"page\":%d,\"hits\":[", page_index);
 
         for (fz_stext_block *block = stext->first_block;
              block; block = block->next) {
@@ -1822,8 +1824,8 @@ void kozou_detect_transparent_text(
                 for (fz_stext_char *ch = line->first_char;
                      ch; ch = ch->next) {
 
-                    /* color: ARGB packed int (0xAARRGGBB) */
-                    unsigned int packed = (unsigned int)ch->color;
+                    /* argb: ARGB packed int (0xAARRGGBB) - MuPDF 1.26以降はargbにリネーム */
+                    unsigned int packed = (unsigned int)ch->argb;
                     int alpha = (packed >> 24) & 0xFF;
                     int r     = (packed >> 16) & 0xFF;
                     int g     = (packed >>  8) & 0xFF;
@@ -1868,18 +1870,38 @@ void kozou_detect_transparent_text(
                     fz_quad q  = ch->quad;
                     fz_point o = ch->origin;
 
-                    if (hit_count > 0) fz_printf(ctx, out, ",");
+                    if (hit_count > 0) fz_write_printf(ctx, out, ",");
 
-                    fz_printf(ctx, out,
+                    /* reason の判定:
+                     * FZ_STEXT_FILLED  = 16 (0x10)
+                     * FZ_STEXT_STROKED = 32 (0x20)
+                     * FZ_STEXT_CLIP    = 64 (0x40)
+                     *
+                     * flags == 0         → Tr=3: 完全不可視（描画なし）
+                     * flags & 64 != 0    → Tr=7: クリップパスのみ（塗りなし）
+                     * それ以外 alpha==0  → ExtGState ca=0 による透明           */
+                    int ch_flags = ch->flags;
+                    const char *reason;
+                    if (ch_flags == 0)
+                        reason = "invisible_mode";   /* Tr=3: 完全不可視 */
+                    else if (ch_flags & 64)
+                        reason = "clip_only_mode";   /* Tr=7: クリップのみ */
+                    else
+                        reason = "transparent";      /* ExtGState alpha=0 */
+
+                    fz_write_printf(ctx, out,
                         "{"
                         "\"char\":\"%s\","
                         "\"alpha\":%d,"
                         "\"color_rgb\":[%d,%d,%d],"
+                        "\"flags\":%d,"
+                        "\"reason\":\"%s\","
                         "\"origin\":[%.3f,%.3f],"
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
                         "\"size\":%.3f"
                         "}",
                         escaped, alpha, r, g, b,
+                        ch_flags, reason,
                         o.x, o.y,
                         q.ul.x, q.ul.y,
                         q.ur.x, q.ur.y,
@@ -1893,7 +1915,7 @@ void kozou_detect_transparent_text(
             }
         }
 
-        fz_printf(ctx, out, "]}");
+        fz_write_printf(ctx, out, "]}");
         set_ok(result);
     }
     fz_always(ctx) {

@@ -398,8 +398,7 @@ pub async fn export_image_pdf(
     // 出力先ディレクトリを自動作成
     if let Some(parent) = std::path::Path::new(&out_path).parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+            std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
         }
     }
 
@@ -451,12 +450,9 @@ pub async fn check_path_conflict(
 
     // out_dir の正規化
     let out_dir_norm = match std::fs::canonicalize(&out_dir) {
-        Ok(p) => {
-            p
-        }
+        Ok(p) => p,
         Err(_) => {
-            let p = std::path::PathBuf::from(&out_dir);
-            p
+            std::path::PathBuf::from(&out_dir)
         }
     };
 
@@ -490,7 +486,6 @@ pub async fn check_path_conflict(
             Ok(c) => c.to_string_lossy().to_string(),
             Err(_) => out_path.to_string_lossy().replace('\\', "/").to_lowercase(),
         };
-
 
         if input_norm.eq_ignore_ascii_case(&output_norm) {
             conflicts.push(

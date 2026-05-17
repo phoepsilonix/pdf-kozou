@@ -301,6 +301,14 @@ pub struct TransparentChar {
     pub alpha: u8,
     /// RGB 色 [R, G, B] 各 0-255
     pub color_rgb: [u8; 3],
+    /// fz_stext_char.flags (FZ_STEXT_FILLED=16, FZ_STEXT_STROKED=32)
+    /// flags=0 → Tr=3/7 invisible, flags=16 → 通常描画でalpha=0
+    pub flags: i32,
+    /// 検出理由:
+    ///   "invisible_mode" → Tr=3 (完全不可視、描画なし)
+    ///   "clip_only_mode" → Tr=7 (クリップパスのみ、塗りなし)
+    ///   "transparent"    → ExtGState fill alpha=0 による透明
+    pub reason: String,
     /// 文字の原点座標 [x, y] pt 単位
     pub origin: [f32; 2],
     /// 文字の四隅座標 [ul.x,ul.y, ur.x,ur.y, ll.x,ll.y, lr.x,lr.y]
@@ -413,6 +421,8 @@ pub fn detect_transparent_text(
         char: String,
         alpha: u8,
         color_rgb: [u8; 3],
+        flags: i32,
+        reason: String,
         origin: [f32; 2],
         quad: [f32; 8],
         size: f32,
@@ -437,6 +447,8 @@ pub fn detect_transparent_text(
                 char: h.char,
                 alpha: h.alpha,
                 color_rgb: h.color_rgb,
+                flags: h.flags,
+                reason: h.reason,
                 origin: h.origin,
                 quad: h.quad,
                 size: h.size,
