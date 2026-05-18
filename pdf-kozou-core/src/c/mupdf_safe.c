@@ -1927,3 +1927,316 @@ void kozou_detect_transparent_text(
         set_err(result, fz_caught_message(ctx));
     }
 }
+
+/* ================================================================== */
+/* ③ 見えにくい色検出: 文字色と背景色のコントラスト比が低い文字を検出   */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* 内部: コントラスト比計算 (WCAG 2.1 相対輝度)                        */
+/* 戻り値: 1.0(同色) 〜 21.0(白黒)                                    */
+/* ------------------------------------------------------------------ */
+static float kozou_relative_luminance(float r, float g, float b)
+{
+    /* sRGB → 線形化 */
+#define LINEARIZE(c) ((c) <= 0.04045f ? (c)/12.92f : powf(((c)+0.055f)/1.055f, 2.4f))
+    float rl = LINEARIZE(r);
+    float gl = LINEARIZE(g);
+    float bl = LINEARIZE(b);
+#undef LINEARIZE
+    return 0.2126f * rl + 0.7152f * gl + 0.0722f * bl;
+}
+
+static float kozou_contrast_ratio(
+    float r1, float g1, float b1,
+    float r2, float g2, float b2)
+{
+    float l1 = kozou_relative_luminance(r1, g1, b1);
+    float l2 = kozou_relative_luminance(r2, g2, b2);
+    float bright = (l1 > l2) ? l1 : l2;
+    float dark   = (l1 < l2) ? l1 : l2;
+    return (bright + 0.05f) / (dark + 0.05f);
+}
+
+/* ------------------------------------------------------------------ */
+/* 内部: 塗り矩形リスト（描画順に蓄積する）                             */
+/* ------------------------------------------------------------------ */
+#define KOZOU_MAX_FILLS 4096
+
+typedef struct {
+    float x0, y0, x1, y1;  /* pt 座標（PDF座標系: Y上向き）*/
+    float r, g, b;
+} KozouFillRect;
+
+typedef struct {
+    KozouFillRect rects[KOZOU_MAX_FILLS];
+    int           count;
+} KozouFillList;
+
+/* ------------------------------------------------------------------ */
+/* 内部: カスタム fz_device — fill_path コールバックで塗り矩形を記録    */
+/* ------------------------------------------------------------------ */
+typedef struct {
+    fz_device  base;    /* 必ず先頭に置く */
+    KozouFillList *fills;
+    fz_context *ctx;
+} KozouFillDevice;
+
+static void kozou_fill_device_fill_path(
+    fz_context   *ctx,
+    fz_device    *dev_,
+    const fz_path *path,
+    int           even_odd,
+    fz_matrix     ctm,
+    fz_colorspace *colorspace,
+    const float  *color,
+    float         alpha,
+    fz_color_params cp)
+{
+    KozouFillDevice *dev = (KozouFillDevice *)dev_;
+    if (!dev->fills || dev->fills->count >= KOZOU_MAX_FILLS) return;
+    if (alpha < 0.01f) return; /* ほぼ透明な塗りは無視 */
+
+    /* カラースペースを RGB に変換 */
+    float rgb[3] = {0.0f, 0.0f, 0.0f};
+    if (colorspace) {
+        fz_try(ctx) {
+            fz_colorspace *cs_rgb = fz_device_rgb(ctx);
+            fz_convert_color(ctx, colorspace, color, cs_rgb, rgb, NULL, cp);
+        }
+        fz_catch(ctx) {
+            /* 変換失敗時はそのまま使う */
+            if (fz_colorspace_n(ctx, colorspace) >= 3) {
+                rgb[0] = color[0];
+                rgb[1] = color[1];
+                rgb[2] = color[2];
+            }
+        }
+    }
+
+    /* パスのバウンディングボックスを取得 */
+    fz_rect bbox = fz_bound_path(ctx, path, NULL, ctm);
+    if (bbox.x0 >= bbox.x1 || bbox.y0 >= bbox.y1) return;
+
+    KozouFillRect *fr = &dev->fills->rects[dev->fills->count++];
+    fr->x0 = bbox.x0;
+    fr->y0 = bbox.y0;
+    fr->x1 = bbox.x1;
+    fr->y1 = bbox.y1;
+    fr->r  = rgb[0];
+    fr->g  = rgb[1];
+    fr->b  = rgb[2];
+}
+
+static fz_device *kozou_new_fill_device(fz_context *ctx, KozouFillList *fills)
+{
+    KozouFillDevice *dev = fz_new_derived_device(ctx, KozouFillDevice);
+    dev->base.fill_path = kozou_fill_device_fill_path;
+    dev->fills = fills;
+    dev->ctx   = ctx;
+    return (fz_device *)dev;
+}
+
+/* ------------------------------------------------------------------ */
+/* 内部: 文字位置に最も近い（直前に描画された）塗り矩形の色を返す       */
+/* 文字の原点(ox, oy)を包含する矩形のうち、リスト上で最後のものを選ぶ。 */
+/* 見つからない場合は -1 を返す。                                       */
+/* ------------------------------------------------------------------ */
+static int kozou_find_background(
+    const KozouFillList *fills,
+    float ox, float oy,     /* PDF 座標系 (Y上向き) の文字原点 */
+    float page_h)           /* ページ高さ (pt) */
+{
+    /* PyMuPDF/MuPDF のデバイス座標は Y 下向き
+     * fill_path コールバックも CTM 適用後の Y 下向き座標になっている
+     * 文字の stext 座標も同じ Y 下向き
+     * → 変換不要で直接比較できる                                      */
+    int best = -1;
+    for (int i = 0; i < fills->count; i++) {
+        const KozouFillRect *fr = &fills->rects[i];
+        /* 文字原点が矩形内に収まるか */
+        if (ox >= fr->x0 && ox <= fr->x1 &&
+            oy >= fr->y0 && oy <= fr->y1) {
+            best = i; /* 最後に描画されたものを優先 */
+        }
+    }
+    return best;
+}
+
+/* ------------------------------------------------------------------ */
+/* kozou_detect_low_contrast_text                                      */
+/*                                                                     */
+/* 文字色と背景色のコントラスト比が contrast_threshold 以下の文字を    */
+/* 検出して JSON で返す。                                              */
+/*                                                                     */
+/* contrast_threshold: 1.0〜21.0 (デフォルト推奨: 1.5)               */
+/*   1.0 = 完全に同色のみ                                              */
+/*   1.5 = ほぼ同色（約3%の輝度差以下）                                */
+/*   3.0 = かなり見えにくい（WCAGの最低基準4.5:1の半分以下）            */
+/*                                                                     */
+/* 出力 JSON:                                                          */
+/* {                                                                   */
+/*   "ok": true, "page": N,                                           */
+/*   "hits": [{                                                        */
+/*     "char": "X",                                                    */
+/*     "color_rgb": [R,G,B],       // 文字色 0-255                    */
+/*     "bg_color_rgb": [R,G,B],    // 背景色 0-255                    */
+/*     "contrast": 1.23,           // コントラスト比                   */
+/*     "origin": [x,y],            // pt                              */
+/*     "quad": [...],                                                  */
+/*     "size": 12.0                                                    */
+/*   }]                                                               */
+/* }                                                                   */
+/* ------------------------------------------------------------------ */
+void kozou_detect_low_contrast_text(
+    fz_context  *ctx,
+    const char  *path,
+    int          page_index,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    float        contrast_threshold,
+    fz_output   *out,
+    FfiResult   *result)
+{
+    fz_document   *doc    = NULL;
+    fz_page       *page   = NULL;
+    fz_stext_page *stext  = NULL;
+    fz_device     *filldev = NULL;
+    KozouFillList *fills  = NULL;
+
+    fz_var(doc);
+    fz_var(page);
+    fz_var(stext);
+    fz_var(filldev);
+    fz_var(fills);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = (layout_w  > 0) ? layout_w  : 450.0f;
+            float h  = (layout_h  > 0) ? layout_h  : 600.0f;
+            float em = (layout_em > 0) ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        page = fz_load_page(ctx, doc, page_index);
+        fz_rect page_bounds = fz_bound_page(ctx, page);
+        float page_h = page_bounds.y1 - page_bounds.y0;
+
+        /* Step 1: fill_path コールバックで塗り矩形を順番に収集 */
+        fills = (KozouFillList *)fz_malloc(ctx, sizeof(KozouFillList));
+        memset(fills, 0, sizeof(KozouFillList));
+
+        filldev = kozou_new_fill_device(ctx, fills);
+        fz_run_page(ctx, page, filldev, fz_identity, NULL);
+        fz_close_device(ctx, filldev);
+        fz_drop_device(ctx, filldev);
+        filldev = NULL;
+
+        /* Step 2: stext で文字を取得して背景色と比較 */
+        fz_stext_options opts = { FZ_STEXT_PRESERVE_WHITESPACE |
+                                  FZ_STEXT_ACCURATE_BBOXES, 0 };
+        stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+        if (contrast_threshold <= 0.0f) contrast_threshold = 1.5f;
+        if (contrast_threshold > 21.0f) contrast_threshold = 21.0f;
+
+        int hit_count = 0;
+        fz_write_printf(ctx, out,
+            "{\"ok\":true,\"page\":%d,\"hits\":[", page_index);
+
+        for (fz_stext_block *block = stext->first_block;
+             block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+
+            for (fz_stext_line *line = block->u.t.first_line;
+                 line; line = line->next) {
+
+                for (fz_stext_char *ch = line->first_char;
+                     ch; ch = ch->next) {
+
+                    /* alpha=0 の文字は透明テキスト検出で扱う → スキップ */
+                    unsigned int packed = (unsigned int)ch->argb;
+                    int alpha = (packed >> 24) & 0xFF;
+                    if (alpha == 0) continue;
+
+                    /* 文字色 (0.0-1.0) */
+                    float tr = ((packed >> 16) & 0xFF) / 255.0f;
+                    float tg = ((packed >>  8) & 0xFF) / 255.0f;
+                    float tb = ( packed        & 0xFF) / 255.0f;
+
+                    /* 文字の原点 */
+                    fz_point o = ch->origin;
+
+                    /* 背景色を検索 */
+                    int bi = kozou_find_background(fills, o.x, o.y, page_h);
+                    if (bi < 0) continue; /* 背景なし → スキップ */
+
+                    const KozouFillRect *fr = &fills->rects[bi];
+                    float cr = kozou_contrast_ratio(tr, tg, tb,
+                                                    fr->r, fr->g, fr->b);
+
+                    if (cr > contrast_threshold) continue;
+
+                    /* JSON エスケープ */
+                    int cp = ch->c;
+                    char escaped[32] = {0};
+                    if (cp == '"')       { escaped[0]='\\'; escaped[1]='"';  }
+                    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
+                    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
+                    else if (cp < 0x20 || cp > 0x7E) {
+                        snprintf(escaped, sizeof(escaped), "\\u%04X", cp);
+                    } else {
+                        escaped[0] = (char)cp;
+                    }
+
+                    fz_quad q = ch->quad;
+                    if (hit_count > 0) fz_write_printf(ctx, out, ",");
+
+                    fz_write_printf(ctx, out,
+                        "{"
+                        "\"char\":\"%s\","
+                        "\"color_rgb\":[%d,%d,%d],"
+                        "\"bg_color_rgb\":[%d,%d,%d],"
+                        "\"contrast\":%.3f,"
+                        "\"origin\":[%.3f,%.3f],"
+                        "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
+                        "\"size\":%.3f"
+                        "}",
+                        escaped,
+                        (int)(tr*255+0.5f),
+                        (int)(tg*255+0.5f),
+                        (int)(tb*255+0.5f),
+                        (int)(fr->r*255+0.5f),
+                        (int)(fr->g*255+0.5f),
+                        (int)(fr->b*255+0.5f),
+                        cr,
+                        o.x, o.y,
+                        q.ul.x, q.ul.y,
+                        q.ur.x, q.ur.y,
+                        q.ll.x, q.ll.y,
+                        q.lr.x, q.lr.y,
+                        ch->size
+                    );
+                    hit_count++;
+                }
+            }
+        }
+
+        fz_write_printf(ctx, out, "]}");
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (fills)   fz_free(ctx, fills);
+        if (stext)   fz_drop_stext_page(ctx, stext);
+        if (filldev) { fz_close_device(ctx, filldev); fz_drop_device(ctx, filldev); }
+        if (page)    fz_drop_page(ctx, page);
+        if (doc)     fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}

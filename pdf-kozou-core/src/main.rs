@@ -599,14 +599,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Rasterize {
-            input,
-            output,
-            dpi,
-            quality,
-            page,
-            png,
-        } => {
+        Commands::Rasterize { input, output, dpi, quality, page, png } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
@@ -615,12 +608,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             let pages = page.as_deref().map(parse_page_list).transpose()?;
             let resp = pdf_kozou_core::compress::rasterize_with_quality(
-                &input,
-                &output,
-                dpi,
-                quality,
-                png,
-                pages.as_deref(),
+                &input, &output, dpi, quality, png, pages.as_deref(),
             )?;
             println!("{}", serde_json::to_string(&resp)?);
         }
@@ -1028,6 +1016,14 @@ fn dispatch_json(line: &str) -> String {
                     &req,
                 )?)?)
             }
+            "detect_low_contrast" => {
+                let req: pdf_kozou_core::stext::DetectLowContrastRequest =
+                    serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::detect_low_contrast_text(&req)?,
+                )?)
+            }
+
             "detect_transparent" => {
                 let req: pdf_kozou_core::stext::DetectTransparentRequest =
                     serde_json::from_str(line)?;

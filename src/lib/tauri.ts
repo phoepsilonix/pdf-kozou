@@ -151,6 +151,48 @@ export async function detectTransparentText(
   });
 }
 
+/** 低コントラストテキスト検出の1文字分の結果 */
+export interface LowContrastChar {
+  char: string;
+  /** 文字色 [R, G, B] 各 0-255 */
+  color_rgb: [number, number, number];
+  /** 背景色 [R, G, B] 各 0-255 */
+  bg_color_rgb: [number, number, number];
+  /** WCAG コントラスト比 (1.0=同色, 21.0=白黒) */
+  contrast: number;
+  origin: [number, number];
+  quad: [number, number, number, number, number, number, number, number];
+  size: number;
+}
+
+export interface DetectLowContrastResponse {
+  ok: boolean;
+  page: number;
+  hits: LowContrastChar[];
+}
+
+/**
+ * 文字色と背景色のコントラスト比が低い文字を検出する。
+ * @param contrastThreshold 1.0〜21.0 (デフォルト 1.5 = ほぼ同色のみ)
+ *   白地白文字・黒地黒文字・任意の同色系を検出。
+ *   3.0 にするとかなり見えにくいものも検出。
+ */
+export async function detectLowContrastText(
+  path: string,
+  page: number,
+  contrastThreshold?: number,
+  options?: ConvertOptions,
+): Promise<DetectLowContrastResponse> {
+  return invoke<DetectLowContrastResponse>("detect_low_contrast_text", {
+    path,
+    page,
+    contrastThreshold: contrastThreshold ?? null,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
+}
+
 // ── stext コマンド ────────────────────────────────────────────────────────────
 
 /** ページの構造化テキストを取得（テキスト選択オーバーレイ用） */

@@ -178,6 +178,30 @@ pub async fn is_pdf_file(path: String) -> Result<bool> {
     let res = call_core_json("is_pdf", serde_json::json!({ "path": path })).await?;
     Ok(res["result"].as_bool().unwrap_or(false))
 }
+/// 文字色と背景色のコントラスト比が contrast_threshold 以下の文字を検出
+#[tauri::command]
+pub async fn detect_low_contrast_text(
+    path: String,
+    page: i32,
+    contrast_threshold: Option<f32>,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
+) -> Result<Value> {
+    call_core_json(
+        "detect_low_contrast",
+        serde_json::json!({
+            "path": path,
+            "page": page,
+            "contrast_threshold": contrast_threshold,
+            "layout_w": layout_w,
+            "layout_h": layout_h,
+            "layout_em": layout_em,
+        }),
+    )
+    .await
+}
+
 /// ページ内の透明テキストを検出（alpha <= alpha_threshold の文字を返す）
 #[tauri::command]
 pub async fn detect_transparent_text(
@@ -398,7 +422,8 @@ pub async fn export_image_pdf(
     // 出力先ディレクトリを自動作成
     if let Some(parent) = std::path::Path::new(&out_path).parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
         }
     }
 
@@ -450,9 +475,12 @@ pub async fn check_path_conflict(
 
     // out_dir の正規化
     let out_dir_norm = match std::fs::canonicalize(&out_dir) {
-        Ok(p) => p,
+        Ok(p) => {
+            p
+        }
         Err(_) => {
-            std::path::PathBuf::from(&out_dir)
+            let p = std::path::PathBuf::from(&out_dir);
+            p
         }
     };
 
@@ -486,6 +514,7 @@ pub async fn check_path_conflict(
             Ok(c) => c.to_string_lossy().to_string(),
             Err(_) => out_path.to_string_lossy().replace('\\', "/").to_lowercase(),
         };
+
 
         if input_norm.eq_ignore_ascii_case(&output_norm) {
             conflicts.push(

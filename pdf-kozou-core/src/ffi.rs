@@ -167,6 +167,20 @@ extern "C" {
 
     /// ページ内の透明テキスト（alpha <= alpha_threshold）を検出して JSON を out に書く。
     /// alpha_threshold: 0=完全透明のみ, 25=10%未満も対象, など 0-255 で指定。
+    /// 文字色と背景色のコントラスト比が contrast_threshold 以下の文字を検出して JSON を out に書く。
+    /// contrast_threshold: 1.0〜21.0 (推奨: 1.5 = ほぼ同色のみ, 3.0 = かなり見えにくい)
+    pub fn kozou_detect_low_contrast_text(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const c_char,
+        page_index: c_int,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        contrast_threshold: f32,
+        out: *mut mupdf_sys::fz_output,
+        result: *mut FfiResult,
+    );
+
     pub fn kozou_detect_transparent_text(
         ctx: *mut mupdf_sys::fz_context,
         path: *const c_char,

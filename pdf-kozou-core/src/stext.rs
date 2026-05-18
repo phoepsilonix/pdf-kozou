@@ -456,3 +456,146 @@ pub fn detect_transparent_text(
             .collect(),
     })
 }
+
+// ── ③ 見えにくい色検出 ───────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct LowContrastChar {
+    /// Unicode 文字
+    pub char: String,
+    /// 文字色 [R, G, B] 各 0-255
+    pub color_rgb: [u8; 3],
+    /// 背景色 [R, G, B] 各 0-255
+    pub bg_color_rgb: [u8; 3],
+    /// WCAG コントラスト比 (1.0=同色, 21.0=白黒)
+    pub contrast: f32,
+    /// 文字の原点座標 [x, y] pt
+    pub origin: [f32; 2],
+    /// 四隅座標
+    pub quad: [f32; 8],
+    /// フォントサイズ pt
+    pub size: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DetectLowContrastResponse {
+    pub ok: bool,
+    pub page: i32,
+    pub hits: Vec<LowContrastChar>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DetectLowContrastRequest {
+    pub path: String,
+    pub page: i32,
+    /// コントラスト比の閾値 (1.0〜21.0)。デフォルト 1.5。
+    #[serde(default)]
+    pub contrast_threshold: Option<f32>,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+pub fn detect_low_contrast_text(
+    req: &DetectLowContrastRequest,
+) -> Result<DetectLowContrastResponse> {
+    use crate::ffi::{
+        kozou_buffer_get_data, kozou_detect_low_contrast_text, kozou_drop_buffer,
+        kozou_new_context, FfiResult,
+    };
+    use std::ffi::CString;
+
+    let c_path = CString::new(req.path.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
+
+    let contrast_threshold = req.contrast_threshold.unwrap_or(1.5);
+    let layout_w  = req.layout_w.unwrap_or(0.0);
+    let layout_h  = req.layout_h.unwrap_or(0.0);
+    let layout_em = req.layout_em.unwrap_or(0.0);
+
+    let json_str = unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+
+        let buf = mupdf_sys::fz_new_buffer(ctx, 65536);
+        if buf.is_null() {
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_buffer failed".into()));
+        }
+        let out = mupdf_sys::fz_new_output_with_buffer(ctx, buf);
+        if out.is_null() {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_output_with_buffer failed".into()));
+        }
+
+        let mut res = FfiResult::default();
+        kozou_detect_low_contrast_text(
+            ctx,
+            c_path.as_ptr(),
+            req.page,
+            layout_w,
+            layout_h,
+            layout_em,
+            contrast_threshold,
+            out,
+            &mut res,
+        );
+
+        mupdf_sys::fz_close_output(ctx, out);
+        mupdf_sys::fz_drop_output(ctx, out);
+
+        if res.ok == 0 {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+
+        let mut data_ptr: *const u8 = std::ptr::null();
+        let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
+        let s = if len > 0 && !data_ptr.is_null() {
+            String::from_utf8_lossy(std::slice::from_raw_parts(data_ptr, len)).into_owned()
+        } else {
+            String::new()
+        };
+
+        kozou_drop_buffer(ctx, buf);
+        mupdf_sys::fz_drop_context(ctx);
+        s
+    };
+
+    #[derive(serde::Deserialize)]
+    struct RawHit {
+        char: String,
+        color_rgb: [u8; 3],
+        bg_color_rgb: [u8; 3],
+        contrast: f32,
+        origin: [f32; 2],
+        quad: [f32; 8],
+        size: f32,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
+
+    let raw: RawResp = serde_json::from_str(&json_str)
+        .map_err(|e| CoreError::MuPdf(format!("JSON parse error: {e}\nraw: {json_str}")))?;
+
+    Ok(DetectLowContrastResponse {
+        ok: raw.ok,
+        page: raw.page,
+        hits: raw.hits.into_iter().map(|h| LowContrastChar {
+            char: h.char,
+            color_rgb: h.color_rgb,
+            bg_color_rgb: h.bg_color_rgb,
+            contrast: h.contrast,
+            origin: h.origin,
+            quad: h.quad,
+            size: h.size,
+        }).collect(),
+    })
+}
