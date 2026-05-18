@@ -151,6 +151,47 @@ export async function detectTransparentText(
   });
 }
 
+/** 極小フォント検出の1文字分の結果 */
+export interface TinyChar {
+  char: string;
+  /** フォントサイズ pt */
+  size: number;
+  /** 文字色 [R, G, B] 各 0-255 */
+  color_rgb: [number, number, number];
+  origin: [number, number];
+  quad: [number, number, number, number, number, number, number, number];
+}
+
+export interface DetectTinyResponse {
+  ok: boolean;
+  page: number;
+  hits: TinyChar[];
+}
+
+/**
+ * 極小フォントの文字を検出する。
+ * @param sizeThreshold フォントサイズの閾値 pt (デフォルト 2.0)
+ *   この値以下のサイズを持つ文字を検出する。
+ *   0.1 = ほぼ不可視なものだけ
+ *   2.0 = 人間が読めないサイズ以下（デフォルト推奨）
+ *   5.0 = 読みにくいサイズも含む
+ */
+export async function detectTinyText(
+  path: string,
+  page: number,
+  sizeThreshold?: number,
+  options?: ConvertOptions,
+): Promise<DetectTinyResponse> {
+  return invoke<DetectTinyResponse>("detect_tiny_text", {
+    path,
+    page,
+    sizeThreshold: sizeThreshold ?? null,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
+}
+
 /** 低コントラストテキスト検出の1文字分の結果 */
 export interface LowContrastChar {
   char: string;

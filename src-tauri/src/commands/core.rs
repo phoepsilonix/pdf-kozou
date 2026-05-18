@@ -178,6 +178,30 @@ pub async fn is_pdf_file(path: String) -> Result<bool> {
     let res = call_core_json("is_pdf", serde_json::json!({ "path": path })).await?;
     Ok(res["result"].as_bool().unwrap_or(false))
 }
+/// フォントサイズが size_threshold pt 以下の文字を検出
+#[tauri::command]
+pub async fn detect_tiny_text(
+    path: String,
+    page: i32,
+    size_threshold: Option<f32>,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
+) -> Result<Value> {
+    call_core_json(
+        "detect_tiny",
+        serde_json::json!({
+            "path": path,
+            "page": page,
+            "size_threshold": size_threshold,
+            "layout_w": layout_w,
+            "layout_h": layout_h,
+            "layout_em": layout_em,
+        }),
+    )
+    .await
+}
+
 /// 文字色と背景色のコントラスト比が contrast_threshold 以下の文字を検出
 #[tauri::command]
 pub async fn detect_low_contrast_text(

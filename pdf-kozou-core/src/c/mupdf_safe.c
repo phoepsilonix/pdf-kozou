@@ -2240,3 +2240,129 @@ void kozou_detect_low_contrast_text(
         set_err(result, fz_caught_message(ctx));
     }
 }
+
+/* ================================================================== */
+/* ④ 極小フォント検出                                                  */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* kozou_detect_tiny_text                                              */
+/*                                                                     */
+/* フォントサイズが size_threshold pt 以下の文字を検出して JSON で返す。*/
+/*                                                                     */
+/* size_threshold: pt 単位 (デフォルト推奨: 2.0)                       */
+/*   0.1 = ほぼ不可視なものだけ                                         */
+/*   2.0 = 人間が読めないサイズ以下                                     */
+/*   5.0 = 読みにくいサイズも含む                                       */
+/* ------------------------------------------------------------------ */
+void kozou_detect_tiny_text(
+    fz_context  *ctx,
+    const char  *path,
+    int          page_index,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    float        size_threshold,
+    fz_output   *out,
+    FfiResult   *result)
+{
+    fz_document   *doc   = NULL;
+    fz_page       *page  = NULL;
+    fz_stext_page *stext = NULL;
+
+    fz_var(doc);
+    fz_var(page);
+    fz_var(stext);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = (layout_w  > 0) ? layout_w  : 450.0f;
+            float h  = (layout_h  > 0) ? layout_h  : 600.0f;
+            float em = (layout_em > 0) ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        page  = fz_load_page(ctx, doc, page_index);
+
+        fz_stext_options opts = { FZ_STEXT_PRESERVE_WHITESPACE |
+                                  FZ_STEXT_ACCURATE_BBOXES, 0 };
+        stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+        if (size_threshold <= 0.0f) size_threshold = 2.0f;
+
+        int hit_count = 0;
+        fz_write_printf(ctx, out,
+            "{\"ok\":true,\"page\":%d,\"hits\":[", page_index);
+
+        for (fz_stext_block *block = stext->first_block;
+             block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+
+            for (fz_stext_line *line = block->u.t.first_line;
+                 line; line = line->next) {
+
+                for (fz_stext_char *ch = line->first_char;
+                     ch; ch = ch->next) {
+
+                    if (ch->size > size_threshold) continue;
+
+                    /* 文字色 */
+                    unsigned int packed = (unsigned int)ch->argb;
+                    int r = (packed >> 16) & 0xFF;
+                    int g = (packed >>  8) & 0xFF;
+                    int b =  packed        & 0xFF;
+
+                    /* JSON エスケープ */
+                    int cp = ch->c;
+                    char escaped[32] = {0};
+                    if      (cp == '"')  { escaped[0]='\\'; escaped[1]='"';  }
+                    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
+                    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
+                    else if (cp < 0x20 || cp > 0x7E) {
+                        snprintf(escaped, sizeof(escaped), "\\u%04X", cp);
+                    } else {
+                        escaped[0] = (char)cp;
+                    }
+
+                    fz_quad  q = ch->quad;
+                    fz_point o = ch->origin;
+
+                    if (hit_count > 0) fz_write_printf(ctx, out, ",");
+
+                    fz_write_printf(ctx, out,
+                        "{"
+                        "\"char\":\"%s\","
+                        "\"size\":%.4f,"
+                        "\"color_rgb\":[%d,%d,%d],"
+                        "\"origin\":[%.3f,%.3f],"
+                        "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]"
+                        "}",
+                        escaped,
+                        ch->size,
+                        r, g, b,
+                        o.x, o.y,
+                        q.ul.x, q.ul.y,
+                        q.ur.x, q.ur.y,
+                        q.ll.x, q.ll.y,
+                        q.lr.x, q.lr.y
+                    );
+                    hit_count++;
+                }
+            }
+        }
+
+        fz_write_printf(ctx, out, "]}");
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (stext) fz_drop_stext_page(ctx, stext);
+        if (page)  fz_drop_page(ctx, page);
+        if (doc)   fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}

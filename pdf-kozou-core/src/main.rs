@@ -1016,6 +1016,14 @@ fn dispatch_json(line: &str) -> String {
                     &req,
                 )?)?)
             }
+            "detect_tiny" => {
+                let req: pdf_kozou_core::stext::DetectTinyRequest =
+                    serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::detect_tiny_text(&req)?,
+                )?)
+            }
+
             "detect_low_contrast" => {
                 let req: pdf_kozou_core::stext::DetectLowContrastRequest =
                     serde_json::from_str(line)?;
