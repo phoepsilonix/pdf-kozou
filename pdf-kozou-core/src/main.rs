@@ -1016,6 +1016,14 @@ fn dispatch_json(line: &str) -> String {
                     &req,
                 )?)?)
             }
+            "detect_buried" => {
+                let req: pdf_kozou_core::stext::DetectBuriedRequest =
+                    serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::detect_buried_text(&req)?,
+                )?)
+            }
+
             "detect_tiny" => {
                 let req: pdf_kozou_core::stext::DetectTinyRequest =
                     serde_json::from_str(line)?;

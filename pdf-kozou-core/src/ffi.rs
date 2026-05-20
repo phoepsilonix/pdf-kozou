@@ -171,6 +171,20 @@ extern "C" {
     /// contrast_threshold: 1.0〜21.0 (推奨: 1.5 = ほぼ同色のみ, 3.0 = かなり見えにくい)
     /// フォントサイズが size_threshold pt 以下の文字を検出して JSON を out に書く。
     /// size_threshold: pt 単位 (デフォルト 2.0)
+    /// 後から描画された不透明オブジェクトに覆われたテキストを検出して JSON を out に書く。
+    /// cover_ratio: 0.0〜1.0 (デフォルト 0.8 = 80%以上覆われていれば隠蔽)
+    pub fn kozou_detect_buried_text(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const c_char,
+        page_index: c_int,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        cover_ratio: f32,
+        out: *mut mupdf_sys::fz_output,
+        result: *mut FfiResult,
+    );
+
     pub fn kozou_detect_tiny_text(
         ctx: *mut mupdf_sys::fz_context,
         path: *const c_char,

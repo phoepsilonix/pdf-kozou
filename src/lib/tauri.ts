@@ -151,6 +151,43 @@ export async function detectTransparentText(
   });
 }
 
+/** 埋没テキスト検出の1文字分の結果 */
+export interface BuriedChar {
+  char: string;
+  color_rgb: [number, number, number];
+  size: number;
+  origin: [number, number];
+  quad: [number, number, number, number, number, number, number, number];
+}
+
+export interface DetectBuriedResponse {
+  ok: boolean;
+  page: number;
+  hits: BuriedChar[];
+}
+
+/**
+ * 後から描画された不透明オブジェクト（矩形・画像）に
+ * 覆われたテキストを検出する。
+ * @param coverRatio 覆われ率の閾値 0.0〜1.0 (デフォルト 0.8)
+ *   文字bboxの80%以上が後続オブジェクトに覆われていれば隠蔽と判定。
+ */
+export async function detectBuriedText(
+  path: string,
+  page: number,
+  coverRatio?: number,
+  options?: ConvertOptions,
+): Promise<DetectBuriedResponse> {
+  return invoke<DetectBuriedResponse>("detect_buried_text", {
+    path,
+    page,
+    coverRatio: coverRatio ?? null,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
+}
+
 /** 極小フォント検出の1文字分の結果 */
 export interface TinyChar {
   char: string;

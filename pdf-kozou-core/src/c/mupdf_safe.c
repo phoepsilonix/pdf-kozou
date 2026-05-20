@@ -2366,3 +2366,323 @@ void kozou_detect_tiny_text(
         set_err(result, fz_caught_message(ctx));
     }
 }
+
+/* ================================================================== */
+/* ⑤ オブジェクト裏に隠されたテキストの検出（改訂版）                  */
+/*                                                                     */
+/* 設計:                                                               */
+/*   Pass 1: fz_run_page で fill_path/fill_image/fill_text を          */
+/*           event_index 付きで記録。                                  */
+/*           fill_text は PDF座標(Y上向き)→デバイス座標(Y下向き)に変換。*/
+/*   Pass 2: fz_stext_page で文字を取得し、                            */
+/*           origin が最近傍の fill_text イベントと対応付け。           */
+/*           その fill_text の event_index より大きい event_index を    */
+/*           持ち、かつ文字 bbox を cover_ratio 以上覆う               */
+/*           fill_path/fill_image があれば「隠蔽」と判定。             */
+/* ================================================================== */
+
+/* 内部: 塗りパスイベント (fill_path / fill_image) */
+typedef struct {
+    int   event_index;
+    float x0, y0, x1, y1;   /* デバイス座標 (Y下向き) */
+} KozouCoverRect;
+
+/* 内部: テキスト文字イベント (fill_text) */
+typedef struct {
+    int   event_index;
+    float ox, oy;            /* デバイス座標 (Y下向き) */
+    float x0, y0, x1, y1;   /* グリフ bbox (デバイス座標) */
+} KozouTextEvt;
+
+#define KOZOU_MAX_COVERS 8192
+#define KOZOU_MAX_TEXTS  32768
+
+typedef struct {
+    KozouCoverRect covers[KOZOU_MAX_COVERS];
+    int            cover_count;
+    KozouTextEvt   texts[KOZOU_MAX_TEXTS];
+    int            text_count;
+    int            event_counter;
+    float          page_h;   /* ページ高さ (pt) — Y 変換用 */
+} KozouBuriedList;
+
+/* ---- デバイス ---- */
+typedef struct {
+    fz_device      base;
+    KozouBuriedList *list;
+} KozouBuriedDevice;
+
+static void kozou_buried_fill_path(
+    fz_context *ctx, fz_device *dev_,
+    const fz_path *path, int even_odd, fz_matrix ctm,
+    fz_colorspace *cs, const float *color, float alpha,
+    fz_color_params cp)
+{
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
+    if (alpha < 0.5f) return;
+
+    fz_rect bbox = fz_bound_path(ctx, path, NULL, ctm);
+    if (bbox.x0 >= bbox.x1 || bbox.y0 >= bbox.y1) return;
+
+    KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
+    cr->event_index = dev->list->event_counter++;
+    cr->x0 = bbox.x0; cr->y0 = bbox.y0;
+    cr->x1 = bbox.x1; cr->y1 = bbox.y1;
+}
+
+static void kozou_buried_fill_image(
+    fz_context *ctx, fz_device *dev_,
+    fz_image *image, fz_matrix ctm, float alpha,
+    fz_color_params cp)
+{
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
+    if (alpha < 0.5f) return;
+
+    fz_rect bbox = fz_transform_rect(fz_unit_rect, ctm);
+    if (bbox.x0 > bbox.x1) { float t = bbox.x0; bbox.x0 = bbox.x1; bbox.x1 = t; }
+    if (bbox.y0 > bbox.y1) { float t = bbox.y0; bbox.y0 = bbox.y1; bbox.y1 = t; }
+
+    KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
+    cr->event_index = dev->list->event_counter++;
+    cr->x0 = bbox.x0; cr->y0 = bbox.y0;
+    cr->x1 = bbox.x1; cr->y1 = bbox.y1;
+}
+
+static void kozou_buried_fill_text(
+    fz_context *ctx, fz_device *dev_,
+    const fz_text *text, fz_matrix ctm,
+    fz_colorspace *cs, const float *color,
+    float alpha, fz_color_params cp)
+{
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (!dev->list) return;
+    float ph = dev->list->page_h;
+
+    for (fz_text_span *span = text->head; span; span = span->next) {
+        for (int i = 0; i < span->len; i++) {
+            if (dev->list->text_count >= KOZOU_MAX_TEXTS) return;
+            fz_text_item *item = &span->items[i];
+
+            /* item->x, item->y は PDF 座標 (Y 上向き、変換前) */
+            /* CTM を適用してデバイス座標に変換 */
+            fz_point pt = fz_transform_point(fz_make_point(item->x, item->y), ctm);
+            /* デバイス座標は Y 下向き: y_dev = page_h - y_pdf_transformed
+             * ただし ctm に Y 反転が含まれている場合はそのまま使う。
+             * MuPDF の draw_device は page_h を反映した CTM を受け取るので
+             * fz_transform_point の結果がすでに Y 下向きデバイス座標になっている */
+            float ox = pt.x;
+            float oy = pt.y;
+
+            /* グリフのデバイス空間 bbox */
+            fz_rect gr = fz_bound_glyph(ctx, span->font, item->gid, ctm);
+            /* bound_glyph は CTM 込みのデバイス座標を返す
+             * ただしグリフのローカル座標 (0,0) 基準なので item->x,y を加算 */
+            fz_rect glyph_bbox;
+            glyph_bbox.x0 = gr.x0 + ox;
+            glyph_bbox.x1 = gr.x1 + ox;
+            glyph_bbox.y0 = gr.y0 + oy;
+            glyph_bbox.y1 = gr.y1 + oy;
+
+            /* 正規化 */
+            if (glyph_bbox.x0 > glyph_bbox.x1) {
+                float t = glyph_bbox.x0; glyph_bbox.x0 = glyph_bbox.x1; glyph_bbox.x1 = t;
+            }
+            if (glyph_bbox.y0 > glyph_bbox.y1) {
+                float t = glyph_bbox.y0; glyph_bbox.y0 = glyph_bbox.y1; glyph_bbox.y1 = t;
+            }
+
+            KozouTextEvt *te = &dev->list->texts[dev->list->text_count++];
+            te->event_index = dev->list->event_counter++;
+            te->ox = ox;
+            te->oy = oy;
+            te->x0 = glyph_bbox.x0; te->y0 = glyph_bbox.y0;
+            te->x1 = glyph_bbox.x1; te->y1 = glyph_bbox.y1;
+        }
+    }
+}
+
+static fz_device *kozou_new_buried_device(fz_context *ctx, KozouBuriedList *list)
+{
+    KozouBuriedDevice *dev = fz_new_derived_device(ctx, KozouBuriedDevice);
+    dev->base.fill_path    = kozou_buried_fill_path;
+    dev->base.fill_image   = kozou_buried_fill_image;
+    dev->base.fill_text    = kozou_buried_fill_text;
+    /* clip_text (Tr=7) はシグネチャがバージョンにより異なるため省略。
+     * Tr=7 の文字は fill_text コールバックでも記録されるため問題なし。 */
+    dev->list = list;
+    return (fz_device *)dev;
+}
+
+/* ---- 埋没判定 ---- */
+static int kozou_char_is_buried(
+    const KozouBuriedList *list,
+    const KozouTextEvt    *te,
+    const fz_rect         *stext_bbox,  /* stextのより正確なbbox */
+    float                  cover_ratio)
+{
+    float tw = stext_bbox->x1 - stext_bbox->x0;
+    float th = stext_bbox->y1 - stext_bbox->y0;
+    if (tw <= 0.5f || th <= 0.5f) return 0;
+    float text_area = tw * th;
+
+    for (int i = 0; i < list->cover_count; i++) {
+        const KozouCoverRect *cr = &list->covers[i];
+        if (cr->event_index <= te->event_index) continue;
+
+        float ix0 = stext_bbox->x0 > cr->x0 ? stext_bbox->x0 : cr->x0;
+        float iy0 = stext_bbox->y0 > cr->y0 ? stext_bbox->y0 : cr->y0;
+        float ix1 = stext_bbox->x1 < cr->x1 ? stext_bbox->x1 : cr->x1;
+        float iy1 = stext_bbox->y1 < cr->y1 ? stext_bbox->y1 : cr->y1;
+
+        if (ix1 <= ix0 || iy1 <= iy0) continue;
+        float overlap = (ix1 - ix0) * (iy1 - iy0);
+        if (overlap / text_area >= cover_ratio) return 1;
+    }
+    return 0;
+}
+
+/* ---- 公開関数 ---- */
+void kozou_detect_buried_text(
+    fz_context  *ctx,
+    const char  *path,
+    int          page_index,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    float        cover_ratio,
+    fz_output   *out,
+    FfiResult   *result)
+{
+    fz_document    *doc      = NULL;
+    fz_page        *page     = NULL;
+    fz_stext_page  *stext    = NULL;
+    fz_device      *orderdev = NULL;
+    KozouBuriedList *list    = NULL;
+
+    fz_var(doc); fz_var(page); fz_var(stext);
+    fz_var(orderdev); fz_var(list);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        page = fz_load_page(ctx, doc, page_index);
+        fz_rect page_bounds = fz_bound_page(ctx, page);
+        float page_h = page_bounds.y1 - page_bounds.y0;
+
+        list = (KozouBuriedList *)fz_malloc(ctx, sizeof(KozouBuriedList));
+        memset(list, 0, sizeof(KozouBuriedList));
+        list->page_h = page_h;
+
+        /* Pass 1: 描画順を記録 */
+        orderdev = kozou_new_buried_device(ctx, list);
+        fz_run_page(ctx, page, orderdev, fz_identity, NULL);
+        fz_close_device(ctx, orderdev);
+        fz_drop_device(ctx, orderdev);
+        orderdev = NULL;
+
+        /* Pass 2: stext で文字を取得し照合 */
+        fz_stext_options opts = { FZ_STEXT_PRESERVE_WHITESPACE |
+                                  FZ_STEXT_ACCURATE_BBOXES, 0 };
+        stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+        if (cover_ratio <= 0.0f || cover_ratio > 1.0f) cover_ratio = 0.8f;
+
+        int hit_count = 0;
+        fz_write_printf(ctx, out,
+            "{\"ok\":true,\"page\":%d,\"hits\":[", page_index);
+
+        for (fz_stext_block *block = stext->first_block;
+             block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+
+            for (fz_stext_line *line = block->u.t.first_line;
+                 line; line = line->next) {
+
+                for (fz_stext_char *ch = line->first_char;
+                     ch; ch = ch->next) {
+
+                    fz_point o = ch->origin;
+
+                    /* 最近傍の fill_text イベントを探す */
+                    KozouTextEvt *matched = NULL;
+                    float best = 4.0f * 4.0f; /* 4pt 以内 */
+                    for (int k = 0; k < list->text_count; k++) {
+                        KozouTextEvt *te = &list->texts[k];
+                        float dx = te->ox - o.x;
+                        float dy = te->oy - o.y;
+                        float d2 = dx*dx + dy*dy;
+                        if (d2 < best) { best = d2; matched = te; }
+                    }
+                    if (!matched) continue;
+
+                    /* stext の quad から正確な bbox を計算 */
+                    fz_quad q = ch->quad;
+                    fz_rect stext_bbox;
+                    stext_bbox.x0 = q.ul.x < q.ll.x ? q.ul.x : q.ll.x;
+                    stext_bbox.y0 = q.ul.y < q.ur.y ? q.ul.y : q.ur.y;
+                    stext_bbox.x1 = q.ur.x > q.lr.x ? q.ur.x : q.lr.x;
+                    stext_bbox.y1 = q.ll.y > q.lr.y ? q.ll.y : q.lr.y;
+
+                    if (!kozou_char_is_buried(list, matched, &stext_bbox, cover_ratio))
+                        continue;
+
+                    /* JSON エスケープ */
+                    int cp = ch->c;
+                    char escaped[32] = {0};
+                    if      (cp == '"')  { escaped[0]='\\'; escaped[1]='"';  }
+                    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
+                    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
+                    else if (cp < 0x20 || cp > 0x7E) {
+                        snprintf(escaped, sizeof(escaped), "\\u%04X", cp);
+                    } else { escaped[0] = (char)cp; }
+
+                    unsigned int packed = (unsigned int)ch->argb;
+                    int r = (packed>>16)&0xFF, g = (packed>>8)&0xFF, b = packed&0xFF;
+
+                    if (hit_count > 0) fz_write_printf(ctx, out, ",");
+                    fz_write_printf(ctx, out,
+                        "{\"char\":\"%s\","
+                        "\"color_rgb\":[%d,%d,%d],"
+                        "\"size\":%.3f,"
+                        "\"origin\":[%.3f,%.3f],"
+                        "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]}",
+                        escaped, r, g, b, ch->size, o.x, o.y,
+                        q.ul.x,q.ul.y,q.ur.x,q.ur.y,q.ll.x,q.ll.y,q.lr.x,q.lr.y);
+                    hit_count++;
+                }
+            }
+        }
+
+        fz_write_printf(ctx, out, "]}");
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (list)     fz_free(ctx, list);
+        if (stext)    fz_drop_stext_page(ctx, stext);
+        if (orderdev) { fz_close_device(ctx, orderdev);
+                        fz_drop_device(ctx, orderdev); }
+        if (page)     fz_drop_page(ctx, page);
+        if (doc)      fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) { set_err(result, fz_caught_message(ctx)); }
+}
+
+/* ================================================================== */
+
+/* ================================================================== */
+/* ⑤ オブジェクト裏に隠されたテキストの検出                            */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* 内部: 描画イベントリスト                                             */
+/* テキスト文字と塗りパスの両方を描画順（event_index）付きで記録する。  */
