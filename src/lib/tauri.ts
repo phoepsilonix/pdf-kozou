@@ -151,6 +151,63 @@ export async function detectTransparentText(
   });
 }
 
+// ── 隠しテキスト置き換え（試験的） ────────────────────────────────────────────
+
+/**
+ * ⚠ 試験的機能
+ * 全ての隠しテキスト手法を網羅できる保証はありません。
+ * 本機能の使用による損害について開発者は責任を負いません。
+ * 特殊なプロパティ・要素・フォントに潜ませたテキストは検出・置換できない場合があります。
+ */
+export interface SanitizeOrigin {
+  x: number;
+  y: number;
+}
+
+export interface SanitizeResponse {
+  ok: boolean;
+  /** 置き換えを試みた文字数 */
+  replaced: number;
+  warning?: string;
+}
+
+export interface SanitizeRequest {
+  input: string;
+  output: string;
+  /** detect_* の hits から収集した origin 座標リスト */
+  targets: SanitizeOrigin[];
+  /** 座標照合の許容距離 pt (デフォルト 1.0) */
+  tolerance?: number;
+  layoutW?: number;
+  layoutH?: number;
+  layoutEm?: number;
+}
+
+/**
+ * 隠しテキストの文字コードをスペースに置き換える（試験的）。
+ *
+ * detect_* 関数が返した hits の origin をそのまま targets に渡すことで、
+ * 検出タイプごとに選択的に置き換えができる。
+ * グリフ幅は TJ カーニングで補正するのでレイアウトは維持される。
+ *
+ * ⚠ 試験的機能。使用による損害について開発者は責任を負いません。
+ */
+export async function sanitizeHiddenText(
+  req: SanitizeRequest,
+): Promise<SanitizeResponse> {
+  return invoke<SanitizeResponse>("sanitize_hidden_text", {
+    request: {
+      input: req.input,
+      output: req.output,
+      targets: req.targets,
+      tolerance: req.tolerance ?? null,
+      layout_w: req.layoutW ?? null,
+      layout_h: req.layoutH ?? null,
+      layout_em: req.layoutEm ?? null,
+    },
+  });
+}
+
 /** 埋没テキスト検出の1文字分の結果 */
 export interface BuriedChar {
   char: string;

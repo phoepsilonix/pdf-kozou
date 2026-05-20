@@ -1016,6 +1016,14 @@ fn dispatch_json(line: &str) -> String {
                     &req,
                 )?)?)
             }
+            "sanitize_hidden" => {
+                let req: pdf_kozou_core::stext::SanitizeRequest =
+                    serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::sanitize_hidden_text(&req)?,
+                )?)
+            }
+
             "detect_buried" => {
                 let req: pdf_kozou_core::stext::DetectBuriedRequest =
                     serde_json::from_str(line)?;

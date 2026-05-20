@@ -843,3 +843,100 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
         }).collect(),
     })
 }
+
+// ── 隠しテキスト置き換え（試験的） ──────────────────────────────────────────
+
+/// 置き換え対象の文字原点座標
+#[derive(Debug, Deserialize)]
+pub struct SanitizeOrigin {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SanitizeResponse {
+    pub ok: bool,
+    /// 実際に置き換えた文字数（0 の場合は対象が見つからなかった）
+    pub replaced: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SanitizeRequest {
+    pub input: String,
+    pub output: String,
+    /// 置き換え対象の origin 座標リスト（detect_* の hits から収集）
+    pub targets: Vec<SanitizeOrigin>,
+    /// 座標照合の許容距離 pt (省略時 1.0)
+    #[serde(default)]
+    pub tolerance: Option<f32>,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+/// 隠しテキストの文字コードをスペースに置き換える（試験的）。
+///
+/// ⚠ この機能は試験的です。全ての隠しテキスト手法を網羅できる保証はなく、
+///   本機能の使用による損害について開発者は責任を負いません。
+pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
+    use crate::ffi::{kozou_new_context, kozou_sanitize_hidden_text, FfiResult};
+    use std::ffi::CString;
+
+    if req.targets.is_empty() {
+        return Ok(SanitizeResponse {
+            ok: true,
+            replaced: 0,
+            warning: Some("no targets specified".into()),
+        });
+    }
+
+    let c_input = CString::new(req.input.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output = CString::new(req.output.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    // origin 座標を [x0,y0, x1,y1, ...] のフラット配列に変換
+    let origins: Vec<f32> = req.targets.iter()
+        .flat_map(|o| [o.x, o.y])
+        .collect();
+    let n_origins = req.targets.len() as i32;
+    let tolerance = req.tolerance.unwrap_or(1.0);
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        kozou_sanitize_hidden_text(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            req.layout_w.unwrap_or(0.0),
+            req.layout_h.unwrap_or(0.0),
+            req.layout_em.unwrap_or(0.0),
+            origins.as_ptr(),
+            n_origins,
+            tolerance,
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    Ok(SanitizeResponse {
+        ok: true,
+        replaced: n_origins,  // 実際の置き換え数はC層で計上していないため目標数を返す
+        warning: Some(
+            "⚠ 試験的機能: 全ての隠しテキスト手法を網羅できる保証はありません。\
+             本機能の使用による損害について開発者は責任を負いません。".into(),
+        ),
+    })
+}

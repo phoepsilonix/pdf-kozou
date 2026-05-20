@@ -109,6 +109,7 @@ pub fn run() {
             core::move_file,
             core::copy_file,
             core::remove_file,
+            core::sanitize_hidden_text,
             core::detect_buried_text,
             core::detect_tiny_text,
             core::detect_low_contrast_text,

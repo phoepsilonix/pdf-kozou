@@ -173,6 +173,23 @@ extern "C" {
     /// size_threshold: pt 単位 (デフォルト 2.0)
     /// 後から描画された不透明オブジェクトに覆われたテキストを検出して JSON を out に書く。
     /// cover_ratio: 0.0〜1.0 (デフォルト 0.8 = 80%以上覆われていれば隠蔽)
+    /// 隠しテキストの文字コードをスペースに置き換え TJ カーニングで幅を補正する（試験的）。
+    /// target_origins: 対象文字の origin 座標配列 [x0,y0, x1,y1, ...] (pt)
+    /// n_origins: ペア数
+    /// tolerance: 座標照合の許容距離 pt (推奨 1.0)
+    pub fn kozou_sanitize_hidden_text(
+        ctx: *mut mupdf_sys::fz_context,
+        input_path: *const c_char,
+        output_path: *const c_char,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        target_origins: *const f32,
+        n_origins: c_int,
+        tolerance: f32,
+        result: *mut FfiResult,
+    );
+
     pub fn kozou_detect_buried_text(
         ctx: *mut mupdf_sys::fz_context,
         path: *const c_char,

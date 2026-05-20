@@ -2686,3 +2686,500 @@ void kozou_detect_buried_text(
 /* ------------------------------------------------------------------ */
 /* 内部: 描画イベントリスト                                             */
 /* テキスト文字と塗りパスの両方を描画順（event_index）付きで記録する。  */
+
+
+/* ================================================================== */
+/* 隠しテキスト置き換え機能 (試験的)                                    */
+/*                                                                     */
+/* ⚠ 警告: この機能は試験的実装です。                                   */
+/*   - 全ての隠しテキスト手法を網羅できる保証はありません               */
+/*   - 特殊なフォント・エンコーディング・プロパティに隠された            */
+/*     テキストは検出・置換できない場合があります                        */
+/*   - 本機能の使用による損害について開発者は責任を負いません            */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* 内部: フォントリソースからグリフ幅を取得する                          */
+/* pdf_font_w: フォントの /Widths 配列から文字コードの幅を取得 (1/1000) */
+/* ------------------------------------------------------------------ */
+static float kozou_get_char_width_1000(
+    fz_context *ctx,
+    pdf_document *pdf,
+    pdf_obj *font_res,  /* ページの /Resources /Font /Fx */
+    int char_code)
+{
+    if (!font_res) return 600.0f;
+
+    pdf_obj *font = pdf_resolve_indirect(ctx, font_res);
+    if (!font) return 600.0f;
+
+    /* /Widths 配列から取得 */
+    pdf_obj *widths = pdf_dict_get(ctx, font, PDF_NAME(Widths));
+    pdf_obj *first_char = pdf_dict_get(ctx, font, PDF_NAME(FirstChar));
+    if (widths && first_char) {
+        int fc = pdf_to_int(ctx, first_char);
+        int idx = char_code - fc;
+        int n = pdf_array_len(ctx, widths);
+        if (idx >= 0 && idx < n) {
+            float w = pdf_to_real(ctx, pdf_array_get(ctx, widths, idx));
+            if (w > 0) return w;
+        }
+    }
+
+    /* /DW (デフォルト幅) を試す */
+    pdf_obj *dw = pdf_dict_get(ctx, font, PDF_NAME(DW));
+    if (dw) return pdf_to_real(ctx, dw);
+
+    return 600.0f; /* フォールバック */
+}
+
+/* ------------------------------------------------------------------ */
+/* 内部: 置き換え対象の座標集合                                          */
+/* ------------------------------------------------------------------ */
+#define KOZOU_SANITIZE_MAX 65536
+
+typedef struct {
+    float x, y;
+} KozouSanitizeOrigin;
+
+static int kozou_sanitize_is_target(
+    const KozouSanitizeOrigin *targets, int n,
+    float x, float y, float tol2)
+{
+    for (int i = 0; i < n; i++) {
+        float dx = targets[i].x - x;
+        float dy = targets[i].y - y;
+        if (dx*dx + dy*dy <= tol2) return 1;
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* kozou_sanitize_hidden_text                                          */
+/*                                                                     */
+/* 検出した隠しテキストの文字コードを スペース(0x20) に置き換え、       */
+/* 元のグリフ幅との差分を TJ カーニングで補正することで                 */
+/* レイアウトを維持しながら文字データを無効化する。                     */
+/*                                                                     */
+/* target_origins: 置き換え対象の文字原点 [x0,y0, x1,y1, ...] pt      */
+/*   (detect_* 関数が返す origin 値をそのまま渡す)                      */
+/* n_origins: ペア数                                                   */
+/* tolerance: 座標照合の許容距離 pt (推奨 1.0)                          */
+/* ------------------------------------------------------------------ */
+void kozou_sanitize_hidden_text(
+    fz_context  *ctx,
+    const char  *input_path,
+    const char  *output_path,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    const float *target_origins,
+    int          n_origins,
+    float        tolerance,
+    FfiResult   *result)
+{
+    pdf_document *pdf = NULL;
+    fz_var(pdf);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        pdf = (pdf_document *)fz_open_document(ctx, input_path);
+        if (!pdf)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "not a PDF");
+
+        if (fz_is_document_reflowable(ctx, (fz_document *)pdf)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, (fz_document *)pdf, w, h, em);
+        }
+
+        if (n_origins <= 0 || !target_origins)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "no target origins specified");
+
+        int n_targets = n_origins < KOZOU_SANITIZE_MAX ? n_origins : KOZOU_SANITIZE_MAX;
+        KozouSanitizeOrigin *targets =
+            (KozouSanitizeOrigin *)fz_malloc(ctx, sizeof(KozouSanitizeOrigin) * n_targets);
+        for (int i = 0; i < n_targets; i++) {
+            targets[i].x = target_origins[i * 2];
+            targets[i].y = target_origins[i * 2 + 1];
+        }
+        float tol2 = tolerance > 0 ? tolerance * tolerance : 1.0f;
+
+        int page_count = pdf_count_pages(ctx, pdf);
+
+        for (int pi = 0; pi < page_count; pi++) {
+            pdf_page *page = NULL;
+            fz_var(page);
+            fz_try(ctx) {
+                page = pdf_load_page(ctx, pdf, pi);
+                fz_rect bounds = pdf_bound_page(ctx, page, FZ_CROP_BOX);
+                float page_h = bounds.y1 - bounds.y0;
+
+                /* フォントリソースマップを取得 */
+                pdf_obj *page_obj = page->obj;
+                pdf_obj *res = pdf_dict_get_inheritable(ctx, page_obj, PDF_NAME(Resources));
+                pdf_obj *font_dict = res ? pdf_dict_get(ctx, res, PDF_NAME(Font)) : NULL;
+
+                /* コンテンツストリームを展開 */
+                pdf_obj *contents = pdf_dict_get(ctx, page_obj, PDF_NAME(Contents));
+                if (!contents) { pdf_drop_page(ctx, page); page = NULL; continue; }
+
+                fz_buffer *orig_buf = fz_new_buffer(ctx, 65536);
+                fz_var(orig_buf);
+                fz_try(ctx) {
+                    if (pdf_is_array(ctx, contents)) {
+                        int nc = pdf_array_len(ctx, contents);
+                        for (int ci = 0; ci < nc; ci++) {
+                            fz_buffer *b = pdf_load_stream(ctx,
+                                pdf_array_get(ctx, contents, ci));
+                            fz_append_buffer(ctx, orig_buf, b);
+                            fz_append_byte(ctx, orig_buf, '\n');
+                            fz_drop_buffer(ctx, b);
+                        }
+                    } else {
+                        fz_buffer *b = pdf_load_stream(ctx, contents);
+                        fz_append_buffer(ctx, orig_buf, b);
+                        fz_drop_buffer(ctx, b);
+                    }
+                }
+                fz_catch(ctx) {
+                    fz_drop_buffer(ctx, orig_buf);
+                    fz_rethrow(ctx);
+                }
+
+                /* トークンパーサで走査して新バッファを生成 */
+                fz_stream *stm = fz_open_buffer(ctx, orig_buf);
+                fz_buffer *new_buf = fz_new_buffer(ctx,
+                    fz_buffer_storage(ctx, orig_buf, NULL) + 8192);
+                int modified = 0;
+
+                /* テキスト状態 */
+                float tm[6] = {1,0,0,1,0,0};  /* テキスト行列 */
+                float lm[6] = {1,0,0,1,0,0};  /* 行開始行列 */
+                float font_size = 12.0f;
+                float leading = 0;
+                char current_font_name[64] = "";  /* 現在のフォント名 (/F1 等) */
+                int in_text = 0;
+
+                /* オペランドスタック */
+#define SSTK 64
+                typedef struct { char s[512]; float v; int is_num; int is_str; } SOp;
+                SOp stk[SSTK];
+                int stk_top = 0;
+
+                /* pdf_lexbuf: MuPDF 1.28 の pdf_lex に必要な字句解析バッファ */
+                pdf_lexbuf lxb;
+                pdf_lexbuf_init(ctx, &lxb, PDF_LEXBUF_SMALL);
+
+                fz_try(ctx) {
+                while (1) {
+                    pdf_token tok = pdf_lex(ctx, stm, &lxb);
+                    if (tok == PDF_TOK_EOF) break;
+
+                    /* トークンを文字列化してスタックへ */
+                    SOp op = {0};
+                    switch (tok) {
+                    case PDF_TOK_INT:
+                        op.v = (float)lxb.i;
+                        snprintf(op.s, sizeof(op.s), "%d", (int)op.v);
+                        op.is_num = 1;
+                        break;
+                    case PDF_TOK_REAL:
+                        op.v = lxb.f;
+                        snprintf(op.s, sizeof(op.s), "%.6g", op.v);
+                        op.is_num = 1;
+                        break;
+                    case PDF_TOK_STRING: {
+                        /* 生バイト列を保持（PDFの ( ) 形式） */
+                        unsigned char *data = (unsigned char *)lxb.scratch;
+                        size_t len = lxb.len;
+                        /* ( と ) で囲み、特殊文字をエスケープ */
+                        int j = 0; op.s[j++] = '(';
+                        for (size_t k = 0; k < len && j < (int)sizeof(op.s)-4; k++) {
+                            unsigned char c = data[k];
+                            if      (c == '(')  { op.s[j++]='\\'; op.s[j++]='('; }
+                            else if (c == ')')  { op.s[j++]='\\'; op.s[j++]=')'; }
+                            else if (c == '\\') { op.s[j++]='\\'; op.s[j++]='\\'; }
+                            else                { op.s[j++]=(char)c; }
+                        }
+                        op.s[j++] = ')'; op.s[j] = '\0';
+                        op.is_str = 1;
+                        op.v = (float)(unsigned char)(len > 0 ? data[0] : 0);
+                        break;
+                    }
+                    case PDF_TOK_NAME:
+                        snprintf(op.s, sizeof(op.s), "/%s", lxb.scratch);
+                        break;
+                    case PDF_TOK_OPEN_ARRAY:  strcpy(op.s, "["); break;
+                    case PDF_TOK_CLOSE_ARRAY: strcpy(op.s, "]"); break;
+                    case PDF_TOK_KEYWORD:
+                        strncpy(op.s, lxb.scratch, sizeof(op.s)-1);
+                        break;
+                    default: break;
+                    }
+
+                    if (tok != PDF_TOK_KEYWORD) {
+                        if (op.s[0] && stk_top < SSTK)
+                            stk[stk_top++] = op;
+                        if (op.s[0])
+                            fz_append_printf(ctx, new_buf, "%s ", op.s);
+                        continue;
+                    }
+
+                    const char *kw = op.s;
+
+                    /* ─── BT / ET ─── */
+                    if (!strcmp(kw, "BT")) {
+                        in_text = 1;
+                        memset(tm,0,sizeof(tm)); tm[0]=tm[3]=1;
+                        memset(lm,0,sizeof(lm)); lm[0]=lm[3]=1;
+                        fz_append_string(ctx, new_buf, "BT\n");
+                        stk_top = 0; continue;
+                    }
+                    if (!strcmp(kw, "ET")) {
+                        in_text = 0;
+                        fz_append_string(ctx, new_buf, "ET\n");
+                        stk_top = 0; continue;
+                    }
+
+                    if (!in_text) {
+                        fz_append_printf(ctx, new_buf, "%s\n", kw);
+                        stk_top = 0; continue;
+                    }
+
+                    /* ─── テキスト行列 ─── */
+                    if (!strcmp(kw,"Tm") && stk_top>=6) {
+                        for(int k=0;k<6;k++) tm[k]=stk[stk_top-6+k].v;
+                        memcpy(lm,tm,sizeof(tm));
+                        fz_append_printf(ctx,new_buf,"%s\n",kw);
+                        stk_top=0; continue;
+                    }
+                    if (!strcmp(kw,"Td") && stk_top>=2) {
+                        float tx=stk[stk_top-2].v, ty=stk[stk_top-1].v;
+                        lm[4]+=tx*lm[0]+ty*lm[2]; lm[5]+=tx*lm[1]+ty*lm[3];
+                        memcpy(tm,lm,sizeof(lm));
+                        fz_append_printf(ctx,new_buf,"%s\n",kw);
+                        stk_top=0; continue;
+                    }
+                    if (!strcmp(kw,"TD") && stk_top>=2) {
+                        float tx=stk[stk_top-2].v, ty=stk[stk_top-1].v;
+                        leading=-ty;
+                        lm[4]+=tx*lm[0]+ty*lm[2]; lm[5]+=tx*lm[1]+ty*lm[3];
+                        memcpy(tm,lm,sizeof(lm));
+                        fz_append_printf(ctx,new_buf,"%s\n",kw);
+                        stk_top=0; continue;
+                    }
+                    if (!strcmp(kw,"T*")) {
+                        lm[4]+=leading*lm[2]; lm[5]+=leading*lm[3];
+                        memcpy(tm,lm,sizeof(lm));
+                        fz_append_string(ctx,new_buf,"T*\n");
+                        stk_top=0; continue;
+                    }
+                    if (!strcmp(kw,"Tf") && stk_top>=2) {
+                        font_size = stk[stk_top-1].v;
+                        /* フォント名を保存（先頭の / を除く） */
+                        const char *fn = stk[stk_top-2].s;
+                        if (fn[0]=='/') fn++;
+                        strncpy(current_font_name, fn, sizeof(current_font_name)-1);
+                        fz_append_printf(ctx,new_buf,"%s\n",kw);
+                        stk_top=0; continue;
+                    }
+
+                    /* ─── Tj: 単一文字列 ─── */
+                    if (!strcmp(kw,"Tj") && stk_top>=1 && stk[stk_top-1].is_str) {
+                        float dev_x = tm[4];
+                        float dev_y = page_h - tm[5];
+
+                        if (kozou_sanitize_is_target(targets,n_targets,dev_x,dev_y,tol2)) {
+                            /* 文字列の各バイトをスペース(0x20)に置き換え
+                             * グリフ幅はフォントAPIで取得してTJで補正 */
+                            const char *orig_str = stk[stk_top-1].s; /* "(xxx)" */
+                            size_t slen = strlen(orig_str);
+                            /* 文字数を概算（バイト数で近似） */
+                            int n_chars = 0;
+                            for (size_t k=1; k<slen-1; k++) {
+                                if (orig_str[k]=='\\') { k++; } /* エスケープをスキップ */
+                                n_chars++;
+                            }
+                            if (n_chars > 0) {
+                                /* 元のグリフ幅合計を取得 */
+                                pdf_obj *font_obj = font_dict ?
+                                    pdf_dict_gets(ctx, font_dict, current_font_name) : NULL;
+
+                                float orig_w = 0;
+                                {
+                                    /* 文字列のバイトを走査して幅を合計 */
+                                    const char *p = orig_str + 1; /* ( をスキップ */
+                                    while (*p && *p != ')') {
+                                        int cc;
+                                        if (*p == '\\') {
+                                            p++;
+                                            if (*p == 'n')  cc='\n';
+                                            else if (*p=='r') cc='\r';
+                                            else if (*p=='t') cc='\t';
+                                            else cc=(unsigned char)*p;
+                                            p++;
+                                        } else {
+                                            cc = (unsigned char)*p++;
+                                        }
+                                        orig_w += kozou_get_char_width_1000(
+                                            ctx, pdf, font_obj, cc);
+                                    }
+                                }
+
+                                /* スペース(0x20)の幅 */
+                                float sp_w = kozou_get_char_width_1000(
+                                    ctx, pdf, font_obj, 0x20);
+                                float sp_total = sp_w * n_chars;
+
+                                /* 差分 (1/1000em 単位) */
+                                float diff = orig_w - sp_total;
+
+                                /* スペース文字列を生成 */
+                                fz_buffer *sp_str = fz_new_buffer(ctx, n_chars+4);
+                                fz_append_byte(ctx, sp_str, '(');
+                                for (int k=0; k<n_chars; k++)
+                                    fz_append_byte(ctx, sp_str, 0x20);
+                                fz_append_byte(ctx, sp_str, ')');
+
+                                if (diff > 0.5f || diff < -0.5f) {
+                                    /* TJでグリフ幅を補正 */
+                                    unsigned char *sd=NULL;
+                                    size_t sl = fz_buffer_storage(ctx, sp_str, &sd);
+                                    /* TJ: [ (スペース列) -diff ] TJ */
+                                    fz_append_string(ctx, new_buf, "[");
+                                    fz_append_data(ctx, new_buf, sd, sl);
+                                    fz_append_printf(ctx, new_buf, " %.2f] TJ\n", -diff);
+                                } else {
+                                    /* 幅差が無視できる場合はそのままTj */
+                                    unsigned char *sd=NULL;
+                                    size_t sl = fz_buffer_storage(ctx, sp_str, &sd);
+                                    fz_append_data(ctx, new_buf, sd, sl);
+                                    fz_append_string(ctx, new_buf, " Tj\n");
+                                }
+                                fz_drop_buffer(ctx, sp_str);
+                                modified = 1;
+                            } else {
+                                /* 空文字列はそのままコピー */
+                                fz_append_printf(ctx, new_buf,
+                                    "%s %s\n", stk[stk_top-1].s, kw);
+                            }
+                        } else {
+                            fz_append_printf(ctx, new_buf, "%s\n", kw);
+                        }
+                        stk_top = 0; continue;
+                    }
+
+                    /* ─── TJ: 配列形式 ─── */
+                    if (!strcmp(kw,"TJ")) {
+                        float dev_x = tm[4];
+                        float dev_y = page_h - tm[5];
+
+                        if (kozou_sanitize_is_target(targets,n_targets,dev_x,dev_y,tol2)) {
+                            /* TJ配列内の文字列をスペースに置換
+                             * 数値（カーニング）はそのまま保持 */
+                            /* スタック中の [ から ] までを再構築 */
+                            int arr_start = -1;
+                            for (int k=0; k<stk_top; k++) {
+                                if (!strcmp(stk[k].s,"[")) { arr_start=k+1; break; }
+                            }
+                            fz_append_string(ctx, new_buf, "[");
+                            pdf_obj *font_obj = font_dict ?
+                                pdf_dict_gets(ctx, font_dict, current_font_name) : NULL;
+
+                            for (int k = arr_start >= 0 ? arr_start : 0;
+                                 k < stk_top; k++) {
+                                if (stk[k].is_str) {
+                                    const char *orig_str = stk[k].s;
+                                    size_t slen = strlen(orig_str);
+                                    int n_chars = 0;
+                                    float orig_w = 0;
+                                    const char *p = orig_str + 1;
+                                    while (*p && *p != ')') {
+                                        int cc;
+                                        if (*p == '\\') {
+                                            p++;
+                                            cc = (unsigned char)*p++;
+                                        } else {
+                                            cc = (unsigned char)*p++;
+                                        }
+                                        orig_w += kozou_get_char_width_1000(
+                                            ctx, pdf, font_obj, cc);
+                                        n_chars++;
+                                    }
+                                    float sp_w = kozou_get_char_width_1000(
+                                        ctx, pdf, font_obj, 0x20);
+                                    float sp_total = sp_w * n_chars;
+                                    float diff = orig_w - sp_total;
+
+                                    fz_append_byte(ctx, new_buf, '(');
+                                    for (int j=0; j<n_chars; j++)
+                                        fz_append_byte(ctx, new_buf, 0x20);
+                                    fz_append_byte(ctx, new_buf, ')');
+                                    if (diff > 0.5f || diff < -0.5f)
+                                        fz_append_printf(ctx, new_buf, " %.2f ", -diff);
+                                    else
+                                        fz_append_byte(ctx, new_buf, ' ');
+                                } else if (strcmp(stk[k].s,"[") && strcmp(stk[k].s,"]")) {
+                                    /* 数値（カーニング）はそのまま */
+                                    fz_append_printf(ctx, new_buf, "%s ", stk[k].s);
+                                }
+                            }
+                            fz_append_string(ctx, new_buf, "] TJ\n");
+                            modified = 1;
+                        } else {
+                            fz_append_printf(ctx, new_buf, "%s\n", kw);
+                        }
+                        stk_top = 0; continue;
+                    }
+
+                    /* ─── その他はそのままコピー ─── */
+                    fz_append_printf(ctx, new_buf, "%s\n", kw);
+                    stk_top = 0;
+                }
+                } /* fz_try */
+                fz_always(ctx) {
+                    pdf_lexbuf_fin(ctx, &lxb);
+                }
+                fz_catch(ctx) {
+                    fz_drop_stream(ctx, stm);
+                    fz_drop_buffer(ctx, orig_buf);
+                    fz_drop_buffer(ctx, new_buf);
+                    fz_rethrow(ctx);
+                }
+
+                fz_drop_stream(ctx, stm);
+                fz_drop_buffer(ctx, orig_buf);
+
+                if (modified) {
+                    pdf_obj *new_stm = pdf_add_stream(ctx, pdf, new_buf, NULL, 0);
+                    pdf_dict_put_drop(ctx, page_obj, PDF_NAME(Contents), new_stm);
+                }
+                fz_drop_buffer(ctx, new_buf);
+            }
+            fz_always(ctx) {
+                if (page) { pdf_drop_page(ctx, page); page = NULL; }
+            }
+            fz_catch(ctx) {
+                fz_warn(ctx, "sanitize: skip page %d: %s", pi, fz_caught_message(ctx));
+            }
+        }
+
+        fz_free(ctx, targets);
+
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_compress        = 1;
+        opts.do_compress_images = 1;
+        opts.do_garbage         = 2;
+        pdf_save_document(ctx, pdf, output_path, &opts);
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdf) fz_drop_document(ctx, (fz_document *)pdf);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}

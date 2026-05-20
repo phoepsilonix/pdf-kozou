@@ -178,6 +178,15 @@ pub async fn is_pdf_file(path: String) -> Result<bool> {
     let res = call_core_json("is_pdf", serde_json::json!({ "path": path })).await?;
     Ok(res["result"].as_bool().unwrap_or(false))
 }
+/// 隠しテキストの文字コードをスペースに置き換える（試験的機能）
+///
+/// ⚠ 全ての隠しテキスト手法を網羅できる保証はありません。
+///   本機能の使用による損害について開発者は責任を負いません。
+#[tauri::command]
+pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
+    call_core_json("sanitize_hidden", request).await
+}
+
 /// 後から描画された不透明オブジェクトに覆われたテキストを検出
 #[tauri::command]
 pub async fn detect_buried_text(
