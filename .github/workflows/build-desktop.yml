@@ -98,9 +98,13 @@ jobs:
           prefix-key: v0-rust
           save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
         with:
-          bun-version-file: ".bun-version"
+          deno-version: lts
+
+      #- uses: oven-sh/setup-bun@v2
+      #  with:
+      #    bun-version-file: ".bun-version"
 
       #- name: Install Node.js
       #  uses: actions/setup-node@v6

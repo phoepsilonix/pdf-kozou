@@ -6,9 +6,9 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "cargo build -p pdf-kozou-core && bun --bun run dev",
+    "beforeDevCommand": "cargo build --bin pdf-kozou-core && deno task dev",
     "beforeBundleCommand": "",
-    "beforeBuildCommand": "cargo build --release -p pdf-kozou-core && bun --bun run build"
+    "beforeBuildCommand": "cargo build --release --bin pdf-kozou-core && deno task build"
   },
   "app": {
     "windows": [
