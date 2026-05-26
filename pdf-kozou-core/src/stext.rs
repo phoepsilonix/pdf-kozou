@@ -575,6 +575,7 @@ pub fn detect_low_contrast_text(
         color_rgb: [u8; 3],
         bg_color_rgb: [u8; 3],
         contrast: f32,
+        reason: String,
         origin: [f32; 2],
         quad: [f32; 8],
         size: f32,
@@ -593,6 +594,7 @@ pub fn detect_low_contrast_text(
             color_rgb: h.color_rgb,
             bg_color_rgb: h.bg_color_rgb,
             contrast: h.contrast,
+            reason: h.reason,
             origin: h.origin,
             quad: h.quad,
             size: h.size,
@@ -609,6 +611,8 @@ pub struct TinyChar {
     pub size: f32,
     /// 文字色 [R, G, B] 各 0-255
     pub color_rgb: [u8; 3],
+    /// "tiny_font" | "sanitized" | "whitespace_only"
+    pub reason: String,
     pub origin: [f32; 2],
     pub quad: [f32; 8],
 }
@@ -703,6 +707,7 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
         char: String,
         size: f32,
         color_rgb: [u8; 3],
+        reason: String,
         origin: [f32; 2],
         quad: [f32; 8],
     }
@@ -719,6 +724,7 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
             char: h.char,
             size: h.size,
             color_rgb: h.color_rgb,
+            reason: h.reason,
             origin: h.origin,
             quad: h.quad,
         }).collect(),
@@ -732,6 +738,8 @@ pub struct BuriedChar {
     pub char: String,
     pub color_rgb: [u8; 3],
     pub size: f32,
+    /// "buried" | "sanitized" | "whitespace_only"
+    pub reason: String,
     pub origin: [f32; 2],
     pub quad: [f32; 8],
 }
@@ -822,6 +830,7 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
         char: String,
         color_rgb: [u8; 3],
         size: f32,
+        reason: String,
         origin: [f32; 2],
         quad: [f32; 8],
     }
@@ -838,6 +847,7 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
             char: h.char,
             color_rgb: h.color_rgb,
             size: h.size,
+            reason: h.reason,
             origin: h.origin,
             quad: h.quad,
         }).collect(),

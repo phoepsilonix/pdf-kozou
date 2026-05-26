@@ -114,7 +114,7 @@ export interface TransparentChar {
    * "clip_only_mode" → Tr=7: クリップパスのみ（塗りなし）
    * "transparent"    → ExtGState の fill alpha=0 による透明
    */
-  reason: "invisible_mode" | "clip_only_mode" | "transparent";
+  reason: "invisible_mode" | "clip_only_mode" | "transparent" | "sanitized" | "whitespace_only";
   /** 文字の原点座標 [x, y] pt 単位 */
   origin: [number, number];
   /** 文字の四隅座標 [ul.x,ul.y, ur.x,ur.y, ll.x,ll.y, lr.x,lr.y] */
@@ -213,6 +213,8 @@ export interface BuriedChar {
   char: string;
   color_rgb: [number, number, number];
   size: number;
+  /** "buried" | "sanitized" | "whitespace_only" */
+  reason: string;
   origin: [number, number];
   quad: [number, number, number, number, number, number, number, number];
 }
@@ -248,10 +250,10 @@ export async function detectBuriedText(
 /** 極小フォント検出の1文字分の結果 */
 export interface TinyChar {
   char: string;
-  /** フォントサイズ pt */
   size: number;
-  /** 文字色 [R, G, B] 各 0-255 */
   color_rgb: [number, number, number];
+  /** "tiny_font" | "sanitized" | "whitespace_only" */
+  reason: string;
   origin: [number, number];
   quad: [number, number, number, number, number, number, number, number];
 }
@@ -289,12 +291,11 @@ export async function detectTinyText(
 /** 低コントラストテキスト検出の1文字分の結果 */
 export interface LowContrastChar {
   char: string;
-  /** 文字色 [R, G, B] 各 0-255 */
   color_rgb: [number, number, number];
-  /** 背景色 [R, G, B] 各 0-255 */
   bg_color_rgb: [number, number, number];
-  /** WCAG コントラスト比 (1.0=同色, 21.0=白黒) */
   contrast: number;
+  /** "low_contrast" | "sanitized" | "whitespace_only" */
+  reason: string;
   origin: [number, number];
   quad: [number, number, number, number, number, number, number, number];
   size: number;
