@@ -47,20 +47,24 @@ static void set_err(FfiResult *r, const char *msg) {
 
 
 /* ------------------------------------------------------------------ */
-/* 無害な空白系コードポイントの判定                                     */
-/* U+0020(半角SP) U+00A0(NBSP) U+3000(全角SP) U+2000-U+200A(各種SP)  */
-/* これらは置き換え後の無害文字として検出から区別する                   */
+/* kozou_sanitize が出力した U+0020 を「無害化済み」として識別する      */
+/* ------------------------------------------------------------------ */
+static int kozou_is_sanitized_space(int cp)
+{
+    return (cp == 0x0020); /* kozou_sanitize の置き換え先は U+0020 のみ */
+}
+
+/* U+0020 以外の空白系文字 — 無害化対象候補として検出する               */
 /* ------------------------------------------------------------------ */
 static int kozou_is_whitespace_codepoint(int cp)
 {
-    return (cp == 0x0020 ||  /* 半角スペース (ASCII SPACE) */
-            cp == 0x00A0 ||  /* ノーブレークスペース */
+    return (cp == 0x00A0 ||  /* ノーブレークスペース */
             cp == 0x3000 ||  /* 全角スペース */
             cp == 0x2000 || cp == 0x2001 || cp == 0x2002 ||
             cp == 0x2003 || cp == 0x2004 || cp == 0x2005 ||
             cp == 0x2006 || cp == 0x2007 || cp == 0x2008 ||
             cp == 0x2009 || cp == 0x200A || /* 各種幅スペース */
-            cp == 0x0009 || cp == 0x000A || cp == 0x000D); /* TAB/LF/CR */
+            cp == 0x0009 || cp == 0x000D); /* TAB/CR (LF除外) */
 }
 
 fz_context *kozou_new_context(void) {
@@ -2208,7 +2212,6 @@ void kozou_detect_low_contrast_text(
                     if (cr > contrast_threshold) continue;
 
                     /* 無害な空白系文字はreason付きで返す */
-                    const char *lc_reason = kozou_is_whitespace_codepoint(ch->c)
                     int _lc_san = kozou_is_sanitized_space(ch->c);
                     const char *lc_reason = _lc_san ? "sanitized"
                         : kozou_is_whitespace_codepoint(ch->c) ? "whitespace_only"
@@ -2757,6 +2760,59 @@ void kozou_detect_buried_text(
 #define KOZOU_HELVETICA_SPACE_WIDTH 278.0f
 
 /* 置き換え対象の座標集合 */
+/* ------------------------------------------------------------------ */
+/* quad幅マップ: fz_stext_char の origin → 実描画幅 (1/1000em)        */
+/* RTL・縦書き・合字すべてに対応できる唯一確実な幅取得方式             */
+/* ------------------------------------------------------------------ */
+#define KOZOU_QUAD_MAP_MAX 131072
+
+typedef struct {
+    float ox, oy;       /* origin (デバイス座標 Y下向き) */
+    float width_1000;   /* 実描画幅 1/1000em (常に正値)  */
+    float size;         /* フォントサイズ pt              */
+} KozouQuadEntry;
+
+typedef struct {
+    KozouQuadEntry entries[KOZOU_QUAD_MAP_MAX];
+    int            count;
+} KozouQuadMap;
+
+/* quad から実描画幅を計算する (1/1000em、常に正値) */
+static float kozou_quad_width_1000(const fz_quad *q, float size)
+{
+    if (size <= 0.0f) return 0.0f;
+    /* 横方向幅: ul→ur の距離 */
+    float dx = q->ur.x - q->ul.x;
+    float dy = q->ur.y - q->ul.y;
+    float horiz = sqrtf(dx*dx + dy*dy);
+    /* 縦方向幅: ul→ll の距離 */
+    float vx = q->ll.x - q->ul.x;
+    float vy = q->ll.y - q->ul.y;
+    float vert = sqrtf(vx*vx + vy*vy);
+    /* 大きいほうを文字進行方向の幅とみなす */
+    float w = horiz > vert ? horiz : vert;
+    return (w / size) * 1000.0f;
+}
+
+/* quad マップから origin に最も近いエントリの幅を返す */
+static float kozou_quad_map_lookup(
+    const KozouQuadMap *qmap,
+    float ox, float oy, float tol2)
+{
+    float best_dist = tol2;
+    float best_w    = -1.0f;
+    for (int i = 0; i < qmap->count; i++) {
+        float dx = qmap->entries[i].ox - ox;
+        float dy = qmap->entries[i].oy - oy;
+        float d2 = dx*dx + dy*dy;
+        if (d2 < best_dist) {
+            best_dist = d2;
+            best_w    = qmap->entries[i].width_1000;
+        }
+    }
+    return best_w; /* -1.0f = 見つからない */
+}
+
 #define KOZOU_SANITIZE_MAX 65536
 
 typedef struct { float x, y; } KozouSanitizeOrigin;
@@ -2965,6 +3021,51 @@ void kozou_sanitize_hidden_text(
                 /* Helvetica フォントをリソースに登録 */
                 kozou_ensure_helvetica(ctx, pdf, page_obj);
 
+                /* Pass 0: fz_stext_page から origin → quad幅 マップを構築
+ * RTL・縦書き・合字すべてに対応できる実描画幅をMuPDFから直接取得 */
+                KozouQuadMap *qmap = (KozouQuadMap *)fz_malloc(ctx,
+                    sizeof(KozouQuadMap));
+                memset(qmap, 0, sizeof(KozouQuadMap));
+                fz_var(qmap);
+
+                fz_stext_page  *stext_pg = NULL;
+                fz_var(stext_pg);
+                fz_try(ctx) {
+                    fz_stext_options sopts = {
+                        FZ_STEXT_PRESERVE_WHITESPACE | FZ_STEXT_ACCURATE_BBOXES, 0 };
+                    stext_pg = fz_new_stext_page_from_page(
+                        ctx, (fz_page *)page, &sopts);
+                    for (fz_stext_block *blk = stext_pg->first_block;
+                         blk; blk = blk->next) {
+                        if (blk->type != FZ_STEXT_BLOCK_TEXT) continue;
+                        for (fz_stext_line *ln = blk->u.t.first_line;
+                             ln; ln = ln->next) {
+                            for (fz_stext_char *ch = ln->first_char;
+                                 ch; ch = ch->next) {
+                                if (qmap->count >= KOZOU_QUAD_MAP_MAX) break;
+                                KozouQuadEntry *e =
+                                    &qmap->entries[qmap->count++];
+                                e->ox   = ch->origin.x;
+                                e->oy   = ch->origin.y;
+                                e->size = ch->size;
+                                e->width_1000 = kozou_quad_width_1000(
+                                    &ch->quad, ch->size);
+                            }
+                        }
+                    }
+                }
+                fz_always(ctx) {
+                    if (stext_pg) {
+                        fz_drop_stext_page(ctx, stext_pg);
+                        stext_pg = NULL;
+                    }
+                }
+                fz_catch(ctx) {
+                    /* quad収集失敗は致命的でないのでwarningで続行 */
+                    fz_warn(ctx, "sanitize: quad map build failed page %d", pi);
+                }
+
+
                 /* コンテンツストリームを展開 */
                 pdf_obj *contents = pdf_dict_get(ctx, page_obj, PDF_NAME(Contents));
                 if (!contents) { pdf_drop_page(ctx, page); page = NULL; continue; }
@@ -3126,6 +3227,9 @@ void kozou_sanitize_hidden_text(
                             pdf_obj *fobj = font_dict ?
                                 pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
                             int is_mb = kozou_is_multibyte_font(ctx, fobj);
+                            /* quad マップから実描画幅を優先取得 */
+                            float quad_w = kozou_quad_map_lookup(
+                                qmap, dev_x, dev_y, tol2 * 4.0f);
                             int    n_ch=0;
                             float  orig_w=0.0f;
                             const char *p=orig+1;
@@ -3160,6 +3264,8 @@ void kozou_sanitize_hidden_text(
                                 orig_w+=kozou_get_char_width_1000(ctx,pdf,fobj,cc);
                                 n_ch++;
                             }
+                            /* quad幅が取得できた場合はそちらを優先使用 */
+                            if (quad_w > 0.0f) orig_w = quad_w;
                             float sp_total = KOZOU_HELVETICA_SPACE_WIDTH * n_ch;
                             float diff     = orig_w - sp_total;
                             if (diff>200.0f||diff<-200.0f) page_warn=1;
@@ -3202,6 +3308,9 @@ void kozou_sanitize_hidden_text(
                         if (kozou_sanitize_is_target(targets,n,dev_x,dev_y,tol2)) {
                             pdf_obj *fobj = font_dict ?
                                 pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
+                            /* TJ全体の幅をquadマップから取得 */
+                            float tj_quad_w = kozou_quad_map_lookup(
+                                qmap, dev_x, dev_y, tol2 * 4.0f);
 
                             fz_append_printf(ctx,new_buf,
                                 "/KOZOU_HV %.4f Tf\n0 Tr\n", font_size);
@@ -3242,7 +3351,10 @@ void kozou_sanitize_hidden_text(
                                         n_ch++;
                                     }
                                     float sp_total=KOZOU_HELVETICA_SPACE_WIDTH*n_ch;
-                                    float diff=orig_w-sp_total;
+                                    /* TJ全体quad幅が有効なら文字列ごとに配分 */
+                                    float eff_orig = (tj_quad_w > 0.0f && n_ch > 0)
+                                        ? tj_quad_w : orig_w;
+                                    float diff=eff_orig-sp_total;
                                     if(diff>200.0f||diff<-200.0f) page_warn=1;
                                     fz_append_byte(ctx,new_buf,'(');
                                     for(int j=0;j<n_ch;j++)
@@ -3287,6 +3399,7 @@ void kozou_sanitize_hidden_text(
                 }
                 fz_drop_buffer(ctx, new_buf);
                 if (page_warn) width_warn=1;
+                if (qmap) { fz_free(ctx, qmap); qmap = NULL; }
             }
             fz_always(ctx) {
                 if (page) { pdf_drop_page(ctx, page); page=NULL; }

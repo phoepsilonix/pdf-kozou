@@ -469,6 +469,8 @@ pub struct LowContrastChar {
     pub bg_color_rgb: [u8; 3],
     /// WCAG コントラスト比 (1.0=同色, 21.0=白黒)
     pub contrast: f32,
+    /// "low_contrast" | "sanitized" | "whitespace_only"
+    pub reason: String,
     /// 文字の原点座標 [x, y] pt
     pub origin: [f32; 2],
     /// 四隅座標
