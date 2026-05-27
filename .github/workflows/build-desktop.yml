@@ -98,24 +98,24 @@ jobs:
           prefix-key: v0-rust
           save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
 
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: lts
+      #- uses: denoland/setup-deno@v2
+      #  with:
+      #    deno-version: lts
 
       #- uses: oven-sh/setup-bun@v2
       #  with:
       #    bun-version-file: ".bun-version"
 
-      #- name: Install Node.js
-      #  uses: actions/setup-node@v6
-      #  with:
-      #    node-version: 'lts/*'
-      #    cache: npm
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+          cache: npm
 
       - name: Install dependencies
-        run: bun ci
+        run: npm ci
       - name: Build Frontend check
-        run: bun run build
+        run: npm run build
 
       - name: Install tauri-cli via binstall
         run: |
@@ -284,19 +284,19 @@ jobs:
           #export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
           #cpan -i Pod::Usage
 
-      #- name: Install Node.js
-      #  uses: actions/setup-node@v6
-      #  with:
-      #    node-version: 'lts/*'
-      #    cache: npm
-      - uses: oven-sh/setup-bun@v2
+      - name: Install Node.js
+        uses: actions/setup-node@v6
         with:
-          bun-version-file: ".bun-version"
+          node-version: 'lts/*'
+          cache: npm
+      #- uses: oven-sh/setup-bun@v2
+      #  with:
+      #    bun-version-file: ".bun-version"
 
       - name: Install dependencies
-        run: bun ci
+        run: npm ci
       - name: Build Frontend check
-        run: bun run build
+        run: npm run build
 
       - name: Install tauri-cli via binstall
         run: |
