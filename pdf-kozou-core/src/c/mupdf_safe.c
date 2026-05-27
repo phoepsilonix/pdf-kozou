@@ -3745,17 +3745,8 @@ void kozou_render_imposition(
             int pno = page_nums[i] - 1; /* 0始まり */
             if (pno < 0 || pno >= page_count) {
                 /* 空白セル: 薄いグレーで塗る */
-                for (int y = cell_y; y < cell_y + cell_h && y < total_h; y++) {
-                    unsigned char *row_ptr = fz_pixmap_samples(ctx, pixmap)
-                        + y * fz_pixmap_stride(ctx, pixmap)
-                        + cell_x * fz_pixmap_components(ctx, pixmap);
-                    int comp = fz_pixmap_components(ctx, pixmap);
-                    for (int x = 0; x < cell_w && cell_x + x < total_w; x++) {
-                        row_ptr[x * comp + 0] = 0xf0;
-                        row_ptr[x * comp + 1] = 0xf0;
-                        row_ptr[x * comp + 2] = 0xf0;
-                    }
-                }
+                /* 空白ページ: pixmap は fz_clear_pixmap_with_value で白初期化済み */
+                /* 追加描画不要 — 白紙のまま */
                 continue;
             }
 

@@ -241,9 +241,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     };
   }, [isBatch, batchFiles, previewEnabled]);
 
-  const pickDir = useCallback(async () => {
+  const pickDir = useCallback(async (): Promise<string | null> => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
+    return dir;
   }, []);
 
   // サイズ概算
@@ -263,10 +264,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       isBatch,
     );
     if (outputMode === "images" && impositionMode !== "1up" && !isBatch) {
-      if (!outDir) {
-        await pickDir();
-        return;
-      }
+      const resolvedDir = outDir || (await pickDir());
+      if (!resolvedDir) return; // キャンセル
       setPhase("processing");
       setStatusMsg("面付けレンダリング中...");
       try {
@@ -338,7 +337,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           // base64 → ファイル保存
           const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
-          const outPath = `${outDir}/${outName}`;
+          const outPath = `${resolvedDir}/${outName}`;
           setStatusMsg(`保存中... ${si + 1}/${totalSheets} → ${outName}`);
           await invoke("save_base64_image", {
             data: result.image_b64,
@@ -348,7 +347,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         }
         setImages(savedFiles);
         setPhase("result");
-        setStatusMsg(`完了: ${totalSheets}枚を ${outDir} に保存しました`);
+        setStatusMsg(`完了: ${totalSheets}枚を ${resolvedDir} に保存しました`);
       } catch (e) {
         setPhase("error");
         setError(String(e));
@@ -356,9 +355,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       return;
     }
 
+    let effectiveOutDir = outDir;
     if (outputMode === "images" && !outDir) {
-      await pickDir();
-      return;
+      const d = await pickDir();
+      if (!d) return; // キャンセル
+      effectiveOutDir = d;
     }
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
     setPhase("processing");
@@ -396,7 +397,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         console.log("exportImages", prefix, pages, filePath, outDir, format, dpi, format);
         const res = await exportImages(
           filePath,
-          outDir,
+          effectiveOutDir,
           format,
           dpi,
           format === "jpeg" ? quality : undefined,
@@ -440,10 +441,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // バッチ実行
   const handleExecuteBatch = useCallback(async () => {
-    if (!outDir) {
-      await pickDir();
-      return;
-    }
+    const batchDir = outDir || (await pickDir());
+    if (!batchDir) return; // キャンセル
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
     const files = batchFiles!;
     setPhase("processing");
@@ -464,7 +463,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         const stem = f.filename.replace(/\.[^/.]+$/, "");
         if (outputMode === "pdf") {
           // 画像PDFモード: ファイルごとに1つの .pdf を出力
-          const outPath = `${outDir}/${stem}.pdf`;
+          const outPath = `${batchDir}/${stem}.pdf`;
           const res = await exportImagePdf(
             f.path,
             outPath,
@@ -480,7 +479,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           if (res.warning) console.warn(res.warning);
         } else if (impositionMode !== "1up") {
           // 面付けモード: サブフォルダにシートごとに出力
-          const subDir = `${outDir}/${stem}`;
+          const subDir = `${batchDir}/${stem}`;
           const fileTotal = f.pageCount || 0;
           const filePageSpec = resolvePageSpec(pages || "", fileTotal).map((i) => i + 1);
           const filePageSet = new Set(filePageSpec);
@@ -511,7 +510,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           progress.done.push({ file: f.filename, count: savedFiles.length });
         } else {
           // 1-upモード: サブフォルダに1ページずつ
-          const subDir = `${outDir}/${stem}`;
+          const subDir = `${batchDir}/${stem}`;
           const res = await exportImages(
             f.path,
             subDir,

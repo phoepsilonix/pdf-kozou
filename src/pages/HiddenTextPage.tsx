@@ -191,21 +191,22 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
 
-  const pickDir = useCallback(async () => {
+  const pickDir = useCallback(async (): Promise<string | null> => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const dir = await open({ directory: true, title: "出力先フォルダを選択" });
-      if (dir) setOutDir(typeof dir === "string" ? dir : dir[0]);
+      const resolved = dir ? (typeof dir === "string" ? dir : dir[0]) : null;
+      if (resolved) setOutDir(resolved);
+      return resolved;
     } catch (e) {
       console.error(e);
+      return null;
     }
   }, []);
 
   const runBatch = useCallback(async () => {
-    if (!outDir) {
-      await pickDir();
-      return;
-    }
+    const resolvedDir = outDir || (await pickDir());
+    if (!resolvedDir) return; // キャンセル
     setRunning(true);
     setPhase("processing");
     const prog: BatchProgress = {
@@ -232,7 +233,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
           const stem = f.filename.replace(/\.[^/.]+$/, "");
-          const outPath = `${outDir}/${stem}_sanitized.pdf`;
+          const outPath = `${resolvedDir}/${stem}_sanitized.pdf`;
           await sanitizeHiddenText({ input: f.path, output: outPath, targets, tolerance: 1.5 });
           prog.done.push({
             file: f.filename,
