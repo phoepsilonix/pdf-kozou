@@ -223,7 +223,6 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       prog.currentFile = f.filename;
       setProgress({ ...prog });
       try {
-        // 全ページ検出
         const hits = await detectAllPages(f.path, f.pageCount, enabled, thr);
         const targets: SanitizeOrigin[] = hits
           .filter((h) => h.reason !== "whitespace_only")
@@ -234,12 +233,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         } else {
           const stem = f.filename.replace(/\.[^/.]+$/, "");
           const outPath = `${outDir}/${stem}_sanitized.pdf`;
-          await sanitizeHiddenText({
-            input: f.path,
-            output: outPath,
-            targets,
-            tolerance: 1.5,
-          });
+          await sanitizeHiddenText({ input: f.path, output: outPath, targets, tolerance: 1.5 });
           prog.done.push({
             file: f.filename,
             hits: targets.length,
@@ -255,184 +249,152 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     setPhase("result");
   }, [batchFiles, outDir, enabled, thr, pickDir]);
 
+  // ── 処理中画面 ────────────────────────────────────────────────────────────
   if (phase === "processing" && progress) {
     return (
       <div style={s.root}>
         <BatchBanner />
-        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>
-            処理中... {progress.current} / {progress.total}
-          </div>
-          <div
-            style={{
-              background: "var(--c-bgCard)",
-              borderRadius: 8,
-              overflow: "hidden",
-              height: 8,
-            }}
-          >
-            <div
-              style={{
-                background: "var(--c-accent)",
-                height: "100%",
-                width: `${(progress.current / progress.total) * 100}%`,
-                transition: "width 0.3s",
-              }}
-            />
-          </div>
-          <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{progress.currentFile}</div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              maxHeight: 300,
-              overflowY: "auto",
-            }}
-          >
-            {progress.done.map((d, i) => (
-              <div key={i} style={{ fontSize: 12, display: "flex", gap: 8 }}>
-                <span style={{ color: "var(--c-accent)" }}>✓</span>
-                <span style={{ flex: 1 }}>{d.file}</span>
-                <span style={{ color: "var(--c-textDim)" }}>
-                  {d.hits === 0 ? "検出なし" : `${d.hits}字 → ${d.saved}`}
-                </span>
+        <div style={s.layout}>
+          {/* 左: 進捗情報 */}
+          <div style={s.left}>
+            <div style={s.sec}>
+              <div style={s.secTitle}>処理中</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--c-accent)" }}>
+                {progress.current} / {progress.total}
               </div>
-            ))}
+              <div
+                style={{
+                  background: "var(--c-bgCard)",
+                  borderRadius: 6,
+                  overflow: "hidden",
+                  height: 6,
+                }}
+              >
+                <div
+                  style={{
+                    background: "var(--c-accent)",
+                    height: "100%",
+                    width: `${(progress.current / progress.total) * 100}%`,
+                    transition: "width 0.3s",
+                  }}
+                />
+              </div>
+              <div
+                style={{ fontSize: 11, color: "var(--c-textSub)", wordBreak: "break-all" as const }}
+              >
+                {progress.currentFile}
+              </div>
+            </div>
+          </div>
+          {/* 右: ログ */}
+          <div style={s.right}>
+            <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+              {progress.done.map((d, i) => (
+                <div key={i} style={s.logRow}>
+                  <span style={{ color: "var(--c-accent)", flexShrink: 0 }}>✓</span>
+                  <span style={s.logFile}>{d.file}</span>
+                  <span style={s.logMeta}>
+                    {d.hits === 0 ? "検出なし" : `${d.hits}字 → ${d.saved}`}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  // ── 結果画面 ──────────────────────────────────────────────────────────────
   if (phase === "result" && progress) {
     const succeeded = progress.done.filter((d) => d.hits > 0).length;
     const skipped = progress.done.filter((d) => d.hits === 0).length;
     return (
       <div style={s.root}>
         <BatchBanner />
-        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>完了: {batchFiles.length}件処理</div>
-          <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-            <span style={{ color: "#10b981" }}>✓ 無害化: {succeeded}件</span>
-            <span style={{ color: "var(--c-textDim)" }}>スキップ: {skipped}件</span>
-            {progress.errors.length > 0 && (
-              <span style={{ color: "#ef4444" }}>エラー: {progress.errors.length}件</span>
-            )}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              maxHeight: 400,
-              overflowY: "auto",
-            }}
-          >
-            {progress.done.map((d, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: 12,
-                  display: "flex",
-                  gap: 8,
-                  padding: "3px 0",
-                  borderBottom: "1px solid var(--c-border)",
-                }}
-              >
-                <span style={{ color: d.hits > 0 ? "var(--c-accent)" : "var(--c-textDim)" }}>
-                  {d.hits > 0 ? "✓" : "–"}
-                </span>
-                <span style={{ flex: 1 }}>{d.file}</span>
-                <span style={{ color: "var(--c-textSub)" }}>
-                  {d.hits === 0 ? "検出なし" : `${d.hits}字無害化 → ${d.saved}`}
-                </span>
+        <div style={s.layout}>
+          {/* 左: サマリー */}
+          <div style={s.left}>
+            <div style={s.sec}>
+              <div style={s.secTitle}>完了</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                <div style={{ color: "#10b981" }}>✓ 無害化: {succeeded}件</div>
+                <div style={{ color: "var(--c-textDim)" }}>– スキップ: {skipped}件</div>
+                {progress.errors.length > 0 && (
+                  <div style={{ color: "#ef4444" }}>✗ エラー: {progress.errors.length}件</div>
+                )}
               </div>
-            ))}
-            {progress.errors.map((e, i) => (
-              <div
-                key={`e${i}`}
-                style={{
-                  fontSize: 12,
-                  display: "flex",
-                  gap: 8,
-                  padding: "3px 0",
-                  color: "#ef4444",
-                }}
-              >
-                <span>✗</span>
-                <span style={{ flex: 1 }}>{e.file}</span>
-                <span>{e.msg.slice(0, 60)}</span>
-              </div>
-            ))}
+            </div>
+            <button
+              style={{ ...s.detectBtn, marginTop: 8 }}
+              onClick={() => {
+                setPhase("edit");
+                setProgress(null);
+              }}
+            >
+              ← 設定に戻る
+            </button>
           </div>
-          <button
-            style={s.detectBtn}
-            onClick={() => {
-              setPhase("edit");
-              setProgress(null);
-            }}
-          >
-            ← 設定に戻る
-          </button>
+          {/* 右: 詳細リスト */}
+          <div style={s.right}>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              {progress.done.map((d, i) => (
+                <div
+                  key={i}
+                  style={{
+                    ...s.logRow,
+                    borderBottom: "1px solid var(--c-border)",
+                    padding: "6px 12px",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: d.hits > 0 ? "var(--c-accent)" : "var(--c-textDim)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {d.hits > 0 ? "✓" : "–"}
+                  </span>
+                  <span style={s.logFile}>{d.file}</span>
+                  <span style={s.logMeta}>
+                    {d.hits === 0 ? "検出なし" : `${d.hits}字無害化 → ${d.saved}`}
+                  </span>
+                </div>
+              ))}
+              {progress.errors.map((e, i) => (
+                <div
+                  key={`e${i}`}
+                  style={{
+                    ...s.logRow,
+                    color: "#ef4444",
+                    borderBottom: "1px solid var(--c-border)",
+                    padding: "6px 12px",
+                  }}
+                >
+                  <span style={{ flexShrink: 0 }}>✗</span>
+                  <span style={s.logFile}>{e.file}</span>
+                  <span style={s.logMeta}>{e.msg.slice(0, 60)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 設定画面
+  // ── 設定画面 ──────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
       <BatchBanner />
-      <div
-        style={{
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-          overflowY: "auto",
-        }}
-      >
-        {/* ファイル一覧 */}
-        <div style={s.sec}>
-          <div style={s.secTitle}>{batchFiles.length}件のPDFファイル</div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 3,
-              maxHeight: 150,
-              overflowY: "auto",
-            }}
-          >
-            {batchFiles.map((f, i) => (
-              <div
-                key={i}
-                style={{ fontSize: 12, display: "flex", gap: 8, color: "var(--c-textSub)" }}
-              >
-                <span style={{ color: "var(--c-textDim)", minWidth: 24 }}>{i + 1}.</span>
-                <span
-                  style={{
-                    flex: 1,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {f.filename}
-                </span>
-                <span style={{ color: "var(--c-textDim)" }}>{f.pageCount}p</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 検出タイプ */}
-        <div style={s.sec}>
-          <div style={s.secTitle}>検出タイプ</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <div style={s.layout}>
+        {/* 左: 設定・実行 */}
+        <div style={s.left}>
+          {/* 検出タイプ */}
+          <div style={s.sec}>
+            <div style={s.secTitle}>検出タイプ</div>
             {DETECT_TYPES.map((dt) => (
-              <label key={dt.id} style={{ ...s.chkRow, fontSize: 12 }}>
+              <label key={dt.id} style={s.chkRow}>
                 <input
                   type="checkbox"
                   checked={enabled.has(dt.id)}
@@ -443,106 +405,160 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   }}
                 />
                 <span style={{ color: dt.color }}>{dt.icon}</span>
-                <span>{dt.label}</span>
+                <span style={{ fontSize: 12 }}>{dt.label}</span>
               </label>
             ))}
           </div>
-        </div>
 
-        {/* 閾値 */}
-        <div style={s.sec}>
-          <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
-            ⚙ 閾値設定 {showThr ? "▲" : "▼"}
-          </button>
-          {showThr && (
-            <div style={{ ...s.thrPanel, maxWidth: 360 }}>
-              {(
-                [
-                  { key: "alpha", label: "透明度 (0-255)", min: 0, max: 255, step: 1 },
-                  { key: "contrast", label: "コントラスト", min: 1, max: 21, step: 0.1 },
-                  { key: "size", label: "フォントサイズ pt", min: 0.1, max: 10, step: 0.1 },
-                  { key: "cover", label: "被覆率", min: 0.1, max: 1, step: 0.05 },
-                ] as const
-              ).map(({ key, label, min, max, step }) => (
-                <div key={key} style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 10, color: "var(--c-textSub)" }}>{label}</span>
-                    <span style={{ fontSize: 10, fontWeight: 600 }}>
-                      {key === "alpha"
-                        ? Math.round((thr as any)[key])
-                        : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
-                    </span>
+          {/* 閾値 */}
+          <div style={s.sec}>
+            <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
+              ⚙ 閾値設定 {showThr ? "▲" : "▼"}
+            </button>
+            {showThr && (
+              <div style={s.thrPanel}>
+                {(
+                  [
+                    { key: "alpha", label: "透明度 (0-255)", min: 0, max: 255, step: 1 },
+                    { key: "contrast", label: "コントラスト", min: 1, max: 21, step: 0.1 },
+                    { key: "size", label: "フォントサイズ pt", min: 0.1, max: 10, step: 0.1 },
+                    { key: "cover", label: "被覆率", min: 0.1, max: 1, step: 0.05 },
+                  ] as const
+                ).map(({ key, label, min, max, step }) => (
+                  <div key={key} style={{ marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 10, color: "var(--c-textSub)" }}>{label}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600 }}>
+                        {key === "alpha"
+                          ? Math.round((thr as any)[key])
+                          : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={(thr as any)[key]}
+                      onChange={(e) => setThr((t) => ({ ...t, [key]: Number(e.target.value) }))}
+                      style={{ width: "100%" }}
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min={min}
-                    max={max}
-                    step={step}
-                    value={(thr as any)[key]}
-                    onChange={(e) => setThr((t) => ({ ...t, [key]: Number(e.target.value) }))}
-                    style={{ width: "100%" }}
-                  />
-                </div>
-              ))}
-              <button style={s.resetBtn} onClick={() => setThr(DEFAULT_THR)}>
-                リセット
-              </button>
-            </div>
-          )}
-        </div>
+                ))}
+                <button style={s.resetBtn} onClick={() => setThr(DEFAULT_THR)}>
+                  リセット
+                </button>
+              </div>
+            )}
+          </div>
 
-        {/* 出力先フォルダ */}
-        <div style={s.sec}>
-          <div style={s.secTitle}>出力先フォルダ</div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* 出力先フォルダ */}
+          <div style={s.sec}>
+            <div style={s.secTitle}>出力先フォルダ</div>
             <div
               style={{
-                flex: 1,
-                fontSize: 12,
+                fontSize: 11,
                 color: outDir ? "var(--c-text)" : "var(--c-textDim)",
                 background: "var(--c-bgCard)",
                 border: "1px solid var(--c-border)",
                 borderRadius: 5,
-                padding: "5px 8px",
+                padding: "4px 7px",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                whiteSpace: "nowrap" as const,
               }}
             >
-              {outDir || "フォルダを選択してください"}
+              {outDir || "未選択"}
             </div>
             <button style={s.navBtn} onClick={pickDir}>
-              選択
+              📁 フォルダを選択
             </button>
+            <div style={{ fontSize: 10, color: "var(--c-textDim)", lineHeight: 1.4 }}>
+              検出ありのファイルは
+              <br />
+              「名前_sanitized.pdf」で保存
+            </div>
           </div>
-          <div style={{ fontSize: 10, color: "var(--c-textDim)" }}>
-            検出されたファイルは「元ファイル名_sanitized.pdf」で保存されます
+
+          {/* 実行ボタン */}
+          <button
+            style={{ ...s.sanBtn, ...(running ? s.btnDis : {}) }}
+            onClick={runBatch}
+            disabled={running}
+          >
+            {running ? <Spinner /> : `🧹 ${batchFiles.length}件を一括処理`}
+          </button>
+
+          {/* 注意書き */}
+          <div
+            style={{
+              fontSize: 10,
+              color: "#f59e0b",
+              background: "#f59e0b18",
+              border: "1px solid #f59e0b44",
+              borderRadius: 5,
+              padding: "6px 8px",
+              lineHeight: 1.5,
+            }}
+          >
+            ⚠ whitespace_only を除く全隠しテキストを自動無害化します
           </div>
         </div>
 
-        {/* 実行ボタン */}
-        <button
-          style={{ ...s.sanBtn, ...(running ? s.btnDis : {}), maxWidth: 360 }}
-          onClick={runBatch}
-          disabled={running}
-        >
-          {running ? <Spinner /> : `🧹 ${batchFiles.length}件を自動検出・無害化`}
-        </button>
-
-        {/* 警告 */}
-        <div
-          style={{
-            fontSize: 11,
-            color: "#f59e0b",
-            background: "#f59e0b18",
-            border: "1px solid #f59e0b44",
-            borderRadius: 5,
-            padding: "7px 10px",
-            maxWidth: 360,
-          }}
-        >
-          ⚠ 全ページの全隠しテキストを自動的に無害化します（whitespace_only を除く）。
-          個別に確認したい場合は1ファイルずつ選択してください。
+        {/* 右: ファイルリスト */}
+        <div style={s.right}>
+          <div
+            style={{
+              padding: "8px 12px",
+              fontSize: 11,
+              color: "var(--c-textDim)",
+              borderBottom: "1px solid var(--c-border)",
+              flexShrink: 0,
+            }}
+          >
+            {batchFiles.length}件のPDFファイル
+          </div>
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {batchFiles.map((f, i) => (
+              <div
+                key={f.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "7px 12px",
+                  borderBottom: "1px solid var(--c-border)",
+                  fontSize: 12,
+                }}
+              >
+                <span
+                  style={{
+                    color: "var(--c-textDim)",
+                    minWidth: 28,
+                    textAlign: "right" as const,
+                    flexShrink: 0,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {i + 1}.
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap" as const,
+                    color: "var(--c-text)",
+                  }}
+                >
+                  {f.filename}
+                </span>
+                <span style={{ color: "var(--c-textDim)", flexShrink: 0, fontSize: 11 }}>
+                  {f.pageCount}p
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -1237,4 +1253,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     wordBreak: "break-all" as const,
   },
+  logRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "4px 0" },
+  logFile: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
+  logMeta: { fontSize: 11, color: "var(--c-textSub)", flexShrink: 0 },
 };
