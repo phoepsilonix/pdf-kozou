@@ -32,7 +32,12 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
 import { useSaveDialog } from "../hooks/useSaveDialog";
-import { type ImpositionMode, IMPOSITION_MODES, calcSheets } from "../lib/imposition";
+import {
+  type ImpositionMode,
+  IMPOSITION_MODE_DEFS,
+  IMPOSITION_MODES,
+  calcSheets,
+} from "../lib/imposition";
 import { renderImposition } from "../lib/tauri";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
@@ -104,6 +109,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     F1: () => announceKey("shortcut.tool"),
   });
   const isBatch = (batchFiles?.length ?? 0) > 1;
+  const { t } = useI18n();
+  // i18n対応の面付けモード（label/descを翻訳済みで上書き）
+  const IMPOSITION_MODES_I18N = IMPOSITION_MODE_DEFS.map((m) => ({
+    ...m,
+    label: t(m.labelKey as any),
+    desc: t(m.descKey as any),
+  }));
   const { enabled: previewEnabled } = usePreview("image");
   const total = pdfInfo.page_count;
   console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
@@ -270,7 +282,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       setStatusMsg("面付けレンダリング中...");
       try {
         // 高DPI × 多ページのメモリ試算（600MB超は確認ダイアログ）
-        const modeInfo0 = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+        const modeInfo0 = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
         const estimatedMB = Math.round(
           (Math.round((595 * dpi) / 72) *
             modeInfo0.cols *
@@ -282,10 +294,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
         if (estimatedMB > 600) {
           const ok = window.confirm(
-            `推定メモリ使用量: 約${estimatedMB}MB\n` +
-              `DPI=${dpi} × ${modeInfo0.label} は大量のメモリを消費します。\n` +
-              `DPIを下げるか 1-up モードの使用を検討してください。\n\n` +
-              `続行しますか？`,
+            t("image.imposition_memory_warn" as any, {
+              mb: String(estimatedMB),
+              dpi: String(dpi),
+              mode:
+                IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label ?? impositionMode,
+            }),
           );
           if (!ok) {
             setPhase("edit");
@@ -305,7 +319,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           sheets.length,
           sheets.map((s) => s.label),
         );
-        const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+        const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
         const fmt = format === "png" ? "png" : "jpeg";
         const base =
           filePath
@@ -322,7 +336,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           const pageNums = sheet.pages.map((p) => (p === 0 || pageSet.has(p) ? p : 0));
 
           // 進捗: レンダリング開始前に表示
-          setStatusMsg(`レンダリング中... ${si + 1}/${totalSheets} (${sheet.label})`);
+          setStatusMsg(
+            t("image.imposition_rendering" as any, {
+              current: String(si + 1),
+              total: String(totalSheets),
+              label: sheet.label,
+            }),
+          );
 
           const result = await renderImposition({
             path: filePath,
@@ -338,7 +358,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           // base64 → ファイル保存
           const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
           const outPath = `${resolvedDir}/${outName}`;
-          setStatusMsg(`保存中... ${si + 1}/${totalSheets} → ${outName}`);
+          setStatusMsg(
+            t("image.imposition_saving" as any, {
+              current: String(si + 1),
+              total: String(totalSheets),
+              name: outName,
+            }),
+          );
           await invoke("save_base64_image", {
             data: result.image_b64,
             path: outPath,
@@ -347,7 +373,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         }
         setImages(savedFiles);
         setPhase("result");
-        setStatusMsg(`完了: ${totalSheets}枚を ${resolvedDir} に保存しました`);
+        setStatusMsg(
+          t("image.imposition_done" as any, { count: String(totalSheets), dir: resolvedDir }),
+        );
       } catch (e) {
         setPhase("error");
         setError(String(e));
@@ -485,7 +513,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           const filePageSet = new Set(filePageSpec);
           const fileEffective = filePageSpec.length || fileTotal;
           const fileSheets = calcSheets(impositionMode, fileEffective);
-          const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+          const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
           const fmt = format === "png" ? "png" : "jpeg";
           const ext = format === "png" ? "png" : "jpg";
           const savedFiles: string[] = [];
@@ -822,7 +850,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <>
               <div style={s.secLabel}>面付け（N-up / 製本）</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {IMPOSITION_MODES.map((m) => (
+                {IMPOSITION_MODES_I18N.map((m) => (
                   <button
                     key={m.id}
                     onClick={(e) => {
@@ -991,7 +1019,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 ? outputMode === "pdf"
                   ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
                   : impositionMode !== "1up"
-                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES.find((m) => m.id === impositionMode)?.label}で変換`
+                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
                     : t("image.execute_batch", { count: String(batchFiles!.length) })
                 : outputMode === "pdf"
                   ? t("image.execute_pdf")
@@ -1016,7 +1044,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           label={
             isBatch
               ? impositionMode !== "1up"
-                ? `${batchFiles!.length}件 — ${IMPOSITION_MODES.find((m) => m.id === impositionMode)?.label}`
+                ? `${batchFiles!.length}件 — ${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}`
                 : t("image.target_files", { count: String(batchFiles!.length) })
               : t("common.preview_pages", { count: String(resolvedPageCount) })
           }
@@ -1072,7 +1100,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                                 f.pageCount ||
                                 0;
                               const fSheets = calcSheets(impositionMode, fEff).length;
-                              const mInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+                              const mInfo = IMPOSITION_MODES_I18N.find(
+                                (m) => m.id === impositionMode,
+                              )!;
                               return `${mInfo.icon} ${mInfo.label} → ${fSheets}シート`;
                             })()
                           : t("image.result_suffix", {
@@ -1143,7 +1173,7 @@ function ImpositionPreview({
 }) {
   // effectiveTotal: pages指定を反映した実際の対象ページ数
   const sheets = calcSheets(impositionMode, effectiveTotal);
-  const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+  const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
   const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
   // 1枚のサムネイル表示サイズ

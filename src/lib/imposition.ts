@@ -231,30 +231,47 @@ export function dataUrlToBlob(dataUrl: string): Blob {
 /**
  * モード設定の表示情報
  */
-export const IMPOSITION_MODES: {
+export const IMPOSITION_MODE_DEFS: {
   id: ImpositionMode;
-  label: string;
-  desc: string;
+  labelKey: string;
+  descKey: string;
   cols: number;
   rows: number;
   icon: string;
 }[] = [
-  { id: "1up", label: "1ページ/枚", desc: "通常（1ページを1枚に）", cols: 1, rows: 1, icon: "📄" },
+  {
+    id: "1up",
+    labelKey: "image.imposition_1up",
+    descKey: "image.imposition_1up_desc",
+    cols: 1,
+    rows: 1,
+    icon: "📄",
+  },
   {
     id: "2up",
-    label: "2ページ並び",
-    desc: "2ページを横並びに（順番通り）",
+    labelKey: "image.imposition_2up",
+    descKey: "image.imposition_2up_desc",
     cols: 2,
     rows: 1,
     icon: "📰",
   },
   {
     id: "booklet",
-    label: "製本見開き",
-    desc: "折って綴じる製本用（A4×2→A3等）",
+    labelKey: "image.imposition_booklet",
+    descKey: "image.imposition_booklet_desc",
     cols: 2,
     rows: 1,
     icon: "📖",
   },
-  { id: "4up", label: "4ページ格子", desc: "4ページを2×2に並べる", cols: 2, rows: 2, icon: "⊞" },
+  {
+    id: "4up",
+    labelKey: "image.imposition_4up",
+    descKey: "image.imposition_4up_desc",
+    cols: 2,
+    rows: 2,
+    icon: "⊞",
+  },
 ];
+
+/** 後方互換用エイリアス（label/descはキーのまま） */
+export const IMPOSITION_MODES = IMPOSITION_MODE_DEFS;

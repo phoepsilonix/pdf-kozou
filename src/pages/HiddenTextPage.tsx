@@ -15,6 +15,7 @@ import {
   type SanitizeOrigin,
 } from "../lib/tauri";
 import { Spinner } from "../components/common";
+import { useI18n } from "../hooks/useI18n";
 import { F } from "../lib/theme";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { type FileEntry } from "../store/usePdfStore";
@@ -23,23 +24,23 @@ import { type FileEntry } from "../store/usePdfStore";
 
 type DetectType = "transparent" | "low_contrast" | "tiny" | "buried" | "control_chars";
 
-const DETECT_TYPES: { id: DetectType; label: string; icon: string; color: string }[] = [
-  { id: "transparent", label: "透明テキスト", icon: "👻", color: "#8b5cf6" },
-  { id: "low_contrast", label: "低コントラスト", icon: "🎨", color: "#f59e0b" },
-  { id: "tiny", label: "極小フォント", icon: "🔬", color: "#10b981" },
-  { id: "buried", label: "オブジェクト裏", icon: "🪦", color: "#ef4444" },
-  { id: "control_chars", label: "制御文字", icon: "⚡", color: "#3b82f6" },
+const DETECT_TYPE_DEFS: { id: DetectType; labelKey: string; icon: string; color: string }[] = [
+  { id: "transparent", labelKey: "hidden.transparent", icon: "👻", color: "#8b5cf6" },
+  { id: "low_contrast", labelKey: "hidden.low_contrast", icon: "🎨", color: "#f59e0b" },
+  { id: "tiny", labelKey: "hidden.tiny", icon: "🔬", color: "#10b981" },
+  { id: "buried", labelKey: "hidden.buried", icon: "🪦", color: "#ef4444" },
+  { id: "control_chars", labelKey: "hidden.control_chars", icon: "⚡", color: "#3b82f6" },
 ];
 
-const REASON_LABEL: Record<string, string> = {
-  invisible_mode: "Tr=3 完全不可視",
-  clip_only_mode: "Tr=7 クリップのみ",
-  transparent: "alpha=0",
-  low_contrast: "低コントラスト",
-  tiny_font: "極小フォント",
-  buried: "オブジェクト裏",
-  control_char: "制御文字",
-  whitespace_only: "空白系文字",
+const REASON_KEY: Record<string, string> = {
+  invisible_mode: "hidden.reason_invisible",
+  clip_only_mode: "hidden.reason_clip_only",
+  transparent: "hidden.reason_transparent",
+  low_contrast: "hidden.reason_low_contrast",
+  tiny_font: "hidden.reason_tiny",
+  buried: "hidden.reason_buried",
+  control_char: "hidden.reason_control",
+  whitespace_only: "hidden.reason_whitespace",
 };
 
 const DEFAULT_THR = { alpha: 13, contrast: 1.5, size: 2.0, cover: 0.8 };
@@ -183,7 +184,11 @@ export function HiddenTextPage({
 // ── BatchView ──────────────────────────────────────────────────────────────
 
 function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
-  const [enabled, setEnabled] = useState<Set<DetectType>>(new Set(DETECT_TYPES.map((d) => d.id)));
+  const { t } = useI18n();
+  const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey as any) }));
+  const [enabled, setEnabled] = useState<Set<DetectType>>(
+    new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
+  );
   const [thr, setThr] = useState(DEFAULT_THR);
   const [showThr, setShowThr] = useState(false);
   const [outDir, setOutDir] = useState("");
@@ -259,7 +264,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           {/* 左: 進捗情報 */}
           <div style={s.left}>
             <div style={s.sec}>
-              <div style={s.secTitle}>処理中</div>
+              <div style={s.secTitle}>{t("hidden.batch_processing")}</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "var(--c-accent)" }}>
                 {progress.current} / {progress.total}
               </div>
@@ -295,7 +300,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   <span style={{ color: "var(--c-accent)", flexShrink: 0 }}>✓</span>
                   <span style={s.logFile}>{d.file}</span>
                   <span style={s.logMeta}>
-                    {d.hits === 0 ? "検出なし" : `${d.hits}字 → ${d.saved}`}
+                    {d.hits === 0 ? t("hidden.batch_no_detection") : `${d.hits}字 → ${d.saved}`}
                   </span>
                 </div>
               ))}
@@ -317,12 +322,18 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           {/* 左: サマリー */}
           <div style={s.left}>
             <div style={s.sec}>
-              <div style={s.secTitle}>完了</div>
+              <div style={s.secTitle}>{t("hidden.batch_done")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                <div style={{ color: "#10b981" }}>✓ 無害化: {succeeded}件</div>
-                <div style={{ color: "var(--c-textDim)" }}>– スキップ: {skipped}件</div>
+                <div style={{ color: "#10b981" }}>
+                  {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
+                </div>
+                <div style={{ color: "var(--c-textDim)" }}>
+                  {t("hidden.batch_skipped" as any, { count: String(skipped) })}
+                </div>
                 {progress.errors.length > 0 && (
-                  <div style={{ color: "#ef4444" }}>✗ エラー: {progress.errors.length}件</div>
+                  <div style={{ color: "#ef4444" }}>
+                    {t("hidden.batch_errors" as any, { count: String(progress.errors.length) })}
+                  </div>
                 )}
               </div>
             </div>
@@ -333,7 +344,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 setProgress(null);
               }}
             >
-              ← 設定に戻る
+              {t("hidden.batch_back")}
             </button>
           </div>
           {/* 右: 詳細リスト */}
@@ -358,7 +369,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   </span>
                   <span style={s.logFile}>{d.file}</span>
                   <span style={s.logMeta}>
-                    {d.hits === 0 ? "検出なし" : `${d.hits}字無害化 → ${d.saved}`}
+                    {d.hits === 0
+                      ? t("hidden.batch_no_detection")
+                      : `${d.hits}字無害化 → ${d.saved}`}
                   </span>
                 </div>
               ))}
@@ -420,10 +433,28 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               <div style={s.thrPanel}>
                 {(
                   [
-                    { key: "alpha", label: "透明度 (0-255)", min: 0, max: 255, step: 1 },
-                    { key: "contrast", label: "コントラスト", min: 1, max: 21, step: 0.1 },
-                    { key: "size", label: "フォントサイズ pt", min: 0.1, max: 10, step: 0.1 },
-                    { key: "cover", label: "被覆率", min: 0.1, max: 1, step: 0.05 },
+                    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1 },
+                    {
+                      key: "contrast",
+                      label: t("hidden.threshold_contrast"),
+                      min: 1,
+                      max: 21,
+                      step: 0.1,
+                    },
+                    {
+                      key: "size",
+                      label: t("hidden.threshold_size"),
+                      min: 0.1,
+                      max: 10,
+                      step: 0.1,
+                    },
+                    {
+                      key: "cover",
+                      label: t("hidden.threshold_cover"),
+                      min: 0.1,
+                      max: 1,
+                      step: 0.05,
+                    },
                   ] as const
                 ).map(({ key, label, min, max, step }) => (
                   <div key={key} style={{ marginBottom: 8 }}>
@@ -469,15 +500,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 whiteSpace: "nowrap" as const,
               }}
             >
-              {outDir || "未選択"}
+              {outDir || t("hidden.output_dir_empty")}
             </div>
             <button style={s.navBtn} onClick={pickDir}>
               📁 フォルダを選択
             </button>
             <div style={{ fontSize: 10, color: "var(--c-textDim)", lineHeight: 1.4 }}>
-              検出ありのファイルは
-              <br />
-              「名前_sanitized.pdf」で保存
+              {t("hidden.output_dir_note")}
             </div>
           </div>
 
@@ -487,7 +516,11 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             onClick={runBatch}
             disabled={running}
           >
-            {running ? <Spinner /> : `🧹 ${batchFiles.length}件を一括処理`}
+            {running ? (
+              <Spinner />
+            ) : (
+              t("hidden.batch_run_btn" as any, { count: String(batchFiles.length) })
+            )}
           </button>
 
           {/* 注意書き */}
@@ -502,7 +535,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               lineHeight: 1.5,
             }}
           >
-            ⚠ whitespace_only を除く全隠しテキストを自動無害化します
+            {t("hidden.batch_warning")}
           </div>
         </div>
 
@@ -569,8 +602,12 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
 // ── SingleView ─────────────────────────────────────────────────────────────
 
 function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
+  const { t } = useI18n();
+  const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey as any) }));
   const [pageIndex, setPageIndex] = useState(0);
-  const [enabled, setEnabled] = useState<Set<DetectType>>(new Set(DETECT_TYPES.map((d) => d.id)));
+  const [enabled, setEnabled] = useState<Set<DetectType>>(
+    new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
+  );
   const [thr, setThr] = useState(DEFAULT_THR);
   const [showThr, setShowThr] = useState(false);
   const [running, setRunning] = useState(false);
@@ -637,7 +674,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       setSelectedIds(autoSel);
       setStatus(
         all.length === 0
-          ? "検出なし"
+          ? t("hidden.batch_no_detection")
           : `${grps.filter((g) => !g.isWs).length}件検出（${all.length}文字）`,
       );
     } catch (e) {
@@ -747,10 +784,28 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               <div style={s.thrPanel}>
                 {(
                   [
-                    { key: "alpha", label: "透明度 (0-255)", min: 0, max: 255, step: 1 },
-                    { key: "contrast", label: "コントラスト", min: 1, max: 21, step: 0.1 },
-                    { key: "size", label: "フォントサイズ pt", min: 0.1, max: 10, step: 0.1 },
-                    { key: "cover", label: "被覆率", min: 0.1, max: 1, step: 0.05 },
+                    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1 },
+                    {
+                      key: "contrast",
+                      label: t("hidden.threshold_contrast"),
+                      min: 1,
+                      max: 21,
+                      step: 0.1,
+                    },
+                    {
+                      key: "size",
+                      label: t("hidden.threshold_size"),
+                      min: 0.1,
+                      max: 10,
+                      step: 0.1,
+                    },
+                    {
+                      key: "cover",
+                      label: t("hidden.threshold_cover"),
+                      min: 0.1,
+                      max: 1,
+                      step: 0.05,
+                    },
                   ] as const
                 ).map(({ key, label, min, max, step }) => (
                   <div key={key} style={{ marginBottom: 8 }}>
@@ -783,8 +838,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             style={{ ...s.detectBtn, ...(running ? s.btnDis : {}) }}
             onClick={runDetect}
             disabled={running}
+            aria-label={t("aria.hidden_detect_btn" as any, { page: String(pageIndex + 1) })}
           >
-            {running ? <Spinner /> : "🔍 検出実行"}
+            {running ? <Spinner /> : t("hidden.detect_btn")}
           </button>
           {groups.length > 0 && (
             <div style={s.sec}>
@@ -812,7 +868,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                 const wc = groups.filter((g) => g.isWs).reduce((s, g) => s + g.chars.length, 0);
                 return wc > 0 ? (
                   <div style={{ fontSize: 10, color: "var(--c-textDim)", marginTop: 2 }}>
-                    ℹ 空白系 {wc}字（対象外）
+                    {t("hidden.whitespace_note", { count: String(wc) })}
                   </div>
                 ) : null;
               })()}
@@ -841,6 +897,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               style={{ ...s.sanBtn, ...(sanitizing || !selectedIds.size ? s.btnDis : {}) }}
               onClick={runSanitize}
               disabled={sanitizing || !selectedIds.size}
+              aria-label={t("aria.hidden_sanitize_btn" as any, { count: String(selCharCount) })}
             >
               {sanitizing ? <Spinner /> : `🧹 無害化 (${selCharCount}字)`}
             </button>
@@ -924,7 +981,21 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                           : { borderLeft: "3px solid transparent" }),
                         ...(g.isWs ? { opacity: 0.5 } : {}),
                       }}
+                      role={g.isWs ? undefined : "button"}
+                      tabIndex={g.isWs ? undefined : 0}
                       onClick={() => !g.isWs && toggleGroup(g.id)}
+                      onKeyDown={(e) => {
+                        if (!g.isWs && (e.key === "Enter" || e.key === " ")) {
+                          e.preventDefault();
+                          toggleGroup(g.id);
+                        }
+                      }}
+                      aria-label={t("aria.hidden_group" as any, {
+                        label: g.label.slice(0, 40),
+                        reason: t((REASON_KEY[g.reason] ?? "hidden.reason_whitespace") as any),
+                        count: String(g.chars.length),
+                      })}
+                      aria-pressed={g.isWs ? undefined : sel}
                     >
                       {!g.isWs ? (
                         <input
@@ -939,7 +1010,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                       )}
                       <span style={{ color, fontSize: 13, flexShrink: 0 }}>{icon}</span>
                       <span style={s.groupLabel}>{g.label}</span>
-                      <span style={s.groupReason}>{REASON_LABEL[g.reason] ?? g.reason}</span>
+                      <span style={s.groupReason}>
+                        {t((REASON_KEY[g.reason] ?? "hidden.reason_whitespace") as any)}
+                      </span>
                       <span style={s.groupCount}>{g.chars.length}字</span>
                       <button
                         style={s.expandBtn}
@@ -947,6 +1020,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                           e.stopPropagation();
                           toggleExpand(g.id);
                         }}
+                        aria-label={t("aria.hidden_expand" as any, { label: g.label.slice(0, 30) })}
+                        aria-expanded={g.expanded}
                       >
                         {g.expanded ? "▲" : "▼"}
                       </button>
@@ -999,10 +1074,8 @@ function SingleBanner() {
     <div style={s.expBanner}>
       <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
       <div>
-        <div style={s.expTitle}>試験的機能 — 隠しテキスト検出・無害化（単一ファイル）</div>
-        <div style={s.expBody}>
-          全ての隠しテキスト手法を網羅できる保証はありません。使用による損害について開発者は責任を負いません。
-        </div>
+        <div style={s.expTitle}>{t("hidden.experimental_title")}</div>
+        <div style={s.expBody}>{t("hidden.experimental_body")}</div>
       </div>
     </div>
   );
@@ -1014,11 +1087,9 @@ function BatchBanner() {
       <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
       <div>
         <div style={{ ...s.expTitle, color: "#fbbf24" }}>
-          試験的機能 — 隠しテキスト一括検出・無害化
+          {t("hidden.experimental_batch_title")}
         </div>
-        <div style={s.expBody}>
-          全ページの隠しテキストを自動検出して一括無害化します。誤検出の可能性があります。使用による損害について開発者は責任を負いません。
-        </div>
+        <div style={s.expBody}>{t("hidden.experimental_batch_body")}</div>
       </div>
     </div>
   );

@@ -134,7 +134,7 @@ export default function App() {
       { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
       { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
       { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
-      { ...TOOL_DEFS[7], label: "隠しテキスト", desc: "隠しテキスト検出・無害化" },
+      { ...TOOL_DEFS[7], label: t("tool.hidden"), desc: t("tool.hidden_desc") },
     ],
     [t],
   );
@@ -868,7 +868,7 @@ function ToolShell({
       { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
       { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
       { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
-      { ...TOOL_DEFS[7], label: "隠しテキスト", desc: "隠しテキスト検出・無害化" },
+      { ...TOOL_DEFS[7], label: t("tool.hidden"), desc: t("tool.hidden_desc") },
     ],
     [t],
   );
