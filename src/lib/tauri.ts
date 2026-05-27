@@ -192,9 +192,7 @@ export interface SanitizeRequest {
  *
  * ⚠ 試験的機能。使用による損害について開発者は責任を負いません。
  */
-export async function sanitizeHiddenText(
-  req: SanitizeRequest,
-): Promise<SanitizeResponse> {
+export async function sanitizeHiddenText(req: SanitizeRequest): Promise<SanitizeResponse> {
   return invoke<SanitizeResponse>("sanitize_hidden_text", {
     request: {
       input: req.input,

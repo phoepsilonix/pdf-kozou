@@ -3665,25 +3665,48 @@ void kozou_render_imposition(
 
         int page_count = fz_count_pages(ctx, doc);
 
-        /* ── Step 1: 代表ページのサイズを取得してセルサイズを決定 ── */
-        /* 最初に有効なページのサイズを代表値として使う */
-        float ref_w_pt = 595.0f, ref_h_pt = 842.0f; /* A4デフォルト */
+        /* ── Step 1: 全有効ページのサイズを収集してセルサイズを決定 ── */
+        /*                                                               */
+        /* 改善点:                                                       */
+        /* ① 全ページの最大幅・最大高さをセルサイズとして使用           */
+        /*   → 混在サイズのPDFでも余白なくレンダリングできる            */
+        /* ② pixelサイズを「全体→分割」ではなく「ページ→乗算」で計算  */
+        /*   → 2-up時: total_w = 2 × cell_w（丸め誤差が2ページで累積  */
+        /*     しない）                                                   */
+        /* ③ A4縦×2 → A3横の場合: cell_w×2 = A3横幅（誤差0.2mm以下） */
+
+        float max_w_pt = 595.0f, max_h_pt = 842.0f; /* A4デフォルト */
+        int valid_count = 0;
         for (int i = 0; i < n_pages; i++) {
             int pno = page_nums[i] - 1; /* 0始まり */
             if (pno < 0 || pno >= page_count) continue;
             fz_page *pg = fz_load_page(ctx, doc, pno);
             fz_rect b = fz_bound_page(ctx, pg);
-            ref_w_pt = b.x1 - b.x0;
-            ref_h_pt = b.y1 - b.y0;
+            float pw = b.x1 - b.x0;
+            float ph = b.y1 - b.y0;
+            if (valid_count == 0) {
+                /* 最初の有効ページを基準に設定 */
+                max_w_pt = pw;
+                max_h_pt = ph;
+            } else {
+                /* 全ページで最大の幅・高さを採用 */
+                if (pw > max_w_pt) max_w_pt = pw;
+                if (ph > max_h_pt) max_h_pt = ph;
+            }
             fz_drop_page(ctx, pg);
-            break;
+            valid_count++;
         }
 
-        /* セルサイズ (px) = DPIスケール後のページサイズ */
-        float scale = dpi / 72.0f;
-        int cell_w = (int)(ref_w_pt * scale + 0.5f);
-        int cell_h = (int)(ref_h_pt * scale + 0.5f);
-        int g      = gap_px > 0 ? gap_px : 0;
+        /* セルサイズ (px): DPIスケール後のページサイズ                  */
+        /* 丸め方式: (int)(x + 0.5) → 四捨五入                          */
+        /* 2-up時の全体幅: total_w = 2 × cell_w                        */
+        /* ページ単位で四捨五入するため誤差はページ当たり最大0.5px      */
+        /* A4(595pt) @ 300dpi: 595×300/72=2479.17 → 2479px             */
+        /* 2-up: 2479×2=4958px = 419.8mm（A3横420mmとの差: 0.2mm）     */
+        float scale  = dpi / 72.0f;
+        int   cell_w = (int)(max_w_pt * scale + 0.5f);
+        int   cell_h = (int)(max_h_pt * scale + 0.5f);
+        int   g      = gap_px > 0 ? gap_px : 0;
 
         /* 出力画像全体のサイズ */
         int total_w = cols * cell_w + (cols + 1) * g;
@@ -3730,12 +3753,17 @@ void kozou_render_imposition(
                 float ph_pt = pb.y1 - pb.y0;
 
                 /* アスペクト比を維持してセルにフィットするスケールを計算 */
-                float sx = (float)cell_w / (pw_pt * scale) * scale;
-                float sy = (float)cell_h / (ph_pt * scale) * scale;
+                /* セルと同サイズのページは完全にセルを埋める（余白ゼロ） */
+                float sx = (float)cell_w / pw_pt;
+                float sy = (float)cell_h / ph_pt;
                 float fit_scale = (sx < sy) ? sx : sy;
 
+                /* render_w/h: セルと同サイズページなら cell_w/h と一致 */
                 int render_w = (int)(pw_pt * fit_scale + 0.5f);
                 int render_h = (int)(ph_pt * fit_scale + 0.5f);
+                /* クランプ（丸め誤差でセルを1pxはみ出すのを防ぐ）       */
+                if (render_w > cell_w) render_w = cell_w;
+                if (render_h > cell_h) render_h = cell_h;
 
                 /* セル内でセンタリングするオフセット */
                 int off_x = cell_x + (cell_w - render_w) / 2;

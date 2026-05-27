@@ -32,11 +32,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
 import { useSaveDialog } from "../hooks/useSaveDialog";
-import {
-  type ImpositionMode,
-  IMPOSITION_MODES,
-  calcSheets,
-} from "../lib/imposition";
+import { type ImpositionMode, IMPOSITION_MODES, calcSheets } from "../lib/imposition";
 import { renderImposition } from "../lib/tauri";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
@@ -255,28 +251,33 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const pw = Math.round(595 * scale);
   const ph = Math.round(842 * scale);
 
-
-
   // 単体実行（面付け対応版）
   const handleExecuteSingle = useCallback(async () => {
     // 面付けモードかつ images 出力: renderImposition で直接レンダリングして保存
     if (outputMode === "images" && impositionMode !== "1up" && !isBatch) {
-      if (!outDir) { await pickDir(); return; }
+      if (!outDir) {
+        await pickDir();
+        return;
+      }
       setPhase("processing");
       setStatusMsg("面付けレンダリング中...");
       try {
         const sheets = calcSheets(impositionMode, total);
-        const modeInfo = IMPOSITION_MODES.find(m => m.id === impositionMode)!;
+        const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
         const fmt = format === "png" ? "png" : "jpeg";
-        const base = filePath.split(/[/\]/).pop()?.replace(/\.pdf$/i, "") ?? "page";
-        const ext  = format === "png" ? "png" : "jpg";
-        const pageSpec = resolvePageSpec(pages || "", total).map(i => i + 1); // 1始まり
-        const pageSet  = new Set(pageSpec);
+        const base =
+          filePath
+            .split(/[\\/]/)
+            .pop()
+            ?.replace(/\.pdf$/i, "") ?? "page";
+        const ext = format === "png" ? "png" : "jpg";
+        const pageSpec = resolvePageSpec(pages || "", total).map((i) => i + 1); // 1始まり
+        const pageSet = new Set(pageSpec);
 
         for (let si = 0; si < sheets.length; si++) {
           const sheet = sheets[si];
           // 対象外ページは 0（空白）に置き換え
-          const pageNums = sheet.pages.map(p => (p === 0 || pageSet.has(p)) ? p : 0);
+          const pageNums = sheet.pages.map((p) => (p === 0 || pageSet.has(p) ? p : 0));
 
           const result = await renderImposition({
             path: filePath,
@@ -300,12 +301,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           if (!saveResult.ok) {
             // fallback: Tauri download API
             const blob = new Blob(
-              [Uint8Array.from(atob(result.image_b64), c => c.charCodeAt(0))],
+              [Uint8Array.from(atob(result.image_b64), (c) => c.charCodeAt(0))],
               { type: fmt === "png" ? "image/png" : "image/jpeg" },
             );
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = url; a.download = outName; a.click();
+            a.href = url;
+            a.download = outName;
+            a.click();
             URL.revokeObjectURL(url);
           }
 
@@ -901,7 +904,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           )}
 
-
           <BtnPrimary
             onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
             disabled={conflictPaths.length > 0}
@@ -950,9 +952,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     outline: "none", // フォーカス時の枠を消す（任意）
                   }}
                   onClick={(e) => {
-                    const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
                     setPreviewIdx(i);
-                    itemRefs.current[i]?.blur();
+                    (e.currentTarget as HTMLButtonElement).blur();
                   }}
                 >
                   {batchThumbs[i] ? (
@@ -1039,8 +1040,8 @@ function ImpositionPreview({
   pages: string;
 }) {
   const sheets = calcSheets(impositionMode, total);
-  const modeInfo = IMPOSITION_MODES.find(m => m.id === impositionMode)!;
-  const pageSet = new Set(resolvePageSpec(pages || "", total).map(i => i + 1));
+  const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+  const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
   // 1枚のサムネイル表示サイズ
   const thumbW = modeInfo.cols === 1 ? 200 : 130;
@@ -1061,29 +1062,33 @@ function ImpositionPreview({
             <div style={{ fontSize: 10, color: "var(--c-textDim)", marginBottom: 4 }}>
               {sheet.label}
             </div>
-            <div style={{
-              display: "flex",
-              gap: 2,
-              background: "var(--c-bgCard)",
-              border: "1px solid var(--c-border)",
-              borderRadius: 4,
-              padding: 4,
-              position: "relative",
-              width: "fit-content",
-            }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 2,
+                background: "var(--c-bgCard)",
+                border: "1px solid var(--c-border)",
+                borderRadius: 4,
+                padding: 4,
+                position: "relative",
+                width: "fit-content",
+              }}
+            >
               {/* 中央の折り線 */}
               {modeInfo.cols >= 2 && (
-                <div style={{
-                  position: "absolute",
-                  left: "50%",
-                  top: 4,
-                  bottom: 4,
-                  width: 1,
-                  background: "rgba(100,100,100,0.3)",
-                  borderLeft: "1px dashed rgba(100,100,100,0.4)",
-                  zIndex: 1,
-                  pointerEvents: "none",
-                }} />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: 4,
+                    bottom: 4,
+                    width: 1,
+                    background: "rgba(100,100,100,0.3)",
+                    borderLeft: "1px dashed rgba(100,100,100,0.4)",
+                    zIndex: 1,
+                    pointerEvents: "none",
+                  }}
+                />
               )}
               {Array.from({ length: modeInfo.cols * modeInfo.rows }, (_, ci) => {
                 const pageNo = sheet.pages[ci] ?? 0;
@@ -1093,22 +1098,27 @@ function ImpositionPreview({
                 const aspect = pb ? pb.w / pb.h : 1 / 1.414;
                 const thumbH = Math.round(thumbW / aspect);
                 return (
-                  <div key={ci} style={{
-                    width: thumbW,
-                    height: thumbH,
-                    background: pageNo === 0 ? "#f0f0f0" : "white",
-                    border: `1px solid ${inRange ? "var(--c-accentBd)" : "var(--c-border)"}`,
-                    borderRadius: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative",
-                    overflow: "hidden",
-                  }}>
+                  <div
+                    key={ci}
+                    style={{
+                      width: thumbW,
+                      height: thumbH,
+                      background: pageNo === 0 ? "#f0f0f0" : "white",
+                      border: `1px solid ${inRange ? "var(--c-accentBd)" : "var(--c-border)"}`,
+                      borderRadius: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      position: "relative",
+                      overflow: "hidden",
+                    }}
+                  >
                     {b64 ? (
-                      <img src={`data:image/jpeg;base64,${b64}`}
+                      <img
+                        src={`data:image/jpeg;base64,${b64}`}
                         style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                        alt={`p${pageNo}`} />
+                        alt={`p${pageNo}`}
+                      />
                     ) : (
                       <span style={{ fontSize: 10, color: "#aaa" }}>
                         {pageNo === 0 ? "空白" : "…"}
@@ -1116,20 +1126,33 @@ function ImpositionPreview({
                     )}
                     {/* ページ番号バッジ */}
                     {pageNo > 0 && (
-                      <span style={{
-                        position: "absolute", bottom: 2, right: 3,
-                        fontSize: 9, color: "rgba(0,0,0,0.45)",
-                        background: "rgba(255,255,255,0.7)",
-                        borderRadius: 2, padding: "0 2px",
-                      }}>{pageNo}</span>
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: 2,
+                          right: 3,
+                          fontSize: 9,
+                          color: "rgba(0,0,0,0.45)",
+                          background: "rgba(255,255,255,0.7)",
+                          borderRadius: 2,
+                          padding: "0 2px",
+                        }}
+                      >
+                        {pageNo}
+                      </span>
                     )}
                     {/* 対象外ページはグレーアウト */}
                     {pageNo > 0 && !inRange && (
-                      <div style={{
-                        position: "absolute", inset: 0,
-                        background: "rgba(0,0,0,0.25)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          background: "rgba(0,0,0,0.25)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
                         <span style={{ fontSize: 9, color: "white" }}>対象外</span>
                       </div>
                     )}
@@ -1143,7 +1166,6 @@ function ImpositionPreview({
     </div>
   );
 }
-
 
 const s: Record<string, React.CSSProperties> = {
   root: {
