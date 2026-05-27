@@ -1874,7 +1874,9 @@ void kozou_detect_transparent_text(
                     /* 無害な空白系文字は reason を whitespace_only にして別扱い */
                     int is_sanitized = kozou_is_sanitized_space(cp) &&
                         kozou_is_helvetica_font(ctx, ch->font);
-                    int is_ws = is_sanitized || kozou_is_whitespace_codepoint(cp);
+                    /* sanitized は hits から除外 */
+                    if (is_sanitized) continue;
+                    int is_ws = kozou_is_whitespace_codepoint(cp);
 
                     /* Unicode コードポイント → UTF-8 */
                     char utf8[8] = {0};
@@ -1925,7 +1927,7 @@ void kozou_detect_transparent_text(
                     int ch_flags = ch->flags;
                     const char *reason;
                     if (is_ws)
-                        reason = "whitespace_only";  /* 置き換え済みの無害な空白 */
+                        reason = "whitespace_only";  /* 無害化が推奨される空白系文字 */
                     else if (ch_flags == 0)
                         reason = "invisible_mode";   /* Tr=3: 完全不可視 */
                     else if (ch_flags & 64)
@@ -2228,8 +2230,10 @@ void kozou_detect_low_contrast_text(
                     /* 無害な空白系文字はreason付きで返す */
                     int _lc_san = kozou_is_sanitized_space(ch->c) &&
                         kozou_is_helvetica_font(ctx, ch->font);
-                    const char *lc_reason = _lc_san ? "sanitized"
-                        : kozou_is_whitespace_codepoint(ch->c) ? "whitespace_only"
+                    /* sanitized は hits から除外 */
+                    if (_lc_san) continue;
+                    const char *lc_reason =
+                        kozou_is_whitespace_codepoint(ch->c) ? "whitespace_only"
                         : "low_contrast";
 
                     /* JSON エスケープ */
@@ -2362,11 +2366,11 @@ void kozou_detect_tiny_text(
 
                     if (ch->size > size_threshold) continue;
 
-                    /* 無害な空白系文字はreason付きで返す */
+                    /* sanitized は hits から除外 */
+                    if (kozou_is_sanitized_space(ch->c) &&
+                        kozou_is_helvetica_font(ctx, ch->font)) continue;
                     const char *tiny_reason =
-                        (kozou_is_sanitized_space(ch->c) &&
-                         kozou_is_helvetica_font(ctx, ch->font)) ? "sanitized"
-                        : kozou_is_whitespace_codepoint(ch->c) ? "whitespace_only"
+                        kozou_is_whitespace_codepoint(ch->c) ? "whitespace_only"
                         : "tiny_font";
 
                     /* 文字色 */
@@ -2698,12 +2702,12 @@ void kozou_detect_buried_text(
                     if (!kozou_char_is_buried(list, matched, &stext_bbox, cover_ratio))
                         continue;
 
-                    /* 無害な空白系文字はreason付きで返す */
                     int cp = ch->c;
+                    /* sanitized は hits から除外 */
+                    if (kozou_is_sanitized_space(cp) &&
+                        kozou_is_helvetica_font(ctx, ch->font)) continue;
                     const char *buried_reason =
-                        (kozou_is_sanitized_space(cp) &&
-                         kozou_is_helvetica_font(ctx, ch->font)) ? "sanitized"
-                        : kozou_is_whitespace_codepoint(cp) ? "whitespace_only"
+                        kozou_is_whitespace_codepoint(cp) ? "whitespace_only"
                         : "buried";
 
                     /* JSON エスケープ */
@@ -3559,9 +3563,13 @@ void kozou_detect_control_chars(
                     const char *cat = kozou_control_char_category(cp);
                     if (!cat) continue;
 
-                    /* 無害化済みかチェック */
-                    const char *reason = kozou_is_sanitized_space(cp)
-                        ? "sanitized" : "control_char";
+                    /* 無害化済みかチェック（Helveticaフォント + U+0020）
+                     * ただし制御文字(U+200B等)はU+0020に置き換えられるため
+                     * kozou_control_char_category(0x0020)==NULL で先にスキップされ
+                     * ここには到達しない。念のためフォントチェックも追加する。 */
+                    if (kozou_is_sanitized_space(cp) &&
+                        kozou_is_helvetica_font(ctx, ch->font)) continue;
+                    const char *reason = "control_char";
 
                     fz_quad  q = ch->quad;
                     fz_point o = ch->origin;

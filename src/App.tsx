@@ -13,6 +13,7 @@ import { RotatePage } from "./pages/RotatePage";
 import { ImageExportPage } from "./pages/ImageExportPage";
 import { ViewerPage } from "./pages/ViewerPage";
 import LicensePage from "./pages/LicensePage";
+import { HiddenTextPage } from "./pages/HiddenTextPage";
 
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
@@ -78,6 +79,7 @@ export type ToolId =
   | "compress"
   | "image"
   | "viewer"
+  | "hidden"
   | "about";
 
 // TOOLS の静的定義 (アイコン・minFiles・maxFiles のみ)
@@ -90,6 +92,7 @@ const TOOL_DEFS: { id: ToolId; icon: string; minFiles: number; maxFiles: number 
   { id: "compress", icon: "⊙", minFiles: 1, maxFiles: null },
   { id: "image", icon: "🖼", minFiles: 1, maxFiles: null },
   { id: "viewer", icon: "👁", minFiles: 1, maxFiles: null },
+  { id: "hidden", icon: "🔍", minFiles: 1, maxFiles: null },
 ];
 
 export default function App() {
@@ -131,6 +134,7 @@ export default function App() {
       { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
       { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
       { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
+      { ...TOOL_DEFS[7], label: "隠しテキスト", desc: "隠しテキスト検出・無害化" },
     ],
     [t],
   );
@@ -864,6 +868,7 @@ function ToolShell({
       { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
       { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
       { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
+      { ...TOOL_DEFS[7], label: "隠しテキスト", desc: "隠しテキスト検出・無害化" },
     ],
     [t],
   );
@@ -978,6 +983,9 @@ function ToolShell({
           <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
         )}
         {activeTool === "about" && <LicensePage />}
+        {activeTool === "hidden" && (
+          <HiddenTextPage filePath={filePath} pdfInfo={pdfInfo} />
+        )}
       </div>
     </div>
   );
