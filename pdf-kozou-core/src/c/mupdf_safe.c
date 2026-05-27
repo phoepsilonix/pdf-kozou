@@ -54,6 +54,10 @@ static int kozou_is_sanitized_space(int cp)
     return (cp == 0x0020); /* kozou_sanitize の置き換え先は U+0020 のみ */
 }
 
+/* kozou_control_char_category の前方宣言                               */
+/* （定義は detect_control_chars の直前にあるため先に宣言する）         */
+static const char *kozou_control_char_category(int cp);
+
 /* フォント名が Helvetica 系かどうか判定する                             */
 /* kozou_sanitize は KOZOU_HV (Helvetica Type1) を使うため、           */
 /* Helvetica + U+0020 の組み合わせを sanitized と確定判定できる         */
@@ -1870,6 +1874,9 @@ void kozou_detect_transparent_text(
 
                     /* Unicode コードポイント */
                     int cp = ch->c;
+
+                    /* 制御文字は detect_control_chars で検出するためスキップ */
+                    if (kozou_control_char_category(cp) != NULL) continue;
 
                     /* 無害な空白系文字は reason を whitespace_only にして別扱い */
                     int is_sanitized = kozou_is_sanitized_space(cp) &&
