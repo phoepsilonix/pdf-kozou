@@ -191,6 +191,26 @@ extern "C" {
     );
 
     /// 特殊制御文字（ゼロ幅・双方向制御・タグ文字等）を検出して JSON を out に書く。
+    /// N-up/製本 面付けレンダリング。複数ページを1枚のpixmapに直接レンダリングして出力。
+    /// JPEG/PNG圧縮は1回のみ行うため画質劣化が最小。
+    pub fn kozou_render_imposition(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const c_char,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        page_nums: *const c_int,  /* cols*rows 個の配置ページ番号(1始まり,0=空白) */
+        n_pages: c_int,
+        cols: c_int,
+        rows: c_int,
+        dpi: f32,
+        format: c_int,    /* 0=JPEG, 1=PNG */
+        quality: c_int,   /* JPEG品質 1-100 */
+        gap_px: c_int,    /* セル間ギャップ px */
+        out: *mut mupdf_sys::fz_output,
+        result: *mut FfiResult,
+    );
+
     pub fn kozou_detect_control_chars(
         ctx: *mut mupdf_sys::fz_context,
         path: *const c_char,

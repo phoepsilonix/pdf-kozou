@@ -1082,3 +1082,122 @@ pub fn detect_control_chars(
         }).collect(),
     })
 }
+
+// ── N-up / 製本 面付けレンダリング ──────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct RenderImpositionRequest {
+    pub path: String,
+    /// cols * rows 個の配置ページ番号 (1始まり、0=空白セル)
+    pub page_nums: Vec<i32>,
+    pub cols: i32,
+    pub rows: i32,
+    pub dpi: f32,
+    /// "jpeg" | "png"
+    #[serde(default)]
+    pub format: Option<String>,
+    /// JPEG品質 1-100
+    #[serde(default)]
+    pub quality: Option<i32>,
+    /// セル間ギャップ px（出力解像度基準）
+    #[serde(default)]
+    pub gap_px: Option<i32>,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RenderImpositionResponse {
+    pub ok: bool,
+    /// base64エンコードされた画像データ
+    pub image_b64: String,
+    pub format: String,
+}
+
+/// N-up / 製本 面付けレンダリング。
+/// 複数ページを1枚のpixmapに直接レンダリングして返す。
+/// JPEG/PNG圧縮は1回のみ → 画質劣化最小。
+pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositionResponse> {
+    use crate::ffi::{
+        kozou_buffer_get_data, kozou_drop_buffer, kozou_new_context,
+        kozou_render_imposition, FfiResult,
+    };
+    use std::ffi::CString;
+
+    let c_path = CString::new(req.path.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
+
+    let fmt_str = req.format.as_deref().unwrap_or("jpeg");
+    let fmt_int: i32 = if fmt_str == "png" { 1 } else { 0 };
+    let quality = req.quality.unwrap_or(85);
+    let gap_px  = req.gap_px.unwrap_or(0);
+
+    let image_b64 = unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let buf = mupdf_sys::fz_new_buffer(ctx, 1024 * 1024);
+        if buf.is_null() {
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_buffer failed".into()));
+        }
+        let out = mupdf_sys::fz_new_output_with_buffer(ctx, buf);
+        if out.is_null() {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_output_with_buffer failed".into()));
+        }
+
+        let mut res = FfiResult::default();
+        kozou_render_imposition(
+            ctx,
+            c_path.as_ptr(),
+            req.layout_w.unwrap_or(0.0),
+            req.layout_h.unwrap_or(0.0),
+            req.layout_em.unwrap_or(0.0),
+            req.page_nums.as_ptr(),
+            req.page_nums.len() as i32,
+            req.cols,
+            req.rows,
+            req.dpi,
+            fmt_int,
+            quality,
+            gap_px,
+            out,
+            &mut res,
+        );
+
+        mupdf_sys::fz_close_output(ctx, out);
+        mupdf_sys::fz_drop_output(ctx, out);
+
+        if res.ok == 0 {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+
+        let mut data_ptr: *const u8 = std::ptr::null();
+        let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
+        let b64 = if len > 0 && !data_ptr.is_null() {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD
+                .encode(std::slice::from_raw_parts(data_ptr, len))
+        } else {
+            String::new()
+        };
+        kozou_drop_buffer(ctx, buf);
+        mupdf_sys::fz_drop_context(ctx);
+        b64
+    };
+
+    Ok(RenderImpositionResponse {
+        ok: true,
+        image_b64,
+        format: fmt_str.to_string(),
+    })
+}

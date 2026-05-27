@@ -1024,6 +1024,14 @@ fn dispatch_json(line: &str) -> String {
                 )?)
             }
 
+            "render_imposition" => {
+                let req: pdf_kozou_core::stext::RenderImpositionRequest =
+                    serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::render_imposition(&req)?,
+                )?)
+            }
+
             "detect_control_chars" => {
                 let req: pdf_kozou_core::stext::DetectControlCharsRequest =
                     serde_json::from_str(line)?;

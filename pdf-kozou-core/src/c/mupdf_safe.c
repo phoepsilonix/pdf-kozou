@@ -3610,3 +3610,213 @@ void kozou_detect_control_chars(
         set_err(result, fz_caught_message(ctx));
     }
 }
+
+/* ================================================================== */
+/* N-up / 製本 面付けレンダリング                                       */
+/*                                                                     */
+/* 複数ページを1つのpixmapに直接レンダリングして1枚の画像として出力。  */
+/* JPEG/PNG圧縮は最後の1回のみ行うため画質劣化が最小。               */
+/*                                                                     */
+/* 設計:                                                               */
+/*   cols×rows のグリッドを作成し、各セルに1ページをレンダリング。     */
+/*   各ページはセルにアスペクト比を維持してフィット（余白は白）。      */
+/*   ページ番号配列 page_nums で配置を指定（0=空白セル、1始まり）。   */
+/*                                                                     */
+/* 出力バッファは呼び出し側が管理する（FfiBufferResult経由）。        */
+/* ================================================================== */
+
+void kozou_render_imposition(
+    fz_context  *ctx,
+    const char  *path,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    const int   *page_nums,  /* cols*rows 個の配置ページ番号(1始まり、0=空白) */
+    int          n_pages,    /* page_nums の要素数 = cols * rows              */
+    int          cols,       /* 列数                                           */
+    int          rows,       /* 行数                                           */
+    float        dpi,        /* 出力DPI（1セル分の解像度基準）                */
+    int          format,     /* 0=JPEG, 1=PNG                                  */
+    int          quality,    /* JPEG品質 1-100                                 */
+    int          gap_px,     /* セル間ギャップ px（出力解像度基準）            */
+    fz_output   *out,
+    FfiResult   *result)
+{
+    fz_document *doc     = NULL;
+    fz_pixmap   *pixmap  = NULL;
+    fz_device   *dev     = NULL;
+    fz_output   *fout    = NULL;
+
+    fz_var(doc);
+    fz_var(pixmap);
+    fz_var(dev);
+    fz_var(fout);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        int page_count = fz_count_pages(ctx, doc);
+
+        /* ── Step 1: 代表ページのサイズを取得してセルサイズを決定 ── */
+        /* 最初に有効なページのサイズを代表値として使う */
+        float ref_w_pt = 595.0f, ref_h_pt = 842.0f; /* A4デフォルト */
+        for (int i = 0; i < n_pages; i++) {
+            int pno = page_nums[i] - 1; /* 0始まり */
+            if (pno < 0 || pno >= page_count) continue;
+            fz_page *pg = fz_load_page(ctx, doc, pno);
+            fz_rect b = fz_bound_page(ctx, pg);
+            ref_w_pt = b.x1 - b.x0;
+            ref_h_pt = b.y1 - b.y0;
+            fz_drop_page(ctx, pg);
+            break;
+        }
+
+        /* セルサイズ (px) = DPIスケール後のページサイズ */
+        float scale = dpi / 72.0f;
+        int cell_w = (int)(ref_w_pt * scale + 0.5f);
+        int cell_h = (int)(ref_h_pt * scale + 0.5f);
+        int g      = gap_px > 0 ? gap_px : 0;
+
+        /* 出力画像全体のサイズ */
+        int total_w = cols * cell_w + (cols + 1) * g;
+        int total_h = rows * cell_h + (rows + 1) * g;
+
+        /* ── Step 2: 出力pixmapを作成して白で初期化 ── */
+        fz_colorspace *rgb = fz_device_rgb(ctx);
+        fz_irect full_bbox = { 0, 0, total_w, total_h };
+        pixmap = fz_new_pixmap_with_bbox(ctx, rgb, full_bbox, NULL, 0);
+        fz_clear_pixmap_with_value(ctx, pixmap, 0xff); /* 白背景 */
+
+        /* ── Step 3: 各ページをセルに直接レンダリング ── */
+        for (int i = 0; i < n_pages; i++) {
+            int col = i % cols;
+            int row = i / cols;
+
+            /* セルの左上座標 */
+            int cell_x = g + col * (cell_w + g);
+            int cell_y = g + row * (cell_h + g);
+
+            int pno = page_nums[i] - 1; /* 0始まり */
+            if (pno < 0 || pno >= page_count) {
+                /* 空白セル: 薄いグレーで塗る */
+                for (int y = cell_y; y < cell_y + cell_h && y < total_h; y++) {
+                    unsigned char *row_ptr = fz_pixmap_samples(ctx, pixmap)
+                        + y * fz_pixmap_stride(ctx, pixmap)
+                        + cell_x * fz_pixmap_components(ctx, pixmap);
+                    int comp = fz_pixmap_components(ctx, pixmap);
+                    for (int x = 0; x < cell_w && cell_x + x < total_w; x++) {
+                        row_ptr[x * comp + 0] = 0xf0;
+                        row_ptr[x * comp + 1] = 0xf0;
+                        row_ptr[x * comp + 2] = 0xf0;
+                    }
+                }
+                continue;
+            }
+
+            fz_page *pg = NULL;
+            fz_var(pg);
+            fz_try(ctx) {
+                pg = fz_load_page(ctx, doc, pno);
+                fz_rect pb = fz_bound_page(ctx, pg);
+                float pw_pt = pb.x1 - pb.x0;
+                float ph_pt = pb.y1 - pb.y0;
+
+                /* アスペクト比を維持してセルにフィットするスケールを計算 */
+                float sx = (float)cell_w / (pw_pt * scale) * scale;
+                float sy = (float)cell_h / (ph_pt * scale) * scale;
+                float fit_scale = (sx < sy) ? sx : sy;
+
+                int render_w = (int)(pw_pt * fit_scale + 0.5f);
+                int render_h = (int)(ph_pt * fit_scale + 0.5f);
+
+                /* セル内でセンタリングするオフセット */
+                int off_x = cell_x + (cell_w - render_w) / 2;
+                int off_y = cell_y + (cell_h - render_h) / 2;
+
+                /* ページをセル内座標に変換する CTM */
+                fz_matrix ctm = fz_scale(fit_scale, fit_scale);
+                ctm = fz_pre_translate(ctm, -pb.x0, -pb.y0);
+
+                /* セル内のサブpixmapにレンダリング */
+                fz_irect cell_bbox = {
+                    off_x, off_y,
+                    off_x + render_w,
+                    off_y + render_h
+                };
+                /* クランプ */
+                if (cell_bbox.x1 > total_w) cell_bbox.x1 = total_w;
+                if (cell_bbox.y1 > total_h) cell_bbox.y1 = total_h;
+
+                /* ページを個別pixmapにレンダリング */
+                fz_irect render_bbox = { 0, 0, render_w, render_h };
+                fz_pixmap *cell_pix = fz_new_pixmap_with_bbox(ctx, rgb, render_bbox, NULL, 0);
+                fz_clear_pixmap_with_value(ctx, cell_pix, 0xff);
+
+                fz_device *draw_dev = fz_new_draw_device(ctx, ctm, cell_pix);
+                fz_try(ctx) {
+                    fz_run_page(ctx, pg, draw_dev, fz_identity, NULL);
+                    fz_close_device(ctx, draw_dev);
+                }
+                fz_always(ctx) {
+                    fz_drop_device(ctx, draw_dev);
+                }
+                fz_catch(ctx) {
+                    fz_drop_pixmap(ctx, cell_pix);
+                    fz_rethrow(ctx);
+                }
+
+                /* レンダリング済みpixmapのサンプルデータを合成先に行単位でコピー */
+                {
+                    int src_stride  = fz_pixmap_stride(ctx, cell_pix);
+                    int dst_stride  = fz_pixmap_stride(ctx, pixmap);
+                    int comp        = fz_pixmap_components(ctx, pixmap);
+                    int copy_h      = render_h;
+                    int copy_w      = render_w;
+                    /* クランプ */
+                    if (off_y + copy_h > total_h) copy_h = total_h - off_y;
+                    if (off_x + copy_w > total_w) copy_w = total_w - off_x;
+                    if (copy_w > 0 && copy_h > 0) {
+                        unsigned char *src = fz_pixmap_samples(ctx, cell_pix);
+                        unsigned char *dst = fz_pixmap_samples(ctx, pixmap)
+                            + off_y * dst_stride + off_x * comp;
+                        for (int r = 0; r < copy_h; r++) {
+                            memcpy(dst + r * dst_stride,
+                                   src + r * src_stride,
+                                   (size_t)copy_w * comp);
+                        }
+                    }
+                    fz_drop_pixmap(ctx, cell_pix);
+                }
+            }
+            fz_always(ctx) { if (pg) { fz_drop_page(ctx, pg); pg = NULL; } }
+            fz_catch(ctx) {
+                fz_warn(ctx, "imposition: skip page %d: %s", pno+1, fz_caught_message(ctx));
+            }
+        }
+
+        /* ── Step 4: 合成済みpixmapを1回だけ圧縮して出力 ── */
+        if (format == 1) {
+            fz_write_pixmap_as_png(ctx, out, pixmap);
+        } else {
+            int q = (quality > 0 && quality <= 100) ? quality : 85;
+            fz_write_pixmap_as_jpeg(ctx, out, pixmap, q, 0);
+        }
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pixmap) fz_drop_pixmap(ctx, pixmap);
+        if (doc)    fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}

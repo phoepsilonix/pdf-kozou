@@ -376,6 +376,65 @@ export async function detectControlChars(
   });
 }
 
+// ── N-up / 製本 面付けレンダリング ────────────────────────────────────────────
+
+export interface RenderImpositionRequest {
+  path: string;
+  /** cols × rows 個の配置ページ番号（1始まり、0=空白セル） */
+  pageNums: number[];
+  cols: number;
+  rows: number;
+  /** 出力DPI（1セル分の解像度基準） */
+  dpi: number;
+  /** "jpeg" | "png" */
+  format?: string;
+  /** JPEG品質 1-100 */
+  quality?: number;
+  /** セル間ギャップ px（出力解像度基準） */
+  gapPx?: number;
+  layoutW?: number;
+  layoutH?: number;
+  layoutEm?: number;
+}
+
+export interface RenderImpositionResponse {
+  ok: boolean;
+  /** base64エンコードされた画像データ */
+  image_b64: string;
+  format: string;
+}
+
+/**
+ * N-up / 製本 面付けレンダリング。
+ * 複数ページを1枚のpixmapに直接レンダリングして返す。
+ * JPEG/PNG圧縮は1回のみのため画質劣化が最小。
+ *
+ * @example 2-up（p1左・p2右）
+ * renderImposition({ path, pageNums: [1, 2], cols: 2, rows: 1, dpi: 300 })
+ *
+ * @example 製本見開き（p4右・p1左）
+ * renderImposition({ path, pageNums: [4, 1], cols: 2, rows: 1, dpi: 300 })
+ */
+export async function renderImposition(
+  req: RenderImpositionRequest,
+): Promise<RenderImpositionResponse> {
+  return invoke<RenderImpositionResponse>("render_imposition", {
+    request: {
+      path: req.path,
+      page_nums: req.pageNums,
+      cols: req.cols,
+      rows: req.rows,
+      dpi: req.dpi,
+      format: req.format ?? null,
+      quality: req.quality ?? null,
+      gap_px: req.gapPx ?? null,
+      layout_w: req.layoutW ?? null,
+      layout_h: req.layoutH ?? null,
+      layout_em: req.layoutEm ?? null,
+    },
+  });
+}
+
 // ── stext コマンド ────────────────────────────────────────────────────────────
 
 /** ページの構造化テキストを取得（テキスト選択オーバーレイ用） */

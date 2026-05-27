@@ -187,6 +187,13 @@ pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
     call_core_json("sanitize_hidden", request).await
 }
 
+/// N-up / 製本 面付けレンダリング
+/// 複数ページを1枚のpixmapに直接レンダリング（JPEG/PNG圧縮1回のみ）
+#[tauri::command]
+pub async fn render_imposition(request: Value) -> Result<Value> {
+    call_core_json("render_imposition", request).await
+}
+
 /// 特殊制御文字（ゼロ幅・双方向制御・タグ文字等）を検出
 #[tauri::command]
 pub async fn detect_control_chars(
