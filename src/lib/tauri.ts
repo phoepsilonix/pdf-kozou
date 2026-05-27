@@ -329,6 +329,53 @@ export async function detectLowContrastText(
   });
 }
 
+/** 特殊制御文字検出の1文字分の結果 */
+export interface ControlChar {
+  /** コードポイント表記 (例: "U+200B") */
+  char: string;
+  /** コードポイント十進数 */
+  codepoint: number;
+  /**
+   * 分類
+   * - "zero_width"     : U+200B〜200F ゼロ幅文字
+   * - "bidi_control"   : U+202A〜202E 双方向制御文字
+   * - "line_separator" : U+2028/2029 行/段落区切り
+   * - "bom_zwnbsp"     : U+FEFF BOM/ゼロ幅ノーブレークスペース
+   * - "tag_char"       : U+E0000〜E007F Unicode タグ文字
+   */
+  category: "zero_width" | "bidi_control" | "line_separator" | "bom_zwnbsp" | "tag_char";
+  /** "control_char" | "sanitized" */
+  reason: string;
+  origin: [number, number];
+  quad: [number, number, number, number, number, number, number, number];
+  size: number;
+}
+
+export interface DetectControlCharsResponse {
+  ok: boolean;
+  page: number;
+  hits: ControlChar[];
+}
+
+/**
+ * 特殊制御文字を検出する。
+ * AIへの悪意ある注入に使われるゼロ幅文字・双方向制御文字・タグ文字等を検出。
+ * 改行(LF/CR)・タブ(TAB)は正常用途が多いため除外。
+ */
+export async function detectControlChars(
+  path: string,
+  page: number,
+  options?: ConvertOptions,
+): Promise<DetectControlCharsResponse> {
+  return invoke<DetectControlCharsResponse>("detect_control_chars", {
+    path,
+    page,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
+}
+
 // ── stext コマンド ────────────────────────────────────────────────────────────
 
 /** ページの構造化テキストを取得（テキスト選択オーバーレイ用） */

@@ -187,6 +187,28 @@ pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
     call_core_json("sanitize_hidden", request).await
 }
 
+/// 特殊制御文字（ゼロ幅・双方向制御・タグ文字等）を検出
+#[tauri::command]
+pub async fn detect_control_chars(
+    path: String,
+    page: i32,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
+) -> Result<Value> {
+    call_core_json(
+        "detect_control_chars",
+        serde_json::json!({
+            "path": path,
+            "page": page,
+            "layout_w": layout_w,
+            "layout_h": layout_h,
+            "layout_em": layout_em,
+        }),
+    )
+    .await
+}
+
 /// 後から描画された不透明オブジェクトに覆われたテキストを検出
 #[tauri::command]
 pub async fn detect_buried_text(

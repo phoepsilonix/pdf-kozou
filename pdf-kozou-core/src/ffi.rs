@@ -190,6 +190,18 @@ extern "C" {
         result: *mut FfiResult,
     );
 
+    /// 特殊制御文字（ゼロ幅・双方向制御・タグ文字等）を検出して JSON を out に書く。
+    pub fn kozou_detect_control_chars(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const c_char,
+        page_index: c_int,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        out: *mut mupdf_sys::fz_output,
+        result: *mut FfiResult,
+    );
+
     pub fn kozou_detect_buried_text(
         ctx: *mut mupdf_sys::fz_context,
         path: *const c_char,

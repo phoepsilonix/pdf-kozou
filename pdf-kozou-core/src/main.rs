@@ -1024,6 +1024,14 @@ fn dispatch_json(line: &str) -> String {
                 )?)
             }
 
+            "detect_control_chars" => {
+                let req: pdf_kozou_core::stext::DetectControlCharsRequest =
+                    serde_json::from_str(line)?;
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::detect_control_chars(&req)?,
+                )?)
+            }
+
             "detect_buried" => {
                 let req: pdf_kozou_core::stext::DetectBuriedRequest =
                     serde_json::from_str(line)?;

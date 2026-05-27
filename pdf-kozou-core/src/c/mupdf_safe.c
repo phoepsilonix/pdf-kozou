@@ -54,6 +54,19 @@ static int kozou_is_sanitized_space(int cp)
     return (cp == 0x0020); /* kozou_sanitize の置き換え先は U+0020 のみ */
 }
 
+/* フォント名が Helvetica 系かどうか判定する                             */
+/* kozou_sanitize は KOZOU_HV (Helvetica Type1) を使うため、           */
+/* Helvetica + U+0020 の組み合わせを sanitized と確定判定できる         */
+/* ------------------------------------------------------------------ */
+static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font)
+{
+    if (!font) return 0;
+    const char *name = fz_font_name(ctx, font);
+    if (!name) return 0;
+    return (strstr(name, "Helvetica") != NULL ||
+            strstr(name, "KOZOU_HV") != NULL);
+}
+
 /* U+0020 以外の空白系文字 — 無害化対象候補として検出する               */
 /* ------------------------------------------------------------------ */
 static int kozou_is_whitespace_codepoint(int cp)
@@ -1859,7 +1872,8 @@ void kozou_detect_transparent_text(
                     int cp = ch->c;
 
                     /* 無害な空白系文字は reason を whitespace_only にして別扱い */
-                    int is_sanitized = kozou_is_sanitized_space(cp);
+                    int is_sanitized = kozou_is_sanitized_space(cp) &&
+                        kozou_is_helvetica_font(ctx, ch->font);
                     int is_ws = is_sanitized || kozou_is_whitespace_codepoint(cp);
 
                     /* Unicode コードポイント → UTF-8 */
@@ -2212,7 +2226,8 @@ void kozou_detect_low_contrast_text(
                     if (cr > contrast_threshold) continue;
 
                     /* 無害な空白系文字はreason付きで返す */
-                    int _lc_san = kozou_is_sanitized_space(ch->c);
+                    int _lc_san = kozou_is_sanitized_space(ch->c) &&
+                        kozou_is_helvetica_font(ctx, ch->font);
                     const char *lc_reason = _lc_san ? "sanitized"
                         : kozou_is_whitespace_codepoint(ch->c) ? "whitespace_only"
                         : "low_contrast";
@@ -2348,7 +2363,9 @@ void kozou_detect_tiny_text(
                     if (ch->size > size_threshold) continue;
 
                     /* 無害な空白系文字はreason付きで返す */
-                    const char *tiny_reason = kozou_is_sanitized_space(ch->c) ? "sanitized"
+                    const char *tiny_reason =
+                        (kozou_is_sanitized_space(ch->c) &&
+                         kozou_is_helvetica_font(ctx, ch->font)) ? "sanitized"
                         : kozou_is_whitespace_codepoint(ch->c) ? "whitespace_only"
                         : "tiny_font";
 
@@ -2683,7 +2700,9 @@ void kozou_detect_buried_text(
 
                     /* 無害な空白系文字はreason付きで返す */
                     int cp = ch->c;
-                    const char *buried_reason = kozou_is_sanitized_space(cp) ? "sanitized"
+                    const char *buried_reason =
+                        (kozou_is_sanitized_space(cp) &&
+                         kozou_is_helvetica_font(ctx, ch->font)) ? "sanitized"
                         : kozou_is_whitespace_codepoint(cp) ? "whitespace_only"
                         : "buried";
 
@@ -2943,24 +2962,39 @@ static pdf_obj *kozou_ensure_helvetica(
         res = pdf_new_dict(ctx, pdf, 4);
         pdf_dict_put_drop(ctx, page_obj, PDF_NAME(Resources), res);
     }
+    /* Font辞書 */
     pdf_obj *font_dict = pdf_dict_get(ctx, res, PDF_NAME(Font));
     if (!font_dict) {
         font_dict = pdf_new_dict(ctx, pdf, 4);
         pdf_dict_put_drop(ctx, res, PDF_NAME(Font), font_dict);
     }
-    /* 既に KOZOU_HV が登録されていればそれを使う */
-    pdf_obj *existing = pdf_dict_gets(ctx, font_dict, "KOZOU_HV");
-    if (existing) return existing;
-
-    /* Helvetica 標準フォントオブジェクトを作成 */
-    pdf_obj *fobj = pdf_new_dict(ctx, pdf, 6);
-    pdf_dict_put_name(ctx, fobj, PDF_NAME(Type),     "Font");
-    pdf_dict_put_name(ctx, fobj, PDF_NAME(Subtype),  "Type1");
-    pdf_dict_put_name(ctx, fobj, PDF_NAME(BaseFont), "Helvetica");
-    pdf_dict_put_name(ctx, fobj, PDF_NAME(Encoding), "WinAnsiEncoding");
-    pdf_obj *ind = pdf_add_object_drop(ctx, pdf, fobj);
-    pdf_dict_put_drop(ctx, font_dict, pdf_new_name(ctx, "KOZOU_HV"), ind);
-    return ind;
+    /* KOZOU_HV: Helvetica Type1 内蔵フォント */
+    if (!pdf_dict_gets(ctx, font_dict, "KOZOU_HV")) {
+        pdf_obj *fobj = pdf_new_dict(ctx, pdf, 6);
+        pdf_dict_put_name(ctx, fobj, PDF_NAME(Type),     "Font");
+        pdf_dict_put_name(ctx, fobj, PDF_NAME(Subtype),  "Type1");
+        pdf_dict_put_name(ctx, fobj, PDF_NAME(BaseFont), "Helvetica");
+        pdf_dict_put_name(ctx, fobj, PDF_NAME(Encoding), "WinAnsiEncoding");
+        pdf_obj *ind = pdf_add_object_drop(ctx, pdf, fobj);
+        pdf_dict_put_drop(ctx, font_dict, pdf_new_name(ctx, "KOZOU_HV"), ind);
+    }
+    /* KOZOU_NORMAL: fill/stroke alpha=1.0 に正規化する ExtGState
+     * 置き換え文字の前に適用して ca=0 等の透明状態を解除する            */
+    pdf_obj *ext_dict = pdf_dict_get(ctx, res, PDF_NAME(ExtGState));
+    if (!ext_dict) {
+        ext_dict = pdf_new_dict(ctx, pdf, 4);
+        pdf_dict_put_drop(ctx, res, PDF_NAME(ExtGState), ext_dict);
+    }
+    if (!pdf_dict_gets(ctx, ext_dict, "KOZOU_NORMAL")) {
+        pdf_obj *gs = pdf_new_dict(ctx, pdf, 4);
+        pdf_dict_put_name(ctx, gs, PDF_NAME(Type), "ExtGState");
+        pdf_dict_put_real(ctx, gs, PDF_NAME(ca), 1.0f); /* fill alpha  */
+        pdf_dict_put_real(ctx, gs, PDF_NAME(CA), 1.0f); /* stroke alpha */
+        pdf_obj *gs_ind = pdf_add_object_drop(ctx, pdf, gs);
+        pdf_dict_put_drop(ctx, ext_dict,
+            pdf_new_name(ctx, "KOZOU_NORMAL"), gs_ind);
+    }
+    return pdf_dict_gets(ctx, font_dict, "KOZOU_HV");
 }
 
 void kozou_sanitize_hidden_text(
@@ -3270,11 +3304,12 @@ void kozou_sanitize_hidden_text(
                             float diff     = orig_w - sp_total;
                             if (diff>200.0f||diff<-200.0f) page_warn=1;
 
-                            /* フォントを Helvetica に切り替え、Tr=0 に設定 */
-                            /* Helvetica は 1バイトフォントなので is_mb に関わらず
-                             * U+0020 (0x20) の1バイト表現を使う                    */
+                            /* alpha=1.0 に正規化 + Helvetica + Tr=0 */
                             fz_append_printf(ctx,new_buf,
-                                "/KOZOU_HV %.4f Tf\n0 Tr\n", font_size);
+                                "/KOZOU_NORMAL gs\n"
+                                "/KOZOU_HV %.4f Tf\n"
+                                "0 Tr\n",
+                                font_size);
                             tr_mode=0;
 
                             /* スペース文字列 + TJ幅補正 */
@@ -3313,7 +3348,10 @@ void kozou_sanitize_hidden_text(
                                 qmap, dev_x, dev_y, tol2 * 4.0f);
 
                             fz_append_printf(ctx,new_buf,
-                                "/KOZOU_HV %.4f Tf\n0 Tr\n", font_size);
+                                "/KOZOU_NORMAL gs\n"
+                                "/KOZOU_HV %.4f Tf\n"
+                                "0 Tr\n",
+                                font_size);
 
                             int arr_start=-1;
                             for(int k=0;k<stk_top;k++)
@@ -3433,3 +3471,134 @@ void kozou_sanitize_hidden_text(
     }
 }
 
+
+/* ================================================================== */
+/* 特殊制御文字検出                                                     */
+/*                                                                     */
+/* AIへの悪意ある注入や隠蔽に使われる可能性のある特殊制御文字を検出。   */
+/*                                                                     */
+/* 検出対象:                                                            */
+/*   U+200B〜200F  ゼロ幅文字 (ZWSP/ZWNJ/ZWJ/LRM/RLM)                */
+/*   U+202A〜202E  双方向制御文字 (LRE/RLE/PDF/LRO/RLO)               */
+/*   U+2028/2029   行/段落区切り (LS/PS)                               */
+/*   U+FEFF        ゼロ幅ノーブレークスペース (BOM/ZWNBSP)             */
+/*   U+E0000〜E007F Unicode タグ文字 (不可視埋め込みタグ)              */
+/*                                                                     */
+/* 除外 (正常用途が多い):                                               */
+/*   U+000A (LF), U+000D (CR), U+0009 (TAB)                           */
+/*                                                                     */
+/* 出力 JSON:                                                           */
+/* { "ok": true, "page": N, "hits": [{                                 */
+/*   "char": "U+200B",  ← コードポイント表記                           */
+/*   "codepoint": 8203, ← 十進数                                       */
+/*   "category": "zero_width",  ← 分類                                 */
+/*   "reason": "control_char",                                          */
+/*   "origin": [x, y],                                                 */
+/*   "quad": [...],                                                     */
+/*   "size": 12.0                                                       */
+/* }] }                                                                 */
+/* ================================================================== */
+
+static const char *kozou_control_char_category(int cp)
+{
+    if (cp >= 0x200B && cp <= 0x200F) return "zero_width";
+    if (cp >= 0x202A && cp <= 0x202E) return "bidi_control";
+    if (cp == 0x2028 || cp == 0x2029) return "line_separator";
+    if (cp == 0xFEFF)                  return "bom_zwnbsp";
+    if (cp >= 0xE0000 && cp <= 0xE007F) return "tag_char";
+    return NULL; /* 対象外 */
+}
+
+void kozou_detect_control_chars(
+    fz_context  *ctx,
+    const char  *path,
+    int          page_index,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    fz_output   *out,
+    FfiResult   *result)
+{
+    fz_document   *doc   = NULL;
+    fz_page       *page  = NULL;
+    fz_stext_page *stext = NULL;
+
+    fz_var(doc);
+    fz_var(page);
+    fz_var(stext);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, path);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+
+        page  = fz_load_page(ctx, doc, page_index);
+        fz_stext_options opts = { FZ_STEXT_PRESERVE_WHITESPACE |
+                                  FZ_STEXT_ACCURATE_BBOXES, 0 };
+        stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+        int hit_count = 0;
+        fz_write_printf(ctx, out,
+            "{\"ok\":true,\"page\":%d,\"hits\":[", page_index);
+
+        for (fz_stext_block *block = stext->first_block;
+             block; block = block->next) {
+            if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+            for (fz_stext_line *line = block->u.t.first_line;
+                 line; line = line->next) {
+                for (fz_stext_char *ch = line->first_char;
+                     ch; ch = ch->next) {
+
+                    int cp = ch->c;
+                    const char *cat = kozou_control_char_category(cp);
+                    if (!cat) continue;
+
+                    /* 無害化済みかチェック */
+                    const char *reason = kozou_is_sanitized_space(cp)
+                        ? "sanitized" : "control_char";
+
+                    fz_quad  q = ch->quad;
+                    fz_point o = ch->origin;
+
+                    if (hit_count > 0) fz_write_printf(ctx, out, ",");
+                    fz_write_printf(ctx, out,
+                        "{"
+                        "\"char\":\"U+%04X\","
+                        "\"codepoint\":%d,"
+                        "\"category\":\"%s\","
+                        "\"reason\":\"%s\","
+                        "\"origin\":[%.3f,%.3f],"
+                        "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
+                        "\"size\":%.3f"
+                        "}",
+                        cp, cp, cat, reason,
+                        o.x, o.y,
+                        q.ul.x, q.ul.y,
+                        q.ur.x, q.ur.y,
+                        q.ll.x, q.ll.y,
+                        q.lr.x, q.lr.y,
+                        ch->size
+                    );
+                    hit_count++;
+                }
+            }
+        }
+
+        fz_write_printf(ctx, out, "]}");
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (stext) fz_drop_stext_page(ctx, stext);
+        if (page)  fz_drop_page(ctx, page);
+        if (doc)   fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}

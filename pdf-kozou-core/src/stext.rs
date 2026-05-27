@@ -952,3 +952,133 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
         ),
     })
 }
+
+// ── 特殊制御文字検出 ─────────────────────────────────────────────────────────
+
+/// 制御文字検出の1文字分の結果
+#[derive(Debug, Serialize)]
+pub struct ControlChar {
+    /// コードポイント表記 (例: "U+200B")
+    pub char: String,
+    /// コードポイント十進数
+    pub codepoint: u32,
+    /// 分類: "zero_width" | "bidi_control" | "line_separator" | "bom_zwnbsp" | "tag_char"
+    pub category: String,
+    /// "control_char" | "sanitized"
+    pub reason: String,
+    pub origin: [f32; 2],
+    pub quad: [f32; 8],
+    pub size: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DetectControlCharsResponse {
+    pub ok: bool,
+    pub page: i32,
+    pub hits: Vec<ControlChar>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DetectControlCharsRequest {
+    pub path: String,
+    pub page: i32,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+pub fn detect_control_chars(
+    req: &DetectControlCharsRequest,
+) -> Result<DetectControlCharsResponse> {
+    use crate::ffi::{
+        kozou_buffer_get_data, kozou_detect_control_chars, kozou_drop_buffer,
+        kozou_new_context, FfiResult,
+    };
+    use std::ffi::CString;
+
+    let c_path = CString::new(req.path.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
+
+    let json_str = unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let buf = mupdf_sys::fz_new_buffer(ctx, 65536);
+        if buf.is_null() {
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_buffer failed".into()));
+        }
+        let out = mupdf_sys::fz_new_output_with_buffer(ctx, buf);
+        if out.is_null() {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_output_with_buffer failed".into()));
+        }
+
+        let mut res = FfiResult::default();
+        kozou_detect_control_chars(
+            ctx,
+            c_path.as_ptr(),
+            req.page,
+            req.layout_w.unwrap_or(0.0),
+            req.layout_h.unwrap_or(0.0),
+            req.layout_em.unwrap_or(0.0),
+            out,
+            &mut res,
+        );
+
+        mupdf_sys::fz_close_output(ctx, out);
+        mupdf_sys::fz_drop_output(ctx, out);
+
+        if res.ok == 0 {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+
+        let mut data_ptr: *const u8 = std::ptr::null();
+        let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
+        let s = if len > 0 && !data_ptr.is_null() {
+            String::from_utf8_lossy(std::slice::from_raw_parts(data_ptr, len)).into_owned()
+        } else {
+            String::new()
+        };
+        kozou_drop_buffer(ctx, buf);
+        mupdf_sys::fz_drop_context(ctx);
+        s
+    };
+
+    #[derive(serde::Deserialize)]
+    struct RawHit {
+        char: String,
+        codepoint: u32,
+        category: String,
+        reason: String,
+        origin: [f32; 2],
+        quad: [f32; 8],
+        size: f32,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
+
+    let raw: RawResp = serde_json::from_str(&json_str)
+        .map_err(|e| CoreError::MuPdf(format!("JSON parse error: {e}\nraw: {json_str}")))?;
+
+    Ok(DetectControlCharsResponse {
+        ok: raw.ok,
+        page: raw.page,
+        hits: raw.hits.into_iter().map(|h| ControlChar {
+            char: h.char,
+            codepoint: h.codepoint,
+            category: h.category,
+            reason: h.reason,
+            origin: h.origin,
+            quad: h.quad,
+            size: h.size,
+        }).collect(),
+    })
+}
