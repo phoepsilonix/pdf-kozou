@@ -478,8 +478,39 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount || 0;
           progress.done.push({ file: f.filename, count: pageCount, pdfPath: outPath });
           if (res.warning) console.warn(res.warning);
+        } else if (impositionMode !== "1up") {
+          // 面付けモード: サブフォルダにシートごとに出力
+          const subDir = `${outDir}/${stem}`;
+          const fileTotal = f.pageCount || 0;
+          const filePageSpec = resolvePageSpec(pages || "", fileTotal).map((i) => i + 1);
+          const filePageSet = new Set(filePageSpec);
+          const fileEffective = filePageSpec.length || fileTotal;
+          const fileSheets = calcSheets(impositionMode, fileEffective);
+          const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+          const fmt = format === "png" ? "png" : "jpeg";
+          const ext = format === "png" ? "png" : "jpg";
+          const savedFiles: string[] = [];
+          for (let si = 0; si < fileSheets.length; si++) {
+            const sheet = fileSheets[si];
+            const pageNums = sheet.pages.map((p) => (p === 0 || filePageSet.has(p) ? p : 0));
+            const result = await renderImposition({
+              path: f.path,
+              pageNums,
+              cols: modeInfo.cols,
+              rows: modeInfo.rows,
+              dpi,
+              format: fmt,
+              quality: fmt === "jpeg" ? quality : undefined,
+              gapPx: 0,
+            });
+            const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
+            const outPath = `${subDir}/${outName}`;
+            await invoke("save_base64_image", { data: result.image_b64, path: outPath });
+            savedFiles.push(outPath);
+          }
+          progress.done.push({ file: f.filename, count: savedFiles.length });
         } else {
-          // 画像ファイルモード: サブフォルダに1ページずつ
+          // 1-upモード: サブフォルダに1ページずつ
           const subDir = `${outDir}/${stem}`;
           const res = await exportImages(
             f.path,
@@ -504,6 +535,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     batchFiles,
     outDir,
     outputMode,
+    impositionMode,
     format,
     dpi,
     quality,
@@ -959,7 +991,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               ? isBatch
                 ? outputMode === "pdf"
                   ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
-                  : t("image.execute_batch", { count: String(batchFiles!.length) })
+                  : impositionMode !== "1up"
+                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES.find((m) => m.id === impositionMode)?.label}で変換`
+                    : t("image.execute_batch", { count: String(batchFiles!.length) })
                 : outputMode === "pdf"
                   ? t("image.execute_pdf")
                   : t("image.execute", {
@@ -982,7 +1016,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           pageKey="image"
           label={
             isBatch
-              ? t("image.target_files", { count: String(batchFiles!.length) })
+              ? impositionMode !== "1up"
+                ? `${batchFiles!.length}件 — ${IMPOSITION_MODES.find((m) => m.id === impositionMode)?.label}`
+                : t("image.target_files", { count: String(batchFiles!.length) })
               : t("common.preview_pages", { count: String(resolvedPageCount) })
           }
         >
@@ -1030,12 +1066,23 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                               resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount,
                             ),
                           })
-                        : t("image.result_suffix", {
-                            pages: String(
-                              resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount,
-                            ),
-                            format: format === "jpeg" ? "JPG" : format.toUpperCase(),
-                          })}
+                        : impositionMode !== "1up"
+                          ? (() => {
+                              const fEff =
+                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
+                                f.pageCount ||
+                                0;
+                              const fSheets = calcSheets(impositionMode, fEff).length;
+                              const mInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+                              return `${mInfo.icon} ${mInfo.label} → ${fSheets}シート`;
+                            })()
+                          : t("image.result_suffix", {
+                              pages: String(
+                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
+                                  f.pageCount,
+                              ),
+                              format: format === "jpeg" ? "JPG" : format.toUpperCase(),
+                            })}
                     </span>
                   </div>
                 </button>

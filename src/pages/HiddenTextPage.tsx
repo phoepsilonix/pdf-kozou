@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   renderPage,
   detectTransparentText,
@@ -17,8 +17,9 @@ import {
 import { Spinner } from "../components/common";
 import { F } from "../lib/theme";
 import { useSaveDialog } from "../hooks/useSaveDialog";
+import { type FileEntry } from "../store/usePdfStore";
 
-// ── 型定義 ────────────────────────────────────────────────────────────────
+// ── 型定義 ─────────────────────────────────────────────────────────────────
 
 type DetectType = "transparent" | "low_contrast" | "tiny" | "buried" | "control_chars";
 
@@ -43,7 +44,6 @@ const REASON_LABEL: Record<string, string> = {
 
 const DEFAULT_THR = { alpha: 13, contrast: 1.5, size: 2.0, cover: 0.8 };
 
-// 1文字のヒット情報
 type AnyHit = {
   type: DetectType;
   char: string;
@@ -54,16 +54,24 @@ type AnyHit = {
   extra: string;
 };
 
-// 行グループ（複数文字をまとめたもの）
 type HitGroup = {
-  id: string; // ユニークID
+  id: string;
   type: DetectType;
   reason: string;
-  label: string; // 表示テキスト（文章 or コードポイント説明）
-  chars: AnyHit[]; // グループ内の文字リスト
-  y: number; // 代表y座標
-  isWs: boolean; // whitespace_only グループか
-  expanded: boolean; // 詳細展開中か
+  label: string;
+  chars: AnyHit[];
+  y: number;
+  isWs: boolean;
+  expanded: boolean;
+};
+
+// バッチ進捗
+type BatchProgress = {
+  current: number;
+  total: number;
+  currentFile: string;
+  done: { file: string; hits: number; saved?: string }[];
+  errors: { file: string; msg: string }[];
 };
 
 function toAnyHits(type: DetectType, hits: any[]): AnyHit[] {
@@ -85,35 +93,24 @@ function toAnyHits(type: DetectType, hits: any[]): AnyHit[] {
   }));
 }
 
-// y座標の近傍判定（同じ行とみなす閾値）
 const LINE_Y_TOL = 4;
 
-/**
- * ヒット配列をグループ化する。
- * - 同じ type × reason × y座標近傍 → 同一行グループ
- * - 制御文字は category 別にグループ化
- */
 function groupHits(hits: AnyHit[]): HitGroup[] {
   const groups: HitGroup[] = [];
   let gid = 0;
-
   for (const hit of hits) {
-    // 制御文字は extra（category）もキーに使う
     const groupKey =
       hit.type === "control_chars"
         ? `${hit.type}::${hit.reason}::${hit.extra}`
         : `${hit.type}::${hit.reason}`;
-
-    // 既存グループへの追加を試みる（y座標が近く同じキー）
     const existing = groups.find(
       (g) => g.id.startsWith(groupKey) && Math.abs(g.y - hit.origin[1]) <= LINE_Y_TOL,
     );
-
     if (existing) {
       existing.chars.push(hit);
       existing.label = buildLabel(existing.type, existing.reason, existing.chars);
     } else {
-      const newGroup: HitGroup = {
+      groups.push({
         id: `${groupKey}::${gid++}::${hit.origin[1].toFixed(0)}`,
         type: hit.type,
         reason: hit.reason,
@@ -122,33 +119,439 @@ function groupHits(hits: AnyHit[]): HitGroup[] {
         y: hit.origin[1],
         isWs: hit.reason === "whitespace_only",
         expanded: false,
-      };
-      groups.push(newGroup);
+      });
     }
   }
-
-  // y座標順にソート
   groups.sort((a, b) => a.y - b.y);
   return groups;
 }
 
-/** グループラベルを生成する */
 function buildLabel(type: DetectType, reason: string, chars: AnyHit[]): string {
   if (type === "control_chars") {
-    // 制御文字: コードポイントと個数を表示
-    const cp = chars[0].char; // "U+200B" 形式
-    const cat = chars[0].extra;
-    return `${cp} (${cat}) × ${chars.length}`;
+    return `${chars[0].char} (${chars[0].extra}) × ${chars.length}`;
   }
-  // 通常テキスト: 文字を連結して表示
   const text = chars.map((c) => (c.char === " " ? "·" : c.char)).join("");
   if (text.length <= 60) return `"${text}"`;
   return `"${text.slice(0, 57)}…"`;
 }
 
+// 全ページの全ヒットを取得（バッチ用）
+async function detectAllPages(
+  path: string,
+  pageCount: number,
+  enabled: Set<DetectType>,
+  thr: typeof DEFAULT_THR,
+): Promise<AnyHit[]> {
+  const all: AnyHit[] = [];
+  for (let p = 0; p < pageCount; p++) {
+    if (enabled.has("transparent"))
+      all.push(...toAnyHits("transparent", (await detectTransparentText(path, p, thr.alpha)).hits));
+    if (enabled.has("low_contrast"))
+      all.push(
+        ...toAnyHits("low_contrast", (await detectLowContrastText(path, p, thr.contrast)).hits),
+      );
+    if (enabled.has("tiny"))
+      all.push(...toAnyHits("tiny", (await detectTinyText(path, p, thr.size)).hits));
+    if (enabled.has("buried"))
+      all.push(...toAnyHits("buried", (await detectBuriedText(path, p, thr.cover)).hits));
+    if (enabled.has("control_chars"))
+      all.push(...toAnyHits("control_chars", (await detectControlChars(path, p)).hits));
+  }
+  return all;
+}
+
 // ── HiddenTextPage ─────────────────────────────────────────────────────────
 
-export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
+export function HiddenTextPage({
+  filePath,
+  pdfInfo,
+  batchFiles,
+}: {
+  filePath: string;
+  pdfInfo: PdfInfo;
+  batchFiles?: FileEntry[];
+}) {
+  const isBatch = (batchFiles?.length ?? 0) > 1;
+
+  return isBatch ? (
+    <BatchView batchFiles={batchFiles!} />
+  ) : (
+    <SingleView filePath={filePath} pdfInfo={pdfInfo} />
+  );
+}
+
+// ── BatchView ──────────────────────────────────────────────────────────────
+
+function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
+  const [enabled, setEnabled] = useState<Set<DetectType>>(new Set(DETECT_TYPES.map((d) => d.id)));
+  const [thr, setThr] = useState(DEFAULT_THR);
+  const [showThr, setShowThr] = useState(false);
+  const [outDir, setOutDir] = useState("");
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<BatchProgress | null>(null);
+  const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
+
+  const pickDir = useCallback(async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const dir = await open({ directory: true, title: "出力先フォルダを選択" });
+      if (dir) setOutDir(typeof dir === "string" ? dir : dir[0]);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const runBatch = useCallback(async () => {
+    if (!outDir) {
+      await pickDir();
+      return;
+    }
+    setRunning(true);
+    setPhase("processing");
+    const prog: BatchProgress = {
+      current: 0,
+      total: batchFiles.length,
+      currentFile: "",
+      done: [],
+      errors: [],
+    };
+    setProgress({ ...prog });
+
+    for (let i = 0; i < batchFiles.length; i++) {
+      const f = batchFiles[i];
+      prog.current = i + 1;
+      prog.currentFile = f.filename;
+      setProgress({ ...prog });
+      try {
+        // 全ページ検出
+        const hits = await detectAllPages(f.path, f.pageCount, enabled, thr);
+        const targets: SanitizeOrigin[] = hits
+          .filter((h) => h.reason !== "whitespace_only")
+          .map((h) => ({ x: h.origin[0], y: h.origin[1] }));
+
+        if (targets.length === 0) {
+          prog.done.push({ file: f.filename, hits: 0 });
+        } else {
+          const stem = f.filename.replace(/\.[^/.]+$/, "");
+          const outPath = `${outDir}/${stem}_sanitized.pdf`;
+          await sanitizeHiddenText({
+            input: f.path,
+            output: outPath,
+            targets,
+            tolerance: 1.5,
+          });
+          prog.done.push({
+            file: f.filename,
+            hits: targets.length,
+            saved: outPath.split(/[/\\]/).pop(),
+          });
+        }
+      } catch (e) {
+        prog.errors.push({ file: f.filename, msg: String(e) });
+      }
+      setProgress({ ...prog });
+    }
+    setRunning(false);
+    setPhase("result");
+  }, [batchFiles, outDir, enabled, thr, pickDir]);
+
+  if (phase === "processing" && progress) {
+    return (
+      <div style={s.root}>
+        <BatchBanner />
+        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>
+            処理中... {progress.current} / {progress.total}
+          </div>
+          <div
+            style={{
+              background: "var(--c-bgCard)",
+              borderRadius: 8,
+              overflow: "hidden",
+              height: 8,
+            }}
+          >
+            <div
+              style={{
+                background: "var(--c-accent)",
+                height: "100%",
+                width: `${(progress.current / progress.total) * 100}%`,
+                transition: "width 0.3s",
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{progress.currentFile}</div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              maxHeight: 300,
+              overflowY: "auto",
+            }}
+          >
+            {progress.done.map((d, i) => (
+              <div key={i} style={{ fontSize: 12, display: "flex", gap: 8 }}>
+                <span style={{ color: "var(--c-accent)" }}>✓</span>
+                <span style={{ flex: 1 }}>{d.file}</span>
+                <span style={{ color: "var(--c-textDim)" }}>
+                  {d.hits === 0 ? "検出なし" : `${d.hits}字 → ${d.saved}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "result" && progress) {
+    const succeeded = progress.done.filter((d) => d.hits > 0).length;
+    const skipped = progress.done.filter((d) => d.hits === 0).length;
+    return (
+      <div style={s.root}>
+        <BatchBanner />
+        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>完了: {batchFiles.length}件処理</div>
+          <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
+            <span style={{ color: "#10b981" }}>✓ 無害化: {succeeded}件</span>
+            <span style={{ color: "var(--c-textDim)" }}>スキップ: {skipped}件</span>
+            {progress.errors.length > 0 && (
+              <span style={{ color: "#ef4444" }}>エラー: {progress.errors.length}件</span>
+            )}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              maxHeight: 400,
+              overflowY: "auto",
+            }}
+          >
+            {progress.done.map((d, i) => (
+              <div
+                key={i}
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  gap: 8,
+                  padding: "3px 0",
+                  borderBottom: "1px solid var(--c-border)",
+                }}
+              >
+                <span style={{ color: d.hits > 0 ? "var(--c-accent)" : "var(--c-textDim)" }}>
+                  {d.hits > 0 ? "✓" : "–"}
+                </span>
+                <span style={{ flex: 1 }}>{d.file}</span>
+                <span style={{ color: "var(--c-textSub)" }}>
+                  {d.hits === 0 ? "検出なし" : `${d.hits}字無害化 → ${d.saved}`}
+                </span>
+              </div>
+            ))}
+            {progress.errors.map((e, i) => (
+              <div
+                key={`e${i}`}
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  gap: 8,
+                  padding: "3px 0",
+                  color: "#ef4444",
+                }}
+              >
+                <span>✗</span>
+                <span style={{ flex: 1 }}>{e.file}</span>
+                <span>{e.msg.slice(0, 60)}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            style={s.detectBtn}
+            onClick={() => {
+              setPhase("edit");
+              setProgress(null);
+            }}
+          >
+            ← 設定に戻る
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 設定画面
+  return (
+    <div style={s.root}>
+      <BatchBanner />
+      <div
+        style={{
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          overflowY: "auto",
+        }}
+      >
+        {/* ファイル一覧 */}
+        <div style={s.sec}>
+          <div style={s.secTitle}>{batchFiles.length}件のPDFファイル</div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+              maxHeight: 150,
+              overflowY: "auto",
+            }}
+          >
+            {batchFiles.map((f, i) => (
+              <div
+                key={i}
+                style={{ fontSize: 12, display: "flex", gap: 8, color: "var(--c-textSub)" }}
+              >
+                <span style={{ color: "var(--c-textDim)", minWidth: 24 }}>{i + 1}.</span>
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {f.filename}
+                </span>
+                <span style={{ color: "var(--c-textDim)" }}>{f.pageCount}p</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 検出タイプ */}
+        <div style={s.sec}>
+          <div style={s.secTitle}>検出タイプ</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {DETECT_TYPES.map((dt) => (
+              <label key={dt.id} style={{ ...s.chkRow, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={enabled.has(dt.id)}
+                  onChange={(e) => {
+                    const n = new Set(enabled);
+                    e.target.checked ? n.add(dt.id) : n.delete(dt.id);
+                    setEnabled(n);
+                  }}
+                />
+                <span style={{ color: dt.color }}>{dt.icon}</span>
+                <span>{dt.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* 閾値 */}
+        <div style={s.sec}>
+          <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
+            ⚙ 閾値設定 {showThr ? "▲" : "▼"}
+          </button>
+          {showThr && (
+            <div style={{ ...s.thrPanel, maxWidth: 360 }}>
+              {(
+                [
+                  { key: "alpha", label: "透明度 (0-255)", min: 0, max: 255, step: 1 },
+                  { key: "contrast", label: "コントラスト", min: 1, max: 21, step: 0.1 },
+                  { key: "size", label: "フォントサイズ pt", min: 0.1, max: 10, step: 0.1 },
+                  { key: "cover", label: "被覆率", min: 0.1, max: 1, step: 0.05 },
+                ] as const
+              ).map(({ key, label, min, max, step }) => (
+                <div key={key} style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 10, color: "var(--c-textSub)" }}>{label}</span>
+                    <span style={{ fontSize: 10, fontWeight: 600 }}>
+                      {key === "alpha"
+                        ? Math.round((thr as any)[key])
+                        : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={(thr as any)[key]}
+                    onChange={(e) => setThr((t) => ({ ...t, [key]: Number(e.target.value) }))}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              ))}
+              <button style={s.resetBtn} onClick={() => setThr(DEFAULT_THR)}>
+                リセット
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 出力先フォルダ */}
+        <div style={s.sec}>
+          <div style={s.secTitle}>出力先フォルダ</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div
+              style={{
+                flex: 1,
+                fontSize: 12,
+                color: outDir ? "var(--c-text)" : "var(--c-textDim)",
+                background: "var(--c-bgCard)",
+                border: "1px solid var(--c-border)",
+                borderRadius: 5,
+                padding: "5px 8px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {outDir || "フォルダを選択してください"}
+            </div>
+            <button style={s.navBtn} onClick={pickDir}>
+              選択
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--c-textDim)" }}>
+            検出されたファイルは「元ファイル名_sanitized.pdf」で保存されます
+          </div>
+        </div>
+
+        {/* 実行ボタン */}
+        <button
+          style={{ ...s.sanBtn, ...(running ? s.btnDis : {}), maxWidth: 360 }}
+          onClick={runBatch}
+          disabled={running}
+        >
+          {running ? <Spinner /> : `🧹 ${batchFiles.length}件を自動検出・無害化`}
+        </button>
+
+        {/* 警告 */}
+        <div
+          style={{
+            fontSize: 11,
+            color: "#f59e0b",
+            background: "#f59e0b18",
+            border: "1px solid #f59e0b44",
+            borderRadius: 5,
+            padding: "7px 10px",
+            maxWidth: 360,
+          }}
+        >
+          ⚠ 全ページの全隠しテキストを自動的に無害化します（whitespace_only を除く）。
+          個別に確認したい場合は1ファイルずつ選択してください。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── SingleView ─────────────────────────────────────────────────────────────
+
+function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
   const [pageIndex, setPageIndex] = useState(0);
   const [enabled, setEnabled] = useState<Set<DetectType>>(new Set(DETECT_TYPES.map((d) => d.id)));
   const [thr, setThr] = useState(DEFAULT_THR);
@@ -166,13 +569,12 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
   const pageCount = pdfInfo.page_count;
   const pageInfo = pdfInfo.pages?.[pageIndex];
 
-  // ── レンダリング ────────────────────────────────────────────────────────
   const renderCurrent = useCallback(async () => {
     try {
       const b64 = await renderPage(filePath, pageIndex, 96);
       setImgSrc(`data:image/jpeg;base64,${b64}`);
     } catch (e) {
-      console.error("render:", e);
+      console.error(e);
     }
   }, [filePath, pageIndex]);
 
@@ -180,14 +582,13 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
     renderCurrent();
   }, [renderCurrent]);
 
-  // ── 検出 ─────────────────────────────────────────────────────────────────
   const runDetect = useCallback(async () => {
     setRunning(true);
     setGroups([]);
     setSelectedIds(new Set());
     setStatus("検出中...");
-    const all: AnyHit[] = [];
     try {
+      const all: AnyHit[] = [];
       if (enabled.has("transparent"))
         all.push(
           ...toAnyHits(
@@ -215,13 +616,13 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
 
       const grps = groupHits(all);
       setGroups(grps);
-      // whitespace_only 以外を自動選択
       const autoSel = new Set(grps.filter((g) => !g.isWs).map((g) => g.id));
       setSelectedIds(autoSel);
-
-      const totalChars = all.length;
-      const totalGroups = grps.filter((g) => !g.isWs).length;
-      setStatus(totalChars === 0 ? "検出なし" : `${totalGroups}件検出（${totalChars}文字）`);
+      setStatus(
+        all.length === 0
+          ? "検出なし"
+          : `${grps.filter((g) => !g.isWs).length}件検出（${all.length}文字）`,
+      );
     } catch (e) {
       setStatus(`エラー: ${e}`);
     } finally {
@@ -229,21 +630,17 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
     }
   }, [filePath, pageIndex, enabled, thr]);
 
-  // ── 無害化 ───────────────────────────────────────────────────────────────
   const runSanitize = useCallback(async () => {
     const targets: SanitizeOrigin[] = groups
       .filter((g) => selectedIds.has(g.id))
       .flatMap((g) => g.chars.map((c) => ({ x: c.origin[0], y: c.origin[1] })));
-
     if (!targets.length) {
       setStatus("対象が選択されていません");
       return;
     }
-
     const base = filePath.split(/[/\\]/).pop() ?? "output.pdf";
     const outPath = await pickSave(base.replace(/\.pdf$/i, "_sanitized.pdf"));
     if (!outPath) return;
-
     setSanitizing(true);
     setStatus("無害化処理中...");
     try {
@@ -256,56 +653,35 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
     }
   }, [filePath, groups, selectedIds, pickSave]);
 
-  // ── グループ選択トグル ────────────────────────────────────────────────────
   const toggleGroup = useCallback((id: string) => {
     setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
     });
   }, []);
-
-  // ── グループ展開トグル ────────────────────────────────────────────────────
   const toggleExpand = useCallback((id: string) => {
     setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, expanded: !g.expanded } : g)));
   }, []);
 
-  // ── ハイライト計算 ────────────────────────────────────────────────────────
   const scaleX = pageInfo ? imgNatW / pageInfo.w : 1;
   const scaleY = pageInfo ? imgNatH / pageInfo.h : 1;
   const typeColor = (t: DetectType) => DETECT_TYPES.find((d) => d.id === t)?.color ?? "#888";
-
-  // タイプ別グループ集計
   const typeSummary = DETECT_TYPES.map((dt) => ({
     ...dt,
-    groupCount: groups.filter((g) => g.type === dt.id && !g.isWs).length,
-    charCount: groups
-      .filter((g) => g.type === dt.id && !g.isWs)
-      .reduce((s, g) => s + g.chars.length, 0),
-  })).filter((dt) => dt.groupCount > 0);
-
-  const selCount = selectedIds.size;
+    gc: groups.filter((g) => g.type === dt.id && !g.isWs).length,
+    cc: groups.filter((g) => g.type === dt.id && !g.isWs).reduce((s, g) => s + g.chars.length, 0),
+  })).filter((dt) => dt.gc > 0);
   const selCharCount = groups
     .filter((g) => selectedIds.has(g.id))
     .reduce((s, g) => s + g.chars.length, 0);
 
   return (
     <div style={s.root}>
-      {/* 試験的機能バナー */}
-      <div style={s.expBanner}>
-        <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
-        <div>
-          <div style={s.expTitle}>試験的機能 — 隠しテキスト検出・無害化</div>
-          <div style={s.expBody}>
-            全ての隠しテキスト手法を網羅できる保証はありません。使用による損害について開発者は責任を負いません。
-          </div>
-        </div>
-      </div>
-
+      <SingleBanner />
       <div style={s.layout}>
-        {/* ── 左パネル ── */}
+        {/* 左パネル */}
         <div style={s.left}>
-          {/* ページ選択 */}
           <div style={s.sec}>
             <div style={s.secTitle}>ページ</div>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -328,8 +704,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
               </button>
             </div>
           </div>
-
-          {/* 検出タイプ */}
           <div style={s.sec}>
             <div style={s.secTitle}>検出タイプ</div>
             {DETECT_TYPES.map((dt) => (
@@ -348,8 +722,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
               </label>
             ))}
           </div>
-
-          {/* 閾値 */}
           <div style={s.sec}>
             <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
               ⚙ 閾値設定 {showThr ? "▲" : "▼"}
@@ -390,8 +762,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
               </div>
             )}
           </div>
-
-          {/* 検出実行 */}
           <button
             style={{ ...s.detectBtn, ...(running ? s.btnDis : {}) }}
             onClick={runDetect}
@@ -399,8 +769,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
           >
             {running ? <Spinner /> : "🔍 検出実行"}
           </button>
-
-          {/* 結果サマリー */}
           {groups.length > 0 && (
             <div style={s.sec}>
               <div style={s.secTitle}>検出結果</div>
@@ -419,7 +787,7 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                     {dt.icon} {dt.label}
                   </span>
                   <span style={s.badge}>
-                    {dt.groupCount}行 / {dt.charCount}字
+                    {dt.gc}行/{dt.cc}字
                   </span>
                 </div>
               ))}
@@ -431,7 +799,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                   </div>
                 ) : null;
               })()}
-              {/* 一括選択 */}
               <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
                 <button
                   style={s.smBtn}
@@ -447,29 +814,25 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                 <span
                   style={{ fontSize: 10, color: "var(--c-textDim)", flex: 1, textAlign: "right" }}
                 >
-                  {selCount}行 / {selCharCount}字
+                  {selectedIds.size}行/{selCharCount}字
                 </span>
               </div>
             </div>
           )}
-
-          {/* 無害化 */}
           {groups.length > 0 && (
             <button
-              style={{ ...s.sanBtn, ...(sanitizing || !selCount ? s.btnDis : {}) }}
+              style={{ ...s.sanBtn, ...(sanitizing || !selectedIds.size ? s.btnDis : {}) }}
               onClick={runSanitize}
-              disabled={sanitizing || !selCount}
+              disabled={sanitizing || !selectedIds.size}
             >
               {sanitizing ? <Spinner /> : `🧹 無害化 (${selCharCount}字)`}
             </button>
           )}
-
           {status && <div style={s.statusBox}>{status}</div>}
         </div>
 
-        {/* ── 右パネル ── */}
+        {/* 右パネル */}
         <div style={s.right}>
-          {/* プレビュー */}
           <div style={s.preview}>
             {imgSrc ? (
               <div style={{ position: "relative", display: "inline-block" }}>
@@ -482,7 +845,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                   style={{ display: "block", maxWidth: "100%", maxHeight: "calc(100vh - 260px)" }}
                   alt={`p${pageIndex + 1}`}
                 />
-                {/* SVGハイライト */}
                 {groups.length > 0 && imgNatW > 1 && (
                   <svg
                     style={{
@@ -529,8 +891,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
               </div>
             )}
           </div>
-
-          {/* グループリスト */}
           {groups.length > 0 && (
             <div style={s.groupList}>
               {groups.map((g) => {
@@ -539,7 +899,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                 const icon = DETECT_TYPES.find((d) => d.id === g.type)?.icon ?? "";
                 return (
                   <div key={g.id} style={{ borderBottom: "1px solid var(--c-border)" }}>
-                    {/* グループヘッダー行 */}
                     <div
                       style={{
                         ...s.groupRow,
@@ -550,7 +909,6 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                       }}
                       onClick={() => !g.isWs && toggleGroup(g.id)}
                     >
-                      {/* チェック */}
                       {!g.isWs ? (
                         <input
                           type="checkbox"
@@ -562,27 +920,20 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                       ) : (
                         <span style={{ width: 13, flexShrink: 0 }} />
                       )}
-                      {/* アイコン */}
                       <span style={{ color, fontSize: 13, flexShrink: 0 }}>{icon}</span>
-                      {/* ラベル（検出されたテキスト） */}
                       <span style={s.groupLabel}>{g.label}</span>
-                      {/* reason */}
                       <span style={s.groupReason}>{REASON_LABEL[g.reason] ?? g.reason}</span>
-                      {/* 文字数 */}
                       <span style={s.groupCount}>{g.chars.length}字</span>
-                      {/* 展開ボタン */}
                       <button
                         style={s.expandBtn}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleExpand(g.id);
                         }}
-                        title="詳細"
                       >
                         {g.expanded ? "▲" : "▼"}
                       </button>
                     </div>
-                    {/* 展開: 1文字ずつ表示 */}
                     {g.expanded && (
                       <div style={s.charList}>
                         {g.chars.map((c, ci) => (
@@ -602,7 +953,7 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
                                 .padStart(4, "0")}
                             </span>
                             <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>
-                              ({c.origin[0].toFixed(1)}, {c.origin[1].toFixed(1)})
+                              ({c.origin[0].toFixed(1)},{c.origin[1].toFixed(1)})
                             </span>
                             {c.extra && (
                               <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>
@@ -618,6 +969,38 @@ export function HiddenTextPage({ filePath, pdfInfo }: { filePath: string; pdfInf
               })}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── バナー ────────────────────────────────────────────────────────────────────
+
+function SingleBanner() {
+  return (
+    <div style={s.expBanner}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+      <div>
+        <div style={s.expTitle}>試験的機能 — 隠しテキスト検出・無害化（単一ファイル）</div>
+        <div style={s.expBody}>
+          全ての隠しテキスト手法を網羅できる保証はありません。使用による損害について開発者は責任を負いません。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BatchBanner() {
+  return (
+    <div style={{ ...s.expBanner, background: "#f59e0b18", borderColor: "#f59e0b55" }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+      <div>
+        <div style={{ ...s.expTitle, color: "#fbbf24" }}>
+          試験的機能 — 隠しテキスト一括検出・無害化
+        </div>
+        <div style={s.expBody}>
+          全ページの隠しテキストを自動検出して一括無害化します。誤検出の可能性があります。使用による損害について開発者は責任を負いません。
         </div>
       </div>
     </div>

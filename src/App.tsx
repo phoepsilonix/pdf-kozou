@@ -983,7 +983,13 @@ function ToolShell({
           <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
         )}
         {activeTool === "about" && <LicensePage />}
-        {activeTool === "hidden" && <HiddenTextPage filePath={filePath} pdfInfo={pdfInfo} />}
+        {activeTool === "hidden" && (
+          <HiddenTextPage
+            filePath={filePath}
+            pdfInfo={pdfInfo}
+            batchFiles={isBatch ? toolFiles : undefined}
+          />
+        )}
       </div>
     </div>
   );
