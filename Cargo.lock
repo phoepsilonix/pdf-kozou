@@ -3038,6 +3038,7 @@ version = "1.6.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64 0.22.1",
  "dirs",
  "rfd 0.17.2",
  "serde",

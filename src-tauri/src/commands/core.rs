@@ -187,6 +187,22 @@ pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
     call_core_json("sanitize_hidden", request).await
 }
 
+/// base64エンコードされた画像データをファイルに保存する
+#[tauri::command]
+pub async fn save_base64_image(data: String, path: String) -> Result<Value> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data)
+        .map_err(|e| Error::Core(format!("base64 decode: {e}")))?;
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+    }
+    std::fs::write(&path, &bytes)
+        .map_err(|e| Error::Core(format!("write {path}: {e}")))?;
+    Ok(serde_json::json!({ "ok": true, "path": path }))
+}
+
 /// N-up / 製本 面付けレンダリング
 /// 複数ページを1枚のpixmapに直接レンダリング（JPEG/PNG圧縮1回のみ）
 #[tauri::command]

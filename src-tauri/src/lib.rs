@@ -110,6 +110,7 @@ pub fn run() {
             core::copy_file,
             core::remove_file,
             core::sanitize_hidden_text,
+            core::save_base64_image,
             core::render_imposition,
             core::detect_control_chars,
             core::detect_buried_text,

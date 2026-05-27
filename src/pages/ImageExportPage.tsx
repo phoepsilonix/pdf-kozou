@@ -254,6 +254,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 単体実行（面付け対応版）
   const handleExecuteSingle = useCallback(async () => {
     // 面付けモードかつ images 出力: renderImposition で直接レンダリングして保存
+    console.log(
+      "[imposition] outputMode:",
+      outputMode,
+      "mode:",
+      impositionMode,
+      "isBatch:",
+      isBatch,
+    );
     if (outputMode === "images" && impositionMode !== "1up" && !isBatch) {
       if (!outDir) {
         await pickDir();
@@ -262,7 +270,42 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       setPhase("processing");
       setStatusMsg("面付けレンダリング中...");
       try {
-        const sheets = calcSheets(impositionMode, total);
+        // 高DPI × 多ページのメモリ試算（600MB超は確認ダイアログ）
+        const modeInfo0 = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
+        const estimatedMB = Math.round(
+          (Math.round((595 * dpi) / 72) *
+            modeInfo0.cols *
+            Math.round((842 * dpi) / 72) *
+            modeInfo0.rows *
+            3) /
+            1024 /
+            1024,
+        );
+        if (estimatedMB > 600) {
+          const ok = window.confirm(
+            `推定メモリ使用量: 約${estimatedMB}MB\n` +
+              `DPI=${dpi} × ${modeInfo0.label} は大量のメモリを消費します。\n` +
+              `DPIを下げるか 1-up モードの使用を検討してください。\n\n` +
+              `続行しますか？`,
+          );
+          if (!ok) {
+            setPhase("edit");
+            return;
+          }
+        }
+
+        // pages指定を反映した実際の対象ページ数でシートを計算
+        const pageSpec = resolvePageSpec(pages || "", total).map((i) => i + 1); // 1始まり
+        const pageSet = new Set(pageSpec);
+        const effectiveCount = pageSpec.length || total;
+        const sheets = calcSheets(impositionMode, effectiveCount);
+        console.log(
+          "[imposition] effectiveCount:",
+          effectiveCount,
+          "sheets:",
+          sheets.length,
+          sheets.map((s) => s.label),
+        );
         const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
         const fmt = format === "png" ? "png" : "jpeg";
         const base =
@@ -271,13 +314,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             .pop()
             ?.replace(/\.pdf$/i, "") ?? "page";
         const ext = format === "png" ? "png" : "jpg";
-        const pageSpec = resolvePageSpec(pages || "", total).map((i) => i + 1); // 1始まり
-        const pageSet = new Set(pageSpec);
+        const totalSheets = sheets.length;
+        const savedFiles: string[] = [];
 
-        for (let si = 0; si < sheets.length; si++) {
+        for (let si = 0; si < totalSheets; si++) {
           const sheet = sheets[si];
           // 対象外ページは 0（空白）に置き換え
           const pageNums = sheet.pages.map((p) => (p === 0 || pageSet.has(p) ? p : 0));
+
+          // 進捗: レンダリング開始前に表示
+          setStatusMsg(`レンダリング中... ${si + 1}/${totalSheets} (${sheet.label})`);
 
           const result = await renderImposition({
             path: filePath,
@@ -293,29 +339,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           // base64 → ファイル保存
           const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
           const outPath = `${outDir}/${outName}`;
-          const saveResult = await invoke<{ ok: boolean }>("save_base64_image", {
+          setStatusMsg(`保存中... ${si + 1}/${totalSheets} → ${outName}`);
+          await invoke("save_base64_image", {
             data: result.image_b64,
             path: outPath,
-          }).catch(() => ({ ok: false }));
-
-          if (!saveResult.ok) {
-            // fallback: Tauri download API
-            const blob = new Blob(
-              [Uint8Array.from(atob(result.image_b64), (c) => c.charCodeAt(0))],
-              { type: fmt === "png" ? "image/png" : "image/jpeg" },
-            );
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = outName;
-            a.click();
-            URL.revokeObjectURL(url);
-          }
-
-          setStatusMsg(`面付け生成中... ${si + 1}/${sheets.length}`);
+          });
+          savedFiles.push(outPath);
         }
+        setImages(savedFiles);
         setPhase("result");
-        setStatusMsg(`${sheets.length}枚生成完了`);
+        setStatusMsg(`完了: ${totalSheets}枚を ${outDir} に保存しました`);
       } catch (e) {
         setPhase("error");
         setError(String(e));
@@ -386,6 +419,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     filePath,
     outDir,
     outputMode,
+    impositionMode,
+    isBatch,
     pdfName,
     format,
     dpi,
@@ -400,6 +435,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     setError,
     announceSuccess,
     announceError,
+    total,
   ]);
 
   // バッチ実行
@@ -480,7 +516,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // ─────────── フェーズ ───────────
   if (phase === "processing" && !isBatch)
-    return <Spinner label={t("image.processing", { current: String(resolvedPageCount) })} />;
+    return (
+      <Spinner
+        label={
+          statusMsg && statusMsg !== "" && statusMsg !== "面付けレンダリング中..."
+            ? statusMsg
+            : t("image.processing", { current: String(resolvedPageCount) })
+        }
+      />
+    );
 
   if (phase === "processing" && isBatch && batchProgress)
     return (
@@ -768,11 +812,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               </div>
               {impositionMode !== "1up" && (
                 <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
-                  {impositionMode === "booklet"
-                    ? `${Math.ceil(total / 4) * 2}枚のシートが生成されます（${total}ページ → 製本順）`
-                    : impositionMode === "2up"
-                      ? `${Math.ceil(total / 2)}枚が生成されます`
-                      : `${Math.ceil(total / 4)}枚が生成されます`}
+                  {(() => {
+                    const n = resolvedPageCount || total;
+                    const sheetCount = calcSheets(impositionMode, n).length;
+                    const pageLabel = n !== total ? `対象${n}ページ` : `全${total}ページ`;
+                    return impositionMode === "booklet"
+                      ? `${sheetCount}枚のシートが生成されます（${pageLabel} → 製本順）`
+                      : `${sheetCount}枚が生成されます（${pageLabel}）`;
+                  })()}
                 </div>
               )}
             </>
@@ -915,7 +962,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   : t("image.execute_batch", { count: String(batchFiles!.length) })
                 : outputMode === "pdf"
                   ? t("image.execute_pdf")
-                  : t("image.execute", { count: String(resolvedPageCount) })
+                  : t("image.execute", {
+                      count: String(
+                        impositionMode !== "1up"
+                          ? calcSheets(impositionMode, resolvedPageCount || total).length
+                          : resolvedPageCount,
+                      ),
+                    })
               : isBatch
                 ? t("common.no_dir_btn")
                 : outputMode === "pdf"
@@ -993,6 +1046,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <ImpositionPreview
               impositionMode={impositionMode}
               total={total}
+              effectiveTotal={resolvedPageCount || total}
               thumbs={thumbs}
               pdfInfo={pdfInfo}
               pages={pages}
@@ -1029,17 +1083,20 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 function ImpositionPreview({
   impositionMode,
   total,
+  effectiveTotal,
   thumbs,
   pdfInfo,
   pages,
 }: {
   impositionMode: ImpositionMode;
   total: number;
+  effectiveTotal: number;
   thumbs: (string | undefined)[];
   pdfInfo: PdfInfo;
   pages: string;
 }) {
-  const sheets = calcSheets(impositionMode, total);
+  // effectiveTotal: pages指定を反映した実際の対象ページ数
+  const sheets = calcSheets(impositionMode, effectiveTotal);
   const modeInfo = IMPOSITION_MODES.find((m) => m.id === impositionMode)!;
   const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
@@ -1050,6 +1107,11 @@ function ImpositionPreview({
     <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
       <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
         {modeInfo.icon} {modeInfo.label} — {sheets.length}シート
+        {effectiveTotal !== total && (
+          <span style={{ marginLeft: 4, color: "var(--c-textDim)" }}>
+            （対象{effectiveTotal}ページ）
+          </span>
+        )}
         {impositionMode === "booklet" && (
           <span style={{ marginLeft: 6, color: "var(--c-textDim)" }}>
             （折って重ねると製本になります）
@@ -1064,7 +1126,9 @@ function ImpositionPreview({
             </div>
             <div
               style={{
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: `repeat(${modeInfo.cols}, ${thumbW}px)`,
+                gridTemplateRows: `repeat(${modeInfo.rows}, auto)`,
                 gap: 2,
                 background: "var(--c-bgCard)",
                 border: "1px solid var(--c-border)",
@@ -1074,16 +1138,15 @@ function ImpositionPreview({
                 width: "fit-content",
               }}
             >
-              {/* 中央の折り線 */}
-              {modeInfo.cols >= 2 && (
+              {/* 折り線（2-up/booklet の中央縦線） */}
+              {modeInfo.cols >= 2 && modeInfo.rows === 1 && (
                 <div
                   style={{
                     position: "absolute",
                     left: "50%",
                     top: 4,
                     bottom: 4,
-                    width: 1,
-                    background: "rgba(100,100,100,0.3)",
+                    width: 0,
                     borderLeft: "1px dashed rgba(100,100,100,0.4)",
                     zIndex: 1,
                     pointerEvents: "none",

@@ -3712,7 +3712,15 @@ void kozou_render_imposition(
         int total_w = cols * cell_w + (cols + 1) * g;
         int total_h = rows * cell_h + (rows + 1) * g;
 
-        /* ── Step 2: 出力pixmapを作成して白で初期化 ── */
+        /* ── Step 2: サイズ上限チェック後に出力pixmapを作成 ── */
+        /* 最大4GB未満（実用上は1GB以下が安全） */
+        size_t total_bytes = (size_t)total_w * (size_t)total_h * 3; /* RGB */
+        if (total_bytes > (size_t)1024 * 1024 * 1024) {
+            fz_throw(ctx, FZ_ERROR_GENERIC,
+                "imposition: output too large (%dx%d @ 3ch = %zuMB > 1024MB). "
+                "Reduce DPI or use fewer pages per sheet.",
+                total_w, total_h, total_bytes / (1024*1024));
+        }
         fz_colorspace *rgb = fz_device_rgb(ctx);
         fz_irect full_bbox = { 0, 0, total_w, total_h };
         pixmap = fz_new_pixmap_with_bbox(ctx, rgb, full_bbox, NULL, 0);

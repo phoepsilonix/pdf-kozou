@@ -27,6 +27,7 @@ tauri-plugin-process = "2"
 tauri-plugin-shell   = "2"
 
 # workspace 共通
+base64     = { workspace = true }
 serde      = { workspace = true }
 serde_json = { workspace = true }
 thiserror  = { workspace = true }
