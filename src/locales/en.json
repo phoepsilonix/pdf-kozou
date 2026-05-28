@@ -105,7 +105,7 @@
     "changed_en": "Language changed to English"
   },
   "app": {
-    "tagline": "Rust with tauri · MuPDF · Fully offline",
+    "tagline": "Rust with tauri · MuPDF & lopdf · Fully offline",
     "select_file": "Select files…",
     "select_file_hint": "Select files. Ctrl+O to open.",
     "select_prompt": "Please select a file",
