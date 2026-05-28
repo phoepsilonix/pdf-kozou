@@ -386,4 +386,4 @@ jobs:
             ./dist/windows-artifacts/**/*.msi
             ./dist/windows-artifacts/**/*.msix
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, 'pre') }}
