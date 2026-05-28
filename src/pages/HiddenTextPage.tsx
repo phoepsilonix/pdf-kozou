@@ -199,7 +199,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const pickDir = useCallback(async (): Promise<string | null> => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const dir = await open({ directory: true, title: "出力先フォルダを選択" });
+      const dir = await open({ directory: true, title: t("hidden.output_dir_dialog" as any) });
       const resolved = dir ? (typeof dir === "string" ? dir : dir[0]) : null;
       if (resolved) setOutDir(resolved);
       return resolved;
@@ -207,7 +207,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       console.error(e);
       return null;
     }
-  }, []);
+  }, [t]);
 
   const runBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
@@ -503,7 +503,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               {outDir || t("hidden.output_dir_empty")}
             </div>
             <button style={s.navBtn} onClick={pickDir}>
-              📁 フォルダを選択
+              {t("hidden.output_dir_pick" as any)}
             </button>
             <div style={{ fontSize: 10, color: "var(--c-textDim)", lineHeight: 1.4 }}>
               {t("hidden.output_dir_note")}
@@ -550,7 +550,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               flexShrink: 0,
             }}
           >
-            {batchFiles.length}件のPDFファイル
+            {t("hidden.batch_files_label" as any, { count: String(batchFiles.length) })}
           </div>
           <div style={{ overflowY: "auto", flex: 1 }}>
             {batchFiles.map((f, i) => (

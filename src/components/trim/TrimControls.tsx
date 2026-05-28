@@ -224,8 +224,14 @@ export function TrimControls({
       )}
 
       <section style={s.actions}>
-        <button type="button" style={s.btnReset} onClick={onReset} disabled={processing}>
-          リセット
+        <button
+          type="button"
+          style={s.btnReset}
+          onClick={onReset}
+          disabled={processing}
+          aria-label={t("trim_controls.reset")}
+        >
+          {t("trim_controls.reset")}
         </button>
         <button
           type="button"
