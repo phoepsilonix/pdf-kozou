@@ -188,7 +188,6 @@ pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
 }
 
 /// base64エンコードされた画像データをファイルに保存する
-/// source_path が指定された場合、元PDFのメタデータをEXIF/PNGとして埋め込む
 /// パスの区切り文字（/ と \）の混在をRustのPathで正規化する
 #[tauri::command]
 pub async fn save_base64_image(
@@ -197,38 +196,36 @@ pub async fn save_base64_image(
     source_path: Option<String>,
 ) -> Result<Value> {
     use base64::Engine;
-    let raw_bytes = base64::engine::general_purpose::STANDARD
+    let bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
         .map_err(|e| Error::Core(format!("base64 decode: {e}")))?;
 
-    // 元PDFのメタデータをEXIF/PNGテキストチャンクとして埋め込む
-    let normalized = std::path::Path::new(&path);
-    let ext = normalized
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    let final_bytes = if let Some(ref src) = source_path {
-        let metadata = pdf_kozou_core::compress::collect_metadata(src);
-        if metadata.is_empty() {
-            raw_bytes
-        } else if ext == "png" {
-            pdf_kozou_core::render::embed_metadata_png(raw_bytes, &metadata)
-        } else {
-            pdf_kozou_core::render::embed_metadata_jpeg(raw_bytes, &metadata)
-        }
-    } else {
-        raw_bytes
-    };
-
     // スラッシュ混在を正規化（Windows対応）
+    let normalized = std::path::Path::new(&path);
     if let Some(parent) = normalized.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
     }
-    std::fs::write(normalized, &final_bytes)
+    std::fs::write(normalized, &bytes)
         .map_err(|e| Error::Core(format!("write {:?}: {e}", normalized)))?;
+
+    // メタデータ埋め込み: source_path が指定された場合は
+    // コアバイナリ経由で EXIF/PNG テキストチャンクを書き込む
+    if let Some(src) = source_path {
+        let ext = normalized
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let fmt = if ext == "png" { "png" } else { "jpeg" };
+        // fire-and-forget: メタデータ埋め込み失敗は画像保存には影響しない
+        let _ = call_core_json("embed_image_metadata", serde_json::json!({
+            "image_path": path,
+            "source_path": src,
+            "format": fmt,
+        })).await;
+    }
+
     Ok(serde_json::json!({ "ok": true, "path": normalized.to_string_lossy() }))
 }
 

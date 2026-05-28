@@ -1222,6 +1222,31 @@ fn dispatch_json(line: &str) -> String {
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
                 Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)
             }
+            "embed_image_metadata" => {
+                #[derive(serde::Deserialize)]
+                struct Req {
+                    image_path: String,
+                    source_path: String,
+                    #[serde(default)]
+                    format: Option<String>,
+                }
+                let r: Req = serde_json::from_str(line)?;
+                let metadata = pdf_kozou_core::compress::collect_metadata(&r.source_path);
+                if !metadata.is_empty() {
+                    // 画像ファイルを読み込んでメタデータを埋め込んで上書き
+                    let img_bytes = std::fs::read(&r.image_path)
+                        .map_err(|e| anyhow::anyhow!("read image: {e}"))?;
+                    let fmt = r.format.as_deref().unwrap_or("jpeg");
+                    let out_bytes = if fmt == "png" {
+                        pdf_kozou_core::render::embed_metadata_png(img_bytes, &metadata)
+                    } else {
+                        pdf_kozou_core::render::embed_metadata_jpeg(img_bytes, &metadata)
+                    };
+                    std::fs::write(&r.image_path, &out_bytes)
+                        .map_err(|e| anyhow::anyhow!("write image: {e}"))?;
+                }
+                Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)
+            }
             cmd => Err(anyhow::anyhow!("unknown command: {cmd}")),
         }
     })();

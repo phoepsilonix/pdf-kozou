@@ -837,6 +837,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               disabled={format === "svg"}
               onClick={(e) => {
                 setOutputMode("pdf");
+                setImpositionMode("1up"); // PDF出力時は面付け不要なのでリセット
                 (e.currentTarget as HTMLButtonElement).blur();
               }}
               style={{

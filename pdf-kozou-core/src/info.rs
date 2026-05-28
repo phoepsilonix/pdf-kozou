@@ -86,6 +86,31 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
     // fz_open_document が Windows でフリーズする問題を回避するため
     // 非 PDF ファイルでは Document::open 系を一切呼ばない。
     if !is_pdf(path) {
+        // 画像ファイル（JPEG/PNG/SVG）の場合は EXIF/PNG テキストからメタデータを取得
+        let ext = std::path::Path::new(path)
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        let metadata = if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "svg") {
+            let pairs = crate::render::read_image_metadata(path);
+            let mut m = PdfMetadata::default();
+            for (key, val) in &pairs {
+                match key.as_str() {
+                    "Title"        => m.title        = Some(val.clone()),
+                    "Author"       => m.author       = Some(val.clone()),
+                    "Subject"      => m.subject      = Some(val.clone()),
+                    "Keywords"     => m.keywords     = Some(val.clone()),
+                    "Creator"      => m.creator      = Some(val.clone()),
+                    "Producer"     => m.producer     = Some(val.clone()),
+                    "CreationDate" => m.creation_date = Some(val.clone()),
+                    "ModDate"      => m.mod_date     = Some(val.clone()),
+                    _              => {}
+                }
+            }
+            m
+        } else {
+            PdfMetadata::default()
+        };
         return Ok(InfoResponse {
             ok: true,
             page_count: 1, // 変換前は不明なので 1 ページとして扱う
@@ -95,7 +120,7 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
                 h: 600.0,
                 rotate: 0,
             }],
-            metadata: PdfMetadata::default(),
+            metadata,
             fonts: None,
         });
     }
