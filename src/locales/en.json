@@ -713,6 +713,11 @@
     "batch_sanitized_meta": "{{count}} chars → {{name}}",
     "expand_detail": "Details",
     "output_dir_pick": "📁 Select folder",
-    "output_dir_dialog": "Select output folder"
+    "output_dir_dialog": "Select output folder",
+    "preset_label": "Preset",
+    "preset_strict": "Strict",
+    "preset_normal": "Normal",
+    "preset_loose": "Loose",
+    "preset_last": "Last used"
   }
 }

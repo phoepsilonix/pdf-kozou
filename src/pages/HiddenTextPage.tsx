@@ -46,6 +46,44 @@ const REASON_KEY: Record<string, string> = {
 
 const DEFAULT_THR = { alpha: 13, contrast: 1.5, size: 2.0, cover: 0.8 };
 
+type Thr = typeof DEFAULT_THR;
+
+const PRESETS: { id: string; labelKey: string; thr: Thr }[] = [
+  {
+    id: "strict",
+    labelKey: "hidden.preset_strict",
+    thr: { alpha: 5, contrast: 3.0, size: 1.0, cover: 0.9 },
+  },
+  {
+    id: "normal",
+    labelKey: "hidden.preset_normal",
+    thr: { alpha: 13, contrast: 1.5, size: 2.0, cover: 0.8 },
+  },
+  {
+    id: "loose",
+    labelKey: "hidden.preset_loose",
+    thr: { alpha: 30, contrast: 1.2, size: 4.0, cover: 0.6 },
+  },
+];
+
+const LAST_THR_KEY = "hidden_thr_last";
+
+function loadLastThr(): Thr | null {
+  try {
+    const raw = localStorage.getItem(LAST_THR_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Thr;
+    if (typeof v.alpha === "number" && typeof v.contrast === "number") return v;
+  } catch {}
+  return null;
+}
+
+function saveLastThr(thr: Thr) {
+  try {
+    localStorage.setItem(LAST_THR_KEY, JSON.stringify(thr));
+  } catch {}
+}
+
 type AnyHit = {
   type: DetectType;
   char: string;
@@ -190,7 +228,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [enabled, setEnabled] = useState<Set<DetectType>>(
     new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
   );
-  const [thr, setThr] = useState(DEFAULT_THR);
+  const [thr, setThr] = useState<Thr>(() => loadLastThr() ?? DEFAULT_THR);
   const [showThr, setShowThr] = useState(false);
   const [outDir, setOutDir] = useState("");
   const [running, setRunning] = useState(false);
@@ -214,6 +252,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return; // キャンセル
     setRunning(true);
+    saveLastThr(thr); // 閾値を履歴保存
     setPhase("processing");
     const prog: BatchProgress = {
       current: 0,
@@ -430,59 +469,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
               ⚙ 閾値設定 {showThr ? "▲" : "▼"}
             </button>
-            {showThr && (
-              <div style={s.thrPanel}>
-                {(
-                  [
-                    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1 },
-                    {
-                      key: "contrast",
-                      label: t("hidden.threshold_contrast"),
-                      min: 1,
-                      max: 21,
-                      step: 0.1,
-                    },
-                    {
-                      key: "size",
-                      label: t("hidden.threshold_size"),
-                      min: 0.1,
-                      max: 10,
-                      step: 0.1,
-                    },
-                    {
-                      key: "cover",
-                      label: t("hidden.threshold_cover"),
-                      min: 0.1,
-                      max: 1,
-                      step: 0.05,
-                    },
-                  ] as const
-                ).map(({ key, label, min, max, step }) => (
-                  <div key={key} style={{ marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 10, color: "var(--c-textSub)" }}>{label}</span>
-                      <span style={{ fontSize: 10, fontWeight: 600 }}>
-                        {key === "alpha"
-                          ? Math.round((thr as any)[key])
-                          : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={(thr as any)[key]}
-                      onChange={(e) => setThr((t) => ({ ...t, [key]: Number(e.target.value) }))}
-                      style={{ width: "100%" }}
-                    />
-                  </div>
-                ))}
-                <button style={s.resetBtn} onClick={() => setThr(DEFAULT_THR)}>
-                  リセット
-                </button>
-              </div>
-            )}
+            {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           </div>
 
           {/* 出力先フォルダ */}
@@ -609,7 +596,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [enabled, setEnabled] = useState<Set<DetectType>>(
     new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
   );
-  const [thr, setThr] = useState(DEFAULT_THR);
+  const [thr, setThr] = useState<Thr>(() => loadLastThr() ?? DEFAULT_THR);
   const [showThr, setShowThr] = useState(false);
   const [running, setRunning] = useState(false);
   const [groups, setGroups] = useState<HitGroup[]>([]);
@@ -642,6 +629,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     setGroups([]);
     setSelectedIds(new Set());
     setStatus("検出中...");
+    saveLastThr(thr); // 閾値を履歴保存
     try {
       const all: AnyHit[] = [];
       if (enabled.has("transparent"))
@@ -781,59 +769,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
               ⚙ 閾値設定 {showThr ? "▲" : "▼"}
             </button>
-            {showThr && (
-              <div style={s.thrPanel}>
-                {(
-                  [
-                    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1 },
-                    {
-                      key: "contrast",
-                      label: t("hidden.threshold_contrast"),
-                      min: 1,
-                      max: 21,
-                      step: 0.1,
-                    },
-                    {
-                      key: "size",
-                      label: t("hidden.threshold_size"),
-                      min: 0.1,
-                      max: 10,
-                      step: 0.1,
-                    },
-                    {
-                      key: "cover",
-                      label: t("hidden.threshold_cover"),
-                      min: 0.1,
-                      max: 1,
-                      step: 0.05,
-                    },
-                  ] as const
-                ).map(({ key, label, min, max, step }) => (
-                  <div key={key} style={{ marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 10, color: "var(--c-textSub)" }}>{label}</span>
-                      <span style={{ fontSize: 10, fontWeight: 600 }}>
-                        {key === "alpha"
-                          ? Math.round((thr as any)[key])
-                          : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={(thr as any)[key]}
-                      onChange={(e) => setThr((t) => ({ ...t, [key]: Number(e.target.value) }))}
-                      style={{ width: "100%" }}
-                    />
-                  </div>
-                ))}
-                <button style={s.resetBtn} onClick={() => setThr(DEFAULT_THR)}>
-                  リセット
-                </button>
-              </div>
-            )}
+            {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           </div>
           <button
             style={{ ...s.detectBtn, ...(running ? s.btnDis : {}) }}
@@ -1094,6 +1030,106 @@ function BatchBanner() {
         </div>
         <div style={s.expBody}>{t("hidden.experimental_batch_body")}</div>
       </div>
+    </div>
+  );
+}
+
+// ── 閾値パネル共通コンポーネント ───────────────────────────────────────────────
+
+function ThrPanel({
+  thr,
+  setThr,
+  t,
+}: {
+  thr: Thr;
+  setThr: (fn: (prev: Thr) => Thr) => void;
+  t: (key: string, vars?: Record<string, string>) => string;
+}) {
+  const lastThr = loadLastThr();
+  const sliders = [
+    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1 },
+    { key: "contrast", label: t("hidden.threshold_contrast"), min: 1, max: 21, step: 0.1 },
+    { key: "size", label: t("hidden.threshold_size"), min: 0.1, max: 10, step: 0.1 },
+    { key: "cover", label: t("hidden.threshold_cover"), min: 0.1, max: 1, step: 0.05 },
+  ] as const;
+
+  return (
+    <div style={s.thrPanel}>
+      {/* プリセットボタン */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" as const }}>
+        <span
+          style={{ fontSize: 10, color: "var(--c-textDim)", alignSelf: "center", flexShrink: 0 }}
+        >
+          {t("hidden.preset_label")}:
+        </span>
+        {PRESETS.map((p) => {
+          const active = JSON.stringify(thr) === JSON.stringify(p.thr);
+          return (
+            <button
+              key={p.id}
+              style={{
+                padding: "2px 8px",
+                borderRadius: 4,
+                fontSize: 10,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                background: active ? "var(--c-accent)" : "var(--c-bgCard)",
+                color: active ? "#fff" : "var(--c-textSub)",
+                border: active ? "1px solid var(--c-accent)" : "1px solid var(--c-border)",
+                fontWeight: active ? 700 : 400,
+              }}
+              onClick={() => setThr(() => p.thr)}
+            >
+              {t(p.labelKey as any)}
+            </button>
+          );
+        })}
+        {/* 前回の値 */}
+        {lastThr && (
+          <button
+            style={{
+              padding: "2px 8px",
+              borderRadius: 4,
+              fontSize: 10,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              background: "var(--c-bgCard)",
+              color: "var(--c-textSub)",
+              border: "1px dashed var(--c-border)",
+            }}
+            title={`α=${lastThr.alpha} cr=${lastThr.contrast} sz=${lastThr.size} cv=${lastThr.cover}`}
+            onClick={() => setThr(() => lastThr)}
+          >
+            ↩ {t("hidden.preset_last")}
+          </button>
+        )}
+      </div>
+
+      {/* スライダー */}
+      {sliders.map(({ key, label, min, max, step }) => (
+        <div key={key} style={{ marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 10, color: "var(--c-textSub)" }}>{label}</span>
+            <span style={{ fontSize: 10, fontWeight: 600 }}>
+              {key === "alpha"
+                ? Math.round((thr as any)[key])
+                : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={(thr as any)[key]}
+            onChange={(e) => setThr((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
+            style={{ width: "100%" }}
+          />
+        </div>
+      ))}
+      <button style={s.resetBtn} onClick={() => setThr(() => DEFAULT_THR)}>
+        {t("hidden.threshold_reset")}
+      </button>
     </div>
   );
 }

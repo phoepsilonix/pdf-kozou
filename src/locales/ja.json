@@ -713,6 +713,11 @@
     "batch_sanitized_meta": "{{count}}字無害化 → {{name}}",
     "expand_detail": "詳細",
     "output_dir_pick": "📁 フォルダを選択",
-    "output_dir_dialog": "出力先フォルダを選択"
+    "output_dir_dialog": "出力先フォルダを選択",
+    "preset_label": "プリセット",
+    "preset_strict": "厳格",
+    "preset_normal": "標準",
+    "preset_loose": "緩め",
+    "preset_last": "前回の値"
   }
 }
