@@ -3,6 +3,21 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
+// ── パスユーティリティ ────────────────────────────────────────────────────────
+
+/**
+ * OS非依存のパス結合。
+ * Windows の \ と / の混在を避けるため、ディレクトリセパレータを
+ * 既存の dir の区切り文字に合わせる。
+ * Rust 側の Path::new() でも正規化されるが TS 側でも統一しておく。
+ */
+export function joinPath(dir: string, ...parts: string[]): string {
+  // dir の区切り文字を検出: \ が含まれていれば Windows スタイル
+  const sep = dir.includes("\\") ? "\\" : "/";
+  const base = dir.replace(/[\\/]+$/, ""); // 末尾の区切り文字を除去
+  return [base, ...parts].join(sep);
+}
+
 // ── 共通型 ────────────────────────────────────────────────────────────────────
 
 export interface PageBounds {

@@ -22,6 +22,7 @@ import {
   checkPathConflict,
   type PdfInfo,
   type ImageFormat,
+  joinPath,
 } from "../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 //import { C, F } from "../lib/theme";
@@ -356,7 +357,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           // base64 → ファイル保存
           const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
-          const outPath = `${resolvedDir}/${outName}`;
+          const outPath = joinPath(resolvedDir, outName);
           setStatusMsg(
             t("image.imposition_saving" as any, {
               current: String(si + 1),
@@ -490,7 +491,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         const stem = f.filename.replace(/\.[^/.]+$/, "");
         if (outputMode === "pdf") {
           // 画像PDFモード: ファイルごとに1つの .pdf を出力
-          const outPath = `${batchDir}/${stem}.pdf`;
+          const outPath = joinPath(batchDir, `${stem}.pdf`);
           const res = await exportImagePdf(
             f.path,
             outPath,
@@ -506,7 +507,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           if (res.warning) console.warn(res.warning);
         } else if (impositionMode !== "1up") {
           // 面付けモード: サブフォルダにシートごとに出力
-          const subDir = `${batchDir}/${stem}`;
+          const subDir = joinPath(batchDir, stem);
           const fileTotal = f.pageCount || 0;
           const filePageSpec = resolvePageSpec(pages || "", fileTotal).map((i) => i + 1);
           const filePageSet = new Set(filePageSpec);
@@ -537,7 +538,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           progress.done.push({ file: f.filename, count: savedFiles.length });
         } else {
           // 1-upモード: サブフォルダに1ページずつ
-          const subDir = `${batchDir}/${stem}`;
+          const subDir = joinPath(batchDir, stem);
           const res = await exportImages(
             f.path,
             subDir,

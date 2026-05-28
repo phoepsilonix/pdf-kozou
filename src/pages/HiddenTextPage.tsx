@@ -13,6 +13,7 @@ import {
   sanitizeHiddenText,
   type PdfInfo,
   type SanitizeOrigin,
+  joinPath,
 } from "../lib/tauri";
 import { Spinner } from "../components/common";
 import { useI18n } from "../lib/i18n";
@@ -238,7 +239,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
           const stem = f.filename.replace(/\.[^/.]+$/, "");
-          const outPath = `${resolvedDir}/${stem}_sanitized.pdf`;
+          const outPath = joinPath(resolvedDir, `${stem}_sanitized.pdf`);
           await sanitizeHiddenText({ input: f.path, output: outPath, targets, tolerance: 1.5 });
           prog.done.push({
             file: f.filename,

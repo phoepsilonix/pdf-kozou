@@ -188,19 +188,22 @@ pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
 }
 
 /// base64エンコードされた画像データをファイルに保存する
+/// パスの区切り文字（/ と \）の混在をRustのPathで正規化する
 #[tauri::command]
 pub async fn save_base64_image(data: String, path: String) -> Result<Value> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
         .map_err(|e| Error::Core(format!("base64 decode: {e}")))?;
-    if let Some(parent) = std::path::Path::new(&path).parent() {
+    // スラッシュ混在を正規化（Windows対応）
+    let normalized = std::path::Path::new(&path);
+    if let Some(parent) = normalized.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
     }
-    std::fs::write(&path, &bytes)
-        .map_err(|e| Error::Core(format!("write {path}: {e}")))?;
-    Ok(serde_json::json!({ "ok": true, "path": path }))
+    std::fs::write(normalized, &bytes)
+        .map_err(|e| Error::Core(format!("write {:?}: {e}", normalized)))?;
+    Ok(serde_json::json!({ "ok": true, "path": normalized.to_string_lossy() }))
 }
 
 /// N-up / 製本 面付けレンダリング
