@@ -315,6 +315,9 @@ pub struct TransparentChar {
     pub quad: [f32; 8],
     /// フォントサイズ pt
     pub size: f32,
+    /// Type3 フォント（無害化困難）
+    #[serde(default)]
+    pub is_type3: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -426,6 +429,8 @@ pub fn detect_transparent_text(
         origin: [f32; 2],
         quad: [f32; 8],
         size: f32,
+        #[serde(default)]
+        is_type3: bool,
     }
     #[derive(serde::Deserialize)]
     struct RawResp {
@@ -452,6 +457,7 @@ pub fn detect_transparent_text(
                 origin: h.origin,
                 quad: h.quad,
                 size: h.size,
+                is_type3: h.is_type3,
             })
             .collect(),
     })
@@ -477,6 +483,9 @@ pub struct LowContrastChar {
     pub quad: [f32; 8],
     /// フォントサイズ pt
     pub size: f32,
+    /// Type3 フォント（無害化困難）
+    #[serde(default)]
+    pub is_type3: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -581,6 +590,8 @@ pub fn detect_low_contrast_text(
         origin: [f32; 2],
         quad: [f32; 8],
         size: f32,
+        #[serde(default)]
+        is_type3: bool,
     }
     #[derive(serde::Deserialize)]
     struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
@@ -600,6 +611,7 @@ pub fn detect_low_contrast_text(
             origin: h.origin,
             quad: h.quad,
             size: h.size,
+            is_type3: h.is_type3,
         }).collect(),
     })
 }
@@ -617,6 +629,9 @@ pub struct TinyChar {
     pub reason: String,
     pub origin: [f32; 2],
     pub quad: [f32; 8],
+    /// Type3 フォント（無害化困難）
+    #[serde(default)]
+    pub is_type3: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -712,6 +727,8 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
         reason: String,
         origin: [f32; 2],
         quad: [f32; 8],
+        #[serde(default)]
+        is_type3: bool,
     }
     #[derive(serde::Deserialize)]
     struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
@@ -729,6 +746,7 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
             reason: h.reason,
             origin: h.origin,
             quad: h.quad,
+            is_type3: h.is_type3,
         }).collect(),
     })
 }
@@ -744,6 +762,9 @@ pub struct BuriedChar {
     pub reason: String,
     pub origin: [f32; 2],
     pub quad: [f32; 8],
+    /// Type3 フォント（無害化困難）
+    #[serde(default)]
+    pub is_type3: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -835,6 +856,8 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
         reason: String,
         origin: [f32; 2],
         quad: [f32; 8],
+        #[serde(default)]
+        is_type3: bool,
     }
     #[derive(serde::Deserialize)]
     struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
@@ -852,6 +875,7 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
             reason: h.reason,
             origin: h.origin,
             quad: h.quad,
+            is_type3: h.is_type3,
         }).collect(),
     })
 }

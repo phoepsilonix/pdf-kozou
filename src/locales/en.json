@@ -718,6 +718,9 @@
     "preset_strict": "Strict",
     "preset_normal": "Normal",
     "preset_loose": "Loose",
-    "preset_last": "Last used"
+    "preset_last": "Last used",
+    "type3_warning_title": "Type3 font detected",
+    "type3_warning_body": "This PDF contains hidden text using Type3 fonts. Due to the special structure of Type3 fonts, these texts may not be sanitizable.",
+    "type3_chars": "Type3 font (sanitization may fail)"
   }
 }

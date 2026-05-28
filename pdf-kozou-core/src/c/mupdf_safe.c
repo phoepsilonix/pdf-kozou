@@ -1942,6 +1942,12 @@ void kozou_detect_transparent_text(
                     else
                         reason = "transparent";      /* ExtGState alpha=0 */
 
+                    /* Type3 フォント判定: fz_font_name が "Type3" で始まる */
+                    const char *font_name = fz_font_name(ctx, ch->font);
+                    int is_type3 = (font_name &&
+                        (strncmp(font_name, "Type3", 5) == 0 ||
+                         strncmp(font_name, "type3", 5) == 0));
+
                     fz_write_printf(ctx, out,
                         "{"
                         "\"char\":\"%s\","
@@ -1951,7 +1957,8 @@ void kozou_detect_transparent_text(
                         "\"reason\":\"%s\","
                         "\"origin\":[%.3f,%.3f],"
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
-                        "\"size\":%.3f"
+                        "\"size\":%.3f,"
+                        "\"is_type3\":%s"
                         "}",
                         escaped, alpha, r, g, b,
                         ch_flags, reason,
@@ -1960,7 +1967,8 @@ void kozou_detect_transparent_text(
                         q.ur.x, q.ur.y,
                         q.ll.x, q.ll.y,
                         q.lr.x, q.lr.y,
-                        ch->size
+                        ch->size,
+                        is_type3 ? "true" : "false"
                     );
 
                     hit_count++;
@@ -2258,6 +2266,11 @@ void kozou_detect_low_contrast_text(
                     fz_quad q = ch->quad;
                     if (hit_count > 0) fz_write_printf(ctx, out, ",");
 
+                    const char *lc_font_name = fz_font_name(ctx, ch->font);
+                    int lc_is_type3 = (lc_font_name &&
+                        (strncmp(lc_font_name, "Type3", 5) == 0 ||
+                         strncmp(lc_font_name, "type3", 5) == 0));
+
                     fz_write_printf(ctx, out,
                         "{"
                         "\"char\":\"%s\","
@@ -2267,7 +2280,8 @@ void kozou_detect_low_contrast_text(
                         "\"reason\":\"%s\"," 
                         "\"origin\":[%.3f,%.3f],"
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
-                        "\"size\":%.3f"
+                        "\"size\":%.3f,"
+                        "\"is_type3\":%s"
                         "}",
                         escaped,
                         (int)(tr*255+0.5f),
@@ -2283,7 +2297,8 @@ void kozou_detect_low_contrast_text(
                         q.ur.x, q.ur.y,
                         q.ll.x, q.ll.y,
                         q.lr.x, q.lr.y,
-                        ch->size
+                        ch->size,
+                        lc_is_type3 ? "true" : "false"
                     );
                     hit_count++;
                 }
@@ -2402,6 +2417,10 @@ void kozou_detect_tiny_text(
                     fz_point o = ch->origin;
 
                     if (hit_count > 0) fz_write_printf(ctx, out, ",");
+                    const char *tiny_font_name = fz_font_name(ctx, ch->font);
+                    int tiny_is_type3 = (tiny_font_name &&
+                        (strncmp(tiny_font_name, "Type3", 5) == 0 ||
+                         strncmp(tiny_font_name, "type3", 5) == 0));
 
                     fz_write_printf(ctx, out,
                         "{"
@@ -2420,7 +2439,8 @@ void kozou_detect_tiny_text(
                         q.ul.x, q.ul.y,
                         q.ur.x, q.ur.y,
                         q.ll.x, q.ll.y,
-                        q.lr.x, q.lr.y
+                        q.lr.x, q.lr.y,
+                        tiny_is_type3 ? "true" : "false"
                     );
                     hit_count++;
                 }
@@ -2730,15 +2750,21 @@ void kozou_detect_buried_text(
                     int r = (packed>>16)&0xFF, g = (packed>>8)&0xFF, b = packed&0xFF;
 
                     if (hit_count > 0) fz_write_printf(ctx, out, ",");
+                    const char *buried_font_name = fz_font_name(ctx, ch->font);
+                    int buried_is_type3 = (buried_font_name &&
+                        (strncmp(buried_font_name, "Type3", 5) == 0 ||
+                         strncmp(buried_font_name, "type3", 5) == 0));
                     fz_write_printf(ctx, out,
                         "{\"char\":\"%s\","
                         "\"color_rgb\":[%d,%d,%d],"
                         "\"size\":%.3f,"
                         "\"reason\":\"%s\","
                         "\"origin\":[%.3f,%.3f],"
-                        "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]}",
+                        "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
+                        "\"is_type3\":%s}",
                         escaped, r, g, b, ch->size, buried_reason, o.x, o.y,
-                        q.ul.x,q.ul.y,q.ur.x,q.ur.y,q.ll.x,q.ll.y,q.lr.x,q.lr.y);
+                        q.ul.x,q.ul.y,q.ur.x,q.ur.y,q.ll.x,q.ll.y,q.lr.x,q.lr.y,
+                        buried_is_type3 ? "true" : "false");
                     hit_count++;
                 }
             }

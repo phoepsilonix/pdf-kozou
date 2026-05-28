@@ -92,6 +92,7 @@ type AnyHit = {
   quad: [number, number, number, number, number, number, number, number];
   size: number;
   extra: string;
+  isType3: boolean;
 };
 
 type HitGroup = {
@@ -130,6 +131,7 @@ function toAnyHits(type: DetectType, hits: any[]): AnyHit[] {
           : type === "control_chars"
             ? (h.category ?? "")
             : "",
+    isType3: h.is_type3 ?? false,
   }));
 }
 
@@ -904,6 +906,10 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           </div>
           {groups.length > 0 && (
             <div style={s.groupList}>
+              {/* Type3フォント検出時の注記 */}
+              {groups.some((g) => g.chars.some((c) => c.isType3)) && (
+                <div style={s.type3Note}>⚠ {t("hidden.type3_warning_body" as any)}</div>
+              )}
               {groups.map((g) => {
                 const sel = selectedIds.has(g.id);
                 const color = typeColor(g.type);
@@ -1363,6 +1369,14 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     borderRadius: 4,
     wordBreak: "break-all" as const,
+  },
+  type3Note: {
+    fontSize: 11,
+    color: "#f59e0b",
+    background: "#f59e0b12",
+    borderBottom: "1px solid #f59e0b33",
+    padding: "6px 10px",
+    lineHeight: 1.5,
   },
   logRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "4px 0" },
   logFile: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
