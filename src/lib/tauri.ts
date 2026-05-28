@@ -977,9 +977,8 @@ export async function sanitizeType3Text(
   removed: number;
   warning?: string;
 }> {
-  return invoke("call_core_json", {
-    cmd: "sanitize_type3",
-    payload: JSON.stringify({ input, output }),
+  return invoke("sanitize_type3_text", {
+    request: { input, output },
   }) as Promise<{ ok: boolean; removed: number; warning?: string }>;
 }
 

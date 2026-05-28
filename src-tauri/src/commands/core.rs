@@ -187,6 +187,11 @@ pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
     call_core_json("sanitize_hidden", request).await
 }
 
+#[tauri::command]
+pub async fn sanitize_type3_text(request: Value) -> Result<Value> {
+    call_core_json("sanitize_type3", request).await
+}
+
 /// base64エンコードされた画像データをファイルに保存する
 /// パスの区切り文字（/ と \）の混在をRustのPathで正規化する
 #[tauri::command]

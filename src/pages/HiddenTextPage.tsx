@@ -18,6 +18,7 @@ import {
 } from "../lib/tauri";
 import { Spinner } from "../components/common";
 import { useI18n } from "../lib/i18n";
+import { useA11y } from "../hooks/useA11y";
 import { F } from "../lib/theme";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { type FileEntry } from "../store/usePdfStore";
@@ -237,6 +238,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
+  const [skipType3, setSkipType3] = useState(false);
 
   const pickDir = useCallback(async (): Promise<string | null> => {
     try {
@@ -275,6 +277,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         const hits = await detectAllPages(f.path, f.pageCount, enabled, thr);
         const targets: SanitizeOrigin[] = hits
           .filter((h) => h.reason !== "whitespace_only")
+          .filter((h) => !(skipType3 && h.isType3))
           .map((h) => ({ x: h.origin[0], y: h.origin[1] }));
 
         if (targets.length === 0) {
@@ -296,7 +299,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     }
     setRunning(false);
     setPhase("result");
-  }, [batchFiles, outDir, enabled, thr, pickDir]);
+  }, [batchFiles, outDir, enabled, thr, pickDir, skipType3]);
 
   // ── 処理中画面 ────────────────────────────────────────────────────────────
   if (phase === "processing" && progress) {
@@ -475,6 +478,32 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           </div>
 
+          {/* Type3フォントの扱い */}
+          <div style={s.sec}>
+            <label style={{ ...s.chkRow, alignItems: "flex-start" as const }}>
+              <input
+                type="checkbox"
+                checked={skipType3}
+                onChange={(e) => setSkipType3(e.target.checked)}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              <span>
+                <span style={{ fontSize: 12 }}>{t("hidden.skip_type3" as any)}</span>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 10,
+                    color: "var(--c-textDim)",
+                    lineHeight: 1.4,
+                    marginTop: 2,
+                  }}
+                >
+                  {t("hidden.type3_warning_body" as any)}
+                </span>
+              </span>
+            </label>
+          </div>
+
           {/* 出力先フォルダ */}
           <div style={s.sec}>
             <div style={s.secTitle}>出力先フォルダ</div>
@@ -611,6 +640,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [imgNatW, setImgNatW] = useState(1);
   const [imgNatH, setImgNatH] = useState(1);
   const { pickSave } = useSaveDialog();
+  const { announceSuccess, announceError } = useA11y();
+  const [skipType3, setSkipType3] = useState(false);
 
   const pageCount = pdfInfo.page_count;
   const pageInfo = pdfInfo.pages?.[pageIndex];
