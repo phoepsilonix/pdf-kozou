@@ -239,9 +239,10 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   }, [customGsPath]); // customGsPath が変わったら再検出
   // ----------------
 
-  const pickDir = useCallback(async () => {
+  const pickDir = useCallback(async (): Promise<string | null> => {
     const d = await invoke<string | null>("pick_output_dir").catch(() => null);
     if (d) setOutDir(d);
+    return d;
   }, []);
 
   const handlePreview = useCallback(async () => {
@@ -443,10 +444,8 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   }, [inputFile, filePath, pickSave, setError, onDone]);
 
   const handleBatch = useCallback(async () => {
-    if (!outDir) {
-      await pickDir();
-      return;
-    }
+    const resolvedDir = outDir || (await pickDir());
+    if (!resolvedDir) return;
     if (useGs && !gsPath) {
       setError(t("compress.err_gs_path_not_found"));
       return;
@@ -467,7 +466,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
-      const out = `${outDir}/${f.filename.replace(/\.[^/.]+$/, "")}_compressed.pdf`;
+      const out = `${resolvedDir}/${f.filename.replace(/\.[^/.]+$/, "")}_compressed.pdf`;
       try {
         let ratio = 0;
 
@@ -525,7 +524,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     preset,
     mergeFonts,
     objectStream,
-    outDir,
+    resolvedDir,
     pickDir,
     setError,
   ]);
@@ -968,10 +967,10 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
               </button>
             </div>
             <button
-              style={{ ...c.btnExec, ...(!outDir ? c.btnExecDim : {}) }}
+              style={c.btnExec}
               onClick={handleBatch}
               // useGs による制限を解除。gsPath があれば実行可能に
-              disabled={!outDir || (useGs && !gsPath)}
+              disabled={useGs && !gsPath}
             >
               {useGs
                 ? t("compress.batch_gs", { count: String(batchFiles!.length) })

@@ -167,9 +167,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     };
   }, [isBatch, batchFiles, previewEnabled]);
 
-  const pickDir = useCallback(async () => {
+  const pickDir = useCallback(async (): Promise<string | null> => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
+    return dir;
   }, []);
 
   // 画面表示時の読み上げ
@@ -208,10 +209,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // ── 実行（単体）────────────────────────────────────────────────────────────
   const handleExecuteSingle = useCallback(async () => {
-    if (!outDir) {
-      await pickDir();
-      return;
-    }
+    const resolvedDir = outDir || (await pickDir());
+    if (!resolvedDir) return;
     setPhase("processing");
     try {
       const mode: SplitMode =
@@ -222,7 +221,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             : { type: "Ranges", ranges };
       const res = await splitPdf(
         filePath,
-        outDir,
+        resolvedDir,
         mode,
         prefix || undefined,
         convertLayoutW,
@@ -231,7 +230,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         overrideMetadata,
       );
       setResult(res);
-      setSavedDir(outDir);
+      setSavedDir(resolvedDir);
       const msg = t("common.files_split_done", { count: String(res.files.length) });
       setStatusMsg(msg);
       announceSuccess("done.split", { count: String(res.files.length) });
@@ -258,10 +257,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // ── 実行（バッチ）──────────────────────────────────────────────────────────
   const handleExecuteBatch = useCallback(async () => {
-    if (!outDir) {
-      await pickDir();
-      return;
-    }
+    const resolvedDir = outDir || (await pickDir());
+    if (!resolvedDir) return;
     const files = batchFiles!;
     setPhase("processing");
     const progress: BatchProgress = {
@@ -301,7 +298,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           : f.filename.replace(/\.[^/.]+$/, "");
         const res = await splitPdf(
           f.path,
-          outDir,
+          resolvedDir,
           mode,
           filePrefix,
           convertLayoutW,

@@ -231,9 +231,10 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     .map((v, i) => ({ page: i + 1, angle: v }))
     .filter((p) => p.angle !== 0 && targetIndices.includes(p.page - 1));
 
-  const pickDir = useCallback(async () => {
+  const pickDir = useCallback(async (): Promise<string | null> => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
+    return dir;
   }, []);
 
   const handleExecuteSingle = useCallback(async () => {
@@ -267,10 +268,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   }, [filePath, changedPages, setError, announceError]);
 
   const handleExecuteBatch = useCallback(async () => {
-    if (!outDir) {
-      await pickDir();
-      return;
-    }
+    const resolvedDir = outDir || (await pickDir());
+    if (!resolvedDir) return;
     const files = batchFiles!;
     setPhase("processing");
     const prog: BatchProgress = {
@@ -297,7 +296,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .map((v, idx) => ({ page: idx + 1, angle: v }))
           .filter((p) => p.angle !== 0);
         if (pages.length > 0) {
-          const out = `${outDir}/${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`;
+          const out = `${resolvedDir}/${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`;
           await rotatePdf(f.path, out, pages, convertLayoutW, convertLayoutH, convertLayoutEm);
         }
         prog.done.push({ file: f.filename });
