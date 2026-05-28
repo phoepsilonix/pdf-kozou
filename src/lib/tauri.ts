@@ -605,6 +605,7 @@ export async function trimPdf(
   layoutW?: number,
   layoutH?: number,
   layoutEm?: number,
+  cropCleanup?: boolean,
 ): Promise<void> {
   await invoke("trim_pdf", {
     request: {
@@ -620,6 +621,7 @@ export async function trimPdf(
       pages,
       exclude,
       extract,
+      crop_cleanup: cropCleanup ?? false,
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
       layout_em: layoutEm ?? null,

@@ -45,6 +45,9 @@ pub struct TrimRequest {
     /// 出力に残すページを指定 (1始まり, None=全ページ保持)
     #[serde(deserialize_with = "deserialize_pages")]
     pub extract: Option<PageSelection>,
+    /// CropBox 外の XObject を削除してファイルサイズを削減する（試験的）
+    #[serde(default)]
+    pub crop_cleanup: bool,
 }
 
 fn default_unit() -> String {
@@ -493,6 +496,27 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     // 作業用一時ファイルを解放・削除
     drop(doc);
     drop(work_tmp);
+
+    // CropBox 外リソース削除（試験的・オプション）
+    if req.crop_cleanup {
+        // MuPDF で bbox 収集 → lopdf で Do 命令削除 → GC
+        match crate::crop_cleanup::remove_out_of_crop_resources(
+            &req.output,
+            &req.output,
+            0.0, 0.0, 0.0, // PDF は reflowable でないので layout 不要
+        ) {
+            Ok(s) => eprintln!(
+                "[trim] crop_cleanup: {} Do ops removed, {} objects GCed",
+                s.do_ops_removed, s.objects_gc,
+            ),
+            Err(e) => eprintln!("[trim] crop_cleanup warning (skipped): {e}"),
+        }
+        // GC 後にメタデータを再引き継ぎ
+        let meta = crate::compress::collect_metadata(&req.input);
+        if !meta.is_empty() {
+            crate::compress::copy_metadata_after_write(&req.output, &meta);
+        }
+    }
 
     let input_bytes = std::fs::metadata(&req.input).map(|m| m.len()).unwrap_or(0);
     let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);

@@ -136,6 +136,10 @@ enum Commands {
         /// "2,4-6,all,odd,even")。トリミング無関係に、特定ページのみ残す指定。省略時はすべて残す。
         #[arg(long)]
         extract: Option<String>,
+        /// CropBox 外の XObject を lopdf で削除してファイルサイズを削減する（試験的）
+        /// 一部でも CropBox と重なる部品は保持するためレイアウトへの影響は最小限。
+        #[arg(long)]
+        crop_cleanup: bool,
     },
 
     /// PDF を圧縮・最適化
@@ -468,6 +472,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             pages,
             exclude,
             extract,
+            crop_cleanup,
         } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
@@ -505,6 +510,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 pages: trim_page,
                 exclude: exclude_page,
                 extract: extract_page,
+                crop_cleanup,
             };
             let resp = pdf_kozou_core::trim::trim(&req)?;
             println!("{}", serde_json::to_string(&resp)?);

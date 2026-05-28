@@ -24,6 +24,8 @@ interface Props {
   onReset: () => void;
   processing: boolean;
   applyLabel?: string;
+  cropCleanup?: boolean;
+  onCropCleanupChange?: (v: boolean) => void;
   // バッチ用: 出力フォルダ選択
   outDir?: string;
   onPickDir?: () => void;
@@ -54,6 +56,8 @@ export function TrimControls({
   onReset,
   processing,
   applyLabel,
+  cropCleanup = false,
+  onCropCleanupChange,
   outDir,
   onPickDir,
   excludeSpec,
@@ -244,6 +248,37 @@ export function TrimControls({
       </section>
 
       <p style={s.hint}>{t("trim_controls.drag_hint")}</p>
+
+      <label
+        style={{
+          display: "flex",
+          gap: 6,
+          alignItems: "flex-start",
+          padding: "6px 0 2px",
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={cropCleanup}
+          onChange={(e) => onCropCleanupChange?.(e.target.checked)}
+          style={{ marginTop: 2, flexShrink: 0 }}
+        />
+        <span>
+          <span style={{ fontSize: 11 }}>{t("trim.crop_cleanup" as any)}</span>
+          <span
+            style={{
+              display: "block",
+              fontSize: 10,
+              color: "var(--c-textDim)",
+              lineHeight: 1.4,
+              marginTop: 2,
+            }}
+          >
+            {t("trim.crop_cleanup_note" as any)}
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

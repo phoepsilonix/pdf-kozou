@@ -76,6 +76,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [trimPages, onPages] = useState("all");
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
+  const [cropCleanup, setCropCleanup] = useState(false);
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [zoom, setZoom] = useState(0.75);
@@ -218,6 +219,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           convertLayoutW,
           convertLayoutH,
           convertLayoutEm,
+          cropCleanup,
         );
         console.log("[DEBUG] trim_pdf 結果:", res);
         prog.done.push({ f: f.filename });
@@ -581,6 +583,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [trimPages, onPages] = useState("all");
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
+  const [cropCleanup, setCropCleanup] = useState(false);
   const { pickSave } = useSaveDialog();
   const [outTmp, setOutTmp] = useState<string>("");
 
@@ -685,6 +688,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         convertLayoutW,
         convertLayoutH,
         convertLayoutEm,
+        cropCleanup,
       );
       /*
       .then(() => { 
@@ -924,6 +928,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           onExclude={onExclude}
           extractSpec={extractSpec}
           onExtract={onExtract}
+          cropCleanup={cropCleanup}
+          onCropCleanupChange={setCropCleanup}
         />
       </aside>
       <LiveRegion message={statusMsg} />

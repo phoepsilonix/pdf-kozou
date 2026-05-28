@@ -222,6 +222,17 @@ extern "C" {
         result: *mut FfiResult,
     );
 
+    pub fn kozou_collect_xobj_bboxes(
+        ctx: *mut mupdf_sys::fz_context,
+        path: *const std::os::raw::c_char,
+        page_index: std::os::raw::c_int,
+        layout_w: f32,
+        layout_h: f32,
+        layout_em: f32,
+        out: *mut mupdf_sys::fz_output,
+        result: *mut FfiResult,
+    );
+
     pub fn kozou_detect_buried_text(
         ctx: *mut mupdf_sys::fz_context,
         path: *const c_char,

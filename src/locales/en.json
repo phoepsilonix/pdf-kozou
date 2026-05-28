@@ -105,7 +105,7 @@
     "changed_en": "Language changed to English"
   },
   "app": {
-    "tagline": "Rust with tauri · MuPDF & lopdf · Fully offline",
+    "tagline": "Rust with tauri · MuPDF · Fully offline",
     "select_file": "Select files…",
     "select_file_hint": "Select files. Ctrl+O to open.",
     "select_prompt": "Please select a file",
@@ -234,7 +234,9 @@
     "settings_title": "Trim settings",
     "loading": "Loading…",
     "result_title": "Trim result",
-    "preview_fail": "Preview failed"
+    "preview_fail": "Preview failed",
+    "crop_cleanup": "Remove out-of-crop resources (experimental)",
+    "crop_cleanup_note": "Removes XObjects outside the CropBox to reduce file size. Objects partially overlapping the crop area are preserved."
   },
   "rotate": {
     "processing": "Rotating…",

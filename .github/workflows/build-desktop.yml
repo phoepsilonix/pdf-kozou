@@ -309,7 +309,7 @@ jobs:
         id: npm-cache
         uses: actions/cache/restore@v4
         with:
-          path: ~\AppData\Local\npm-cache
+          path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-npm-
@@ -325,7 +325,7 @@ jobs:
         uses: actions/cache/save@v4
         if: ${{ ((github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true') || startsWith(github.ref, 'refs/tags/') }}
         with:
-          path: ~\AppData\Local\npm-cache
+          path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
 
       - name: Build Frontend check

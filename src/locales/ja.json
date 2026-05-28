@@ -105,7 +105,7 @@
     "changed_en": "Language changed to English"
   },
   "app": {
-    "tagline": "Rust with tauri · MuPDF & lopdf · オフライン完全動作",
+    "tagline": "Rust with tauri · MuPDF · オフライン完全動作",
     "select_file": "ファイルを選択…",
     "select_file_hint": "ファイルを選択。Ctrl+Oでも開けます。",
     "select_prompt": "ファイルを選択してください",
@@ -234,7 +234,9 @@
     "settings_title": "トリミング設定",
     "loading": "読み込み中…",
     "result_title": "トリミング結果確認",
-    "preview_fail": "プレビュー失敗"
+    "preview_fail": "プレビュー失敗",
+    "crop_cleanup": "領域外リソース削除（試験的）",
+    "crop_cleanup_note": "CropBox外の部品をlopdfで削除しファイルサイズを削減します。CropBoxと一部でも重なる部品は保持します。"
   },
   "rotate": {
     "processing": "回転処理中…",
