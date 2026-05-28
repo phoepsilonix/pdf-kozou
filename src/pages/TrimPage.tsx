@@ -18,6 +18,7 @@ import {
   getPdfInfo,
   type TrimMargins,
   type PdfInfo,
+  joinPath,
 } from "../lib/tauri";
 import { C, F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
@@ -196,7 +197,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       setProgress({ ...prog });
 
       try {
-        const out = `${outDir}/${f.filename.replace(/\.[^/.]+$/, "")}_trimmed.pdf`;
+        const out = joinPath(outDir, `${f.filename.replace(/\.[^/.]+$/, "")}_trimmed.pdf`);
 
         console.log(
           "[DEBUG] trim_pdf in out margin pages exclude extract: ",

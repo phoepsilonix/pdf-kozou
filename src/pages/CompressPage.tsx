@@ -17,6 +17,7 @@ import {
   type CompressPreset,
   type CompressResponse,
   type PdfInfo,
+  joinPath,
 } from "../lib/tauri";
 import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
@@ -466,7 +467,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
-      const out = `${resolvedDir}/${f.filename.replace(/\.[^/.]+$/, "")}_compressed.pdf`;
+      const out = joinPath(resolvedDir, `${f.filename.replace(/\.[^/.]+$/, "")}_compressed.pdf`);
       try {
         let ratio = 0;
 

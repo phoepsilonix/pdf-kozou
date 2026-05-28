@@ -531,7 +531,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               gapPx: 0,
             });
             const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
-            const outPath = `${subDir}/${outName}`;
+            const outPath = joinPath(subDir, outName);
             await invoke("save_base64_image", { data: result.image_b64, path: outPath });
             savedFiles.push(outPath);
           }

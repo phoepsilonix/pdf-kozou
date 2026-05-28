@@ -14,6 +14,7 @@ import {
   moveFile,
   getTempPath,
   type PdfInfo,
+  joinPath,
 } from "../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { F } from "../lib/theme";
@@ -296,7 +297,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .map((v, idx) => ({ page: idx + 1, angle: v }))
           .filter((p) => p.angle !== 0);
         if (pages.length > 0) {
-          const out = `${resolvedDir}/${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`;
+          const out = joinPath(resolvedDir, `${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`);
           await rotatePdf(f.path, out, pages, convertLayoutW, convertLayoutH, convertLayoutEm);
         }
         prog.done.push({ file: f.filename });
