@@ -188,20 +188,46 @@ pub async fn sanitize_hidden_text(request: Value) -> Result<Value> {
 }
 
 /// base64エンコードされた画像データをファイルに保存する
+/// source_path が指定された場合、元PDFのメタデータをEXIF/PNGとして埋め込む
 /// パスの区切り文字（/ と \）の混在をRustのPathで正規化する
 #[tauri::command]
-pub async fn save_base64_image(data: String, path: String) -> Result<Value> {
+pub async fn save_base64_image(
+    data: String,
+    path: String,
+    source_path: Option<String>,
+) -> Result<Value> {
     use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
+    let raw_bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
         .map_err(|e| Error::Core(format!("base64 decode: {e}")))?;
-    // スラッシュ混在を正規化（Windows対応）
+
+    // 元PDFのメタデータをEXIF/PNGテキストチャンクとして埋め込む
     let normalized = std::path::Path::new(&path);
+    let ext = normalized
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let final_bytes = if let Some(ref src) = source_path {
+        let metadata = pdf_kozou_core::compress::collect_metadata(src);
+        if metadata.is_empty() {
+            raw_bytes
+        } else if ext == "png" {
+            pdf_kozou_core::render::embed_metadata_png(raw_bytes, &metadata)
+        } else {
+            pdf_kozou_core::render::embed_metadata_jpeg(raw_bytes, &metadata)
+        }
+    } else {
+        raw_bytes
+    };
+
+    // スラッシュ混在を正規化（Windows対応）
     if let Some(parent) = normalized.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
     }
-    std::fs::write(normalized, &bytes)
+    std::fs::write(normalized, &final_bytes)
         .map_err(|e| Error::Core(format!("write {:?}: {e}", normalized)))?;
     Ok(serde_json::json!({ "ok": true, "path": normalized.to_string_lossy() }))
 }

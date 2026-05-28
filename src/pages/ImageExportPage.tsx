@@ -368,6 +368,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           await invoke("save_base64_image", {
             data: result.image_b64,
             path: outPath,
+            sourcePath: filePath,
           });
           savedFiles.push(outPath);
         }
@@ -532,7 +533,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             });
             const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
             const outPath = joinPath(subDir, outName);
-            await invoke("save_base64_image", { data: result.image_b64, path: outPath });
+            await invoke("save_base64_image", {
+              data: result.image_b64,
+              path: outPath,
+              sourcePath: f.path,
+            });
             savedFiles.push(outPath);
           }
           progress.done.push({ file: f.filename, count: savedFiles.length });

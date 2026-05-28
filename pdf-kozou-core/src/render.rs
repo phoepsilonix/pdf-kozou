@@ -188,7 +188,7 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
 // COM セグメント (FF FE) も残してソフトウェアの互換性を確保する。
 //
 // 挿入順: SOI | APP1(EXIF) | COM | 元の残りデータ
-fn embed_metadata_jpeg(jpeg_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
+pub(crate) fn embed_metadata_jpeg(jpeg_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
     if metadata.is_empty() || jpeg_bytes.len() < 2 {
         return jpeg_bytes;
     }
@@ -640,7 +640,7 @@ fn build_exif_payload(
 //   iTXt XML:com.adobe.xmp: Adobe 系・macOS（XMP メタデータ）
 //
 // 全チャンクを IHDR の直後に挿入する
-fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
+pub(crate) fn embed_metadata_png(png_bytes: Vec<u8>, metadata: &[(String, String)]) -> Vec<u8> {
     if metadata.is_empty() || png_bytes.len() < 33 {
         return png_bytes;
     }
@@ -1314,7 +1314,7 @@ fn read_jpeg_metadata(data: &[u8]) -> Vec<(String, String)> {
         if marker == 0xE1 {
             // APP1: EXIF または XMP
             let payload = &data[data_start..data_end];
-            if payload.len() >= 6 && &payload[..6] == b"Exif  " {
+            if payload.len() >= 6 && &payload[..6] == b"Exif" {
                 return parse_tiff_exif(&payload[6..]);
             }
             // XMP は今回未対応（必要なら追加）

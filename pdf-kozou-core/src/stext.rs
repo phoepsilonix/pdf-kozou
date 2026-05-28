@@ -943,6 +943,13 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
         }
     }
 
+    // 入力ファイルのメタデータを出力ファイルに引き継ぐ
+    // C層の pdf_save_document は /Info を引き継がないため書き戻す
+    let metadata = crate::compress::collect_metadata(&req.input);
+    if !metadata.is_empty() {
+        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+    }
+
     Ok(SanitizeResponse {
         ok: true,
         replaced: n_origins,  // 実際の置き換え数はC層で計上していないため目標数を返す
