@@ -898,6 +898,44 @@ pub struct SanitizeResponse {
     pub warning: Option<String>,
 }
 
+// ── Type3 フォント無害化 ─────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct SanitizeType3Response {
+    pub ok: bool,
+    /// 削除した BT ブロック数
+    pub removed: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SanitizeType3Request {
+    pub input: String,
+    pub output: String,
+}
+
+pub fn sanitize_type3_text(req: &SanitizeType3Request) -> Result<SanitizeType3Response> {
+    let removed = crate::type3_sanitize::sanitize_type3_blocks(&req.input, &req.output)
+        .map_err(|e| CoreError::MuPdf(e))?;
+
+    // メタデータを引き継ぐ
+    let metadata = crate::compress::collect_metadata(&req.input);
+    if !metadata.is_empty() {
+        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+    }
+
+    Ok(SanitizeType3Response {
+        ok: true,
+        removed,
+        warning: if removed == 0 {
+            Some("Type3 フォントを使う BT ブロックが見つかりませんでした。".into())
+        } else {
+            None
+        },
+    })
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SanitizeRequest {
     pub input: String,

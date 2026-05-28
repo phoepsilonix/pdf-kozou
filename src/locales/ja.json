@@ -721,6 +721,13 @@
     "preset_last": "前回の値",
     "type3_warning_title": "Type3フォントが検出されました",
     "type3_warning_body": "このPDFにはType3フォントを使った隠しテキストが含まれています。Type3フォントの特殊な構造のため、これらのテキストは無害化できない可能性があります。",
-    "type3_chars": "Type3フォント（無害化困難）"
+    "type3_chars": "Type3フォント（無害化困難）",
+    "type3_sanitize_btn": "🔧 Type3を無害化 (lopdf)",
+    "type3_sanitize_running": "Type3無害化中...",
+    "type3_sanitize_done": "完了: {removed}ブロック削除 → {name}",
+    "type3_sanitize_none": "Type3の削除対象が見つかりませんでした",
+    "type3_sanitize_error": "Type3無害化エラー: {msg}",
+    "type3_note": "⚠ Type3フォントが検出されました。通常の無害化では対応できない場合があります。",
+    "skip_type3": "Type3フォントはそのまま残す"
   }
 }

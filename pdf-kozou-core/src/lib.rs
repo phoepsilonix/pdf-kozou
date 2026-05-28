@@ -14,6 +14,7 @@ pub mod info;
 pub mod merge;
 pub mod pixmap;
 pub mod render;
+pub mod type3_sanitize;
 pub mod rotate;
 pub mod split;
 pub mod stext;

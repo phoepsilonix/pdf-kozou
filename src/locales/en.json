@@ -721,6 +721,13 @@
     "preset_last": "Last used",
     "type3_warning_title": "Type3 font detected",
     "type3_warning_body": "This PDF contains hidden text using Type3 fonts. Due to the special structure of Type3 fonts, these texts may not be sanitizable.",
-    "type3_chars": "Type3 font (sanitization may fail)"
+    "type3_chars": "Type3 font (sanitization may fail)",
+    "type3_sanitize_btn": "🔧 Sanitize Type3 (lopdf)",
+    "type3_sanitize_running": "Sanitizing Type3...",
+    "type3_sanitize_done": "Done: {removed} blocks removed → {name}",
+    "type3_sanitize_none": "No Type3 BT blocks found to remove",
+    "type3_sanitize_error": "Type3 sanitize error: {msg}",
+    "type3_note": "⚠ Type3 fonts detected. Normal sanitization may not work for these.",
+    "skip_type3": "Keep Type3 fonts as-is"
   }
 }

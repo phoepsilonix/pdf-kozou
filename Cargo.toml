@@ -17,6 +17,7 @@ image      = { version = "0.25", features = ["jpeg", "png"] }
 uuid       = { version = "1", features = ["v4", "fast-rng"] }
 tempfile   = "3"
 tracing    = "0.1"
+lopdf      = "0.40"
 
 [patch.crates-io]
 mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "43d89c2d5adaef3f99e99d2cabf365dd56b12cb7" }

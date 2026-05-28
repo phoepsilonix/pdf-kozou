@@ -11,6 +11,7 @@ import {
   detectBuriedText,
   detectControlChars,
   sanitizeHiddenText,
+  sanitizeType3Text,
   type PdfInfo,
   type SanitizeOrigin,
   joinPath,
@@ -604,6 +605,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [groups, setGroups] = useState<HitGroup[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sanitizing, setSanitizing] = useState(false);
+  const [type3Sanitizing, setType3Sanitizing] = useState(false);
   const [status, setStatus] = useState("");
   const [imgSrc, setImgSrc] = useState("");
   const [imgNatW, setImgNatW] = useState(1);
@@ -680,23 +682,62 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       .filter((g) => selectedIds.has(g.id))
       .flatMap((g) => g.chars.map((c) => ({ x: c.origin[0], y: c.origin[1] })));
     if (!targets.length) {
-      setStatus("対象が選択されていません");
+      setStatus(t("hidden.no_targets" as any));
       return;
     }
+    const hasType3 =
+      !skipType3 && groups.some((g) => selectedIds.has(g.id) && g.chars.some((c) => c.isType3));
     const base = filePath.split(/[/\\]/).pop() ?? "output.pdf";
     const outPath = await pickSave(base.replace(/\.pdf$/i, "_sanitized.pdf"));
     if (!outPath) return;
     setSanitizing(true);
-    setStatus("無害化処理中...");
+    setStatus(t("hidden.sanitize_btn", { chars: String(targets.length) }));
     try {
+      // ① 通常の隠しテキスト無害化
       await sanitizeHiddenText({ input: filePath, output: outPath, targets, tolerance: 1.5 });
-      setStatus(`完了: ${outPath.split(/[/\\]/).pop()}`);
+      // ② Type3フォントがあれば続けて Type3 無害化（出力ファイルを上書き）
+      let type3Msg = "";
+      if (hasType3) {
+        setStatus(t("hidden.type3_sanitize_running" as any));
+        const res = await sanitizeType3Text(outPath, outPath);
+        if (res.removed > 0) type3Msg = ` +Type3(${res.removed})`;
+      }
+      const doneName = outPath.split(/[/\\]/).pop() ?? "";
+      setStatus(t("hidden.sanitize_done", { name: doneName }) + type3Msg);
+      announceSuccess("hidden.sanitize_done", { name: doneName });
     } catch (e) {
-      setStatus(`エラー: ${e}`);
+      setStatus(t("hidden.sanitize_error", { msg: String(e) }));
+      announceError(String(e));
     } finally {
       setSanitizing(false);
     }
-  }, [filePath, groups, selectedIds, pickSave]);
+  }, [filePath, groups, selectedIds, pickSave, t, skipType3]);
+
+  const runType3Sanitize = useCallback(async () => {
+    const base = filePath.split(/[/\\]/).pop() ?? "output.pdf";
+    const outPath = await pickSave(base.replace(/\.pdf$/i, "_type3sanitized.pdf"));
+    if (!outPath) return;
+    setType3Sanitizing(true);
+    setStatus(t("hidden.type3_sanitize_running" as any));
+    try {
+      const res = await sanitizeType3Text(filePath, outPath);
+      const name = outPath.split(/[/\\]/).pop() ?? "";
+      if (res.removed === 0) {
+        setStatus(t("hidden.type3_sanitize_none" as any));
+      } else {
+        setStatus(
+          t("hidden.type3_sanitize_done" as any, {
+            removed: String(res.removed),
+            name,
+          }),
+        );
+      }
+    } catch (e) {
+      setStatus(t("hidden.type3_sanitize_error" as any, { msg: String(e) }));
+    } finally {
+      setType3Sanitizing(false);
+    }
+  }, [filePath, pickSave, t]);
 
   const toggleGroup = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -908,7 +949,19 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             <div style={s.groupList}>
               {/* Type3フォント検出時の注記 */}
               {groups.some((g) => g.chars.some((c) => c.isType3)) && (
-                <div style={s.type3Note}>⚠ {t("hidden.type3_warning_body" as any)}</div>
+                <div style={s.type3Note}>
+                  <div>{t("hidden.type3_note" as any)}</div>
+                  <label
+                    style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={skipType3}
+                      onChange={(e) => setSkipType3(e.target.checked)}
+                    />
+                    {t("hidden.skip_type3" as any)}
+                  </label>
+                </div>
               )}
               {groups.map((g) => {
                 const sel = selectedIds.has(g.id);
@@ -1376,7 +1429,25 @@ const s: Record<string, React.CSSProperties> = {
     background: "#f59e0b12",
     borderBottom: "1px solid #f59e0b33",
     padding: "6px 10px",
-    lineHeight: 1.5,
+    lineHeight: 1.8,
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 4,
+  },
+  type3Btn: {
+    padding: "4px 10px",
+    background: "#f59e0b22",
+    border: "1px solid #f59e0b88",
+    borderRadius: 4,
+    color: "#f59e0b",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start" as const,
   },
   logRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "4px 0" },
   logFile: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },

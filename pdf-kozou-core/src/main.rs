@@ -1222,7 +1222,14 @@ fn dispatch_json(line: &str) -> String {
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
                 Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)
             }
-            "embed_image_metadata" => {
+            "sanitize_type3" => {
+                let req: pdf_kozou_core::stext::SanitizeType3Request =
+                    serde_json::from_str(line)?;
+                let resp = pdf_kozou_core::stext::sanitize_type3_text(&req)?;
+                Ok(serde_json::to_string(&resp)?)
+            }
+            "embed_image_metadata" =>
+ {
                 #[derive(serde::Deserialize)]
                 struct Req {
                     image_path: String,

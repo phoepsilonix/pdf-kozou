@@ -968,6 +968,21 @@ export async function suggestGsCandidates(): Promise<string[]> {
   return invoke<string[]>("suggest_gs_candidates");
 }
 
+/// Type3 フォントを使う BT ブロックを削除して無害化する（lopdf）
+export async function sanitizeType3Text(
+  input: string,
+  output: string,
+): Promise<{
+  ok: boolean;
+  removed: number;
+  warning?: string;
+}> {
+  return invoke("call_core_json", {
+    cmd: "sanitize_type3",
+    payload: JSON.stringify({ input, output }),
+  }) as Promise<{ ok: boolean; removed: number; warning?: string }>;
+}
+
 // ── 画像メタデータ ────────────────────────────────────────────────────────
 
 /** 画像ファイル（JPEG/PNG/SVG）のメタデータを読み込む */
