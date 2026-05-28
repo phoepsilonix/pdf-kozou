@@ -15,7 +15,7 @@ import {
   type SanitizeOrigin,
 } from "../lib/tauri";
 import { Spinner } from "../components/common";
-import { useI18n } from "../hooks/useI18n";
+import { useI18n } from "../lib/i18n";
 import { F } from "../lib/theme";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { type FileEntry } from "../store/usePdfStore";
@@ -1070,6 +1070,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
 // ── バナー ────────────────────────────────────────────────────────────────────
 
 function SingleBanner() {
+  const { t } = useI18n();
   return (
     <div style={s.expBanner}>
       <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
@@ -1082,6 +1083,7 @@ function SingleBanner() {
 }
 
 function BatchBanner() {
+  const { t } = useI18n();
   return (
     <div style={{ ...s.expBanner, background: "#f59e0b18", borderColor: "#f59e0b55" }}>
       <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>

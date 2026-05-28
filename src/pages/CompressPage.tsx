@@ -524,7 +524,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     preset,
     mergeFonts,
     objectStream,
-    resolvedDir,
+    outDir,
     pickDir,
     setError,
   ]);

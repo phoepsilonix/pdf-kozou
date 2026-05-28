@@ -109,7 +109,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     F1: () => announceKey("shortcut.tool"),
   });
   const isBatch = (batchFiles?.length ?? 0) > 1;
-  const { t } = useI18n();
   // i18n対応の面付けモード（label/descを翻訳済みで上書き）
   const IMPOSITION_MODES_I18N = IMPOSITION_MODE_DEFS.map((m) => ({
     ...m,
@@ -513,7 +512,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           const filePageSet = new Set(filePageSpec);
           const fileEffective = filePageSpec.length || fileTotal;
           const fileSheets = calcSheets(impositionMode, fileEffective);
-          const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
+          const modeInfo = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
           const fmt = format === "png" ? "png" : "jpeg";
           const ext = format === "png" ? "png" : "jpg";
           const savedFiles: string[] = [];
@@ -1171,9 +1170,13 @@ function ImpositionPreview({
   pdfInfo: PdfInfo;
   pages: string;
 }) {
+  const { t } = useI18n();
   // effectiveTotal: pages指定を反映した実際の対象ページ数
   const sheets = calcSheets(impositionMode, effectiveTotal);
-  const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
+  const modeInfo = {
+    ...IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!,
+    label: t(IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!.labelKey as any),
+  };
   const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
   // 1枚のサムネイル表示サイズ
