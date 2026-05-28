@@ -95,6 +95,8 @@ type AnyHit = {
   size: number;
   extra: string;
   isType3: boolean;
+  xobjXref: number; // 0 = トップレベル
+  internalOrigin: [number, number]; // XObject 内部座標
 };
 
 type HitGroup = {
@@ -134,6 +136,8 @@ function toAnyHits(type: DetectType, hits: any[]): AnyHit[] {
             ? (h.category ?? "")
             : "",
     isType3: h.is_type3 ?? false,
+    xobjXref: (h as any).xobj_xref ?? 0,
+    internalOrigin: (h as any).internal_origin ?? [h.origin[0], h.origin[1]],
   }));
 }
 
@@ -278,7 +282,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         const targets: SanitizeOrigin[] = hits
           .filter((h) => h.reason !== "whitespace_only")
           .filter((h) => !(skipType3 && h.isType3))
-          .map((h) => ({ x: h.origin[0], y: h.origin[1] }));
+          .map((h) => ({
+            x: h.origin[0],
+            y: h.origin[1],
+            xobj_xref: h.xobjXref,
+            internal_x: h.internalOrigin[0],
+            internal_y: h.internalOrigin[1],
+          }));
 
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
@@ -711,7 +721,15 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const runSanitize = useCallback(async () => {
     const targets: SanitizeOrigin[] = groups
       .filter((g) => selectedIds.has(g.id))
-      .flatMap((g) => g.chars.map((c) => ({ x: c.origin[0], y: c.origin[1] })));
+      .flatMap((g) =>
+        g.chars.map((c) => ({
+          x: c.origin[0],
+          y: c.origin[1],
+          xobj_xref: c.xobjXref,
+          internal_x: c.internalOrigin[0],
+          internal_y: c.internalOrigin[1],
+        })),
+      );
     if (!targets.length) {
       setStatus(t("hidden.no_targets" as any));
       return;

@@ -318,6 +318,10 @@ pub struct TransparentChar {
     /// Type3 フォント（無害化困難）
     #[serde(default)]
     pub is_type3: bool,
+    #[serde(default)]
+    pub xobj_xref: i32,
+    #[serde(default)]
+    pub internal_origin: [f32; 2],
 }
 
 #[derive(Debug, Serialize)]
@@ -431,6 +435,10 @@ pub fn detect_transparent_text(
         size: f32,
         #[serde(default)]
         is_type3: bool,
+        #[serde(default)]
+        xobj_xref: i32,
+        #[serde(default)]
+        internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
     struct RawResp {
@@ -458,6 +466,8 @@ pub fn detect_transparent_text(
                 quad: h.quad,
                 size: h.size,
                 is_type3: h.is_type3,
+                xobj_xref: h.xobj_xref,
+                internal_origin: h.internal_origin,
             })
             .collect(),
     })
@@ -486,6 +496,10 @@ pub struct LowContrastChar {
     /// Type3 フォント（無害化困難）
     #[serde(default)]
     pub is_type3: bool,
+    #[serde(default)]
+    pub xobj_xref: i32,
+    #[serde(default)]
+    pub internal_origin: [f32; 2],
 }
 
 #[derive(Debug, Serialize)]
@@ -592,6 +606,10 @@ pub fn detect_low_contrast_text(
         size: f32,
         #[serde(default)]
         is_type3: bool,
+        #[serde(default)]
+        xobj_xref: i32,
+        #[serde(default)]
+        internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
     struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
@@ -612,6 +630,8 @@ pub fn detect_low_contrast_text(
             quad: h.quad,
             size: h.size,
             is_type3: h.is_type3,
+            xobj_xref: h.xobj_xref,
+            internal_origin: h.internal_origin,
         }).collect(),
     })
 }
@@ -632,6 +652,10 @@ pub struct TinyChar {
     /// Type3 フォント（無害化困難）
     #[serde(default)]
     pub is_type3: bool,
+    #[serde(default)]
+    pub xobj_xref: i32,
+    #[serde(default)]
+    pub internal_origin: [f32; 2],
 }
 
 #[derive(Debug, Serialize)]
@@ -729,6 +753,10 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
         quad: [f32; 8],
         #[serde(default)]
         is_type3: bool,
+        #[serde(default)]
+        xobj_xref: i32,
+        #[serde(default)]
+        internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
     struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
@@ -747,6 +775,8 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
             origin: h.origin,
             quad: h.quad,
             is_type3: h.is_type3,
+            xobj_xref: h.xobj_xref,
+            internal_origin: h.internal_origin,
         }).collect(),
     })
 }
@@ -765,6 +795,12 @@ pub struct BuriedChar {
     /// Type3 フォント（無害化困難）
     #[serde(default)]
     pub is_type3: bool,
+    /// 所属 XObject の xref (0=トップレベル)
+    #[serde(default)]
+    pub xobj_xref: i32,
+    /// XObject 内部座標
+    #[serde(default)]
+    pub internal_origin: [f32; 2],
 }
 
 #[derive(Debug, Serialize)]
@@ -858,6 +894,10 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
         quad: [f32; 8],
         #[serde(default)]
         is_type3: bool,
+        #[serde(default)]
+        xobj_xref: i32,
+        #[serde(default)]
+        internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
     struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
@@ -876,6 +916,8 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
             origin: h.origin,
             quad: h.quad,
             is_type3: h.is_type3,
+            xobj_xref: h.xobj_xref,
+            internal_origin: h.internal_origin,
         }).collect(),
     })
 }
@@ -887,6 +929,14 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
 pub struct SanitizeOrigin {
     pub x: f32,
     pub y: f32,
+    /// 所属 XObject の xref (0=ページトップレベル)
+    #[serde(default)]
+    pub xobj_xref: i32,
+    /// XObject 内部座標
+    #[serde(default)]
+    pub internal_x: f32,
+    #[serde(default)]
+    pub internal_y: f32,
 }
 
 #[derive(Debug, Serialize)]
@@ -974,9 +1024,9 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    // origin 座標を [x0,y0, x1,y1, ...] のフラット配列に変換
+    // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の5要素フラット配列に変換
     let origins: Vec<f32> = req.targets.iter()
-        .flat_map(|o| [o.x, o.y])
+        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y])
         .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);

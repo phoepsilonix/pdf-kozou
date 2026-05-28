@@ -177,6 +177,9 @@ export async function detectTransparentText(
 export interface SanitizeOrigin {
   x: number;
   y: number;
+  xobj_xref?: number; // 0 or absent = トップレベル
+  internal_x?: number; // XObject 内部座標
+  internal_y?: number;
 }
 
 export interface SanitizeResponse {

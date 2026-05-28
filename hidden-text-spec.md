@@ -15,13 +15,14 @@ alpha値が閾値以下、または Rendering Mode が不可視（Tr=3/7）の�
 
 **入力パラメータ**
 
-| パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
-| `path` | string | 必須 | 対象PDFファイルパス |
-| `page` | int | 必須 | 0始まりのページ番号 |
+| パラメータ        | 型          | デフォルト | 説明                      |
+| ----------------- | ----------- | ---------- | ------------------------- |
+| `path`            | string      | 必須       | 対象PDFファイルパス       |
+| `page`            | int         | 必須       | 0始まりのページ番号       |
 | `alpha_threshold` | int (0-255) | `13` (≈5%) | この値以下の alpha を検出 |
 
 **CLIテスト例**
+
 ```bash
 echo '{"cmd":"detect_transparent","path":"file.pdf","page":0}' | ./pdf-kozou-core json
 echo '{"cmd":"detect_transparent","path":"file.pdf","page":0,"alpha_threshold":26}' | ./pdf-kozou-core json
@@ -29,24 +30,27 @@ echo '{"cmd":"detect_transparent","path":"file.pdf","page":0,"alpha_threshold":2
 
 **出力フィールド（hits 配列の各要素）**
 
-| フィールド | 型 | 説明 |
-|---|---|---|
-| `char` | string | Unicode文字 |
-| `alpha` | int (0-255) | fill alpha 値 |
-| `color_rgb` | [R,G,B] | 文字色 (各 0-255) |
-| `flags` | int | MuPDF stextフラグ |
-| `reason` | string | 検出理由（後述） |
-| `origin` | [x, y] | 文字原点座標 pt |
-| `quad` | [8 floats] | 四隅座標 pt |
-| `size` | float | フォントサイズ pt |
+| フィールド        | 型          | 説明                                          |
+| ----------------- | ----------- | --------------------------------------------- |
+| `char`            | string      | Unicode文字                                   |
+| `alpha`           | int (0-255) | fill alpha 値                                 |
+| `color_rgb`       | [R,G,B]     | 文字色 (各 0-255)                             |
+| `flags`           | int         | MuPDF stextフラグ                             |
+| `reason`          | string      | 検出理由（後述）                              |
+| `origin`          | [x, y]      | 文字原点座標 pt                               |
+| `quad`            | [8 floats]  | 四隅座標 pt                                   |
+| `size`            | float       | フォントサイズ pt                             |
+| `is_type3`        | bool        | Type3フォント（無害化困難な場合あり）         |
+| `xobj_xref`       | int         | 所属XObjectのxref番号（0=ページトップレベル） |
+| `internal_origin` | [x, y]      | XObject内部座標系での原点（無害化に使用）     |
 
 **reason 値**
 
-| reason | 条件 |
-|---|---|
-| `invisible_mode` | `flags == 0` (Tr=3: 完全不可視) |
-| `clip_only_mode` | `flags & 64` (Tr=7: クリップのみ) |
-| `transparent` | ExtGState fill alpha=0 |
+| reason            | 条件                                                  |
+| ----------------- | ----------------------------------------------------- |
+| `invisible_mode`  | `flags == 0` (Tr=3: 完全不可視)                       |
+| `clip_only_mode`  | `flags & 64` (Tr=7: クリップのみ)                     |
+| `transparent`     | ExtGState fill alpha=0                                |
 | `whitespace_only` | U+00A0, U+3000 等の空白系コードポイント（U+0020以外） |
 
 ---
@@ -57,13 +61,14 @@ WCAG コントラスト比が閾値以下のテキストを検出する（文字
 
 **入力パラメータ**
 
-| パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
-| `path` | string | 必須 | 対象PDFファイルパス |
-| `page` | int | 必須 | 0始まりのページ番号 |
-| `contrast_threshold` | float (1.0-21.0) | `1.5` | この値以下のコントラスト比を検出 |
+| パラメータ           | 型               | デフォルト | 説明                             |
+| -------------------- | ---------------- | ---------- | -------------------------------- |
+| `path`               | string           | 必須       | 対象PDFファイルパス              |
+| `page`               | int              | 必須       | 0始まりのページ番号              |
+| `contrast_threshold` | float (1.0-21.0) | `1.5`      | この値以下のコントラスト比を検出 |
 
 **CLIテスト例**
+
 ```bash
 echo '{"cmd":"detect_low_contrast","path":"file.pdf","page":0}' | ./pdf-kozou-core json
 echo '{"cmd":"detect_low_contrast","path":"file.pdf","page":0,"contrast_threshold":2.0}' | ./pdf-kozou-core json
@@ -71,23 +76,26 @@ echo '{"cmd":"detect_low_contrast","path":"file.pdf","page":0,"contrast_threshol
 
 **出力フィールド（hits の各要素）**
 
-| フィールド | 型 | 説明 |
-|---|---|---|
-| `char` | string | Unicode文字 |
-| `color_rgb` | [R,G,B] | 文字色 |
-| `bg_color_rgb` | [R,G,B] | 背景色 |
-| `contrast` | float | WCAGコントラスト比 (1.0=同色, 21.0=白黒) |
-| `reason` | string | 検出理由 |
-| `origin` | [x, y] | 文字原点座標 pt |
-| `quad` | [8 floats] | 四隅座標 pt |
-| `size` | float | フォントサイズ pt |
+| フィールド        | 型         | 説明                                          |
+| ----------------- | ---------- | --------------------------------------------- |
+| `char`            | string     | Unicode文字                                   |
+| `color_rgb`       | [R,G,B]    | 文字色                                        |
+| `bg_color_rgb`    | [R,G,B]    | 背景色                                        |
+| `contrast`        | float      | WCAGコントラスト比 (1.0=同色, 21.0=白黒)      |
+| `reason`          | string     | 検出理由                                      |
+| `origin`          | [x, y]     | 文字原点座標 pt                               |
+| `quad`            | [8 floats] | 四隅座標 pt                                   |
+| `size`            | float      | フォントサイズ pt                             |
+| `is_type3`        | bool       | Type3フォント（無害化困難な場合あり）         |
+| `xobj_xref`       | int        | 所属XObjectのxref番号（0=ページトップレベル） |
+| `internal_origin` | [x, y]     | XObject内部座標系での原点（無害化に使用）     |
 
 **reason 値**
 
-| reason | 条件 |
-|---|---|
-| `low_contrast` | コントラスト比が閾値以下 |
-| `whitespace_only` | 空白系コードポイント |
+| reason            | 条件                     |
+| ----------------- | ------------------------ |
+| `low_contrast`    | コントラスト比が閾値以下 |
+| `whitespace_only` | 空白系コードポイント     |
 
 ---
 
@@ -97,13 +105,14 @@ echo '{"cmd":"detect_low_contrast","path":"file.pdf","page":0,"contrast_threshol
 
 **入力パラメータ**
 
-| パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
-| `path` | string | 必須 | 対象PDFファイルパス |
-| `page` | int | 必須 | 0始まりのページ番号 |
-| `size_threshold` | float (pt) | `2.0` | この値以下のフォントサイズを検出 |
+| パラメータ       | 型         | デフォルト | 説明                             |
+| ---------------- | ---------- | ---------- | -------------------------------- |
+| `path`           | string     | 必須       | 対象PDFファイルパス              |
+| `page`           | int        | 必須       | 0始まりのページ番号              |
+| `size_threshold` | float (pt) | `2.0`      | この値以下のフォントサイズを検出 |
 
 **CLIテスト例**
+
 ```bash
 echo '{"cmd":"detect_tiny","path":"file.pdf","page":0}' | ./pdf-kozou-core json
 echo '{"cmd":"detect_tiny","path":"file.pdf","page":0,"size_threshold":1.0}' | ./pdf-kozou-core json
@@ -111,21 +120,24 @@ echo '{"cmd":"detect_tiny","path":"file.pdf","page":0,"size_threshold":1.0}' | .
 
 **出力フィールド（hits の各要素）**
 
-| フィールド | 型 | 説明 |
-|---|---|---|
-| `char` | string | Unicode文字 |
-| `size` | float | フォントサイズ pt |
-| `color_rgb` | [R,G,B] | 文字色 |
-| `reason` | string | 検出理由 |
-| `origin` | [x, y] | 文字原点座標 pt |
-| `quad` | [8 floats] | 四隅座標 pt |
+| フィールド        | 型         | 説明                                          |
+| ----------------- | ---------- | --------------------------------------------- |
+| `char`            | string     | Unicode文字                                   |
+| `size`            | float      | フォントサイズ pt                             |
+| `color_rgb`       | [R,G,B]    | 文字色                                        |
+| `reason`          | string     | 検出理由                                      |
+| `origin`          | [x, y]     | 文字原点座標 pt                               |
+| `quad`            | [8 floats] | 四隅座標 pt                                   |
+| `is_type3`        | bool       | Type3フォント（無害化困難な場合あり）         |
+| `xobj_xref`       | int        | 所属XObjectのxref番号（0=ページトップレベル） |
+| `internal_origin` | [x, y]     | XObject内部座標系での原点（無害化に使用）     |
 
 **reason 値**
 
-| reason | 条件 |
-|---|---|
-| `tiny_font` | フォントサイズが閾値以下 |
-| `whitespace_only` | 空白系コードポイント |
+| reason            | 条件                     |
+| ----------------- | ------------------------ |
+| `tiny_font`       | フォントサイズが閾値以下 |
+| `whitespace_only` | 空白系コードポイント     |
 
 ---
 
@@ -135,13 +147,14 @@ echo '{"cmd":"detect_tiny","path":"file.pdf","page":0,"size_threshold":1.0}' | .
 
 **入力パラメータ**
 
-| パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
-| `path` | string | 必須 | 対象PDFファイルパス |
-| `page` | int | 必須 | 0始まりのページ番号 |
-| `cover_ratio` | float (0.0-1.0) | `0.8` | 文字bboxの何割以上が覆われていれば検出するか |
+| パラメータ    | 型              | デフォルト | 説明                                         |
+| ------------- | --------------- | ---------- | -------------------------------------------- |
+| `path`        | string          | 必須       | 対象PDFファイルパス                          |
+| `page`        | int             | 必須       | 0始まりのページ番号                          |
+| `cover_ratio` | float (0.0-1.0) | `0.8`      | 文字bboxの何割以上が覆われていれば検出するか |
 
 **CLIテスト例**
+
 ```bash
 echo '{"cmd":"detect_buried","path":"file.pdf","page":0}' | ./pdf-kozou-core json
 echo '{"cmd":"detect_buried","path":"file.pdf","page":0,"cover_ratio":0.5}' | ./pdf-kozou-core json
@@ -149,21 +162,24 @@ echo '{"cmd":"detect_buried","path":"file.pdf","page":0,"cover_ratio":0.5}' | ./
 
 **出力フィールド（hits の各要素）**
 
-| フィールド | 型 | 説明 |
-|---|---|---|
-| `char` | string | Unicode文字 |
-| `color_rgb` | [R,G,B] | 文字色 |
-| `size` | float | フォントサイズ pt |
-| `reason` | string | 検出理由 |
-| `origin` | [x, y] | 文字原点座標 pt |
-| `quad` | [8 floats] | 四隅座標 pt |
+| フィールド        | 型         | 説明                                          |
+| ----------------- | ---------- | --------------------------------------------- |
+| `char`            | string     | Unicode文字                                   |
+| `color_rgb`       | [R,G,B]    | 文字色                                        |
+| `size`            | float      | フォントサイズ pt                             |
+| `reason`          | string     | 検出理由                                      |
+| `origin`          | [x, y]     | 文字原点座標 pt                               |
+| `quad`            | [8 floats] | 四隅座標 pt                                   |
+| `is_type3`        | bool       | Type3フォント（無害化困難な場合あり）         |
+| `xobj_xref`       | int        | 所属XObjectのxref番号（0=ページトップレベル） |
+| `internal_origin` | [x, y]     | XObject内部座標系での原点（無害化に使用）     |
 
 **reason 値**
 
-| reason | 条件 |
-|---|---|
-| `buried` | 後から描画された図形・画像に覆われている |
-| `whitespace_only` | 空白系コードポイント |
+| reason            | 条件                                     |
+| ----------------- | ---------------------------------------- |
+| `buried`          | 後から描画された図形・画像に覆われている |
+| `whitespace_only` | 空白系コードポイント                     |
 
 **検出アルゴリズム**
 
@@ -180,37 +196,38 @@ AIへの悪意ある注入や表示偽装に使われる特殊なUnicode制御�
 
 **入力パラメータ**
 
-| パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
-| `path` | string | 必須 | 対象PDFファイルパス |
-| `page` | int | 必須 | 0始まりのページ番号 |
+| パラメータ | 型     | デフォルト | 説明                |
+| ---------- | ------ | ---------- | ------------------- |
+| `path`     | string | 必須       | 対象PDFファイルパス |
+| `page`     | int    | 必須       | 0始まりのページ番号 |
 
 **CLIテスト例**
+
 ```bash
 echo '{"cmd":"detect_control_chars","path":"file.pdf","page":0}' | ./pdf-kozou-core json
 ```
 
 **出力フィールド（hits の各要素）**
 
-| フィールド | 型 | 説明 |
-|---|---|---|
-| `char` | string | コードポイント表記（例: `"U+200B"`） |
-| `codepoint` | int | コードポイント十進数 |
-| `category` | string | 分類（後述） |
-| `reason` | string | `"control_char"` 固定 |
-| `origin` | [x, y] | 文字原点座標 pt |
-| `quad` | [8 floats] | 四隅座標 pt |
-| `size` | float | フォントサイズ pt |
+| フィールド  | 型         | 説明                                 |
+| ----------- | ---------- | ------------------------------------ |
+| `char`      | string     | コードポイント表記（例: `"U+200B"`） |
+| `codepoint` | int        | コードポイント十進数                 |
+| `category`  | string     | 分類（後述）                         |
+| `reason`    | string     | `"control_char"` 固定                |
+| `origin`    | [x, y]     | 文字原点座標 pt                      |
+| `quad`      | [8 floats] | 四隅座標 pt                          |
+| `size`      | float      | フォントサイズ pt                    |
 
 **検出対象コードポイントと category**
 
-| category | コードポイント | 名称 |
-|---|---|---|
-| `zero_width` | U+200B〜U+200F | ゼロ幅スペース・LRM・RLM 等 |
-| `bidi_control` | U+202A〜U+202E | 双方向制御文字（LRE/RLE/LRO/RLO/PDF） |
-| `line_separator` | U+2028, U+2029 | 行区切り・段落区切り |
-| `bom_zwnbsp` | U+FEFF | BOM / ゼロ幅ノーブレークスペース |
-| `tag_char` | U+E0000〜U+E007F | Unicode タグ文字 |
+| category         | コードポイント   | 名称                                  |
+| ---------------- | ---------------- | ------------------------------------- |
+| `zero_width`     | U+200B〜U+200F   | ゼロ幅スペース・LRM・RLM 等           |
+| `bidi_control`   | U+202A〜U+202E   | 双方向制御文字（LRE/RLE/LRO/RLO/PDF） |
+| `line_separator` | U+2028, U+2029   | 行区切り・段落区切り                  |
+| `bom_zwnbsp`     | U+FEFF           | BOM / ゼロ幅ノーブレークスペース      |
+| `tag_char`       | U+E0000〜U+E007F | Unicode タグ文字                      |
 
 **除外コードポイント**（正常用途が多いため検出しない）
 
@@ -233,14 +250,15 @@ echo '{"cmd":"detect_control_chars","path":"file.pdf","page":0}' | ./pdf-kozou-c
 
 **入力パラメータ**
 
-| パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
-| `input` | string | 必須 | 入力PDFファイルパス |
-| `output` | string | 必須 | 出力PDFファイルパス |
-| `targets` | [{x, y}] | 必須 | 置き換え対象の文字 origin 座標リスト |
-| `tolerance` | float | `1.0` | 座標照合の許容距離 pt |
+| パラメータ  | 型                                             | デフォルト | 説明                                                                                                                                                                                               |
+| ----------- | ---------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input`     | string                                         | 必須       | 入力PDFファイルパス                                                                                                                                                                                |
+| `output`    | string                                         | 必須       | 出力PDFファイルパス                                                                                                                                                                                |
+| `targets`   | [{x, y, xobj_xref?, internal_x?, internal_y?}] | 必須       | 置き換え対象の文字 origin 座標リスト。`xobj_xref` が 0 またはなければページトップレベル。XObject内部のテキストは `xobj_xref` と `internal_x/y` を指定することでXObjectストリームを直接書き換える。 |
+| `tolerance` | float                                          | `1.0`      | 座標照合の許容距離 pt                                                                                                                                                                              |
 
 **CLIテスト例（detect → sanitize の一連フロー）**
+
 ```bash
 # Step1: 検出
 RESULT=$(echo '{"cmd":"detect_transparent","path":"file.pdf","page":0}' | ./pdf-kozou-core json)
@@ -266,18 +284,20 @@ echo '{"cmd":"detect_transparent","path":"file_sanitized.pdf","page":0}' | ./pdf
 
 **出力フィールド**
 
-| フィールド | 型 | 説明 |
-|---|---|---|
-| `ok` | bool | 成功フラグ |
-| `replaced` | int | 置き換えを試みた文字数 |
-| `warning` | string | 試験的機能の免責文（常に付与） |
+| フィールド | 型     | 説明                           |
+| ---------- | ------ | ------------------------------ |
+| `ok`       | bool   | 成功フラグ                     |
+| `replaced` | int    | 置き換えを試みた文字数         |
+| `warning`  | string | 試験的機能の免責文（常に付与） |
 
 **KOZOU_NORMAL gs（ExtGState）**
 
 ページリソースに自動登録される正規化用グラフィクス状態：
+
 ```
 /KOZOU_NORMAL << /Type /ExtGState /ca 1.0 /CA 1.0 >>
 ```
+
 各置き換え直前に `/KOZOU_NORMAL gs` を挿入して fill/stroke alpha を 1.0 に設定する。
 
 **幅補正アルゴリズム**
@@ -301,6 +321,7 @@ echo '{"cmd":"detect_transparent","path":"file_sanitized.pdf","page":0}' | ./pdf
 無害化済みの文字は各検出関数で **hits から除外** される（再検出されない）。
 
 **sanitized 判定条件（C実装）**
+
 ```c
 static int kozou_is_sanitized_space(int cp) {
     return (cp == 0x0020); // U+0020 のみ
@@ -321,16 +342,16 @@ static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font) {
 
 ## 4. reason 値の完全一覧
 
-| reason | 検出関数 | 意味 | 無害化対象 |
-|---|---|---|---|
-| `invisible_mode` | transparent | Tr=3（完全不可視） | ◎ |
-| `clip_only_mode` | transparent | Tr=7（クリップのみ） | ◎ |
-| `transparent` | transparent | ExtGState fill alpha=0 | ◎ |
-| `low_contrast` | low_contrast | 背景色とほぼ同色 | ◎ |
-| `tiny_font` | tiny | 極小フォント | ◎ |
-| `buried` | buried | オブジェクト裏に隠蔽 | △（デザイン意図の可能性あり） |
-| `control_char` | control_chars | 特殊Unicode制御文字 | ◎ |
-| `whitespace_only` | 全検出関数 | 空白系文字（無害化推奨） | △（要確認） |
+| reason            | 検出関数      | 意味                     | 無害化対象                    |
+| ----------------- | ------------- | ------------------------ | ----------------------------- |
+| `invisible_mode`  | transparent   | Tr=3（完全不可視）       | ◎                             |
+| `clip_only_mode`  | transparent   | Tr=7（クリップのみ）     | ◎                             |
+| `transparent`     | transparent   | ExtGState fill alpha=0   | ◎                             |
+| `low_contrast`    | low_contrast  | 背景色とほぼ同色         | ◎                             |
+| `tiny_font`       | tiny          | 極小フォント             | ◎                             |
+| `buried`          | buried        | オブジェクト裏に隠蔽     | △（デザイン意図の可能性あり） |
+| `control_char`    | control_chars | 特殊Unicode制御文字      | ◎                             |
+| `whitespace_only` | 全検出関数    | 空白系文字（無害化推奨） | △（要確認）                   |
 
 ---
 
@@ -338,13 +359,13 @@ static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font) {
 
 `whitespace_only` は以下のコードポイントに対して付与される（U+0020は除く）：
 
-| コードポイント | 名称 |
-|---|---|
-| U+00A0 | ノーブレークスペース |
-| U+3000 | 全角スペース |
-| U+2000〜U+200A | 各種幅スペース |
-| U+0009 | タブ |
-| U+000D | CR |
+| コードポイント | 名称                 |
+| -------------- | -------------------- |
+| U+00A0         | ノーブレークスペース |
+| U+3000         | 全角スペース         |
+| U+2000〜U+200A | 各種幅スペース       |
+| U+0009         | タブ                 |
+| U+000D         | CR                   |
 
 `whitespace_only` の文字は **hits に含まれるが**、GUI 上では無害化の自動選択対象外となる。  
 ユーザーが明示的に選択した場合のみ無害化できる。
@@ -355,8 +376,9 @@ static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font) {
 
 以下の手法は現時点で検出対象外または検出精度が低い可能性がある：
 
-- PDF の XObject（フォームや画像オブジェクト）内に埋め込まれたテキスト
+- ~~PDF の XObject（フォームや画像オブジェクト）内に埋め込まれたテキスト~~ → **対応済み**（`xobj_xref` + `internal_origin` により検出・無害化可能）
 - Optional Content（PDF レイヤー）で非表示にされたテキスト
+- **Type3フォントを使った隠しテキスト**：検出は可能だが無害化できない場合がある（`is_type3: true` で識別可能）。Type3フォントはグリフを独自の描画命令で定義するため、Helveticaへの切り替えが機能しない場合がある。GUIの「Type3フォントはそのまま残す」チェックボックスで除外推奨。
 - JavaScript や AcroForm フィールドに格納されたテキスト
 - メタデータ（XMP, DocInfo）に埋め込まれたテキスト
 - 特殊な CMap エンコーディングで意図的に誤マップされたテキスト
@@ -366,15 +388,15 @@ static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font) {
 
 ## 7. テスト用サンプルPDF
 
-| ファイル名 | 内容 | 検出コマンド |
-|---|---|---|
-| `test_transparent2.pdf` | alpha=0 / alpha=5% の透明テキスト | `detect_transparent` |
-| `test_tr3.pdf` | Tr=3（invisible_mode）/ Tr=7（clip_only_mode） | `detect_transparent` |
-| `test_color.pdf` | 白地白字・黒地黒字・赤地赤字・近似青 | `detect_low_contrast` |
-| `test_tiny.pdf` | 2pt以下の極小フォント | `detect_tiny` |
-| `test_buried.pdf` | 白・灰色矩形で覆われた水平テキスト | `detect_buried` |
-| `test_buried_v.pdf` | 下半分・ほぼ全体を覆った縦横混合 | `detect_buried` |
-| `test_control_malicious.pdf` | ZWSP(U+200B)・LRM(U+200E)・RLO(U+202E) | `detect_control_chars` |
+| ファイル名                   | 内容                                           | 検出コマンド           |
+| ---------------------------- | ---------------------------------------------- | ---------------------- |
+| `test_transparent2.pdf`      | alpha=0 / alpha=5% の透明テキスト              | `detect_transparent`   |
+| `test_tr3.pdf`               | Tr=3（invisible_mode）/ Tr=7（clip_only_mode） | `detect_transparent`   |
+| `test_color.pdf`             | 白地白字・黒地黒字・赤地赤字・近似青           | `detect_low_contrast`  |
+| `test_tiny.pdf`              | 2pt以下の極小フォント                          | `detect_tiny`          |
+| `test_buried.pdf`            | 白・灰色矩形で覆われた水平テキスト             | `detect_buried`        |
+| `test_buried_v.pdf`          | 下半分・ほぼ全体を覆った縦横混合               | `detect_buried`        |
+| `test_control_malicious.pdf` | ZWSP(U+200B)・LRM(U+200E)・RLO(U+202E)         | `detect_control_chars` |
 
 ---
 
@@ -382,19 +404,26 @@ static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font) {
 
 ```typescript
 import {
-  detectTransparentText,   // (path, page, alphaThreshold?, options?) => DetectTransparentResponse
-  detectLowContrastText,   // (path, page, contrastThreshold?, options?) => DetectLowContrastResponse
-  detectTinyText,          // (path, page, sizeThreshold?, options?) => DetectTinyResponse
-  detectBuriedText,        // (path, page, coverRatio?, options?) => DetectBuriedResponse
-  detectControlChars,      // (path, page, options?) => DetectControlCharsResponse
-  sanitizeHiddenText,      // (req: SanitizeRequest) => SanitizeResponse
+  detectTransparentText, // (path, page, alphaThreshold?, options?) => DetectTransparentResponse
+  detectLowContrastText, // (path, page, contrastThreshold?, options?) => DetectLowContrastResponse
+  detectTinyText, // (path, page, sizeThreshold?, options?) => DetectTinyResponse
+  detectBuriedText, // (path, page, coverRatio?, options?) => DetectBuriedResponse
+  detectControlChars, // (path, page, options?) => DetectControlCharsResponse
+  sanitizeHiddenText, // (req: SanitizeRequest) => SanitizeResponse
 } from "../lib/tauri";
 
 // 使用例
 const detected = await detectTransparentText("file.pdf", 0, 0.05);
 const targets = detected.hits
-  .filter(h => h.reason !== "whitespace_only")
-  .map(h => ({ x: h.origin[0], y: h.origin[1] }));
+  .filter((h) => h.reason !== "whitespace_only")
+  .filter((h) => !h.is_type3) // Type3は無害化困難なので除外推奨
+  .map((h) => ({
+    x: h.origin[0],
+    y: h.origin[1],
+    xobj_xref: h.xobj_xref, // XObject内部テキストの特定に使用
+    internal_x: h.internal_origin[0],
+    internal_y: h.internal_origin[1],
+  }));
 
 const result = await sanitizeHiddenText({
   input: "file.pdf",
