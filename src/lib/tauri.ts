@@ -180,6 +180,8 @@ export interface SanitizeOrigin {
   xobj_xref?: number; // 0 or absent = トップレベル
   internal_x?: number; // XObject 内部座標
   internal_y?: number;
+  ox?: number; // デバイス座標 (MuPDF Y下向き)
+  oy?: number;
 }
 
 export interface SanitizeResponse {

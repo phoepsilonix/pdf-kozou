@@ -2757,7 +2757,9 @@ static void kozou_buried_fill_text(
             te->xobj_xref = dev->xobj_stack[dev->xobj_depth].xref;
             {
                 /* デバイス座標 → XObject 内部座標に逆変換 */
-                /* item->x, item->y は CTM 適用前の XObject 内部座標 (PDF Y上向き) */
+                /* internal_origin: item->x, item->y = テキストスペース座標
+                 * (Tm の tx/ty を含む完全な平行移動成分)
+                 * kozou_rewrite_stream_for_xobj の tm[4]/tm[5] と同じ座標系 */
                 te->ix = item->x;
                 te->iy = item->y;
             }
@@ -3348,9 +3350,10 @@ static float kozou_quad_map_lookup(
 #define KOZOU_SANITIZE_MAX 65536
 
 typedef struct {
-    float x, y;          /* ページ座標系 (既存) */
-    int   xobj_xref;     /* 所属 XObject xref (0=トップレベル) */
-    float ix, iy;        /* XObject 内部座標系 */
+    float x, y;          /* ページ座標系 (既存: ページ書き換えに使用) */
+    int   xobj_xref;     /* 所属 XObject xref (0=トップレベル, 現状常に0) */
+    float ix, iy;        /* XObject 内部座標系 (Tm座標) */
+    float ox, oy;        /* デバイス座標 (MuPDF Y下向き, XObject特定に使用) */
 } KozouSanitizeOrigin;
 
 /* ページ座標でのマッチング (xobj_xref==0 の場合) */
@@ -3528,6 +3531,104 @@ static pdf_obj *kozou_ensure_helvetica(
     return pdf_dict_gets(ctx, font_dict, "KOZOU_HV");
 }
 
+/* ────────────────────────────────────────────────────────────────────
+ * kozou_find_xobj_for_point
+ *
+ * ページ座標(ox, oy)を含む最小の Form XObject の xref を返す。
+ * 再帰的に子 XObject を走査し、(ox,oy) を含む最小bbox の XObject を選ぶ。
+ * 見つからなければ 0 を返す（ページトップレベル）。
+ * ──────────────────────────────────────────────────────────────────── */
+static void kozou_find_xobj_for_point_recursive(
+    fz_context   *ctx,
+    pdf_obj      *res_dict,
+    fz_matrix     ctm,
+    float         ox,
+    float         oy,
+    int          *best_xref,
+    float        *best_area,
+    int           depth)
+{
+    if (depth > 6) return;
+    pdf_obj *xobj_dict = pdf_dict_get(ctx, res_dict, PDF_NAME(XObject));
+    if (!xobj_dict) return;
+
+    int n = pdf_dict_len(ctx, xobj_dict);
+    for (int i = 0; i < n; i++) {
+        pdf_obj *val = pdf_dict_get_val(ctx, xobj_dict, i);
+        int xref = pdf_is_indirect(ctx, val) ? pdf_to_num(ctx, val) : 0;
+        if (xref == 0) continue;
+
+        pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
+        if (!xobj) continue;
+
+        pdf_obj *subtype = pdf_dict_get(ctx, xobj, PDF_NAME(Subtype));
+        if (!pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
+
+        pdf_obj *bbox_arr = pdf_dict_get(ctx, xobj, PDF_NAME(BBox));
+        if (!bbox_arr || pdf_array_len(ctx, bbox_arr) < 4) continue;
+
+        fz_rect bbox;
+        bbox.x0 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 0));
+        bbox.y0 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 1));
+        bbox.x1 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 2));
+        bbox.y1 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 3));
+
+        /* /Matrix */
+        pdf_obj *mat_arr = pdf_dict_get(ctx, xobj, PDF_NAME(Matrix));
+        fz_matrix xobj_mat = fz_identity;
+        if (mat_arr && pdf_array_len(ctx, mat_arr) >= 6) {
+            xobj_mat.a = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 0));
+            xobj_mat.b = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 1));
+            xobj_mat.c = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 2));
+            xobj_mat.d = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 3));
+            xobj_mat.e = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 4));
+            xobj_mat.f = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 5));
+        }
+
+        fz_matrix combined = fz_concat(xobj_mat, ctm);
+        fz_rect pg_bbox = fz_transform_rect(bbox, combined);
+
+        /* bbox が (ox,oy) を含むか */
+        float x0 = pg_bbox.x0 < pg_bbox.x1 ? pg_bbox.x0 : pg_bbox.x1;
+        float y0 = pg_bbox.y0 < pg_bbox.y1 ? pg_bbox.y0 : pg_bbox.y1;
+        float x1 = pg_bbox.x0 < pg_bbox.x1 ? pg_bbox.x1 : pg_bbox.x0;
+        float y1 = pg_bbox.y0 < pg_bbox.y1 ? pg_bbox.y1 : pg_bbox.y0;
+
+        if (ox >= x0 && ox <= x1 && oy >= y0 && oy <= y1) {
+            float area = (x1 - x0) * (y1 - y0);
+            if (area < *best_area) {
+                *best_area = area;
+                *best_xref = xref;
+            }
+            /* 子 XObject も再帰的に走査 */
+            pdf_obj *child_res = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
+            if (child_res)
+                kozou_find_xobj_for_point_recursive(
+                    ctx, child_res, combined, ox, oy, best_xref, best_area,
+                    depth + 1);
+        }
+    }
+}
+
+static int kozou_find_xobj_for_point(
+    fz_context   *ctx,
+    pdf_page     *ppage,
+    float         ox,
+    float         oy)
+{
+    int result = 0;
+    fz_rect mediabox = pdf_bound_page(ctx, ppage, FZ_MEDIA_BOX);
+    fz_matrix page_ctm = fz_identity;
+    pdf_page_transform(ctx, ppage, &mediabox, &page_ctm);
+    pdf_obj *resources = pdf_page_resources(ctx, ppage);
+    if (resources) {
+        float best_area = 1e18f;
+        kozou_find_xobj_for_point_recursive(
+            ctx, resources, page_ctm, ox, oy, &result, &best_area, 0);
+    }
+    return result;
+}
+
 /* ──────────────────────────────────────────────────────────────────
  * XObject ストリームの隠しテキスト書き換え
  * 内部座標（ix, iy）でターゲットをマッチングする。
@@ -3543,7 +3644,8 @@ static void kozou_rewrite_stream_for_xobj(
     pdf_obj               *hv_ref,
     const KozouSanitizeOrigin *targets,
     int                    n_targets,
-    float                  tol2)
+    float                  tol2,
+    fz_matrix              xobj_to_device) /* XObject内部→デバイス座標 */
 {
     unsigned char *src_data = NULL;
     size_t src_len = fz_buffer_storage(ctx, in_buf, &src_data);
@@ -3566,6 +3668,8 @@ static void kozou_rewrite_stream_for_xobj(
     float diff     = 0.0f;
     int   hit      = 0;
     int   stk_top  = 0;
+    /* xobj_to_device: cm 命令を積算して XObject内部→デバイス座標への変換を追跡 */
+    /* 呼び出し元から渡された初期値（通常 fz_identity）から始まる */
 
     /* 現在のテキスト位置（内部座標）を計算するためのマクロ */
     /* tm: [a b c d e f] で Tm/Td/T* 等から更新される */
@@ -3773,13 +3877,17 @@ static void kozou_rewrite_stream_for_xobj(
             continue;
         }
 
-        /* Tj / TJ の処理: 内部座標でターゲットと照合 */
+        /* Tj / TJ の処理: テキストスペース座標 (tm[4], tm[5]) でターゲットと照合
+         * internal_origin は item->x, item->y (テキストスペース座標) で記録済み
+         * xref チェックなしで ix, iy のみで照合（xobj_xref は常に 0 のため）*/
         if (!strcmp(kw, "Tj") || !strcmp(kw, "TJ")) {
-            /* 現在位置 (tm[4], tm[5]) が内部座標での origin */
-            int is_target = kozou_sanitize_is_xobj_target(
-                targets, n_targets,
-                targets[0].xobj_xref, /* 対象 xref は全ターゲット共通 */
-                XOBJ_CUR_X, XOBJ_CUR_Y, tol2);
+            /* xref に依存しない ix/iy 照合 */
+            int is_target = 0;
+            for (int _ti = 0; _ti < n_targets; _ti++) {
+                float _dx = targets[_ti].ix - XOBJ_CUR_X;
+                float _dy = targets[_ti].iy - XOBJ_CUR_Y;
+                if (_dx*_dx + _dy*_dy <= tol2) { is_target = 1; break; }
+            }
 
             if (is_target && hv_ref) {
                 /* Helvetica で空白に置き換え */
@@ -3797,6 +3905,23 @@ static void kozou_rewrite_stream_for_xobj(
                 fz_append_string(ctx, out_buf, kw);
                 fz_append_byte(ctx, out_buf, '\n');
             }
+            num_top = 0;
+            continue;
+        }
+
+        /* cm: 座標変換行列を積算して xobj_to_device を更新 */
+        if (!strcmp(kw, "cm") && na >= 6) {
+            fz_matrix m;
+            m.a = args[0]; m.b = args[1];
+            m.c = args[2]; m.d = args[3];
+            m.e = args[4]; m.f = args[5];
+            xobj_to_device = fz_concat(m, xobj_to_device);
+            /* cm はそのまま出力 */
+            for (int i=0;i<num_top;i++) {
+                fz_append_string(ctx, out_buf, num_stk[i]);
+                fz_append_byte(ctx, out_buf, ' ');
+            }
+            fz_append_string(ctx, out_buf, "cm\n");
             num_top = 0;
             continue;
         }
@@ -3855,11 +3980,13 @@ void kozou_sanitize_hidden_text(
             (KozouSanitizeOrigin *)fz_malloc(ctx, sizeof(KozouSanitizeOrigin) * n);
         /* target_origins は [x, y, xobj_xref(float), ix, iy] の5要素ごと */
         for (int i = 0; i < n; i++) {
-            targets[i].x         = target_origins[i*5];
-            targets[i].y         = target_origins[i*5+1];
-            targets[i].xobj_xref = (int)target_origins[i*5+2];
-            targets[i].ix        = target_origins[i*5+3];
-            targets[i].iy        = target_origins[i*5+4];
+            targets[i].x         = target_origins[i*7];
+            targets[i].y         = target_origins[i*7+1];
+            targets[i].xobj_xref = (int)target_origins[i*7+2];
+            targets[i].ix        = target_origins[i*7+3];
+            targets[i].iy        = target_origins[i*7+4];
+            targets[i].ox        = target_origins[i*7+5];
+            targets[i].oy        = target_origins[i*7+6];
         }
         float tol2 = tolerance > 0 ? tolerance*tolerance : 1.0f;
 
@@ -4282,15 +4409,24 @@ void kozou_sanitize_hidden_text(
                 sizeof(result->message)-1);
 
         /* XObject 内ターゲットの処理:
-         * xobj_xref != 0 のターゲットについて、対応する XObject の
-         * ストリームを書き換える。ページストリームと同じロジックを使用。
-         * 注意: XObject の Resources は XObject オブジェクト自身が持つ。*/
+         * ox/oy でターゲットを含む XObject を特定してストリームを書き換える。
+         * page は既にロード済みのポインタをループ変数から再取得できないため、
+         * ここでは最初のページを使って XObject を特定する（単一ページ PDF が大多数）。*/
         {
-            /* ユニークな xobj_xref を収集し、同一ストリームの xref も追加 */
+            /* 最初のページをロードして XObject を特定 */
+            pdf_page *xobj_search_page = NULL;
+            fz_try(ctx) {
+                xobj_search_page = pdf_load_page(ctx, pdf, 0);
+            } fz_catch(ctx) { xobj_search_page = NULL; }
+
             int xobj_xrefs[KOZOU_SANITIZE_MAX];
             int n_xrefs = 0;
+            if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
-                int xr = targets[i].xobj_xref;
+                float ox = targets[i].ox;
+                float oy = targets[i].oy;
+                if (ox == 0.0f && oy == 0.0f) continue;
+                int xr = kozou_find_xobj_for_point(ctx, xobj_search_page, ox, oy);
                 if (xr == 0) continue;
                 int found = 0;
                 for (int j = 0; j < n_xrefs; j++) {
@@ -4299,7 +4435,8 @@ void kozou_sanitize_hidden_text(
                 if (!found && n_xrefs < KOZOU_SANITIZE_MAX)
                     xobj_xrefs[n_xrefs++] = xr;
             }
-
+            } /* if xobj_search_page */
+            if (xobj_search_page) { pdf_drop_page(ctx, xobj_search_page); xobj_search_page = NULL; }
 
             /* 各 XObject を処理 */
             for (int xi = 0; xi < n_xrefs; xi++) {
@@ -4358,14 +4495,26 @@ void kozou_sanitize_hidden_text(
                     }
 
                     /* XObject ストリームに対してページと同じ書き換えを実行 */
-                    /* XObject 内部座標系を使うためのラッパー */
-                    /* kozou_sanitize_is_xobj_target を使って内部座標でマッチング */
+                    /* internal_origin はデバイス座標(ox,oy)なので
+                     * XObject内部座標→デバイス座標の変換行列を渡す */
                     fz_buffer *new_xobj_buf = fz_new_buffer(ctx, fz_buffer_storage(ctx, xobj_buf, NULL));
-                    /* ストリームを書き換え（内部座標版） */
+
+                    /* xobj_to_device: XObject内部座標→デバイス座標への変換
+                     * internal_origin は ox, oy (デバイス座標) で記録されているが、
+                     * kozou_rewrite_stream_for_xobj 内で Tm + cm を積算するため
+                     * ここでは XObject の配置 CTM（ページ配置時の完全な行列）が必要。
+                     * しかしそれは PDF 構造から静的に取得できないため、
+                     * ターゲットの ix, iy をデバイス座標として渡し、
+                     * rewrite 側で cm を積算した上で変換してデバイス座標でマッチングする。
+                     * 初期 xobj_to_device は fz_identity（cm を積算するベース）。 */
+                    fz_matrix xobj_to_device = fz_identity;
+
+                    /* ストリームを書き換え（デバイス座標でマッチング） */
                     kozou_rewrite_stream_for_xobj(
                         ctx, pdf, xobj_buf, new_xobj_buf,
                         xobj_fonts, hv_ref,
-                        xobj_targets, n_xobj_targets, tol2);
+                        xobj_targets, n_xobj_targets, tol2,
+                        xobj_to_device);
                     pdf_update_stream(ctx, pdf, xobj_obj, new_xobj_buf, 0);
                     fz_drop_buffer(ctx, new_xobj_buf);
                 }

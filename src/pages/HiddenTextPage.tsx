@@ -288,6 +288,8 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             xobj_xref: h.xobjXref ?? 0,
             internal_x: h.internalOrigin?.[0] ?? h.origin[0],
             internal_y: h.internalOrigin?.[1] ?? h.origin[1],
+            ox: h.origin[0],
+            oy: h.origin[1],
           }));
 
         if (targets.length === 0) {
@@ -730,6 +732,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             xobj_xref: c.xobjXref ?? 0,
             internal_x: c.internalOrigin?.[0] ?? c.origin[0],
             internal_y: c.internalOrigin?.[1] ?? c.origin[1],
+            ox: c.origin[0], // デバイス座標 = origin と同じ
+            oy: c.origin[1],
           })),
       );
     if (!targets.length) {

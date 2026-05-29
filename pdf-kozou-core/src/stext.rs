@@ -929,14 +929,19 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
 pub struct SanitizeOrigin {
     pub x: f32,
     pub y: f32,
-    /// 所属 XObject の xref (0=ページトップレベル)
+    /// 所属 XObject の xref (0=ページトップレベル, 現状常に0)
     #[serde(default)]
     pub xobj_xref: i32,
-    /// XObject 内部座標
+    /// XObject 内部座標 (Tm座標)
     #[serde(default)]
     pub internal_x: f32,
     #[serde(default)]
     pub internal_y: f32,
+    /// デバイス座標 (MuPDF Y下向き, XObject特定に使用)
+    #[serde(default)]
+    pub ox: f32,
+    #[serde(default)]
+    pub oy: f32,
 }
 
 #[derive(Debug, Serialize)]
@@ -1026,7 +1031,7 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
 
     // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の5要素フラット配列に変換
     let origins: Vec<f32> = req.targets.iter()
-        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y])
+        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y, o.ox, o.oy])
         .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);
