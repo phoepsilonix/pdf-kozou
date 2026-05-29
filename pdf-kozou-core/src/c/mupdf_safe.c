@@ -2909,6 +2909,119 @@ static fz_rect kozou_xobj_page_bbox(
     return fz_transform_rect(bbox, combined);
 }
 
+/* ════════════════════════════════════════════════════════════════════
+ * XObject bbox 再帰収集（crop_cleanup Phase 1 用）
+ *
+ * ページ上に配置された全 Form XObject（ネスト含む）の
+ * ページ座標系（MuPDF デバイス座標, Y下向き）での bbox を JSON で返す。
+ *
+ * 出力 JSON:
+ * {
+ *   "ok": true,
+ *   "page_h": <float>,
+ *   "cropbox": [x0, y0, x1, y1],   // MuPDF デバイス座標
+ *   "entries": [
+ *     {
+ *       "container_xref": <int>,   // この Do 命令を含む XObject の xref
+ *                                  //  (0 = ページのコンテンツストリーム)
+ *       "xobj_name": "<string>",   // /Name の名前部分
+ *       "xobj_xref": <int>,        // 参照先 XObject の xref
+ *       "bbox": [x0, y0, x1, y1]  // ページ座標系での bbox
+ *     }, ...
+ *   ]
+ * }
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* 再帰収集の内部状態 */
+typedef struct {
+    fz_context   *ctx;
+    pdf_document *pdf;
+    fz_output    *out;
+    int           first;      /* JSON カンマ制御 */
+    float         page_h;
+} KozouXObjCollectCtx;
+
+/* 1つの XObject 辞書を走査して全 Form XObject の bbox を出力する（再帰） */
+static void kozou_collect_xobj_recursive(
+    KozouXObjCollectCtx *cx,
+    pdf_obj             *res_dict,    /* 現在のリソース辞書 */
+    fz_matrix            ctm,         /* 現在の変換行列（XObject内部→デバイス座標） */
+    int                  container_xref, /* この Do を含む XObject の xref */
+    int                  depth)
+{
+    if (depth > 8) return; /* 無限再帰防止 */
+    fz_context *ctx = cx->ctx;
+
+    pdf_obj *xobj_dict = pdf_dict_get(ctx, res_dict, PDF_NAME(XObject));
+    if (!xobj_dict) return;
+
+    int n = pdf_dict_len(ctx, xobj_dict);
+    for (int i = 0; i < n; i++) {
+        pdf_obj *key = pdf_dict_get_key(ctx, xobj_dict, i);
+        pdf_obj *val = pdf_dict_get_val(ctx, xobj_dict, i);
+
+        int xref = pdf_is_indirect(ctx, val) ? pdf_to_num(ctx, val) : 0;
+        if (xref == 0) continue;
+
+        pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
+        if (!xobj) continue;
+
+        pdf_obj *subtype = pdf_dict_get(ctx, xobj, PDF_NAME(Subtype));
+        if (!pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
+
+        const char *name = pdf_to_name(ctx, key);
+        if (!name || !*name) continue;
+
+        /* /BBox を取得 */
+        pdf_obj *bbox_arr = pdf_dict_get(ctx, xobj, PDF_NAME(BBox));
+        if (!bbox_arr || pdf_array_len(ctx, bbox_arr) < 4) continue;
+
+        fz_rect bbox;
+        bbox.x0 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 0));
+        bbox.y0 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 1));
+        bbox.x1 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 2));
+        bbox.y1 = pdf_to_real(ctx, pdf_array_get(ctx, bbox_arr, 3));
+
+        /* /Matrix を取得（なければ identity）*/
+        pdf_obj *mat_arr = pdf_dict_get(ctx, xobj, PDF_NAME(Matrix));
+        fz_matrix xobj_matrix = fz_identity;
+        if (mat_arr && pdf_array_len(ctx, mat_arr) >= 6) {
+            xobj_matrix.a = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 0));
+            xobj_matrix.b = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 1));
+            xobj_matrix.c = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 2));
+            xobj_matrix.d = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 3));
+            xobj_matrix.e = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 4));
+            xobj_matrix.f = pdf_to_real(ctx, pdf_array_get(ctx, mat_arr, 5));
+        }
+
+        /* BBox を ctm × matrix でページ座標に変換 */
+        fz_matrix combined = fz_concat(xobj_matrix, ctm);
+        fz_rect pg_bbox = fz_transform_rect(bbox, combined);
+
+        /* 出力 */
+        if (!cx->first) fz_write_printf(ctx, cx->out, ",");
+        cx->first = 0;
+
+        fz_write_printf(ctx, cx->out,
+            "{\"container_xref\":%d,"
+            "\"xobj_name\":\"%s\","
+            "\"xobj_xref\":%d,"
+            "\"bbox\":[%.3f,%.3f,%.3f,%.3f]}",
+            container_xref,
+            name,
+            xref,
+            pg_bbox.x0, pg_bbox.y0,
+            pg_bbox.x1, pg_bbox.y1);
+
+        /* 子 XObject のリソースを再帰処理 */
+        pdf_obj *child_res = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
+        if (child_res) {
+            kozou_collect_xobj_recursive(
+                cx, child_res, combined, xref, depth + 1);
+        }
+    }
+}
+
 void kozou_collect_xobj_bboxes(
     fz_context   *ctx,
     const char   *path,
@@ -2944,68 +3057,36 @@ void kozou_collect_xobj_bboxes(
         page = fz_load_page(ctx, (fz_document *)pdf, page_index);
         pdf_page *ppage = (pdf_page *)page;
 
-        /* ページのデバイス座標系での矩形 */
         fz_rect page_mediabox = pdf_bound_page(ctx, ppage, FZ_MEDIA_BOX);
         fz_rect page_cropbox  = pdf_bound_page(ctx, ppage, FZ_CROP_BOX);
         float page_h = page_mediabox.y1 - page_mediabox.y0;
 
-        /* ページ → デバイス座標の CTM (回転考慮) */
+        /* ページ → デバイス座標の CTM */
         fz_matrix page_ctm = fz_identity;
         pdf_page_transform(ctx, ppage, &page_mediabox, &page_ctm);
 
-        /* ページのリソースから XObject 辞書を取得 */
+        /* ページのリソース */
         pdf_obj *resources = pdf_page_resources(ctx, ppage);
-        pdf_obj *xobj_dict = resources
-            ? pdf_dict_get(ctx, resources, PDF_NAME(XObject))
-            : NULL;
+
+        KozouXObjCollectCtx cx = {
+            .ctx    = ctx,
+            .pdf    = pdf,
+            .out    = out,
+            .first  = 1,
+            .page_h = page_h,
+        };
 
         fz_write_printf(ctx, out,
             "{\"ok\":true,\"page_h\":%.3f,"
             "\"cropbox\":[%.3f,%.3f,%.3f,%.3f],"
-            "\"xobjs\":[",
+            "\"entries\":[",
             page_h,
             page_cropbox.x0, page_cropbox.y0,
             page_cropbox.x1, page_cropbox.y1);
 
-        int first = 1;
-
-        if (xobj_dict) {
-            int n = pdf_dict_len(ctx, xobj_dict);
-            for (int i = 0; i < n; i++) {
-                pdf_obj *key = pdf_dict_get_key(ctx, xobj_dict, i);
-                pdf_obj *val = pdf_dict_get_val(ctx, xobj_dict, i);
-
-                int xref = pdf_is_indirect(ctx, val)
-                           ? pdf_to_num(ctx, val) : 0;
-                if (xref == 0) continue;
-
-                pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
-                if (!xobj) continue;
-
-                pdf_obj *subtype = pdf_dict_get(ctx, xobj, PDF_NAME(Subtype));
-                int is_form = pdf_name_eq(ctx, subtype, PDF_NAME(Form));
-                if (!is_form) continue; /* Image は配置 CTM が別途必要 */
-
-                const char *name = pdf_to_name(ctx, key);
-                if (!name || !*name) continue;
-
-                /* BBox をページ座標に変換 */
-                fz_rect pg_bbox = kozou_xobj_page_bbox(
-                    ctx, pdf, xobj, page_ctm);
-
-                if (fz_is_infinite_rect(pg_bbox)) continue;
-
-                if (!first) fz_write_printf(ctx, out, ",");
-                first = 0;
-
-                fz_write_printf(ctx, out,
-                    "{\"name\":\"%s\",\"xref\":%d,"
-                    "\"bbox\":[%.3f,%.3f,%.3f,%.3f]}",
-                    name, xref,
-                    pg_bbox.x0, pg_bbox.y0,
-                    pg_bbox.x1, pg_bbox.y1);
-            }
-        }
+        /* ページリソースから再帰収集（container_xref=0 はページレベル）*/
+        if (resources)
+            kozou_collect_xobj_recursive(&cx, resources, page_ctm, 0, 0);
 
         fz_write_printf(ctx, out, "]}");
         set_ok(result);
@@ -3018,6 +3099,7 @@ void kozou_collect_xobj_bboxes(
         set_err(result, fz_caught_message(ctx));
     }
 }
+
 
 void kozou_detect_buried_text(
     fz_context  *ctx,
