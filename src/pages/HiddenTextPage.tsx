@@ -722,13 +722,15 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     const targets: SanitizeOrigin[] = groups
       .filter((g) => selectedIds.has(g.id))
       .flatMap((g) =>
-        g.chars.map((c) => ({
-          x: c.origin[0],
-          y: c.origin[1],
-          xobj_xref: c.xobjXref,
-          internal_x: c.internalOrigin[0],
-          internal_y: c.internalOrigin[1],
-        })),
+        g.chars
+          .filter((c) => !(skipType3 && c.isType3))
+          .map((c) => ({
+            x: c.origin[0],
+            y: c.origin[1],
+            xobj_xref: c.xobjXref,
+            internal_x: c.internalOrigin[0],
+            internal_y: c.internalOrigin[1],
+          })),
       );
     if (!targets.length) {
       setStatus(t("hidden.no_targets" as any));

@@ -2757,10 +2757,9 @@ static void kozou_buried_fill_text(
             te->xobj_xref = dev->xobj_stack[dev->xobj_depth].xref;
             {
                 /* デバイス座標 → XObject 内部座標に逆変換 */
-                fz_matrix inv = dev->xobj_stack[dev->xobj_depth].inv_ctm;
-                fz_point internal_pt = fz_transform_point(fz_make_point(item->x, item->y), fz_identity);
-                te->ix = internal_pt.x;
-                te->iy = internal_pt.y;
+                /* item->x, item->y は CTM 適用前の XObject 内部座標 (PDF Y上向き) */
+                te->ix = item->x;
+                te->iy = item->y;
             }
             te->ox = ox;
             te->oy = oy;
@@ -4205,7 +4204,7 @@ void kozou_sanitize_hidden_text(
          * ストリームを書き換える。ページストリームと同じロジックを使用。
          * 注意: XObject の Resources は XObject オブジェクト自身が持つ。*/
         {
-            /* ユニークな xobj_xref を収集 */
+            /* ユニークな xobj_xref を収集し、同一ストリームの xref も追加 */
             int xobj_xrefs[KOZOU_SANITIZE_MAX];
             int n_xrefs = 0;
             for (int i = 0; i < n; i++) {
@@ -4218,6 +4217,7 @@ void kozou_sanitize_hidden_text(
                 if (!found && n_xrefs < KOZOU_SANITIZE_MAX)
                     xobj_xrefs[n_xrefs++] = xr;
             }
+
 
             /* 各 XObject を処理 */
             for (int xi = 0; xi < n_xrefs; xi++) {
