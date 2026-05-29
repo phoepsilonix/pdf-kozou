@@ -285,9 +285,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           .map((h) => ({
             x: h.origin[0],
             y: h.origin[1],
-            xobj_xref: h.xobjXref,
-            internal_x: h.internalOrigin[0],
-            internal_y: h.internalOrigin[1],
+            xobj_xref: h.xobjXref ?? 0,
+            internal_x: h.internalOrigin?.[0] ?? h.origin[0],
+            internal_y: h.internalOrigin?.[1] ?? h.origin[1],
           }));
 
         if (targets.length === 0) {
@@ -727,9 +727,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           .map((c) => ({
             x: c.origin[0],
             y: c.origin[1],
-            xobj_xref: c.xobjXref,
-            internal_x: c.internalOrigin[0],
-            internal_y: c.internalOrigin[1],
+            xobj_xref: c.xobjXref ?? 0,
+            internal_x: c.internalOrigin?.[0] ?? c.origin[0],
+            internal_y: c.internalOrigin?.[1] ?? c.origin[1],
           })),
       );
     if (!targets.length) {
@@ -757,8 +757,16 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       setStatus(t("hidden.sanitize_done", { name: doneName }) + type3Msg);
       announceSuccess("hidden.sanitize_done", { name: doneName });
     } catch (e) {
-      setStatus(t("hidden.sanitize_error", { msg: String(e) }));
-      announceError(String(e));
+      const msg =
+        typeof e === "string"
+          ? e
+          : e instanceof Error
+            ? e.message
+            : typeof e === "object" && e !== null && "message" in e
+              ? String((e as any).message)
+              : JSON.stringify(e);
+      setStatus(t("hidden.sanitize_error", { msg }));
+      announceError(msg);
     } finally {
       setSanitizing(false);
     }

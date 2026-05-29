@@ -58,7 +58,7 @@ pub fn remove_out_of_crop_resources(
 ) -> Result<CleanupStats, String> {
     use crate::ffi::{
         kozou_buffer_get_data, kozou_collect_xobj_bboxes, kozou_drop_buffer,
-        kozou_new_buffer, kozou_new_buffer_output, kozou_new_context, FfiResult,
+        kozou_new_context, FfiResult,
     };
     use std::ffi::CString;
 
@@ -84,8 +84,17 @@ pub fn remove_out_of_crop_resources(
             if ctx.is_null() {
                 return Err("kozou_new_context failed".into());
             }
-            let buf = kozou_new_buffer(ctx);
-            let out = kozou_new_buffer_output(ctx, buf);
+            let buf = mupdf_sys::fz_new_buffer(ctx, 4096);
+            if buf.is_null() {
+                mupdf_sys::fz_drop_context(ctx);
+                continue;
+            }
+            let out = mupdf_sys::fz_new_output_with_buffer(ctx, buf);
+            if out.is_null() {
+                mupdf_sys::fz_drop_buffer(ctx, buf);
+                mupdf_sys::fz_drop_context(ctx);
+                continue;
+            }
             let mut res = FfiResult::default();
 
             kozou_collect_xobj_bboxes(
@@ -98,6 +107,9 @@ pub fn remove_out_of_crop_resources(
                 out,
                 &mut res,
             );
+
+            mupdf_sys::fz_close_output(ctx, out);
+            mupdf_sys::fz_drop_output(ctx, out);
 
             let mut data_ptr: *const u8 = std::ptr::null();
             let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
