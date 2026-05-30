@@ -125,7 +125,7 @@ jobs:
 
       - name: Save npm cache
         uses: actions/cache/save@v4
-        if: ${{ ((github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true') || startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ ((github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true') }}
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -328,7 +328,7 @@ jobs:
 
       - name: Save npm cache
         uses: actions/cache/save@v4
-        if: ${{ ((github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true') || startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ ((github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true') }}
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
