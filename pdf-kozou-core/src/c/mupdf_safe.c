@@ -4091,8 +4091,8 @@ void kozou_sanitize_hidden_text(
                 int   in_text   = 0;
                 char  cur_font[64] = "";
 
-#define SSTK 64
-                typedef struct { char s[512]; float v; int is_num; int is_str; } SOp;
+#define SSTK 16  /* スタック消費削減のため縮小 (旧64) */
+                typedef struct { char s[128]; float v; int is_num; int is_str; } SOp;
                 SOp  stk[SSTK];
                 int  stk_top = 0;
 

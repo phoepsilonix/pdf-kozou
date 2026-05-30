@@ -1025,9 +1025,14 @@ fn dispatch_json(line: &str) -> String {
             "sanitize_hidden" => {
                 let req: pdf_kozou_core::stext::SanitizeRequest =
                     serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &pdf_kozou_core::stext::sanitize_hidden_text(&req)?,
-                )?)
+                // スタックサイズを 32MB に増やして実行（Windows デフォルト 1MB では不足）
+                let result = std::thread::Builder::new()
+                    .stack_size(32 * 1024 * 1024)
+                    .spawn(move || pdf_kozou_core::stext::sanitize_hidden_text(&req))
+                    .map_err(|e| anyhow::anyhow!("thread spawn: {e}"))?
+                    .join()
+                    .map_err(|_| anyhow::anyhow!("thread panicked"))??;
+                Ok(serde_json::to_string(&result)?)
             }
 
             "render_imposition" => {
