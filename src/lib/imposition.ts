@@ -29,7 +29,12 @@ export interface Sheet {
  *   シート1 表: [4, 1]  (右綴じ: 右=p4, 左=p1)
  *   シート1 裏: [2, 3]
  */
-export function calcBookletSheets(totalPages: number): Sheet[] {
+export function calcBookletSheets(
+  totalPages: number,
+  blankLabel = "Blank",
+  frontLabel = (n: number) => `Sheet ${n} Front`,
+  backLabel = (n: number) => `Sheet ${n} Back`,
+): Sheet[] {
   // 4の倍数に切り上げ
   const n = totalPages % 4 === 0 ? totalPages : totalPages + (4 - (totalPages % 4));
 
@@ -42,7 +47,7 @@ export function calcBookletSheets(totalPages: number): Sheet[] {
     // 表: 右=hi, 左=lo
     sheets.push({
       pages: [hi, lo],
-      label: `シート${sheetIdx} 表`,
+      label: frontLabel(sheetIdx),
     });
     lo++;
     hi--;
@@ -50,7 +55,7 @@ export function calcBookletSheets(totalPages: number): Sheet[] {
     // 裏: 左=lo, 右=hi
     sheets.push({
       pages: [lo, hi],
-      label: `シート${sheetIdx} 裏`,
+      label: backLabel(sheetIdx),
     });
     lo++;
     hi--;
@@ -64,13 +69,13 @@ export function calcBookletSheets(totalPages: number): Sheet[] {
  * 2-up Sequential のシート順序を計算する。
  * [1,2], [3,4], [5,6], ...
  */
-export function calc2upSheets(totalPages: number): Sheet[] {
+export function calc2upSheets(totalPages: number, blankLabel = "Blank"): Sheet[] {
   const sheets: Sheet[] = [];
   for (let i = 1; i <= totalPages; i += 2) {
     const p2 = i + 1 <= totalPages ? i + 1 : 0;
     sheets.push({
       pages: [i, p2],
-      label: `${i}–${p2 || "空白"}`,
+      label: `${i}–${p2 || blankLabel}`,
     });
   }
   return sheets;
@@ -95,16 +100,22 @@ export function calc4upSheets(totalPages: number): Sheet[] {
 /**
  * モードに応じたシートリストを返す。
  */
-export function calcSheets(mode: ImpositionMode, totalPages: number): Sheet[] {
+export function calcSheets(
+  mode: ImpositionMode,
+  totalPages: number,
+  blankLabel = "Blank",
+  frontLabel?: (n: number) => string,
+  backLabel?: (n: number) => string,
+): Sheet[] {
   if (mode === "1up") {
     return Array.from({ length: totalPages }, (_, i) => ({
       pages: [i + 1],
       label: `${i + 1}`,
     }));
   }
-  if (mode === "2up") return calc2upSheets(totalPages);
+  if (mode === "2up") return calc2upSheets(totalPages, blankLabel);
   if (mode === "4up") return calc4upSheets(totalPages);
-  if (mode === "booklet") return calcBookletSheets(totalPages);
+  if (mode === "booklet") return calcBookletSheets(totalPages, blankLabel, frontLabel, backLabel);
   return [];
 }
 

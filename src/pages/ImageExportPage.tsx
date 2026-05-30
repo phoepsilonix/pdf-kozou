@@ -279,7 +279,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return; // キャンセル
       setPhase("processing");
-      setStatusMsg("面付けレンダリング中...");
+      setStatusMsg(t("image.imposition_rendering_init" as any));
       try {
         // 高DPI × 多ページのメモリ試算（600MB超は確認ダイアログ）
         const modeInfo0 = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
@@ -311,7 +311,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         const pageSpec = resolvePageSpec(pages || "", total).map((i) => i + 1); // 1始まり
         const pageSet = new Set(pageSpec);
         const effectiveCount = pageSpec.length || total;
-        const sheets = calcSheets(impositionMode, effectiveCount);
+        const sheets = calcSheets(
+          impositionMode,
+          effectiveCount,
+          t("common.imposition_blank_page" as any),
+          (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
+          (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+        );
         console.log(
           "[imposition] effectiveCount:",
           effectiveCount,
@@ -513,7 +519,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           const filePageSpec = resolvePageSpec(pages || "", fileTotal).map((i) => i + 1);
           const filePageSet = new Set(filePageSpec);
           const fileEffective = filePageSpec.length || fileTotal;
-          const fileSheets = calcSheets(impositionMode, fileEffective);
+          const fileSheets = calcSheets(
+            impositionMode,
+            fileEffective,
+            t("common.imposition_blank_page" as any),
+            (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
+            (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+          );
           const modeInfo = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
           const fmt = format === "png" ? "png" : "jpeg";
           const ext = format === "png" ? "png" : "jpg";
@@ -583,7 +595,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     return (
       <Spinner
         label={
-          statusMsg && statusMsg !== "" && statusMsg !== "面付けレンダリング中..."
+          statusMsg && statusMsg !== ""
             ? statusMsg
             : t("image.processing", { current: String(resolvedPageCount) })
         }
@@ -838,6 +850,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               onClick={(e) => {
                 setOutputMode("pdf");
                 setImpositionMode("1up"); // PDF出力時は面付け不要なのでリセット
+                setStatusMsg("");
                 (e.currentTarget as HTMLButtonElement).blur();
               }}
               style={{
@@ -854,13 +867,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           {/* 面付けモード */}
           {outputMode === "images" && format !== "svg" && (
             <>
-              <div style={s.secLabel}>面付け（N-up / 製本）</div>
+              <div style={s.secLabel}>{t("image.imposition_section_label" as any)}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {IMPOSITION_MODES_I18N.map((m) => (
                   <button
                     key={m.id}
                     onClick={(e) => {
                       setImpositionMode(m.id);
+                      setStatusMsg("");
                       (e.currentTarget as HTMLButtonElement).blur();
                     }}
                     style={{
@@ -880,10 +894,19 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   {(() => {
                     const n = resolvedPageCount || total;
                     const sheetCount = calcSheets(impositionMode, n).length;
-                    const pageLabel = n !== total ? `対象${n}ページ` : `全${total}ページ`;
+                    const pageLabel =
+                      n !== total
+                        ? t("image.imposition_page_label_filtered" as any, { n: String(n) })
+                        : t("image.imposition_page_label_all" as any, { total: String(total) });
                     return impositionMode === "booklet"
-                      ? `${sheetCount}枚のシートが生成されます（${pageLabel} → 製本順）`
-                      : `${sheetCount}枚が生成されます（${pageLabel}）`;
+                      ? t("image.imposition_sheet_count_booklet" as any, {
+                          count: String(sheetCount),
+                          pages: pageLabel,
+                        })
+                      : t("image.imposition_sheet_count" as any, {
+                          count: String(sheetCount),
+                          pages: String(n),
+                        });
                   })()}
                 </div>
               )}
@@ -1109,7 +1132,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                               const mInfo = IMPOSITION_MODES_I18N.find(
                                 (m) => m.id === impositionMode,
                               )!;
-                              return `${mInfo.icon} ${mInfo.label} → ${fSheets}シート`;
+                              return t("image.imposition_batch_mode_sheets" as any, {
+                                icon: mInfo.icon,
+                                mode: mInfo.label,
+                                sheets: String(fSheets),
+                              });
                             })()
                           : t("image.result_suffix", {
                               pages: String(
@@ -1192,15 +1219,19 @@ function ImpositionPreview({
   return (
     <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
       <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
-        {modeInfo.icon} {modeInfo.label} — {sheets.length}シート
+        {t("image.imposition_preview_header" as any, {
+          icon: modeInfo.icon,
+          mode: modeInfo.label,
+          sheets: String(sheets.length),
+        })}
         {effectiveTotal !== total && (
           <span style={{ marginLeft: 4, color: "var(--c-textDim)" }}>
-            （対象{effectiveTotal}ページ）
+            {t("image.imposition_preview_filtered" as any, { n: String(effectiveTotal) })}
           </span>
         )}
         {impositionMode === "booklet" && (
           <span style={{ marginLeft: 6, color: "var(--c-textDim)" }}>
-            （折って重ねると製本になります）
+            {t("image.imposition_booklet_note" as any)}
           </span>
         )}
       </div>

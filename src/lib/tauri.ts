@@ -182,6 +182,7 @@ export interface SanitizeOrigin {
   internal_y?: number;
   ox?: number; // デバイス座標 (MuPDF Y下向き)
   oy?: number;
+  is_buried?: number; // 1=buried検出、XObject書き換えが必要
 }
 
 export interface SanitizeResponse {

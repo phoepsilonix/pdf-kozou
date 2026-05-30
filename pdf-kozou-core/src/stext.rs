@@ -942,6 +942,9 @@ pub struct SanitizeOrigin {
     pub ox: f32,
     #[serde(default)]
     pub oy: f32,
+    /// buried 検出フラグ (1=XObject書き換えが必要)
+    #[serde(default)]
+    pub is_buried: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -1031,7 +1034,7 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
 
     // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の5要素フラット配列に変換
     let origins: Vec<f32> = req.targets.iter()
-        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y, o.ox, o.oy])
+        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y, o.ox, o.oy, o.is_buried as f32])
         .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);

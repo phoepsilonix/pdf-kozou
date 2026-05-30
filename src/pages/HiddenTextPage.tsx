@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   renderPage,
   detectTransparentText,
@@ -46,7 +46,7 @@ const REASON_KEY: Record<string, string> = {
   whitespace_only: "hidden.reason_whitespace",
 };
 
-const DEFAULT_THR = { alpha: 13, contrast: 1.5, size: 2.0, cover: 0.8 };
+const DEFAULT_THR = { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8 };
 
 type Thr = typeof DEFAULT_THR;
 
@@ -54,17 +54,17 @@ const PRESETS: { id: string; labelKey: string; thr: Thr }[] = [
   {
     id: "strict",
     labelKey: "hidden.preset_strict",
-    thr: { alpha: 5, contrast: 3.0, size: 1.0, cover: 0.9 },
+    thr: { alpha: 5, contrast: 1.0, size: 1.0, cover: 0.9 },
   },
   {
     id: "normal",
     labelKey: "hidden.preset_normal",
-    thr: { alpha: 13, contrast: 1.5, size: 2.0, cover: 0.8 },
+    thr: { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8 },
   },
   {
     id: "loose",
     labelKey: "hidden.preset_loose",
-    thr: { alpha: 30, contrast: 1.2, size: 4.0, cover: 0.6 },
+    thr: { alpha: 30, contrast: 1.5, size: 4.0, cover: 0.6 },
   },
 ];
 
@@ -97,6 +97,7 @@ type AnyHit = {
   isType3: boolean;
   xobjXref: number; // 0 = トップレベル
   internalOrigin: [number, number]; // XObject 内部座標
+  page: number; // 検出ページ番号（0始まり）
 };
 
 type HitGroup = {
@@ -119,7 +120,7 @@ type BatchProgress = {
   errors: { file: string; msg: string }[];
 };
 
-function toAnyHits(type: DetectType, hits: any[]): AnyHit[] {
+function toAnyHits(type: DetectType, hits: any[], pageIdx = 0): AnyHit[] {
   return hits.map((h) => ({
     type,
     char: h.char ?? "",
@@ -138,6 +139,7 @@ function toAnyHits(type: DetectType, hits: any[]): AnyHit[] {
     isType3: h.is_type3 ?? false,
     xobjXref: (h as any).xobj_xref ?? 0,
     internalOrigin: (h as any).internal_origin ?? [h.origin[0], h.origin[1]],
+    page: pageIdx,
   }));
 }
 
@@ -290,6 +292,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             internal_y: h.internalOrigin?.[1] ?? h.origin[1],
             ox: h.origin[0],
             oy: h.origin[1],
+            is_buried: h.type === "buried" ? 1 : 0,
           }));
 
         if (targets.length === 0) {
@@ -637,6 +640,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const { t } = useI18n();
   const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey as any) }));
   const [pageIndex, setPageIndex] = useState(0);
+  const [allPagesMode, setAllPagesMode] = useState(false);
   const [enabled, setEnabled] = useState<Set<DetectType>>(
     new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
   );
@@ -671,54 +675,72 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     renderCurrent();
   }, [renderCurrent]);
 
-  const runDetect = useCallback(async () => {
-    setRunning(true);
-    setGroups([]);
-    setSelectedIds(new Set());
-    setStatus("検出中...");
-    saveLastThr(thr); // 閾値を履歴保存
-    try {
-      const all: AnyHit[] = [];
-      if (enabled.has("transparent"))
-        all.push(
-          ...toAnyHits(
-            "transparent",
-            (await detectTransparentText(filePath, pageIndex, thr.alpha)).hits,
-          ),
-        );
-      if (enabled.has("low_contrast"))
-        all.push(
-          ...toAnyHits(
-            "low_contrast",
-            (await detectLowContrastText(filePath, pageIndex, thr.contrast)).hits,
-          ),
-        );
-      if (enabled.has("tiny"))
-        all.push(...toAnyHits("tiny", (await detectTinyText(filePath, pageIndex, thr.size)).hits));
-      if (enabled.has("buried"))
-        all.push(
-          ...toAnyHits("buried", (await detectBuriedText(filePath, pageIndex, thr.cover)).hits),
-        );
-      if (enabled.has("control_chars"))
-        all.push(
-          ...toAnyHits("control_chars", (await detectControlChars(filePath, pageIndex)).hits),
-        );
+  // 全ページモード時は現在ページのみ表示（useMemo で確実に再計算）
+  const displayGroups = useMemo(
+    () =>
+      allPagesMode
+        ? groups.filter((g) => g.chars.length > 0 && g.chars[0].page === pageIndex)
+        : groups,
+    [groups, allPagesMode, pageIndex],
+  );
 
-      const grps = groupHits(all);
-      setGroups(grps);
-      const autoSel = new Set(grps.filter((g) => !g.isWs).map((g) => g.id));
-      setSelectedIds(autoSel);
-      setStatus(
-        all.length === 0
-          ? t("hidden.batch_no_detection")
-          : `${grps.filter((g) => !g.isWs).length}件検出（${all.length}文字）`,
-      );
-    } catch (e) {
-      setStatus(`エラー: ${e}`);
-    } finally {
-      setRunning(false);
-    }
-  }, [filePath, pageIndex, enabled, thr]);
+  const runDetect = useCallback(
+    async (forceAllPages?: boolean) => {
+      const effectiveAllPages = forceAllPages ?? allPagesMode;
+      setRunning(true);
+      setGroups([]);
+      setSelectedIds(new Set());
+      setStatus("検出中...");
+      saveLastThr(thr); // 閾値を履歴保存
+      try {
+        const all: AnyHit[] = [];
+        const pages = effectiveAllPages
+          ? Array.from({ length: pageCount }, (_, i) => i)
+          : [pageIndex];
+        for (const p of pages) {
+          if (enabled.has("transparent"))
+            all.push(
+              ...toAnyHits(
+                "transparent",
+                (await detectTransparentText(filePath, p, thr.alpha)).hits,
+                p,
+              ),
+            );
+          if (enabled.has("low_contrast"))
+            all.push(
+              ...toAnyHits(
+                "low_contrast",
+                (await detectLowContrastText(filePath, p, thr.contrast)).hits,
+                p,
+              ),
+            );
+          if (enabled.has("tiny"))
+            all.push(...toAnyHits("tiny", (await detectTinyText(filePath, p, thr.size)).hits, p));
+          if (enabled.has("buried"))
+            all.push(...toAnyHits("buried", (await detectBuriedText(filePath, p, thr.cover)).hits));
+          if (enabled.has("control_chars"))
+            all.push(...toAnyHits("control_chars", (await detectControlChars(filePath, p)).hits));
+        }
+
+        const grps = groupHits(all);
+        setGroups(grps);
+        const autoSel = new Set(grps.filter((g) => !g.isWs).map((g) => g.id));
+        setSelectedIds(autoSel);
+        setStatus(
+          all.length === 0
+            ? t("hidden.batch_no_detection")
+            : effectiveAllPages
+              ? `${grps.filter((g) => !g.isWs).length}件検出（${all.length}文字、全${pages.length}ページ）`
+              : `${grps.filter((g) => !g.isWs).length}件検出（${all.length}文字）`,
+        );
+      } catch (e) {
+        setStatus(`エラー: ${e}`);
+      } finally {
+        setRunning(false);
+      }
+    },
+    [filePath, pageIndex, pageCount, enabled, thr, allPagesMode],
+  );
 
   const runSanitize = useCallback(async () => {
     const targets: SanitizeOrigin[] = groups
@@ -732,8 +754,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             xobj_xref: c.xobjXref ?? 0,
             internal_x: c.internalOrigin?.[0] ?? c.origin[0],
             internal_y: c.internalOrigin?.[1] ?? c.origin[1],
-            ox: c.origin[0], // デバイス座標 = origin と同じ
+            ox: c.origin[0],
             oy: c.origin[1],
+            is_buried: g.type === "buried" ? 1 : 0,
           })),
       );
     if (!targets.length) {
@@ -836,7 +859,14 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
                 style={s.navBtn}
-                onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                onClick={() => {
+                  setPageIndex((p) => Math.max(0, p - 1));
+                  if (!allPagesMode) {
+                    setGroups([]);
+                    setSelectedIds(new Set());
+                    setStatus("");
+                  }
+                }}
                 disabled={pageIndex === 0}
               >
                 ◀
@@ -846,7 +876,14 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               </span>
               <button
                 style={s.navBtn}
-                onClick={() => setPageIndex((p) => Math.min(pageCount - 1, p + 1))}
+                onClick={() => {
+                  setPageIndex((p) => Math.min(pageCount - 1, p + 1));
+                  if (!allPagesMode) {
+                    setGroups([]);
+                    setSelectedIds(new Set());
+                    setStatus("");
+                  }
+                }}
                 disabled={pageIndex >= pageCount - 1}
               >
                 ▶
@@ -877,14 +914,32 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             </button>
             {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           </div>
-          <button
-            style={{ ...s.detectBtn, ...(running ? s.btnDis : {}) }}
-            onClick={runDetect}
-            disabled={running}
-            aria-label={t("aria.hidden_detect_btn" as any, { page: String(pageIndex + 1) })}
-          >
-            {running ? <Spinner /> : t("hidden.detect_btn")}
-          </button>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button
+              style={{ ...s.detectBtn, flex: 1, ...(running ? s.btnDis : {}) }}
+              onClick={() => {
+                setAllPagesMode(false);
+                runDetect(false);
+              }}
+              disabled={running}
+              aria-label={`${pageIndex + 1}ページのみ隠しテキスト検出`}
+            >
+              {running && !allPagesMode ? <Spinner /> : `🔍 ${pageIndex + 1}P`}
+            </button>
+            {pageCount > 1 && (
+              <button
+                style={{ ...s.detectBtn, flex: 1, ...(running ? s.btnDis : {}) }}
+                onClick={() => {
+                  setAllPagesMode(true);
+                  runDetect(true);
+                }}
+                disabled={running}
+                aria-label={t("aria.hidden_detect_all_btn" as any)}
+              >
+                {running && allPagesMode ? <Spinner /> : t("hidden.detect_all_pages" as any)}
+              </button>
+            )}
+          </div>
           {groups.length > 0 && (
             <div style={s.sec}>
               <div style={s.secTitle}>検出結果</div>
@@ -975,7 +1030,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                     viewBox={`0 0 ${imgNatW} ${imgNatH}`}
                     preserveAspectRatio="none"
                   >
-                    {groups.map((g) => {
+                    {displayGroups.map((g) => {
                       const sel = selectedIds.has(g.id);
                       const color = typeColor(g.type);
                       return g.chars.map((c, ci) => {

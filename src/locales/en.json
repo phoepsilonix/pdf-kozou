@@ -148,7 +148,10 @@
     "files_split_done": "Split into {{count}} files.",
     "files_arrow": "→ {{count}} files",
     "pane_files": "Files ({{count}})",
-    "preview_pages": "Preview — {{count}} pages"
+    "preview_pages": "Preview — {{count}} pages",
+    "imposition_blank_page": "Blank",
+    "label_error": "Error",
+    "btn_clear": "Clear"
   },
   "split": {
     "processing": "Splitting…",
@@ -339,7 +342,20 @@
     "imposition_rendering": "Rendering... {{current}}/{{total}} ({{label}})",
     "imposition_saving": "Saving... {{current}}/{{total}} → {{name}}",
     "imposition_done": "Done: {{count}} sheets saved to {{dir}}",
-    "batch_imposition_btn": "🖼 Convert {{count}} files as {{mode}}"
+    "batch_imposition_btn": "🖼 Convert {{count}} files as {{mode}}",
+    "imposition_section_label": "Layout (N-up / Booklet)",
+    "imposition_sheet_count_booklet": "{{count}} sheets will be generated ({{pages}} → booklet order)",
+    "imposition_sheet_count": "{{count}} sheets will be generated ({{pages}} pages total)",
+    "imposition_page_label_filtered": "{{n}} pages (filtered)",
+    "imposition_page_label_all": "{{total}} pages total",
+    "imposition_batch_mode_sheets": "{{icon}} {{mode}} → {{sheets}} sheets",
+    "imposition_preview_header": "{{icon}} {{mode}} — {{sheets}} sheets",
+    "imposition_preview_filtered": "({{n}} pages selected)",
+    "imposition_booklet_note": "(fold & stack to bind as booklet)",
+    "imposition_rendering_init": "Preparing layout rendering...",
+    "imposition_sheet_front": "Sheet {{n}} Front",
+    "imposition_sheet_back": "Sheet {{n}} Back",
+    "imposition_2up_label": "{{p1}}–{{p2}}"
   },
   "compress": {
     "processing": "Compressing…",
@@ -509,7 +525,9 @@
     "hidden_group": "{label}, {reason}, {count} characters",
     "hidden_expand": "Expand details for {label}",
     "imposition_mode": "Layout mode: {mode}",
-    "imposition_sheet": "Sheet {index}: pages {pages}"
+    "imposition_sheet": "Sheet {index}: pages {pages}",
+    "hidden_detect_current_btn": "Run hidden text detection for page {page} only",
+    "hidden_detect_all_btn": "Run hidden text detection for all pages"
   },
   "home": {
     "tool_focus": "Alt+{{num}} {{name}}. {{desc}}. Press Enter to launch.",
@@ -674,7 +692,7 @@
     "control_chars": "Control characters",
     "threshold_label": "Thresholds",
     "threshold_alpha": "Alpha (0-255)",
-    "threshold_contrast": "Contrast ratio",
+    "threshold_contrast": "Contrast ratio (low=strict/same color, high=loose)",
     "threshold_size": "Font size (pt)",
     "threshold_cover": "Cover ratio",
     "threshold_reset": "Reset",
@@ -730,6 +748,9 @@
     "type3_sanitize_none": "No Type3 BT blocks found to remove",
     "type3_sanitize_error": "Type3 sanitize error: {msg}",
     "type3_note": "⚠ Type3 fonts detected. Normal sanitization may not work for these.",
-    "skip_type3": "Keep Type3 fonts as-is"
+    "skip_type3": "Keep Type3 fonts as-is",
+    "detect_current_page": "🔍 Page {page}",
+    "detect_all_pages": "🔍 All Pages",
+    "threshold_contrast_hint": "1.0=identical only / 1.2=standard / 1.5=loose"
   }
 }

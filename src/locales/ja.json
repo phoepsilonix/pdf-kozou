@@ -148,7 +148,10 @@
     "files_split_done": "{{count}}ファイルに分割しました。",
     "files_arrow": "→ {{count}}ファイル",
     "pane_files": "ファイル ({{count}})",
-    "preview_pages": "プレビュー — {{count}}ページ"
+    "preview_pages": "プレビュー — {{count}}ページ",
+    "imposition_blank_page": "空白",
+    "label_error": "エラー",
+    "btn_clear": "クリア"
   },
   "split": {
     "processing": "分割処理中…",
@@ -339,7 +342,20 @@
     "imposition_rendering": "レンダリング中... {{current}}/{{total}} ({{label}})",
     "imposition_saving": "保存中... {{current}}/{{total}} → {{name}}",
     "imposition_done": "完了: {{count}}枚を {{dir}} に保存しました",
-    "batch_imposition_btn": "🖼 {{count}}件を{{mode}}で変換"
+    "batch_imposition_btn": "🖼 {{count}}件を{{mode}}で変換",
+    "imposition_section_label": "面付け（N-up / 製本）",
+    "imposition_sheet_count_booklet": "{{count}}枚のシートが生成されます（{{pages}} → 製本順）",
+    "imposition_sheet_count": "{{count}}枚が生成されます（全{{pages}}ページ）",
+    "imposition_page_label_filtered": "対象{{n}}ページ",
+    "imposition_page_label_all": "全{{total}}ページ",
+    "imposition_batch_mode_sheets": "{{icon}} {{mode}} → {{sheets}}シート",
+    "imposition_preview_header": "{{icon}} {{mode}} — {{sheets}}シート",
+    "imposition_preview_filtered": "（対象{{n}}ページ）",
+    "imposition_booklet_note": "（折って重ねると製本になります）",
+    "imposition_rendering_init": "面付けレンダリング中...",
+    "imposition_sheet_front": "シート{{n}} 表",
+    "imposition_sheet_back": "シート{{n}} 裏",
+    "imposition_2up_label": "{{p1}}–{{p2}}"
   },
   "compress": {
     "processing": "圧縮処理中…",
@@ -509,7 +525,9 @@
     "hidden_group": "{label}、{reason}、{count}文字",
     "hidden_expand": "{label}の詳細を展開",
     "imposition_mode": "面付けモード: {mode}",
-    "imposition_sheet": "シート{index}: ページ{pages}"
+    "imposition_sheet": "シート{index}: ページ{pages}",
+    "hidden_detect_current_btn": "{page}ページのみ隠しテキスト検出を実行",
+    "hidden_detect_all_btn": "全ページの隠しテキスト検出を実行"
   },
   "home": {
     "tool_focus": "Alt+{{num}} {{name}}。{{desc}}。Enterで起動。",
@@ -674,7 +692,7 @@
     "control_chars": "制御文字",
     "threshold_label": "閾値設定",
     "threshold_alpha": "透明度 (0-255)",
-    "threshold_contrast": "コントラスト",
+    "threshold_contrast": "コントラスト比 (小=厳格/同色のみ, 大=緩め)",
     "threshold_size": "フォントサイズ pt",
     "threshold_cover": "被覆率",
     "threshold_reset": "リセット",
@@ -730,6 +748,9 @@
     "type3_sanitize_none": "Type3の削除対象が見つかりませんでした",
     "type3_sanitize_error": "Type3無害化エラー: {msg}",
     "type3_note": "⚠ Type3フォントが検出されました。通常の無害化では対応できない場合があります。",
-    "skip_type3": "Type3フォントはそのまま残す"
+    "skip_type3": "Type3フォントはそのまま残す",
+    "detect_current_page": "🔍 {page}ページ検出",
+    "detect_all_pages": "🔍 全ページ検出",
+    "threshold_contrast_hint": "1.0=完全同色のみ / 1.2=標準 / 1.5=緩め"
   }
 }
