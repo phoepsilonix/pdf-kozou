@@ -177,6 +177,7 @@ export async function detectTransparentText(
 export interface SanitizeOrigin {
   x: number;
   y: number;
+  page?: number; // 0-indexed page number for per-page filtering
   xobj_xref?: number; // 0 or absent = トップレベル
   internal_x?: number; // XObject 内部座標
   internal_y?: number;
@@ -313,6 +314,8 @@ export interface LowContrastChar {
   color_rgb: [number, number, number];
   bg_color_rgb: [number, number, number];
   contrast: number;
+  /** 知覚色差 ΔE76 (0=同色, 大きいほど見える)。確信度表示・第2レイヤー用 */
+  delta_e?: number;
   /** "low_contrast" | "sanitized" | "whitespace_only" */
   reason: string;
   origin: [number, number];

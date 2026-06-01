@@ -1845,15 +1845,40 @@ static void kozou_xobj_fill_text(
         for (int i = 0; i < span->len; i++) {
             if (dev->char_count >= KOZOU_XOBJ_CHAR_MAX) return;
             fz_text_item *item = &span->items[i];
-            /* ページ座標（デバイス座標系）*/
-            fz_point pt = fz_transform_point(fz_make_point(item->x, item->y), ctm);
+            /* stext と同じ計算: fz_concat(tm_with_item_xy, ctm).e/f
+             * = item->x * ctm.a + item->y * ctm.c + ctm.e
+             * これが stext の ch->origin と一致するデバイス座標 */
             KozouCharXObj *c = &dev->chars[dev->char_count++];
-            c->page_x    = pt.x;
-            c->page_y    = pt.y;
+            c->page_x    = item->x * ctm.a + item->y * ctm.c + ctm.e;
+            c->page_y    = item->x * ctm.b + item->y * ctm.d + ctm.f;
             c->xobj_xref = dev->stack[dev->depth].xref;
-            /* 内部座標: CTM 適用前の item->x, item->y がそのまま内部座標 */
-            c->ix = item->x;
-            c->iy = item->y;
+            /* 内部座標 (Tm+Td): span->trm の逆行列で復元
+             * span->trm.a = font_size * Tm.a, span->trm.d = font_size * Tm.d
+             * span->trm_inv × (item->x, item->y):
+             *   ix = (1/Tfs) * item->x = Tm.tx + Td_x_cum
+             *   iy = -((-1/Tfs) * item->y) = Tm.ty + Td_y_cum
+             * これが kozou_find_xobj_by_tm のTm+Td座標と一致する */
+            {
+                fz_matrix strm_inv;
+                if (fz_try_invert_matrix(&strm_inv, span->trm)) {
+                    /* singular: フォールバック */
+                    c->ix = item->x;
+                    c->iy = item->y;
+                } else {
+                    /* 逆行列で正規化した内部座標は font_size で割られた値
+                     * (例: Tm.ty=20, font_size=20.31 → iy_norm=0.985)。
+                     * PDF ストリームの生 Tm/Td 座標と照合するため
+                     * font_size を掛け戻して生の Tm 座標 (Tm.tx+Td_x, Tm.ty+Td_y)
+                     * に戻す。font_size はテキスト縦スケール = |span->trm の縦成分|。 */
+                    float ix_norm = strm_inv.a * item->x + strm_inv.c * item->y;
+                    float iy_norm = -(strm_inv.b * item->x + strm_inv.d * item->y);
+                    float font_size = sqrtf(span->trm.b * span->trm.b +
+                                            span->trm.d * span->trm.d);
+                    if (font_size < 1e-6f) font_size = 1.0f;
+                    c->ix = ix_norm * font_size;
+                    c->iy = iy_norm * font_size;
+                }
+            }
         }
     }
 }
@@ -2146,6 +2171,51 @@ static float kozou_contrast_ratio(
 }
 
 /* ------------------------------------------------------------------ */
+/* 知覚色差: sRGB → CIELAB 変換と ΔE 計算                              */
+/* グラデーション背景でも一貫した尺度で「肉眼で見える差」を測るため、    */
+/* WCAG コントラスト比に加えて知覚均等色差 (ΔE) を用いる。              */
+/* 第1レイヤーでは ΔE76 (CIE76, Lab ユークリッド距離) を使用。          */
+/* 参考値: ΔE < 1 ほぼ区別不可 / 1-2 訓練された目で識別 /              */
+/*         2-10 一見して分かる / 11-49 大きく異なる / 100 反対色       */
+/* ------------------------------------------------------------------ */
+static void kozou_srgb_to_lab(
+    float r, float g, float b,
+    float *out_L, float *out_a, float *out_b)
+{
+    /* sRGB → 線形 RGB */
+#define KZ_LIN(c) ((c) <= 0.04045f ? (c)/12.92f : powf(((c)+0.055f)/1.055f, 2.4f))
+    float rl = KZ_LIN(r), gl = KZ_LIN(g), bl = KZ_LIN(b);
+#undef KZ_LIN
+    /* 線形 RGB → XYZ (sRGB / D65) */
+    float X = 0.4124564f*rl + 0.3575761f*gl + 0.1804375f*bl;
+    float Y = 0.2126729f*rl + 0.7151522f*gl + 0.0721750f*bl;
+    float Z = 0.0193339f*rl + 0.1191920f*gl + 0.9503041f*bl;
+    /* D65 白色点で正規化 */
+    float xr = X / 0.95047f;
+    float yr = Y / 1.00000f;
+    float zr = Z / 1.08883f;
+    /* XYZ → Lab */
+#define KZ_F(t) ((t) > 0.008856f ? cbrtf(t) : (7.787f*(t) + 16.0f/116.0f))
+    float fx = KZ_F(xr), fy = KZ_F(yr), fz_ = KZ_F(zr);
+#undef KZ_F
+    *out_L = 116.0f*fy - 16.0f;
+    *out_a = 500.0f*(fx - fy);
+    *out_b = 200.0f*(fy - fz_);
+}
+
+/* CIE76 色差 ΔE (Lab ユークリッド距離) */
+static float kozou_delta_e76(
+    float r1, float g1, float b1,
+    float r2, float g2, float b2)
+{
+    float L1,a1,b1l, L2,a2,b2l;
+    kozou_srgb_to_lab(r1, g1, b1, &L1, &a1, &b1l);
+    kozou_srgb_to_lab(r2, g2, b2, &L2, &a2, &b2l);
+    float dL = L1 - L2, da = a1 - a2, db = b1l - b2l;
+    return sqrtf(dL*dL + da*da + db*db);
+}
+
+/* ------------------------------------------------------------------ */
 /* 内部: 塗り矩形リスト（描画順に蓄積する）                             */
 /* ------------------------------------------------------------------ */
 #define KOZOU_MAX_FILLS 4096
@@ -2412,19 +2482,58 @@ void kozou_detect_low_contrast_text(
                      * 低コントラスト点の割合 >= 40% なら検出。
                      * これにより「上半分だけ同化」等の部分的同化を正確に捕捉。 */
 
-                    /* Step 1: 文字色は PDF の argb 値を使用
-                     * ピクセルサンプリングだと文字グリフの空洞部分（口の中など）を
-                     * 誤って背景色として取得してしまうため、PDF 記録色を採用する */
+                    /* Step 1: 文字グリフ内側 3x3 の最も暗いピクセルを fg とする
+                     * 中空グリフ（口、日など）では内側が全て背景色になるため
+                     * その場合は PDF 記録色にフォールバックする */
+                    float inner = char_h * 0.25f;
+                    float best_lum = 1.0e18f;
                     float fg_r = pdf_tr / 255.0f;
                     float fg_g = pdf_tg / 255.0f;
                     float fg_b = pdf_tb / 255.0f;
+                    for (int gy = -1; gy <= 1; gy++) {
+                        for (int gx = -1; gx <= 1; gx++) {
+                            int fpx = (int)((cx + gx * inner) * RENDER_SCALE);
+                            int fpy = (int)((cy + gy * inner) * RENDER_SCALE);
+                            if (fpx < 0 || fpx >= pixmap->w ||
+                                fpy < 0 || fpy >= pixmap->h) continue;
+                            unsigned char *fp = pixmap->samples +
+                                fpy * pixmap->stride + fpx * pixmap->n;
+                            float pr = fp[0]/255.0f, pg = fp[1]/255.0f, pb = fp[2]/255.0f;
+                            float lum_val = 0.2126f*pr + 0.7152f*pg + 0.0722f*pb;
+                            if (lum_val < best_lum) {
+                                best_lum = lum_val;
+                                fg_r = pr; fg_g = pg; fg_b = pb;
+                            }
+                        }
+                    }
+                    /* 最暗ピクセルが背景色と同一（中空グリフ）の場合は PDF 記録色を使用 */
+                    {
+                        float pdf_lum = 0.2126f*(pdf_tr/255.0f) +
+                                        0.7152f*(pdf_tg/255.0f) +
+                                        0.0722f*(pdf_tb/255.0f);
+                        float diff = best_lum - pdf_lum;
+                        if (diff < 0) diff = -diff;
+                        if (diff > 0.1f) {
+                            /* ピクセルの最暗値が PDF 記録色と大きく異なる = 中空グリフ */
+                            fg_r = pdf_tr / 255.0f;
+                            fg_g = pdf_tg / 255.0f;
+                            fg_b = pdf_tb / 255.0f;
+                        }
+                    }
+                    (void)pdf_tr; (void)pdf_tg; (void)pdf_tb;
 
-                    /* Step 2: 外周リング 32点 を均等配置でサンプリング */
-                    /* 文字 bbox の外側 2pt のリング上に 32点を等間隔配置 */
-                    float ring_rx = char_w * 0.5f + 2.0f;
-                    float ring_ry = char_h * 0.5f + 2.0f;
-                    int lc_low = 0, lc_total = 0;
-                    int bg_r_sum = 0, bg_g_sum = 0, bg_b_sum = 0;
+                    /* Step 2: 外周リング 32点 を均等配置でサンプリング
+                     * 各点について fg との知覚色差 ΔE と WCAG コントラスト比を計算。
+                     * 「最悪値判定」: リング上で最も背景と差がある方向(最大ΔE/最大CR)
+                     * を見て、その最良の見えやすさが閾値以下なら「埋もれている」と判定。
+                     * グラデーション背景でも、文字の縁のどこか一点でも見えていれば
+                     * 「見えている」と正しく扱える。 */
+                    float ring_rx = char_w * 0.5f + char_h * 0.7f + 3.0f;
+                    float ring_ry = char_h * 0.5f + char_h * 0.7f + 3.0f;
+                    int   lc_total = 0;
+                    int   bg_r_sum = 0, bg_g_sum = 0, bg_b_sum = 0;
+                    float max_de   = 0.0f;     /* リング上の最大 ΔE (最も見える方向) */
+                    float max_cr   = 1.0f;     /* リング上の最大コントラスト比 */
                     for (int ri = 0; ri < 32; ri++) {
                         float angle = (float)(2.0 * 3.14159265358979 * ri / 32);
                         int bpx = (int)((cx + ring_rx * cosf(angle)) * RENDER_SCALE);
@@ -2433,23 +2542,34 @@ void kozou_detect_low_contrast_text(
                             bpy < 0 || bpy >= pixmap->h) continue;
                         unsigned char *bp = pixmap->samples +
                             bpy * pixmap->stride + bpx * pixmap->n;
+                        float bg_r_f = bp[0] / 255.0f;
+                        float bg_g_f = bp[1] / 255.0f;
+                        float bg_b_f = bp[2] / 255.0f;
+                        /* 外周点が fg と同じ色 = 別の文字グリフ上の可能性 → スキップ */
+                        float dr = fg_r - bg_r_f, dg = fg_g - bg_g_f, db = fg_b - bg_b_f;
+                        if (dr*dr + dg*dg + db*db < 0.001f) continue;
+                        float de_i = kozou_delta_e76(
+                            fg_r, fg_g, fg_b, bg_r_f, bg_g_f, bg_b_f);
                         float cr_i = kozou_contrast_ratio(
-                            fg_r, fg_g, fg_b,
-                            bp[0] / 255.0f, bp[1] / 255.0f, bp[2] / 255.0f);
+                            fg_r, fg_g, fg_b, bg_r_f, bg_g_f, bg_b_f);
+                        if (de_i > max_de) max_de = de_i;
+                        if (cr_i > max_cr) max_cr = cr_i;
                         lc_total++;
                         bg_r_sum += bp[0]; bg_g_sum += bp[1]; bg_b_sum += bp[2];
-                        if (cr_i <= contrast_threshold) lc_low++;
                     }
                     int bg_r = lc_total > 0 ? bg_r_sum / lc_total : 128;
                     int bg_g = lc_total > 0 ? bg_g_sum / lc_total : 128;
                     int bg_b = lc_total > 0 ? bg_b_sum / lc_total : 128;
 
-                    /* Step 3: 低コントラスト点が 40% 以上なら検出 */
+                    /* Step 3: 最悪値判定で検出
+                     * 判定基準は WCAG コントラスト比 (max_cr) を主とする。
+                     * リング上で最もコントラストが高い方向ですら閾値以下なら埋没。
+                     * (ΔE は将来の第2レイヤー/確信度表示用に算出して JSON に含める) */
                     if (lc_total == 0) continue;
-                    if ((float)lc_low / (float)lc_total < 0.40f) continue;
+                    if (max_cr > contrast_threshold) continue;
 
-                    /* JSON 出力用コントラスト代表値 */
-                    float cr = contrast_threshold * 0.8f;
+                    /* JSON 出力用コントラスト代表値（最良方向の実測値）*/
+                    float cr = max_cr;
 
                     /* 無害な文字はスキップ */
                     int _lc_san = kozou_is_sanitized_space(ch->c) &&
@@ -2486,6 +2606,7 @@ void kozou_detect_low_contrast_text(
                         "\"color_rgb\":[%d,%d,%d],"
                         "\"bg_color_rgb\":[%d,%d,%d],"
                         "\"contrast\":%.3f,"
+                        "\"delta_e\":%.3f,"
                         "\"reason\":\"%s\","
                         "\"origin\":[%.3f,%.3f],"
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
@@ -2497,6 +2618,7 @@ void kozou_detect_low_contrast_text(
                         (int)(fg_r * 255), (int)(fg_g * 255), (int)(fg_b * 255),
                         bg_r, bg_g, bg_b,
                         (double)cr,
+                        (double)max_de,
                         lc_reason,
                         (double)ch->origin.x, (double)ch->origin.y,
                         (double)lq.ul.x, (double)lq.ul.y,
@@ -3204,6 +3326,7 @@ void kozou_detect_buried_text(
         orderdev = NULL;
 
         /* Pass 1b: XObject 追跡スキャン（内部座標取得用）*/
+        /* item->x/y は既にデバイス座標なので fz_identity で実行 */
         xobj_dev = kozou_new_xobj_device(ctx);
         fz_run_page(ctx, page, (fz_device *)xobj_dev, fz_identity, NULL);
         /* xobj_dev は Pass 2 で使用するため Drop しない */
@@ -3282,7 +3405,7 @@ void kozou_detect_buried_text(
                          strncmp(buried_font_name, "type3", 5) == 0));
                     /* XObject 情報を取得（xobj_dev スキャン結果から）*/
                     const KozouCharXObj *xobj_info = xobj_dev
-                        ? kozou_xobj_lookup(xobj_dev, o.x, o.y, 2.0f)
+                        ? kozou_xobj_lookup(xobj_dev, o.x, o.y, 5.0f)
                         : NULL;
                     int b_xref = xobj_info ? xobj_info->xobj_xref : 0;
                     float b_ix = xobj_info ? xobj_info->ix : o.x;
@@ -3414,6 +3537,7 @@ typedef struct {
     float ox, oy;        /* デバイス座標 (MuPDF Y下向き, XObject特定に使用) */
     int   in_xobj;       /* 1=XObject内で処理済み、ページ書き換えをスキップ */
     int   is_buried;     /* 1=buried検出 → XObject書き換えが必要 */
+    int   page_index;    /* 0-indexed page (-1=全ページ共通) */
 } KozouSanitizeOrigin;
 
 /* ページ座標でのマッチング (xobj_xref==0 の場合) */
@@ -3423,6 +3547,17 @@ static int kozou_sanitize_is_target(
     for (int i = 0; i < n; i++) {
         if (t[i].in_xobj) continue; /* XObject内で処理するのでスキップ */
         float dx = t[i].x - x, dy = t[i].y - y;
+        if (dx*dx + dy*dy <= tol2) return 1;
+    }
+    return 0;
+}
+
+/* XObject 内部座標 (Tm tx/ty) でのマッチング */
+static int kozou_sanitize_is_target_ix(
+    const KozouSanitizeOrigin *t, int n, float ix, float iy, float tol2)
+{
+    for (int i = 0; i < n; i++) {
+        float dx = t[i].ix - ix, dy = t[i].iy - iy;
         if (dx*dx + dy*dy <= tol2) return 1;
     }
     return 0;
@@ -3606,12 +3741,175 @@ static pdf_obj *kozou_ensure_helvetica(
  * ものを持つ XObject の xref を返す。
  * これにより CTM チェーンの計算を完全に回避できる。
  * ──────────────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────────
+ * 指定 xref の XObject がページ上に配置される CTM を求める。
+ * ページの content streams をスキャンし、q/Q/cm を追跡しながら
+ * /Name Do を見つけ、その XObject の xref が目的のものなら
+ * その時点の CTM を返す。ネスト XObject にも再帰対応する。
+ * 見つかれば 1 を返し out_ctm に格納、見つからなければ 0。
+ * ─────────────────────────────────────────────────────────────────── */
+static int kozou_xobj_place_ctm_scan(
+    fz_context *ctx, pdf_document *pdf,
+    const char *src, size_t len,
+    pdf_obj *resources,
+    int target_xref, fz_matrix base, fz_matrix *out_ctm, int depth)
+{
+    if (depth > 8) return 0;
+    pdf_obj *xdict = resources ?
+        pdf_dict_get(ctx, resources, PDF_NAME(XObject)) : NULL;
+
+    fz_matrix ctm_stack[64];
+    int sp = 0;
+    ctm_stack[0] = base;
+
+    size_t pos = 0;
+    while (pos < len) {
+        size_t ls = pos;
+        while (pos < len && src[pos] != '\n') pos++;
+        size_t le = pos;
+        if (pos < len) pos++;
+        size_t ts = ls;
+        while (ts < le && (src[ts]==' '||src[ts]=='\t')) ts++;
+        size_t tl = le - ts;
+        if (tl < 1) continue;
+
+        if (tl == 1 && src[ts]=='q') {
+            if (sp < 63) { ctm_stack[sp+1]=ctm_stack[sp]; sp++; }
+        } else if (tl == 1 && src[ts]=='Q') {
+            if (sp > 0) sp--;
+        } else if (tl >= 2 && src[le-2]=='c' && src[le-1]=='m') {
+            char cmline[160] = {0};
+            size_t cl = tl < 159 ? tl : 159;
+            memcpy(cmline, src+ts, cl);
+            float a,b,c,d,e,f;
+            if (sscanf(cmline,"%f %f %f %f %f %f cm",&a,&b,&c,&d,&e,&f)==6) {
+                fz_matrix m = {a,b,c,d,e,f};
+                ctm_stack[sp] = fz_concat(m, ctm_stack[sp]);
+            }
+        } else if (tl >= 3 && src[le-2]=='D' && src[le-1]=='o' &&
+                   src[ts]=='/') {
+            /* /Name Do : 名前を抽出 */
+            char name[64] = {0};
+            int ni = 0;
+            size_t p2 = ts + 1;
+            while (p2 < le && src[p2] != ' ' && src[p2] != '\t' &&
+                   src[p2] != '\r' && ni < 63) {
+                name[ni++] = src[p2++];
+            }
+            if (xdict) {
+                pdf_obj *val = pdf_dict_gets(ctx, xdict, name);
+                int xr = pdf_is_indirect(ctx, val) ? pdf_to_num(ctx, val) : 0;
+                if (xr == target_xref) {
+                    *out_ctm = ctm_stack[sp];
+                    return 1;
+                }
+                /* ネスト Form XObject なら再帰探索 */
+                if (xr != 0) {
+                    pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
+                    pdf_obj *st = xobj ? pdf_dict_get(ctx, xobj, PDF_NAME(Subtype)) : NULL;
+                    if (st && pdf_name_eq(ctx, st, PDF_NAME(Form))) {
+                        fz_buffer *cbuf = NULL;
+                        int hit = 0;
+                        fz_var(cbuf); fz_var(hit);
+                        fz_try(ctx) {
+                            pdf_obj *ind = pdf_new_indirect(ctx, pdf, xr, 0);
+                            cbuf = pdf_load_stream(ctx, ind);
+                            pdf_drop_obj(ctx, ind);
+                            /* XObject 自身の Matrix を base に適用 */
+                            fz_matrix xm = fz_identity;
+                            pdf_obj *mo = pdf_dict_get(ctx, xobj, PDF_NAME(Matrix));
+                            if (pdf_is_array(ctx, mo) && pdf_array_len(ctx, mo) == 6) {
+                                xm.a = pdf_to_real(ctx, pdf_array_get(ctx, mo, 0));
+                                xm.b = pdf_to_real(ctx, pdf_array_get(ctx, mo, 1));
+                                xm.c = pdf_to_real(ctx, pdf_array_get(ctx, mo, 2));
+                                xm.d = pdf_to_real(ctx, pdf_array_get(ctx, mo, 3));
+                                xm.e = pdf_to_real(ctx, pdf_array_get(ctx, mo, 4));
+                                xm.f = pdf_to_real(ctx, pdf_array_get(ctx, mo, 5));
+                            }
+                            fz_matrix child_base = fz_concat(xm, ctm_stack[sp]);
+                            pdf_obj *xres = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
+                            if (!xres) xres = resources;
+                            unsigned char *cd = NULL;
+                            size_t clen = fz_buffer_storage(ctx, cbuf, &cd);
+                            if (cd && kozou_xobj_place_ctm_scan(ctx, pdf,
+                                    (const char*)cd, clen, xres,
+                                    target_xref, child_base, out_ctm, depth+1)) {
+                                hit = 1;
+                            }
+                        } fz_always(ctx) {
+                            if (cbuf) fz_drop_buffer(ctx, cbuf);
+                        } fz_catch(ctx) { hit = 0; }
+                        if (hit) return 1;
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+/* ページ全体の content streams を結合してスキャンし、
+ * target_xref の XObject 配置 CTM を求める。 */
+static int kozou_get_xobj_place_ctm(
+    fz_context *ctx, pdf_document *pdf, pdf_page *ppage,
+    int target_xref, fz_matrix *out_ctm)
+{
+    pdf_obj *res = pdf_page_resources(ctx, ppage);
+    fz_buffer *cbuf = NULL;
+    int hit = 0;
+    fz_var(cbuf); fz_var(hit);
+    fz_try(ctx) {
+        pdf_obj *contents = pdf_page_contents(ctx, ppage);
+        cbuf = fz_new_buffer(ctx, 1024);
+        if (pdf_is_array(ctx, contents)) {
+            /* Contents が配列: 各ストリームを連結 */
+            int cn = pdf_array_len(ctx, contents);
+            for (int ci = 0; ci < cn; ci++) {
+                pdf_obj *part = pdf_array_get(ctx, contents, ci);
+                fz_buffer *pb = pdf_load_stream(ctx, part);
+                if (pb) {
+                    unsigned char *pd = NULL;
+                    size_t pl = fz_buffer_storage(ctx, pb, &pd);
+                    if (pd && pl) {
+                        fz_append_data(ctx, cbuf, pd, pl);
+                        fz_append_byte(ctx, cbuf, '\n');
+                    }
+                    fz_drop_buffer(ctx, pb);
+                }
+            }
+        } else if (contents) {
+            fz_buffer *pb = pdf_load_stream(ctx, contents);
+            if (pb) {
+                unsigned char *pd = NULL;
+                size_t pl = fz_buffer_storage(ctx, pb, &pd);
+                if (pd && pl) fz_append_data(ctx, cbuf, pd, pl);
+                fz_drop_buffer(ctx, pb);
+            }
+        }
+        unsigned char *cd = NULL;
+        size_t clen = fz_buffer_storage(ctx, cbuf, &cd);
+        /* ページの PDF native 座標 → MuPDF デバイス座標 (top-left, Y下向き)
+         * への変換を base にする。検出側 (kozou_xobj_fill_text) の page_x/y は
+         * fz_run_page が渡すデバイス CTM 基準なので、これと座標系を揃える。 */
+        fz_rect mbox;
+        fz_matrix page_ctm = fz_identity;
+        pdf_page_transform(ctx, ppage, &mbox, &page_ctm);
+        if (cd && kozou_xobj_place_ctm_scan(ctx, pdf, (const char*)cd, clen,
+                res, target_xref, page_ctm, out_ctm, 0)) {
+            hit = 1;
+        }
+    } fz_always(ctx) {
+        if (cbuf) fz_drop_buffer(ctx, cbuf);
+    } fz_catch(ctx) { hit = 0; }
+    return hit;
+}
+
 static int kozou_find_xobj_by_tm(
     fz_context   *ctx,
     pdf_document *pdf,
     pdf_page     *ppage,
-    float         ix,     /* buried の internal_origin x (Tm の tx) */
-    float         iy,     /* buried の internal_origin y (Tm の ty) */
+    float         ix,     /* buried の internal x (Tm.tx + Td 累積) */
+    float         iy,     /* buried の internal y (Tm.ty) */
     float         tol)
 {
     pdf_obj *res = pdf_page_resources(ctx, ppage);
@@ -3633,7 +3931,7 @@ static int kozou_find_xobj_by_tm(
         pdf_obj *subtype = pdf_dict_get(ctx, xobj, PDF_NAME(Subtype));
         if (!pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
 
-        /* XObject ストリームを読み込んで Tm 命令をスキャン */
+        /* XObject ストリームを読み込んで BT 内の全テキスト位置を照合 */
         fz_buffer *buf = NULL;
         int found = 0;
         fz_try(ctx) {
@@ -3646,7 +3944,11 @@ static int kozou_find_xobj_by_tm(
             size_t len = fz_buffer_storage(ctx, buf, &d);
             const char *src = (const char *)d;
 
-            /* ストリームを行単位でスキャンして Tm 命令を探す */
+            /* ストリームをスキャン: BT内の Tm + Td 累積位置を計算し照合 */
+            int in_bt = 0;
+            float tm_tx = 0, tm_ty = 0;
+            float td_x = 0, td_y = 0;
+
             size_t pos = 0;
             while (pos < len && !found) {
                 size_t ls = pos;
@@ -3654,23 +3956,48 @@ static int kozou_find_xobj_by_tm(
                 size_t le = pos;
                 if (pos < len) pos++;
 
-                /* 行末の Tm を確認 */
-                size_t trimlen = le - ls;
-                while (ls < le && (src[ls]==' '||src[ls]=='\t')) ls++;
+                /* 行のトリム */
+                size_t ts = ls;
+                while (ts < le && (src[ts]==' '||src[ts]=='\t')) ts++;
+                size_t trimlen = le - ts;
                 if (trimlen < 2) continue;
-                if (src[le-2] != 'T' || src[le-1] != 'm') continue;
 
-                /* 6個の数値を parse: a b c d tx ty Tm */
-                char linebuf[256] = {0};
-                size_t cplen = le - ls < 255 ? le - ls : 255;
-                memcpy(linebuf, src + ls, cplen);
-                linebuf[cplen] = 0;
-
-                float a,b,c,d_v,tx,ty;
-                if (sscanf(linebuf, "%f %f %f %f %f %f Tm", &a,&b,&c,&d_v,&tx,&ty) == 6) {
-                    float dx = tx - ix, dy = ty - iy;
-                    if (dx*dx + dy*dy <= tol2) {
-                        found = 1; /* マッチ！ */
+                if (!in_bt) {
+                    if (trimlen == 2 && src[ts]=='B' && src[ts+1]=='T') {
+                        in_bt = 1;
+                        tm_tx = tm_ty = td_x = td_y = 0;
+                    }
+                } else {
+                    if (trimlen == 2 && src[ts]=='E' && src[ts+1]=='T') {
+                        in_bt = 0;
+                    } else if (trimlen >= 2 && src[le-2]=='T' && src[le-1]=='m') {
+                        /* Tm: a b c d tx ty Tm */
+                        char lb[128]={0};
+                        size_t cp = (le-ts)<127?(le-ts):127;
+                        memcpy(lb, src+ts, cp);
+                        float a,b,c,dv,tx,ty;
+                        if (sscanf(lb,"%f %f %f %f %f %f Tm",&a,&b,&c,&dv,&tx,&ty)==6) {
+                            tm_tx = tx; tm_ty = ty;
+                            td_x = 0; td_y = 0;
+                        }
+                    } else if (trimlen >= 2 && src[le-2]=='T' && src[le-1]=='d') {
+                        /* Td: tx ty Td */
+                        char lb[64]={0};
+                        size_t cp = (le-ts)<63?(le-ts):63;
+                        memcpy(lb, src+ts, cp);
+                        float tx, ty;
+                        if (sscanf(lb,"%f %f Td",&tx,&ty)==2) {
+                            td_x += tx; td_y += ty;
+                        }
+                    } else if (trimlen >= 2 && (src[le-2]=='T' && src[le-1]=='j'
+                                              || src[le-2]=='T' && src[le-1]=='J')) {
+                        /* 現在の文字位置 = Tm + Td 累積 */
+                        float cur_x = tm_tx + td_x;
+                        float cur_y = tm_ty + td_y;
+                        float dx = cur_x - ix, dy = cur_y - iy;
+                        if (dx*dx + dy*dy <= tol2) {
+                            found = 1; /* マッチ！ */
+                        }
                     }
                 }
             }
@@ -3681,10 +4008,10 @@ static int kozou_find_xobj_by_tm(
         if (found) return xref;
     }
 
-    return 0; /* 見つからない */
+    return 0;
 }
 
-/* 後方互換のためのラッパー (ox/oy 版は使わず ix/iy 版を使う) */
+
 static int kozou_find_xobj_for_point(
     fz_context   *ctx,
     pdf_page     *ppage,
@@ -3711,14 +4038,20 @@ static void kozou_blank_all_bt_blocks(
     kozou_blank_all_bt_blocks_hv(ctx, in_buf, out_buf, NULL, NULL, 0, 0.0f);
 }
 
-static void kozou_blank_all_bt_blocks_hv(
+/* XObject 配置 CTM を受け取り、各 Tj のデバイス座標を計算して
+ * ターゲットの ox/oy (ページデバイス座標) と照合する版。
+ * 内部 Tm 座標 (ix/iy) だけでは、XObject 内で同一 Tm を持つ複数の
+ * テキストブロックが異なる cm で別の場所に配置されている場合に
+ * 区別できない。デバイス座標で照合することで一意に特定する。 */
+static void kozou_blank_all_bt_blocks_hv_ctm(
     fz_context                *ctx,
     fz_buffer                 *in_buf,
     fz_buffer                 *out_buf,
     pdf_obj                   *hv_ref,
     const KozouSanitizeOrigin *targets,
     int                        n_targets,
-    float                      tol)
+    float                      tol,
+    fz_matrix                  place_ctm)  /* XObject → ページデバイス座標 */
 {
     unsigned char *src_data = NULL;
     size_t src_len = fz_buffer_storage(ctx, in_buf, &src_data);
@@ -3727,37 +4060,55 @@ static void kozou_blank_all_bt_blocks_hv(
     const char *src = (const char *)src_data;
     size_t pos = 0;
     int in_bt = 0;
-    int blank_this_bt = (n_targets == 0); /* targets なし = 全 BT を blank */
+    int blank_entire_bt = (n_targets == 0);
     float tol2 = tol * tol;
-    float cur_tm_tx = -999.0f, cur_tm_ty = -999.0f;
+    float cur_tm_tx = 0.0f, cur_tm_ty = 0.0f;
+    float cur_td_x  = 0.0f, cur_td_y  = 0.0f;
     char cur_font_name[64] = {0};
     float cur_font_size = 12.0f;
     char cur_font_line[128] = {0};
 
+    /* BT 外の cm スタック (グラフィックス状態の CTM)。
+     * q/Q でスタックし、cm で現在の CTM を更新する。
+     * これは XObject 座標系内での CTM。最終デバイス座標は place_ctm を掛ける。 */
+    fz_matrix ctm_stack[64];
+    int ctm_sp = 0;
+    ctm_stack[0] = fz_identity;
+
     while (pos < src_len) {
-        /* 行を取得 */
         size_t line_start = pos;
         while (pos < src_len && src[pos] != '\n') pos++;
         size_t line_len = pos - line_start;
-        if (pos < src_len) pos++; /* skip \n */
+        if (pos < src_len) pos++;
 
-        /* 行のトリム */
         size_t ts = line_start;
         while (ts < line_start + line_len && (src[ts] == ' ' || src[ts] == '\t')) ts++;
         size_t te = line_start + line_len;
         size_t trimmed_len = te - ts;
 
         if (!in_bt) {
-            /* BT を検出 */
-            if (trimmed_len == 2 && src[ts] == 'B' && src[ts+1] == 'T') {
+            /* q / Q / cm を追跡 (BT 外のグラフィックス状態) */
+            if (trimmed_len == 1 && src[ts] == 'q') {
+                if (ctm_sp < 63) { ctm_stack[ctm_sp+1] = ctm_stack[ctm_sp]; ctm_sp++; }
+            } else if (trimmed_len == 1 && src[ts] == 'Q') {
+                if (ctm_sp > 0) ctm_sp--;
+            } else if (trimmed_len >= 2 && src[te-2] == 'c' && src[te-1] == 'm') {
+                char cmline[128] = {0};
+                size_t cl = (te - ts) < 127 ? (te - ts) : 127;
+                memcpy(cmline, src + ts, cl);
+                float a,b,c,d,e,f;
+                if (sscanf(cmline,"%f %f %f %f %f %f cm",&a,&b,&c,&d,&e,&f) == 6) {
+                    fz_matrix m = { a,b,c,d,e,f };
+                    ctm_stack[ctm_sp] = fz_concat(m, ctm_stack[ctm_sp]);
+                }
+            } else if (trimmed_len == 2 && src[ts] == 'B' && src[ts+1] == 'T') {
                 in_bt = 1;
-                if (n_targets > 0) blank_this_bt = 0;
-                cur_tm_tx = -999.0f; cur_tm_ty = -999.0f;
+                cur_tm_tx = 0.0f; cur_tm_ty = 0.0f;
+                cur_td_x  = 0.0f; cur_td_y  = 0.0f;
             }
             fz_append_data(ctx, out_buf, src + line_start, line_len);
             fz_append_byte(ctx, out_buf, '\n');
         } else {
-            /* BT 内: ET まで Tj/TJ をスペースに置き換え */
             if (trimmed_len == 2 && src[ts] == 'E' && src[ts+1] == 'T') {
                 in_bt = 0;
                 fz_append_data(ctx, out_buf, src + line_start, line_len);
@@ -3765,13 +4116,27 @@ static void kozou_blank_all_bt_blocks_hv(
             } else if (trimmed_len >= 2 &&
                        ((src[te-2] == 'T' && src[te-1] == 'j') ||
                         (src[te-2] == 'T' && src[te-1] == 'J'))) {
-                /* Tj/TJ: Tm が一致した BT ブロックのみ blank */
-                if (!blank_this_bt) {
-                    /* この BT ブロックは対象外 → 元の行を出力 */
+                /* Tj/TJ 描画位置を XObject 座標系で計算し、
+                 * place_ctm × cm × (Tm+Td位置) でページデバイス座標に変換、
+                 * ターゲットの ox/oy と照合する。 */
+                float local_x = cur_tm_tx + cur_td_x;
+                float local_y = cur_tm_ty + cur_td_y;
+                /* XObject 座標系内: cm を適用 */
+                fz_matrix full = fz_concat(ctm_stack[ctm_sp], place_ctm);
+                float dev_x = local_x * full.a + local_y * full.c + full.e;
+                float dev_y = local_x * full.b + local_y * full.d + full.f;
+                int do_blank = blank_entire_bt;
+                if (!do_blank && n_targets > 0) {
+                    for (int _ti = 0; _ti < n_targets; _ti++) {
+                        float dx = targets[_ti].ox - dev_x;
+                        float dy = targets[_ti].oy - dev_y;
+                        if (dx*dx + dy*dy <= tol2) { do_blank = 1; break; }
+                    }
+                }
+                if (!do_blank) {
                     fz_append_data(ctx, out_buf, src + line_start, line_len);
                     fz_append_byte(ctx, out_buf, '\n');
                 } else if (hv_ref) {
-                    /* Helvetica に切り替えて幅0のスペースを出力し元フォントに戻す */
                     fz_append_printf(ctx, out_buf,
                         "/%s %g Tf\n( ) Tj\n%s\n",
                         KOZOU_HV, cur_font_size,
@@ -3780,9 +4145,7 @@ static void kozou_blank_all_bt_blocks_hv(
                     fz_append_string(ctx, out_buf, "( ) Tj\n");
                 }
             } else {
-                /* Tm: buried ターゲットとの一致で blank_this_bt を決定 */
-                if (n_targets > 0 && trimmed_len >= 2 &&
-                    src[te-2] == 'T' && src[te-1] == 'm') {
+                if (trimmed_len >= 2 && src[te-2] == 'T' && src[te-1] == 'm') {
                     char tmline[128] = {0};
                     size_t cplen2 = (te - ts) < 127 ? (te - ts) : 127;
                     memcpy(tmline, src + ts, cplen2);
@@ -3790,17 +4153,20 @@ static void kozou_blank_all_bt_blocks_hv(
                     if (sscanf(tmline,"%f %f %f %f %f %f Tm",
                                &ta,&tb2,&tc,&td2,&tx,&ty) == 6) {
                         cur_tm_tx = tx; cur_tm_ty = ty;
-                        blank_this_bt = 0;
-                        for (int _ti = 0; _ti < n_targets; _ti++) {
-                            float dx = targets[_ti].ix - tx;
-                            float dy = targets[_ti].iy - ty;
-                            if (dx*dx + dy*dy <= tol2) { blank_this_bt=1; break; }
-                        }
+                        cur_td_x = 0.0f; cur_td_y = 0.0f;
                     }
                 }
-                /* Tf 命令を追跡してフォント名とサイズを記録 */
+                else if (trimmed_len >= 2 && src[te-2] == 'T' &&
+                         (src[te-1] == 'd' || src[te-1] == 'D')) {
+                    char tdline[128] = {0};
+                    size_t cplen3 = (te - ts) < 127 ? (te - ts) : 127;
+                    memcpy(tdline, src + ts, cplen3);
+                    float dxv, dyv;
+                    if (sscanf(tdline,"%f %f T%*c", &dxv,&dyv) == 2) {
+                        cur_td_x += dxv; cur_td_y += dyv;
+                    }
+                }
                 if (trimmed_len >= 2 && src[te-2] == 'T' && src[te-1] == 'f') {
-                    /* /FontName size Tf → フォント名とサイズを取得 */
                     char tf_name[64] = {0};
                     float tf_size = 12.0f;
                     char linebuf[128] = {0};
@@ -3813,7 +4179,85 @@ static void kozou_blank_all_bt_blocks_hv(
                                  "/%s %g Tf", tf_name, tf_size);
                     }
                 }
-                /* その他の命令はそのまま */
+                fz_append_data(ctx, out_buf, src + line_start, line_len);
+                fz_append_byte(ctx, out_buf, '\n');
+            }
+        }
+    }
+}
+
+/* 旧 API 互換: 内部座標 (ix/iy) でマッチングする版。
+ * n_targets==0 で全 BT blank する用途 (kozou_blank_all_bt_blocks) のみ残す。 */
+static void kozou_blank_all_bt_blocks_hv(
+    fz_context                *ctx,
+    fz_buffer                 *in_buf,
+    fz_buffer                 *out_buf,
+    pdf_obj                   *hv_ref,
+    const KozouSanitizeOrigin *targets,
+    int                        n_targets,
+    float                      tol)
+{
+    /* place_ctm を identity にすると ox/oy 照合が XObject 座標系のままになり
+     * 整合しないため、この旧 API は n_targets==0 (全 blank) 専用とする。 */
+    (void)targets; (void)tol;
+    unsigned char *src_data = NULL;
+    size_t src_len = fz_buffer_storage(ctx, in_buf, &src_data);
+    if (!src_data || src_len == 0) return;
+    const char *src = (const char *)src_data;
+    size_t pos = 0;
+    int in_bt = 0;
+    int blank_entire_bt = (n_targets == 0);
+    char cur_font_name[64] = {0};
+    float cur_font_size = 12.0f;
+    char cur_font_line[128] = {0};
+
+    while (pos < src_len) {
+        size_t line_start = pos;
+        while (pos < src_len && src[pos] != '\n') pos++;
+        size_t line_len = pos - line_start;
+        if (pos < src_len) pos++;
+        size_t ts = line_start;
+        while (ts < line_start + line_len && (src[ts] == ' ' || src[ts] == '\t')) ts++;
+        size_t te = line_start + line_len;
+        size_t trimmed_len = te - ts;
+
+        if (!in_bt) {
+            if (trimmed_len == 2 && src[ts] == 'B' && src[ts+1] == 'T') in_bt = 1;
+            fz_append_data(ctx, out_buf, src + line_start, line_len);
+            fz_append_byte(ctx, out_buf, '\n');
+        } else {
+            if (trimmed_len == 2 && src[ts] == 'E' && src[ts+1] == 'T') {
+                in_bt = 0;
+                fz_append_data(ctx, out_buf, src + line_start, line_len);
+                fz_append_byte(ctx, out_buf, '\n');
+            } else if (trimmed_len >= 2 &&
+                       ((src[te-2] == 'T' && src[te-1] == 'j') ||
+                        (src[te-2] == 'T' && src[te-1] == 'J'))) {
+                if (!blank_entire_bt) {
+                    fz_append_data(ctx, out_buf, src + line_start, line_len);
+                    fz_append_byte(ctx, out_buf, '\n');
+                } else if (hv_ref) {
+                    fz_append_printf(ctx, out_buf,
+                        "/%s %g Tf\n( ) Tj\n%s\n",
+                        KOZOU_HV, cur_font_size,
+                        cur_font_name[0] ? cur_font_line : "");
+                } else {
+                    fz_append_string(ctx, out_buf, "( ) Tj\n");
+                }
+            } else {
+                if (trimmed_len >= 2 && src[te-2] == 'T' && src[te-1] == 'f') {
+                    char tf_name[64] = {0};
+                    float tf_size = 12.0f;
+                    char linebuf[128] = {0};
+                    size_t cplen = (te - ts) < 127 ? (te - ts) : 127;
+                    memcpy(linebuf, src + ts, cplen);
+                    if (sscanf(linebuf, "/%63s %f Tf", tf_name, &tf_size) == 2) {
+                        snprintf(cur_font_name, sizeof(cur_font_name), "%s", tf_name);
+                        cur_font_size = tf_size;
+                        snprintf(cur_font_line, sizeof(cur_font_line),
+                                 "/%s %g Tf", tf_name, tf_size);
+                    }
+                }
                 fz_append_data(ctx, out_buf, src + line_start, line_len);
                 fz_append_byte(ctx, out_buf, '\n');
             }
@@ -4170,16 +4614,17 @@ void kozou_sanitize_hidden_text(
         int n = n_origins < KOZOU_SANITIZE_MAX ? n_origins : KOZOU_SANITIZE_MAX;
         KozouSanitizeOrigin *targets =
             (KozouSanitizeOrigin *)fz_calloc(ctx, n, sizeof(KozouSanitizeOrigin));
-        /* target_origins は [x, y, xobj_xref(float), ix, iy] の5要素ごと */
+        /* target_origins: [x,y,xobj_xref,ix,iy,ox,oy,is_buried,page_index] 9要素 */
         for (int i = 0; i < n; i++) {
-            targets[i].x         = target_origins[i*7];
-            targets[i].y         = target_origins[i*7+1];
-            targets[i].xobj_xref = (int)target_origins[i*7+2];
-            targets[i].ix        = target_origins[i*7+3];
-            targets[i].iy        = target_origins[i*7+4];
-            targets[i].ox        = target_origins[i*8+5];
-            targets[i].oy        = target_origins[i*8+6];
-            targets[i].is_buried = (int)target_origins[i*8+7];
+            targets[i].x          = target_origins[i*9];
+            targets[i].y          = target_origins[i*9+1];
+            targets[i].xobj_xref  = (int)target_origins[i*9+2];
+            targets[i].ix         = target_origins[i*9+3];
+            targets[i].iy         = target_origins[i*9+4];
+            targets[i].ox         = target_origins[i*9+5];
+            targets[i].oy         = target_origins[i*9+6];
+            targets[i].is_buried  = (int)target_origins[i*9+7];
+            targets[i].page_index = (int)target_origins[i*9+8];
         }
         float tol2 = tolerance > 0 ? tolerance*tolerance : 1.0f;
 
@@ -4189,6 +4634,14 @@ void kozou_sanitize_hidden_text(
         for (int pi = 0; pi < page_count; pi++) {
             pdf_page *page = NULL;
             fz_var(page);
+            /* このページ向けターゲットのみのフィルタ済み配列 */
+            KozouSanitizeOrigin pi_targets[KOZOU_SANITIZE_MAX];
+            int pi_n = 0;
+            for (int _fi = 0; _fi < n && pi_n < KOZOU_SANITIZE_MAX; _fi++) {
+                if (targets[_fi].page_index >= 0 && targets[_fi].page_index != pi)
+                    continue;
+                pi_targets[pi_n++] = targets[_fi];
+            }
             fz_try(ctx) {
                 page = pdf_load_page(ctx, pdf, pi);
                 fz_rect bounds = pdf_bound_page(ctx, page, FZ_CROP_BOX);
@@ -4401,7 +4854,10 @@ void kozou_sanitize_hidden_text(
                     /* ── Tj: 単一文字列 ── */
                     if (!strcmp(kw,"Tj")&&stk_top>=1&&stk[stk_top-1].is_str) {
                         float dev_x=tm[4], dev_y=page_h-tm[5];
-                        if (kozou_sanitize_is_target(targets,n,dev_x,dev_y,tol2)) {
+                        /* XObject 内部では ix/iy (Tm tx/ty) でマッチング */
+                        float xobj_ix = tm[4], xobj_iy = tm[5];
+                        if (kozou_sanitize_is_target_ix(pi_targets,pi_n,xobj_ix,xobj_iy,tol2) ||
+                            kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2)) {
                             const char *orig=stk[stk_top-1].s;
                             /* 文字数と元グリフ幅を計算 */
                             pdf_obj *fobj = font_dict ?
@@ -4486,7 +4942,9 @@ void kozou_sanitize_hidden_text(
                     /* ── TJ: 配列形式 ── */
                     if (!strcmp(kw,"TJ")) {
                         float dev_x=tm[4], dev_y=page_h-tm[5];
-                        if (kozou_sanitize_is_target(targets,n,dev_x,dev_y,tol2)) {
+                        float xobj_ix2 = tm[4], xobj_iy2 = tm[5];
+                        if (kozou_sanitize_is_target_ix(pi_targets,pi_n,xobj_ix2,xobj_iy2,tol2) ||
+                            kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2)) {
                             pdf_obj *fobj = font_dict ?
                                 pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
                             /* TJ全体の幅をquadマップから取得 */
@@ -4601,21 +5059,26 @@ void kozou_sanitize_hidden_text(
                 "Layout may shift slightly for wide characters (e.g. CJK).",
                 sizeof(result->message)-1);
 
-        /* XObject 内ターゲットの処理:
-         * ox/oy でターゲットを含む XObject を特定してストリームを書き換える。
-         * page は既にロード済みのポインタをループ変数から再取得できないため、
-         * ここでは最初のページを使って XObject を特定する（単一ページ PDF が大多数）。*/
-        {
-            /* 最初のページをロードして XObject を特定 */
+        /* XObject 内ターゲットの処理（各ページごと）:
+         * ページ pi をロードし、そのページの XObject を特定して書き換える。
+         * 同じ XObject が複数ページで参照される場合の二重書き換えを防ぐ。 */
+        int done_xrefs[KOZOU_SANITIZE_MAX];
+        int n_done = 0;
+        for (int pi = 0; pi < page_count; pi++)
+{
+            /* 現在処理中のページをロードして XObject を特定 */
             pdf_page *xobj_search_page = NULL;
             fz_try(ctx) {
-                xobj_search_page = pdf_load_page(ctx, pdf, 0);
+                xobj_search_page = pdf_load_page(ctx, pdf, pi);
             } fz_catch(ctx) { xobj_search_page = NULL; }
 
             int xobj_xrefs[KOZOU_SANITIZE_MAX];
+            /* buried XObject 特定: このページ pi のターゲットを使用
+             * xobj_search_page は pi ページをロード済み */
             int n_xrefs = 0;
             if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
+                if (targets[i].page_index >= 0 && targets[i].page_index != pi) continue;
                 if (!targets[i].is_buried) continue; /* buried のみ XObject 処理 */
                 float ix = targets[i].ix; /* Tm の tx (internal_origin x) */
                 float iy = targets[i].iy; /* Tm の ty (internal_origin y) */
@@ -4639,6 +5102,13 @@ void kozou_sanitize_hidden_text(
             /* 各 XObject を処理 */
             for (int xi = 0; xi < n_xrefs; xi++) {
                 int xref = xobj_xrefs[xi];
+                /* 既に書き換え済みの XObject はスキップ（二重処理防止） */
+                int already_done = 0;
+                for (int _d = 0; _d < n_done; _d++) {
+                    if (done_xrefs[_d] == xref) { already_done = 1; break; }
+                }
+                if (already_done) continue;
+                if (n_done < KOZOU_SANITIZE_MAX) done_xrefs[n_done++] = xref;
                 pdf_obj *xobj_obj = pdf_new_indirect(ctx, pdf, xref, 0);
                 if (!xobj_obj) continue;
 
@@ -4710,16 +5180,50 @@ void kozou_sanitize_hidden_text(
                      * 初期 xobj_to_device は fz_identity（cm を積算するベース）。 */
                     fz_matrix xobj_to_device = fz_identity;
 
-                    /* buried テキスト: 全 BT〜ET ブロックをスペースで置き換え
-                     * XObject の Resources に Helvetica を追加してフォント問題を回避 */
+                    /* buried テキスト: kozou_blank_all_bt_blocks_hv で
+                     * Tm 座標マッチングと Helvetica 幅補正を行う */
                     kozou_ensure_helvetica(ctx, pdf, xobj_obj);
-                    /* Resources 更新後のフォント辞書を再取得 */
                     pdf_obj *xobj_res2 = pdf_dict_get(ctx, xobj_obj, PDF_NAME(Resources));
-                    pdf_obj *hv_ref2 = xobj_res2 ?
-                        pdf_dict_gets(ctx, pdf_dict_get(ctx, xobj_res2, PDF_NAME(Font)), KOZOU_HV)
-                        : NULL;
-                    kozou_blank_all_bt_blocks_hv(ctx, xobj_buf, new_xobj_buf, hv_ref2,
-                        targets, n, 2.0f);
+                    pdf_obj *xobj_fonts2 = xobj_res2 ?
+                        pdf_dict_get(ctx, xobj_res2, PDF_NAME(Font)) : NULL;
+                    pdf_obj *hv_ref2 = xobj_fonts2 ?
+                        pdf_dict_gets(ctx, xobj_fonts2, KOZOU_HV) : NULL;
+                    /* このページ pi 向けターゲットのみで XObject を書き換え */
+                    {
+                        KozouSanitizeOrigin page_targets[KOZOU_SANITIZE_MAX];
+                        int n_page = 0;
+                        for (int _pi = 0; _pi < n && n_page < KOZOU_SANITIZE_MAX; _pi++) {
+                            if (targets[_pi].page_index >= 0 && targets[_pi].page_index != pi) continue;
+                            if (!targets[_pi].is_buried) continue; /* buried のみ */
+                            page_targets[n_page++] = targets[_pi];
+                        }
+                        /* n_page==0 のときは呼ばない（全BT blank を防ぐ）*/
+                        if (n_page > 0) {
+                            /* この XObject の「ローカル → ページデバイス座標」配置
+                             * CTM を取得し、各 Tj をデバイス座標に変換して ox/oy と
+                             * 照合する。XObject 内で同一 Tm を持つ複数ブロックが
+                             * 異なる cm で別の場所に配置されていても、cm を追跡する
+                             * ことで一意に区別できる。 */
+                            fz_matrix place_ctm;
+                            int got = kozou_get_xobj_place_ctm(ctx, pdf,
+                                xobj_search_page, xref, &place_ctm);
+                            if (got) {
+                                kozou_blank_all_bt_blocks_hv_ctm(ctx, xobj_buf,
+                                    new_xobj_buf, hv_ref2,
+                                    page_targets, n_page, 4.0f, place_ctm);
+                            } else {
+                                /* 配置 CTM 不明: 安全側で元ストリームをコピー */
+                                unsigned char *sd = NULL;
+                                size_t sl = fz_buffer_storage(ctx, xobj_buf, &sd);
+                                if (sd && sl) fz_append_data(ctx, new_xobj_buf, sd, sl);
+                            }
+                        } else {
+                            /* ターゲットなし: 元のストリームをそのままコピー */
+                            unsigned char *sd = NULL;
+                            size_t sl = fz_buffer_storage(ctx, xobj_buf, &sd);
+                            if (sd && sl) fz_append_data(ctx, new_xobj_buf, sd, sl);
+                        }
+                    }
                     pdf_update_stream(ctx, pdf, xobj_obj, new_xobj_buf, 0);
                     fz_drop_buffer(ctx, new_xobj_buf);
                 }

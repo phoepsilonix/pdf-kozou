@@ -485,6 +485,9 @@ pub struct LowContrastChar {
     pub bg_color_rgb: [u8; 3],
     /// WCAG コントラスト比 (1.0=同色, 21.0=白黒)
     pub contrast: f32,
+    /// 知覚色差 ΔE76 (0=同色, 大きいほど見える)。第2レイヤー/確信度表示用
+    #[serde(default)]
+    pub delta_e: f32,
     /// "low_contrast" | "sanitized" | "whitespace_only"
     pub reason: String,
     /// 文字の原点座標 [x, y] pt
@@ -600,6 +603,8 @@ pub fn detect_low_contrast_text(
         color_rgb: [u8; 3],
         bg_color_rgb: [u8; 3],
         contrast: f32,
+        #[serde(default)]
+        delta_e: f32,
         reason: String,
         origin: [f32; 2],
         quad: [f32; 8],
@@ -625,6 +630,7 @@ pub fn detect_low_contrast_text(
             color_rgb: h.color_rgb,
             bg_color_rgb: h.bg_color_rgb,
             contrast: h.contrast,
+            delta_e: h.delta_e,
             reason: h.reason,
             origin: h.origin,
             quad: h.quad,
@@ -924,11 +930,16 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
 
 // ── 隠しテキスト置き換え（試験的） ──────────────────────────────────────────
 
+fn default_minus_one() -> i32 { -1 }
+
 /// 置き換え対象の文字原点座標
 #[derive(Debug, Deserialize)]
 pub struct SanitizeOrigin {
     pub x: f32,
     pub y: f32,
+    /// 0-indexed page number for per-page filtering
+    #[serde(default = "default_minus_one")]
+    pub page: i32,
     /// 所属 XObject の xref (0=ページトップレベル, 現状常に0)
     #[serde(default)]
     pub xobj_xref: i32,
@@ -1034,7 +1045,7 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
 
     // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の5要素フラット配列に変換
     let origins: Vec<f32> = req.targets.iter()
-        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y, o.ox, o.oy, o.is_buried as f32])
+        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y, o.ox, o.oy, o.is_buried as f32, o.page as f32])
         .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);

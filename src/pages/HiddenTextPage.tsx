@@ -149,10 +149,11 @@ function groupHits(hits: AnyHit[]): HitGroup[] {
   const groups: HitGroup[] = [];
   let gid = 0;
   for (const hit of hits) {
+    const pageIdx = hit.page ?? 0;
     const groupKey =
       hit.type === "control_chars"
-        ? `${hit.type}::${hit.reason}::${hit.extra}`
-        : `${hit.type}::${hit.reason}`;
+        ? `${hit.type}::${hit.reason}::${hit.extra}::p${pageIdx}`
+        : `${hit.type}::${hit.reason}::p${pageIdx}`;
     const existing = groups.find(
       (g) => g.id.startsWith(groupKey) && Math.abs(g.y - hit.origin[1]) <= LINE_Y_TOL,
     );
@@ -172,7 +173,13 @@ function groupHits(hits: AnyHit[]): HitGroup[] {
       });
     }
   }
-  groups.sort((a, b) => a.y - b.y);
+  /* ページ番号優先でソート、同ページ内は y 座標順 */
+  groups.sort((a, b) => {
+    const pa = a.chars[0]?.page ?? 0;
+    const pb = b.chars[0]?.page ?? 0;
+    if (pa !== pb) return pa - pb;
+    return a.y - b.y;
+  });
   return groups;
 }
 
@@ -195,17 +202,19 @@ async function detectAllPages(
   const all: AnyHit[] = [];
   for (let p = 0; p < pageCount; p++) {
     if (enabled.has("transparent"))
-      all.push(...toAnyHits("transparent", (await detectTransparentText(path, p, thr.alpha)).hits));
+      all.push(
+        ...toAnyHits("transparent", (await detectTransparentText(path, p, thr.alpha)).hits, p),
+      );
     if (enabled.has("low_contrast"))
       all.push(
-        ...toAnyHits("low_contrast", (await detectLowContrastText(path, p, thr.contrast)).hits),
+        ...toAnyHits("low_contrast", (await detectLowContrastText(path, p, thr.contrast)).hits, p),
       );
     if (enabled.has("tiny"))
-      all.push(...toAnyHits("tiny", (await detectTinyText(path, p, thr.size)).hits));
+      all.push(...toAnyHits("tiny", (await detectTinyText(path, p, thr.size)).hits, p));
     if (enabled.has("buried"))
-      all.push(...toAnyHits("buried", (await detectBuriedText(path, p, thr.cover)).hits));
+      all.push(...toAnyHits("buried", (await detectBuriedText(path, p, thr.cover)).hits, p));
     if (enabled.has("control_chars"))
-      all.push(...toAnyHits("control_chars", (await detectControlChars(path, p)).hits));
+      all.push(...toAnyHits("control_chars", (await detectControlChars(path, p)).hits, p));
   }
   return all;
 }
@@ -676,12 +685,10 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   }, [renderCurrent]);
 
   // 全ページモード時は現在ページのみ表示（useMemo で確実に再計算）
+  // 常に現在ページの文字のみ表示（全ページ検出時も同様）
   const displayGroups = useMemo(
-    () =>
-      allPagesMode
-        ? groups.filter((g) => g.chars.length > 0 && g.chars[0].page === pageIndex)
-        : groups,
-    [groups, allPagesMode, pageIndex],
+    () => groups.filter((g) => g.chars.length > 0 && g.chars[0].page === pageIndex),
+    [groups, pageIndex],
   );
 
   const runDetect = useCallback(
@@ -717,9 +724,13 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           if (enabled.has("tiny"))
             all.push(...toAnyHits("tiny", (await detectTinyText(filePath, p, thr.size)).hits, p));
           if (enabled.has("buried"))
-            all.push(...toAnyHits("buried", (await detectBuriedText(filePath, p, thr.cover)).hits));
+            all.push(
+              ...toAnyHits("buried", (await detectBuriedText(filePath, p, thr.cover)).hits, p),
+            );
           if (enabled.has("control_chars"))
-            all.push(...toAnyHits("control_chars", (await detectControlChars(filePath, p)).hits));
+            all.push(
+              ...toAnyHits("control_chars", (await detectControlChars(filePath, p)).hits, p),
+            );
         }
 
         const grps = groupHits(all);
@@ -751,6 +762,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           .map((c) => ({
             x: c.origin[0],
             y: c.origin[1],
+            page: c.page,
             xobj_xref: c.xobjXref ?? 0,
             internal_x: c.internalOrigin?.[0] ?? c.origin[0],
             internal_y: c.internalOrigin?.[1] ?? c.origin[1],
