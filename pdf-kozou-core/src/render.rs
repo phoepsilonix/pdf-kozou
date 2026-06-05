@@ -912,7 +912,7 @@ fn render_svg(
 }
 
 /// SVG 文字列の <svg ...> タグの直後に <metadata> ブロックを挿入する
-fn embed_metadata_svg(svg: String, metadata: &[(String, String)]) -> String {
+pub fn embed_metadata_svg(svg: String, metadata: &[(String, String)]) -> String {
     // 既存の <metadata>...</metadata> ブロックを除去
     let svg = remove_svg_metadata_block(svg);
 

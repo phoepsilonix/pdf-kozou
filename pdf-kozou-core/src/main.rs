@@ -1043,6 +1043,42 @@ fn dispatch_json(line: &str) -> String {
                 )?)
             }
 
+            "rasterize_imposition" => {
+                let mut req: pdf_kozou_core::stext::RasterizeImpositionRequest =
+                    serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::rasterize_imposition(&req)?,
+                )?)
+            }
+
+            "split_imposition_pdf" => {
+                let mut req: pdf_kozou_core::stext::SplitImpositionPdfRequest =
+                    serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::split_imposition_pdf(&req)?,
+                )?)
+            }
+
+            "split_cell_render" => {
+                let mut req: pdf_kozou_core::stext::SplitCellRenderRequest =
+                    serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::split_cell_render(&req)?,
+                )?)
+            }
+
             "detect_control_chars" => {
                 let req: pdf_kozou_core::stext::DetectControlCharsRequest =
                     serde_json::from_str(line)?;

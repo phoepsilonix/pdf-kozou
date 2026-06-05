@@ -241,6 +241,47 @@ pub async fn render_imposition(request: Value) -> Result<Value> {
     call_core_json("render_imposition", request).await
 }
 
+/// 面付け画像PDF出力
+/// 各シート（cols*rows ページ）を1枚に合成し、1つのPDFページとして埋め込む。
+/// 例: A4×4ページ booklet → A3×2ページの見開き製本PDF
+#[tauri::command]
+pub async fn rasterize_imposition(request: Value) -> Result<Value> {
+    // 出力先ディレクトリを自動作成
+    if let Some(out) = request.get("output").and_then(|v| v.as_str()) {
+        if let Some(parent) = std::path::Path::new(out).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+            }
+        }
+    }
+    call_core_json("rasterize_imposition", request).await
+}
+
+/// 面付け解除 → 画像PDF出力
+/// A3見開きなどを左右(または2×2)に分割し、読み順に並べた画像PDFを作る。
+/// 例: A3×2ページ(booklet) → A4×4ページ(読み順)
+#[tauri::command]
+pub async fn split_imposition_pdf(request: Value) -> Result<Value> {
+    if let Some(out) = request.get("output").and_then(|v| v.as_str()) {
+        if let Some(parent) = std::path::Path::new(out).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+            }
+        }
+    }
+    call_core_json("split_imposition_pdf", request).await
+}
+
+/// 面付け解除した1セルを画像(JPEG/PNG/SVG)としてレンダリングし base64 で返す。
+/// 個別画像ファイル出力用。
+#[tauri::command]
+pub async fn split_cell_render(request: Value) -> Result<Value> {
+    call_core_json("split_cell_render", request).await
+}
+
+
 /// 特殊制御文字（ゼロ幅・双方向制御・タグ文字等）を検出
 #[tauri::command]
 pub async fn detect_control_chars(

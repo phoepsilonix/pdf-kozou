@@ -457,6 +457,160 @@ export async function renderImposition(
   });
 }
 
+// ── 面付け画像PDF出力 ────────────────────────────────────────────────────────
+
+export interface RasterizeImpositionRequest {
+  input: string;
+  output: string;
+  /** 全シートのページ番号を連結した配列（1始まり、0=空白）。長さ=nSheets*cols*rows */
+  sheetPages: number[];
+  nSheets: number;
+  cols: number;
+  rows: number;
+  dpi: number;
+  /** JPEG品質 1-100 */
+  quality?: number;
+  /** true=PNG埋め込み（可逆）, false/省略=JPEG埋め込み */
+  usePng?: boolean;
+  gapPx?: number;
+  layoutW?: number;
+  layoutH?: number;
+  layoutEm?: number;
+}
+
+export interface RasterizeImpositionResponse {
+  ok: boolean;
+  output_bytes: number;
+}
+
+/**
+ * 面付け画像PDFを出力する。
+ * 各シート（cols×rows ページ）を1枚に合成し、1つのPDFページとして埋め込む。
+ *
+ * @example A4×4ページを booklet 面付けして A3×2ページの見開き製本PDFを作る
+ * rasterizeImposition({
+ *   input, output, sheetPages: [4,1, 2,3], nSheets: 2, cols: 2, rows: 1, dpi: 200
+ * })
+ */
+export async function rasterizeImposition(
+  req: RasterizeImpositionRequest,
+): Promise<RasterizeImpositionResponse> {
+  return invoke<RasterizeImpositionResponse>("rasterize_imposition", {
+    request: {
+      input: req.input,
+      output: req.output,
+      sheet_pages: req.sheetPages,
+      n_sheets: req.nSheets,
+      cols: req.cols,
+      rows: req.rows,
+      dpi: req.dpi,
+      quality: req.quality ?? null,
+      use_png: req.usePng ?? null,
+      gap_px: req.gapPx ?? null,
+      layout_w: req.layoutW ?? null,
+      layout_h: req.layoutH ?? null,
+      layout_em: req.layoutEm ?? null,
+    },
+  });
+}
+
+// ── 面付け解除（split / de-imposition）────────────────────────────────────────
+
+export interface SplitImpositionPdfRequest {
+  input: string;
+  output: string;
+  /** 出力順に並んだセル指定。各要素は [page(1始まり), row(0始まり), col(0始まり)] */
+  cells: [number, number, number][];
+  cols: number;
+  rows: number;
+  dpi: number;
+  quality?: number;
+  usePng?: boolean;
+  layoutW?: number;
+  layoutH?: number;
+  layoutEm?: number;
+}
+
+export interface SplitImpositionPdfResponse {
+  ok: boolean;
+  output_bytes: number;
+}
+
+/**
+ * 面付け解除して画像PDFを出力する。
+ * A3見開きなどを分割し、cells で指定した順に並べた画像PDFを作る。
+ *
+ * @example A3×2(booklet) → A4×4(読み順)
+ *   calcSplitCells で cells を計算して渡す
+ */
+export async function splitImpositionPdf(
+  req: SplitImpositionPdfRequest,
+): Promise<SplitImpositionPdfResponse> {
+  return invoke<SplitImpositionPdfResponse>("split_imposition_pdf", {
+    request: {
+      input: req.input,
+      output: req.output,
+      cells: req.cells,
+      cols: req.cols,
+      rows: req.rows,
+      dpi: req.dpi,
+      quality: req.quality ?? null,
+      use_png: req.usePng ?? null,
+      layout_w: req.layoutW ?? null,
+      layout_h: req.layoutH ?? null,
+      layout_em: req.layoutEm ?? null,
+    },
+  });
+}
+
+export interface SplitCellRenderRequest {
+  input: string;
+  page: number; // 1始まり
+  cols: number;
+  rows: number;
+  cellRow: number;
+  cellCol: number;
+  dpi: number;
+  /** "jpeg" | "png" | "svg" */
+  format?: string;
+  quality?: number;
+  layoutW?: number;
+  layoutH?: number;
+  layoutEm?: number;
+}
+
+export interface SplitCellRenderResponse {
+  ok: boolean;
+  /** base64エンコードされた画像データ（JPEG/PNG）または SVGテキストのbase64 */
+  data_b64: string;
+  format: string;
+}
+
+/**
+ * 面付け解除した1セルを画像（JPEG/PNG/SVG）としてレンダリングし base64 で返す。
+ * 個別画像ファイル出力用。呼び出し側が出力順にループして保存する。
+ */
+export async function splitCellRender(
+  req: SplitCellRenderRequest,
+): Promise<SplitCellRenderResponse> {
+  return invoke<SplitCellRenderResponse>("split_cell_render", {
+    request: {
+      input: req.input,
+      page: req.page,
+      cols: req.cols,
+      rows: req.rows,
+      cell_row: req.cellRow,
+      cell_col: req.cellCol,
+      dpi: req.dpi,
+      format: req.format ?? null,
+      quality: req.quality ?? null,
+      layout_w: req.layoutW ?? null,
+      layout_h: req.layoutH ?? null,
+      layout_em: req.layoutEm ?? null,
+    },
+  });
+}
+
 // ── stext コマンド ────────────────────────────────────────────────────────────
 
 /** ページの構造化テキストを取得（テキスト選択オーバーレイ用） */

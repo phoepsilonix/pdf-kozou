@@ -38,8 +38,16 @@ import {
   IMPOSITION_MODE_DEFS,
   IMPOSITION_MODES,
   calcSheets,
+  type DeImpositionMode,
+  DE_IMPOSITION_MODE_DEFS,
+  calcSplitCells,
 } from "../lib/imposition";
-import { renderImposition } from "../lib/tauri";
+import {
+  renderImposition,
+  rasterizeImposition,
+  splitImpositionPdf,
+  splitCellRender,
+} from "../lib/tauri";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 
@@ -122,8 +130,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   console.log("Image: total(pages)", total);
 
   const [phase, setPhase] = useState<Phase>("edit");
+  // 処理方向: "normal"=通常変換/面付け, "deimpose"=面付け解除/分割
+  const [processDir, setProcessDir] = useState<"normal" | "deimpose">("normal");
   // 面付けモード
   const [impositionMode, setImpositionMode] = useState<ImpositionMode>("1up");
+  // 面付け解除の選択（DE_IMPOSITION_MODE_DEFS のインデックス）
+  const [deimpIndex, setDeimpIndex] = useState(0);
   const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
   const [format, setFormat] = useState<ImageFormat>("jpeg");
   const [dpi, setDpi] = useState(144);
@@ -259,13 +271,147 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     return dir;
   }, []);
 
-  // サイズ概算
+  // サイズ概算（目安）。入力1ページの基準サイズ（A4 595×842pt）を基に、
+  // 面付け（N-up/booklet）なら合成後シート、面付け解除なら1セルのサイズを表示する。
   const scale = dpi / 72;
-  const pw = Math.round(595 * scale);
-  const ph = Math.round(842 * scale);
+  const baseW = 595;
+  const baseH = 842;
+  const { estW: pw, estH: ph } = useMemo(() => {
+    if (processDir === "deimpose") {
+      // 面付け解除: 1セル = 入力ページを cols×rows で割ったサイズ
+      const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+      return {
+        estW: Math.round((baseW / def.cols) * scale),
+        estH: Math.round((baseH / def.rows) * scale),
+      };
+    }
+    if (impositionMode !== "1up") {
+      const info = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
+      // 面付け: シート = cols×rows のセルを並べたサイズ
+      return {
+        estW: Math.round(baseW * info.cols * scale),
+        estH: Math.round(baseH * info.rows * scale),
+      };
+    }
+    // 通常: 1ページ
+    return { estW: Math.round(baseW * scale), estH: Math.round(baseH * scale) };
+  }, [processDir, deimpIndex, impositionMode, scale]);
 
   // 単体実行（面付け対応版）
   const handleExecuteSingle = useCallback(async () => {
+    // ── 面付け解除（split / de-imposition）: A3見開きなどを分割 ──
+    if (processDir === "deimpose") {
+      const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+      // 入力（A3等）シートの枚数 = 対象ページ数
+      const pageSpec = resolvePageSpec(pages || "", total); // 0始まり
+      const sheetPageNums = (
+        pageSpec.length ? pageSpec : Array.from({ length: total }, (_, i) => i)
+      ).map((i) => i + 1); // 1始まり
+      const sheetCount = sheetPageNums.length;
+      if (sheetCount === 0) {
+        setStatusMsg(t("image.deimp_no_pages" as any));
+        return;
+      }
+      // calcSplitCells はシート番号1..sheetCount で計算するので、
+      // 実ページ番号へのマッピングを用意する
+      const cellsLogical = calcSplitCells(sheetCount, def.cols, def.rows, def.id);
+      // logical sheet番号(1..sheetCount) → 実ページ番号
+      const cells: [number, number, number][] = cellsLogical.map((c) => [
+        sheetPageNums[c.page - 1],
+        c.row,
+        c.col,
+      ]);
+
+      if (outputMode === "pdf") {
+        const outPath = await pickSave(rasterizedDefaultName);
+        if (!outPath) {
+          setPdfName("");
+          return;
+        }
+        const dir = outPath.replace(/[/\\][^/\\]+$/, "");
+        if (dir) setOutDir(dir);
+        setPhase("processing");
+        try {
+          await splitImpositionPdf({
+            input: filePath,
+            output: outPath,
+            cells,
+            cols: def.cols,
+            rows: def.rows,
+            dpi,
+            quality,
+            usePng: format === "png",
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
+          setPdfOutPath(outPath);
+          setPdfPageCount(cells.length);
+          setPdfName("");
+          // 画像PDFなのでテキスト消失の注意を表示
+          setStatusMsg(t("image.rasterize_warning" as any));
+          announceSuccess("done.image");
+          setPhase("result");
+        } catch (e) {
+          console.error("splitImpositionPdf failed", e);
+          setStatusMsg(String(e));
+          setPhase("edit");
+        }
+        return;
+      }
+
+      // 個別画像出力（JPEG/PNG/SVG）
+      const resolvedDir = outDir || (await pickDir());
+      if (!resolvedDir) return;
+      setPhase("processing");
+      try {
+        const ext = format === "png" ? "png" : format === "svg" ? "svg" : "jpg";
+        const savedFiles: string[] = [];
+        for (let k = 0; k < cells.length; k++) {
+          const [pg, row, col] = cells[k];
+          setStatusMsg(
+            t("image.deimp_rendering" as any, {
+              n: String(k + 1),
+              total: String(cells.length),
+            }),
+          );
+          const res = await splitCellRender({
+            input: filePath,
+            page: pg,
+            cols: def.cols,
+            rows: def.rows,
+            cellRow: row,
+            cellCol: col,
+            dpi,
+            format,
+            quality,
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
+          const outName = `${rasterizedDefaultName.replace(/\.pdf$/i, "")}_${String(k + 1).padStart(3, "0")}.${ext}`;
+          const outPath = joinPath(resolvedDir, outName);
+          await invoke("save_base64_image", {
+            data: res.data_b64,
+            path: outPath,
+            // SVG はラスタ画像でないため EXIF/PNG メタデータ埋め込みはスキップ
+            sourcePath: format === "svg" ? undefined : filePath,
+          });
+          savedFiles.push(outPath);
+        }
+        setImages(savedFiles);
+        setOutDir(resolvedDir);
+        setStatusMsg("");
+        announceSuccess("done.image");
+        setPhase("result");
+      } catch (e) {
+        console.error("splitCellRender failed", e);
+        setStatusMsg(String(e));
+        setPhase("edit");
+      }
+      return;
+    }
+
     // 面付けモードかつ images 出力: renderImposition で直接レンダリングして保存
     console.log(
       "[imposition] outputMode:",
@@ -413,6 +559,62 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           setOutDir(dir);
         }
 
+        // 面付けモード（2up/4up/booklet）: 各シートを1ページに合成した画像PDFを出力
+        if (impositionMode !== "1up") {
+          const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
+          // pages指定を反映した対象ページでシートを計算
+          const pageSpec = resolvePageSpec(pages || "", total).map((i) => i + 1);
+          const pageSet = new Set(pageSpec);
+          const effectiveCount = pageSpec.length || total;
+          const sheets = calcSheets(
+            impositionMode,
+            effectiveCount,
+            t("common.imposition_blank_page" as any),
+            (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
+            (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+          );
+          const cells = modeInfo.cols * modeInfo.rows;
+          // ページ指定の有無
+          const hasPageFilter = pageSpec.length > 0;
+          // 全シートのページ番号を連結（セル数に満たない分は0=空白で埋める）
+          const sheetPages: number[] = [];
+          for (const sheet of sheets) {
+            for (let c = 0; c < cells; c++) {
+              const p = sheet.pages[c] ?? 0;
+              // ページ指定があり、対象外なら空白(0)に
+              if (p !== 0 && hasPageFilter && !pageSet.has(p)) {
+                sheetPages.push(0);
+              } else {
+                sheetPages.push(p);
+              }
+            }
+          }
+          const res = await rasterizeImposition({
+            input: filePath,
+            output: outPath,
+            sheetPages,
+            nSheets: sheets.length,
+            cols: modeInfo.cols,
+            rows: modeInfo.rows,
+            dpi,
+            quality,
+            usePng: format === "png",
+            gapPx: 0,
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
+          setPdfOutPath(outPath);
+          setPdfPageCount(sheets.length);
+          setPdfName("");
+          // 面付け画像PDFも各ページが画像化されるため、
+          // 1ページごとの画像PDFと同様にテキスト消失の注意を表示する
+          setStatusMsg(t("image.rasterize_warning" as any));
+          announceSuccess("done.image");
+          setPhase("result");
+          return;
+        }
+
         const res = await exportImagePdf(
           filePath,
           outPath,
@@ -472,6 +674,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     announceSuccess,
     announceError,
     total,
+    processDir,
+    deimpIndex,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
   ]);
 
   // バッチ実行
@@ -802,6 +1009,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         <div style={{ flex: 1 }} />
         <span style={s.outBadge}>
           → {format.toUpperCase()} {pw}×{ph}px
+          {processDir === "deimpose"
+            ? ` (${t("image.est_per_cell" as any)})`
+            : impositionMode !== "1up"
+              ? ` (${t("image.est_per_sheet" as any)})`
+              : ""}
         </span>
       </PageHeader>
 
@@ -833,6 +1045,40 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
 
+          {/* 処理方向: 通常変換/面付け ⇔ 面付け解除/分割 */}
+          <div style={s.secLabel}>{t("image.process_dir_label" as any)}</div>
+          <div style={s.fmtRow}>
+            <button
+              onClick={(e) => {
+                setProcessDir("normal");
+                setStatusMsg("");
+                (e.currentTarget as HTMLButtonElement).blur();
+              }}
+              style={{ ...s.modeBtn, ...(processDir === "normal" ? s.modeBtnOn : {}) }}
+            >
+              <span style={s.fmtName}>{t("image.process_dir_normal" as any)}</span>
+              <span style={s.fmtDesc}>{t("image.process_dir_normal_sub" as any)}</span>
+            </button>
+            <button
+              onClick={(e) => {
+                setProcessDir("deimpose");
+                // 面付け解除は面付けと排他: 面付けモードを 1up に戻す
+                setImpositionMode("1up");
+                setStatusMsg("");
+                (e.currentTarget as HTMLButtonElement).blur();
+              }}
+              style={{
+                ...s.modeBtn,
+                ...(processDir === "deimpose"
+                  ? { ...s.modeBtnOn, borderColor: "var(--c-accent2, var(--c-accent))" }
+                  : {}),
+              }}
+            >
+              <span style={s.fmtName}>{t("image.process_dir_split" as any)}</span>
+              <span style={s.fmtDesc}>{t("image.process_dir_split_sub" as any)}</span>
+            </button>
+          </div>
+
           <div style={s.secLabel}>{t("image.output_mode")}</div>
           <div style={s.fmtRow}>
             <button
@@ -849,7 +1095,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               disabled={format === "svg"}
               onClick={(e) => {
                 setOutputMode("pdf");
-                setImpositionMode("1up"); // PDF出力時は面付け不要なのでリセット
                 setStatusMsg("");
                 (e.currentTarget as HTMLButtonElement).blur();
               }}
@@ -864,8 +1109,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </button>
           </div>
 
-          {/* 面付けモード */}
-          {outputMode === "images" && format !== "svg" && (
+          {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
+          {processDir === "normal" && format !== "svg" && (
             <>
               <div style={s.secLabel}>{t("image.imposition_section_label" as any)}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -910,6 +1155,45 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   })()}
                 </div>
               )}
+            </>
+          )}
+
+          {/* 面付け解除モード（分割時） */}
+          {processDir === "deimpose" && (
+            <>
+              <div style={s.secLabel}>{t("image.deimp_section_label" as any)}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {DE_IMPOSITION_MODE_DEFS.map((m, idx) => (
+                  <button
+                    key={idx}
+                    onClick={(e) => {
+                      setDeimpIndex(idx);
+                      setStatusMsg("");
+                      (e.currentTarget as HTMLButtonElement).blur();
+                    }}
+                    style={{
+                      ...s.modeBtn,
+                      ...(deimpIndex === idx ? s.modeBtnOn : {}),
+                      flexBasis: "calc(50% - 3px)",
+                    }}
+                  >
+                    <span style={s.fmtIcon}>{m.icon}</span>
+                    <span style={s.fmtName}>{t(m.labelKey as any)}</span>
+                    <span style={s.fmtDesc}>{t(m.descKey as any)}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
+                {(() => {
+                  const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+                  const n = resolvedPageCount || total;
+                  const outCount = n * def.cols * def.rows;
+                  return t("image.deimp_page_count" as any, {
+                    sheets: String(n),
+                    pages: String(outCount),
+                  });
+                })()}
+              </div>
             </>
           )}
 
@@ -1150,6 +1434,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 </button>
               ))}
             </div>
+          ) : processDir === "deimpose" ? (
+            /* 面付け解除プレビュー: 各入力シートを分割線付きで表示 */
+            <DeImpositionPreview
+              def={DE_IMPOSITION_MODE_DEFS[deimpIndex]}
+              total={total}
+              pages={pages}
+              thumbs={thumbs}
+              pdfInfo={pdfInfo}
+            />
           ) : impositionMode !== "1up" ? (
             /* 面付けプレビュー: 合成済みサムネイルを表示 */
             <ImpositionPreview
@@ -1342,6 +1635,121 @@ function ImpositionPreview({
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ── DeImpositionPreview ──────────────────────────────────────────────────────
+// 面付け解除のプレビュー。各入力シート（A3など）のサムネイルに、
+// 分割線（cols×rows）を重ねて、どのように分割されるかを示す。
+function DeImpositionPreview({
+  def,
+  total,
+  pages,
+  thumbs,
+  pdfInfo,
+}: {
+  def: {
+    id: DeImpositionMode;
+    cols: number;
+    rows: number;
+    labelKey: string;
+    descKey: string;
+    icon: string;
+  };
+  total: number;
+  pages: string;
+  thumbs: (string | undefined)[];
+  pdfInfo: PdfInfo;
+}) {
+  const { t } = useI18n();
+  const targetIdx = resolvePageSpec(pages || "", total); // 0始まり
+  const sheetIdx = targetIdx.length ? targetIdx : Array.from({ length: total }, (_, i) => i);
+  const outCount = sheetIdx.length * def.cols * def.rows;
+
+  return (
+    <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
+      <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
+        {def.icon} {t(def.labelKey as any)} —{" "}
+        {t("image.deimp_page_count" as any, {
+          sheets: String(sheetIdx.length),
+          pages: String(outCount),
+        })}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+        {sheetIdx.map((i) => {
+          const pb = pdfInfo.pages?.[i];
+          const aspect = pb ? pb.w / pb.h : 1.414;
+          const thumbW = 180;
+          const thumbH = thumbW / aspect;
+          return (
+            <div key={i} style={{ position: "relative", width: thumbW }}>
+              {thumbs[i] ? (
+                <img
+                  src={`data:image/jpeg;base64,${thumbs[i]}`}
+                  style={{
+                    width: thumbW,
+                    height: thumbH,
+                    borderRadius: 4,
+                    display: "block",
+                    border: "1px solid var(--c-border)",
+                  }}
+                  alt=""
+                />
+              ) : (
+                <div
+                  style={{
+                    width: thumbW,
+                    height: thumbH,
+                    background: "var(--c-border)",
+                    borderRadius: 4,
+                  }}
+                />
+              )}
+              {/* 分割線オーバーレイ */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
+                  gridTemplateRows: `repeat(${def.rows}, 1fr)`,
+                  pointerEvents: "none",
+                }}
+              >
+                {Array.from({ length: def.cols * def.rows }).map((_, k) => (
+                  <div
+                    key={k}
+                    style={{
+                      border: "1px dashed var(--c-accent, #e0457b)",
+                      boxSizing: "border-box",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: "var(--c-accent, #e0457b)",
+                      textShadow: "0 0 3px rgba(255,255,255,0.9)",
+                    }}
+                  >
+                    {k + 1}
+                  </div>
+                ))}
+              </div>
+              <div
+                style={{
+                  textAlign: "center",
+                  fontSize: 11,
+                  color: "var(--c-textSub)",
+                  marginTop: 2,
+                }}
+              >
+                {t("common.page_n" as any, { n: String(i + 1) })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

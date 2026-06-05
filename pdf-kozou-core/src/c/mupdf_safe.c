@@ -4062,8 +4062,12 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     int in_bt = 0;
     int blank_entire_bt = (n_targets == 0);
     float tol2 = tol * tol;
-    float cur_tm_tx = 0.0f, cur_tm_ty = 0.0f;
-    float cur_td_x  = 0.0f, cur_td_y  = 0.0f;
+    /* Tm を完全な行列として保持する。Tm は [a b c d e f] で回転・反転・
+     * スケールを含みうる（例: [1 0 0 -1 tx ty] の Y 反転）。
+     * 平行移動成分(tx,ty)だけを使うと、回転・反転を持つ XObject 内テキストの
+     * 位置計算を誤る。Td はテキスト空間での移動なので Tm に対して合成する。 */
+    fz_matrix cur_tm = fz_identity;  /* 直近の Tm 行列 */
+    fz_matrix cur_td = fz_identity;  /* Tm 以降の Td 累積（テキスト空間） */
     char cur_font_name[64] = {0};
     float cur_font_size = 12.0f;
     char cur_font_line[128] = {0};
@@ -4103,8 +4107,8 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                 }
             } else if (trimmed_len == 2 && src[ts] == 'B' && src[ts+1] == 'T') {
                 in_bt = 1;
-                cur_tm_tx = 0.0f; cur_tm_ty = 0.0f;
-                cur_td_x  = 0.0f; cur_td_y  = 0.0f;
+                cur_tm = fz_identity;
+                cur_td = fz_identity;
             }
             fz_append_data(ctx, out_buf, src + line_start, line_len);
             fz_append_byte(ctx, out_buf, '\n');
@@ -4116,15 +4120,17 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
             } else if (trimmed_len >= 2 &&
                        ((src[te-2] == 'T' && src[te-1] == 'j') ||
                         (src[te-2] == 'T' && src[te-1] == 'J'))) {
-                /* Tj/TJ 描画位置を XObject 座標系で計算し、
-                 * place_ctm × cm × (Tm+Td位置) でページデバイス座標に変換、
-                 * ターゲットの ox/oy と照合する。 */
-                float local_x = cur_tm_tx + cur_td_x;
-                float local_y = cur_tm_ty + cur_td_y;
-                /* XObject 座標系内: cm を適用 */
-                fz_matrix full = fz_concat(ctm_stack[ctm_sp], place_ctm);
-                float dev_x = local_x * full.a + local_y * full.c + full.e;
-                float dev_y = local_x * full.b + local_y * full.d + full.f;
+                /* Tj/TJ 描画位置を完全な行列連鎖でデバイス座標に変換する。
+                 * テキスト原点 (0,0) を次の順で変換:
+                 *   text-origin → Td → Tm → cm → place_ctm → device
+                 * 行列は fz_concat(A,B)=「A を先に適用」。
+                 * 連鎖 = Td · Tm · cm · place_ctm。 */
+                fz_matrix txt = fz_concat(cur_td, cur_tm);
+                fz_matrix m1  = fz_concat(txt, ctm_stack[ctm_sp]);
+                fz_matrix full = fz_concat(m1, place_ctm);
+                /* テキスト空間原点 (0,0) のデバイス座標 = 平行移動成分 */
+                float dev_x = full.e;
+                float dev_y = full.f;
                 int do_blank = blank_entire_bt;
                 if (!do_blank && n_targets > 0) {
                     for (int _ti = 0; _ti < n_targets; _ti++) {
@@ -4152,8 +4158,10 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                     float ta,tb2,tc,td2,tx,ty;
                     if (sscanf(tmline,"%f %f %f %f %f %f Tm",
                                &ta,&tb2,&tc,&td2,&tx,&ty) == 6) {
-                        cur_tm_tx = tx; cur_tm_ty = ty;
-                        cur_td_x = 0.0f; cur_td_y = 0.0f;
+                        cur_tm.a = ta; cur_tm.b = tb2;
+                        cur_tm.c = tc; cur_tm.d = td2;
+                        cur_tm.e = tx; cur_tm.f = ty;
+                        cur_td = fz_identity;  /* Tm で Td 累積をリセット */
                     }
                 }
                 else if (trimmed_len >= 2 && src[te-2] == 'T' &&
@@ -4163,7 +4171,9 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                     memcpy(tdline, src + ts, cplen3);
                     float dxv, dyv;
                     if (sscanf(tdline,"%f %f T%*c", &dxv,&dyv) == 2) {
-                        cur_td_x += dxv; cur_td_y += dyv;
+                        /* Td はテキスト空間での平行移動。現在の Td に合成。 */
+                        fz_matrix tdm = fz_translate(dxv, dyv);
+                        cur_td = fz_concat(tdm, cur_td);
                     }
                 }
                 if (trimmed_len >= 2 && src[te-2] == 'T' && src[te-1] == 'f') {
@@ -4631,11 +4641,15 @@ void kozou_sanitize_hidden_text(
         int page_count  = pdf_count_pages(ctx, pdf);
         int width_warn  = 0;
 
+        /* ページごとターゲット配列はヒープ確保（スタックオーバーフロー防止）。
+         * KOZOU_SANITIZE_MAX 個の構造体はスタックには大きすぎる。 */
+        KozouSanitizeOrigin *pi_targets =
+            (KozouSanitizeOrigin *)fz_malloc(ctx,
+                sizeof(KozouSanitizeOrigin) * KOZOU_SANITIZE_MAX);
         for (int pi = 0; pi < page_count; pi++) {
             pdf_page *page = NULL;
             fz_var(page);
             /* このページ向けターゲットのみのフィルタ済み配列 */
-            KozouSanitizeOrigin pi_targets[KOZOU_SANITIZE_MAX];
             int pi_n = 0;
             for (int _fi = 0; _fi < n && pi_n < KOZOU_SANITIZE_MAX; _fi++) {
                 if (targets[_fi].page_index >= 0 && targets[_fi].page_index != pi)
@@ -5050,6 +5064,7 @@ void kozou_sanitize_hidden_text(
                 fz_warn(ctx, "sanitize: skip page %d: %s", pi, fz_caught_message(ctx));
             }
         }
+        fz_free(ctx, pi_targets);
 
         fz_free(ctx, targets);
 
@@ -5062,7 +5077,13 @@ void kozou_sanitize_hidden_text(
         /* XObject 内ターゲットの処理（各ページごと）:
          * ページ pi をロードし、そのページの XObject を特定して書き換える。
          * 同じ XObject が複数ページで参照される場合の二重書き換えを防ぐ。 */
-        int done_xrefs[KOZOU_SANITIZE_MAX];
+        /* XObject 処理用の配列はすべてヒープ確保（スタックオーバーフロー防止）。
+         * KOZOU_SANITIZE_MAX 個の配列をスタックに置くと数MB消費し、
+         * ページループ内での確保でスタックを使い果たして segfault する。 */
+        int *done_xrefs = (int *)fz_malloc(ctx, sizeof(int) * KOZOU_SANITIZE_MAX);
+        int *xobj_xrefs = (int *)fz_malloc(ctx, sizeof(int) * KOZOU_SANITIZE_MAX);
+        KozouSanitizeOrigin *page_targets = (KozouSanitizeOrigin *)fz_malloc(ctx,
+            sizeof(KozouSanitizeOrigin) * KOZOU_SANITIZE_MAX);
         int n_done = 0;
         for (int pi = 0; pi < page_count; pi++)
 {
@@ -5072,7 +5093,6 @@ void kozou_sanitize_hidden_text(
                 xobj_search_page = pdf_load_page(ctx, pdf, pi);
             } fz_catch(ctx) { xobj_search_page = NULL; }
 
-            int xobj_xrefs[KOZOU_SANITIZE_MAX];
             /* buried XObject 特定: このページ pi のターゲットを使用
              * xobj_search_page は pi ページをロード済み */
             int n_xrefs = 0;
@@ -5154,31 +5174,11 @@ void kozou_sanitize_hidden_text(
                         }
                     }
 
-                    /* in_xobj=1 のターゲットのみを XObject 書き換えに渡す
-                     * transparent/low_contrast 等のページレベルターゲットを除外 */
-                    KozouSanitizeOrigin xobj_only[KOZOU_SANITIZE_MAX];
-                    int n_xobj_only = 0;
-                    for (int _ti = 0; _ti < n && n_xobj_only < KOZOU_SANITIZE_MAX; _ti++) {
-                        if (targets[_ti].in_xobj)
-                            xobj_only[n_xobj_only++] = targets[_ti];
-                    }
-                    const KozouSanitizeOrigin *xobj_targets = xobj_only;
-                    int n_xobj_targets = n_xobj_only;
-
-                    /* XObject ストリームに対してページと同じ書き換えを実行 */
-                    /* internal_origin はデバイス座標(ox,oy)なので
-                     * XObject内部座標→デバイス座標の変換行列を渡す */
+                    /* XObject ストリームに対してページと同じ書き換えを実行。
+                     * ターゲットはデバイス座標 (ox,oy) で記録されているため、
+                     * kozou_blank_all_bt_blocks_hv_ctm 内で XObject 配置 CTM と
+                     * cm を積算してデバイス座標に変換し照合する。 */
                     fz_buffer *new_xobj_buf = fz_new_buffer(ctx, fz_buffer_storage(ctx, xobj_buf, NULL));
-
-                    /* xobj_to_device: XObject内部座標→デバイス座標への変換
-                     * internal_origin は ox, oy (デバイス座標) で記録されているが、
-                     * kozou_rewrite_stream_for_xobj 内で Tm + cm を積算するため
-                     * ここでは XObject の配置 CTM（ページ配置時の完全な行列）が必要。
-                     * しかしそれは PDF 構造から静的に取得できないため、
-                     * ターゲットの ix, iy をデバイス座標として渡し、
-                     * rewrite 側で cm を積算した上で変換してデバイス座標でマッチングする。
-                     * 初期 xobj_to_device は fz_identity（cm を積算するベース）。 */
-                    fz_matrix xobj_to_device = fz_identity;
 
                     /* buried テキスト: kozou_blank_all_bt_blocks_hv で
                      * Tm 座標マッチングと Helvetica 幅補正を行う */
@@ -5190,7 +5190,6 @@ void kozou_sanitize_hidden_text(
                         pdf_dict_gets(ctx, xobj_fonts2, KOZOU_HV) : NULL;
                     /* このページ pi 向けターゲットのみで XObject を書き換え */
                     {
-                        KozouSanitizeOrigin page_targets[KOZOU_SANITIZE_MAX];
                         int n_page = 0;
                         for (int _pi = 0; _pi < n && n_page < KOZOU_SANITIZE_MAX; _pi++) {
                             if (targets[_pi].page_index >= 0 && targets[_pi].page_index != pi) continue;
@@ -5238,6 +5237,9 @@ void kozou_sanitize_hidden_text(
                 }
             }
         }
+        fz_free(ctx, done_xrefs);
+        fz_free(ctx, xobj_xrefs);
+        fz_free(ctx, page_targets);
 
         pdf_write_options opts = pdf_default_write_options;
         opts.do_compress        = 1;
@@ -5404,6 +5406,569 @@ void kozou_detect_control_chars(
 /*                                                                     */
 /* 出力バッファは呼び出し側が管理する（FfiBufferResult経由）。        */
 /* ================================================================== */
+
+/* ──────────────────────────────────────────────────────────────────
+ * 1シート分の面付けpixmapを合成して返す（呼び出し側が drop する）。
+ * doc は呼び出し側が開いて渡す。page_nums は cols*rows 個。
+ * セルサイズは渡された page_nums の有効ページ最大寸法から決める。
+ * out_cell_w_pt / out_cell_h_pt にセルの pt サイズ（PDF配置用）を返す。
+ * ─────────────────────────────────────────────────────────────────── */
+static fz_pixmap *kozou_compose_sheet_pixmap(
+    fz_context  *ctx,
+    fz_document *doc,
+    int          page_count,
+    const int   *page_nums,
+    int          n_pages,
+    int          cols,
+    int          rows,
+    float        dpi,
+    int          gap_px,
+    float       *out_cell_w_pt,
+    float       *out_cell_h_pt)
+{
+    /* セルサイズ決定: 有効ページの最大幅・高さ */
+    float max_w_pt = 595.0f, max_h_pt = 842.0f;
+    int valid_count = 0;
+    for (int i = 0; i < n_pages; i++) {
+        int pno = page_nums[i] - 1;
+        if (pno < 0 || pno >= page_count) continue;
+        fz_page *pg = fz_load_page(ctx, doc, pno);
+        fz_rect b = fz_bound_page(ctx, pg);
+        float pw = b.x1 - b.x0;
+        float ph = b.y1 - b.y0;
+        if (valid_count == 0) { max_w_pt = pw; max_h_pt = ph; }
+        else {
+            if (pw > max_w_pt) max_w_pt = pw;
+            if (ph > max_h_pt) max_h_pt = ph;
+        }
+        fz_drop_page(ctx, pg);
+        valid_count++;
+    }
+
+    float scale  = dpi / 72.0f;
+    int   cell_w = (int)(max_w_pt * scale + 0.5f);
+    int   cell_h = (int)(max_h_pt * scale + 0.5f);
+    int   g      = gap_px > 0 ? gap_px : 0;
+    int   total_w = cols * cell_w + (cols + 1) * g;
+    int   total_h = rows * cell_h + (rows + 1) * g;
+
+    if (out_cell_w_pt) *out_cell_w_pt = max_w_pt;
+    if (out_cell_h_pt) *out_cell_h_pt = max_h_pt;
+
+    size_t total_bytes = (size_t)total_w * (size_t)total_h * 3;
+    if (total_bytes > (size_t)1024 * 1024 * 1024) {
+        fz_throw(ctx, FZ_ERROR_GENERIC,
+            "imposition: output too large (%dx%d @ 3ch = %zuMB > 1024MB).",
+            total_w, total_h, total_bytes / (1024*1024));
+    }
+
+    fz_colorspace *rgb = fz_device_rgb(ctx);
+    fz_irect full_bbox = { 0, 0, total_w, total_h };
+    fz_pixmap *pixmap = fz_new_pixmap_with_bbox(ctx, rgb, full_bbox, NULL, 0);
+    fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
+
+    for (int i = 0; i < n_pages; i++) {
+        int col = i % cols;
+        int row = i / cols;
+        int cell_x = g + col * (cell_w + g);
+        int cell_y = g + row * (cell_h + g);
+        int pno = page_nums[i] - 1;
+        if (pno < 0 || pno >= page_count) continue; /* 空白セル=白のまま */
+
+        fz_page *pg = NULL;
+        fz_var(pg);
+        fz_try(ctx) {
+            pg = fz_load_page(ctx, doc, pno);
+            fz_rect pb = fz_bound_page(ctx, pg);
+            float pw_pt = pb.x1 - pb.x0;
+            float ph_pt = pb.y1 - pb.y0;
+            float sx = (float)cell_w / pw_pt;
+            float sy = (float)cell_h / ph_pt;
+            float fit_scale = (sx < sy) ? sx : sy;
+            int render_w = (int)(pw_pt * fit_scale + 0.5f);
+            int render_h = (int)(ph_pt * fit_scale + 0.5f);
+            if (render_w > cell_w) render_w = cell_w;
+            if (render_h > cell_h) render_h = cell_h;
+            int off_x = cell_x + (cell_w - render_w) / 2;
+            int off_y = cell_y + (cell_h - render_h) / 2;
+
+            fz_matrix ctm = fz_scale(fit_scale, fit_scale);
+            ctm = fz_pre_translate(ctm, -pb.x0, -pb.y0);
+
+            fz_irect render_bbox = { 0, 0, render_w, render_h };
+            fz_pixmap *cell_pix = fz_new_pixmap_with_bbox(ctx, rgb, render_bbox, NULL, 0);
+            fz_clear_pixmap_with_value(ctx, cell_pix, 0xff);
+
+            fz_device *draw_dev = fz_new_draw_device(ctx, ctm, cell_pix);
+            fz_try(ctx) {
+                fz_run_page(ctx, pg, draw_dev, fz_identity, NULL);
+                fz_close_device(ctx, draw_dev);
+            }
+            fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
+            fz_catch(ctx) { fz_drop_pixmap(ctx, cell_pix); fz_rethrow(ctx); }
+
+            {
+                int src_stride = fz_pixmap_stride(ctx, cell_pix);
+                int dst_stride = fz_pixmap_stride(ctx, pixmap);
+                int comp       = fz_pixmap_components(ctx, pixmap);
+                int copy_h = render_h, copy_w = render_w;
+                if (off_y + copy_h > total_h) copy_h = total_h - off_y;
+                if (off_x + copy_w > total_w) copy_w = total_w - off_x;
+                if (copy_w > 0 && copy_h > 0) {
+                    unsigned char *src = fz_pixmap_samples(ctx, cell_pix);
+                    unsigned char *dst = fz_pixmap_samples(ctx, pixmap)
+                        + off_y * dst_stride + off_x * comp;
+                    for (int r = 0; r < copy_h; r++) {
+                        memcpy(dst + r * dst_stride, src + r * src_stride,
+                               (size_t)copy_w * comp);
+                    }
+                }
+                fz_drop_pixmap(ctx, cell_pix);
+            }
+        }
+        fz_always(ctx) { if (pg) { fz_drop_page(ctx, pg); pg = NULL; } }
+        fz_catch(ctx) {
+            fz_warn(ctx, "imposition: skip page %d: %s", pno+1, fz_caught_message(ctx));
+        }
+    }
+    return pixmap;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * 面付け画像PDFを出力する。
+ * 各シート（cols*rows ページ）を1枚のpixmapに合成し、
+ * それを1つのPDFページ（cols*rows 合計サイズ、例: A3）として埋め込む。
+ * sheet_pages: 全シートのページ番号を連結（1始まり、0=空白）。
+ *   長さ = n_sheets * cells_per_sheet, cells_per_sheet = cols*rows。
+ * ─────────────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────────
+ * 面付け解除（split / de-imposition）
+ * 入力PDFのあるページを cols×rows のセルに均等分割し、指定セル (row,col)
+ * だけをレンダリングした pixmap を返す（呼び出し側が drop する）。
+ * 分割は均等。セルのページ内矩形を CTM で原点に移動してレンダリングする。
+ * out_cell_w_pt / out_cell_h_pt にセルの pt サイズを返す。
+ * ─────────────────────────────────────────────────────────────────── */
+static fz_pixmap *kozou_render_cell(
+    fz_context  *ctx,
+    fz_document *doc,
+    int          page_no_0based,
+    int          cols,
+    int          rows,
+    int          cell_row,
+    int          cell_col,
+    float        dpi,
+    float       *out_cell_w_pt,
+    float       *out_cell_h_pt)
+{
+    fz_page *pg = fz_load_page(ctx, doc, page_no_0based);
+    fz_pixmap *pix = NULL;
+    fz_var(pix);
+    fz_try(ctx) {
+        fz_rect b = fz_bound_page(ctx, pg);
+        float pw = b.x1 - b.x0;
+        float ph = b.y1 - b.y0;
+        /* 均等分割したセルのページ内矩形（PDF座標, 原点b.x0/b.y0基準） */
+        float cw = pw / (float)cols;
+        float ch = ph / (float)rows;
+        /* セル矩形: 左上が (col, row)。PDF座標は左下原点なので
+         * MuPDF のページ境界 b を使い、左→右=col, 上→下=row で配置する。
+         * fz_bound_page は左上原点的に x0<x1, y0<y1。
+         * 列は左から: x0 + col*cw。行は上から: y0 + row*ch。 */
+        float cell_x0 = b.x0 + cell_col * cw;
+        float cell_y0 = b.y0 + cell_row * ch;
+
+        if (out_cell_w_pt) *out_cell_w_pt = cw;
+        if (out_cell_h_pt) *out_cell_h_pt = ch;
+
+        float scale = dpi / 72.0f;
+        int px_w = (int)(cw * scale + 0.5f);
+        int px_h = (int)(ch * scale + 0.5f);
+        if (px_w < 1) px_w = 1;
+        if (px_h < 1) px_h = 1;
+
+        /* セル左上を出力原点に移動する CTM:
+         * まずスケール、その後セル左上が (0,0) に来るよう平行移動。 */
+        fz_matrix ctm = fz_scale(scale, scale);
+        ctm = fz_pre_translate(ctm, -cell_x0, -cell_y0);
+
+        fz_colorspace *rgb = fz_device_rgb(ctx);
+        fz_irect bbox = { 0, 0, px_w, px_h };
+        pix = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
+        fz_clear_pixmap_with_value(ctx, pix, 0xff);
+
+        fz_device *dev = fz_new_draw_device(ctx, ctm, pix);
+        fz_try(ctx) {
+            fz_run_page(ctx, pg, dev, fz_identity, NULL);
+            fz_close_device(ctx, dev);
+        }
+        fz_always(ctx) { fz_drop_device(ctx, dev); }
+        fz_catch(ctx) { fz_rethrow(ctx); }
+    }
+    fz_always(ctx) { fz_drop_page(ctx, pg); }
+    fz_catch(ctx) {
+        if (pix) { fz_drop_pixmap(ctx, pix); pix = NULL; }
+        fz_rethrow(ctx);
+    }
+    return pix;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * 面付け解除して画像PDFを出力する。
+ * cells: 出力順に並んだセル指定の配列。各セルは3要素 (page, row, col):
+ *   - page: 入力PDFのページ番号（1始まり）
+ *   - row : セルの行（0始まり）
+ *   - col : セルの列（0始まり）
+ * n_cells: 出力ページ数（= cells 配列の3要素組の個数）。
+ * cols/rows: 分割数。
+ * 各セルを1つのPDFページ（A4相当）として埋め込む。
+ * ─────────────────────────────────────────────────────────────────── */
+void kozou_split_imposition_pdf(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    const int   *cells,      /* n_cells*3 個: (page,row,col) を連結 */
+    int          n_cells,
+    int          cols,
+    int          rows,
+    float        dpi,
+    int          quality,
+    int          use_png,
+    const char  *tmp_dir,
+    FfiResult   *result)
+{
+    fz_document  *doc    = NULL;
+    pdf_document *pdfout = NULL;
+    fz_var(doc);
+    fz_var(pdfout);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, input);
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+        int page_count = fz_count_pages(ctx, doc);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+        if (dpi <= 0.0f) dpi = 150.0f;
+
+        const char *base_tmp = (tmp_dir && tmp_dir[0]) ? tmp_dir : output;
+        const char *ext      = use_png ? "png" : "jpg";
+
+        pdfout = pdf_create_document(ctx);
+
+        for (int k = 0; k < n_cells; k++) {
+            int page = cells[k*3 + 0] - 1; /* 0始まり */
+            int row  = cells[k*3 + 1];
+            int col  = cells[k*3 + 2];
+            if (page < 0 || page >= page_count) continue;
+
+            fz_pixmap *pix      = NULL;
+            fz_image  *image    = NULL;
+            pdf_obj   *imgref   = NULL;
+            fz_buffer *contents = NULL;
+            pdf_obj   *resources= NULL;
+            pdf_obj   *xobj_dict= NULL;
+            pdf_obj   *page_obj = NULL;
+            char tmp_img[1024]; tmp_img[0] = '\0';
+
+            fz_var(pix); fz_var(image); fz_var(imgref);
+            fz_var(contents); fz_var(resources); fz_var(xobj_dict); fz_var(page_obj);
+
+            fz_try(ctx) {
+                float cw_pt = 0, ch_pt = 0;
+                pix = kozou_render_cell(ctx, doc, page, cols, rows,
+                    row, col, dpi, &cw_pt, &ch_pt);
+
+                snprintf(tmp_img, sizeof(tmp_img),
+                         "%s" KOZOU_PATH_SEP "kozou_split_%d_%d.%s",
+                         base_tmp, (int)getpid(), k, ext);
+
+                if (use_png) {
+                    fz_output *fout = fz_new_output_with_path(ctx, tmp_img, 0);
+                    fz_try(ctx) {
+                        fz_write_pixmap_as_png(ctx, fout, pix);
+                        fz_close_output(ctx, fout);
+                    }
+                    fz_always(ctx) { fz_drop_output(ctx, fout); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                } else {
+                    int jq = (quality > 0 && quality <= 100) ? quality : 85;
+                    fz_save_pixmap_as_jpeg(ctx, pix, tmp_img, jq);
+                }
+
+                image  = fz_new_image_from_file(ctx, tmp_img);
+                imgref = pdf_add_image(ctx, pdfout, image);
+
+                resources = pdf_new_dict(ctx, pdfout, 1);
+                xobj_dict = pdf_new_dict(ctx, pdfout, 1);
+                {
+                    pdf_obj *im0 = pdf_new_name(ctx, "Im0");
+                    pdf_dict_put(ctx, xobj_dict, im0, imgref);
+                    pdf_drop_obj(ctx, im0);
+                }
+                pdf_dict_put(ctx, resources, PDF_NAME(XObject), xobj_dict);
+
+                char cs_buf[256];
+                int cs_len = snprintf(cs_buf, sizeof(cs_buf),
+                    "q\n%.4f 0 0 %.4f 0 0 cm\n/Im0 Do\nQ\n", cw_pt, ch_pt);
+                contents = fz_new_buffer_from_copied_data(ctx,
+                    (const unsigned char *)cs_buf, (size_t)cs_len);
+
+                fz_rect mediabox = { 0, 0, cw_pt, ch_pt };
+                page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
+                pdf_insert_page(ctx, pdfout, -1, page_obj);
+            }
+            fz_always(ctx) {
+                if (tmp_img[0]) remove(tmp_img);
+                if (page_obj)  pdf_drop_obj(ctx, page_obj);
+                if (xobj_dict) pdf_drop_obj(ctx, xobj_dict);
+                if (resources) pdf_drop_obj(ctx, resources);
+                if (contents)  fz_drop_buffer(ctx, contents);
+                if (imgref)    pdf_drop_obj(ctx, imgref);
+                if (image)     fz_drop_image(ctx, image);
+                if (pix)       fz_drop_pixmap(ctx, pix);
+            }
+            fz_catch(ctx) { fz_rethrow(ctx); }
+        }
+
+        pdf_save_document(ctx, pdfout, output, NULL);
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdfout) pdf_drop_document(ctx, pdfout);
+        if (doc)    fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * 面付け解除して1セルを画像(base64用バッファ)に出力する。
+ * 個別画像ファイル出力用。1回の呼び出しで1セルをレンダリングし、
+ * JPEG/PNG を fz_output に書き出す。SVG は別途 fz_new_svg_device を使う。
+ * ─────────────────────────────────────────────────────────────────── */
+void kozou_split_cell_render(
+    fz_context  *ctx,
+    const char  *input,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    int          page,       /* 1始まり */
+    int          cols,
+    int          rows,
+    int          cell_row,
+    int          cell_col,
+    float        dpi,
+    int          format,     /* 0=JPEG, 1=PNG, 2=SVG */
+    int          quality,
+    fz_output   *out,
+    FfiResult   *result)
+{
+    fz_document *doc = NULL;
+    fz_pixmap   *pix = NULL;
+    fz_var(doc);
+    fz_var(pix);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, input);
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+        int page_count = fz_count_pages(ctx, doc);
+        int pno = page - 1;
+        if (pno < 0 || pno >= page_count)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "page out of range");
+        if (dpi <= 0.0f) dpi = 150.0f;
+
+        if (format == 2) {
+            /* SVG: セル領域をクリップした SVG デバイスでレンダリング */
+            fz_page *pg = fz_load_page(ctx, doc, pno);
+            fz_var(pg);
+            fz_try(ctx) {
+                fz_rect b = fz_bound_page(ctx, pg);
+                float cw = (b.x1 - b.x0) / (float)cols;
+                float ch = (b.y1 - b.y0) / (float)rows;
+                float cell_x0 = b.x0 + cell_col * cw;
+                float cell_y0 = b.y0 + cell_row * ch;
+                fz_matrix ctm = fz_translate(-cell_x0, -cell_y0);
+                fz_device *dev = fz_new_svg_device(ctx, out, cw, ch, 0, 1);
+                fz_try(ctx) {
+                    fz_run_page(ctx, pg, dev, ctm, NULL);
+                    fz_close_device(ctx, dev);
+                }
+                fz_always(ctx) { fz_drop_device(ctx, dev); }
+                fz_catch(ctx) { fz_rethrow(ctx); }
+            }
+            fz_always(ctx) { fz_drop_page(ctx, pg); }
+            fz_catch(ctx) { fz_rethrow(ctx); }
+        } else {
+            float cw_pt = 0, ch_pt = 0;
+            pix = kozou_render_cell(ctx, doc, pno, cols, rows,
+                cell_row, cell_col, dpi, &cw_pt, &ch_pt);
+            if (format == 1) {
+                fz_write_pixmap_as_png(ctx, out, pix);
+            } else {
+                int jq = (quality > 0 && quality <= 100) ? quality : 85;
+                fz_write_pixmap_as_jpeg(ctx, out, pix, jq, 0);
+            }
+        }
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pix) fz_drop_pixmap(ctx, pix);
+        if (doc) fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+void kozou_rasterize_imposition(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    const int   *sheet_pages,
+    int          n_sheets,
+    int          cells_per_sheet,
+    int          cols,
+    int          rows,
+    float        dpi,
+    int          quality,
+    int          use_png,
+    int          gap_px,
+    const char  *tmp_dir,
+    FfiResult   *result)
+{
+    fz_document  *doc    = NULL;
+    pdf_document *pdfout = NULL;
+    fz_var(doc);
+    fz_var(pdfout);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, input);
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+        int page_count = fz_count_pages(ctx, doc);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+        if (dpi <= 0.0f) dpi = 150.0f;
+
+        const char *base_tmp = (tmp_dir && tmp_dir[0]) ? tmp_dir : output;
+        const char *ext      = use_png ? "png" : "jpg";
+
+        pdfout = pdf_create_document(ctx);
+
+        for (int s = 0; s < n_sheets; s++) {
+            const int *page_nums = sheet_pages + (size_t)s * cells_per_sheet;
+            fz_pixmap *pixmap    = NULL;
+            fz_image  *image     = NULL;
+            pdf_obj   *imgref    = NULL;
+            fz_buffer *contents  = NULL;
+            pdf_obj   *resources = NULL;
+            pdf_obj   *xobj_dict = NULL;
+            pdf_obj   *page_obj  = NULL;
+            char tmp_img[1024]; tmp_img[0] = '\0';
+
+            fz_var(pixmap); fz_var(image); fz_var(imgref);
+            fz_var(contents); fz_var(resources); fz_var(xobj_dict); fz_var(page_obj);
+
+            fz_try(ctx) {
+                /* シートのセル pt サイズ（合成は最大ページ寸法基準） */
+                float cell_w_pt = 595.0f, cell_h_pt = 842.0f;
+                pixmap = kozou_compose_sheet_pixmap(ctx, doc, page_count,
+                    page_nums, cells_per_sheet, cols, rows, dpi, gap_px,
+                    &cell_w_pt, &cell_h_pt);
+
+                /* PDFページの MediaBox は (cols*cell_w_pt, rows*cell_h_pt)。
+                 * gap は pt 換算で加える（gap_px を pt に戻す）。 */
+                float g_pt = (gap_px > 0) ? (gap_px * 72.0f / dpi) : 0.0f;
+                float page_w_pt = cols * cell_w_pt + (cols + 1) * g_pt;
+                float page_h_pt = rows * cell_h_pt + (rows + 1) * g_pt;
+
+                snprintf(tmp_img, sizeof(tmp_img),
+                         "%s" KOZOU_PATH_SEP "kozou_imp_%d_%d.%s",
+                         base_tmp, (int)getpid(), s, ext);
+
+                if (use_png) {
+                    fz_output *fout = fz_new_output_with_path(ctx, tmp_img, 0);
+                    fz_try(ctx) {
+                        fz_write_pixmap_as_png(ctx, fout, pixmap);
+                        fz_close_output(ctx, fout);
+                    }
+                    fz_always(ctx) { fz_drop_output(ctx, fout); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                } else {
+                    int jq = (quality > 0 && quality <= 100) ? quality : 85;
+                    fz_save_pixmap_as_jpeg(ctx, pixmap, tmp_img, jq);
+                }
+
+                image  = fz_new_image_from_file(ctx, tmp_img);
+                imgref = pdf_add_image(ctx, pdfout, image);
+
+                resources = pdf_new_dict(ctx, pdfout, 1);
+                xobj_dict = pdf_new_dict(ctx, pdfout, 1);
+                {
+                    pdf_obj *im0 = pdf_new_name(ctx, "Im0");
+                    pdf_dict_put(ctx, xobj_dict, im0, imgref);
+                    pdf_drop_obj(ctx, im0);
+                }
+                pdf_dict_put(ctx, resources, PDF_NAME(XObject), xobj_dict);
+
+                char cs_buf[256];
+                int cs_len = snprintf(cs_buf, sizeof(cs_buf),
+                    "q\n%.4f 0 0 %.4f 0 0 cm\n/Im0 Do\nQ\n",
+                    page_w_pt, page_h_pt);
+                contents = fz_new_buffer_from_copied_data(ctx,
+                    (const unsigned char *)cs_buf, (size_t)cs_len);
+
+                fz_rect mediabox = { 0, 0, page_w_pt, page_h_pt };
+                page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
+                pdf_insert_page(ctx, pdfout, -1, page_obj);
+            }
+            fz_always(ctx) {
+                if (tmp_img[0]) remove(tmp_img);
+                if (page_obj)  pdf_drop_obj(ctx, page_obj);
+                if (xobj_dict) pdf_drop_obj(ctx, xobj_dict);
+                if (resources) pdf_drop_obj(ctx, resources);
+                if (contents)  fz_drop_buffer(ctx, contents);
+                if (imgref)    pdf_drop_obj(ctx, imgref);
+                if (image)     fz_drop_image(ctx, image);
+                if (pixmap)    fz_drop_pixmap(ctx, pixmap);
+            }
+            fz_catch(ctx) { fz_rethrow(ctx); }
+        }
+
+        pdf_save_document(ctx, pdfout, output, NULL);
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdfout) pdf_drop_document(ctx, pdfout);
+        if (doc)    fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
 
 void kozou_render_imposition(
     fz_context  *ctx,

@@ -286,3 +286,124 @@ export const IMPOSITION_MODE_DEFS: {
 
 /** 後方互換用エイリアス（label/descはキーのまま） */
 export const IMPOSITION_MODES = IMPOSITION_MODE_DEFS;
+
+// ── 面付け解除（split / de-imposition）────────────────────────────────────────
+
+/**
+ * 面付け解除の並べ替えモード
+ * - "sequential" : 単純分割（物理順そのまま。2-up/4-up の解除）
+ * - "booklet"    : 製本解除（折り丁順を読み順に戻す）
+ */
+export type DeImpositionMode = "sequential" | "booklet";
+
+/** 出力1ページ分のセル指定 */
+export interface SplitCell {
+  /** 入力PDFのページ番号（1始まり） */
+  page: number;
+  /** セルの行（0始まり） */
+  row: number;
+  /** セルの列（0始まり） */
+  col: number;
+}
+
+/**
+ * 面付け解除のセル割り当てを計算する。
+ *
+ * 入力 sheetCount 枚のシートを cols×rows のセルに分割し、
+ * 各セルを1ページとして取り出す。物理順は「シート順 × セル順(行優先)」。
+ * モードに応じて出力順を並べ替える。
+ *
+ * @param sheetCount 入力シート（A3など）の枚数
+ * @param cols       横分割数（2-up/booklet=2, 4-up=2）
+ * @param rows       縦分割数（2-up/booklet=1, 4-up=2）
+ * @param mode       "sequential" | "booklet"
+ * @returns 出力順に並んだセル指定の配列
+ */
+export function calcSplitCells(
+  sheetCount: number,
+  cols: number,
+  rows: number,
+  mode: DeImpositionMode,
+): SplitCell[] {
+  const cells = cols * rows;
+  // 物理順のセル列: シートごとに行優先で並べる
+  // physical[i] = { page: シート番号(1始まり), row, col }
+  const physical: SplitCell[] = [];
+  for (let s = 0; s < sheetCount; s++) {
+    for (let i = 0; i < cells; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      physical.push({ page: s + 1, row, col });
+    }
+  }
+
+  if (mode === "sequential") {
+    // 単純分割: 物理順そのまま
+    return physical;
+  }
+
+  // booklet 解除: 物理順を読み順に並べ替える。
+  // calcBookletSheets と対になる逆写像を作る。
+  // booklet 製本では、論理ページ数 = sheetCount * cells（4の倍数前提）。
+  const total = sheetCount * cells;
+  const sheets = calcBookletSheets(total);
+  // sheets[s].pages を行優先で並べた物理flat（製本時の配置）
+  // flat[i] = 物理位置 i に置かれた論理ページ番号
+  const flat: number[] = [];
+  for (const sh of sheets) {
+    for (let c = 0; c < cells; c++) {
+      flat.push(sh.pages[c] ?? 0);
+    }
+  }
+  // 論理ページ p (1..total) が物理位置のどこにあるか
+  const pageToPhys = new Map<number, number>();
+  flat.forEach((p, i) => {
+    if (p !== 0) pageToPhys.set(p, i);
+  });
+  // 読み順 1..total に対応する物理セルを取り出す
+  const out: SplitCell[] = [];
+  for (let p = 1; p <= total; p++) {
+    const physIdx = pageToPhys.get(p);
+    if (physIdx === undefined) continue; // 空白ページ（末尾埋め）はスキップ
+    out.push(physical[physIdx]);
+  }
+  return out;
+}
+
+/**
+ * 面付け解除モードの表示情報
+ */
+export const DE_IMPOSITION_MODE_DEFS: {
+  id: DeImpositionMode;
+  /** 対応する cols/rows（UIの選択肢として） */
+  cols: number;
+  rows: number;
+  labelKey: string;
+  descKey: string;
+  icon: string;
+}[] = [
+  {
+    id: "sequential",
+    cols: 2,
+    rows: 1,
+    labelKey: "image.deimp_2up",
+    descKey: "image.deimp_2up_desc",
+    icon: "📰",
+  },
+  {
+    id: "booklet",
+    cols: 2,
+    rows: 1,
+    labelKey: "image.deimp_booklet",
+    descKey: "image.deimp_booklet_desc",
+    icon: "📖",
+  },
+  {
+    id: "sequential",
+    cols: 2,
+    rows: 2,
+    labelKey: "image.deimp_4up",
+    descKey: "image.deimp_4up_desc",
+    icon: "⊞",
+  },
+];

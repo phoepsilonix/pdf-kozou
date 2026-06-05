@@ -1339,3 +1339,367 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
         format: fmt_str.to_string(),
     })
 }
+
+// ── 面付け画像PDF出力 ────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct RasterizeImpositionRequest {
+    pub input: String,
+    pub output: String,
+    /// 全シートのページ番号を連結した配列 (1始まり、0=空白)。
+    /// 長さ = n_sheets * (cols*rows)。
+    pub sheet_pages: Vec<i32>,
+    pub n_sheets: i32,
+    pub cols: i32,
+    pub rows: i32,
+    pub dpi: f32,
+    #[serde(default)]
+    pub quality: Option<i32>,
+    /// true=PNG埋め込み（可逆）, false/省略=JPEG埋め込み
+    #[serde(default)]
+    pub use_png: Option<bool>,
+    #[serde(default)]
+    pub gap_px: Option<i32>,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RasterizeImpositionResponse {
+    pub ok: bool,
+    pub output_bytes: u64,
+}
+
+/// 面付け画像PDFを出力する。
+/// 各シート（cols*rows ページ）を1枚に合成し、1つのPDFページとして埋め込む。
+/// 例: A4×4ページを booklet 面付けして A3×2ページの見開き製本PDFを作る。
+pub fn rasterize_imposition(
+    req: &RasterizeImpositionRequest,
+) -> Result<RasterizeImpositionResponse> {
+    use crate::ffi::{kozou_new_context, kozou_rasterize_imposition, FfiResult};
+    use std::ffi::CString;
+
+    let cells_per_sheet = (req.cols * req.rows).max(1);
+    let expected = (req.n_sheets * cells_per_sheet) as usize;
+    if req.sheet_pages.len() != expected {
+        return Err(CoreError::InvalidArg(format!(
+            "sheet_pages length {} != n_sheets*cells_per_sheet {}",
+            req.sheet_pages.len(),
+            expected
+        )));
+    }
+
+    let c_input = CString::new(req.input.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output = CString::new(req.output.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    // 出力先ディレクトリを作成
+    if let Some(parent) = std::path::Path::new(&req.output).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+
+    let tmp_dir = {
+        let base = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&base);
+        base
+    };
+    let c_tmp_dir = CString::new(tmp_dir.to_string_lossy().as_ref())
+        .map_err(|_| CoreError::InvalidArg("invalid tmp_dir path".into()))?;
+
+    let quality = req.quality.unwrap_or(85);
+    let use_png = if req.use_png.unwrap_or(false) { 1 } else { 0 };
+    let gap_px = req.gap_px.unwrap_or(0);
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        kozou_rasterize_imposition(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            req.layout_w.unwrap_or(0.0),
+            req.layout_h.unwrap_or(0.0),
+            req.layout_em.unwrap_or(0.0),
+            req.sheet_pages.as_ptr(),
+            req.n_sheets,
+            cells_per_sheet,
+            req.cols,
+            req.rows,
+            req.dpi,
+            quality,
+            use_png,
+            gap_px,
+            c_tmp_dir.as_ptr(),
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    // 入力PDFのメタデータ（/Info）を出力に継承する（他の画像PDF出力と同様）
+    let metadata = crate::compress::collect_metadata(&req.input);
+    if !metadata.is_empty() {
+        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+    }
+
+    let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+    Ok(RasterizeImpositionResponse {
+        ok: true,
+        output_bytes: ob,
+    })
+}
+
+// ── 面付け解除（split / de-imposition）────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct SplitImpositionPdfRequest {
+    pub input: String,
+    pub output: String,
+    /// 出力順に並んだセル指定。各要素は [page(1始まり), row(0始まり), col(0始まり)]。
+    pub cells: Vec<[i32; 3]>,
+    pub cols: i32,
+    pub rows: i32,
+    pub dpi: f32,
+    #[serde(default)]
+    pub quality: Option<i32>,
+    #[serde(default)]
+    pub use_png: Option<bool>,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SplitImpositionPdfResponse {
+    pub ok: bool,
+    pub output_bytes: u64,
+}
+
+/// 面付け解除して画像PDFを出力する。
+/// 各セルを1ページ（A4相当）として、cells で指定された順に並べた画像PDFを作る。
+/// 例: A3×2(booklet)を A4×4(読み順)に戻す。
+pub fn split_imposition_pdf(
+    req: &SplitImpositionPdfRequest,
+) -> Result<SplitImpositionPdfResponse> {
+    use crate::ffi::{kozou_new_context, kozou_split_imposition_pdf, FfiResult};
+    use std::ffi::CString;
+
+    let c_input = CString::new(req.input.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output = CString::new(req.output.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    if let Some(parent) = std::path::Path::new(&req.output).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+
+    let tmp_dir = {
+        let base = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&base);
+        base
+    };
+    let c_tmp_dir = CString::new(tmp_dir.to_string_lossy().as_ref())
+        .map_err(|_| CoreError::InvalidArg("invalid tmp_dir path".into()))?;
+
+    // [[page,row,col],...] を平坦化
+    let flat: Vec<i32> = req.cells.iter().flat_map(|c| c.iter().copied()).collect();
+    let n_cells = req.cells.len() as i32;
+
+    let quality = req.quality.unwrap_or(85);
+    let use_png = if req.use_png.unwrap_or(false) { 1 } else { 0 };
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        kozou_split_imposition_pdf(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            req.layout_w.unwrap_or(0.0),
+            req.layout_h.unwrap_or(0.0),
+            req.layout_em.unwrap_or(0.0),
+            flat.as_ptr(),
+            n_cells,
+            req.cols,
+            req.rows,
+            req.dpi,
+            quality,
+            use_png,
+            c_tmp_dir.as_ptr(),
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    // 入力PDFのメタデータ（/Info）を出力に継承する（他の画像PDF出力と同様）
+    let metadata = crate::compress::collect_metadata(&req.input);
+    if !metadata.is_empty() {
+        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+    }
+
+    let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+    Ok(SplitImpositionPdfResponse { ok: true, output_bytes: ob })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SplitCellRenderRequest {
+    pub input: String,
+    pub page: i32, // 1始まり
+    pub cols: i32,
+    pub rows: i32,
+    pub cell_row: i32,
+    pub cell_col: i32,
+    pub dpi: f32,
+    /// "jpeg" | "png" | "svg"
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub quality: Option<i32>,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SplitCellRenderResponse {
+    pub ok: bool,
+    /// base64エンコードされた画像データ（JPEG/PNG）または SVG テキストのbase64
+    pub data_b64: String,
+    pub format: String,
+}
+
+/// 面付け解除した1セルを画像（JPEG/PNG/SVG）としてレンダリングし base64 で返す。
+/// 個別画像ファイル出力用。呼び出し側が出力順にループして保存する。
+pub fn split_cell_render(req: &SplitCellRenderRequest) -> Result<SplitCellRenderResponse> {
+    use crate::ffi::{
+        kozou_buffer_get_data, kozou_drop_buffer, kozou_new_context,
+        kozou_split_cell_render, FfiResult,
+    };
+    use std::ffi::CString;
+
+    let c_input = CString::new(req.input.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+
+    let fmt_str = req.format.as_deref().unwrap_or("jpeg");
+    let fmt_int: i32 = match fmt_str {
+        "png" => 1,
+        "svg" => 2,
+        _ => 0,
+    };
+    let quality = req.quality.unwrap_or(85);
+
+    let data_b64 = unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let buf = mupdf_sys::fz_new_buffer(ctx, 1024 * 1024);
+        if buf.is_null() {
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_buffer failed".into()));
+        }
+        let out = mupdf_sys::fz_new_output_with_buffer(ctx, buf);
+        if out.is_null() {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf("fz_new_output_with_buffer failed".into()));
+        }
+
+        let mut res = FfiResult::default();
+        kozou_split_cell_render(
+            ctx,
+            c_input.as_ptr(),
+            req.layout_w.unwrap_or(0.0),
+            req.layout_h.unwrap_or(0.0),
+            req.layout_em.unwrap_or(0.0),
+            req.page,
+            req.cols,
+            req.rows,
+            req.cell_row,
+            req.cell_col,
+            req.dpi,
+            fmt_int,
+            quality,
+            out,
+            &mut res,
+        );
+
+        mupdf_sys::fz_close_output(ctx, out);
+        mupdf_sys::fz_drop_output(ctx, out);
+
+        if res.ok == 0 {
+            mupdf_sys::fz_drop_buffer(ctx, buf);
+            mupdf_sys::fz_drop_context(ctx);
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+
+        let mut data_ptr: *const u8 = std::ptr::null();
+        let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
+        let b64 = if len > 0 && !data_ptr.is_null() {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD
+                .encode(std::slice::from_raw_parts(data_ptr, len))
+        } else {
+            String::new()
+        };
+        kozou_drop_buffer(ctx, buf);
+        mupdf_sys::fz_drop_context(ctx);
+        b64
+    };
+
+    // SVG 出力の場合、入力PDFのメタデータを <metadata> ブロックとして埋め込む
+    // （通常の画像変換 render_svg と同じ仕組みを流用）。
+    // JPEG/PNG は save_base64_image 側で EXIF/PNG チャンクとして埋め込まれる。
+    let data_b64 = if fmt_int == 2 && !data_b64.is_empty() {
+        use base64::Engine;
+        match base64::engine::general_purpose::STANDARD.decode(&data_b64) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(svg_str) => {
+                    let metadata = crate::compress::collect_metadata(&req.input);
+                    if metadata.is_empty() {
+                        data_b64
+                    } else {
+                        let patched = crate::render::embed_metadata_svg(svg_str, &metadata);
+                        base64::engine::general_purpose::STANDARD.encode(patched.as_bytes())
+                    }
+                }
+                Err(_) => data_b64,
+            },
+            Err(_) => data_b64,
+        }
+    } else {
+        data_b64
+    };
+
+    Ok(SplitCellRenderResponse {
+        ok: true,
+        data_b64,
+        format: fmt_str.to_string(),
+    })
+}
