@@ -20,7 +20,7 @@ import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import { isMupdfExtension, hasNonPdf, hasImage } from "./lib/fileTypes";
 import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
-import { PAGE_SIZE_DEFS, PAGE_ORIENTATION_DEFS } from "./lib/pageSize";
+import { PageSizeSelector } from "./components/PageSizeSelector";
 import type { ConvertOptions } from "./lib/tauri";
 import pkg from "../package.json";
 import { A11yControls, LiveRegion } from "./components/A11yControls";
@@ -113,9 +113,6 @@ export default function App() {
     convertLayoutH,
     convertLayoutEm,
     setConvertLayout,
-    pageSizeId,
-    pageOrientation,
-    setPageSize,
     updatePageCount,
   } = usePdfStore();
 
@@ -752,80 +749,7 @@ export default function App() {
       {/* 画像が含まれる場合に標準ページサイズ設定を表示 */}
       {hasImage(fileList.map((f) => f.filename)) && (
         <div style={{ padding: "8px 12px" }}>
-          <div
-            style={{
-              border: "1px solid var(--c-border)",
-              borderRadius: 8,
-              padding: "10px 12px",
-              background: "var(--c-surface, var(--c-bg))",
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
-              {t("pagesize.title" as any)}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
-              {t("pagesize.hint" as any)}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              {PAGE_SIZE_DEFS.map((ps) => (
-                <button
-                  key={ps.id}
-                  onClick={(e) => {
-                    setPageSize(ps.id, pageOrientation);
-                    (e.currentTarget as HTMLButtonElement).blur();
-                  }}
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: 6,
-                    border: `1px solid ${pageSizeId === ps.id ? "var(--c-accent, #e0457b)" : "var(--c-border)"}`,
-                    background: pageSizeId === ps.id ? "var(--c-accent, #e0457b)" : "transparent",
-                    color: pageSizeId === ps.id ? "#fff" : "var(--c-text)",
-                    fontSize: 13,
-                    fontWeight: pageSizeId === ps.id ? 700 : 400,
-                    cursor: "pointer",
-                  }}
-                >
-                  {t(ps.labelKey as any)}
-                </button>
-              ))}
-            </div>
-            {/* 向き（"画像に合わせる" のときは無効） */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 12, color: "var(--c-textSub)" }}>
-                {t("pagesize.orientation" as any)}:
-              </span>
-              {PAGE_ORIENTATION_DEFS.map((o) => (
-                <button
-                  key={o.id}
-                  disabled={pageSizeId === "image"}
-                  onClick={(e) => {
-                    setPageSize(pageSizeId, o.id);
-                    (e.currentTarget as HTMLButtonElement).blur();
-                  }}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 6,
-                    border: `1px solid ${pageOrientation === o.id ? "var(--c-accent, #e0457b)" : "var(--c-border)"}`,
-                    background:
-                      pageOrientation === o.id && pageSizeId !== "image"
-                        ? "var(--c-accent, #e0457b)"
-                        : "transparent",
-                    color:
-                      pageSizeId === "image"
-                        ? "var(--c-textDim)"
-                        : pageOrientation === o.id
-                          ? "#fff"
-                          : "var(--c-text)",
-                    fontSize: 12,
-                    cursor: pageSizeId === "image" ? "default" : "pointer",
-                    opacity: pageSizeId === "image" ? 0.5 : 1,
-                  }}
-                >
-                  {t(o.labelKey as any)}
-                </button>
-              ))}
-            </div>
-          </div>
+          <PageSizeSelector />
         </div>
       )}
 

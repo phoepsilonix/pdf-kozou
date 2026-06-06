@@ -15,6 +15,8 @@ import {
 } from "../components/common";
 import { usePdfStore } from "../store/usePdfStore";
 import { resolvePageSizePt } from "../lib/pageSize";
+import { PageSizeSelector } from "../components/PageSizeSelector";
+import { hasImage } from "../lib/fileTypes";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   mergePdf,
@@ -765,6 +767,11 @@ useEffect(() => {
             </div>
 
             <div style={s.execArea}>
+              {entries.some((e) => hasImage([e.filename])) && (
+                <div style={{ marginBottom: 10 }}>
+                  <PageSizeSelector compact />
+                </div>
+              )}
               <div style={s.summaryRow}>
                 <span style={s.sumFile}>
                   {t("common.files", { count: String(entries.length) })}
