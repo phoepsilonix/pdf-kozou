@@ -1696,102 +1696,120 @@ function DeImpositionPreview({
       >
         {t("image.deimp_cell_legend" as any)}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
         {sheetIdx.map((i, logicalIdx) => {
           const pb = pdfInfo.pages?.[i];
           const aspect = pb ? pb.w / pb.h : 1.414;
           const thumbW = 180;
           const thumbH = thumbW / aspect;
           const logicalSheet = logicalIdx + 1; // calcSplitCells の page は1始まり論理番号
+
+          // 各列の番号を、指定 row について取得する
+          const numbersForRow = (row: number) =>
+            Array.from({ length: def.cols }, (_, col) =>
+              cellToOutPage.get(`${logicalSheet}:${row}:${col}`),
+            );
+          // ページ番号バッジの行（画像の外側に置く）
+          const numberBar = (row: number) => (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
+                width: thumbW,
+                gap: 0,
+              }}
+            >
+              {numbersForRow(row).map((outPage, col) => (
+                <div key={col} style={{ textAlign: "center" }}>
+                  <span style={s.deimpPageBadge}>
+                    {t("image.deimp_cell_prefix" as any)}
+                    {outPage ?? "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          );
+
           return (
-            <div key={i} style={{ position: "relative", width: thumbW }}>
-              {thumbs[i] ? (
-                <img
-                  src={`data:image/jpeg;base64,${thumbs[i]}`}
-                  style={{
-                    width: thumbW,
-                    height: thumbH,
-                    borderRadius: 4,
-                    display: "block",
-                    border: "1px solid var(--c-border)",
-                  }}
-                  alt=""
-                />
-              ) : (
+            <div
+              key={i}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+            >
+              {/* 上側のページ番号（row 0） */}
+              {numberBar(0)}
+
+              <div style={{ position: "relative", width: thumbW }}>
+                {thumbs[i] ? (
+                  <img
+                    src={`data:image/jpeg;base64,${thumbs[i]}`}
+                    style={{
+                      width: thumbW,
+                      height: thumbH,
+                      borderRadius: 4,
+                      display: "block",
+                      border: "1px solid var(--c-border)",
+                    }}
+                    alt=""
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: thumbW,
+                      height: thumbH,
+                      background: "var(--c-border)",
+                      borderRadius: 4,
+                    }}
+                  />
+                )}
+                {/* 分割線オーバーレイ（区切りのみ。番号は外側に配置） */}
                 <div
                   style={{
-                    width: thumbW,
-                    height: thumbH,
-                    background: "var(--c-border)",
-                    borderRadius: 4,
+                    position: "absolute",
+                    inset: 0,
+                    display: "grid",
+                    gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
+                    gridTemplateRows: `repeat(${def.rows}, 1fr)`,
+                    pointerEvents: "none",
                   }}
-                />
-              )}
-              {/* 分割線オーバーレイ（セル内は出力ページ番号） */}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "grid",
-                  gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
-                  gridTemplateRows: `repeat(${def.rows}, 1fr)`,
-                  pointerEvents: "none",
-                }}
-              >
-                {Array.from({ length: def.cols * def.rows }).map((_, k) => {
-                  const row = Math.floor(k / def.cols);
-                  const col = k % def.cols;
-                  const outPage = cellToOutPage.get(`${logicalSheet}:${row}:${col}`);
-                  return (
+                >
+                  {Array.from({ length: def.cols * def.rows }).map((_, k) => (
                     <div
                       key={k}
                       style={{
                         border: "1px dashed var(--c-accent, #e0457b)",
                         boxSizing: "border-box",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "var(--c-accent, #e0457b)",
-                        textShadow: "0 0 3px rgba(255,255,255,0.9)",
                       }}
-                    >
-                      <span style={{ fontSize: 10, fontWeight: 400, opacity: 0.8 }}>
-                        {t("image.deimp_cell_prefix" as any)}
-                      </span>
-                      <span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
-                        {outPage ?? "—"}
-                      </span>
-                    </div>
-                  );
-                })}
+                    />
+                  ))}
+                </div>
               </div>
-              <div
-                style={{
-                  textAlign: "center",
-                  fontSize: 11,
-                  color: "var(--c-textSub)",
-                  marginTop: 2,
-                }}
-              >
+
+              {/* 下側のページ番号（rows>1 のときのみ、最終 row） */}
+              {def.rows > 1 && numberBar(def.rows - 1)}
+
+              <div style={{ textAlign: "center", fontSize: 11, color: "var(--c-textSub)" }}>
                 {t("common.page_n" as any, { n: String(i + 1) })}
               </div>
             </div>
           );
         })}
       </div>
-      {/* 出力結果の読み順を結果列として表示 */}
-      <div style={{ fontSize: 11, color: "var(--c-textSub)", marginTop: 10, textAlign: "center" }}>
-        {t("image.deimp_result_order" as any)}{" "}
-        <span style={{ color: "var(--c-text)", fontWeight: 600 }}>
-          {Array.from({ length: outCount }, (_, idx) => idx + 1).join(" → ")}
-        </span>
-      </div>
     </div>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
+  deimpPageBadge: {
+    display: "inline-block",
+    minWidth: 28,
+    padding: "2px 8px",
+    borderRadius: 10,
+    background: "var(--c-accent, #e0457b)",
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.4,
+  },
   root: {
     display: "flex",
     flexDirection: "column",

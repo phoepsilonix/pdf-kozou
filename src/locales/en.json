@@ -373,9 +373,8 @@
     "deimp_rendering": "Splitting… ({{n}}/{{total}})",
     "est_per_sheet": "per sheet",
     "est_per_cell": "per page",
-    "deimp_cell_legend": "Numbers in cells = output page after splitting",
-    "deimp_cell_prefix": "P",
-    "deimp_result_order": "Output order:"
+    "deimp_cell_legend": "Numbers above/below each page = output page after splitting",
+    "deimp_cell_prefix": "P"
   },
   "compress": {
     "processing": "Compressing…",
