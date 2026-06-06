@@ -61,6 +61,16 @@ interface PdfStore {
   convertLayoutH: number;
   convertLayoutEm: number;
   setConvertLayout: (w: number, h: number, em: number) => void;
+
+  // --- 標準ページサイズ設定（画像→PDF/画像変換時に適用）---
+  // 画像はページサイズ情報を持たないため、この設定で出力ページサイズを決める。
+  // PDF入力など既にサイズが確定しているものには適用しない。
+  pageSizeId: import("../lib/pageSize").PageSizeId;
+  pageOrientation: import("../lib/pageSize").PageOrientation;
+  setPageSize: (
+    id: import("../lib/pageSize").PageSizeId,
+    orientation: import("../lib/pageSize").PageOrientation,
+  ) => void;
   /// 特定ファイルのページ数を更新（レイアウト変更後に呼ぶ）
   updatePageCount: (path: string, pageCount: number) => void;
 
@@ -138,6 +148,10 @@ export const usePdfStore = create<PdfStore>()(
       convertLayoutEm: 12,
       setConvertLayout: (w, h, em) =>
         set({ convertLayoutW: w, convertLayoutH: h, convertLayoutEm: em }),
+
+      pageSizeId: "A4",
+      pageOrientation: "auto",
+      setPageSize: (id, orientation) => set({ pageSizeId: id, pageOrientation: orientation }),
       updatePageCount: (path, pageCount) =>
         set((s) => ({
           fileList: s.fileList.map((f) => (f.path === path ? { ...f, pageCount } : f)),
@@ -156,6 +170,8 @@ export const usePdfStore = create<PdfStore>()(
         convertLayoutW: state.convertLayoutW,
         convertLayoutH: state.convertLayoutH,
         convertLayoutEm: state.convertLayoutEm,
+        pageSizeId: state.pageSizeId,
+        pageOrientation: state.pageOrientation,
         previewEnabled: state.previewEnabled,
       }),
     },

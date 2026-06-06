@@ -44,3 +44,27 @@ export function hasNonPdf(filenames: string[]): boolean {
     return ext !== "pdf";
   });
 }
+
+/** 画像ファイル拡張子（MuPDFが画像として読み込むもの） */
+export const IMAGE_EXTENSIONS = [
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "bmp",
+  "tif",
+  "tiff",
+  "webp",
+  "pnm",
+  "pgm",
+  "ppm",
+  "pbm",
+];
+
+/** ファイル名リストに画像ファイルが含まれるか */
+export function hasImage(filenames: string[]): boolean {
+  return filenames.some((f) => {
+    const ext = f.split(".").pop()?.toLowerCase() ?? "";
+    return IMAGE_EXTENSIONS.includes(ext);
+  });
+}

@@ -376,6 +376,20 @@
     "deimp_cell_legend": "各ページの上下の番号 = 分割後の出力ページ番号",
     "deimp_cell_prefix": "P"
   },
+  "pagesize": {
+    "title": "標準ページサイズ（画像用）",
+    "hint": "画像をPDF/画像に変換するときの基準サイズです。既存PDFのページサイズは変更しません。",
+    "orientation": "向き",
+    "a4": "A4",
+    "a3": "A3",
+    "a5": "A5",
+    "b4": "B4",
+    "b5": "B5",
+    "image": "画像に合わせる",
+    "orient_auto": "自動",
+    "orient_portrait": "縦",
+    "orient_landscape": "横"
+  },
   "compress": {
     "processing": "圧縮処理中…",
     "save_compressed": "圧縮して保存",

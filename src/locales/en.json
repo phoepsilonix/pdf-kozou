@@ -376,6 +376,20 @@
     "deimp_cell_legend": "Numbers above/below each page = output page after splitting",
     "deimp_cell_prefix": "P"
   },
+  "pagesize": {
+    "title": "Standard page size (for images)",
+    "hint": "Base size when converting images to PDF/image. Existing PDF page sizes are not changed.",
+    "orientation": "Orientation",
+    "a4": "A4",
+    "a3": "A3",
+    "a5": "A5",
+    "b4": "B4",
+    "b5": "B5",
+    "image": "Match image",
+    "orient_auto": "Auto",
+    "orient_portrait": "Portrait",
+    "orient_landscape": "Landscape"
+  },
   "compress": {
     "processing": "Compressing…",
     "save_compressed": "Save compressed",

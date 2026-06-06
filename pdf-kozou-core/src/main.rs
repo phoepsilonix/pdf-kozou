@@ -326,7 +326,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             // --convert または非 PDF の場合は自動変換してから info 取得
             let needs_convert = convert || !is_pdf(&path);
             let _tmp = if needs_convert {
-                auto_convert_if_needed(&path, layout_w, layout_h, layout_em)?
+                auto_convert_if_needed(&path, layout_w, layout_h, layout_em, None, None)?
             } else {
                 None
             };
@@ -474,7 +474,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             extract,
             crop_cleanup,
         } => {
-            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -533,7 +533,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             rasterize_dpi,
             rasterize_quality,
         } => {
-            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -606,7 +606,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Rasterize { input, output, dpi, quality, page, png } => {
-            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -626,7 +626,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             every,
             ranges,
         } => {
-            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -657,7 +657,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let inputs = inputs
                 .into_iter()
                 .map(|inp| {
-                    if let Ok(Some(converted)) = auto_convert_if_needed(&inp, None, None, None) {
+                    if let Ok(Some(converted)) = auto_convert_if_needed(&inp, None, None, None, None, None) {
                         let path = converted.1.clone();
                         tmps.push(converted);
                         path
@@ -679,7 +679,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             pages,
             page_angles,
         } => {
-            let _tmp = auto_convert_if_needed(&input, None, None, None)?;
+            let _tmp = auto_convert_if_needed(&input, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
             } else {
@@ -746,6 +746,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 layout_w: Some(layout_w),
                 layout_h: Some(layout_h),
                 layout_em: Some(layout_em),
+                page_w_pt: None,
+                page_h_pt: None,
             };
             let resp = convert_to_pdf(&req)?;
             println!("{}", serde_json::to_string(&resp)?);
@@ -806,6 +808,8 @@ fn auto_convert_if_needed(
     layout_w: Option<f32>,
     layout_h: Option<f32>,
     layout_em: Option<f32>,
+    page_w_pt: Option<f32>,
+    page_h_pt: Option<f32>,
 ) -> anyhow::Result<Option<(tempfile::NamedTempFile, String)>> {
     use pdf_kozou_core::convert::{convert_to_pdf, is_mupdf_supported, is_pdf, ConvertRequest};
 
@@ -815,6 +819,25 @@ fn auto_convert_if_needed(
     if !is_mupdf_supported(input) {
         anyhow::bail!("unsupported file format: {input}");
     }
+
+    // ページサイズ固定は画像入力のときのみ適用する。
+    // DOCX/EPUB 等の reflowable 文書は layout で制御し、ここでは固定しない。
+    let is_image = {
+        let ext = std::path::Path::new(input)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+        matches!(
+            ext.as_str(),
+            "jpg" | "jpeg" | "png" | "bmp" | "gif" | "tiff" | "tif" | "webp" | "svg"
+        )
+    };
+    let (pw, ph) = if is_image {
+        (page_w_pt, page_h_pt)
+    } else {
+        (None, None)
+    };
 
     // <system_temp>/pdf-kozou/ 内に一時ファイルを作成
     // Tauri 側の kozou_temp_dir() と同じディレクトリで統一する
@@ -835,6 +858,8 @@ fn auto_convert_if_needed(
         layout_w,
         layout_h,
         layout_em,
+        page_w_pt: pw,
+        page_h_pt: ph,
     };
     convert_to_pdf(&req).map_err(|e| anyhow::anyhow!("convert failed: {e}"))?;
 
@@ -865,9 +890,14 @@ fn dispatch_json(line: &str) -> String {
             layout_h: Option<f32>,
             #[serde(default)]
             layout_em: Option<f32>,
+            #[serde(default)]
+            page_w_pt: Option<f32>,
+            #[serde(default)]
+            page_h_pt: Option<f32>,
         }
         let lp: LayoutParams = serde_json::from_str(line).unwrap_or_default();
         let (lw, lh, lem) = (lp.layout_w, lp.layout_h, lp.layout_em);
+        let (pw_pt, ph_pt) = (lp.page_w_pt, lp.page_h_pt);
 
         match tag.cmd.as_str() {
             "info" => {
@@ -880,7 +910,7 @@ fn dispatch_json(line: &str) -> String {
                 let r: Req = serde_json::from_str(line)?;
 
                 // 非 PDF は lw/lh/lem を考慮して一時 PDF に変換してから info 取得
-                let _tmp = auto_convert_if_needed(&r.path, lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&r.path, lw, lh, lem, None, None)?;
                 let actual_path = if let Some((_, ref p)) = _tmp {
                     p.as_str()
                 } else {
@@ -908,7 +938,7 @@ fn dispatch_json(line: &str) -> String {
             }
             "trim" => {
                 let mut req: pdf_kozou_core::trim::TrimRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -941,7 +971,7 @@ fn dispatch_json(line: &str) -> String {
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.inner.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&r.inner.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.inner.input = tmp_path.clone();
                 }
@@ -992,7 +1022,7 @@ fn dispatch_json(line: &str) -> String {
             }
             "split" => {
                 let mut req: pdf_kozou_core::split::SplitRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1003,7 +1033,7 @@ fn dispatch_json(line: &str) -> String {
                 let mut req: pdf_kozou_core::merge::MergeRequest = serde_json::from_str(line)?;
                 let mut tmps: Vec<(tempfile::NamedTempFile, String)> = Vec::new();
                 for input in req.inputs.iter_mut() {
-                    if let Some(converted) = auto_convert_if_needed(input, lw, lh, lem)? {
+                    if let Some(converted) = auto_convert_if_needed(input, lw, lh, lem, pw_pt, ph_pt)? {
                         *input = converted.1.clone();
                         tmps.push(converted);
                     }
@@ -1014,7 +1044,7 @@ fn dispatch_json(line: &str) -> String {
             }
             "rotate" => {
                 let mut req: pdf_kozou_core::rotate::RotateRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1046,7 +1076,7 @@ fn dispatch_json(line: &str) -> String {
             "rasterize_imposition" => {
                 let mut req: pdf_kozou_core::stext::RasterizeImpositionRequest =
                     serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1058,7 +1088,7 @@ fn dispatch_json(line: &str) -> String {
             "split_imposition_pdf" => {
                 let mut req: pdf_kozou_core::stext::SplitImpositionPdfRequest =
                     serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1070,7 +1100,7 @@ fn dispatch_json(line: &str) -> String {
             "split_cell_render" => {
                 let mut req: pdf_kozou_core::stext::SplitCellRenderRequest =
                     serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1160,7 +1190,7 @@ fn dispatch_json(line: &str) -> String {
                     pages: Option<String>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem)?;
+                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.input = tmp_path.clone();
                 }

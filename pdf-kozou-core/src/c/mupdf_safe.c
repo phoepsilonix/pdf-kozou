@@ -1055,6 +1055,8 @@ void kozou_convert_to_pdf(
     float       layout_w,
     float       layout_h,
     float       layout_em,
+    float       page_w_pt,   /* >0 のとき出力ページをこのサイズ(pt)に固定し */
+    float       page_h_pt,   /* 元コンテンツをアスペクト比保持で中央 fit する */
     FfiResult  *result)
 {
     fz_document  *doc    = NULL;
@@ -1081,6 +1083,8 @@ void kozou_convert_to_pdf(
         if (page_count <= 0)
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
 
+        int fit_to_size = (page_w_pt > 0.0f && page_h_pt > 0.0f);
+
         /* 新規 PDF ドキュメントを作成 */
         pdfout = pdf_create_document(ctx);
 
@@ -1100,16 +1104,51 @@ void kozou_convert_to_pdf(
 
             fz_try(ctx) {
                 page = fz_load_page(ctx, doc, i);
-                fz_rect mediabox = fz_bound_page(ctx, page);
-                dev = pdf_page_write(ctx, pdfout, mediabox,
-                                     &resources, &contents);
-                fz_run_page(ctx, page, dev, fz_identity, NULL);
-                fz_close_device(ctx, dev);
-                fz_drop_device(ctx, dev);
-                dev = NULL;
-                page_obj = pdf_add_page(ctx, pdfout, mediabox,
-                                        0, resources, contents);
-                pdf_insert_page(ctx, pdfout, -1, page_obj);
+                fz_rect src_box = fz_bound_page(ctx, page);
+
+                if (fit_to_size) {
+                    /* 出力ページを指定サイズに固定し、元コンテンツを
+                     * アスペクト比保持で中央に fit 配置する。
+                     * 画像を A4 等の決まったサイズに収める用途。 */
+                    fz_rect mediabox = { 0, 0, page_w_pt, page_h_pt };
+                    float sw = src_box.x1 - src_box.x0;
+                    float sh = src_box.y1 - src_box.y0;
+                    if (sw <= 0) sw = 1;
+                    if (sh <= 0) sh = 1;
+                    float scale_x = page_w_pt / sw;
+                    float scale_y = page_h_pt / sh;
+                    float scale = scale_x < scale_y ? scale_x : scale_y;
+                    float draw_w = sw * scale;
+                    float draw_h = sh * scale;
+                    float off_x = (page_w_pt - draw_w) * 0.5f;
+                    float off_y = (page_h_pt - draw_h) * 0.5f;
+                    /* CTM: 元ページ原点を 0 に寄せ、scale 倍し、中央へ平行移動 */
+                    fz_matrix ctm = fz_translate(-src_box.x0, -src_box.y0);
+                    ctm = fz_concat(ctm, fz_scale(scale, scale));
+                    ctm = fz_concat(ctm, fz_translate(off_x, off_y));
+
+                    dev = pdf_page_write(ctx, pdfout, mediabox,
+                                         &resources, &contents);
+                    fz_run_page(ctx, page, dev, ctm, NULL);
+                    fz_close_device(ctx, dev);
+                    fz_drop_device(ctx, dev);
+                    dev = NULL;
+                    page_obj = pdf_add_page(ctx, pdfout, mediabox,
+                                            0, resources, contents);
+                    pdf_insert_page(ctx, pdfout, -1, page_obj);
+                } else {
+                    /* 従来動作: 元ページサイズをそのまま使う */
+                    fz_rect mediabox = src_box;
+                    dev = pdf_page_write(ctx, pdfout, mediabox,
+                                         &resources, &contents);
+                    fz_run_page(ctx, page, dev, fz_identity, NULL);
+                    fz_close_device(ctx, dev);
+                    fz_drop_device(ctx, dev);
+                    dev = NULL;
+                    page_obj = pdf_add_page(ctx, pdfout, mediabox,
+                                            0, resources, contents);
+                    pdf_insert_page(ctx, pdfout, -1, page_obj);
+                }
             }
             fz_always(ctx) {
                 pdf_drop_obj(ctx, page_obj);

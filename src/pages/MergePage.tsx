@@ -14,6 +14,7 @@ import {
   BtnPrimary,
 } from "../components/common";
 import { usePdfStore } from "../store/usePdfStore";
+import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   mergePdf,
@@ -50,7 +51,8 @@ const THUMB_DPI = 60;
 const PREV_DPI = 60;
 
 export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
-  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
+  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm, pageSizeId, pageOrientation } =
+    usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
@@ -287,12 +289,15 @@ useEffect(() => {
     setSavePath(sp);
     setPhase("processing");
     try {
+      const psize = resolvePageSizePt(pageSizeId, pageOrientation);
       const res = await mergePdf(
         entries.map((e) => e.path),
         sp,
         convertLayoutW,
         convertLayoutH,
         convertLayoutEm,
+        psize?.w,
+        psize?.h,
       );
       setResult(res);
       announceSuccess("done.merge", { count: String(entries.length) });
@@ -303,19 +308,33 @@ useEffect(() => {
       setPhase("error");
       setError(String(e));
     }
-  }, [entries, pickSave, setError, announceSuccess, announceError]);
+  }, [
+    entries,
+    pickSave,
+    setError,
+    announceSuccess,
+    announceError,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+    pageSizeId,
+    pageOrientation,
+  ]);
 
   // 圧縮して保存: まず tmp に結合し、CompressPage へ
   const handleSaveWithCompress = useCallback(async () => {
     setPhase("processing");
     try {
       const tmp = await getTempPath("kozou_merge_tmp.pdf");
+      const psize = resolvePageSizePt(pageSizeId, pageOrientation);
       const res = await mergePdf(
         entries.map((e) => e.path),
         tmp,
         convertLayoutW,
         convertLayoutH,
         convertLayoutEm,
+        psize?.w,
+        psize?.h,
       );
       setResult(res);
       //setMergedInfo({ page_count: res.page_count, pages: Array.from({length:res.page_count},()=>({w:595,h:842,rotate:0,x:0,y:0})) });
@@ -343,7 +362,16 @@ useEffect(() => {
       setPhase("error");
       setError(String(e));
     }
-  }, [entries, setError, announceError]);
+  }, [
+    entries,
+    setError,
+    announceError,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+    pageSizeId,
+    pageOrientation,
+  ]);
 
   // 後方互換: handleSave
   const handleSave = useCallback(

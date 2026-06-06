@@ -45,6 +45,12 @@ pub struct ConvertRequest {
     pub layout_h: Option<f32>,
     #[serde(default)]
     pub layout_em: Option<f32>,
+    /// 画像入力時に出力ページを固定する目標サイズ(pt)。
+    /// 0/未指定なら従来動作（元の寸法をそのまま使う）。
+    #[serde(default)]
+    pub page_w_pt: Option<f32>,
+    #[serde(default)]
+    pub page_h_pt: Option<f32>,
 }
 
 #[derive(Serialize)]
@@ -73,8 +79,10 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
     let lw = req.layout_w.unwrap_or(450.0);
     let lh = req.layout_h.unwrap_or(600.0);
     let lem = req.layout_em.unwrap_or(12.0);
+    let pw = req.page_w_pt.unwrap_or(0.0);
+    let ph = req.page_h_pt.unwrap_or(0.0);
 
-    eprintln!("[convert] calling C FFI: layout={lw}x{lh} em={lem}");
+    eprintln!("[convert] calling C FFI: layout={lw}x{lh} em={lem} page={pw}x{ph}");
 
     unsafe {
         let ctx = kozou_new_context();
@@ -89,6 +97,8 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
             lw,
             lh,
             lem,
+            pw,
+            ph,
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);
