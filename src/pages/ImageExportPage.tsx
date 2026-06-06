@@ -1668,6 +1668,19 @@ function DeImpositionPreview({
   const sheetIdx = targetIdx.length ? targetIdx : Array.from({ length: total }, (_, i) => i);
   const outCount = sheetIdx.length * def.cols * def.rows;
 
+  // 出力ページ番号の逆引きマップを作る:
+  // calcSplitCells は出力順に並んだセル割り当てを返す。
+  // 配列インデックス+1 が「そのセルが出力で第何ページになるか」。
+  // キー: 論理シート番号(1始まり)・row・col → 出力ページ番号
+  const cellToOutPage = useMemo(() => {
+    const cells = calcSplitCells(sheetIdx.length, def.cols, def.rows, def.id);
+    const map = new Map<string, number>();
+    cells.forEach((c, idx) => {
+      map.set(`${c.page}:${c.row}:${c.col}`, idx + 1);
+    });
+    return map;
+  }, [sheetIdx.length, def.cols, def.rows, def.id]);
+
   return (
     <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
       <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
@@ -1677,12 +1690,19 @@ function DeImpositionPreview({
           pages: String(outCount),
         })}
       </div>
+      {/* 凡例: セル内の数字が出力ページ番号であることを明示 */}
+      <div
+        style={{ fontSize: 10, color: "var(--c-textDim)", marginBottom: 8, textAlign: "center" }}
+      >
+        {t("image.deimp_cell_legend" as any)}
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
-        {sheetIdx.map((i) => {
+        {sheetIdx.map((i, logicalIdx) => {
           const pb = pdfInfo.pages?.[i];
           const aspect = pb ? pb.w / pb.h : 1.414;
           const thumbW = 180;
           const thumbH = thumbW / aspect;
+          const logicalSheet = logicalIdx + 1; // calcSplitCells の page は1始まり論理番号
           return (
             <div key={i} style={{ position: "relative", width: thumbW }}>
               {thumbs[i] ? (
@@ -1707,7 +1727,7 @@ function DeImpositionPreview({
                   }}
                 />
               )}
-              {/* 分割線オーバーレイ */}
+              {/* 分割線オーバーレイ（セル内は出力ページ番号） */}
               <div
                 style={{
                   position: "absolute",
@@ -1718,24 +1738,33 @@ function DeImpositionPreview({
                   pointerEvents: "none",
                 }}
               >
-                {Array.from({ length: def.cols * def.rows }).map((_, k) => (
-                  <div
-                    key={k}
-                    style={{
-                      border: "1px dashed var(--c-accent, #e0457b)",
-                      boxSizing: "border-box",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: "var(--c-accent, #e0457b)",
-                      textShadow: "0 0 3px rgba(255,255,255,0.9)",
-                    }}
-                  >
-                    {k + 1}
-                  </div>
-                ))}
+                {Array.from({ length: def.cols * def.rows }).map((_, k) => {
+                  const row = Math.floor(k / def.cols);
+                  const col = k % def.cols;
+                  const outPage = cellToOutPage.get(`${logicalSheet}:${row}:${col}`);
+                  return (
+                    <div
+                      key={k}
+                      style={{
+                        border: "1px dashed var(--c-accent, #e0457b)",
+                        boxSizing: "border-box",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--c-accent, #e0457b)",
+                        textShadow: "0 0 3px rgba(255,255,255,0.9)",
+                      }}
+                    >
+                      <span style={{ fontSize: 10, fontWeight: 400, opacity: 0.8 }}>
+                        {t("image.deimp_cell_prefix" as any)}
+                      </span>
+                      <span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
+                        {outPage ?? "—"}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
               <div
                 style={{
@@ -1750,6 +1779,13 @@ function DeImpositionPreview({
             </div>
           );
         })}
+      </div>
+      {/* 出力結果の読み順を結果列として表示 */}
+      <div style={{ fontSize: 11, color: "var(--c-textSub)", marginTop: 10, textAlign: "center" }}>
+        {t("image.deimp_result_order" as any)}{" "}
+        <span style={{ color: "var(--c-text)", fontWeight: 600 }}>
+          {Array.from({ length: outCount }, (_, idx) => idx + 1).join(" → ")}
+        </span>
       </div>
     </div>
   );

@@ -372,7 +372,10 @@
     "deimp_no_pages": "対象ページがありません",
     "deimp_rendering": "分割中… ({{n}}/{{total}})",
     "est_per_sheet": "1シートあたり",
-    "est_per_cell": "1ページあたり"
+    "est_per_cell": "1ページあたり",
+    "deimp_cell_legend": "枠内の数字 = 分割後の出力ページ番号",
+    "deimp_cell_prefix": "P",
+    "deimp_result_order": "出力順:"
   },
   "compress": {
     "processing": "圧縮処理中…",
