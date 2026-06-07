@@ -4150,6 +4150,23 @@ static void kozou_blank_all_bt_blocks(
     kozou_blank_all_bt_blocks_hv(ctx, in_buf, out_buf, NULL, NULL, 0, 0.0f);
 }
 
+/* バッファ中の Tj / TJ 演算子の出現数を数える。
+ * 無害化の書き換えは「Tj をブランク化する(( ) Tj に置換)」だけで、
+ * 正常時は Tj 演算子の総数が減ることはない（ブランク化しても Tj は残る）。
+ * よって書き換え後に Tj 総数が減っていれば、それは内容の欠落＝
+ * 書き換えの誤り（ラッパー XObject の誤特定等）を意味する。 */
+static long kozou_count_tj_ops(fz_context *ctx, fz_buffer *buf)
+{
+    unsigned char *d = NULL;
+    size_t n = fz_buffer_storage(ctx, buf, &d);
+    long cnt = 0;
+    if (!d) return 0;
+    for (size_t i = 0; i + 1 < n; i++) {
+        if (d[i] == 'T' && (d[i+1] == 'j' || d[i+1] == 'J')) cnt++;
+    }
+    return cnt;
+}
+
 /* XObject 配置 CTM を受け取り、各 Tj のデバイス座標を計算して
  * ターゲットの ox/oy (ページデバイス座標) と照合する版。
  * 内部 Tm 座標 (ix/iy) だけでは、XObject 内で同一 Tm を持つ複数の
@@ -5394,6 +5411,28 @@ void kozou_sanitize_hidden_text(
                             }
                         } else {
                             /* ターゲットなし: 元のストリームをそのままコピー */
+                            unsigned char *sd = NULL;
+                            size_t sl = fz_buffer_storage(ctx, xobj_buf, &sd);
+                            if (sd && sl) fz_append_data(ctx, new_xobj_buf, sd, sl);
+                        }
+                    }
+                    /* 安全ガード（取り違え・破壊の防止）:
+                     * 書き換え後に Tj 総数が元より減っていたら、それは可視テキストを
+                     * 含む内容の欠落を意味する（ページ全体を内包するラッパー XObject を
+                     * 誤って書き換え対象にした場合などに発生）。
+                     * その書き換えは破棄し、元ストリームをそのまま使う。
+                     * → 隠しテキストが残る方向（false negative）の安全側に倒し、
+                     *   ページの可視テキストを絶対に壊さない。 */
+                    {
+                        long tj_in  = kozou_count_tj_ops(ctx, xobj_buf);
+                        long tj_out = kozou_count_tj_ops(ctx, new_xobj_buf);
+                        if (tj_out < tj_in) {
+                            fprintf(stderr,
+                                "[sanitize] xobj xref=%d: rewrite dropped content "
+                                "(Tj %ld -> %ld); keeping ORIGINAL stream to avoid "
+                                "destroying visible text\n", xref, tj_in, tj_out);
+                            fz_drop_buffer(ctx, new_xobj_buf);
+                            new_xobj_buf = fz_new_buffer(ctx, 0);
                             unsigned char *sd = NULL;
                             size_t sl = fz_buffer_storage(ctx, xobj_buf, &sd);
                             if (sd && sl) fz_append_data(ctx, new_xobj_buf, sd, sl);
