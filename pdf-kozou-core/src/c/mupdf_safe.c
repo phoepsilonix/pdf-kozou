@@ -5974,8 +5974,9 @@ void kozou_split_imposition_pdf(
  * ベクター保持の面付け結合（n-up / 見開き製本 / ページサイズ変更）
  *
  * ラスタ版 (kozou_rasterize_imposition) と異なり、各元ページを
- * pdf_new_pdf_device で出力ページ上に「再生」するため、テキスト・ベクターが
- * 保持された通常PDFになる。
+ * fz_document_writer(PDF) 上で「再生」するため、テキスト・ベクターが
+ * 保持された通常PDFになる。座標反転・リソース埋め込み・コンテンツ生成は
+ * MuPDF 内部が処理する(mutool convert と同方式)。
  *
  * 各出力シートは target_w×target_h(pt) のPDFページ。各シートは cols×rows の
  * セルに分割し、sheet_pages（出力順, 1始まりページ番号, 0=空白セル）で指定された
@@ -5984,9 +5985,6 @@ void kozou_split_imposition_pdf(
  *
  * 例) A4×4 → A3見開き2-up: cols=2,rows=1, target=A3横, n_sheets=2(表/裏)
  *     A4→A3単純拡大:        cols=1,rows=1, target=A3
- *
- * ※ 注意(要ビルド確認): pdf_new_pdf_device の topctm の扱いは MuPDF の版に
- *   依存しうる。上下反転が逆になる場合は topctm を fz_identity に変更する。
  * ─────────────────────────────────────────────────────────────────── */
 void kozou_compose_imposition_pdf(
     fz_context  *ctx,
@@ -6005,10 +6003,10 @@ void kozou_compose_imposition_pdf(
     float        margin,        /* シート外周の余白(pt) */
     FfiResult   *result)
 {
-    fz_document  *doc    = NULL;
-    pdf_document *pdfout = NULL;
+    fz_document        *doc = NULL;
+    fz_document_writer *wri = NULL;
     fz_var(doc);
-    fz_var(pdfout);
+    fz_var(wri);
 
     fz_try(ctx) {
         fz_register_document_handlers(ctx);
@@ -6029,7 +6027,7 @@ void kozou_compose_imposition_pdf(
         if (gutter < 0) gutter = 0;
         if (margin < 0) margin = 0;
 
-        int   per   = cols * rows;
+        int   per    = cols * rows;
         float availW = target_w - 2.0f * margin - (cols - 1) * gutter;
         float availH = target_h - 2.0f * margin - (rows - 1) * gutter;
         if (availW <= 1.0f || availH <= 1.0f)
@@ -6038,75 +6036,54 @@ void kozou_compose_imposition_pdf(
         float cellH = availH / (float)rows;
         fz_rect mediabox = { 0, 0, target_w, target_h };
 
-        pdfout = pdf_create_document(ctx);
+        /* fz_document_writer(PDF) を使うと、各出力ページの座標反転・リソース埋め込み・
+         * コンテンツ生成を MuPDF 内部が正しく処理する(mutool convert と同方式)。
+         * fz_begin_page が返すデバイスの座標系は fz_bound_page と同じ左上原点・Y下向きで、
+         * identity で元ページが正立する。よってセル配置 m も左上原点・Y下向きで計算する。 */
+        wri = fz_new_pdf_writer(ctx, output, "");
 
         for (int s = 0; s < n_sheets; s++) {
-            pdf_obj   *resources = NULL;
-            fz_buffer *contents  = NULL;
-            fz_device *dev       = NULL;
-            pdf_obj   *page_obj  = NULL;
-            fz_var(resources); fz_var(contents); fz_var(dev); fz_var(page_obj);
+            fz_device *dev = fz_begin_page(ctx, wri, mediabox);
+            for (int c = 0; c < per; c++) {
+                int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
+                if (pno < 0 || pno >= page_count) continue;
+                int col = c % cols;
+                int row = c / cols;
+                float cx = margin + col * (cellW + gutter);
+                float cy = margin + row * (cellH + gutter);
 
-            fz_try(ctx) {
-                resources = pdf_new_dict(ctx, pdfout, 1);
-                contents  = fz_new_buffer(ctx, 1024);
-                /* device空間(左上原点・Y下向き)を PDFページ空間(Y上向き)へ反転 */
-                fz_matrix topctm = fz_make_matrix(1, 0, 0, -1, 0, target_h);
-                dev = pdf_new_pdf_device(ctx, pdfout, topctm, resources, contents);
-
-                for (int c = 0; c < per; c++) {
-                    int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
-                    if (pno < 0 || pno >= page_count) continue;
-                    int col = c % cols;
-                    int row = c / cols;
-                    /* セル左上 (device空間: 左上原点・Y下向き) */
-                    float cx = margin + col * (cellW + gutter);
-                    float cy = margin + row * (cellH + gutter);
-
-                    fz_page *sp = fz_load_page(ctx, doc, pno);
-                    fz_var(sp);
-                    fz_try(ctx) {
-                        fz_rect b = fz_bound_page(ctx, sp);
-                        float sw = b.x1 - b.x0;
-                        float sh = b.y1 - b.y0;
-                        if (sw > 0 && sh > 0) {
-                            float sx = cellW / sw, sy = cellH / sh;
-                            float scale = (sx < sy) ? sx : sy;
-                            float ox = cx + (cellW - sw * scale) * 0.5f;
-                            float oy = cy + (cellH - sh * scale) * 0.5f;
-                            /* 元ページ原点を(0,0)へ → 拡縮 → セル位置へ平行移動 */
-                            fz_matrix m = fz_translate(-b.x0, -b.y0);
-                            m = fz_concat(m, fz_scale(scale, scale));
-                            m = fz_concat(m, fz_translate(ox, oy));
-                            fz_run_page(ctx, sp, dev, m, NULL);
-                        }
-                    }
-                    fz_always(ctx) { fz_drop_page(ctx, sp); }
-                    fz_catch(ctx) {
-                        fz_warn(ctx, "compose: skip page %d: %s",
-                                pno + 1, fz_caught_message(ctx));
+                fz_page *sp = fz_load_page(ctx, doc, pno);
+                fz_var(sp);
+                fz_try(ctx) {
+                    fz_rect b = fz_bound_page(ctx, sp);
+                    float sw = b.x1 - b.x0;
+                    float sh = b.y1 - b.y0;
+                    if (sw > 0 && sh > 0) {
+                        float sx = cellW / sw, sy = cellH / sh;
+                        float scale = (sx < sy) ? sx : sy;
+                        float ox = cx + (cellW - sw * scale) * 0.5f;
+                        float oy = cy + (cellH - sh * scale) * 0.5f;
+                        fz_matrix m = fz_translate(-b.x0, -b.y0);
+                        m = fz_concat(m, fz_scale(scale, scale));
+                        m = fz_concat(m, fz_translate(ox, oy));
+                        fz_run_page(ctx, sp, dev, m, NULL);
                     }
                 }
-
-                fz_close_device(ctx, dev);
-                page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
-                pdf_insert_page(ctx, pdfout, -1, page_obj);
+                fz_always(ctx) { fz_drop_page(ctx, sp); }
+                fz_catch(ctx) {
+                    fz_warn(ctx, "compose: skip page %d: %s",
+                            pno + 1, fz_caught_message(ctx));
+                }
             }
-            fz_always(ctx) {
-                if (dev)       fz_drop_device(ctx, dev);
-                if (page_obj)  pdf_drop_obj(ctx, page_obj);
-                if (contents)  fz_drop_buffer(ctx, contents);
-                if (resources) pdf_drop_obj(ctx, resources);
-            }
-            fz_catch(ctx) { fz_rethrow(ctx); }
+            fz_end_page(ctx, wri);
         }
 
-        pdf_save_document(ctx, pdfout, output, NULL);
+        fz_close_document_writer(ctx, wri);
         set_ok(result);
     }
     fz_always(ctx) {
-        if (pdfout) pdf_drop_document(ctx, pdfout);
-        if (doc)    fz_drop_document(ctx, doc);
+        if (wri) fz_drop_document_writer(ctx, wri);
+        if (doc) fz_drop_document(ctx, doc);
     }
     fz_catch(ctx) {
         set_err(result, fz_caught_message(ctx));

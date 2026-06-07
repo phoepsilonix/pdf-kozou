@@ -988,7 +988,7 @@ function ToolShell({
       </nav>
 
       <div style={{ flex: 1, overflow: "hidden" }}>
-        <LazyBoundary>
+        <LazyBoundary resetKey={activeTool ?? "home"}>
           <Suspense
             fallback={<div style={{ padding: "40px", textAlign: "center" }}>Loading tool...</div>}
           >

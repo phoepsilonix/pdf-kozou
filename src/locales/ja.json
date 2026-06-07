@@ -78,7 +78,10 @@
     "margin": "外周余白",
     "gutter": "セル間隔",
     "summary": "元{{src}}ページ → {{cols}}×{{rows}}面付け / 出力 {{size}} × {{sheets}}シート",
-    "blank_note": "※ ページ数が4の倍数でないため、末尾に空白ページを補います。"
+    "blank_note": "※ ページ数が4の倍数でないため、末尾に空白ページを補います。",
+    "preview": "プレビュー",
+    "preview_loading": "プレビュー生成中…",
+    "preview_sheet": "シート {{n}}"
   },
   "done": {
     "trim": "トリミングが完了しました。",

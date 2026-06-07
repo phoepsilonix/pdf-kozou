@@ -78,7 +78,10 @@
     "margin": "Outer margin",
     "gutter": "Cell gutter",
     "summary": "{{src}} src pages → {{cols}}×{{rows}} n-up / output {{size}} × {{sheets}} sheets",
-    "blank_note": "* Page count is not a multiple of 4; blank pages are appended."
+    "blank_note": "* Page count is not a multiple of 4; blank pages are appended.",
+    "preview": "Preview",
+    "preview_loading": "Building preview…",
+    "preview_sheet": "Sheet {{n}}"
   },
   "done": {
     "trim": "Trimming complete.",

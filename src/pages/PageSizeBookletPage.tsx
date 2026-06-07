@@ -6,12 +6,12 @@
 //   - 各元ページを出力ページ上に再生するためテキスト/ベクターを保持（ラスタ化しない）。
 //   - 例: A4×4 → A3×2(見開き製本)
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useI18n } from "../lib/i18n";
 import { useA11y } from "../hooks/useA11y";
-import { composeImpositionPdf, type PdfInfo } from "../lib/tauri";
+import { composeImpositionPdf, renderPage, type PdfInfo } from "../lib/tauri";
 import type { FileEntry } from "../store/usePdfStore";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
@@ -52,6 +52,36 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
   const [outBytes, setOutBytes] = useState(0);
 
   const totalPages = pdfInfo?.page_count ?? 0;
+
+  // ── プレビュー（手動トリガ＋キャッシュで重さを回避） ─────────────────
+  // 元ページのサムネは layout に依らず不変なので一度だけ描画してキャッシュし、
+  // モード/サイズ変更時はセル配置(CSS)だけが更新される。
+  const thumbCache = useRef<Map<number, string>>(new Map());
+  const [thumbsReady, setThumbsReady] = useState(false);
+  const [building, setBuilding] = useState(false);
+
+  const buildPreview = useCallback(async () => {
+    if (!filePath || totalPages <= 0) return;
+    setBuilding(true);
+    try {
+      for (let i = 0; i < totalPages; i++) {
+        if (thumbCache.current.has(i)) continue;
+        try {
+          const b64 = await renderPage(filePath, i, 48, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
+          thumbCache.current.set(i, b64);
+        } catch {
+          /* 個別ページ失敗は空セル扱い */
+        }
+      }
+      setThumbsReady(true);
+    } finally {
+      setBuilding(false);
+    }
+  }, [filePath, totalPages, convertLayoutW, convertLayoutH, convertLayoutEm]);
 
   // モード変更時に向きの初期値を自動調整（2up/booklet は横、1up/4up は縦）
   const onModeChange = (m: ImpositionMode) => {
@@ -248,6 +278,79 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
             <div style={s.note}>{t("booklet.blank_note")}</div>
           )}
         </section>
+
+        {/* 実行ボタン（本文にも明示） */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 4,
+          }}
+        >
+          <button
+            onClick={buildPreview}
+            disabled={totalPages <= 0 || building}
+            style={s.previewBtn}
+          >
+            {building ? t("booklet.preview_loading") : t("booklet.preview")}
+          </button>
+          <BtnPrimary onClick={run} disabled={totalPages <= 0}>
+            {t("booklet.run")}
+          </BtnPrimary>
+        </div>
+
+        {/* プレビュー（出力シートのレイアウト） */}
+        {thumbsReady && (
+          <section style={s.section}>
+            <div style={s.label}>{t("booklet.preview")}</div>
+            <div style={s.sheetsWrap}>
+              {layout.sheets.map((sh, si) => {
+                const W = targetPt.w >= targetPt.h ? 260 : 190; // 横長は広めに
+                const H = W * (targetPt.h / targetPt.w);
+                const scale = W / targetPt.w;
+                return (
+                  <div key={si} style={s.sheetCol}>
+                    <div
+                      style={{
+                        width: W,
+                        height: H,
+                        background: "#ffffff",
+                        border: "1px solid var(--c-border)",
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                        display: "grid",
+                        gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                        gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+                        gap: gutter * scale,
+                        padding: margin * scale,
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {Array.from({ length: layout.cols * layout.rows }).map((_, c) => {
+                        const p = sh.pages[c] ?? 0;
+                        const thumb = p > 0 ? thumbCache.current.get(p - 1) : undefined;
+                        return (
+                          <div key={c} style={s.cell}>
+                            {thumb && (
+                              <img
+                                src={`data:image/jpeg;base64,${thumb}`}
+                                alt=""
+                                style={s.cellImg}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <span style={s.sheetLabel}>
+                      {t("booklet.preview_sheet", { n: String(si + 1) })}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -326,4 +429,26 @@ const s: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   note: { fontSize: 12, color: "var(--c-textDim)" },
+  previewBtn: {
+    padding: "9px 18px",
+    borderRadius: 8,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+    color: "var(--c-text)",
+    cursor: "pointer",
+    fontFamily: F,
+    fontSize: 13,
+  },
+  sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
+  sheetCol: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
+  cell: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    minWidth: 0,
+    minHeight: 0,
+  },
+  cellImg: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" },
+  sheetLabel: { fontSize: 12, color: "var(--c-textSub)" },
 };

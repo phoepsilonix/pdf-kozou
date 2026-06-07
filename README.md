@@ -208,18 +208,18 @@ pdf-kozou
 
 ### ホーム画面 / Home screen
 
-| キー / Key | 動作 / Action                                      |
-| ---------- | -------------------------------------------------- |
-| `Ctrl+O`   | ファイルを開く / Open files                        |
-| `Alt+1`    | 分割ツールを起動 / Launch split tool               |
-| `Alt+2`    | 結合ツールを起動 / Launch merge tool               |
-| `Alt+3`    | トリミングを起動 / Launch trim tool                |
-| `Alt+4`    | 回転ツールを起動 / Launch rotate tool              |
-| `Alt+5`    | 圧縮ツールを起動 / Launch compress tool            |
-| `Alt+6`    | 画像変換を起動 / Launch image export tool          |
-| `Alt+7`    | ページサイズ変更・見開き製本を起動 / Launch viewer |
-| `Alt+8`    | 隠しテキスト検出・無害化を起動 / Launch viewer     |
-| `Alt+9`    | ビューワーを起動 / Launch viewer                   |
+| キー / Key | 動作 / Action                                                     |
+| ---------- | ----------------------------------------------------------------- |
+| `Ctrl+O`   | ファイルを開く / Open files                                       |
+| `Alt+1`    | 分割ツールを起動 / Launch split tool                              |
+| `Alt+2`    | 結合ツールを起動 / Launch merge tool                              |
+| `Alt+3`    | トリミングを起動 / Launch trim tool                               |
+| `Alt+4`    | 回転ツールを起動 / Launch rotate tool                             |
+| `Alt+5`    | 圧縮ツールを起動 / Launch compress tool                           |
+| `Alt+6`    | 画像変換を起動 / Launch image export tool                         |
+| `Alt+7`    | ページサイズ変更・見開き製本を起動 / Launch resize & booklet tool |
+| `Alt+8`    | 隠しテキスト検出・無害化を起動 / Launch hidden text tool          |
+| `Alt+9`    | ビューワーを起動 / Launch viewer                                  |
 
 ### 各ツール画面（共通）/ Tool screens (common)
 
