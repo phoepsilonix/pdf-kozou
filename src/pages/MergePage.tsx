@@ -300,6 +300,7 @@ useEffect(() => {
         convertLayoutEm,
         psize?.w,
         psize?.h,
+        pageOrientation === "auto" && pageSizeId !== "image",
       );
       setResult(res);
       announceSuccess("done.merge", { count: String(entries.length) });
@@ -337,6 +338,7 @@ useEffect(() => {
         convertLayoutEm,
         psize?.w,
         psize?.h,
+        pageOrientation === "auto" && pageSizeId !== "image",
       );
       setResult(res);
       //setMergedInfo({ page_count: res.page_count, pages: Array.from({length:res.page_count},()=>({w:595,h:842,rotate:0,x:0,y:0})) });

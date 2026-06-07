@@ -1057,6 +1057,7 @@ void kozou_convert_to_pdf(
     float       layout_em,
     float       page_w_pt,   /* >0 のとき出力ページをこのサイズ(pt)に固定し */
     float       page_h_pt,   /* 元コンテンツをアスペクト比保持で中央 fit する */
+    int         auto_orient, /* 1: ページごとに画像の縦横比で向きを自動選択 */
     FfiResult  *result)
 {
     fz_document  *doc    = NULL;
@@ -1110,18 +1111,35 @@ void kozou_convert_to_pdf(
                     /* 出力ページを指定サイズに固定し、元コンテンツを
                      * アスペクト比保持で中央に fit 配置する。
                      * 画像を A4 等の決まったサイズに収める用途。 */
-                    fz_rect mediabox = { 0, 0, page_w_pt, page_h_pt };
                     float sw = src_box.x1 - src_box.x0;
                     float sh = src_box.y1 - src_box.y0;
                     if (sw <= 0) sw = 1;
                     if (sh <= 0) sh = 1;
-                    float scale_x = page_w_pt / sw;
-                    float scale_y = page_h_pt / sh;
+
+                    /* 向き自動: このページ（画像）の縦横比に合わせて
+                     * ページの縦横を選ぶ。横長画像→横ページ、縦長→縦ページ。
+                     * 明示指定（auto_orient=0）のときは渡された向きを固定。 */
+                    float target_w = page_w_pt;
+                    float target_h = page_h_pt;
+                    if (auto_orient) {
+                        int img_landscape = (sw > sh);
+                        int page_landscape = (target_w > target_h);
+                        if (img_landscape != page_landscape) {
+                            /* ページの縦横を入れ替えて画像の向きに合わせる */
+                            float tmp = target_w;
+                            target_w = target_h;
+                            target_h = tmp;
+                        }
+                    }
+
+                    fz_rect mediabox = { 0, 0, target_w, target_h };
+                    float scale_x = target_w / sw;
+                    float scale_y = target_h / sh;
                     float scale = scale_x < scale_y ? scale_x : scale_y;
                     float draw_w = sw * scale;
                     float draw_h = sh * scale;
-                    float off_x = (page_w_pt - draw_w) * 0.5f;
-                    float off_y = (page_h_pt - draw_h) * 0.5f;
+                    float off_x = (target_w - draw_w) * 0.5f;
+                    float off_y = (target_h - draw_h) * 0.5f;
                     /* CTM: 元ページ原点を 0 に寄せ、scale 倍し、中央へ平行移動 */
                     fz_matrix ctm = fz_translate(-src_box.x0, -src_box.y0);
                     ctm = fz_concat(ctm, fz_scale(scale, scale));

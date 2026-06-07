@@ -126,6 +126,7 @@ extern "C" {
         layout_em: f32,
         page_w_pt: f32,
         page_h_pt: f32,
+        auto_orient: c_int,
         result: *mut FfiResult,
     );
 

@@ -968,6 +968,7 @@ export async function mergePdf(
   layoutEm?: number,
   pageWPt?: number,
   pageHPt?: number,
+  autoOrient?: boolean,
 ): Promise<MergeResponse> {
   return invoke<MergeResponse>("merge_pdf", {
     request: {
@@ -978,6 +979,7 @@ export async function mergePdf(
       layout_em: layoutEm ?? null,
       page_w_pt: pageWPt ?? null,
       page_h_pt: pageHPt ?? null,
+      auto_orient: autoOrient ?? null,
     },
   });
 }

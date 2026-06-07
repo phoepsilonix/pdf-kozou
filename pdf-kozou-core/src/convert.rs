@@ -51,6 +51,10 @@ pub struct ConvertRequest {
     pub page_w_pt: Option<f32>,
     #[serde(default)]
     pub page_h_pt: Option<f32>,
+    /// 1/true: ページごとに画像の縦横比で向きを自動選択する。
+    /// 明示指定（縦/横）のときは false。
+    #[serde(default)]
+    pub auto_orient: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -81,8 +85,9 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
     let lem = req.layout_em.unwrap_or(12.0);
     let pw = req.page_w_pt.unwrap_or(0.0);
     let ph = req.page_h_pt.unwrap_or(0.0);
+    let auto_orient = if req.auto_orient.unwrap_or(false) { 1 } else { 0 };
 
-    eprintln!("[convert] calling C FFI: layout={lw}x{lh} em={lem} page={pw}x{ph}");
+    eprintln!("[convert] calling C FFI: layout={lw}x{lh} em={lem} page={pw}x{ph} auto_orient={auto_orient}");
 
     unsafe {
         let ctx = kozou_new_context();
@@ -99,6 +104,7 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
             lem,
             pw,
             ph,
+            auto_orient,
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);
