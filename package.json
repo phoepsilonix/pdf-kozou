@@ -1,7 +1,7 @@
 {
   "name": "pdf-kozou",
   "private": true,
-  "version": "1.6.3",
+  "version": "1.6.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -29,5 +29,8 @@
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.14"
+  },
+  "allowScripts": {
+    "esbuild@0.27.5": true
   }
 }
