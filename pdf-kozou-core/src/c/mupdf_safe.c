@@ -5151,15 +5151,20 @@ void kozou_sanitize_hidden_text(
             pdf_page *xobj_search_page = NULL;
             fz_try(ctx) {
                 xobj_search_page = pdf_load_page(ctx, pdf, pi);
-            } fz_catch(ctx) { xobj_search_page = NULL; }
+            } fz_catch(ctx) {
+                xobj_search_page = NULL;
+                fz_warn(ctx, "sanitize: failed to load page %d for XObject scan", pi);
+	    }
 
             /* buried XObject 特定: このページ pi のターゲットを使用
              * xobj_search_page は pi ページをロード済み */
             int n_xrefs = 0;
             if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
+                if (!targets[i].is_buried) continue;
                 if (targets[i].page_index >= 0 && targets[i].page_index != pi) continue;
-                if (!targets[i].is_buried) continue; /* buried のみ XObject 処理 */
+                if (targets[i].ix == 0.0f && targets[i].iy == 0.0f) continue;
+
                 float ix = targets[i].ix; /* Tm の tx (internal_origin x) */
                 float iy = targets[i].iy; /* Tm の ty (internal_origin y) */
                 if (ix == 0.0f && iy == 0.0f) continue;
