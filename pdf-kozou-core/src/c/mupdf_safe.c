@@ -3964,6 +3964,7 @@ static int kozou_get_xobj_place_ctm(
     fz_context *ctx, pdf_document *pdf, pdf_page *ppage,
     int target_xref, fz_matrix *out_ctm)
 {
+    if (!ppage) return 0;   /* NULL ページ防御 (NULL デリファレンス回避) */
     pdf_obj *res = pdf_page_resources(ctx, ppage);
     fz_buffer *cbuf = NULL;
     int hit = 0;
@@ -4022,6 +4023,7 @@ static int kozou_find_xobj_by_tm(
     float         iy,     /* buried の internal y (Tm.ty) */
     float         tol)
 {
+    if (!ppage) return 0;   /* NULL ページ防御 */
     pdf_obj *res = pdf_page_resources(ctx, ppage);
     if (!res) return 0;
     pdf_obj *xdict = pdf_dict_get(ctx, res, PDF_NAME(XObject));
@@ -5287,7 +5289,11 @@ void kozou_sanitize_hidden_text(
                     xobj_xrefs[n_xrefs++] = xr;
             }
             } /* if xobj_search_page */
-            if (xobj_search_page) { pdf_drop_page(ctx, xobj_search_page); xobj_search_page = NULL; }
+            /* 注意: xobj_search_page はこの後の各 XObject 処理で
+             * kozou_get_xobj_place_ctm() に渡されるため、ここでは解放しない。
+             * 早期に解放 (+NULL 代入) すると NULL ページが渡され、
+             * pdf_page_resources() で NULL デリファレンス → SEGV になる。
+             * 解放は XObject 処理ループ完了後（このページ反復の末尾）で行う。 */
 
             /* 各 XObject を処理 */
             for (int xi = 0; xi < n_xrefs; xi++) {
@@ -5406,6 +5412,8 @@ void kozou_sanitize_hidden_text(
                             xref, fz_caught_message(ctx));
                 }
             }
+            /* このページの XObject 処理が完了したのでページを解放する。 */
+            if (xobj_search_page) { pdf_drop_page(ctx, xobj_search_page); xobj_search_page = NULL; }
         }
         fz_free(ctx, done_xrefs);
         fz_free(ctx, xobj_xrefs);
