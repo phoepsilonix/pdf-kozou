@@ -170,6 +170,7 @@ export function ThumbCard({
   width = 80,
   selected = false,
   aspectRatio,
+  pageColor,
   onClick,
 }: {
   b64?: string;
@@ -177,6 +178,10 @@ export function ThumbCard({
   width?: number;
   selected?: boolean;
   aspectRatio?: number;
+  /** ページ領域の背景色。結合プレビュー等で実際のページ色(白)を表示し、
+   *  ターゲットページサイズに対する余白(レターボックス)を見せるために使う。
+   *  省略時は従来どおりカード背景色。 */
+  pageColor?: string;
   onClick?: () => void;
 }) {
   // aspectRatio = w/h。横長(>1)でも縦長(<1)でも適切な高さに
@@ -203,7 +208,7 @@ export function ThumbCard({
         style={{
           width,
           height: h,
-          background: "var(--c-bgCard)",
+          background: pageColor ?? "var(--c-bgCard)",
           borderRadius: 3,
           display: "flex",
           alignItems: "center",

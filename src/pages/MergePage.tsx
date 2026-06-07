@@ -542,14 +542,28 @@ useEffect(() => {
                 <div style={s.previewThumbs}>
                   {seg.pages.map((p) => {
                     const pb = entries[si]?.pages?.[p.localNum - 1];
-                    const aspect = pb ? pb.w / pb.h : undefined;
+                    const srcAspect = pb ? pb.w / pb.h : undefined;
+                    // 結合後のページ枠アスペクト比。pageSizeId が固定サイズなら
+                    // そのターゲットサイズ(向き auto は元ページの縦横で判定)の枠を使い、
+                    // 元ページを contain でフィットさせて実際の余白を見せる。
+                    // "image" は元サイズ維持なので従来どおり元ページ比。
+                    let frameAspect = srcAspect;
+                    let pageColor: string | undefined;
+                    if (pb && pageSizeId !== "image") {
+                      const pt = resolvePageSizePt(pageSizeId, pageOrientation, srcAspect);
+                      if (pt) {
+                        frameAspect = pt.w / pt.h;
+                        pageColor = "#ffffff"; // 余白を実際のページ色(白)で表示
+                      }
+                    }
                     return (
                       <div key={p.globalNum} style={s.prevThumbWrap}>
                         <ThumbCard
                           b64={p.b64 || undefined}
                           pageNum={p.globalNum}
                           width={110}
-                          aspectRatio={aspect}
+                          aspectRatio={frameAspect}
+                          pageColor={pageColor}
                         />
                         <span style={s.prevLocalNum}>
                           {t("merge.local_page", { n: String(p.localNum) })}
