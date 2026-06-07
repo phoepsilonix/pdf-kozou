@@ -25,4 +25,6 @@ pub fn probe_symbols() {
     let _: unsafe extern "C" fn(_, _, _) -> _ = mupdf_sys::fz_new_output_with_path;
     let _: unsafe extern "C" fn(_, _) = mupdf_sys::fz_close_output;
     let _: unsafe extern "C" fn(_, _) = mupdf_sys::fz_drop_output;
+    
+    let _: unsafe extern "C" fn(_, _, _, _, _) -> _ = mupdf_sys::pdf_new_pdf_device;
 }

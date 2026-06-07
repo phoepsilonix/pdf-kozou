@@ -5974,7 +5974,7 @@ void kozou_split_imposition_pdf(
  * ベクター保持の面付け結合（n-up / 見開き製本 / ページサイズ変更）
  *
  * ラスタ版 (kozou_rasterize_imposition) と異なり、各元ページを
- * fz_new_pdf_device で出力ページ上に「再生」するため、テキスト・ベクターが
+ * pdf_new_pdf_device で出力ページ上に「再生」するため、テキスト・ベクターが
  * 保持された通常PDFになる。
  *
  * 各出力シートは target_w×target_h(pt) のPDFページ。各シートは cols×rows の
@@ -5985,7 +5985,7 @@ void kozou_split_imposition_pdf(
  * 例) A4×4 → A3見開き2-up: cols=2,rows=1, target=A3横, n_sheets=2(表/裏)
  *     A4→A3単純拡大:        cols=1,rows=1, target=A3
  *
- * ※ 注意(要ビルド確認): fz_new_pdf_device の topctm の扱いは MuPDF の版に
+ * ※ 注意(要ビルド確認): pdf_new_pdf_device の topctm の扱いは MuPDF の版に
  *   依存しうる。上下反転が逆になる場合は topctm を fz_identity に変更する。
  * ─────────────────────────────────────────────────────────────────── */
 void kozou_compose_imposition_pdf(
@@ -6052,7 +6052,7 @@ void kozou_compose_imposition_pdf(
                 contents  = fz_new_buffer(ctx, 1024);
                 /* device空間(左上原点・Y下向き)を PDFページ空間(Y上向き)へ反転 */
                 fz_matrix topctm = fz_make_matrix(1, 0, 0, -1, 0, target_h);
-                dev = fz_new_pdf_device(ctx, pdfout, topctm, resources, contents);
+                dev = pdf_new_pdf_device(ctx, pdfout, topctm, resources, contents);
 
                 for (int c = 0; c < per; c++) {
                     int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
