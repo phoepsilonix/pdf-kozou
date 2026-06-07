@@ -184,6 +184,9 @@ export interface SanitizeOrigin {
   ox?: number; // デバイス座標 (MuPDF Y下向き)
   oy?: number;
   is_buried?: number; // 1=buried検出、XObject書き換えが必要
+  // 描画モード(取り違え防止): 1=不可視(Tr=3/7)として検出, 0=可視として検出,
+  // 省略/-1=不明(座標のみで照合)。同一座標に重なる別グリフの誤無害化を防ぐ。
+  render_invisible?: number;
 }
 
 export interface SanitizeResponse {

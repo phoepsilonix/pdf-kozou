@@ -145,6 +145,14 @@ function toAnyHits(type: DetectType, hits: any[], pageIdx = 0): AnyHit[] {
 
 const LINE_Y_TOL = 4;
 
+// 描画モード(取り違え防止)を検出 reason から導出する。
+// invisible_mode / clip_only_mode は不可視(Tr=3/7)として描画されるため 1。
+// それ以外(transparent/low_contrast/tiny/buried/control_chars 等)は可視描画なので 0。
+// 無害化側は、同一座標に重なる別グリフを巻き込まないようこの値で show 演算子を選別する。
+function renderInvisibleOf(reason: string): number {
+  return reason === "invisible_mode" || reason === "clip_only_mode" ? 1 : 0;
+}
+
 function groupHits(hits: AnyHit[]): HitGroup[] {
   const groups: HitGroup[] = [];
   let gid = 0;
@@ -296,12 +304,14 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           .map((h) => ({
             x: h.origin[0],
             y: h.origin[1],
+            page: h.page,
             xobj_xref: h.xobjXref ?? 0,
             internal_x: h.internalOrigin?.[0] ?? h.origin[0],
             internal_y: h.internalOrigin?.[1] ?? h.origin[1],
             ox: h.origin[0],
             oy: h.origin[1],
             is_buried: h.type === "buried" ? 1 : 0,
+            render_invisible: renderInvisibleOf(h.reason),
           }));
 
         if (targets.length === 0) {
@@ -769,6 +779,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             ox: c.origin[0],
             oy: c.origin[1],
             is_buried: g.type === "buried" ? 1 : 0,
+            render_invisible: renderInvisibleOf(c.reason),
           })),
       );
     if (!targets.length) {

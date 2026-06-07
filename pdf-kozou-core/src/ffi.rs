@@ -190,6 +190,7 @@ extern "C" {
         target_origins: *const f32,
         n_origins: c_int,
         tolerance: f32,
+        target_render_class: *const c_int,
         result: *mut FfiResult,
     );
 

@@ -956,6 +956,10 @@ pub struct SanitizeOrigin {
     /// buried 検出フラグ (1=XObject書き換えが必要)
     #[serde(default)]
     pub is_buried: i32,
+    /// 描画モード (取り違え防止): 1=不可視(Tr=3/7)として検出, 0=可視として検出,
+    /// -1=不明(座標のみで照合, 従来動作)。同一座標に重なる別グリフの誤無害化を防ぐ。
+    #[serde(default = "default_minus_one")]
+    pub render_invisible: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -1043,9 +1047,14 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の5要素フラット配列に変換
+    // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の9要素フラット配列に変換
+    // (ストライドは 9 のまま維持。描画モードは別の並列配列で渡し互換性を壊さない)
     let origins: Vec<f32> = req.targets.iter()
         .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y, o.ox, o.oy, o.is_buried as f32, o.page as f32])
+        .collect();
+    // 描画モード (取り違え防止) の並列配列。要素数は n_origins と一致する。
+    let render_class: Vec<std::os::raw::c_int> = req.targets.iter()
+        .map(|o| o.render_invisible as std::os::raw::c_int)
         .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);
@@ -1066,6 +1075,7 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
             origins.as_ptr(),
             n_origins,
             tolerance,
+            render_class.as_ptr(),
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);

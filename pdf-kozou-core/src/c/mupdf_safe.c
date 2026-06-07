@@ -1848,6 +1848,8 @@ typedef struct {
     float page_x, page_y;    /* ページ座標 (MuPDF デバイス座標, Y下向き) */
     int   xobj_xref;         /* 所属 XObject xref (0=トップレベル) */
     float ix, iy;            /* XObject 内部座標 (Y上向き PDF 座標系) */
+    int   ucs;               /* Unicode コードポイント (取り違え防止の識別子) */
+    float size;              /* フォントサイズ pt (同上) */
 } KozouCharXObj;
 
 #define KOZOU_XOBJ_CHAR_MAX 65536
@@ -1909,6 +1911,11 @@ static void kozou_xobj_fill_text(
             c->page_x    = item->x * ctm.a + item->y * ctm.c + ctm.e;
             c->page_y    = item->x * ctm.b + item->y * ctm.d + ctm.f;
             c->xobj_xref = dev->stack[dev->depth].xref;
+            /* 取り違え防止用の識別子: Unicode と概算フォントサイズ。
+             * 同一座標に複数グリフが重なる場合、座標だけでなく ucs/size でも
+             * 区別して正しいグリフのメタデータを引けるようにする。 */
+            c->ucs  = item->ucs;
+            c->size = sqrtf(span->trm.b * span->trm.b + span->trm.d * span->trm.d);
             /* 内部座標 (Tm+Td): span->trm の逆行列で復元
              * span->trm.a = font_size * Tm.a, span->trm.d = font_size * Tm.d
              * span->trm_inv × (item->x, item->y):
@@ -1955,19 +1962,35 @@ static KozouXObjDevice *kozou_new_xobj_device(fz_context *ctx)
     return dev;
 }
 
-/* ページ座標 (px, py) に最も近い KozouCharXObj を検索 */
+/* ページ座標 (px, py) に最も近い KozouCharXObj を検索。
+ * 取り違え防止: 同一座標に複数グリフが重なる場合があるため、まず
+ * want_ucs と一致する (かつサイズが近い) エントリの中から最近傍を選ぶ。
+ * 一致するものが無ければ従来どおり座標最近傍を返す。
+ * want_ucs < 0 を渡すと ucs を無視して座標最近傍のみで検索する。 */
 static const KozouCharXObj *kozou_xobj_lookup(
-    const KozouXObjDevice *dev, float px, float py, float tol)
+    const KozouXObjDevice *dev, float px, float py, float tol,
+    int want_ucs, float want_size)
 {
     float best_d2 = tol * tol;
-    const KozouCharXObj *best = NULL;
+    const KozouCharXObj *best = NULL;       /* 座標最近傍 (フォールバック) */
+    float best_match_d2 = tol * tol;
+    const KozouCharXObj *best_match = NULL;  /* ucs/size 一致の最近傍 */
     for (int i = 0; i < dev->char_count; i++) {
         float dx = dev->chars[i].page_x - px;
         float dy = dev->chars[i].page_y - py;
         float d2 = dx*dx + dy*dy;
         if (d2 < best_d2) { best_d2 = d2; best = &dev->chars[i]; }
+        if (want_ucs >= 0 && dev->chars[i].ucs == want_ucs) {
+            /* サイズが分かる場合は大きく違うものを除外 (緩い許容: ±25%) */
+            int size_ok = (want_size <= 0.0f || dev->chars[i].size <= 0.0f) ||
+                (dev->chars[i].size >= want_size * 0.75f &&
+                 dev->chars[i].size <= want_size * 1.25f);
+            if (size_ok && d2 < best_match_d2) {
+                best_match_d2 = d2; best_match = &dev->chars[i];
+            }
+        }
     }
-    return best;
+    return best_match ? best_match : best;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2148,7 +2171,7 @@ void kozou_detect_transparent_text(
                          strncmp(font_name, "type3", 5) == 0));
                     /* XObject 情報ルックアップ */
                     const KozouCharXObj *xobj_info = kozou_xobj_lookup(
-                        xobj_dev, o.x, o.y, 2.0f);
+                        xobj_dev, o.x, o.y, 2.0f, ch->c, ch->size);
 
                     fz_write_printf(ctx, out,
                         "{"
@@ -2801,7 +2824,7 @@ void kozou_detect_tiny_text(
                          strncmp(tiny_font_name, "type3", 5) == 0));
                     /* XObject 情報ルックアップ */
                     const KozouCharXObj *xobj_info = kozou_xobj_lookup(
-                        xobj_dev, o.x, o.y, 2.0f);
+                        xobj_dev, o.x, o.y, 2.0f, ch->c, ch->size);
 
                     fz_write_printf(ctx, out,
                         "{"
@@ -2873,6 +2896,7 @@ typedef struct {
 typedef struct {
     int   event_index;
     int   xobj_xref;         /* 所属 XObject の xref (0=トップレベル) */
+    int   ucs;               /* Unicode (取り違え防止: stext 文字との対応付け) */
     float ix, iy;            /* XObject 内部座標系での origin */
     float ox, oy;            /* デバイス座標 (Y下向き) */
     float x0, y0, x1, y1;   /* グリフ bbox (デバイス座標) */
@@ -2985,6 +3009,7 @@ static void kozou_buried_fill_text(
 
             KozouTextEvt *te = &dev->list->texts[dev->list->text_count++];
             te->event_index = dev->list->event_counter++;
+            te->ucs = item->ucs;  /* 取り違え防止用の文字識別子 */
             /* XObject 情報を記録 */
             te->xobj_xref = dev->xobj_stack[dev->xobj_depth].xref;
             {
@@ -3411,16 +3436,25 @@ void kozou_detect_buried_text(
 
                     fz_point o = ch->origin;
 
-                    /* 最近傍の fill_text イベントを探す */
+                    /* 最近傍の fill_text イベントを探す。
+                     * 取り違え防止: 同一座標に複数グリフが重なる場合があるため、
+                     * まず同じ Unicode のイベントの中から最近傍を選び、無ければ
+                     * 座標最近傍にフォールバックする。 */
                     KozouTextEvt *matched = NULL;
-                    float best = 4.0f * 4.0f; /* 4pt 以内 */
+                    float best = 4.0f * 4.0f; /* 4pt 以内 (座標最近傍フォールバック) */
+                    KozouTextEvt *matched_ucs = NULL;
+                    float best_ucs = 4.0f * 4.0f; /* 同 ucs の最近傍 */
                     for (int k = 0; k < list->text_count; k++) {
                         KozouTextEvt *te = &list->texts[k];
                         float dx = te->ox - o.x;
                         float dy = te->oy - o.y;
                         float d2 = dx*dx + dy*dy;
                         if (d2 < best) { best = d2; matched = te; }
+                        if (te->ucs == ch->c && d2 < best_ucs) {
+                            best_ucs = d2; matched_ucs = te;
+                        }
                     }
+                    if (matched_ucs) matched = matched_ucs;
                     if (!matched) continue;
 
                     /* stext の quad から正確な bbox を計算 */
@@ -3462,7 +3496,7 @@ void kozou_detect_buried_text(
                          strncmp(buried_font_name, "type3", 5) == 0));
                     /* XObject 情報を取得（xobj_dev スキャン結果から）*/
                     const KozouCharXObj *xobj_info = xobj_dev
-                        ? kozou_xobj_lookup(xobj_dev, o.x, o.y, 5.0f)
+                        ? kozou_xobj_lookup(xobj_dev, o.x, o.y, 5.0f, ch->c, ch->size)
                         : NULL;
                     int b_xref = xobj_info ? xobj_info->xobj_xref : 0;
                     float b_ix = xobj_info ? xobj_info->ix : o.x;
@@ -3595,14 +3629,33 @@ typedef struct {
     int   in_xobj;       /* 1=XObject内で処理済み、ページ書き換えをスキップ */
     int   is_buried;     /* 1=buried検出 → XObject書き換えが必要 */
     int   page_index;    /* 0-indexed page (-1=全ページ共通) */
+    /* 描画モードによる取り違え防止:
+     *  1 = 不可視描画 (Tr=3/7) として検出された (invisible_mode/clip_only)
+     *  0 = 可視描画 (Tr が塗り/線あり) として検出された (transparent/low_contrast/tiny/buried 等)
+     * -1 = 不明 → 座標のみで照合 (後方互換: 従来動作)
+     * 同一座標に可視と不可視のグリフが重なる場合に、検出されたモードと
+     * 一致する show 演算子だけを無害化し、別グリフを巻き込まないために使う。 */
+    int   render_invisible;
 } KozouSanitizeOrigin;
 
-/* ページ座標でのマッチング (xobj_xref==0 の場合) */
+/* show 演算子の現在の描画モード Tr が「不可視(塗り/線なし)」かを返す。
+ * Tr=3 (描画なし) と Tr=7 (クリップのみ) が不可視。 */
+static int kozou_tr_is_invisible(int tr_mode)
+{
+    return (tr_mode == 3 || tr_mode == 7) ? 1 : 0;
+}
+
+/* ページ座標でのマッチング (xobj_xref==0 の場合)。
+ * cur_invisible = この show 演算子の現在 Tr の不可視クラス (0/1)。
+ * ターゲットの render_invisible が -1 (不明) なら座標のみで照合する。 */
 static int kozou_sanitize_is_target(
-    const KozouSanitizeOrigin *t, int n, float x, float y, float tol2)
+    const KozouSanitizeOrigin *t, int n, float x, float y, float tol2,
+    int cur_invisible)
 {
     for (int i = 0; i < n; i++) {
         if (t[i].in_xobj) continue; /* XObject内で処理するのでスキップ */
+        if (t[i].render_invisible >= 0 &&
+            t[i].render_invisible != cur_invisible) continue; /* モード不一致は別グリフ */
         float dx = t[i].x - x, dy = t[i].y - y;
         if (dx*dx + dy*dy <= tol2) return 1;
     }
@@ -4128,6 +4181,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     char cur_font_name[64] = {0};
     float cur_font_size = 12.0f;
     char cur_font_line[128] = {0};
+    int   cur_tr = 0;   /* 直近のテキスト描画モード Tr (取り違え防止) */
 
     /* BT 外の cm スタック (グラフィックス状態の CTM)。
      * q/Q でスタックし、cm で現在の CTM を更新する。
@@ -4190,7 +4244,11 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                 float dev_y = full.f;
                 int do_blank = blank_entire_bt;
                 if (!do_blank && n_targets > 0) {
+                    int cur_invisible = kozou_tr_is_invisible(cur_tr);
                     for (int _ti = 0; _ti < n_targets; _ti++) {
+                        if (targets[_ti].render_invisible >= 0 &&
+                            targets[_ti].render_invisible != cur_invisible)
+                            continue; /* 描画モード不一致は別グリフ */
                         float dx = targets[_ti].ox - dev_x;
                         float dy = targets[_ti].oy - dev_y;
                         if (dx*dx + dy*dy <= tol2) { do_blank = 1; break; }
@@ -4245,6 +4303,13 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         snprintf(cur_font_line, sizeof(cur_font_line),
                                  "/%s %g Tf", tf_name, tf_size);
                     }
+                }
+                if (trimmed_len >= 2 && src[te-2] == 'T' && src[te-1] == 'r') {
+                    char trline[64] = {0};
+                    size_t cplen4 = (te - ts) < 63 ? (te - ts) : 63;
+                    memcpy(trline, src + ts, cplen4);
+                    int trv;
+                    if (sscanf(trline, "%d Tr", &trv) == 1) cur_tr = trv;
                 }
                 fz_append_data(ctx, out_buf, src + line_start, line_len);
                 fz_append_byte(ctx, out_buf, '\n');
@@ -4657,6 +4722,11 @@ void kozou_sanitize_hidden_text(
     const float *target_origins,
     int          n_origins,
     float        tolerance,
+    const int   *target_render_class, /* 並列配列: 各ターゲットの描画モード
+                                        * (1=不可視, 0=可視, -1=不明)。
+                                        * NULL 可 (全て -1 とみなし従来動作)。
+                                        * 既存の 9 要素パック配列のストライドは
+                                        * 変更しないため互換性を壊さない。 */
     FfiResult   *result)
 {
     pdf_document *pdf = NULL;
@@ -4692,6 +4762,9 @@ void kozou_sanitize_hidden_text(
             targets[i].oy         = target_origins[i*9+6];
             targets[i].is_buried  = (int)target_origins[i*9+7];
             targets[i].page_index = (int)target_origins[i*9+8];
+            /* 描画モード (取り違え防止)。並列配列が無ければ -1 (不明=従来動作)。 */
+            targets[i].render_invisible =
+                target_render_class ? target_render_class[i] : -1;
         }
         float tol2 = tolerance > 0 ? tolerance*tolerance : 1.0f;
 
@@ -4715,8 +4788,17 @@ void kozou_sanitize_hidden_text(
             }
             fz_try(ctx) {
                 page = pdf_load_page(ctx, pdf, pi);
-                fz_rect bounds = pdf_bound_page(ctx, page, FZ_CROP_BOX);
-                float page_h = bounds.y1 - bounds.y0;
+                /* 検出側の origin は fz_new_stext_page_from_page が生成する
+                 * MuPDF デバイス座標 (左上原点・Y下向き・回転/CropBox 原点を含む)。
+                 * 無害化側も stext と同一の page_ctm を使ってテキスト原点を
+                 * デバイス座標へ変換し、両者を厳密に一致させる。
+                 * 旧実装の `dev_y = page_h - tm[5]` は CropBox 原点 (x0,y0) や
+                 * ページ回転を無視するため、原点が 0 でない PDF で検出座標と
+                 * ずれ、検出済みでも無害化できない/別位置を誤って無害化する
+                 * 不具合の原因になっていた。 */
+                fz_rect page_mbox;
+                fz_matrix page_ctm = fz_identity;
+                pdf_page_transform(ctx, page, &page_mbox, &page_ctm);
 
                 pdf_obj *page_obj  = page->obj;
                 pdf_obj *res       = pdf_dict_get_inheritable(ctx, page_obj, PDF_NAME(Resources));
@@ -4808,6 +4890,15 @@ void kozou_sanitize_hidden_text(
                 int   in_text   = 0;
                 char  cur_font[64] = "";
 
+                /* グラフィックス状態 CTM スタック (q/Q/cm)。
+                 * テキスト原点のデバイス座標 = page_ctm( gs_ctm( (tm.e, tm.f) ) )。
+                 * cm でページ内に配置されたテキストも検出側 (stext) と同じ
+                 * デバイス座標で照合できるよう、XObject 経路
+                 * (kozou_blank_all_bt_blocks_hv_ctm) と同一ロジックで追跡する。 */
+                fz_matrix gs_stack[32];
+                int gs_sp = 0;
+                gs_stack[0] = fz_identity;
+
 #define SSTK 16  /* スタック消費削減のため縮小 (旧64) */
                 typedef struct { char s[128]; float v; int is_num; int is_str; } SOp;
                 SOp  stk[SSTK];
@@ -4866,7 +4957,9 @@ void kozou_sanitize_hidden_text(
 
                     /* BT / ET */
                     if (!strcmp(kw,"BT")) {
-                        in_text=1; tr_mode=0;
+                        in_text=1;
+                        /* Tm/Lm のみリセット。Tr はテキスト状態(グラフィックス状態)
+                         * として BT/ET をまたいで持続するためここでは触らない。 */
                         memset(tm,0,sizeof(tm)); tm[0]=tm[3]=1;
                         memset(lm,0,sizeof(lm)); lm[0]=lm[3]=1;
                         fz_append_string(ctx, new_buf, "BT\n");
@@ -4882,6 +4975,22 @@ void kozou_sanitize_hidden_text(
                     }
 
                     if (!in_text) {
+                        /* グラフィックス状態 CTM の追跡 (BT 外でのみ更新可能) */
+                        if (!strcmp(kw,"q")) {
+                            if (gs_sp < 31) { gs_stack[gs_sp+1] = gs_stack[gs_sp]; gs_sp++; }
+                        } else if (!strcmp(kw,"Q")) {
+                            if (gs_sp > 0) gs_sp--;
+                        } else if (!strcmp(kw,"cm") && stk_top >= 6) {
+                            fz_matrix cm = {
+                                stk[stk_top-6].v, stk[stk_top-5].v, stk[stk_top-4].v,
+                                stk[stk_top-3].v, stk[stk_top-2].v, stk[stk_top-1].v };
+                            gs_stack[gs_sp] = fz_concat(cm, gs_stack[gs_sp]);
+                        } else if (!strcmp(kw,"Tr") && stk_top >= 1) {
+                            /* Tr はグラフィックス状態で BT/ET をまたいで持続する。
+                             * BT 外で設定されるケースも追跡し、取り違え防止の
+                             * 描画モード判定 (kozou_tr_is_invisible) を正確に保つ。 */
+                            tr_mode = (int)stk[stk_top-1].v;
+                        }
                         fz_append_printf(ctx, new_buf, "%s\n", kw);
                         stk_top=0; continue;
                     }
@@ -4924,11 +5033,12 @@ void kozou_sanitize_hidden_text(
 
                     /* ── Tj: 単一文字列 ── */
                     if (!strcmp(kw,"Tj")&&stk_top>=1&&stk[stk_top-1].is_str) {
-                        float dev_x=tm[4], dev_y=page_h-tm[5];
-                        /* XObject 内部では ix/iy (Tm tx/ty) でマッチング */
-                        float xobj_ix = tm[4], xobj_iy = tm[5];
-                        if (kozou_sanitize_is_target_ix(pi_targets,pi_n,xobj_ix,xobj_iy,tol2) ||
-                            kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2)) {
+                        /* テキスト原点 (tm.e, tm.f) → グラフィックス CTM → page_ctm
+                         * の順で適用し、stext の origin と同じデバイス座標を得る。 */
+                        fz_point dp = fz_transform_point(fz_make_point(tm[4], tm[5]), gs_stack[gs_sp]);
+                        dp = fz_transform_point(dp, page_ctm);
+                        float dev_x = dp.x, dev_y = dp.y;
+                        if (kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2,kozou_tr_is_invisible(tr_mode))) {
                             const char *orig=stk[stk_top-1].s;
                             /* 文字数と元グリフ幅を計算 */
                             pdf_obj *fobj = font_dict ?
@@ -5012,10 +5122,10 @@ void kozou_sanitize_hidden_text(
 
                     /* ── TJ: 配列形式 ── */
                     if (!strcmp(kw,"TJ")) {
-                        float dev_x=tm[4], dev_y=page_h-tm[5];
-                        float xobj_ix2 = tm[4], xobj_iy2 = tm[5];
-                        if (kozou_sanitize_is_target_ix(pi_targets,pi_n,xobj_ix2,xobj_iy2,tol2) ||
-                            kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2)) {
+                        fz_point dp = fz_transform_point(fz_make_point(tm[4], tm[5]), gs_stack[gs_sp]);
+                        dp = fz_transform_point(dp, page_ctm);
+                        float dev_x = dp.x, dev_y = dp.y;
+                        if (kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2,kozou_tr_is_invisible(tr_mode))) {
                             pdf_obj *fobj = font_dict ?
                                 pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
                             /* TJ全体の幅をquadマップから取得 */
@@ -5151,20 +5261,15 @@ void kozou_sanitize_hidden_text(
             pdf_page *xobj_search_page = NULL;
             fz_try(ctx) {
                 xobj_search_page = pdf_load_page(ctx, pdf, pi);
-            } fz_catch(ctx) {
-                xobj_search_page = NULL;
-                fz_warn(ctx, "sanitize: failed to load page %d for XObject scan", pi);
-	    }
+            } fz_catch(ctx) { xobj_search_page = NULL; }
 
             /* buried XObject 特定: このページ pi のターゲットを使用
              * xobj_search_page は pi ページをロード済み */
             int n_xrefs = 0;
             if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
-                if (!targets[i].is_buried) continue;
                 if (targets[i].page_index >= 0 && targets[i].page_index != pi) continue;
-                if (targets[i].ix == 0.0f && targets[i].iy == 0.0f) continue;
-
+                if (!targets[i].is_buried) continue; /* buried のみ XObject 処理 */
                 float ix = targets[i].ix; /* Tm の tx (internal_origin x) */
                 float iy = targets[i].iy; /* Tm の ty (internal_origin y) */
                 if (ix == 0.0f && iy == 0.0f) continue;
