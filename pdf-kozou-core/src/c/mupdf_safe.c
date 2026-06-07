@@ -5123,7 +5123,10 @@ void kozou_sanitize_hidden_text(
         }
         fz_free(ctx, pi_targets);
 
-        fz_free(ctx, targets);
+        /* 注意: targets はこの後の XObject 処理ループ（下記）でも
+         * 参照・更新される（targets[i].in_xobj = 1 など）。
+         * ここで解放すると use-after-free となり、buried テキストを含む
+         * PDF の無害化時に SEGV を引き起こす。解放は XObject ループ完了後に行う。 */
 
         if (width_warn)
             strncpy(result->message,
@@ -5297,6 +5300,9 @@ void kozou_sanitize_hidden_text(
         fz_free(ctx, done_xrefs);
         fz_free(ctx, xobj_xrefs);
         fz_free(ctx, page_targets);
+
+        /* targets は XObject 処理ループまで参照されるため、ここで解放する */
+        fz_free(ctx, targets);
 
         pdf_write_options opts = pdf_default_write_options;
         opts.do_compress        = 1;
