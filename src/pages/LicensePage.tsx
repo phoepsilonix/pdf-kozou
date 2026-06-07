@@ -544,6 +544,8 @@ const LicensePage: React.FC = () => {
               { keys: ["Alt+5"], desc: t("shortcuts.tool_5") },
               { keys: ["Alt+6"], desc: t("shortcuts.tool_6") },
               { keys: ["Alt+7"], desc: t("shortcuts.tool_7") },
+              { keys: ["Alt+8"], desc: t("shortcuts.tool_8") },
+              { keys: ["Alt+9"], desc: t("shortcuts.tool_9") },
             ]}
           />
           <ShortcutGroup
@@ -556,7 +558,7 @@ const LicensePage: React.FC = () => {
               { keys: ["Alt+R"], desc: t("shortcuts.range_focus") },
               { keys: ["Alt+M"], desc: t("shortcuts.margin_focus") },
               { keys: ["Escape"], desc: t("shortcuts.escape_desc") },
-              { keys: ["Alt+1", "〜", "Alt+7"], desc: t("shortcuts.switch_tool") },
+              { keys: ["Alt+1", "〜", "Alt+9"], desc: t("shortcuts.switch_tool") },
             ]}
           />
           <ShortcutGroup
