@@ -1575,6 +1575,107 @@ pub fn split_imposition_pdf(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ComposeImpositionPdfRequest {
+    pub input: String,
+    pub output: String,
+    /// 出力シートサイズ(pt)。
+    pub target_w: f32,
+    pub target_h: f32,
+    pub cols: i32,
+    pub rows: i32,
+    /// 出力順のセル配列。n_sheets*(cols*rows) 個（1始まりページ番号, 0=空白セル）。
+    pub sheet_pages: Vec<i32>,
+    pub n_sheets: i32,
+    #[serde(default)]
+    pub gutter: Option<f32>,
+    #[serde(default)]
+    pub margin: Option<f32>,
+    #[serde(default)]
+    pub layout_w: Option<f32>,
+    #[serde(default)]
+    pub layout_h: Option<f32>,
+    #[serde(default)]
+    pub layout_em: Option<f32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ComposeImpositionPdfResponse {
+    pub ok: bool,
+    pub output_bytes: u64,
+}
+
+/// ベクター保持の面付け結合（n-up / 見開き製本 / ページサイズ変更）。
+/// 各元ページを出力ページ上に再生するためテキスト/ベクターが保持される。
+pub fn compose_imposition_pdf(
+    req: &ComposeImpositionPdfRequest,
+) -> Result<ComposeImpositionPdfResponse> {
+    use crate::ffi::{kozou_compose_imposition_pdf, kozou_new_context, FfiResult};
+    use std::ffi::CString;
+
+    let per = (req.cols * req.rows).max(1);
+    let expected = (req.n_sheets * per) as usize;
+    if req.sheet_pages.len() != expected {
+        return Err(CoreError::InvalidArg(format!(
+            "sheet_pages length {} != n_sheets*(cols*rows) {}",
+            req.sheet_pages.len(),
+            expected
+        )));
+    }
+    if req.target_w <= 1.0 || req.target_h <= 1.0 {
+        return Err(CoreError::InvalidArg("invalid target page size".into()));
+    }
+
+    let c_input = CString::new(req.input.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output = CString::new(req.output.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    if let Some(parent) = std::path::Path::new(&req.output).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        kozou_compose_imposition_pdf(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            req.layout_w.unwrap_or(0.0),
+            req.layout_h.unwrap_or(0.0),
+            req.layout_em.unwrap_or(0.0),
+            req.target_w,
+            req.target_h,
+            req.cols,
+            req.rows,
+            req.sheet_pages.as_ptr(),
+            req.n_sheets,
+            req.gutter.unwrap_or(0.0),
+            req.margin.unwrap_or(0.0),
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    // 入力PDFのメタデータ(/Info)を出力に継承する
+    let metadata = crate::compress::collect_metadata(&req.input);
+    if !metadata.is_empty() {
+        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+    }
+
+    let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+    Ok(ComposeImpositionPdfResponse { ok: true, output_bytes: ob })
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SplitCellRenderRequest {
     pub input: String,
     pub page: i32, // 1始まり

@@ -59,12 +59,32 @@
     "viewer": "ビューワー",
     "viewer_desc": "PDFを確認・閲覧",
     "hidden": "隠しテキスト",
-    "hidden_desc": "隠しテキスト検出・無害化"
+    "hidden_desc": "隠しテキスト検出・無害化",
+    "booklet": "ページサイズ変更・製本",
+    "booklet_desc": "n-up/見開き製本・サイズ変更"
+  },
+  "booklet": {
+    "title": "ページサイズ変更・製本",
+    "run": "作成",
+    "processing": "面付け中…",
+    "done": "面付けPDFを作成しました。",
+    "mode": "モード",
+    "mode_1up": "サイズ変更のみ",
+    "mode_2up": "2-up（横並び）",
+    "mode_4up": "4-up（2×2）",
+    "mode_booklet": "見開き製本",
+    "target_size": "出力ページサイズ",
+    "spacing": "余白・隙間",
+    "margin": "外周余白",
+    "gutter": "セル間隔",
+    "summary": "元{{src}}ページ → {{cols}}×{{rows}}面付け / 出力 {{size}} × {{sheets}}シート",
+    "blank_note": "※ ページ数が4の倍数でないため、末尾に空白ページを補います。"
   },
   "done": {
     "trim": "トリミングが完了しました。",
     "split": "{{count}}ファイルに分割しました。",
     "merge": "{{count}}ファイルを結合しました。",
+    "compose": "{{sheets}}シートに面付けしました。",
     "compress": "圧縮が完了しました。{{ratio}}パーセントに削減しました。",
     "rotate": "{{count}}ページを回転しました。",
     "image": "画像変換が完了しました。",

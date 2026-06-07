@@ -97,6 +97,58 @@ export function calc4upSheets(totalPages: number): Sheet[] {
   return sheets;
 }
 
+/** 面付け結合のレイアウト（cols/rows とシートのセル割り当て） */
+export interface ComposeLayout {
+  cols: number;
+  rows: number;
+  sheets: Sheet[];
+}
+
+/**
+ * モードと元ページ数から、結合(compose)用のレイアウトを計算する。
+ * - "1up"     : 1×1（ページサイズ変更のみ。各元ページが1出力ページ）
+ * - "2up"     : 2×1（横並び。順番通り）
+ * - "4up"     : 2×2（順番通り）
+ * - "booklet" : 2×1（折り丁順序。4の倍数に空白補完）
+ */
+export function calcComposeLayout(mode: ImpositionMode, totalPages: number): ComposeLayout {
+  switch (mode) {
+    case "1up":
+      return {
+        cols: 1,
+        rows: 1,
+        sheets: Array.from({ length: totalPages }, (_, i) => ({
+          pages: [i + 1],
+          label: `${i + 1}`,
+        })),
+      };
+    case "2up":
+      return { cols: 2, rows: 1, sheets: calc2upSheets(totalPages) };
+    case "4up":
+      return { cols: 2, rows: 2, sheets: calc4upSheets(totalPages) };
+    case "booklet":
+      return { cols: 2, rows: 1, sheets: calcBookletSheets(totalPages) };
+  }
+}
+
+/**
+ * ComposeLayout を compose_imposition_pdf 用のフラットなセル配列に変換する。
+ * 各シートは必ず cols*rows 要素（不足は 0=空白で埋める）。
+ */
+export function flattenComposeSheets(layout: ComposeLayout): {
+  sheetPages: number[];
+  nSheets: number;
+} {
+  const per = layout.cols * layout.rows;
+  const sheetPages: number[] = [];
+  for (const sh of layout.sheets) {
+    for (let c = 0; c < per; c++) {
+      sheetPages.push(sh.pages[c] ?? 0);
+    }
+  }
+  return { sheetPages, nSheets: layout.sheets.length };
+}
+
 /**
  * モードに応じたシートリストを返す。
  */

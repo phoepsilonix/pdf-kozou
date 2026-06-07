@@ -274,6 +274,23 @@ pub async fn split_imposition_pdf(request: Value) -> Result<Value> {
     call_core_json("split_imposition_pdf", request).await
 }
 
+/// 面付け結合（ベクター保持）→ 通常PDF出力
+/// n-up / 見開き製本 / ページサイズ変更。各元ページを出力ページ上に再生するため
+/// テキスト・ベクターが保持される（ラスタ化しない）。
+/// 例: A4×4ページ → A3×2ページ(見開き製本)
+#[tauri::command]
+pub async fn compose_imposition_pdf(request: Value) -> Result<Value> {
+    if let Some(out) = request.get("output").and_then(|v| v.as_str()) {
+        if let Some(parent) = std::path::Path::new(out).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+            }
+        }
+    }
+    call_core_json("compose_imposition_pdf", request).await
+}
+
 /// 面付け解除した1セルを画像(JPEG/PNG/SVG)としてレンダリングし base64 で返す。
 /// 個別画像ファイル出力用。
 #[tauri::command]

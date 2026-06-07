@@ -115,6 +115,7 @@ pub fn run() {
             core::render_imposition,
             core::rasterize_imposition,
             core::split_imposition_pdf,
+            core::compose_imposition_pdf,
             core::split_cell_render,
             core::detect_control_chars,
             core::detect_buried_text,

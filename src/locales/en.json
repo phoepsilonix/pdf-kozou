@@ -59,12 +59,32 @@
     "viewer": "Viewer",
     "viewer_desc": "View PDF",
     "hidden": "Hidden Text",
-    "hidden_desc": "Detect & sanitize hidden text"
+    "hidden_desc": "Detect & sanitize hidden text",
+    "booklet": "Resize & Booklet",
+    "booklet_desc": "n-up / booklet / page resize"
+  },
+  "booklet": {
+    "title": "Resize & Booklet",
+    "run": "Create",
+    "processing": "Imposing…",
+    "done": "Imposed PDF created.",
+    "mode": "Mode",
+    "mode_1up": "Resize only",
+    "mode_2up": "2-up (side by side)",
+    "mode_4up": "4-up (2×2)",
+    "mode_booklet": "Booklet",
+    "target_size": "Output page size",
+    "spacing": "Margins & gutter",
+    "margin": "Outer margin",
+    "gutter": "Cell gutter",
+    "summary": "{{src}} src pages → {{cols}}×{{rows}} n-up / output {{size}} × {{sheets}} sheets",
+    "blank_note": "* Page count is not a multiple of 4; blank pages are appended."
   },
   "done": {
     "trim": "Trimming complete.",
     "split": "Split into {{count}} files.",
     "merge": "Merged {{count}} files.",
+    "compose": "Imposed into {{sheets}} sheets.",
     "compress": "Compression complete. Reduced to {{ratio}} percent.",
     "rotate": "Rotated {{count}} pages.",
     "image": "Image export complete.",

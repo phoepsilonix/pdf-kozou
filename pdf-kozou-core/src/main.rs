@@ -1103,6 +1103,18 @@ fn dispatch_json(line: &str) -> String {
                 )?)
             }
 
+            "compose_imposition_pdf" => {
+                let mut req: pdf_kozou_core::stext::ComposeImpositionPdfRequest =
+                    serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
+                Ok(serde_json::to_string(
+                    &pdf_kozou_core::stext::compose_imposition_pdf(&req)?,
+                )?)
+            }
+
             "split_cell_render" => {
                 let mut req: pdf_kozou_core::stext::SplitCellRenderRequest =
                     serde_json::from_str(line)?;

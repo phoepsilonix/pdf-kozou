@@ -113,6 +113,11 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   const dragCounter = useRef(0);
   // initPaths を一度だけ読み込んだかフラグ
   const initLoaded = useRef(false);
+  // ページサムネイルのキャッシュ（path#pageIndex -> b64）。
+  // 編集画面のサムネとプレビューは同一DPI(60)なので共用でき、
+  // プレビューを押すたびに再レンダリングするのを防ぐ。
+  const thumbCache = useRef<Map<string, string>>(new Map());
+  const tkey = (path: string, i: number) => `${path}#${i}`;
 
   // ── initPaths: マウント時に1回だけ ──────────────────────────────────────
   useEffect(() => {
@@ -139,6 +144,8 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
                 layoutH: convertLayoutH,
                 layoutEm: convertLayoutEm,
               });
+              // プレビューと同一DPIなのでキャッシュに登録して流用する
+              if (thumbs[i]) thumbCache.current.set(tkey(path, i), thumbs[i] as string);
             } catch {
               thumbs[i] = undefined;
             }
@@ -267,21 +274,28 @@ useEffect(() => {
     const all: string[] = [];
     for (const e of entries) {
       for (let i = 0; i < e.pageCount; i++) {
+        const key = tkey(e.path, i);
+        const cached = thumbCache.current.get(key);
+        if (cached !== undefined) {
+          // キャッシュ命中（編集画面のサムネ含む）→ 再レンダリングしない
+          all.push(cached);
+          continue;
+        }
         try {
-          all.push(
-            await renderPage(e.path, i, PREV_DPI, {
-              layoutW: convertLayoutW,
-              layoutH: convertLayoutH,
-              layoutEm: convertLayoutEm,
-            }),
-          );
+          const b64 = await renderPage(e.path, i, PREV_DPI, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
+          thumbCache.current.set(key, b64);
+          all.push(b64);
         } catch {
           all.push("");
         }
       }
     }
     setPreviewThumbs(all);
-  }, [entries]);
+  }, [entries, convertLayoutW, convertLayoutH, convertLayoutEm]);
 
   // ── 保存 ─────────────────────────────────────────────────────────────────
   const [tmpMergedPath, setTmpMergedPath] = useState("");

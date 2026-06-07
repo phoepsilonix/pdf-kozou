@@ -5971,6 +5971,149 @@ void kozou_split_imposition_pdf(
 }
 
 /* ──────────────────────────────────────────────────────────────────
+ * ベクター保持の面付け結合（n-up / 見開き製本 / ページサイズ変更）
+ *
+ * ラスタ版 (kozou_rasterize_imposition) と異なり、各元ページを
+ * fz_new_pdf_device で出力ページ上に「再生」するため、テキスト・ベクターが
+ * 保持された通常PDFになる。
+ *
+ * 各出力シートは target_w×target_h(pt) のPDFページ。各シートは cols×rows の
+ * セルに分割し、sheet_pages（出力順, 1始まりページ番号, 0=空白セル）で指定された
+ * 元ページを各セルにアスペクト比保持でフィット配置する。
+ *   sheet_pages 長さ = n_sheets * (cols*rows)、セル順は左上→右(行優先)→次行。
+ *
+ * 例) A4×4 → A3見開き2-up: cols=2,rows=1, target=A3横, n_sheets=2(表/裏)
+ *     A4→A3単純拡大:        cols=1,rows=1, target=A3
+ *
+ * ※ 注意(要ビルド確認): fz_new_pdf_device の topctm の扱いは MuPDF の版に
+ *   依存しうる。上下反転が逆になる場合は topctm を fz_identity に変更する。
+ * ─────────────────────────────────────────────────────────────────── */
+void kozou_compose_imposition_pdf(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    float        layout_w,
+    float        layout_h,
+    float        layout_em,
+    float        target_w,
+    float        target_h,
+    int          cols,
+    int          rows,
+    const int   *sheet_pages,   /* n_sheets*(cols*rows) 個 */
+    int          n_sheets,
+    float        gutter,        /* セル間の隙間(pt) */
+    float        margin,        /* シート外周の余白(pt) */
+    FfiResult   *result)
+{
+    fz_document  *doc    = NULL;
+    pdf_document *pdfout = NULL;
+    fz_var(doc);
+    fz_var(pdfout);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+        doc = fz_open_document(ctx, input);
+        if (fz_is_document_reflowable(ctx, doc)) {
+            float w  = layout_w  > 0 ? layout_w  : 450.0f;
+            float h  = layout_h  > 0 ? layout_h  : 600.0f;
+            float em = layout_em > 0 ? layout_em : 12.0f;
+            fz_layout_document(ctx, doc, w, h, em);
+        }
+        int page_count = fz_count_pages(ctx, doc);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+        if (cols < 1) cols = 1;
+        if (rows < 1) rows = 1;
+        if (target_w <= 1.0f || target_h <= 1.0f)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "invalid target page size");
+        if (gutter < 0) gutter = 0;
+        if (margin < 0) margin = 0;
+
+        int   per   = cols * rows;
+        float availW = target_w - 2.0f * margin - (cols - 1) * gutter;
+        float availH = target_h - 2.0f * margin - (rows - 1) * gutter;
+        if (availW <= 1.0f || availH <= 1.0f)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "margins/gutter too large for target size");
+        float cellW = availW / (float)cols;
+        float cellH = availH / (float)rows;
+        fz_rect mediabox = { 0, 0, target_w, target_h };
+
+        pdfout = pdf_create_document(ctx);
+
+        for (int s = 0; s < n_sheets; s++) {
+            pdf_obj   *resources = NULL;
+            fz_buffer *contents  = NULL;
+            fz_device *dev       = NULL;
+            pdf_obj   *page_obj  = NULL;
+            fz_var(resources); fz_var(contents); fz_var(dev); fz_var(page_obj);
+
+            fz_try(ctx) {
+                resources = pdf_new_dict(ctx, pdfout, 1);
+                contents  = fz_new_buffer(ctx, 1024);
+                /* device空間(左上原点・Y下向き)を PDFページ空間(Y上向き)へ反転 */
+                fz_matrix topctm = fz_make_matrix(1, 0, 0, -1, 0, target_h);
+                dev = fz_new_pdf_device(ctx, pdfout, topctm, resources, contents);
+
+                for (int c = 0; c < per; c++) {
+                    int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
+                    if (pno < 0 || pno >= page_count) continue;
+                    int col = c % cols;
+                    int row = c / cols;
+                    /* セル左上 (device空間: 左上原点・Y下向き) */
+                    float cx = margin + col * (cellW + gutter);
+                    float cy = margin + row * (cellH + gutter);
+
+                    fz_page *sp = fz_load_page(ctx, doc, pno);
+                    fz_var(sp);
+                    fz_try(ctx) {
+                        fz_rect b = fz_bound_page(ctx, sp);
+                        float sw = b.x1 - b.x0;
+                        float sh = b.y1 - b.y0;
+                        if (sw > 0 && sh > 0) {
+                            float sx = cellW / sw, sy = cellH / sh;
+                            float scale = (sx < sy) ? sx : sy;
+                            float ox = cx + (cellW - sw * scale) * 0.5f;
+                            float oy = cy + (cellH - sh * scale) * 0.5f;
+                            /* 元ページ原点を(0,0)へ → 拡縮 → セル位置へ平行移動 */
+                            fz_matrix m = fz_translate(-b.x0, -b.y0);
+                            m = fz_concat(m, fz_scale(scale, scale));
+                            m = fz_concat(m, fz_translate(ox, oy));
+                            fz_run_page(ctx, sp, dev, m, NULL);
+                        }
+                    }
+                    fz_always(ctx) { fz_drop_page(ctx, sp); }
+                    fz_catch(ctx) {
+                        fz_warn(ctx, "compose: skip page %d: %s",
+                                pno + 1, fz_caught_message(ctx));
+                    }
+                }
+
+                fz_close_device(ctx, dev);
+                page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
+                pdf_insert_page(ctx, pdfout, -1, page_obj);
+            }
+            fz_always(ctx) {
+                if (dev)       fz_drop_device(ctx, dev);
+                if (page_obj)  pdf_drop_obj(ctx, page_obj);
+                if (contents)  fz_drop_buffer(ctx, contents);
+                if (resources) pdf_drop_obj(ctx, resources);
+            }
+            fz_catch(ctx) { fz_rethrow(ctx); }
+        }
+
+        pdf_save_document(ctx, pdfout, output, NULL);
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdfout) pdf_drop_document(ctx, pdfout);
+        if (doc)    fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ──────────────────────────────────────────────────────────────────
  * 面付け解除して1セルを画像(base64用バッファ)に出力する。
  * 個別画像ファイル出力用。1回の呼び出しで1セルをレンダリングし、
  * JPEG/PNG を fz_output に書き出す。SVG は別途 fz_new_svg_device を使う。

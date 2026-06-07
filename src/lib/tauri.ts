@@ -539,6 +539,56 @@ export interface SplitImpositionPdfResponse {
   output_bytes: number;
 }
 
+export interface ComposeImpositionPdfRequest {
+  input: string;
+  output: string;
+  /** 出力シートサイズ(pt) */
+  targetW: number;
+  targetH: number;
+  cols: number;
+  rows: number;
+  /** 出力順のセル配列。n_sheets*(cols*rows) 個（1始まりページ番号, 0=空白セル） */
+  sheetPages: number[];
+  nSheets: number;
+  gutter?: number;
+  margin?: number;
+  layoutW?: number;
+  layoutH?: number;
+  layoutEm?: number;
+}
+
+export interface ComposeImpositionPdfResponse {
+  ok: boolean;
+  output_bytes: number;
+}
+
+/**
+ * ベクター保持の面付け結合（n-up / 見開き製本 / ページサイズ変更）→ 通常PDF。
+ * ラスタ化せず元ページを出力ページ上に再生するためテキスト/ベクターを保持する。
+ * @example A4×4 → A3×2(見開き製本)
+ */
+export async function composeImpositionPdf(
+  req: ComposeImpositionPdfRequest,
+): Promise<ComposeImpositionPdfResponse> {
+  return invoke<ComposeImpositionPdfResponse>("compose_imposition_pdf", {
+    request: {
+      input: req.input,
+      output: req.output,
+      target_w: req.targetW,
+      target_h: req.targetH,
+      cols: req.cols,
+      rows: req.rows,
+      sheet_pages: req.sheetPages,
+      n_sheets: req.nSheets,
+      gutter: req.gutter ?? null,
+      margin: req.margin ?? null,
+      layout_w: req.layoutW ?? null,
+      layout_h: req.layoutH ?? null,
+      layout_em: req.layoutEm ?? null,
+    },
+  });
+}
+
 /**
  * 面付け解除して画像PDFを出力する。
  * A3見開きなどを分割し、cells で指定した順に並べた画像PDFを作る。

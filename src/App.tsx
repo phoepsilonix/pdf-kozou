@@ -14,6 +14,7 @@ const RotatePage = lazy(() => import("./pages/RotatePage"));
 const ImageExportPage = lazy(() => import("./pages/ImageExportPage"));
 const ViewerPage = lazy(() => import("./pages/ViewerPage"));
 const HiddenTextPage = lazy(() => import("./pages/HiddenTextPage"));
+const PageSizeBookletPage = lazy(() => import("./pages/PageSizeBookletPage"));
 const LicensePage = lazy(() => import("./pages/LicensePage"));
 
 import { LazyBoundary } from "./components/LazyBoundary";
@@ -81,8 +82,9 @@ export type ToolId =
   | "rotate"
   | "compress"
   | "image"
-  | "viewer"
+  | "booklet"
   | "hidden"
+  | "viewer"
   | "about";
 
 // TOOLS の静的定義 (アイコン・minFiles・maxFiles のみ)
@@ -94,8 +96,9 @@ const TOOL_DEFS: { id: ToolId; icon: string; minFiles: number; maxFiles: number 
   { id: "rotate", icon: "↻", minFiles: 1, maxFiles: null },
   { id: "compress", icon: "⊙", minFiles: 1, maxFiles: null },
   { id: "image", icon: "🖼", minFiles: 1, maxFiles: null },
-  { id: "viewer", icon: "👁", minFiles: 1, maxFiles: null },
+  { id: "booklet", icon: "📖", minFiles: 1, maxFiles: null },
   { id: "hidden", icon: "🔍", minFiles: 1, maxFiles: null },
+  { id: "viewer", icon: "👁", minFiles: 1, maxFiles: null },
 ];
 
 export default function App() {
@@ -136,8 +139,9 @@ export default function App() {
       { ...TOOL_DEFS[3], label: t("tool.rotate"), desc: t("tool.rotate_desc") },
       { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
       { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
-      { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
+      { ...TOOL_DEFS[6], label: t("tool.booklet"), desc: t("tool.booklet_desc") },
       { ...TOOL_DEFS[7], label: t("tool.hidden"), desc: t("tool.hidden_desc") },
+      { ...TOOL_DEFS[8], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
     ],
     [t],
   );
@@ -344,7 +348,9 @@ export default function App() {
     "Alt+4": () => handleToolShortcut("rotate", 4),
     "Alt+5": () => handleToolShortcut("compress", 5),
     "Alt+6": () => handleToolShortcut("image", 6),
-    "Alt+7": () => handleToolShortcut("viewer", 7),
+    "Alt+7": () => handleToolShortcut("booklet", 7),
+    "Alt+8": () => handleToolShortcut("hidden", 8),
+    "Alt+9": () => handleToolShortcut("viewer", 9),
     "Alt+H": () => {
       handleHome();
       tts.speak(t("screen.home"));
@@ -877,8 +883,9 @@ function ToolShell({
       { ...TOOL_DEFS[3], label: t("tool.rotate"), desc: t("tool.rotate_desc") },
       { ...TOOL_DEFS[4], label: t("tool.compress"), desc: t("tool.compress_desc") },
       { ...TOOL_DEFS[5], label: t("tool.image"), desc: t("tool.image_desc") },
-      { ...TOOL_DEFS[6], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
+      { ...TOOL_DEFS[6], label: t("tool.booklet"), desc: t("tool.booklet_desc") },
       { ...TOOL_DEFS[7], label: t("tool.hidden"), desc: t("tool.hidden_desc") },
+      { ...TOOL_DEFS[8], label: t("tool.viewer"), desc: t("tool.viewer_desc") },
     ],
     [t],
   );
@@ -912,6 +919,14 @@ function ToolShell({
       tts.speak(t("shortcut.tool_switched", { name: t("tool.image") }));
     },
     "Alt+7": () => {
+      onToolChange("booklet");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.booklet") }));
+    },
+    "Alt+8": () => {
+      onToolChange("hidden");
+      tts.speak(t("shortcut.tool_switched", { name: t("tool.hidden") }));
+    },
+    "Alt+9": () => {
       onToolChange("viewer");
       tts.speak(t("shortcut.tool_switched", { name: t("tool.viewer") }));
     },
@@ -993,10 +1008,13 @@ function ToolShell({
             {activeTool === "image" && (
               <ImageExportPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
             )}
-            {activeTool === "viewer" && (
-              <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
+            {activeTool === "booklet" && (
+              <PageSizeBookletPage
+                filePath={filePath}
+                pdfInfo={pdfInfo}
+                batchFiles={isBatch ? toolFiles : undefined}
+              />
             )}
-            {activeTool === "about" && <LicensePage />}
             {activeTool === "hidden" && (
               <HiddenTextPage
                 filePath={filePath}
@@ -1004,6 +1022,10 @@ function ToolShell({
                 batchFiles={isBatch ? toolFiles : undefined}
               />
             )}
+            {activeTool === "viewer" && (
+              <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
+            )}
+            {activeTool === "about" && <LicensePage />}
           </Suspense>
         </LazyBoundary>
       </div>
