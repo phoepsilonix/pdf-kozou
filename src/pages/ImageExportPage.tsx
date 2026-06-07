@@ -3,6 +3,7 @@
 // -------------------------------------------------------------------------
 
 // src/pages/ImageExportPage.tsx — 単体 & バッチ対応
+export default ImageExportPage;
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";

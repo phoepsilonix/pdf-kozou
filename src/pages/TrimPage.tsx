@@ -3,6 +3,7 @@
 // -------------------------------------------------------------------------
 
 // src/pages/TrimPage.tsx
+export default TrimPage;
 import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TrimCanvas } from "../components/trim/TrimCanvas";

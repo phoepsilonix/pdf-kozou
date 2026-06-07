@@ -3,6 +3,7 @@
 // -------------------------------------------------------------------------
 
 // src/pages/SplitPage.tsx  —  単体 & バッチ対応
+export default SplitPage;
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";

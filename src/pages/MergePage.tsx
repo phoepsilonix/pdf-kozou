@@ -3,6 +3,8 @@
 // -------------------------------------------------------------------------
 
 // src/pages/MergePage.tsx
+export default MergePage;
+
 import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {

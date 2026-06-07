@@ -3,17 +3,18 @@
 // -------------------------------------------------------------------------
 
 // src/App.tsx
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { TrimPage } from "./pages/TrimPage";
-import { CompressPage } from "./pages/CompressPage";
-import { SplitPage } from "./pages/SplitPage";
-import { MergePage } from "./pages/MergePage";
-import { RotatePage } from "./pages/RotatePage";
-import { ImageExportPage } from "./pages/ImageExportPage";
-import { ViewerPage } from "./pages/ViewerPage";
-import LicensePage from "./pages/LicensePage";
-import { HiddenTextPage } from "./pages/HiddenTextPage";
+
+const TrimPage = lazy(() => import("./pages/TrimPage"));
+const CompressPage = lazy(() => import("./pages/CompressPage"));
+const SplitPage = lazy(() => import("./pages/SplitPage"));
+const MergePage = lazy(() => import("./pages/MergePage"));
+const RotatePage = lazy(() => import("./pages/RotatePage"));
+const ImageExportPage = lazy(() => import("./pages/ImageExportPage"));
+const ViewerPage = lazy(() => import("./pages/ViewerPage"));
+const HiddenTextPage = lazy(() => import("./pages/HiddenTextPage"));
+const LicensePage = lazy(() => import("./pages/LicensePage"));
 
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
@@ -971,33 +972,37 @@ function ToolShell({
       </nav>
 
       <div style={{ flex: 1, overflow: "hidden" }}>
-        {activeTool === "trim" && (
-          <TrimPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-        )}
-        {activeTool === "compress" && (
-          <CompressPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-        )}
-        {activeTool === "split" && (
-          <SplitPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-        )}
-        {activeTool === "merge" && <MergePage initPaths={toolFiles.map((f) => f.path)} />}
-        {activeTool === "rotate" && (
-          <RotatePage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-        )}
-        {activeTool === "image" && (
-          <ImageExportPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-        )}
-        {activeTool === "viewer" && (
-          <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
-        )}
-        {activeTool === "about" && <LicensePage />}
-        {activeTool === "hidden" && (
-          <HiddenTextPage
-            filePath={filePath}
-            pdfInfo={pdfInfo}
-            batchFiles={isBatch ? toolFiles : undefined}
-          />
-        )}
+        <Suspense
+          fallback={<div style={{ padding: "40px", textAlign: "center" }}>Loading tool...</div>}
+        >
+          {activeTool === "trim" && (
+            <TrimPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+          )}
+          {activeTool === "compress" && (
+            <CompressPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+          )}
+          {activeTool === "split" && (
+            <SplitPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+          )}
+          {activeTool === "merge" && <MergePage initPaths={toolFiles.map((f) => f.path)} />}
+          {activeTool === "rotate" && (
+            <RotatePage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+          )}
+          {activeTool === "image" && (
+            <ImageExportPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+          )}
+          {activeTool === "viewer" && (
+            <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
+          )}
+          {activeTool === "about" && <LicensePage />}
+          {activeTool === "hidden" && (
+            <HiddenTextPage
+              filePath={filePath}
+              pdfInfo={pdfInfo}
+              batchFiles={isBatch ? toolFiles : undefined}
+            />
+          )}
+        </Suspense>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 // -------------------------------------------------------------------------
 
 // src/pages/RotatePage.tsx — 単体 & バッチ対応
+export default RotatePage;
 import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Spinner, ErrorView, PageHeader, BtnBack, BtnPrimary } from "../components/common";

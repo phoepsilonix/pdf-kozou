@@ -1,3 +1,4 @@
+// vite.config.ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -16,27 +17,24 @@ export default defineConfig({
     minify: "esbuild",
     sourcemap: !!process.env.TAURI_DEBUG,
     cssMinify: true,
-    chunkSizeWarningLimit: 1000, // 警告閾値を少し緩和
+    chunkSizeWarningLimit: 400, // 警告閾値を下げる
 
     rolldownOptions: {
       output: {
         codeSplitting: {
-          minSize: 20000,
-          minShareCount: 2,
+          minSize: 10000,
+          minShareCount: 1,
 
           groups: [
-            // 1. React コア（最優先）
             {
               name: "react",
-              test: /node_modules[\\/](react|react-dom|zustand)/,
+              test: /node_modules[\\/](react|react-dom|zustand| scheduler)/,
               priority: 100,
             },
-
-            // 2. その他すべての node_modules（vendor）
             {
               name: "vendor",
               test: /node_modules/,
-              priority: 10,
+              priority: 50,
             },
           ],
         },

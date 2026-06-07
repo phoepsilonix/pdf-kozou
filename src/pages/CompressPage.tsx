@@ -6,6 +6,8 @@
 // フロー（単体）: プリセット選択 → プレビュー実行 → 結果確認 → [圧縮保存 / 圧縮せず保存]
 // フロー（バッチ）: プリセット選択 → 出力{t("compress.select_folder")} → 全件処理 → 結果
 
+export default CompressPage;
+
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSaveDialog } from "../hooks/useSaveDialog";

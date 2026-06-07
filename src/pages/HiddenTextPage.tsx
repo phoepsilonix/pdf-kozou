@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
+export default HiddenTextPage;
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import {

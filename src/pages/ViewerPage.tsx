@@ -8,6 +8,7 @@
 //   - テキストは行単位の透明 div（DOM 軽量、文字ごとの span は廃止）
 //   - 画像表示後に stext を遅延取得
 //   - 前後1ページをプリフェッチ
+export default ViewerPage;
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
