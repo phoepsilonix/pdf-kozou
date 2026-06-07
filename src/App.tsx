@@ -16,6 +16,7 @@ const ViewerPage = lazy(() => import("./pages/ViewerPage"));
 const HiddenTextPage = lazy(() => import("./pages/HiddenTextPage"));
 const LicensePage = lazy(() => import("./pages/LicensePage"));
 
+import { LazyBoundary } from "./components/LazyBoundary";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
@@ -972,37 +973,39 @@ function ToolShell({
       </nav>
 
       <div style={{ flex: 1, overflow: "hidden" }}>
-        <Suspense
-          fallback={<div style={{ padding: "40px", textAlign: "center" }}>Loading tool...</div>}
-        >
-          {activeTool === "trim" && (
-            <TrimPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-          )}
-          {activeTool === "compress" && (
-            <CompressPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-          )}
-          {activeTool === "split" && (
-            <SplitPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-          )}
-          {activeTool === "merge" && <MergePage initPaths={toolFiles.map((f) => f.path)} />}
-          {activeTool === "rotate" && (
-            <RotatePage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-          )}
-          {activeTool === "image" && (
-            <ImageExportPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
-          )}
-          {activeTool === "viewer" && (
-            <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
-          )}
-          {activeTool === "about" && <LicensePage />}
-          {activeTool === "hidden" && (
-            <HiddenTextPage
-              filePath={filePath}
-              pdfInfo={pdfInfo}
-              batchFiles={isBatch ? toolFiles : undefined}
-            />
-          )}
-        </Suspense>
+        <LazyBoundary>
+          <Suspense
+            fallback={<div style={{ padding: "40px", textAlign: "center" }}>Loading tool...</div>}
+          >
+            {activeTool === "trim" && (
+              <TrimPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+            )}
+            {activeTool === "compress" && (
+              <CompressPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+            )}
+            {activeTool === "split" && (
+              <SplitPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+            )}
+            {activeTool === "merge" && <MergePage initPaths={toolFiles.map((f) => f.path)} />}
+            {activeTool === "rotate" && (
+              <RotatePage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+            )}
+            {activeTool === "image" && (
+              <ImageExportPage filePath={filePath} pdfInfo={pdfInfo} batchFiles={batchFiles} />
+            )}
+            {activeTool === "viewer" && (
+              <ViewerPage filePath={filePath} pdfInfo={pdfInfo} fileList={batchFiles} />
+            )}
+            {activeTool === "about" && <LicensePage />}
+            {activeTool === "hidden" && (
+              <HiddenTextPage
+                filePath={filePath}
+                pdfInfo={pdfInfo}
+                batchFiles={isBatch ? toolFiles : undefined}
+              />
+            )}
+          </Suspense>
+        </LazyBoundary>
       </div>
     </div>
   );

@@ -28,7 +28,7 @@ export default defineConfig({
           groups: [
             {
               name: "react",
-              test: /node_modules[\\/](react|react-dom|zustand| scheduler)/,
+              test: /node_modules[\\/](react|react-dom|zustand|scheduler)/,
               priority: 100,
             },
             {
