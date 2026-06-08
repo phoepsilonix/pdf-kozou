@@ -184,126 +184,123 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
       <PageHeader>
         <span style={s.title}>{t("booklet.title")}</span>
         <span style={s.sub}>{t("common.pages", { count: String(totalPages) })}</span>
-        <div style={{ flex: 1 }} />
-        <BtnPrimary onClick={run}>{t("booklet.run")}</BtnPrimary>
       </PageHeader>
 
-      <div style={s.body}>
-        {/* モード */}
-        <section style={s.section}>
-          <div style={s.label}>{t("booklet.mode")}</div>
-          <div style={s.btnRow}>
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => onModeChange(m.id)}
-                style={{ ...s.choice, ...(mode === m.id ? s.choiceSel : {}) }}
-              >
-                {t(m.labelKey)}
-              </button>
-            ))}
-          </div>
-        </section>
+      <div style={s.main}>
+        {/* ── 左: 設定（スクロール）＋ 下部固定の操作帯 ── */}
+        <div style={s.leftCol}>
+          <div style={s.settingsScroll}>
+            {/* モード */}
+            <section style={s.section}>
+              <div style={s.label}>{t("booklet.mode")}</div>
+              <div style={s.btnRow}>
+                {MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => onModeChange(m.id)}
+                    style={{ ...s.choice, ...(mode === m.id ? s.choiceSel : {}) }}
+                  >
+                    {t(m.labelKey)}
+                  </button>
+                ))}
+              </div>
+            </section>
 
-        {/* 出力ページサイズ */}
-        <section style={s.section}>
-          <div style={s.label}>{t("booklet.target_size")}</div>
-          <div style={s.btnRow}>
-            {SIZE_IDS.map((id) => (
-              <button
-                key={id}
-                onClick={() => setSizeId(id)}
-                style={{ ...s.choice, ...(sizeId === id ? s.choiceSel : {}) }}
-              >
-                {id}
-              </button>
-            ))}
-          </div>
-          <div style={{ ...s.btnRow, marginTop: 8 }}>
-            {(["portrait", "landscape"] as Orient[]).map((o) => (
-              <button
-                key={o}
-                onClick={() => setOrient(o)}
-                style={{ ...s.choice, ...(orient === o ? s.choiceSel : {}) }}
-              >
-                {t(o === "portrait" ? "pagesize.orient_portrait" : "pagesize.orient_landscape")}
-              </button>
-            ))}
-          </div>
-        </section>
+            {/* 出力ページサイズ */}
+            <section style={s.section}>
+              <div style={s.label}>{t("booklet.target_size")}</div>
+              <div style={s.btnRow}>
+                {SIZE_IDS.map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => setSizeId(id)}
+                    style={{ ...s.choice, ...(sizeId === id ? s.choiceSel : {}) }}
+                  >
+                    {id}
+                  </button>
+                ))}
+              </div>
+              <div style={{ ...s.btnRow, marginTop: 8 }}>
+                {(["portrait", "landscape"] as Orient[]).map((o) => (
+                  <button
+                    key={o}
+                    onClick={() => setOrient(o)}
+                    style={{ ...s.choice, ...(orient === o ? s.choiceSel : {}) }}
+                  >
+                    {t(o === "portrait" ? "pagesize.orient_portrait" : "pagesize.orient_landscape")}
+                  </button>
+                ))}
+              </div>
+            </section>
 
-        {/* 余白・隙間 */}
-        <section style={s.section}>
-          <div style={s.label}>{t("booklet.spacing")}</div>
-          <div style={s.btnRow}>
-            <label style={s.numLabel}>
-              {t("booklet.margin")}
-              <input
-                type="number"
-                min={0}
-                value={margin}
-                onChange={(e) => setMargin(Math.max(0, Number(e.target.value) || 0))}
-                style={s.num}
-              />
-              pt
-            </label>
-            <label style={s.numLabel}>
-              {t("booklet.gutter")}
-              <input
-                type="number"
-                min={0}
-                value={gutter}
-                onChange={(e) => setGutter(Math.max(0, Number(e.target.value) || 0))}
-                style={s.num}
-              />
-              pt
-            </label>
-          </div>
-        </section>
+            {/* 余白・隙間 */}
+            <section style={s.section}>
+              <div style={s.label}>{t("booklet.spacing")}</div>
+              <div style={s.btnRow}>
+                <label style={s.numLabel}>
+                  {t("booklet.margin")}
+                  <input
+                    type="number"
+                    min={0}
+                    value={margin}
+                    onChange={(e) => setMargin(Math.max(0, Number(e.target.value) || 0))}
+                    style={s.num}
+                  />
+                  pt
+                </label>
+                <label style={s.numLabel}>
+                  {t("booklet.gutter")}
+                  <input
+                    type="number"
+                    min={0}
+                    value={gutter}
+                    onChange={(e) => setGutter(Math.max(0, Number(e.target.value) || 0))}
+                    style={s.num}
+                  />
+                  pt
+                </label>
+              </div>
+            </section>
 
-        {/* サマリ */}
-        <section style={s.summary}>
-          <div>
-            {t("booklet.summary", {
-              src: String(totalPages),
-              cols: String(layout.cols),
-              rows: String(layout.rows),
-              size: `${sizeId} ${t(
-                orient === "portrait" ? "pagesize.orient_portrait" : "pagesize.orient_landscape",
-              )}`,
-              sheets: String(nSheets),
-            })}
+            {/* サマリ */}
+            <section style={s.summary}>
+              <div>
+                {t("booklet.summary", {
+                  src: String(totalPages),
+                  cols: String(layout.cols),
+                  rows: String(layout.rows),
+                  size: `${sizeId} ${t(
+                    orient === "portrait"
+                      ? "pagesize.orient_portrait"
+                      : "pagesize.orient_landscape",
+                  )}`,
+                  sheets: String(nSheets),
+                })}
+              </div>
+              {mode === "booklet" && totalPages % 4 !== 0 && (
+                <div style={s.note}>{t("booklet.blank_note")}</div>
+              )}
+            </section>
           </div>
-          {mode === "booklet" && totalPages % 4 !== 0 && (
-            <div style={s.note}>{t("booklet.blank_note")}</div>
-          )}
-        </section>
 
-        {/* 実行ボタン（本文にも明示） */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginTop: 4,
-          }}
-        >
-          <button
-            onClick={buildPreview}
-            disabled={totalPages <= 0 || building}
-            style={s.previewBtn}
-          >
-            {building ? t("booklet.preview_loading") : t("booklet.preview")}
-          </button>
-          <BtnPrimary onClick={run} disabled={totalPages <= 0}>
-            {t("booklet.run")}
-          </BtnPrimary>
+          {/* 下部固定の操作帯（スクロールしない・常に左下に表示） */}
+          <div style={s.actionBar}>
+            <button
+              onClick={buildPreview}
+              disabled={totalPages <= 0 || building}
+              style={s.previewBtn}
+            >
+              {building ? t("booklet.preview_loading") : t("booklet.preview")}
+            </button>
+            <BtnPrimary onClick={run} disabled={totalPages <= 0}>
+              {t("booklet.run")}
+            </BtnPrimary>
+          </div>
         </div>
 
-        {/* プレビュー（出力シートのレイアウト） */}
-        {thumbsReady && (
-          <section style={s.section}>
-            <div style={s.label}>{t("booklet.preview")}</div>
+        {/* ── 右: プレビューペイン ── */}
+        <div style={s.rightCol}>
+          {thumbsReady ? (
             <div style={s.sheetsWrap}>
               {layout.sheets.map((sh, si) => {
                 const W = targetPt.w >= targetPt.h ? 260 : 190; // 横長は広めに
@@ -349,8 +346,12 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
                 );
               })}
             </div>
-          </section>
-        )}
+          ) : (
+            <div style={s.previewEmpty}>
+              {building ? t("booklet.preview_loading") : t("booklet.preview_hint")}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -373,6 +374,43 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 18,
+  },
+  main: { flex: 1, display: "flex", minHeight: 0, overflow: "hidden" },
+  leftCol: {
+    width: 360,
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    borderRight: "1px solid var(--c-border)",
+  },
+  settingsScroll: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "16px 18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+  },
+  actionBar: {
+    flexShrink: 0,
+    display: "flex",
+    gap: 10,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    padding: "10px 14px",
+    borderTop: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+  },
+  rightCol: { flex: 1, minWidth: 0, overflowY: "auto", padding: 18, background: "var(--c-bg)" },
+  previewEmpty: {
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "var(--c-textDim)",
+    fontSize: 13,
+    textAlign: "center",
   },
   center: {
     flex: 1,

@@ -5973,19 +5973,103 @@ void kozou_split_imposition_pdf(
 /* ──────────────────────────────────────────────────────────────────
  * ベクター保持の面付け結合（n-up / 見開き製本 / ページサイズ変更）
  *
- * ラスタ版 (kozou_rasterize_imposition) と異なり、各元ページを
- * fz_document_writer(PDF) 上で「再生」するため、テキスト・ベクターが
- * 保持された通常PDFになる。座標反転・リソース埋め込み・コンテンツ生成は
- * MuPDF 内部が処理する(mutool convert と同方式)。
+ * グラフト方式(PyMuPDF の show_pdf_page と同方式)。各元ページの
+ * コンテンツストリームをバイトそのままコピーし、/Resources(フォント・画像)を
+ * ディープコピー(graft)して Form XObject 化し、出力ページに cm + Do で配置する。
+ * → 画像も含めて再エンコードなしの無劣化で「ページ内容を丸ごとコピー」する。
  *
- * 各出力シートは target_w×target_h(pt) のPDFページ。各シートは cols×rows の
- * セルに分割し、sheet_pages（出力順, 1始まりページ番号, 0=空白セル）で指定された
- * 元ページを各セルにアスペクト比保持でフィット配置する。
+ * 各出力シートは target_w×target_h(pt)。cols×rows のセルに分割し、
+ * sheet_pages(出力順, 1始まりページ番号, 0=空白)で指定の元ページを
+ * 各セルへアスペクト比保持・中央寄せで配置する。
  *   sheet_pages 長さ = n_sheets * (cols*rows)、セル順は左上→右(行優先)→次行。
  *
  * 例) A4×4 → A3見開き2-up: cols=2,rows=1, target=A3横, n_sheets=2(表/裏)
- *     A4→A3単純拡大:        cols=1,rows=1, target=A3
+ *
+ * ※ 現状は /Rotate 0 のページ向け。/Rotate 90・270 等は警告を出すのみで
+ *   向き補正は未対応(次段階)。
  * ─────────────────────────────────────────────────────────────────── */
+
+/* 元ページの /Contents(stream または stream の配列) を1つのバッファに連結する。 */
+static fz_buffer *kozou_compose_read_contents(fz_context *ctx, pdf_obj *pageref)
+{
+    pdf_obj   *contents = pdf_dict_get(ctx, pageref, PDF_NAME(Contents));
+    fz_buffer *out      = fz_new_buffer(ctx, 1024);
+    fz_try(ctx) {
+        if (pdf_is_array(ctx, contents)) {
+            int n = pdf_array_len(ctx, contents);
+            for (int i = 0; i < n; i++) {
+                fz_buffer *b = pdf_load_stream(ctx, pdf_array_get(ctx, contents, i));
+                fz_try(ctx) {
+                    fz_append_buffer(ctx, out, b);
+                    fz_append_byte(ctx, out, '\n'); /* ストリーム境界の安全separator */
+                }
+                fz_always(ctx) { fz_drop_buffer(ctx, b); }
+                fz_catch(ctx) { fz_rethrow(ctx); }
+            }
+        } else if (contents) {
+            fz_buffer *b = pdf_load_stream(ctx, contents);
+            fz_try(ctx) { fz_append_buffer(ctx, out, b); }
+            fz_always(ctx) { fz_drop_buffer(ctx, b); }
+            fz_catch(ctx) { fz_rethrow(ctx); }
+        }
+    }
+    fz_catch(ctx) {
+        fz_drop_buffer(ctx, out);
+        fz_rethrow(ctx);
+    }
+    return out;
+}
+
+/* 元ページ(pno)を出力PDF(dst)内の Form XObject に変換して返す(呼び出し側が drop)。
+ * /Resources は graft でディープコピー、/Contents はバイトコピー。
+ * 返す XObject の /BBox は元ページの CropBox(無ければ MediaBox)。 */
+static pdf_obj *kozou_compose_page_to_xobject(
+    fz_context *ctx, pdf_document *src, pdf_document *dst,
+    pdf_graft_map *gmap, int pno)
+{
+    pdf_obj *pageref = pdf_lookup_page_obj(ctx, src, pno); /* borrowed */
+
+    pdf_obj *boxobj = pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(CropBox));
+    if (!pdf_is_array(ctx, boxobj))
+        boxobj = pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(MediaBox));
+    fz_rect bbox;
+    if (pdf_is_array(ctx, boxobj)) {
+        bbox = pdf_to_rect(ctx, boxobj);
+    } else {
+        bbox.x0 = 0; bbox.y0 = 0; bbox.x1 = 595; bbox.y1 = 842;
+    }
+    if (bbox.x1 < bbox.x0) { float t = bbox.x0; bbox.x0 = bbox.x1; bbox.x1 = t; }
+    if (bbox.y1 < bbox.y0) { float t = bbox.y0; bbox.y0 = bbox.y1; bbox.y1 = t; }
+
+    int rot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(Rotate)));
+    if (rot % 360 != 0)
+        fz_warn(ctx, "compose: page %d has /Rotate %d (rotation not yet handled; may be misoriented)",
+                pno + 1, rot);
+
+    pdf_obj    *res      = pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(Resources)); /* borrowed */
+    pdf_obj    *res2     = NULL;
+    fz_buffer  *contents = NULL;
+    pdf_obj    *xobj     = NULL;
+    fz_var(res2); fz_var(contents); fz_var(xobj);
+    fz_try(ctx) {
+        res2     = res ? pdf_graft_mapped_object(ctx, gmap, res)
+                       : pdf_new_dict(ctx, dst, 1);
+        contents = kozou_compose_read_contents(ctx, pageref);
+        /* Matrix は identity。配置側の cm で拡縮・移動する。 */
+        xobj     = pdf_new_xobject(ctx, dst, bbox, fz_identity, res2, contents);
+        fprintf(stderr,
+            "[compose] page %d -> xobject: contents=%zu bytes bbox=[%g %g %g %g] rotate=%d\n",
+            pno + 1, fz_buffer_storage(ctx, contents, NULL),
+            bbox.x0, bbox.y0, bbox.x1, bbox.y1, rot);
+    }
+    fz_always(ctx) {
+        fz_drop_buffer(ctx, contents);
+        pdf_drop_obj(ctx, res2);
+    }
+    fz_catch(ctx) { fz_rethrow(ctx); }
+    return xobj;
+}
+
 void kozou_compose_imposition_pdf(
     fz_context  *ctx,
     const char  *input,
@@ -6003,21 +6087,18 @@ void kozou_compose_imposition_pdf(
     float        margin,        /* シート外周の余白(pt) */
     FfiResult   *result)
 {
-    fz_document        *doc = NULL;
-    fz_document_writer *wri = NULL;
-    fz_var(doc);
-    fz_var(wri);
+    (void)layout_w; (void)layout_h; (void)layout_em; /* PDF入力前提(上流で変換済み) */
+
+    pdf_document  *src   = NULL;
+    pdf_document  *dst   = NULL;
+    pdf_graft_map *gmap  = NULL;
+    pdf_obj      **xcache = NULL;
+    int            page_count = 0;
+    fz_var(src); fz_var(dst); fz_var(gmap); fz_var(xcache); fz_var(page_count);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
-        doc = fz_open_document(ctx, input);
-        if (fz_is_document_reflowable(ctx, doc)) {
-            float w  = layout_w  > 0 ? layout_w  : 450.0f;
-            float h  = layout_h  > 0 ? layout_h  : 600.0f;
-            float em = layout_em > 0 ? layout_em : 12.0f;
-            fz_layout_document(ctx, doc, w, h, em);
-        }
-        int page_count = fz_count_pages(ctx, doc);
+        src = pdf_open_document(ctx, input);
+        page_count = pdf_count_pages(ctx, src);
         if (page_count <= 0)
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
         if (cols < 1) cols = 1;
@@ -6036,54 +6117,94 @@ void kozou_compose_imposition_pdf(
         float cellH = availH / (float)rows;
         fz_rect mediabox = { 0, 0, target_w, target_h };
 
-        /* fz_document_writer(PDF) を使うと、各出力ページの座標反転・リソース埋め込み・
-         * コンテンツ生成を MuPDF 内部が正しく処理する(mutool convert と同方式)。
-         * fz_begin_page が返すデバイスの座標系は fz_bound_page と同じ左上原点・Y下向きで、
-         * identity で元ページが正立する。よってセル配置 m も左上原点・Y下向きで計算する。 */
-        wri = fz_new_pdf_writer(ctx, output, "");
+        dst   = pdf_create_document(ctx);
+        gmap  = pdf_new_graft_map(ctx, dst);
+        xcache = fz_calloc(ctx, (size_t)page_count, sizeof(pdf_obj *));
 
         for (int s = 0; s < n_sheets; s++) {
-            fz_device *dev = fz_begin_page(ctx, wri, mediabox);
-            for (int c = 0; c < per; c++) {
-                int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
-                if (pno < 0 || pno >= page_count) continue;
-                int col = c % cols;
-                int row = c / cols;
-                float cx = margin + col * (cellW + gutter);
-                float cy = margin + row * (cellH + gutter);
+            fz_buffer *cbuf      = NULL;
+            pdf_obj   *sheet_res = NULL;
+            pdf_obj   *xdict     = NULL;
+            pdf_obj   *page_obj  = NULL;
+            fz_var(cbuf); fz_var(sheet_res); fz_var(xdict); fz_var(page_obj);
 
-                fz_page *sp = fz_load_page(ctx, doc, pno);
-                fz_var(sp);
-                fz_try(ctx) {
-                    fz_rect b = fz_bound_page(ctx, sp);
-                    float sw = b.x1 - b.x0;
-                    float sh = b.y1 - b.y0;
-                    if (sw > 0 && sh > 0) {
-                        float sx = cellW / sw, sy = cellH / sh;
-                        float scale = (sx < sy) ? sx : sy;
-                        float ox = cx + (cellW - sw * scale) * 0.5f;
-                        float oy = cy + (cellH - sh * scale) * 0.5f;
-                        fz_matrix m = fz_translate(-b.x0, -b.y0);
-                        m = fz_concat(m, fz_scale(scale, scale));
-                        m = fz_concat(m, fz_translate(ox, oy));
-                        fz_run_page(ctx, sp, dev, m, NULL);
-                    }
+            fz_try(ctx) {
+                cbuf      = fz_new_buffer(ctx, 256);
+                sheet_res = pdf_new_dict(ctx, dst, 1);
+                xdict     = pdf_new_dict(ctx, dst, per);
+                /* xdict の所有権は sheet_res に移す。以後 xdict ポインタは
+                 * sheet_res が生かしているので名前追加に使い続けられる。 */
+                pdf_dict_put_drop(ctx, sheet_res, PDF_NAME(XObject), xdict);
+
+                int placed = 0;
+                for (int c = 0; c < per; c++) {
+                    int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
+                    if (pno < 0 || pno >= page_count) continue;
+
+                    if (!xcache[pno])
+                        xcache[pno] = kozou_compose_page_to_xobject(ctx, src, dst, gmap, pno);
+                    pdf_obj *xobj = xcache[pno];
+
+                    fz_rect bb = pdf_to_rect(ctx, pdf_dict_get(ctx, xobj, PDF_NAME(BBox)));
+                    float bw = bb.x1 - bb.x0;
+                    float bh = bb.y1 - bb.y0;
+                    if (bw <= 0 || bh <= 0) continue;
+
+                    int   col = c % cols;
+                    int   row = c / cols;
+                    float cellX    = margin + col * (cellW + gutter);
+                    /* PDF は左下原点・Y上向き。row 0 を上端に配置する。 */
+                    float cellTopY = target_h - margin - row * (cellH + gutter);
+                    float cellBotY = cellTopY - cellH;
+
+                    float sx = cellW / bw, sy = cellH / bh;
+                    float scale = (sx < sy) ? sx : sy;
+                    float pw = bw * scale, ph = bh * scale;
+                    float offX = cellX    + (cellW - pw) * 0.5f;
+                    float offY = cellBotY + (cellH - ph) * 0.5f;
+                    /* XObject の BBox 左下(bb.x0,bb.y0) を (offX,offY) に合わせる */
+                    float e = offX - bb.x0 * scale;
+                    float f = offY - bb.y0 * scale;
+
+                    char nm[24];
+                    snprintf(nm, sizeof nm, "X%d", placed);
+                    pdf_dict_puts(ctx, xdict, nm, xobj); /* xobj の参照を保持 */
+
+                    fz_append_printf(ctx, cbuf,
+                        "q %g 0 0 %g %g %g cm /%s Do Q\n",
+                        scale, scale, e, f, nm);
+                    placed++;
                 }
-                fz_always(ctx) { fz_drop_page(ctx, sp); }
-                fz_catch(ctx) {
-                    fz_warn(ctx, "compose: skip page %d: %s",
-                            pno + 1, fz_caught_message(ctx));
-                }
+
+                page_obj = pdf_add_page(ctx, dst, mediabox, 0, sheet_res, cbuf);
+                pdf_insert_page(ctx, dst, -1, page_obj);
+                fprintf(stderr, "[compose] sheet %d/%d: placed %d cells, content=%zu bytes\n",
+                        s + 1, n_sheets, placed, fz_buffer_storage(ctx, cbuf, NULL));
             }
-            fz_end_page(ctx, wri);
+            fz_always(ctx) {
+                if (page_obj)  pdf_drop_obj(ctx, page_obj);
+                if (sheet_res) pdf_drop_obj(ctx, sheet_res);
+                if (cbuf)      fz_drop_buffer(ctx, cbuf);
+            }
+            fz_catch(ctx) { fz_rethrow(ctx); }
         }
 
-        fz_close_document_writer(ctx, wri);
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_garbage  = 2; /* 共有(graft)オブジェクトを重複排除 */
+        opts.do_compress = 1;
+        pdf_save_document(ctx, dst, output, &opts);
+
         set_ok(result);
     }
     fz_always(ctx) {
-        if (wri) fz_drop_document_writer(ctx, wri);
-        if (doc) fz_drop_document(ctx, doc);
+        if (xcache) {
+            for (int i = 0; i < page_count; i++)
+                if (xcache[i]) pdf_drop_obj(ctx, xcache[i]);
+            fz_free(ctx, xcache);
+        }
+        if (gmap) pdf_drop_graft_map(ctx, gmap);
+        if (dst)  pdf_drop_document(ctx, dst);
+        if (src)  pdf_drop_document(ctx, src);
     }
     fz_catch(ctx) {
         set_err(result, fz_caught_message(ctx));

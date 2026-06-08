@@ -81,7 +81,8 @@
     "blank_note": "* Page count is not a multiple of 4; blank pages are appended.",
     "preview": "Preview",
     "preview_loading": "Building preview…",
-    "preview_sheet": "Sheet {{n}}"
+    "preview_sheet": "Sheet {{n}}",
+    "preview_hint": "Press Preview to see the output layout"
   },
   "done": {
     "trim": "Trimming complete.",

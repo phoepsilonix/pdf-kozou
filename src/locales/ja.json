@@ -81,7 +81,8 @@
     "blank_note": "※ ページ数が4の倍数でないため、末尾に空白ページを補います。",
     "preview": "プレビュー",
     "preview_loading": "プレビュー生成中…",
-    "preview_sheet": "シート {{n}}"
+    "preview_sheet": "シート {{n}}",
+    "preview_hint": "「プレビュー」を押すと出力イメージが表示されます"
   },
   "done": {
     "trim": "トリミングが完了しました。",
