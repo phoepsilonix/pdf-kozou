@@ -422,7 +422,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   section: { display: "flex", flexDirection: "column", gap: 8 },
   label: { fontSize: 13, fontWeight: 600, color: "var(--c-textSub)" },
-  btnRow: { display: "flex", gap: 8, flexWrap: "wrap" },
+  btnRow: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    color: "var(--c-text)",
+    background: "var(--c-bg)",
+  },
   choice: {
     padding: "7px 16px",
     borderRadius: 8,
