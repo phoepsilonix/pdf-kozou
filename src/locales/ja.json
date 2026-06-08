@@ -60,11 +60,11 @@
     "viewer_desc": "PDFを確認・閲覧",
     "hidden": "隠しテキスト",
     "hidden_desc": "隠しテキスト検出・無害化",
-    "booklet": "ページサイズ変更・製本",
+    "booklet": "サイズ変更・製本",
     "booklet_desc": "n-up/見開き製本・サイズ変更"
   },
   "booklet": {
-    "title": "ページサイズ変更・製本",
+    "title": "サイズ変更・製本",
     "run": "作成",
     "processing": "面付け中…",
     "done": "面付けPDFを作成しました。",
