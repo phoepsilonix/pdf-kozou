@@ -24,7 +24,7 @@ type Props = {
   batchFiles?: FileEntry[];
 };
 
-type Orient = "portrait" | "landscape";
+type Orient = "auto" | "portrait" | "landscape";
 type Phase = "edit" | "processing" | "result" | "error";
 
 const MODES: { id: ImpositionMode; labelKey: string }[] = [
@@ -86,16 +86,39 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
   // モード変更時に向きの初期値を自動調整（2up/booklet は横、1up/4up は縦）
   const onModeChange = (m: ImpositionMode) => {
     setMode(m);
-    setOrient(m === "2up" || m === "booklet" ? "landscape" : "portrait");
+    setOrient((prev) =>
+      prev === "auto" ? "auto" : m === "2up" || m === "booklet" ? "landscape" : "portrait",
+    );
   };
-
-  const targetPt = useMemo(() => {
-    const base = PAGE_SIZE_PT[sizeId];
-    return orient === "landscape" ? { w: base.h, h: base.w } : { w: base.w, h: base.h };
-  }, [sizeId, orient]);
 
   const layout = useMemo(() => calcComposeLayout(mode, totalPages), [mode, totalPages]);
   const nSheets = layout.sheets.length;
+
+  // 自動向き判定: 元ページ群の代表アスペクト比（中央値）を使う。
+  const sourceAspect = useMemo(() => {
+    const aspects = (pdfInfo?.pages ?? [])
+      .map((p) => (p.w > 0 && p.h > 0 ? p.w / p.h : undefined))
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v) && v > 0);
+    if (!aspects.length) return undefined;
+    const sorted = [...aspects].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  }, [pdfInfo]);
+
+  const resolvedOrient = useMemo<Exclude<Orient, "auto">>(() => {
+    if (orient === "portrait" || orient === "landscape") return orient;
+    if (sourceAspect === undefined) {
+      return mode === "2up" || mode === "booklet" ? "landscape" : "portrait";
+    }
+    // 面付け時はシート比だけでなくセル比（= シート比 × rows/cols）で判定する。
+    const adjustedAspect = sourceAspect * (layout.cols / layout.rows);
+    return adjustedAspect > 1 ? "landscape" : "portrait";
+  }, [orient, sourceAspect, mode, layout.cols, layout.rows]);
+
+  const targetPt = useMemo(() => {
+    const base = PAGE_SIZE_PT[sizeId];
+    return resolvedOrient === "landscape" ? { w: base.h, h: base.w } : { w: base.w, h: base.h };
+  }, [sizeId, resolvedOrient]);
 
   const run = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
@@ -221,13 +244,19 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
                 ))}
               </div>
               <div style={{ ...s.btnRow, marginTop: 8 }}>
-                {(["portrait", "landscape"] as Orient[]).map((o) => (
+                {(["auto", "portrait", "landscape"] as Orient[]).map((o) => (
                   <button
                     key={o}
                     onClick={() => setOrient(o)}
                     style={{ ...s.choice, ...(orient === o ? s.choiceSel : {}) }}
                   >
-                    {t(o === "portrait" ? "pagesize.orient_portrait" : "pagesize.orient_landscape")}
+                    {t(
+                      o === "auto"
+                        ? "pagesize.orient_auto"
+                        : o === "portrait"
+                          ? "pagesize.orient_portrait"
+                          : "pagesize.orient_landscape",
+                    )}
                   </button>
                 ))}
               </div>
@@ -269,11 +298,18 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
                   src: String(totalPages),
                   cols: String(layout.cols),
                   rows: String(layout.rows),
-                  size: `${sizeId} ${t(
-                    orient === "portrait"
-                      ? "pagesize.orient_portrait"
-                      : "pagesize.orient_landscape",
-                  )}`,
+                  size:
+                    orient === "auto"
+                      ? `${sizeId} ${t("pagesize.orient_auto")}(${t(
+                          resolvedOrient === "portrait"
+                            ? "pagesize.orient_portrait"
+                            : "pagesize.orient_landscape",
+                        )})`
+                      : `${sizeId} ${t(
+                          resolvedOrient === "portrait"
+                            ? "pagesize.orient_portrait"
+                            : "pagesize.orient_landscape",
+                        )}`,
                   sheets: String(nSheets),
                 })}
               </div>
