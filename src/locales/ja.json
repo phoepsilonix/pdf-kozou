@@ -588,7 +588,9 @@
   },
   "home": {
     "tool_focus": "Alt+{{num}} {{name}}。{{desc}}。Enterで起動。",
-    "tool_focus_disabled": "Alt+{{num}} {{name}}。使用するにはファイルを選択してください。"
+    "tool_focus_disabled": "Alt+{{num}} {{name}}。使用するにはファイルを選択してください。",
+    "home_screen": "ホーム画面を表示",
+    "photo_only": "背景写真のみ表示"
   },
   "license": {
     "title": "About PDF小僧 (PDF Kozou)",

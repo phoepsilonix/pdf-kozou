@@ -124,6 +124,8 @@ export default function App() {
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const [toolFiles, setToolFiles] = useState<FileEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
+  const [photoOverlayHover, setPhotoOverlayHover] = useState(false);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemeId);
   const dragCounter = useRef(0);
   const [statusMsg, setStatusMsg] = useState("");
@@ -424,6 +426,34 @@ export default function App() {
     );
   }
 
+  const photoCreditBlock = THEMES[themeId].customBg && (
+    <div
+      style={{
+        padding: "6px 6px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-end",
+        gap: 3,
+        background: "rgba(0,0,0,0.6)",
+        borderRadius: 8,
+      }}
+    >
+      <span style={{ fontSize: "12px", color: "#fff", fontWeight: 700 }}>
+        {t(`theme.${themeId}`)}
+      </span>
+      {THEMES[themeId].customIconCredit && (
+        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+          {t("theme.icon")} © {THEMES[themeId].customIconYear} {THEMES[themeId].customIconCredit}
+        </span>
+      )}
+      {THEMES[themeId].customBgCredit && (
+        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+          {t("theme.bg")} © {THEMES[themeId].customBgYear} {THEMES[themeId].customBgCredit}
+        </span>
+      )}
+    </div>
+  );
+
   return (
     <div
       key={themeId}
@@ -441,21 +471,25 @@ export default function App() {
         }
       }}
     >
-      {/* 読み上げ・言語・テーマ選択 */}
-      <div
-        style={{
-          position: "absolute",
-          top: 16,
-          right: 20,
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          zIndex: 1,
-        }}
-      >
-        <A11yControls />
-        <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
-      </div>
+      {!photoOnlyMode && (
+        <>
+          {/* 読み上げ・言語・テーマ選択 */}
+          <div
+            style={{
+              position: "absolute",
+              top: 16,
+              right: 20,
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              zIndex: 1,
+            }}
+          >
+            <A11yControls />
+            <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
+          </div>
+        </>
+      )}
 
       {/* 募集テーマの背景画像（コンテンツエリアに薄く表示） */}
       {THEMES[themeId].customBg && (
@@ -473,291 +507,344 @@ export default function App() {
           }}
         />
       )}
-      <header style={s.header}>
-        {/* アプリ名エリア（常に不透明背景） */}
-        <div
-          style={{
-            width: "100%",
-            background: "var(--c-bg)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 12,
-            padding: "12px 8px 8px",
-            position: "relative",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img
-              src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
-              style={{ width: "48px", height: "48px", lineHeight: 2, gap: 6, borderRadius: 10 }}
-              alt="logo"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "/app-icon.svg";
-              }}
-            />
-            <span style={s.logo}>
-              PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-            </span>
-            {/* Aboutボタン */}
-            <button
-              onClick={() => setActiveTool("about")}
-              style={{
-                background: "var(--c-bgSub)",
-                border: "1px solid var(--c-border)",
-                borderRadius: "18px",
-                padding: "4px 4px",
-                fontSize: "12px",
-                color: "var(--c-textSub)",
-                cursor: "pointer",
-                marginTop: "24px",
-                lineHeight: 2,
-              }}
-            >
-              ℹ️ About
-            </button>
-          </div>
 
-          {(THEMES[themeId].customBg && (
+      {!photoOnlyMode && (
+        <>
+          <header style={s.header}>
+            {/* アプリ名エリア（常に不透明背景） */}
             <div
               style={{
+                width: "100%",
+                background: "var(--c-bg)",
                 display: "flex",
-                height: "60px",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 8px 8px",
+                position: "relative",
               }}
             >
-              <span style={{ ...s.tagline, position: "absolute", width: "70%", right: 0 }}>
-                v{pkg.version}
-              </span>
-              {/* 背景画像クレジット */}
-              {THEMES[themeId].customBg && (
-                <div
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <img
+                  src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
+                  style={{ width: "48px", height: "48px", lineHeight: 2, gap: 6, borderRadius: 10 }}
+                  alt="logo"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "/app-icon.svg";
+                  }}
+                />
+                <span style={s.logo}>
+                  PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
+                </span>
+                {/* Aboutボタン */}
+                <button
+                  onClick={() => setActiveTool("about")}
                   style={{
-                    position: "absolute",
-                    right: 0,
-                    width: "50%",
-                    height: "54px",
+                    background: "var(--c-bgSub)",
+                    border: "1px solid var(--c-border)",
+                    borderRadius: "18px",
+                    padding: "4px 4px",
+                    fontSize: "12px",
+                    color: "var(--c-textSub)",
+                    cursor: "pointer",
+                    marginTop: "24px",
+                    lineHeight: 2,
                   }}
                 >
-                  {/* クレジット表示（ヘッダー画像の右下） */}
-                  {
+                  ℹ️ About
+                </button>
+              </div>
+
+              {(THEMES[themeId].customBg && (
+                <div
+                  style={{
+                    display: "flex",
+                    height: "60px",
+                  }}
+                >
+                  <span style={{ ...s.tagline, position: "absolute", width: "70%", right: 0 }}>
+                    v{pkg.version}
+                  </span>
+                  {/* 背景画像クレジット */}
+                  {THEMES[themeId].customBg && (
                     <div
                       style={{
-                        position: "relative",
-                        right: "6px",
-                        bottom: "6px",
-                        padding: "6px 6px",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "flex-end",
-                        gap: 3,
-                        background: "rgba(0,0,0,0.45)",
-                        borderRadius: 8,
+                        position: "absolute",
+                        right: 0,
+                        width: "50%",
+                        height: "54px",
                       }}
                     >
-                      <span style={{ fontSize: "12px", color: "#fff", fontWeight: 700 }}>
-                        {t(`theme.${themeId}`)}
-                      </span>
-                      {THEMES[themeId].customIconCredit && (
-                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
-                          {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
-                          {THEMES[themeId].customIconCreditURL ? (
-                            <span
-                              onClick={async (e) => {
-                                e.stopPropagation(); // 親要素へのイベント伝播を止める
-                                await copyToClipboard(THEMES[themeId].customIconCreditURL || "");
-                              }}
-                              style={{
-                                color: "inherit",
-                                textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
-                                display: "inline-block", // クリック領域を確保
-                                position: "relative", // 重なり順を安定させる
-                                cursor: "pointer",
-                              }}
-                              title={THEMES[themeId].customIconCreditURL} // マウスホバーで説明を出す
-                            >
-                              {THEMES[themeId].customIconCredit}
+                      {/* クレジット表示（ヘッダー画像の右下） */}
+                      {
+                        <div
+                          style={{
+                            position: "relative",
+                            right: "6px",
+                            bottom: "6px",
+                            padding: "6px 6px",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: 3,
+                            background: "rgba(0,0,0,0.45)",
+                            borderRadius: 8,
+                          }}
+                        >
+                          <span style={{ fontSize: "12px", color: "#fff", fontWeight: 700 }}>
+                            {t(`theme.${themeId}`)}
+                          </span>
+                          {THEMES[themeId].customIconCredit && (
+                            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+                              {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
+                              {THEMES[themeId].customIconCreditURL ? (
+                                <span
+                                  onClick={async (e) => {
+                                    e.stopPropagation(); // 親要素へのイベント伝播を止める
+                                    await copyToClipboard(
+                                      THEMES[themeId].customIconCreditURL || "",
+                                    );
+                                  }}
+                                  style={{
+                                    color: "inherit",
+                                    textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
+                                    display: "inline-block", // クリック領域を確保
+                                    position: "relative", // 重なり順を安定させる
+                                    cursor: "pointer",
+                                  }}
+                                  title={THEMES[themeId].customIconCreditURL} // マウスホバーで説明を出す
+                                >
+                                  {THEMES[themeId].customIconCredit}
+                                </span>
+                              ) : (
+                                THEMES[themeId].customIconCredit
+                              )}
                             </span>
-                          ) : (
-                            THEMES[themeId].customIconCredit
                           )}
-                        </span>
-                      )}
 
-                      {THEMES[themeId].customBgCredit && (
-                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
-                          {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
-                          {THEMES[themeId].customBgCreditURL ? (
-                            <span
-                              onClick={async (e) => {
-                                e.stopPropagation(); // 親要素へのイベント伝播を止める
-                                await copyToClipboard(THEMES[themeId].customBgCreditURL || "");
-                              }}
-                              style={{
-                                color: "inherit",
-                                textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
-                                display: "inline-block", // クリック領域を確保
-                                position: "relative", // 重なり順を安定させる
-                                cursor: "pointer",
-                              }}
-                              title={THEMES[themeId].customBgCreditURL} // マウスホバーで説明を出す
-                            >
-                              {THEMES[themeId].customBgCredit}
+                          {THEMES[themeId].customBgCredit && (
+                            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+                              {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
+                              {THEMES[themeId].customBgCreditURL ? (
+                                <span
+                                  onClick={async (e) => {
+                                    e.stopPropagation(); // 親要素へのイベント伝播を止める
+                                    await copyToClipboard(THEMES[themeId].customBgCreditURL || "");
+                                  }}
+                                  style={{
+                                    color: "inherit",
+                                    textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
+                                    display: "inline-block", // クリック領域を確保
+                                    position: "relative", // 重なり順を安定させる
+                                    cursor: "pointer",
+                                  }}
+                                  title={THEMES[themeId].customBgCreditURL} // マウスホバーで説明を出す
+                                >
+                                  {THEMES[themeId].customBgCredit}
+                                </span>
+                              ) : (
+                                THEMES[themeId].customBgCredit
+                              )}
                             </span>
-                          ) : (
-                            THEMES[themeId].customBgCredit
                           )}
-                        </span>
-                      )}
+                        </div>
+                      }
                     </div>
-                  }
+                  )}
                 </div>
-              )}
+              )) || <span style={{ ...s.tagline, position: "relative" }}>v{pkg.version}</span>}
+              <span style={{ ...s.tagline }}>{t("app.tagline")}</span>
             </div>
-          )) || <span style={{ ...s.tagline, position: "relative" }}>v{pkg.version}</span>}
-          <span style={{ ...s.tagline }}>{t("app.tagline")}</span>
-        </div>
-      </header>
-
-      {fileList.length > 0 && (
-        <div style={s.toolBar}>
-          {TOOLS.map((tool) => {
-            const enabled =
-              selCount >= tool.minFiles && (tool.maxFiles == null || selCount <= tool.maxFiles);
-            return (
-              <button
-                key={tool.id}
-                style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
-                onClick={() => enabled && handleLaunchTool(tool.id)}
-                disabled={!enabled}
-                aria-label={`Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1} ${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
-                onFocus={() => {
-                  const num = TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1;
-                  const msg = enabled
-                    ? t("home.tool_focus", { num: String(num), name: tool.label, desc: tool.desc })
-                    : t("home.tool_focus_disabled", { num: String(num), name: tool.label });
-                  tts.speak(msg);
-                }}
-              >
-                <span style={s.toolIcon}>{tool.icon}</span>
-                <span style={s.toolLabel}>{tool.label}</span>
-                <span style={s.toolDesc}>
-                  {selCount > 1 && !["merge", "viewer"].includes(tool.id)
-                    ? `${selCount}${t("file.batch_suffix")}`
-                    : tool.desc}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+          </header>
+        </>
       )}
 
-      <div style={s.listCard}>
-        {fileList.length === 0 ? (
-          <div style={s.emptyZone}>
-            {/*            <span style={s.emptyIcon}>⊕</span>
+      {!photoOnlyMode && (
+        <>
+          {fileList.length > 0 && (
+            <div style={s.toolBar}>
+              {TOOLS.map((tool) => {
+                const enabled =
+                  selCount >= tool.minFiles && (tool.maxFiles == null || selCount <= tool.maxFiles);
+                return (
+                  <button
+                    key={tool.id}
+                    style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
+                    onClick={() => enabled && handleLaunchTool(tool.id)}
+                    disabled={!enabled}
+                    aria-label={`Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1} ${tool.label}: ${tool.desc}${!enabled ? ` (${t("app.select_prompt")})` : ""}`}
+                    onFocus={() => {
+                      const num = TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1;
+                      const msg = enabled
+                        ? t("home.tool_focus", {
+                            num: String(num),
+                            name: tool.label,
+                            desc: tool.desc,
+                          })
+                        : t("home.tool_focus_disabled", { num: String(num), name: tool.label });
+                      tts.speak(msg);
+                    }}
+                  >
+                    <span style={s.toolIcon}>{tool.icon}</span>
+                    <span style={s.toolLabel}>{tool.label}</span>
+                    <span style={s.toolDesc}>
+                      {selCount > 1 && !["merge", "viewer"].includes(tool.id)
+                        ? `${selCount}${t("file.batch_suffix")}`
+                        : tool.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={s.listCard}>
+            {fileList.length === 0 ? (
+              <div style={s.emptyZone}>
+                {/*            <span style={s.emptyIcon}>⊕</span>
             <span style={s.emptyTitle}>PDFをドロップ、または追加</span>
             <span style={s.emptySub}>複数ファイルを一度に追加できます</span>*/}
-            <button
-              style={s.btnAddBig}
-              onClick={handlePickFiles}
-              aria-label={t("app.select_file_hint")}
-              onFocus={() => tts.speak(t("app.select_file_hint"))}
-            >
-              {t("app.select_file")}
-            </button>
+                <button
+                  style={s.btnAddBig}
+                  onClick={handlePickFiles}
+                  aria-label={t("app.select_file_hint")}
+                  onFocus={() => tts.speak(t("app.select_file_hint"))}
+                >
+                  {t("app.select_file")}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={s.fileRows}>
+                  {fileList.map((f, i) => (
+                    <FileRow
+                      key={f.id}
+                      entry={f}
+                      index={i}
+                      onToggle={() => toggleSelect(f.id)}
+                      onRemove={() => removeFile(f.id)}
+                      onDragReorder={reorderFiles}
+                    />
+                  ))}
+                </div>
+                <div style={s.listFooter}>
+                  <button style={s.btnAdd} onClick={handlePickFiles}>
+                    {t("file.add")}
+                  </button>
+                  <button style={s.btnSm} onClick={selectAll}>
+                    {t("file.select_all")}
+                  </button>
+                  <button style={s.btnSm} onClick={selectNone}>
+                    {t("file.deselect")}
+                  </button>
+                  <div style={{ flex: 1 }} />
+                  <button style={s.btnClear} onClick={clearList}>
+                    {t("file.clear")}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        ) : (
-          <>
-            <div style={s.fileRows}>
-              {fileList.map((f, i) => (
-                <FileRow
-                  key={f.id}
-                  entry={f}
-                  index={i}
-                  onToggle={() => toggleSelect(f.id)}
-                  onRemove={() => removeFile(f.id)}
-                  onDragReorder={reorderFiles}
-                />
-              ))}
-            </div>
-            <div style={s.listFooter}>
-              <button style={s.btnAdd} onClick={handlePickFiles}>
-                {t("file.add")}
-              </button>
-              <button style={s.btnSm} onClick={selectAll}>
-                {t("file.select_all")}
-              </button>
-              <button style={s.btnSm} onClick={selectNone}>
-                {t("file.deselect")}
-              </button>
-              <div style={{ flex: 1 }} />
-              <button style={s.btnClear} onClick={clearList}>
-                {t("file.clear")}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
 
-      {fileList.length > 0 && (
-        <div style={s.summary}>
-          {selCount > 0 ? (
-            <>
-              <span style={s.sumSel}>{t("file.sel_count", { count: String(selCount) })}</span>
-              <span style={s.sumDot}>·</span>
-              <span style={s.sumInfo}>{t("file.sel_pages", { pages: String(selPages) })}</span>
-              {selBytes > 0 && (
+          {fileList.length > 0 && (
+            <div style={s.summary}>
+              {selCount > 0 ? (
                 <>
+                  <span style={s.sumSel}>{t("file.sel_count", { count: String(selCount) })}</span>
                   <span style={s.sumDot}>·</span>
-                  <span style={s.sumInfo}>{(selBytes / 1048576).toFixed(1)} MB</span>
+                  <span style={s.sumInfo}>{t("file.sel_pages", { pages: String(selPages) })}</span>
+                  {selBytes > 0 && (
+                    <>
+                      <span style={s.sumDot}>·</span>
+                      <span style={s.sumInfo}>{(selBytes / 1048576).toFixed(1)} MB</span>
+                    </>
+                  )}
                 </>
+              ) : (
+                <span style={s.sumNone}>{t("app.no_file_hint")}</span>
               )}
-            </>
-          ) : (
-            <span style={s.sumNone}>{t("app.no_file_hint")}</span>
+            </div>
           )}
-        </div>
-      )}
 
-      {/* 非 PDF が含まれる場合にレイアウト設定パネルを表示 */}
-      {hasNonPdf(fileList.map((f) => f.filename)) && (
-        <div style={{ padding: "0 12px" }}>
-          <ConvertOptionsPanel
-            options={{
-              layoutW: convertLayoutW,
-              layoutH: convertLayoutH,
-              layoutEm: convertLayoutEm,
-            }}
-            onChange={async (opts) => {
-              const w = opts.layoutW ?? 450;
-              const h = opts.layoutH ?? 600;
-              const em = opts.layoutEm ?? 12;
-              setConvertLayout(w, h, em);
-              // レイアウト変更後、非 PDF ファイルのページ数を再取得
-              const nonPdfFiles = fileList.filter(
-                (f) => !f.filename.toLowerCase().endsWith(".pdf"),
-              );
-              for (const f of nonPdfFiles) {
-                try {
-                  const info = await getPdfInfo(f.path, { layoutW: w, layoutH: h, layoutEm: em });
-                  updatePageCount(f.path, info.page_count);
-                  // 現在アクティブなファイルの pdfInfo も更新する
-                  if (f.path === filePath) {
-                    setFile(f.path, info);
+          {/* 非 PDF が含まれる場合にレイアウト設定パネルを表示 */}
+          {hasNonPdf(fileList.map((f) => f.filename)) && (
+            <div style={{ padding: "0 12px" }}>
+              <ConvertOptionsPanel
+                options={{
+                  layoutW: convertLayoutW,
+                  layoutH: convertLayoutH,
+                  layoutEm: convertLayoutEm,
+                }}
+                onChange={async (opts) => {
+                  const w = opts.layoutW ?? 450;
+                  const h = opts.layoutH ?? 600;
+                  const em = opts.layoutEm ?? 12;
+                  setConvertLayout(w, h, em);
+                  // レイアウト変更後、非 PDF ファイルのページ数を再取得
+                  const nonPdfFiles = fileList.filter(
+                    (f) => !f.filename.toLowerCase().endsWith(".pdf"),
+                  );
+                  for (const f of nonPdfFiles) {
+                    try {
+                      const info = await getPdfInfo(f.path, {
+                        layoutW: w,
+                        layoutH: h,
+                        layoutEm: em,
+                      });
+                      updatePageCount(f.path, info.page_count);
+                      // 現在アクティブなファイルの pdfInfo も更新する
+                      if (f.path === filePath) {
+                        setFile(f.path, info);
+                      }
+                    } catch {
+                      /* 失敗は無視 */
+                    }
                   }
-                } catch {
-                  /* 失敗は無視 */
-                }
-              }
-            }}
-          />
-        </div>
+                }}
+              />
+            </div>
+          )}
+
+          {/* 画像が含まれる場合に標準ページサイズ設定を表示 */}
+          {hasImage(fileList.map((f) => f.filename)) && (
+            <div style={{ padding: "8px 12px" }}>
+              <PageSizeSelector />
+            </div>
+          )}
+        </>
       )}
 
-      {/* 画像が含まれる場合に標準ページサイズ設定を表示 */}
-      {hasImage(fileList.map((f) => f.filename)) && (
-        <div style={{ padding: "8px 12px" }}>
-          <PageSizeSelector />
+      {THEMES[themeId].customBg && (
+        <div
+          onMouseEnter={() => setPhotoOverlayHover(true)}
+          onMouseLeave={() => setPhotoOverlayHover(false)}
+          style={{
+            position: "fixed",
+            right: 18,
+            bottom: 18,
+            zIndex: 6000,
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 10,
+            opacity: photoOverlayHover ? 1 : 0.3,
+            transition: "all 0.2s",
+          }}
+        >
+          <div
+            style={{
+              opacity: photoOverlayHover ? 1 : 0,
+            }}
+          >
+            {photoOnlyMode && photoCreditBlock}
+          </div>
+          <button
+            title={photoOnlyMode ? t("home.home_screen") : t("home.photo_only")}
+            onClick={() => setPhotoOnlyMode((v) => !v)}
+            className={photoOnlyMode ? "sh.BgBtn sh.BgBtnSubtle" : "sh.BgBtn sh.BgBtnSolid"}
+            aria-pressed={photoOnlyMode}
+          >
+            👁
+          </button>
         </div>
       )}
 
@@ -1356,5 +1443,21 @@ const sh: Record<string, React.CSSProperties> = {
     fontFamily: F,
     fontSize: 12,
     flexShrink: 0,
+  },
+  BgBtn: {
+    fontSize: "24px",
+    border: "none",
+    borderRadius: "50%",
+    width: "48px",
+    height: "48px",
+    cursor: "pointer",
+  },
+  BgBtnSubtle: {
+    background: "rgba(0, 0, 0, 0.2)",
+    color: "rgba(255, 255, 255, 0.45)",
+  },
+  BgBtnSolid: {
+    background: "rgba(0, 0, 0, 0.45)",
+    color: "rgba(255, 255, 255, 1)",
   },
 };

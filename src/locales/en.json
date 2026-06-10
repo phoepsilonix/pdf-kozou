@@ -588,7 +588,9 @@
   },
   "home": {
     "tool_focus": "Alt+{{num}} {{name}}. {{desc}}. Press Enter to launch.",
-    "tool_focus_disabled": "Alt+{{num}} {{name}}. Please select a file first."
+    "tool_focus_disabled": "Alt+{{num}} {{name}}. Please select a file first.",
+    "home_screen": "Display the home screen.",
+    "photo_only": "Display only the background image."
   },
   "license": {
     "title": "About PDF Kozou",
