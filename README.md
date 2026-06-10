@@ -232,7 +232,7 @@ pdf-kozou
 | `Alt+R`            | ページ範囲入力にフォーカス / Focus page range input (R = Range)                       |
 | `Alt+M`            | 余白入力にフォーカス（TrimPage のみ）/ Focus margin input (M = Margin, TrimPage only) |
 | `Escape`           | 結果 → 設定 / 設定 → ホーム / Result → settings / settings → home                     |
-| `Alt+1` 〜 `Alt+7` | 別のツールに切り替え / Switch to another tool                                         |
+| `Alt+1` 〜 `Alt+9` | 別のツールに切り替え / Switch to another tool                                         |
 
 ### ビューワー / Viewer
 

@@ -1083,7 +1083,7 @@ pub fn rasterize_with_quality(
             object_stream: false,
         },
         warning: Some(format!(
-            "ラスタライズ: {dpi}dpi 画像PDFに変換。テキスト選択・検索・コピー不可。"
+            "ラスタライズ: {dpi}dpi 画像化PDFに変換。テキスト選択・検索・コピー不可。"
         )),
     })
 }
