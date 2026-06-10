@@ -1106,7 +1106,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               }}
             >
               <span style={s.fmtName}>{t("image.mode_pdf")}</span>
-              <span style={s.fmtDesc}>{t("image.mode_pdf_sub")}</span>
+              <span style={s.fmtDesc}>{t("image.mode_pdf_sub_1")}</span>
+              <span style={s.fmtDesc}>{t("image.mode_pdf_sub_2")}</span>
             </button>
           </div>
 
