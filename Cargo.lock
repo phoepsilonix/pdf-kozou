@@ -2683,7 +2683,7 @@ dependencies = [
 [[package]]
 name = "mupdf"
 version = "0.7.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=c7d93e7a5c95dfea98ee797f3134f01abfc8a292#c7d93e7a5c95dfea98ee797f3134f01abfc8a292"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00#1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00"
 dependencies = [
  "bitflags 2.13.0",
  "font-kit",
@@ -2696,7 +2696,7 @@ dependencies = [
 [[package]]
 name = "mupdf-sys"
 version = "0.7.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=c7d93e7a5c95dfea98ee797f3134f01abfc8a292#c7d93e7a5c95dfea98ee797f3134f01abfc8a292"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00#1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00"
 dependencies = [
  "bindgen",
  "cc",
