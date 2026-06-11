@@ -73,6 +73,22 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
 
+      - name: Restore Cache (復元のみ)
+        uses: actions/cache/restore@v5
+        id: cache-restore
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-v1-
+            ${{ runner.os }}-rust-
+            v0-rust-pdf-kozou-v1-${{ runner.os }}
+
 #      - name: Cache Rust target
 #        uses: actions/cache@v5
 #        with:
@@ -90,13 +106,13 @@ jobs:
 #            ${{ runner.os }}-rust-
 #            v0-rust-pdf-kozou-v1-${{ runner.os }}
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@c106961feec855ef5a58494c5a2a31c9d80429a9
-        with:
-          add-job-id-key: false
-          shared-key: pdf-kozou-v1
-          prefix-key: v0-rust
-          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+      #- name: Rust cache
+      #  uses: Swatinem/rust-cache@c106961feec855ef5a58494c5a2a31c9d80429a9
+      #  with:
+      #    add-job-id-key: false
+      #    shared-key: pdf-kozou-v1
+      #    prefix-key: v0-rust
+      #    save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
 
       #- uses: denoland/setup-deno@v2
       #  with:
@@ -229,6 +245,18 @@ jobs:
             target/release/bundle/7z/*.7z
             #target/release/bundle/tbz/*.tar.bz2
             #target/release/bundle/zip/*.zip
+
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
   # ===========================================================================
   # Windows x86_64
@@ -436,8 +464,6 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-
-
 
   publish-release:
     runs-on: ubuntu-latest
