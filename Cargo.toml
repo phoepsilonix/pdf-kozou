@@ -20,8 +20,8 @@ tracing    = "0.1"
 lopdf      = "0.40"
 
 [patch.crates-io]
-mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "43d89c2d5adaef3f99e99d2cabf365dd56b12cb7" }
-mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "43d89c2d5adaef3f99e99d2cabf365dd56b12cb7" }
+mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "c7d93e7a5c95dfea98ee797f3134f01abfc8a292" }
+mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "c7d93e7a5c95dfea98ee797f3134f01abfc8a292" }
 
 [profile.release]
 strip = "symbols"
