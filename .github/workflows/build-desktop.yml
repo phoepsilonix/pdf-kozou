@@ -251,6 +251,22 @@ jobs:
           targets: x86_64-pc-windows-gnu
           #targets: x86_64-pc-windows-msvc
 
+      - name: Restore Cache (復元のみ)
+        uses: actions/cache/restore@v5
+        id: cache-restore
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-v1-
+            ${{ runner.os }}-rust-
+            v0-rust-pdf-kozou-v1-${{ runner.os }}
+
 #      - name: Cache Rust target
 #        uses: actions/cache@v5
 #        with:
@@ -267,14 +283,15 @@ jobs:
 #            ${{ runner.os }}-rust-v1-
 #            ${{ runner.os }}-rust-
 #            v0-rust-pdf-kozou-v1-${{ runner.os }}
+#          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@c106961feec855ef5a58494c5a2a31c9d80429a9
-        with:
-          add-job-id-key: false
-          shared-key: pdf-kozou-v1
-          prefix-key: v0-rust
-          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+#      - name: Rust cache
+#        uses: Swatinem/rust-cache@v2
+#        with:
+#          add-job-id-key: false
+#          shared-key: pdf-kozou-v1
+#          prefix-key: v0-rust
+#          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
 
       - name: Locate MSVC and Set Safe Path
         shell: pwsh
@@ -407,6 +424,20 @@ jobs:
             target/release/bundle/nsis/*.exe
             target/release/bundle/msi/*.msi
             target/release/bundle/msi/*.msix
+
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
+
 
   publish-release:
     runs-on: ubuntu-latest
