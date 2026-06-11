@@ -74,7 +74,7 @@ jobs:
           targets: x86_64-unknown-linux-gnu
 
 #      - name: Cache Rust target
-#        uses: actions/cache@v4
+#        uses: actions/cache@v5
 #        with:
 #          path: |
 #            ~/.cargo/bin/
@@ -113,7 +113,7 @@ jobs:
 
       - name: Restore npm cache
         id: npm-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -124,7 +124,7 @@ jobs:
         run: npm ci
 
       - name: Save npm cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ~/.npm
@@ -249,7 +249,7 @@ jobs:
           #targets: x86_64-pc-windows-msvc
 
 #      - name: Cache Rust target
-#        uses: actions/cache@v4
+#        uses: actions/cache@v5
 #        with:
 #          path: |
 #            ~/.cargo/bin/
@@ -312,7 +312,7 @@ jobs:
 
       - name: Restore npm cache
         id: npm-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -327,7 +327,7 @@ jobs:
         run: npm ci
 
       - name: Save npm cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
