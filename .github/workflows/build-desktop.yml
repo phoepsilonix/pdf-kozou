@@ -268,8 +268,9 @@ jobs:
 #            ${{ runner.os }}-rust-
 #            v0-rust-pdf-kozou-v1-${{ runner.os }}
 
+        #uses: Swatinem/rust-cache@v2
       - name: Rust cache
-        uses: Swatinem/rust-cache@c106961feec855ef5a58494c5a2a31c9d80429a9
+        uses: Swatinem/rust-cache@be9aa033ee35baa2014c83f82543175ce65f0594
         with:
           add-job-id-key: false
           shared-key: pdf-kozou-v1
