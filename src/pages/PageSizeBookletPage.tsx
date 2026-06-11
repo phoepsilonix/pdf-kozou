@@ -6,7 +6,7 @@
 //   - 各元ページを出力ページ上に再生するためテキスト/ベクターを保持（ラスタ化しない）。
 //   - 例: A4×4 → A3×2(見開き製本)
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useI18n } from "../lib/i18n";
@@ -15,6 +15,7 @@ import { composeImpositionPdf, renderPage, type PdfInfo } from "../lib/tauri";
 import type { FileEntry } from "../store/usePdfStore";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
+import { PageOrientation } from "../lib/pageSize";
 import { PageHeader, BtnPrimary, Spinner, ErrorView } from "../components/common";
 import { F } from "../lib/theme";
 
@@ -42,9 +43,20 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
   const { t } = useI18n();
   const { announceSuccess, announceError } = useA11y();
 
-  const [mode, setMode] = useState<ImpositionMode>("booklet");
-  const [sizeId, setSizeId] = useState<Exclude<PageSizeId, "image">>("A3");
-  const [orient, setOrient] = useState<Orient>("landscape");
+  const {
+    pageSizeId,
+    pageOrientation,
+    impositionMode,
+    setPageSize,
+    setImpositionMode,
+    setOrientation,
+    autoDetectOrientation,
+  } = usePdfStore();
+
+  const [mode, setMode] = useState<ImpositionMode>(impositionMode);
+  const [sizeId, setSizeId] = useState<Exclude<PageSizeId, "image">>(pageSizeId as any);
+  const [orient, setOrient] = useState<Orient>(pageOrientation);
+
   const [gutter, setGutter] = useState(0);
   const [margin, setMargin] = useState(0);
   const [phase, setPhase] = useState<Phase>("edit");
@@ -83,12 +95,37 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
     }
   }, [filePath, totalPages, convertLayoutW, convertLayoutH, convertLayoutEm]);
 
+  // 初期ロード時に自動判定
+  useEffect(() => {
+    if (impositionMode !== mode) {
+      setMode(mode);
+      setImpositionMode(mode);
+    }
+  }, [impositionMode]);
+
   // モード変更時に向きの初期値を自動調整（2up/booklet は横、1up/4up は縦）
   const onModeChange = (m: ImpositionMode) => {
     setMode(m);
+    setImpositionMode(m);
     setOrient((prev) =>
       prev === "auto" ? "auto" : m === "2up" || m === "booklet" ? "landscape" : "portrait",
     );
+    setOrientation(
+      pageOrientation === "auto"
+        ? "auto"
+        : m === "2up" || m === "booklet"
+          ? "landscape"
+          : "portrait",
+    );
+  };
+  const onPageSizeChange = (id: Exclude<PageSizeId, "image">) => {
+    setSizeId(id);
+    setPageSize(id, orient);
+  };
+
+  const onOrientChange = (o: Orient) => {
+    setOrient(o);
+    setOrientation(o);
   };
 
   const layout = useMemo(() => calcComposeLayout(mode, totalPages), [mode, totalPages]);
@@ -236,7 +273,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
                 {SIZE_IDS.map((id) => (
                   <button
                     key={id}
-                    onClick={() => setSizeId(id)}
+                    onClick={() => onPageSizeChange(id)}
                     style={{ ...s.choice, ...(sizeId === id ? s.choiceSel : {}) }}
                   >
                     {id}
@@ -247,7 +284,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
                 {(["auto", "portrait", "landscape"] as Orient[]).map((o) => (
                   <button
                     key={o}
-                    onClick={() => setOrient(o)}
+                    onClick={() => onOrientChange(o)}
                     style={{ ...s.choice, ...(orient === o ? s.choiceSel : {}) }}
                   >
                     {t(

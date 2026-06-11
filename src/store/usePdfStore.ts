@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PdfInfo, TrimMargins } from "../lib/tauri";
 
+export type ImpositionMode = "1up" | "2up" | "4up" | "booklet";
+
 export interface FileEntry {
   id: number;
   path: string;
@@ -67,16 +69,20 @@ interface PdfStore {
   // PDF入力など既にサイズが確定しているものには適用しない。
   pageSizeId: import("../lib/pageSize").PageSizeId;
   pageOrientation: import("../lib/pageSize").PageOrientation;
+  impositionMode: ImpositionMode;
   setPageSize: (
     id: import("../lib/pageSize").PageSizeId,
     orientation: import("../lib/pageSize").PageOrientation,
   ) => void;
+  setImpositionMode: (mode: ImpositionMode) => void;
+  setOrientation: (orientation: import("../lib/pageSize").PageOrientation) => void;
   /// 特定ファイルのページ数を更新（レイアウト変更後に呼ぶ）
   updatePageCount: (path: string, pageCount: number) => void;
 
   /// 機能ごとのプレビュー表示フラグ（未設定 = true 扱い）
   previewEnabled: Record<string, boolean>;
   setPreviewEnabled: (page: string, enabled: boolean) => void;
+  autoDetectOrientation: (info: PdfInfo | FileEntry[] | null) => "portrait" | "landscape";
 }
 
 export const usePdfStore = create<PdfStore>()(
@@ -151,7 +157,18 @@ export const usePdfStore = create<PdfStore>()(
 
       pageSizeId: "A4",
       pageOrientation: "auto",
-      setPageSize: (id, orientation) => set({ pageSizeId: id, pageOrientation: orientation }),
+      impositionMode: "1up",
+      setPageSize: (id, orientation) => {
+        set((state) => {
+          return {
+            pageSizeId: id,
+            pageOrientation: orientation,
+          };
+        });
+      },
+      setImpositionMode: (mode) => set({ impositionMode: mode }),
+      setOrientation: (orientation) => set({ pageOrientation: orientation }),
+
       updatePageCount: (path, pageCount) =>
         set((s) => ({
           fileList: s.fileList.map((f) => (f.path === path ? { ...f, pageCount } : f)),
@@ -160,6 +177,24 @@ export const usePdfStore = create<PdfStore>()(
       previewEnabled: {},
       setPreviewEnabled: (page, enabled) =>
         set((s) => ({ previewEnabled: { ...s.previewEnabled, [page]: enabled } })),
+      // 自動向き判定
+      autoDetectOrientation: (input) => {
+        let aspects: number[] = [];
+        if (Array.isArray(input)) {
+          input.forEach((f) => {
+            if (f.pageCount && f.pageCount > 0) aspects.push(1.0); // 簡易
+          });
+        } else if (input && "pages" in input) {
+          (input as PdfInfo).pages.forEach((p) => {
+            const w = p.rotate === 90 || p.rotate === 270 ? p.h : p.w;
+            const h = p.rotate === 90 || p.rotate === 270 ? p.w : p.h;
+            aspects.push(w / h);
+          });
+        }
+        if (aspects.length === 0) return "portrait";
+        const median = aspects.sort((a, b) => a - b)[Math.floor(aspects.length / 2)];
+        return median > 1.05 ? "landscape" : "portrait";
+      },
     }),
     {
       name: "pdf-kozou-storage",
@@ -172,6 +207,7 @@ export const usePdfStore = create<PdfStore>()(
         convertLayoutEm: state.convertLayoutEm,
         pageSizeId: state.pageSizeId,
         pageOrientation: state.pageOrientation,
+        impositionMode: state.impositionMode,
         previewEnabled: state.previewEnabled,
       }),
     },
