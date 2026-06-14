@@ -13,7 +13,7 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
-    target: ["es2021", "chrome105", "safari13"],
+    target: ["es2022"],
     minify: "esbuild",
     sourcemap: !!process.env.TAURI_DEBUG,
     cssMinify: true,
@@ -43,8 +43,7 @@ export default defineConfig({
   },
   esbuild: {
     supported: {
-      destructuring: true, // これが重要
-      "top-level-await": true, // 必要なら追加
+      destructuring: true,
     },
   },
 });
