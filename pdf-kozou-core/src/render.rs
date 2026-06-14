@@ -330,7 +330,7 @@ fn build_exif_payload(
     // PDF 形式: "D:YYYYMMDDHHmmSS"
     // ISO 8601: "YYYY-MM-DDTHH:MM:SSZ" （DOCX core.xml の dcterms:created）
     let to_exif_date = |s: &str| -> Vec<u8> {
-        let s = if s.starts_with("D:") { &s[2..] } else { s };
+        let s = s.strip_prefix("D:").unwrap_or(s);
         // すでに EXIF 形式 "YYYY:MM:DD HH:MM:SS" ならそのまま使う
         let date = if s.len() >= 19
             && s.chars().nth(4) == Some(':')
@@ -345,7 +345,7 @@ fn build_exif_payload(
             let time_part = if parts.len() > 1 {
                 // タイムゾーン記号より前の時刻本体のみ取る
                 let t = parts[1];
-                let time_body = if let Some(pos) = t.find(|c| c == '+' || c == '-' || c == 'Z') {
+                let time_body = if let Some(pos) = t.find(['+', '-', 'Z']) {
                     &t[..pos]
                 } else {
                     t
@@ -412,18 +412,16 @@ fn build_exif_payload(
     }
 
     // 0x8298 Copyright ← Author（ASCII のみ）
-    if let Some(v) = artist {
-        if v.is_ascii() {
+    if let Some(v) = artist
+        && v.is_ascii() {
             ifd0_tags.push((0x8298, TYPE_ASCII, to_ascii(v)));
         }
-    }
 
     // 0x0131 Software ← Creator（ASCII のみ）
-    if let Some(v) = software {
-        if v.is_ascii() {
+    if let Some(v) = software
+        && v.is_ascii() {
             ifd0_tags.push((0x0131, TYPE_ASCII, to_ascii(v)));
         }
-    }
 
     // 0x0132 DateTime (ASCII) ← ModDate
     if let Some(v) = mod_date {
@@ -544,11 +542,10 @@ fn build_exif_payload(
     let value_area_start = exif_sub_start + exif_sub_size;
 
     // IFD0 の ExifIFD ポインタを正しいオフセットで上書き
-    if has_exif_sub {
-        if let Some(entry) = ifd0_tags.iter_mut().find(|(tag, _, _)| *tag == 0x8769) {
+    if has_exif_sub
+        && let Some(entry) = ifd0_tags.iter_mut().find(|(tag, _, _)| *tag == 0x8769) {
             entry.2 = exif_sub_start.to_le_bytes().to_vec();
         }
-    }
 
     // ── IFD0 エントリを組み立て ────────────────────────────────────────────
     let mut value_area: Vec<u8> = Vec::new();
@@ -934,20 +931,30 @@ pub fn embed_metadata_svg(svg: String, metadata: &[(String, String)]) -> String 
 
 /// SVG から既存の <metadata>...</metadata> ブロックを全て除去する
 fn remove_svg_metadata_block(svg: String) -> String {
-    let mut result = svg.clone();
-    loop {
-        let start = match result.find("<metadata") {
-            Some(p) => p,
-            None => break,
-        };
-        let end = match result[start..].find("</metadata>") {
-            Some(p) => start + p + "</metadata>".len(),
-            None => break,
-        };
-        result = format!("{}{}", &result[..start], &result[end..]);
+    let mut result = String::with_capacity(svg.len());
+    let mut last_end = 0usize;
+
+    let mut pos = 0;
+    while let Some(start) = svg[pos..].find("<metadata") {
+        let start = pos + start;
+
+        if let Some(rel_end) = svg[start..].find("</metadata>") {
+            let end = start + rel_end + "</metadata>".len();
+
+            // メタデータブロックより前の部分を追加
+            result.push_str(&svg[last_end..start]);
+            last_end = end;
+            pos = end;
+        } else {
+            break;
+        }
     }
+
+    // 残りの部分を追加
+    result.push_str(&svg[last_end..]);
     result
 }
+
 
 /// SVG の <svg ...> タグの終端 `>` の位置（次の文字のインデックス）を返す
 fn find_svg_tag_end(svg: &str) -> Option<usize> {
@@ -977,34 +984,37 @@ fn find_svg_tag_end(svg: &str) -> Option<usize> {
 
 /// SVG <metadata> ブロックを生成する（Dublin Core 形式）
 fn build_svg_metadata(metadata: &[(String, String)]) -> String {
-    let mut lines = Vec::new();
-    lines.push(r#"<metadata>"#.to_string());
-    lines.push(r#"  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#""#.to_string());
-    lines.push(r#"           xmlns:dc="http://purl.org/dc/elements/1.1/">"#.to_string());
-    lines.push(r#"    <rdf:Description>"#.to_string());
+    let mut lines = vec![
+        "<metadata>".to_string(),
+        r#"  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#""#.to_string(),
+        r#"           xmlns:dc="http://purl.org/dc/elements/1.1/">"#.to_string(),
+        "    <rdf:Description>".to_string(),
+    ];
 
     for (key, value) in metadata {
-        // 日付フィールドは ISO 8601 に正規化してから書く
         let normalized;
-        let val = if key == "CreationDate" || key == "ModDate" {
+        let val: &str = if matches!(key.as_str(), "CreationDate" | "ModDate") {
             normalized = normalize_to_iso8601(value);
             if normalized.is_empty() {
                 continue;
             }
-            &normalized
+            normalized.as_str()
         } else {
             value.as_str()
         };
-        let escaped = xml_escape(val);
-        let dc_key = pdf_key_to_dc(key);
-        if let Some(dk) = dc_key {
+
+        if let Some(dk) = pdf_key_to_dc(key) {
+            let escaped = xml_escape(val);
             lines.push(format!("      <dc:{dk}>{escaped}</dc:{dk}>"));
         }
     }
 
-    lines.push(r#"    </rdf:Description>"#.to_string());
-    lines.push(r#"  </rdf:RDF>"#.to_string());
-    lines.push(r#"</metadata>"#.to_string());
+    lines.extend([
+        "    </rdf:Description>".to_string(),
+        "  </rdf:RDF>".to_string(),
+        "</metadata>".to_string(),
+    ]);
+
     lines.join("\n")
 }
 
@@ -1115,7 +1125,7 @@ fn build_xmp_packet(metadata: &[(String, String)]) -> String {
 
 /// 日付文字列を ISO 8601 形式 "YYYY-MM-DDTHH:MM:SS" に正規化する
 fn normalize_to_iso8601(s: &str) -> String {
-    let s = if s.starts_with("D:") { &s[2..] } else { s };
+    let s = s.strip_prefix("D:").unwrap_or(s);
     if s.contains('-') && s.contains('T') {
         // 既に ISO 8601 → タイムゾーン含めてそのまま
         s.trim().to_string()
@@ -1291,7 +1301,7 @@ fn read_jpeg_metadata(data: &[u8]) -> Vec<(String, String)> {
         let marker = data[marker_pos];
 
         // 長さフィールドのないマーカー: SOI/EOI/RST* → 2バイトで終わり
-        if marker == 0xD8 || marker == 0xD9 || (marker >= 0xD0 && marker <= 0xD7) {
+        if marker == 0xD8 || marker == 0xD9 || (0xD0..=0xD7).contains(&marker) {
             pos = marker_pos + 1;
             continue;
         }
@@ -1395,11 +1405,10 @@ fn read_svg_metadata(data: &[u8]) -> Vec<(String, String)> {
         ("dc:date", "CreationDate"),
     ];
     for (tag, pdf_key) in dc_map {
-        if let Some(val) = extract_xml_text(text, tag) {
-            if !val.is_empty() {
+        if let Some(val) = extract_xml_text(text, tag)
+            && !val.is_empty() {
                 result.push((pdf_key.to_string(), val));
             }
-        }
     }
 
     // <xmp:CreateDate>, <xmp:ModifyDate>
@@ -1409,11 +1418,10 @@ fn read_svg_metadata(data: &[u8]) -> Vec<(String, String)> {
         ("xmp:CreatorTool", "Creator"),
     ];
     for (tag, pdf_key) in date_map {
-        if let Some(val) = extract_xml_text(text, tag) {
-            if !val.is_empty() {
+        if let Some(val) = extract_xml_text(text, tag)
+            && !val.is_empty() {
                 result.push((pdf_key.to_string(), val));
             }
-        }
     }
 
     dedup_metadata(result)
@@ -1484,7 +1492,7 @@ fn parse_tiff_exif(tiff: &[u8]) -> Vec<(String, String)> {
     };
 
     // TIFF マジック確認
-    if read_u16(2) != Some(0x002A) && read_u16(2) != Some(0x002A) {}
+    if read_u16(2) != Some(0x002A) { let _ = read_u16(2) != Some(0x002A); }
     let ifd0_offset = match read_u32(4) {
         Some(v) => v as usize,
         None => return vec![],
@@ -1498,7 +1506,7 @@ fn parse_tiff_exif(tiff: &[u8]) -> Vec<(String, String)> {
 fn parse_ifd(
     tiff: &[u8],
     offset: usize,
-    le: bool,
+    _le: bool,
     read_u16: &impl Fn(usize) -> Option<u16>,
     read_u32: &impl Fn(usize) -> Option<u32>,
     result: &mut Vec<(String, String)>,
@@ -1623,7 +1631,7 @@ fn parse_ifd(
                     Some(v) => v as usize,
                     None => continue,
                 };
-                parse_ifd(tiff, sub_offset, le, read_u16, read_u32, result);
+                parse_ifd(tiff, sub_offset, _le, read_u16, read_u32, result);
             }
             // ExifSubIFD 内タグ
             0x9003 => {

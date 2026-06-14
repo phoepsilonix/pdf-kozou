@@ -247,14 +247,12 @@ pub async fn render_imposition(request: Value) -> Result<Value> {
 #[tauri::command]
 pub async fn rasterize_imposition(request: Value) -> Result<Value> {
     // 出力先ディレクトリを自動作成
-    if let Some(out) = request.get("output").and_then(|v| v.as_str()) {
-        if let Some(parent) = std::path::Path::new(out).parent() {
-            if !parent.as_os_str().is_empty() {
+    if let Some(out) = request.get("output").and_then(|v| v.as_str())
+        && let Some(parent) = std::path::Path::new(out).parent()
+            && !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
             }
-        }
-    }
     call_core_json("rasterize_imposition", request).await
 }
 
@@ -263,14 +261,12 @@ pub async fn rasterize_imposition(request: Value) -> Result<Value> {
 /// 例: A3×2ページ(booklet) → A4×4ページ(読み順)
 #[tauri::command]
 pub async fn split_imposition_pdf(request: Value) -> Result<Value> {
-    if let Some(out) = request.get("output").and_then(|v| v.as_str()) {
-        if let Some(parent) = std::path::Path::new(out).parent() {
-            if !parent.as_os_str().is_empty() {
+    if let Some(out) = request.get("output").and_then(|v| v.as_str())
+        && let Some(parent) = std::path::Path::new(out).parent()
+            && !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
             }
-        }
-    }
     call_core_json("split_imposition_pdf", request).await
 }
 
@@ -280,14 +276,12 @@ pub async fn split_imposition_pdf(request: Value) -> Result<Value> {
 /// 例: A4×4ページ → A3×2ページ(見開き製本)
 #[tauri::command]
 pub async fn compose_imposition_pdf(request: Value) -> Result<Value> {
-    if let Some(out) = request.get("output").and_then(|v| v.as_str()) {
-        if let Some(parent) = std::path::Path::new(out).parent() {
-            if !parent.as_os_str().is_empty() {
+    if let Some(out) = request.get("output").and_then(|v| v.as_str())
+        && let Some(parent) = std::path::Path::new(out).parent()
+            && !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
             }
-        }
-    }
     call_core_json("compose_imposition_pdf", request).await
 }
 
@@ -522,12 +516,11 @@ pub async fn export_images(
         "--name-prefix".into(),
         prefix.clone(),
     ];
-    if let Some(ref pg) = pages {
-        if !pg.is_empty() && pg != "all" {
+    if let Some(ref pg) = pages
+        && !pg.is_empty() && pg != "all" {
             args.push("--page".into());
             args.push(pg.clone());
         }
-    }
     if let Some(q) = quality {
         args.push("--quality".into());
         args.push(q.to_string());
@@ -611,12 +604,11 @@ pub async fn export_image_pdf(
     use serde_json::json;
 
     // 出力先ディレクトリを自動作成
-    if let Some(parent) = std::path::Path::new(&out_path).parent() {
-        if !parent.as_os_str().is_empty() {
+    if let Some(parent) = std::path::Path::new(&out_path).parent()
+        && !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
         }
-    }
 
     let request = json!({
         "input":   path,
@@ -670,8 +662,7 @@ pub async fn check_path_conflict(
             p
         }
         Err(_) => {
-            let p = std::path::PathBuf::from(&out_dir);
-            p
+            std::path::PathBuf::from(&out_dir)
         }
     };
 
@@ -705,7 +696,6 @@ pub async fn check_path_conflict(
             Ok(c) => c.to_string_lossy().to_string(),
             Err(_) => out_path.to_string_lossy().replace('\\', "/").to_lowercase(),
         };
-
 
         if input_norm.eq_ignore_ascii_case(&output_norm) {
             conflicts.push(

@@ -282,12 +282,11 @@ fn collect_fonts_from_resources(
                         .ok()
                         .map(|b| String::from_utf8_lossy(b).to_string())
                 });
-            if sub.as_deref() == Some("Form") {
-                if let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
+            if sub.as_deref() == Some("Form")
+                && let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
                     let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
                     collect_fonts_from_resources(&ir, page_1based, font_map);
                 }
-            }
         }
     }
 }

@@ -686,11 +686,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 input
             };
             // --angle: 0/90/180/270 のみ受け付ける
-            if let Some(a) = angle {
-                if a % 90 != 0 || a > 270 {
+            if let Some(a) = angle
+                && (a % 90 != 0 || a > 270) {
                     anyhow::bail!("angle must be 0, 90, 180, or 270");
                 }
-            }
             // --page-angles "1:90,2:180,3:270" をパース
             let rotations = page_angles
                 .as_deref()

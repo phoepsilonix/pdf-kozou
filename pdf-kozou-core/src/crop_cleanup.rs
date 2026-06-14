@@ -78,7 +78,7 @@ pub fn remove_out_of_crop_resources(
     let mut page_remove_maps: Vec<HashMap<i32, HashSet<String>>> =
         vec![HashMap::new(); page_count];
 
-    for page_idx in 0..page_count {
+    for (page_idx, remove_map) in page_remove_maps.iter_mut().enumerate() {
         let json_str = unsafe {
             let ctx = kozou_new_context();
             if ctx.is_null() {
@@ -150,7 +150,7 @@ pub fn remove_out_of_crop_resources(
         for entry in &resp.entries {
             if !intersects(&entry.bbox, crop) {
                 // CropBox と全く重ならない → 削除対象
-                page_remove_maps[page_idx]
+                remove_map
                     .entry(entry.container_xref)
                     .or_default()
                     .insert(entry.xobj_name.clone());
@@ -371,8 +371,8 @@ fn remove_do_ops(content: &str, remove_names: &HashSet<String>) -> (String, usiz
             let prev_idx = find_prev_nonempty(&lines, i);
             let should_remove = if let Some(pi) = prev_idx {
                 let prev = lines[pi].trim();
-                if prev.starts_with('/') {
-                    remove_names.contains(&prev[1..])
+                if let Some(stripped) = prev.strip_prefix('/') {
+                    remove_names.contains(stripped)
                 } else {
                     false
                 }

@@ -85,12 +85,10 @@ fn find_mupdf_include() -> PathBuf {
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
-        {
-            if let Some(inc) = search_mupdf_sys_out_include(build_dir) {
+            && let Some(inc) = search_mupdf_sys_out_include(build_dir) {
                 println!("cargo:warning=kozou build: using out/build/include (patch/git build)");
                 return inc;
             }
-        }
     }
 
     // 3. CARGO_HOME/git/checkouts — patch.crates-io の git 指定 fork のソースヘッダ
@@ -237,15 +235,14 @@ fn read_fz_version(include_dir: &Path) -> (u64, u64, u64) {
     if let Ok(content) = std::fs::read_to_string(&version_h) {
         for line in content.lines() {
             // #define FZ_VERSION "1.28.0"
-            if line.contains("FZ_VERSION \"") {
-                if let Some(start) = line.rfind('"') {
+            if line.contains("FZ_VERSION \"")
+                && let Some(start) = line.rfind('"') {
                     let rest = &line[..start];
                     if let Some(ver_start) = rest.rfind('"') {
                         let ver_str = &rest[ver_start + 1..];
                         return parse_semver(ver_str);
                     }
                 }
-            }
         }
     }
     (0, 0, 0)

@@ -28,11 +28,10 @@ fn get_filtered_ld_path() -> &'static str {
                 if p.is_empty() {
                     return false;
                 }
-                if let Some(ref appdir) = appdir {
-                    if p.starts_with(appdir.as_str()) {
+                if let Some(ref appdir) = appdir
+                    && p.starts_with(appdir.as_str()) {
                         return false;
                     }
-                }
                 true
             })
             .collect::<Vec<_>>()

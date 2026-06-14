@@ -512,8 +512,8 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 clean: result.effective_clean,
                 sanitize: result.effective_sanitize,
                 font_subset: result.subset_applied,
-                merge_fonts: merge_fonts,
-                object_stream: object_stream,
+                merge_fonts,
+                object_stream,
                 subset_skipped: false,
                 //subset_skipped: result.fell_back || !result.subset_applied,
             },
@@ -768,8 +768,8 @@ fn safe_compress_only(
             garbage_level: gc,
             clean,
             sanitize,
-            merge_fonts: merge_fonts,
-            object_stream: object_stream,
+            merge_fonts,
+            object_stream,
             font_subset: false,
             subset_skipped: false,
         },
@@ -867,8 +867,8 @@ pub fn rewrite(
                     sanitize,
                     font_subset: false,
                     subset_skipped: false,
-                    merge_fonts: merge_fonts,
-                    object_stream: object_stream,
+                    merge_fonts,
+                    object_stream,
                 },
                 warning: size_increased_warning(ib, ob),
             })
@@ -912,8 +912,8 @@ pub fn rewrite(
                     sanitize: result.effective_sanitize,
                     font_subset: result.subset_applied,
                     subset_skipped: result.fell_back,
-                    merge_fonts: merge_fonts,
-                    object_stream: object_stream,
+                    merge_fonts,
+                    object_stream,
                 },
                 warning: Some(warns.join(" ")),
             })
@@ -1277,9 +1277,9 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                     Some("TrueType") => {}
                     Some(t) => {
                         found.push(t.to_string());
-                        if t == "Type0" {
-                            if let Ok(Some(da)) = fo.get_dict("DescendantFonts") {
-                                if let Some(d) = da
+                        if t == "Type0"
+                            && let Ok(Some(da)) = fo.get_dict("DescendantFonts")
+                                && let Some(d) = da
                                     .get_dict_val(0)
                                     .ok()
                                     .flatten()
@@ -1299,8 +1299,6 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                                         found.push(dt);
                                     }
                                 }
-                            }
-                        }
                     }
                     None => {}
                 }
@@ -1328,12 +1326,11 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                             .ok()
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
-                if st.as_deref() == Some("Form") {
-                    if let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
+                if st.as_deref() == Some("Form")
+                    && let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
                         let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
                         collect_unsafe_font_types(&ir, found);
                     }
-                }
             }
         }
     }
@@ -1431,14 +1428,13 @@ fn resources_has_type3(resources: &mupdf::pdf::PdfObject) -> bool {
                             .ok()
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
-                if st.as_deref() == Some("Form") {
-                    if let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
+                if st.as_deref() == Some("Form")
+                    && let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
                         let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
                         if resources_has_type3(&ir) {
                             return true;
                         }
                     }
-                }
             }
         }
     }

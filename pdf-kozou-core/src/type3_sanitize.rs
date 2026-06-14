@@ -75,18 +75,18 @@ fn collect_from_page(
     };
 
     // /Contents
-    if let Some(contents) = page_dict.get(b"Contents").ok() {
+    if let Ok(contents) = page_dict.get(b"Contents") {
         collect_content_refs(doc, contents, ids, visited);
     }
 
     // /Resources /XObject 内の Form XObject も再帰的に処理
-    if let Some(resources) = page_dict.get(b"Resources").ok() {
+    if let Ok(resources) = page_dict.get(b"Resources") {
         collect_form_xobjects(doc, resources, ids, visited);
     }
 }
 
 fn collect_content_refs(
-    doc: &Document,
+    _doc: &Document,
     obj: &Object,
     ids: &mut Vec<ObjectId>,
     visited: &mut HashSet<ObjectId>,
@@ -100,7 +100,7 @@ fn collect_content_refs(
         }
         Object::Array(arr) => {
             for item in arr {
-                collect_content_refs(doc, item, ids, visited);
+                collect_content_refs(_doc, item, ids, visited);
             }
         }
         _ => {}
@@ -175,7 +175,7 @@ fn collect_form_xobjects(
         ids.push(xobj_id);
 
         // Form XObject 内の /Resources も再帰処理
-        if let Some(res) = stream.dict.get(b"Resources").ok() {
+        if let Ok(res) = stream.dict.get(b"Resources") {
             collect_form_xobjects(doc, res, ids, visited);
         }
     }
@@ -294,11 +294,10 @@ fn collect_type3_font_names(doc: &Document, stream_id: ObjectId) -> HashSet<Stri
         let subtype = font_dict.get(b"Subtype").ok()
             .and_then(|o| o.as_name().ok().map(|n| n.to_vec()));
 
-        if subtype.as_deref() == Some(b"Type3") {
-            if let Ok(name) = std::str::from_utf8(font_name_bytes) {
+        if subtype.as_deref() == Some(b"Type3")
+            && let Ok(name) = std::str::from_utf8(font_name_bytes) {
                 type3_names.insert(name.to_string());
             }
-        }
     }
 
     type3_names
@@ -390,8 +389,7 @@ fn is_tf_instruction(s: &str) -> bool {
     let mut num_count = 0;
     loop {
         let trimmed = rest.trim_start();
-        if trimmed.starts_with("Tf") {
-            let after = &trimmed[2..];
+        if let Some(after) = trimmed.strip_prefix("Tf") {
             return after.is_empty() || after.starts_with(|c: char| c.is_ascii_whitespace());
         }
         // 数値部分をスキップ

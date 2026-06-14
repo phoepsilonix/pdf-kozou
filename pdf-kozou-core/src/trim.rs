@@ -105,21 +105,17 @@ where
                         if let Some(Value::Array(ranges)) = obj.get("ranges") {
                             let mut pages = Vec::new();
                             for r in ranges {
-                                if let Value::Array(arr) = r {
-                                    if arr.len() == 2 {
-                                        if let (Some(Value::Number(s)), Some(Value::Number(e))) =
+                                if let Value::Array(arr) = r
+                                    && arr.len() == 2
+                                        && let (Some(Value::Number(s)), Some(Value::Number(e))) =
                                             (arr.first(), arr.get(1))
-                                        {
-                                            if let (Some(start), Some(end)) =
+                                            && let (Some(start), Some(end)) =
                                                 (s.as_i64(), e.as_i64())
                                             {
                                                 for p in start..=end {
                                                     pages.push((p - 1) as i32); // 1-based → 0-based
                                                 }
                                             }
-                                        }
-                                    }
-                                }
                             }
                             Ok(Some(PageSelection::Range { pages }))
                         } else {

@@ -990,7 +990,7 @@ pub struct SanitizeType3Request {
 
 pub fn sanitize_type3_text(req: &SanitizeType3Request) -> Result<SanitizeType3Response> {
     let removed = crate::type3_sanitize::sanitize_type3_blocks(&req.input, &req.output)
-        .map_err(|e| CoreError::MuPdf(e))?;
+        .map_err(CoreError::MuPdf)?;
 
     // メタデータを引き継ぐ
     let metadata = crate::compress::collect_metadata(&req.input);
@@ -1409,11 +1409,10 @@ pub fn rasterize_imposition(
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
     // 出力先ディレクトリを作成
-    if let Some(parent) = std::path::Path::new(&req.output).parent() {
-        if !parent.as_os_str().is_empty() {
+    if let Some(parent) = std::path::Path::new(&req.output).parent()
+        && !parent.as_os_str().is_empty() {
             let _ = std::fs::create_dir_all(parent);
         }
-    }
 
     let tmp_dir = {
         let base = std::env::temp_dir().join("pdf-kozou");
@@ -1514,11 +1513,10 @@ pub fn split_imposition_pdf(
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    if let Some(parent) = std::path::Path::new(&req.output).parent() {
-        if !parent.as_os_str().is_empty() {
+    if let Some(parent) = std::path::Path::new(&req.output).parent()
+        && !parent.as_os_str().is_empty() {
             let _ = std::fs::create_dir_all(parent);
         }
-    }
 
     let tmp_dir = {
         let base = std::env::temp_dir().join("pdf-kozou");
@@ -1630,11 +1628,10 @@ pub fn compose_imposition_pdf(
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    if let Some(parent) = std::path::Path::new(&req.output).parent() {
-        if !parent.as_os_str().is_empty() {
+    if let Some(parent) = std::path::Path::new(&req.output).parent()
+        && !parent.as_os_str().is_empty() {
             let _ = std::fs::create_dir_all(parent);
         }
-    }
 
     unsafe {
         let ctx = kozou_new_context();
