@@ -44,6 +44,9 @@ tracing    = { workspace = true }
 # SVG → PDF 変換（svg2pdf）。usvg は svg2pdf::usvg を使うため別途依存は不要。
 svg2pdf    = { workspace = true }
 
+alloc-stdlib    = { workspace = true }
+brotli-decompressor    = { workspace = true }
+
 # CLI 引数
 clap = { version = "4", features = ["derive"] }
 
