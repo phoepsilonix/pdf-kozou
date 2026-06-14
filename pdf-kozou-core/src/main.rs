@@ -364,6 +364,22 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             layout_h,
             layout_em,
         } => {
+            // SVG はビューワー／サムネイル描画でもソフトマスクが正しく出るよう、
+            // 描画前に svg2pdf 経由の PDF へ変換する。MuPDF が SVG を直接開くと
+            // 画像 luminance マスクを解釈できず透明部分が黒矩形になるため。
+            // プレビューは元サイズ表示にしたいので page_w/h・auto_orient は渡さない
+            // （ページサイズ固定は処理系の convert_to_pdf 側で別途適用される）。
+            let _svg_tmp = if pdf_kozou_core::convert::is_svg(&path) {
+                auto_convert_if_needed(&path, layout_w, layout_h, layout_em, None, None, None)?
+            } else {
+                None
+            };
+            let path = if let Some((_, ref p)) = _svg_tmp {
+                p.clone()
+            } else {
+                path
+            };
+
             let ext = match format.as_str() {
                 "png" => "png",
                 "svg" => "svg",
@@ -668,16 +684,17 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let mut tmps: Vec<(tempfile::NamedTempFile, String)> = Vec::new();
             let inputs = inputs
                 .into_iter()
-                .map(
-                    |inp| match auto_convert_if_needed(&inp, None, None, None, None, None, None) {
-                        Ok(Some(converted)) => {
-                            let path = converted.1.clone();
-                            tmps.push(converted);
-                            path
-                        }
-                        _ => inp,
-                    },
-                )
+                .map(|inp| {
+                    if let Ok(Some(converted)) =
+                        auto_convert_if_needed(&inp, None, None, None, None, None, None)
+                    {
+                        let path = converted.1.clone();
+                        tmps.push(converted);
+                        path
+                    } else {
+                        inp
+                    }
+                })
                 .collect::<Vec<_>>();
             let req = pdf_kozou_core::merge::MergeRequest { inputs, output };
             let resp = pdf_kozou_core::merge::merge(&req)?;

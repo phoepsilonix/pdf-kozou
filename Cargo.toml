@@ -17,7 +17,13 @@ image      = { version = "0.25", features = ["jpeg", "png"] }
 uuid       = { version = "1", features = ["v4", "fast-rng"] }
 tempfile   = "3"
 tracing    = "0.1"
-lopdf      = "0.40"
+lopdf      = "0.41"
+# SVG 入力を正しい PDF（ソフトマスク・不透明度保持）に変換するため。
+# MuPDF の SVG リーダは画像 luminance マスクを解釈できず透明部分が黒くなる。
+# 0.13/0.11 で内部 usvg のバージョンが異なる。0.11(usvg 0.42) はマスク・不透明度を
+# 正しく出力することを実機検証済み。0.13(usvg 0.47) は透過が washout する不具合あり。
+# usvg は svg2pdf::usvg を使う（別途宣言するとバージョン二重化で型不一致になる）。
+svg2pdf    = "=0.11.0"
 
 [patch.crates-io]
 mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00" }

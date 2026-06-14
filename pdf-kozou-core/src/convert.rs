@@ -75,54 +75,67 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
 
     eprintln!("[convert] start: {}", req.input);
 
+    // SVG は MuPDF の SVG リーダがソフトマスク（画像 luminance マスク）を解釈できず、
+    // 透明部分が黒い矩形として描画されてしまう。usvg/svg2pdf で先に正しい PDF
+    // （ソフトマスク保持）へ変換し、それを既存の MuPDF パイプライン
+    // （fit-to-size / auto_orient ) に流すと、透過状態が失われるので、
+    // metadata の引き継ぎのみ行う。
+    if is_svg(&req.input) {
+        svg_to_pdf(&req.input, &req.output)?;
+    };
+
     let c_input = CString::new(req.input.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    let lw = req.layout_w.unwrap_or(450.0);
-    let lh = req.layout_h.unwrap_or(600.0);
-    let lem = req.layout_em.unwrap_or(12.0);
-    let pw = req.page_w_pt.unwrap_or(0.0);
-    let ph = req.page_h_pt.unwrap_or(0.0);
-    let auto_orient = if req.auto_orient.unwrap_or(false) {
-        1
-    } else {
-        0
-    };
+    if !is_svg(&req.input) {
+        let lw = req.layout_w.unwrap_or(450.0);
+        let lh = req.layout_h.unwrap_or(600.0);
+        let lem = req.layout_em.unwrap_or(12.0);
+        let pw = req.page_w_pt.unwrap_or(0.0);
+        let ph = req.page_h_pt.unwrap_or(0.0);
+        let auto_orient = if req.auto_orient.unwrap_or(false) {
+            1
+        } else {
+            0
+        };
 
-    eprintln!(
-        "[convert] calling C FFI: layout={lw}x{lh} em={lem} page={pw}x{ph} auto_orient={auto_orient}"
-    );
-
-    unsafe {
-        let ctx = kozou_new_context();
-        if ctx.is_null() {
-            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
-        }
-        let mut res = FfiResult::default();
-        ffi_convert(
-            ctx,
-            c_input.as_ptr(),
-            c_output.as_ptr(),
-            lw,
-            lh,
-            lem,
-            pw,
-            ph,
-            auto_orient,
-            &mut res,
+        eprintln!(
+            "[convert] calling C FFI: layout={lw}x{lh} em={lem} page={pw}x{ph} auto_orient={auto_orient}"
         );
-        mupdf_sys::fz_drop_context(ctx);
-        if res.ok == 0 {
-            eprintln!("[convert] C FFI failed: {res}");
-            return Err(CoreError::MuPdf(format!("{res}")));
+
+        unsafe {
+            let ctx = kozou_new_context();
+            if ctx.is_null() {
+                return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+            }
+            let mut res = FfiResult::default();
+            ffi_convert(
+                ctx,
+                c_input.as_ptr(),
+                c_output.as_ptr(),
+                lw,
+                lh,
+                lem,
+                pw,
+                ph,
+                auto_orient,
+                &mut res,
+            );
+            mupdf_sys::fz_drop_context(ctx);
+            if res.ok == 0 {
+                eprintln!("[convert] C FFI failed: {res}");
+                return Err(CoreError::MuPdf(format!("{res}")));
+            }
         }
+
+        eprintln!("[convert] C FFI succeeded");
     }
 
-    eprintln!("[convert] C FFI succeeded");
-
-    // メタデータを引き継ぐ（非 PDF の入力は collect_metadata が空を返すので安全）
+    // メタデータを引き継ぐ
+    // 画像も collect_metadata で一部引き継ぎ可能。
+    // 非 PDF の入力は collect_metadata が空を返すので安全。
     eprintln!("[convert] collecting metadata from input...");
     let metadata = crate::compress::collect_metadata(&req.input);
     eprintln!("[convert] metadata collected: {} keys", metadata.len());
@@ -148,4 +161,41 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
         input_bytes,
         output_bytes,
     })
+}
+
+/// 拡張子が svg かどうか（大文字小文字を無視）。
+pub fn is_svg(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("svg"))
+        .unwrap_or(false)
+}
+
+/// SVG を svg2pdf でベクタ PDF に変換する。
+///
+/// MuPDF の SVG リーダは画像を luminance マスクとして使う `<mask>`（元 PDF の
+/// ソフトマスク = SMask 由来）を解釈できず、透明部分が脱落して黒い矩形になる。
+/// usvg/svg2pdf はこれを正しい PDF ソフトマスクとして出力するため、変換後の
+/// PDF は MuPDF でも（プレビュー・再エクスポートを含め）正しく描画される。
+/// テキストは usvg がフォントを解決してアウトライン化する（システムフォント使用）。
+fn svg_to_pdf(input: &str, output: &str) -> Result<()> {
+    let svg = std::fs::read_to_string(input)?;
+
+    // usvg は svg2pdf が再エクスポートするものを使う（別 crate として宣言すると
+    // バージョン二重化で svg2pdf::to_pdf に渡す Tree の型が一致しなくなる）。
+    let mut options = svg2pdf::usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+
+    let tree = svg2pdf::usvg::Tree::from_str(&svg, &options)
+        .map_err(|e| CoreError::Parse(format!("usvg parse failed: {e}")))?;
+
+    let pdf = svg2pdf::to_pdf(
+        &tree,
+        svg2pdf::ConversionOptions::default(),
+        svg2pdf::PageOptions::default(),
+    );
+
+    std::fs::write(output, pdf)?;
+    Ok(())
 }
