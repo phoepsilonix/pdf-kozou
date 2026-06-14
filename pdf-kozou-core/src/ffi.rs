@@ -35,7 +35,7 @@ impl fmt::Display for FfiResult {
     }
 }
 
-unsafe extern "C" {
+extern "C" {
     pub fn kozou_new_context() -> *mut fz_context;
     pub fn kozou_fz_new_context() -> *mut fz_context;
 
@@ -271,6 +271,7 @@ unsafe extern "C" {
         n_sheets: c_int,
         gutter: f32,
         margin: f32,
+        auto_orient: c_int,
         result: *mut FfiResult,
     );
 

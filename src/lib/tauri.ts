@@ -552,6 +552,8 @@ export interface ComposeImpositionPdfRequest {
   nSheets: number;
   gutter?: number;
   margin?: number;
+  /** 向き自動: セルごとに収まりの良い向きへ +90° 回転を許可する */
+  autoOrient?: boolean;
   layoutW?: number;
   layoutH?: number;
   layoutEm?: number;
@@ -582,6 +584,7 @@ export async function composeImpositionPdf(
       n_sheets: req.nSheets,
       gutter: req.gutter ?? null,
       margin: req.margin ?? null,
+      auto_orient: req.autoOrient ?? null,
       layout_w: req.layoutW ?? null,
       layout_h: req.layoutH ?? null,
       layout_em: req.layoutEm ?? null,

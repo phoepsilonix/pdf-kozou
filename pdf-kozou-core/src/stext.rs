@@ -1018,7 +1018,7 @@ pub struct SanitizeType3Request {
 
 pub fn sanitize_type3_text(req: &SanitizeType3Request) -> Result<SanitizeType3Response> {
     let removed = crate::type3_sanitize::sanitize_type3_blocks(&req.input, &req.output)
-        .map_err(CoreError::MuPdf)?;
+        .map_err(|e| CoreError::MuPdf(e))?;
 
     // メタデータを引き継ぐ
     let metadata = crate::compress::collect_metadata(&req.input);
@@ -1460,10 +1460,10 @@ pub fn rasterize_imposition(
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
     // 出力先ディレクトリを作成
-    if let Some(parent) = std::path::Path::new(&req.output).parent()
-        && !parent.as_os_str().is_empty()
-    {
-        let _ = std::fs::create_dir_all(parent);
+    if let Some(parent) = std::path::Path::new(&req.output).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
     }
 
     let tmp_dir = {
@@ -1563,10 +1563,10 @@ pub fn split_imposition_pdf(req: &SplitImpositionPdfRequest) -> Result<SplitImpo
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    if let Some(parent) = std::path::Path::new(&req.output).parent()
-        && !parent.as_os_str().is_empty()
-    {
-        let _ = std::fs::create_dir_all(parent);
+    if let Some(parent) = std::path::Path::new(&req.output).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
     }
 
     let tmp_dir = {
@@ -1642,6 +1642,9 @@ pub struct ComposeImpositionPdfRequest {
     pub gutter: Option<f32>,
     #[serde(default)]
     pub margin: Option<f32>,
+    /// 1/true: 向き自動。セルごとに収まりの良い向きへ +90° 回転を許可する。
+    #[serde(default)]
+    pub auto_orient: Option<bool>,
     #[serde(default)]
     pub layout_w: Option<f32>,
     #[serde(default)]
@@ -1682,10 +1685,10 @@ pub fn compose_imposition_pdf(
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    if let Some(parent) = std::path::Path::new(&req.output).parent()
-        && !parent.as_os_str().is_empty()
-    {
-        let _ = std::fs::create_dir_all(parent);
+    if let Some(parent) = std::path::Path::new(&req.output).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
     }
 
     unsafe {
@@ -1709,6 +1712,11 @@ pub fn compose_imposition_pdf(
             req.n_sheets,
             req.gutter.unwrap_or(0.0),
             req.margin.unwrap_or(0.0),
+            if req.auto_orient.unwrap_or(false) {
+                1
+            } else {
+                0
+            },
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);

@@ -6042,8 +6042,11 @@ static pdf_obj *kozou_compose_page_to_xobject(
     if (bbox.y1 < bbox.y0) { float t = bbox.y0; bbox.y0 = bbox.y1; bbox.y1 = t; }
 
     int rot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(Rotate)));
-    if (rot % 360 != 0)
-        fz_warn(ctx, "compose: page %d has /Rotate %d (rotation not yet handled; may be misoriented)",
+    /* /Rotate の向き補正は配置側 cm で行う（kozou_compose_imposition_pdf の配置ループ参照）。
+     * ここでは未回転の XObject を作る（BBox=元ボックス, Matrix=identity）。
+     * 直交以外（90 の倍数でない）の /Rotate は配置側で無視する。 */
+    if (rot % 90 != 0)
+        fz_warn(ctx, "compose: page %d has non-orthogonal /Rotate %d (will be ignored)",
                 pno + 1, rot);
 
     pdf_obj    *res      = pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(Resources)); /* borrowed */
@@ -6085,6 +6088,7 @@ void kozou_compose_imposition_pdf(
     int          n_sheets,
     float        gutter,        /* セル間の隙間(pt) */
     float        margin,        /* シート外周の余白(pt) */
+    int          auto_orient,   /* 1: セルごとに収まりの良い向きへ +90° 回転を許可 */
     FfiResult   *result)
 {
     (void)layout_w; (void)layout_h; (void)layout_em; /* PDF入力前提(上流で変換済み) */
@@ -6150,6 +6154,17 @@ void kozou_compose_imposition_pdf(
                     float bh = bb.y1 - bb.y0;
                     if (bw <= 0 || bh <= 0) continue;
 
+                    /* 元ページの /Rotate（基準の表示向き）を取得する。
+                     * XObject は未回転(BBox=元ボックス)なので、配置側の cm に回転を
+                     * 織り込む。これによりベクター無劣化のまま正しい向きで面付けできる。 */
+                    int base_rot;
+                    {
+                        pdf_obj *pr = pdf_lookup_page_obj(ctx, src, pno); /* borrowed */
+                        base_rot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(Rotate)));
+                        base_rot = ((base_rot % 360) + 360) % 360;
+                        if (base_rot % 90 != 0) base_rot = 0; /* 直交以外は無視 */
+                    }
+
                     int   col = c % cols;
                     int   row = c / cols;
                     float cellX    = margin + col * (cellW + gutter);
@@ -6157,22 +6172,58 @@ void kozou_compose_imposition_pdf(
                     float cellTopY = target_h - margin - row * (cellH + gutter);
                     float cellBotY = cellTopY - cellH;
 
-                    float sx = cellW / bw, sy = cellH / bh;
+                    /* 配置向きを決定。auto_orient のとき、基準向き(base_rot)と +90° の
+                     * うちセルへの収まり(scale)が大きい方を選ぶ。/Rotate と合成される。
+                     * これによりページごとに(向き自動で)最適な向きに回して面付けできる。 */
+                    int use_rot = base_rot;
+                    {
+                        float vw0 = (base_rot == 90 || base_rot == 270) ? bh : bw;
+                        float vh0 = (base_rot == 90 || base_rot == 270) ? bw : bh;
+                        float s0  = (cellW / vw0 < cellH / vh0) ? cellW / vw0 : cellH / vh0;
+                        if (auto_orient) {
+                            int   r1  = (base_rot + 90) % 360;
+                            float vw1 = (r1 == 90 || r1 == 270) ? bh : bw;
+                            float vh1 = (r1 == 90 || r1 == 270) ? bw : bh;
+                            float s1  = (cellW / vw1 < cellH / vh1) ? cellW / vw1 : cellH / vh1;
+                            if (s1 > s0) use_rot = r1;
+                        }
+                    }
+                    /* 採用向きでの表示上寸法。90/270 は縦横入れ替え。 */
+                    float vw = (use_rot == 90 || use_rot == 270) ? bh : bw;
+                    float vh = (use_rot == 90 || use_rot == 270) ? bw : bh;
+
+                    float sx = cellW / vw, sy = cellH / vh;
                     float scale = (sx < sy) ? sx : sy;
-                    float pw = bw * scale, ph = bh * scale;
+                    float pw = vw * scale, ph = vh * scale;
                     float offX = cellX    + (cellW - pw) * 0.5f;
                     float offY = cellBotY + (cellH - ph) * 0.5f;
-                    /* XObject の BBox 左下(bb.x0,bb.y0) を (offX,offY) に合わせる */
-                    float e = offX - bb.x0 * scale;
-                    float f = offY - bb.y0 * scale;
+
+                    /* 未回転ボックス(原点シフト後 0..bw, 0..bh)を、原点(0,0)起点・
+                     * 寸法 vw×vh の回転後ボックスへ写す行列。/Rotate は時計回り。
+                     *   90 : (x,y)->(y,-x)  + translate(0 , bw)
+                     *   180: (x,y)->(-x,-y) + translate(bw, bh)
+                     *   270: (x,y)->(-y, x) + translate(bh, 0)  */
+                    fz_matrix rotm;
+                    switch (use_rot) {
+                        case 90:  rotm = fz_make_matrix(0.f, -1.f, 1.f, 0.f, 0.f, bw); break;
+                        case 180: rotm = fz_make_matrix(-1.f, 0.f, 0.f, -1.f, bw, bh); break;
+                        case 270: rotm = fz_make_matrix(0.f, 1.f, -1.f, 0.f, bh, 0.f); break;
+                        default:  rotm = fz_identity; break;
+                    }
+                    /* cm = T(offX,offY) ∘ S(scale) ∘ rotm ∘ T(-bb.x0,-bb.y0)
+                     * fz_concat(A,B) は「A を先に適用、次に B」。 */
+                    fz_matrix m = fz_translate(-bb.x0, -bb.y0);
+                    m = fz_concat(m, rotm);
+                    m = fz_concat(m, fz_scale(scale, scale));
+                    m = fz_concat(m, fz_translate(offX, offY));
 
                     char nm[24];
                     snprintf(nm, sizeof nm, "X%d", placed);
                     pdf_dict_puts(ctx, xdict, nm, xobj); /* xobj の参照を保持 */
 
                     fz_append_printf(ctx, cbuf,
-                        "q %g 0 0 %g %g %g cm /%s Do Q\n",
-                        scale, scale, e, f, nm);
+                        "q %g %g %g %g %g %g cm /%s Do Q\n",
+                        m.a, m.b, m.c, m.d, m.e, m.f, nm);
                     placed++;
                 }
 
