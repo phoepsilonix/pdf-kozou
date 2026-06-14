@@ -657,13 +657,13 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let inputs = inputs
                 .into_iter()
                 .map(|inp| {
-                    if let Ok(Some(converted)) = auto_convert_if_needed(&inp, None, None, None, None, None, None) {
+                    match auto_convert_if_needed(&inp, None, None, None, None, None, None) { Ok(Some(converted)) => {
                         let path = converted.1.clone();
                         tmps.push(converted);
                         path
-                    } else {
+                    } _ => {
                         inp
-                    }
+                    }}
                 })
                 .collect::<Vec<_>>();
             let req = pdf_kozou_core::merge::MergeRequest { inputs, output };

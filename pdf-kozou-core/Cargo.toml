@@ -1,7 +1,7 @@
 [package]
 name    = "pdf-kozou-core"
 version = "1.7.1"
-edition = "2021"
+edition = "2024"
 description = "PDF処理エンジン — MuPDF ベース CLI / sidecar"
 license = "AGPL-3.0-only"   # または "AGPL-3.0"（SPDX準拠）
 homepage = "https://github.com/phoepsilonix/pdf-kozou.git"

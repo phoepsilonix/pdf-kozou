@@ -50,7 +50,7 @@ impl FfiResult {
     }
 }
 
-extern "C" {
+unsafe extern "C" {
     fn kozou_fz_new_context() -> *mut mupdf_sys::fz_context;
     fn kozou_fz_open_document(
         ctx: *mut mupdf_sys::fz_context,
@@ -185,7 +185,7 @@ unsafe fn ffi_run(
     compress_images: bool,
     compress_fonts: bool,
     do_subset: bool,
-) -> Result<()> {
+) -> Result<()> { unsafe {
     use mupdf_sys::*;
     use std::ffi::CString;
 
@@ -213,7 +213,7 @@ unsafe fn ffi_run(
 
     fz_drop_context(ctx);
     result
-}
+}}
 
 unsafe fn ffi_with_ctx(
     ctx: *mut mupdf_sys::fz_context,
@@ -225,7 +225,7 @@ unsafe fn ffi_with_ctx(
     compress_images: bool,
     _compress_fonts: bool, // MuPDF 1.28: 廃止 (compress=yes で自動圧縮)
     do_subset: bool,
-) -> Result<()> {
+) -> Result<()> { unsafe {
     use mupdf_sys::*;
 
     // ── fz_open_document ──────────────────────────────────────────────
@@ -301,4 +301,4 @@ unsafe fn ffi_with_ctx(
 
     fz_drop_document(ctx, fz_doc);
     write_result
-}
+}}

@@ -176,16 +176,20 @@ pub fn setup_webkit_env() {
     // WEBKIT_DISABLE_COMPOSITING_MODE: ソフトウェアレンダリング fallback
     if ds == DisplayServer::X11 || ds == DisplayServer::WaylandWithXWayland {
         // X11 環境: XComposite が利用可能か確認
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        std::env::set_var("NO_AT_BRIDGE", "1");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("NO_AT_BRIDGE", "1") };
     }
 
     // Wayland 環境: GDK バックエンドを明示指定
     if ds == DisplayServer::Wayland || ds == DisplayServer::WaylandWithXWayland {
         // GDK_BACKEND が未設定の場合のみセット
         if std::env::var("GDK_BACKEND").is_err() {
-            std::env::set_var("GDK_BACKEND", "wayland,x11");
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { std::env::set_var("GDK_BACKEND", "wayland,x11") };
         }
         // wl-display ソケットが存在するか確認
         let wayland_display =
@@ -209,20 +213,24 @@ pub fn setup_webkit_env() {
                 "Wayland socket not found at {}. Falling back to X11.",
                 socket.display()
             );
-            std::env::set_var("GDK_BACKEND", "x11");
-            std::env::remove_var("WAYLAND_DISPLAY");
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { std::env::set_var("GDK_BACKEND", "x11") };
+            // TODO: Audit that the environment access only happens in single-threaded code.
+            unsafe { std::env::remove_var("WAYLAND_DISPLAY") };
         }
     }
 
     // GTK IM モジュール: fcitx / ibus との競合回避
     if std::env::var("GTK_IM_MODULE").is_err() {
         // 空文字でリセット（xim fallback）
-        std::env::set_var("GTK_IM_MODULE", "");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("GTK_IM_MODULE", "") };
     }
 
     // xdg-desktop-portal を無効化
     // GTK_USE_PORTAL=0 で GTK が portal を使わないようにする
-    std::env::set_var("GTK_USE_PORTAL", "0");
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { std::env::set_var("GTK_USE_PORTAL", "0") };
 }
 
 // ── スクリーン情報 ────────────────────────────────────────────────────────────
