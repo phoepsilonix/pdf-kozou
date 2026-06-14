@@ -6112,14 +6112,10 @@ void kozou_compose_imposition_pdf(
         if (gutter < 0) gutter = 0;
         if (margin < 0) margin = 0;
 
-        int   per    = cols * rows;
-        float availW = target_w - 2.0f * margin - (cols - 1) * gutter;
-        float availH = target_h - 2.0f * margin - (rows - 1) * gutter;
-        if (availW <= 1.0f || availH <= 1.0f)
-            fz_throw(ctx, FZ_ERROR_ARGUMENT, "margins/gutter too large for target size");
-        float cellW = availW / (float)cols;
-        float cellH = availH / (float)rows;
-        fz_rect mediabox = { 0, 0, target_w, target_h };
+        int per = cols * rows;
+        /* availW/availH/cellW/cellH/mediabox はシートごとに決める。
+         * auto_orient かつ 1ページ面付け(per==1)のとき、シートの向きをページの
+         * 表示向き(/Rotate 適用後)に合わせるため（下のシートループ内で算出）。 */
 
         dst   = pdf_create_document(ctx);
         gmap  = pdf_new_graft_map(ctx, dst);
@@ -6140,6 +6136,38 @@ void kozou_compose_imposition_pdf(
                  * sheet_res が生かしているので名前追加に使い続けられる。 */
                 pdf_dict_put_drop(ctx, sheet_res, PDF_NAME(XObject), xdict);
 
+                /* このシートの出力サイズ(tw×th)を決める。
+                 * auto_orient かつ 1ページ面付け(per==1)のときは、シートの向きを
+                 * そのページの「表示上の向き」(/Rotate 適用後)に合わせる。
+                 * → 縦ページは縦シート、横ページは横シートに置かれ、ページ自体は
+                 *   回さない(= /Rotate 維持)。回転維持とページ向きを両立する。
+                 * 非 auto（向き固定）や n-up(per>1) では target をそのまま使う。 */
+                float tw = target_w, th = target_h;
+                if (auto_orient && per == 1) {
+                    int pno0 = sheet_pages[s * per] - 1;
+                    if (pno0 >= 0 && pno0 < page_count) {
+                        pdf_obj *pr  = pdf_lookup_page_obj(ctx, src, pno0); /* borrowed */
+                        fz_rect  pcb = pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(CropBox)));
+                        if (pcb.x1 <= pcb.x0 || pcb.y1 <= pcb.y0)
+                            pcb = pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(MediaBox)));
+                        int prot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(Rotate)));
+                        prot = ((prot % 360) + 360) % 360;
+                        float pw = pcb.x1 - pcb.x0, ph = pcb.y1 - pcb.y0;
+                        int page_landscape = (prot == 90 || prot == 270) ? (ph > pw) : (pw > ph);
+                        float big   = (tw > th) ? tw : th;
+                        float small = (tw > th) ? th : tw;
+                        if (page_landscape) { tw = big;   th = small; }
+                        else                { tw = small; th = big;   }
+                    }
+                }
+                float availW = tw - 2.0f * margin - (cols - 1) * gutter;
+                float availH = th - 2.0f * margin - (rows - 1) * gutter;
+                if (availW <= 1.0f || availH <= 1.0f)
+                    fz_throw(ctx, FZ_ERROR_ARGUMENT, "margins/gutter too large for target size");
+                float cellW = availW / (float)cols;
+                float cellH = availH / (float)rows;
+                fz_rect mediabox = { 0, 0, tw, th };
+
                 int placed = 0;
                 for (int c = 0; c < per; c++) {
                     int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
@@ -6154,43 +6182,26 @@ void kozou_compose_imposition_pdf(
                     float bh = bb.y1 - bb.y0;
                     if (bw <= 0 || bh <= 0) continue;
 
-                    /* 元ページの /Rotate（基準の表示向き）を取得する。
-                     * XObject は未回転(BBox=元ボックス)なので、配置側の cm に回転を
-                     * 織り込む。これによりベクター無劣化のまま正しい向きで面付けできる。 */
-                    int base_rot;
+                    /* 元ページの /Rotate を表示向きとして cm に織り込む。
+                     * ページ自体は回転させず /Rotate を維持する（向きの最適化は
+                     * シートサイズ側で対応済み = auto_orient の per==1 分岐）。 */
+                    int rot;
                     {
                         pdf_obj *pr = pdf_lookup_page_obj(ctx, src, pno); /* borrowed */
-                        base_rot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(Rotate)));
-                        base_rot = ((base_rot % 360) + 360) % 360;
-                        if (base_rot % 90 != 0) base_rot = 0; /* 直交以外は無視 */
+                        rot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(Rotate)));
+                        rot = ((rot % 360) + 360) % 360;
+                        if (rot % 90 != 0) rot = 0; /* 直交以外は無視 */
                     }
+                    /* 表示上(回転後)の寸法。90/270 は縦横入れ替え。 */
+                    float vw = (rot == 90 || rot == 270) ? bh : bw;
+                    float vh = (rot == 90 || rot == 270) ? bw : bh;
 
                     int   col = c % cols;
                     int   row = c / cols;
                     float cellX    = margin + col * (cellW + gutter);
                     /* PDF は左下原点・Y上向き。row 0 を上端に配置する。 */
-                    float cellTopY = target_h - margin - row * (cellH + gutter);
+                    float cellTopY = th - margin - row * (cellH + gutter);
                     float cellBotY = cellTopY - cellH;
-
-                    /* 配置向きを決定。auto_orient のとき、基準向き(base_rot)と +90° の
-                     * うちセルへの収まり(scale)が大きい方を選ぶ。/Rotate と合成される。
-                     * これによりページごとに(向き自動で)最適な向きに回して面付けできる。 */
-                    int use_rot = base_rot;
-                    {
-                        float vw0 = (base_rot == 90 || base_rot == 270) ? bh : bw;
-                        float vh0 = (base_rot == 90 || base_rot == 270) ? bw : bh;
-                        float s0  = (cellW / vw0 < cellH / vh0) ? cellW / vw0 : cellH / vh0;
-                        if (auto_orient) {
-                            int   r1  = (base_rot + 90) % 360;
-                            float vw1 = (r1 == 90 || r1 == 270) ? bh : bw;
-                            float vh1 = (r1 == 90 || r1 == 270) ? bw : bh;
-                            float s1  = (cellW / vw1 < cellH / vh1) ? cellW / vw1 : cellH / vh1;
-                            if (s1 > s0) use_rot = r1;
-                        }
-                    }
-                    /* 採用向きでの表示上寸法。90/270 は縦横入れ替え。 */
-                    float vw = (use_rot == 90 || use_rot == 270) ? bh : bw;
-                    float vh = (use_rot == 90 || use_rot == 270) ? bw : bh;
 
                     float sx = cellW / vw, sy = cellH / vh;
                     float scale = (sx < sy) ? sx : sy;
@@ -6204,7 +6215,7 @@ void kozou_compose_imposition_pdf(
                      *   180: (x,y)->(-x,-y) + translate(bw, bh)
                      *   270: (x,y)->(-y, x) + translate(bh, 0)  */
                     fz_matrix rotm;
-                    switch (use_rot) {
+                    switch (rot) {
                         case 90:  rotm = fz_make_matrix(0.f, -1.f, 1.f, 0.f, 0.f, bw); break;
                         case 180: rotm = fz_make_matrix(-1.f, 0.f, 0.f, -1.f, bw, bh); break;
                         case 270: rotm = fz_make_matrix(0.f, 1.f, -1.f, 0.f, bh, 0.f); break;
