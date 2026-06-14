@@ -70,7 +70,7 @@ pub struct ConvertResponse {
 /// C FFI (kozou_convert_to_pdf) を使用する。
 /// mupdf::Document::open は Windows でのフリーズを防ぐため使用しない。
 pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
-    use crate::ffi::{kozou_convert_to_pdf as ffi_convert, kozou_new_context, FfiResult};
+    use crate::ffi::{FfiResult, kozou_convert_to_pdf as ffi_convert, kozou_new_context};
     use std::ffi::CString;
 
     eprintln!("[convert] start: {}", req.input);
@@ -85,9 +85,15 @@ pub fn convert_to_pdf(req: &ConvertRequest) -> Result<ConvertResponse> {
     let lem = req.layout_em.unwrap_or(12.0);
     let pw = req.page_w_pt.unwrap_or(0.0);
     let ph = req.page_h_pt.unwrap_or(0.0);
-    let auto_orient = if req.auto_orient.unwrap_or(false) { 1 } else { 0 };
+    let auto_orient = if req.auto_orient.unwrap_or(false) {
+        1
+    } else {
+        0
+    };
 
-    eprintln!("[convert] calling C FFI: layout={lw}x{lh} em={lem} page={pw}x{ph} auto_orient={auto_orient}");
+    eprintln!(
+        "[convert] calling C FFI: layout={lw}x{lh} em={lem} page={pw}x{ph} auto_orient={auto_orient}"
+    );
 
     unsafe {
         let ctx = kozou_new_context();

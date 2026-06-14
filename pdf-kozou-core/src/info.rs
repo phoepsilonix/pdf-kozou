@@ -75,7 +75,7 @@ pub fn info_with_fonts(path: &str) -> Result<InfoResponse> {
 
 fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
     use crate::convert::is_pdf;
-    use crate::ffi::{kozou_get_doc_info, kozou_new_context, FfiResult};
+    use crate::ffi::{FfiResult, kozou_get_doc_info, kozou_new_context};
     use std::ffi::CString;
     use std::os::raw::c_int;
 
@@ -96,15 +96,15 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
             let mut m = PdfMetadata::default();
             for (key, val) in &pairs {
                 match key.as_str() {
-                    "Title"        => m.title        = Some(val.clone()),
-                    "Author"       => m.author       = Some(val.clone()),
-                    "Subject"      => m.subject      = Some(val.clone()),
-                    "Keywords"     => m.keywords     = Some(val.clone()),
-                    "Creator"      => m.creator      = Some(val.clone()),
-                    "Producer"     => m.producer     = Some(val.clone()),
+                    "Title" => m.title = Some(val.clone()),
+                    "Author" => m.author = Some(val.clone()),
+                    "Subject" => m.subject = Some(val.clone()),
+                    "Keywords" => m.keywords = Some(val.clone()),
+                    "Creator" => m.creator = Some(val.clone()),
+                    "Producer" => m.producer = Some(val.clone()),
                     "CreationDate" => m.creation_date = Some(val.clone()),
-                    "ModDate"      => m.mod_date     = Some(val.clone()),
-                    _              => {}
+                    "ModDate" => m.mod_date = Some(val.clone()),
+                    _ => {}
                 }
             }
             m
@@ -283,10 +283,11 @@ fn collect_fonts_from_resources(
                         .map(|b| String::from_utf8_lossy(b).to_string())
                 });
             if sub.as_deref() == Some("Form")
-                && let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
-                    let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
-                    collect_fonts_from_resources(&ir, page_1based, font_map);
-                }
+                && let Ok(Some(ir_raw)) = xo.get_dict("Resources")
+            {
+                let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
+                collect_fonts_from_resources(&ir, page_1based, font_map);
+            }
         }
     }
 }

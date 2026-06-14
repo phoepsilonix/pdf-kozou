@@ -44,7 +44,7 @@ pub struct RenderResponse {
 
 pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
     use crate::ffi::{
-        kozou_drop_buffer, kozou_new_context, kozou_render_page as ffi_render, FfiResult,
+        FfiResult, kozou_drop_buffer, kozou_new_context, kozou_render_page as ffi_render,
     };
     use std::ffi::CString;
     use std::os::raw::c_int;
@@ -413,15 +413,17 @@ fn build_exif_payload(
 
     // 0x8298 Copyright ← Author（ASCII のみ）
     if let Some(v) = artist
-        && v.is_ascii() {
-            ifd0_tags.push((0x8298, TYPE_ASCII, to_ascii(v)));
-        }
+        && v.is_ascii()
+    {
+        ifd0_tags.push((0x8298, TYPE_ASCII, to_ascii(v)));
+    }
 
     // 0x0131 Software ← Creator（ASCII のみ）
     if let Some(v) = software
-        && v.is_ascii() {
-            ifd0_tags.push((0x0131, TYPE_ASCII, to_ascii(v)));
-        }
+        && v.is_ascii()
+    {
+        ifd0_tags.push((0x0131, TYPE_ASCII, to_ascii(v)));
+    }
 
     // 0x0132 DateTime (ASCII) ← ModDate
     if let Some(v) = mod_date {
@@ -542,10 +544,9 @@ fn build_exif_payload(
     let value_area_start = exif_sub_start + exif_sub_size;
 
     // IFD0 の ExifIFD ポインタを正しいオフセットで上書き
-    if has_exif_sub
-        && let Some(entry) = ifd0_tags.iter_mut().find(|(tag, _, _)| *tag == 0x8769) {
-            entry.2 = exif_sub_start.to_le_bytes().to_vec();
-        }
+    if has_exif_sub && let Some(entry) = ifd0_tags.iter_mut().find(|(tag, _, _)| *tag == 0x8769) {
+        entry.2 = exif_sub_start.to_le_bytes().to_vec();
+    }
 
     // ── IFD0 エントリを組み立て ────────────────────────────────────────────
     let mut value_area: Vec<u8> = Vec::new();
@@ -954,7 +955,6 @@ fn remove_svg_metadata_block(svg: String) -> String {
     result.push_str(&svg[last_end..]);
     result
 }
-
 
 /// SVG の <svg ...> タグの終端 `>` の位置（次の文字のインデックス）を返す
 fn find_svg_tag_end(svg: &str) -> Option<usize> {
@@ -1406,9 +1406,10 @@ fn read_svg_metadata(data: &[u8]) -> Vec<(String, String)> {
     ];
     for (tag, pdf_key) in dc_map {
         if let Some(val) = extract_xml_text(text, tag)
-            && !val.is_empty() {
-                result.push((pdf_key.to_string(), val));
-            }
+            && !val.is_empty()
+        {
+            result.push((pdf_key.to_string(), val));
+        }
     }
 
     // <xmp:CreateDate>, <xmp:ModifyDate>
@@ -1419,9 +1420,10 @@ fn read_svg_metadata(data: &[u8]) -> Vec<(String, String)> {
     ];
     for (tag, pdf_key) in date_map {
         if let Some(val) = extract_xml_text(text, tag)
-            && !val.is_empty() {
-                result.push((pdf_key.to_string(), val));
-            }
+            && !val.is_empty()
+        {
+            result.push((pdf_key.to_string(), val));
+        }
     }
 
     dedup_metadata(result)
@@ -1492,7 +1494,9 @@ fn parse_tiff_exif(tiff: &[u8]) -> Vec<(String, String)> {
     };
 
     // TIFF マジック確認
-    if read_u16(2) != Some(0x002A) { let _ = read_u16(2) != Some(0x002A); }
+    if read_u16(2) != Some(0x002A) {
+        let _ = read_u16(2) != Some(0x002A);
+    }
     let ifd0_offset = match read_u32(4) {
         Some(v) => v as usize,
         None => return vec![],
@@ -1705,11 +1709,7 @@ fn parse_user_comment(data: &[u8]) -> Option<String> {
             .copied()
             .collect::<Vec<_>>()
             .pipe(|v| String::from_utf8_lossy(&v).trim().to_string());
-        if s.is_empty() {
-            None
-        } else {
-            Some(s)
-        }
+        if s.is_empty() { None } else { Some(s) }
     }
 }
 

@@ -27,10 +27,10 @@ pub struct CleanupStats {
 /// MuPDF から取得した 1 エントリ
 #[derive(Debug, Deserialize)]
 struct XObjEntry {
-    container_xref: i32,  // 0 = ページのコンテンツストリーム
+    container_xref: i32, // 0 = ページのコンテンツストリーム
     xobj_name: String,
     xobj_xref: i32,
-    bbox: [f32; 4],        // MuPDF デバイス座標 [x0,y0,x1,y1]
+    bbox: [f32; 4], // MuPDF デバイス座標 [x0,y0,x1,y1]
 }
 
 /// MuPDF からの JSON レスポンス
@@ -57,8 +57,8 @@ pub fn remove_out_of_crop_resources(
     layout_em: f32,
 ) -> Result<CleanupStats, String> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_collect_xobj_bboxes, kozou_drop_buffer,
-        kozou_new_context, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_collect_xobj_bboxes, kozou_drop_buffer,
+        kozou_new_context,
     };
     use std::ffi::CString;
 
@@ -67,16 +67,14 @@ pub fn remove_out_of_crop_resources(
     let c_path = CString::new(input).map_err(|_| "invalid path".to_string())?;
 
     let page_count = {
-        let doc = lopdf::Document::load(input)
-            .map_err(|e| format!("lopdf load: {e}"))?;
+        let doc = lopdf::Document::load(input).map_err(|e| format!("lopdf load: {e}"))?;
         doc.get_pages().len()
     };
 
     // container_xref → 削除すべき xobj_name のセット
     // (0 = ページのコンテンツストリーム)
     // ページごとに収集
-    let mut page_remove_maps: Vec<HashMap<i32, HashSet<String>>> =
-        vec![HashMap::new(); page_count];
+    let mut page_remove_maps: Vec<HashMap<i32, HashSet<String>>> = vec![HashMap::new(); page_count];
 
     for (page_idx, remove_map) in page_remove_maps.iter_mut().enumerate() {
         let json_str = unsafe {
@@ -114,8 +112,7 @@ pub fn remove_out_of_crop_resources(
             let mut data_ptr: *const u8 = std::ptr::null();
             let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
             let s = if len > 0 && !data_ptr.is_null() {
-                String::from_utf8_lossy(std::slice::from_raw_parts(data_ptr, len))
-                    .into_owned()
+                String::from_utf8_lossy(std::slice::from_raw_parts(data_ptr, len)).into_owned()
             } else {
                 String::new()
             };
@@ -157,8 +154,13 @@ pub fn remove_out_of_crop_resources(
                 eprintln!(
                     "[crop_cleanup] page {page_idx}: remove /{} (xref={}) \
                      in container={} bbox=[{:.0},{:.0},{:.0},{:.0}]",
-                    entry.xobj_name, entry.xobj_xref, entry.container_xref,
-                    entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3],
+                    entry.xobj_name,
+                    entry.xobj_xref,
+                    entry.container_xref,
+                    entry.bbox[0],
+                    entry.bbox[1],
+                    entry.bbox[2],
+                    entry.bbox[3],
                 );
             }
         }
@@ -174,8 +176,7 @@ pub fn remove_out_of_crop_resources(
     }
 
     // Phase 2: lopdf で Do 命令を削除
-    let mut doc = Document::load(input)
-        .map_err(|e| format!("lopdf load: {e}"))?;
+    let mut doc = Document::load(input).map_err(|e| format!("lopdf load: {e}"))?;
 
     let page_ids: Vec<ObjectId> = doc.page_iter().collect();
 
@@ -188,11 +189,10 @@ pub fn remove_out_of_crop_resources(
 
         // container_xref=0 → ページのコンテンツストリームを編集
         if let Some(names) = remove_map.get(&0) {
-            let removed = edit_page_content(&mut doc, *page_id, names)
-                .unwrap_or_else(|e| {
-                    eprintln!("[crop_cleanup] page {page_idx} content: {e}");
-                    0
-                });
+            let removed = edit_page_content(&mut doc, *page_id, names).unwrap_or_else(|e| {
+                eprintln!("[crop_cleanup] page {page_idx} content: {e}");
+                0
+            });
             stats.do_ops_removed += removed;
         }
 
@@ -202,11 +202,10 @@ pub fn remove_out_of_crop_resources(
                 continue;
             }
             let xref = *container_xref as u32;
-            let removed = edit_xobj_stream(&mut doc, xref, names)
-                .unwrap_or_else(|e| {
-                    eprintln!("[crop_cleanup] xref={container_xref}: {e}");
-                    0
-                });
+            let removed = edit_xobj_stream(&mut doc, xref, names).unwrap_or_else(|e| {
+                eprintln!("[crop_cleanup] xref={container_xref}: {e}");
+                0
+            });
             stats.do_ops_removed += removed;
         }
 
@@ -270,11 +269,14 @@ fn edit_xobj_stream(
 
     // ストリームデータを取得
     let bytes = {
-        let obj = doc.get_object(xobj_id)
+        let obj = doc
+            .get_object(xobj_id)
             .map_err(|e| format!("get xobj {xref}: {e}"))?;
-        let stream = obj.as_stream()
+        let stream = obj
+            .as_stream()
             .map_err(|e| format!("xobj {xref} as_stream: {e}"))?;
-        stream.decompressed_content()
+        stream
+            .decompressed_content()
             .map_err(|e| format!("xobj {xref} decompress: {e}"))?
     };
 
@@ -285,12 +287,16 @@ fn edit_xobj_stream(
     }
 
     // 更新
-    let obj = doc.get_object_mut(xobj_id)
+    let obj = doc
+        .get_object_mut(xobj_id)
         .map_err(|e| format!("get xobj mut {xref}: {e}"))?;
-    let stream = obj.as_stream_mut()
+    let stream = obj
+        .as_stream_mut()
         .map_err(|e| format!("xobj {xref} as_stream_mut: {e}"))?;
     stream.set_plain_content(new_content.into_bytes());
-    stream.compress().map_err(|e| format!("compress {xref}: {e}"))?;
+    stream
+        .compress()
+        .map_err(|e| format!("compress {xref}: {e}"))?;
 
     Ok(removed)
 }
@@ -328,7 +334,7 @@ fn update_page_contents(
     old_contents: &Object,
     new_bytes: Vec<u8>,
 ) -> Result<(), String> {
-    use lopdf::{dictionary, Stream};
+    use lopdf::{Stream, dictionary};
 
     match old_contents {
         Object::Reference(stream_id) => {
@@ -343,7 +349,9 @@ fn update_page_contents(
         }
         _ => {
             let mut new_stream = Stream::new(dictionary! {}, new_bytes);
-            new_stream.compress().map_err(|e| format!("compress new: {e}"))?;
+            new_stream
+                .compress()
+                .map_err(|e| format!("compress new: {e}"))?;
             let new_id = doc.add_object(Object::Stream(new_stream));
             let page_dict = doc
                 .get_object_mut(page_id)
@@ -445,10 +453,19 @@ mod tests {
     #[test]
     fn test_intersects() {
         // 完全に外側（CropBoxの上）
-        assert!(!intersects(&[0.0, 0.0, 595.0, 400.0], &[0.0, 421.0, 595.0, 842.0]));
+        assert!(!intersects(
+            &[0.0, 0.0, 595.0, 400.0],
+            &[0.0, 421.0, 595.0, 842.0]
+        ));
         // 重なる
-        assert!(intersects(&[0.0, 0.0, 595.0, 500.0], &[0.0, 421.0, 595.0, 842.0]));
+        assert!(intersects(
+            &[0.0, 0.0, 595.0, 500.0],
+            &[0.0, 421.0, 595.0, 842.0]
+        ));
         // 完全に内側
-        assert!(intersects(&[100.0, 500.0, 200.0, 600.0], &[0.0, 421.0, 595.0, 842.0]));
+        assert!(intersects(
+            &[100.0, 500.0, 200.0, 600.0],
+            &[0.0, 421.0, 595.0, 842.0]
+        ));
     }
 }

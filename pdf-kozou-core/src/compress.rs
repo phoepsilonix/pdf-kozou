@@ -146,11 +146,7 @@ fn collect_metadata_from_ooxml(input: &str) -> Vec<(String, String)> {
         let start = xml.find(&open)? + open.len();
         let end = xml[start..].find(&close)? + start;
         let text = xml[start..end].trim().to_string();
-        if text.is_empty() {
-            None
-        } else {
-            Some(text)
-        }
+        if text.is_empty() { None } else { Some(text) }
     };
 
     // PDF /Info キーと core.xml タグのマッピング
@@ -1004,7 +1000,7 @@ pub fn rasterize_with_quality(
     use_png: bool,
     pages: Option<&[i32]>,
 ) -> Result<CompressResponse> {
-    use crate::ffi::{kozou_new_context, kozou_rasterize as ffi_rasterize, FfiResult};
+    use crate::ffi::{FfiResult, kozou_new_context, kozou_rasterize as ffi_rasterize};
     use std::ffi::CString;
     use std::os::raw::c_int;
 
@@ -1103,7 +1099,7 @@ pub fn compress_preserving_type3(
     compress_images: bool,
 ) -> Result<CompressResponse> {
     use crate::ffi::{
-        kozou_compress_preserving_type3 as ffi_compress, kozou_new_context, FfiResult,
+        FfiResult, kozou_compress_preserving_type3 as ffi_compress, kozou_new_context,
     };
     use std::ffi::CString;
 
@@ -1279,26 +1275,26 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                         found.push(t.to_string());
                         if t == "Type0"
                             && let Ok(Some(da)) = fo.get_dict("DescendantFonts")
-                                && let Some(d) = da
-                                    .get_dict_val(0)
-                                    .ok()
-                                    .flatten()
-                                    .and_then(|o| o.resolve().ok().flatten().or(Some(o)))
-                                {
-                                    let ds = d
-                                        .get_dict("Subtype")
+                            && let Some(d) = da
+                                .get_dict_val(0)
+                                .ok()
+                                .flatten()
+                                .and_then(|o| o.resolve().ok().flatten().or(Some(o)))
+                        {
+                            let ds = d
+                                .get_dict("Subtype")
+                                .ok()
+                                .flatten()
+                                .and_then(|o| o.resolve().ok().flatten().or(Some(o)))
+                                .and_then(|o| {
+                                    o.as_name()
                                         .ok()
-                                        .flatten()
-                                        .and_then(|o| o.resolve().ok().flatten().or(Some(o)))
-                                        .and_then(|o| {
-                                            o.as_name()
-                                                .ok()
-                                                .map(|b| String::from_utf8_lossy(b).to_string())
-                                        });
-                                    if let Some(dt) = ds {
-                                        found.push(dt);
-                                    }
-                                }
+                                        .map(|b| String::from_utf8_lossy(b).to_string())
+                                });
+                            if let Some(dt) = ds {
+                                found.push(dt);
+                            }
+                        }
                     }
                     None => {}
                 }
@@ -1327,10 +1323,11 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
                 if st.as_deref() == Some("Form")
-                    && let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
-                        let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
-                        collect_unsafe_font_types(&ir, found);
-                    }
+                    && let Ok(Some(ir_raw)) = xo.get_dict("Resources")
+                {
+                    let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
+                    collect_unsafe_font_types(&ir, found);
+                }
             }
         }
     }
@@ -1429,12 +1426,13 @@ fn resources_has_type3(resources: &mupdf::pdf::PdfObject) -> bool {
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
                 if st.as_deref() == Some("Form")
-                    && let Ok(Some(ir_raw)) = xo.get_dict("Resources") {
-                        let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
-                        if resources_has_type3(&ir) {
-                            return true;
-                        }
+                    && let Ok(Some(ir_raw)) = xo.get_dict("Resources")
+                {
+                    let ir = ir_raw.resolve().ok().flatten().unwrap_or(ir_raw);
+                    if resources_has_type3(&ir) {
+                        return true;
                     }
+                }
             }
         }
     }

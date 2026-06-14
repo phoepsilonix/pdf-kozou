@@ -20,8 +20,7 @@ use std::collections::HashSet;
 /// output: 出力 PDF パス
 /// 戻り値: 削除した BT ブロック数
 pub fn sanitize_type3_blocks(input: &str, output: &str) -> Result<usize, String> {
-    let mut doc = Document::load(input)
-        .map_err(|e| format!("lopdf load error: {e}"))?;
+    let mut doc = Document::load(input).map_err(|e| format!("lopdf load error: {e}"))?;
 
     let mut total_removed = 0;
 
@@ -67,9 +66,7 @@ fn collect_from_page(
     }
     visited.insert(page_id);
 
-    let page_dict = match doc.get_object(page_id).ok()
-        .and_then(|o| o.as_dict().ok()) 
-    {
+    let page_dict = match doc.get_object(page_id).ok().and_then(|o| o.as_dict().ok()) {
         Some(d) => d.clone(),
         None => return,
     };
@@ -115,12 +112,10 @@ fn collect_form_xobjects(
 ) {
     // resources_obj が Reference なら解決
     let resources = match resources_obj {
-        Object::Reference(id) => {
-            match doc.get_object(*id).ok() {
-                Some(o) => o.clone(),
-                None => return,
-            }
-        }
+        Object::Reference(id) => match doc.get_object(*id).ok() {
+            Some(o) => o.clone(),
+            None => return,
+        },
         other => other.clone(),
     };
 
@@ -165,7 +160,10 @@ fn collect_form_xobjects(
             Ok(s) => s.clone(),
             Err(_) => continue,
         };
-        let subtype = stream.dict.get(b"Subtype").ok()
+        let subtype = stream
+            .dict
+            .get(b"Subtype")
+            .ok()
             .and_then(|o| o.as_name().ok().map(|n| n.to_vec()));
         if subtype.as_deref() != Some(b"Form") {
             continue;
@@ -192,11 +190,14 @@ fn process_content_stream(doc: &mut Document, stream_id: ObjectId) -> Result<usi
 
     // ストリームデータを取得
     let stream_data = {
-        let obj = doc.get_object(stream_id)
+        let obj = doc
+            .get_object(stream_id)
             .map_err(|e| format!("get stream {stream_id:?}: {e}"))?;
-        let stream = obj.as_stream()
+        let stream = obj
+            .as_stream()
             .map_err(|e| format!("as_stream {stream_id:?}: {e}"))?;
-        stream.decompressed_content()
+        stream
+            .decompressed_content()
             .map_err(|e| format!("decompress {stream_id:?}: {e}"))?
     };
 
@@ -210,14 +211,15 @@ fn process_content_stream(doc: &mut Document, stream_id: ObjectId) -> Result<usi
     }
 
     // ストリームを更新
-    let obj = doc.get_object_mut(stream_id)
+    let obj = doc
+        .get_object_mut(stream_id)
         .map_err(|e| format!("get_mut {stream_id:?}: {e}"))?;
-    let stream = obj.as_stream_mut()
+    let stream = obj
+        .as_stream_mut()
         .map_err(|e| format!("as_stream_mut {stream_id:?}: {e}"))?;
 
     stream.set_plain_content(new_content.into_bytes());
-    stream.compress()
-        .map_err(|e| format!("compress: {e}"))?;
+    stream.compress().map_err(|e| format!("compress: {e}"))?;
 
     Ok(removed)
 }
@@ -291,13 +293,16 @@ fn collect_type3_font_names(doc: &Document, stream_id: ObjectId) -> HashSet<Stri
             Err(_) => continue,
         };
 
-        let subtype = font_dict.get(b"Subtype").ok()
+        let subtype = font_dict
+            .get(b"Subtype")
+            .ok()
             .and_then(|o| o.as_name().ok().map(|n| n.to_vec()));
 
         if subtype.as_deref() == Some(b"Type3")
-            && let Ok(name) = std::str::from_utf8(font_name_bytes) {
-                type3_names.insert(name.to_string());
-            }
+            && let Ok(name) = std::str::from_utf8(font_name_bytes)
+        {
+            type3_names.insert(name.to_string());
+        }
     }
 
     type3_names
@@ -328,9 +333,7 @@ fn remove_type3_bt_blocks(content: &str, type3_fonts: &HashSet<String>) -> (Stri
                 if uses_type3_font(block, type3_fonts) {
                     // 削除: 出力しない
                     // 改行は保持して行番号がずれないようにする
-                    let newlines: String = block.chars()
-                        .filter(|&c| c == '\n')
-                        .collect();
+                    let newlines: String = block.chars().filter(|&c| c == '\n').collect();
                     result.push_str(&newlines);
                     removed += 1;
                 } else {

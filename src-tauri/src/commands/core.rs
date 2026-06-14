@@ -7,8 +7,8 @@
 // pdf-kozou-core sidecar を呼び出す Tauri コマンド群
 // 全処理は pdf-kozou-core に委譲し、JSON レスポンスをそのまま返す
 
-use crate::error::{Error, Result};
 use crate::CORE_BIN_PATH;
+use crate::error::{Error, Result};
 use serde_json::Value;
 
 /// pdf-kozou-core バイナリを呼び出して JSON レスポンスを返す
@@ -208,8 +208,7 @@ pub async fn save_base64_image(
     // スラッシュ混在を正規化（Windows対応）
     let normalized = std::path::Path::new(&path);
     if let Some(parent) = normalized.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+        std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
     }
     std::fs::write(normalized, &bytes)
         .map_err(|e| Error::Core(format!("write {:?}: {e}", normalized)))?;
@@ -224,11 +223,15 @@ pub async fn save_base64_image(
             .to_lowercase();
         let fmt = if ext == "png" { "png" } else { "jpeg" };
         // fire-and-forget: メタデータ埋め込み失敗は画像保存には影響しない
-        let _ = call_core_json("embed_image_metadata", serde_json::json!({
-            "image_path": path,
-            "source_path": src,
-            "format": fmt,
-        })).await;
+        let _ = call_core_json(
+            "embed_image_metadata",
+            serde_json::json!({
+                "image_path": path,
+                "source_path": src,
+                "format": fmt,
+            }),
+        )
+        .await;
     }
 
     Ok(serde_json::json!({ "ok": true, "path": normalized.to_string_lossy() }))
@@ -249,10 +252,10 @@ pub async fn rasterize_imposition(request: Value) -> Result<Value> {
     // 出力先ディレクトリを自動作成
     if let Some(out) = request.get("output").and_then(|v| v.as_str())
         && let Some(parent) = std::path::Path::new(out).parent()
-            && !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
-            }
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+    }
     call_core_json("rasterize_imposition", request).await
 }
 
@@ -263,10 +266,10 @@ pub async fn rasterize_imposition(request: Value) -> Result<Value> {
 pub async fn split_imposition_pdf(request: Value) -> Result<Value> {
     if let Some(out) = request.get("output").and_then(|v| v.as_str())
         && let Some(parent) = std::path::Path::new(out).parent()
-            && !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
-            }
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+    }
     call_core_json("split_imposition_pdf", request).await
 }
 
@@ -278,10 +281,10 @@ pub async fn split_imposition_pdf(request: Value) -> Result<Value> {
 pub async fn compose_imposition_pdf(request: Value) -> Result<Value> {
     if let Some(out) = request.get("output").and_then(|v| v.as_str())
         && let Some(parent) = std::path::Path::new(out).parent()
-            && !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
-            }
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+    }
     call_core_json("compose_imposition_pdf", request).await
 }
 
@@ -291,7 +294,6 @@ pub async fn compose_imposition_pdf(request: Value) -> Result<Value> {
 pub async fn split_cell_render(request: Value) -> Result<Value> {
     call_core_json("split_cell_render", request).await
 }
-
 
 /// 特殊制御文字（ゼロ幅・双方向制御・タグ文字等）を検出
 #[tauri::command]
@@ -517,10 +519,12 @@ pub async fn export_images(
         prefix.clone(),
     ];
     if let Some(ref pg) = pages
-        && !pg.is_empty() && pg != "all" {
-            args.push("--page".into());
-            args.push(pg.clone());
-        }
+        && !pg.is_empty()
+        && pg != "all"
+    {
+        args.push("--page".into());
+        args.push(pg.clone());
+    }
     if let Some(q) = quality {
         args.push("--quality".into());
         args.push(q.to_string());
@@ -605,10 +609,10 @@ pub async fn export_image_pdf(
 
     // 出力先ディレクトリを自動作成
     if let Some(parent) = std::path::Path::new(&out_path).parent()
-        && !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| Error::Core(format!("mkdir: {e}")))?;
-        }
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+    }
 
     let request = json!({
         "input":   path,
@@ -658,12 +662,8 @@ pub async fn check_path_conflict(
 
     // out_dir の正規化
     let out_dir_norm = match std::fs::canonicalize(&out_dir) {
-        Ok(p) => {
-            p
-        }
-        Err(_) => {
-            std::path::PathBuf::from(&out_dir)
-        }
+        Ok(p) => p,
+        Err(_) => std::path::PathBuf::from(&out_dir),
     };
 
     if is_batch {

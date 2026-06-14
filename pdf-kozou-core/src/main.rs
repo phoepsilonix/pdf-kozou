@@ -545,7 +545,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
                 let fallback = {
                     use pdf_kozou_core::compress::{
-                        parse_rewrite_opt_bool, parse_rewrite_opt_i32, RewriteFallbackParams,
+                        RewriteFallbackParams, parse_rewrite_opt_bool, parse_rewrite_opt_i32,
                     };
                     RewriteFallbackParams {
                         garbage_level: gc.or_else(|| parse_rewrite_opt_i32(opts, "garbage")),
@@ -605,7 +605,14 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&resp)?);
         }
 
-        Commands::Rasterize { input, output, dpi, quality, page, png } => {
+        Commands::Rasterize {
+            input,
+            output,
+            dpi,
+            quality,
+            page,
+            png,
+        } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
                 p.clone()
@@ -614,7 +621,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             let pages = page.as_deref().map(parse_page_list).transpose()?;
             let resp = pdf_kozou_core::compress::rasterize_with_quality(
-                &input, &output, dpi, quality, png, pages.as_deref(),
+                &input,
+                &output,
+                dpi,
+                quality,
+                png,
+                pages.as_deref(),
             )?;
             println!("{}", serde_json::to_string(&resp)?);
         }
@@ -656,15 +668,16 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let mut tmps: Vec<(tempfile::NamedTempFile, String)> = Vec::new();
             let inputs = inputs
                 .into_iter()
-                .map(|inp| {
-                    match auto_convert_if_needed(&inp, None, None, None, None, None, None) { Ok(Some(converted)) => {
-                        let path = converted.1.clone();
-                        tmps.push(converted);
-                        path
-                    } _ => {
-                        inp
-                    }}
-                })
+                .map(
+                    |inp| match auto_convert_if_needed(&inp, None, None, None, None, None, None) {
+                        Ok(Some(converted)) => {
+                            let path = converted.1.clone();
+                            tmps.push(converted);
+                            path
+                        }
+                        _ => inp,
+                    },
+                )
                 .collect::<Vec<_>>();
             let req = pdf_kozou_core::merge::MergeRequest { inputs, output };
             let resp = pdf_kozou_core::merge::merge(&req)?;
@@ -687,9 +700,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             // --angle: 0/90/180/270 のみ受け付ける
             if let Some(a) = angle
-                && (a % 90 != 0 || a > 270) {
-                    anyhow::bail!("angle must be 0, 90, 180, or 270");
-                }
+                && (a % 90 != 0 || a > 270)
+            {
+                anyhow::bail!("angle must be 0, 90, 180, or 270");
+            }
             // --page-angles "1:90,2:180,3:270" をパース
             let rotations = page_angles
                 .as_deref()
@@ -738,7 +752,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             layout_h,
             layout_em,
         } => {
-            use pdf_kozou_core::convert::{convert_to_pdf, ConvertRequest};
+            use pdf_kozou_core::convert::{ConvertRequest, convert_to_pdf};
             let req = ConvertRequest {
                 input,
                 output,
@@ -812,7 +826,7 @@ fn auto_convert_if_needed(
     page_h_pt: Option<f32>,
     auto_orient: Option<bool>,
 ) -> anyhow::Result<Option<(tempfile::NamedTempFile, String)>> {
-    use pdf_kozou_core::convert::{convert_to_pdf, is_mupdf_supported, is_pdf, ConvertRequest};
+    use pdf_kozou_core::convert::{ConvertRequest, convert_to_pdf, is_mupdf_supported, is_pdf};
 
     if is_pdf(input) {
         return Ok(None); // PDF はそのまま
@@ -943,7 +957,8 @@ fn dispatch_json(line: &str) -> String {
             }
             "trim" => {
                 let mut req: pdf_kozou_core::trim::TrimRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -976,7 +991,8 @@ fn dispatch_json(line: &str) -> String {
                     inner: pdf_kozou_core::compress::CompressRequest,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.inner.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&r.inner.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.inner.input = tmp_path.clone();
                 }
@@ -988,7 +1004,7 @@ fn dispatch_json(line: &str) -> String {
                         .unwrap_or(pdf_kozou_core::compress::REWRITE_OPTIONS_DEFAULT);
                     let fallback = {
                         use pdf_kozou_core::compress::{
-                            parse_rewrite_opt_bool, parse_rewrite_opt_i32, RewriteFallbackParams,
+                            RewriteFallbackParams, parse_rewrite_opt_bool, parse_rewrite_opt_i32,
                         };
                         RewriteFallbackParams {
                             garbage_level: r
@@ -1027,7 +1043,8 @@ fn dispatch_json(line: &str) -> String {
             }
             "split" => {
                 let mut req: pdf_kozou_core::split::SplitRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1038,7 +1055,9 @@ fn dispatch_json(line: &str) -> String {
                 let mut req: pdf_kozou_core::merge::MergeRequest = serde_json::from_str(line)?;
                 let mut tmps: Vec<(tempfile::NamedTempFile, String)> = Vec::new();
                 for input in req.inputs.iter_mut() {
-                    if let Some(converted) = auto_convert_if_needed(input, lw, lh, lem, pw_pt, ph_pt, auto_orient)? {
+                    if let Some(converted) =
+                        auto_convert_if_needed(input, lw, lh, lem, pw_pt, ph_pt, auto_orient)?
+                    {
                         *input = converted.1.clone();
                         tmps.push(converted);
                     }
@@ -1049,7 +1068,8 @@ fn dispatch_json(line: &str) -> String {
             }
             "rotate" => {
                 let mut req: pdf_kozou_core::rotate::RotateRequest = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1058,8 +1078,7 @@ fn dispatch_json(line: &str) -> String {
                 )?)?)
             }
             "sanitize_hidden" => {
-                let req: pdf_kozou_core::stext::SanitizeRequest =
-                    serde_json::from_str(line)?;
+                let req: pdf_kozou_core::stext::SanitizeRequest = serde_json::from_str(line)?;
                 // スタックサイズを 32MB に増やして実行（Windows デフォルト 1MB では不足）
                 let result = std::thread::Builder::new()
                     .stack_size(32 * 1024 * 1024)
@@ -1081,7 +1100,8 @@ fn dispatch_json(line: &str) -> String {
             "rasterize_imposition" => {
                 let mut req: pdf_kozou_core::stext::RasterizeImpositionRequest =
                     serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1093,7 +1113,8 @@ fn dispatch_json(line: &str) -> String {
             "split_imposition_pdf" => {
                 let mut req: pdf_kozou_core::stext::SplitImpositionPdfRequest =
                     serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1105,7 +1126,8 @@ fn dispatch_json(line: &str) -> String {
             "compose_imposition_pdf" => {
                 let mut req: pdf_kozou_core::stext::ComposeImpositionPdfRequest =
                     serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1117,7 +1139,8 @@ fn dispatch_json(line: &str) -> String {
             "split_cell_render" => {
                 let mut req: pdf_kozou_core::stext::SplitCellRenderRequest =
                     serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
@@ -1135,16 +1158,14 @@ fn dispatch_json(line: &str) -> String {
             }
 
             "detect_buried" => {
-                let req: pdf_kozou_core::stext::DetectBuriedRequest =
-                    serde_json::from_str(line)?;
+                let req: pdf_kozou_core::stext::DetectBuriedRequest = serde_json::from_str(line)?;
                 Ok(serde_json::to_string(
                     &pdf_kozou_core::stext::detect_buried_text(&req)?,
                 )?)
             }
 
             "detect_tiny" => {
-                let req: pdf_kozou_core::stext::DetectTinyRequest =
-                    serde_json::from_str(line)?;
+                let req: pdf_kozou_core::stext::DetectTinyRequest = serde_json::from_str(line)?;
                 Ok(serde_json::to_string(
                     &pdf_kozou_core::stext::detect_tiny_text(&req)?,
                 )?)
@@ -1317,13 +1338,11 @@ fn dispatch_json(line: &str) -> String {
                 Ok(serde_json::to_string(&serde_json::json!({ "ok": true }))?)
             }
             "sanitize_type3" => {
-                let req: pdf_kozou_core::stext::SanitizeType3Request =
-                    serde_json::from_str(line)?;
+                let req: pdf_kozou_core::stext::SanitizeType3Request = serde_json::from_str(line)?;
                 let resp = pdf_kozou_core::stext::sanitize_type3_text(&req)?;
                 Ok(serde_json::to_string(&resp)?)
             }
-            "embed_image_metadata" =>
- {
+            "embed_image_metadata" => {
                 #[derive(serde::Deserialize)]
                 struct Req {
                     image_path: String,

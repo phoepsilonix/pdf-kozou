@@ -85,10 +85,11 @@ fn find_mupdf_include() -> PathBuf {
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
-            && let Some(inc) = search_mupdf_sys_out_include(build_dir) {
-                println!("cargo:warning=kozou build: using out/build/include (patch/git build)");
-                return inc;
-            }
+            && let Some(inc) = search_mupdf_sys_out_include(build_dir)
+        {
+            println!("cargo:warning=kozou build: using out/build/include (patch/git build)");
+            return inc;
+        }
     }
 
     // 3. CARGO_HOME/git/checkouts — patch.crates-io の git 指定 fork のソースヘッダ
@@ -113,7 +114,9 @@ fn find_mupdf_include() -> PathBuf {
 
     println!("cargo:warning=mupdf/fitz.h が見つかりません!");
     println!("cargo:warning=MUPDF_INCLUDE_DIR でヘッダパスを指定してください。");
-    println!("cargo:warning=例: MUPDF_INCLUDE_DIR=~/.cargo/git/checkouts/mupdf-rs-.../mupdf-sys/mupdf/include");
+    println!(
+        "cargo:warning=例: MUPDF_INCLUDE_DIR=~/.cargo/git/checkouts/mupdf-rs-.../mupdf-sys/mupdf/include"
+    );
     PathBuf::from("/nonexistent_please_set_MUPDF_INCLUDE_DIR")
 }
 
@@ -236,13 +239,14 @@ fn read_fz_version(include_dir: &Path) -> (u64, u64, u64) {
         for line in content.lines() {
             // #define FZ_VERSION "1.28.0"
             if line.contains("FZ_VERSION \"")
-                && let Some(start) = line.rfind('"') {
-                    let rest = &line[..start];
-                    if let Some(ver_start) = rest.rfind('"') {
-                        let ver_str = &rest[ver_start + 1..];
-                        return parse_semver(ver_str);
-                    }
+                && let Some(start) = line.rfind('"')
+            {
+                let rest = &line[..start];
+                if let Some(ver_start) = rest.rfind('"') {
+                    let ver_str = &rest[ver_start + 1..];
+                    return parse_semver(ver_str);
                 }
+            }
         }
     }
     (0, 0, 0)

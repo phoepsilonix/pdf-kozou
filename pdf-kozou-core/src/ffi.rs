@@ -203,14 +203,14 @@ unsafe extern "C" {
         layout_w: f32,
         layout_h: f32,
         layout_em: f32,
-        page_nums: *const c_int,  /* cols*rows 個の配置ページ番号(1始まり,0=空白) */
+        page_nums: *const c_int, /* cols*rows 個の配置ページ番号(1始まり,0=空白) */
         n_pages: c_int,
         cols: c_int,
         rows: c_int,
         dpi: f32,
-        format: c_int,    /* 0=JPEG, 1=PNG */
-        quality: c_int,   /* JPEG品質 1-100 */
-        gap_px: c_int,    /* セル間ギャップ px */
+        format: c_int,  /* 0=JPEG, 1=PNG */
+        quality: c_int, /* JPEG品質 1-100 */
+        gap_px: c_int,  /* セル間ギャップ px */
         out: *mut mupdf_sys::fz_output,
         result: *mut FfiResult,
     );
@@ -224,12 +224,12 @@ unsafe extern "C" {
         layout_em: f32,
         sheet_pages: *const c_int, /* n_sheets*cells_per_sheet 個 (1始まり,0=空白) */
         n_sheets: c_int,
-        cells_per_sheet: c_int,    /* = cols*rows */
+        cells_per_sheet: c_int, /* = cols*rows */
         cols: c_int,
         rows: c_int,
         dpi: f32,
-        quality: c_int,   /* JPEG品質 1-100 */
-        use_png: c_int,   /* 0=JPEG, 1=PNG */
+        quality: c_int, /* JPEG品質 1-100 */
+        use_png: c_int, /* 0=JPEG, 1=PNG */
         gap_px: c_int,
         tmp_dir: *const c_char,
         result: *mut FfiResult,
@@ -242,7 +242,7 @@ unsafe extern "C" {
         layout_w: f32,
         layout_h: f32,
         layout_em: f32,
-        cells: *const c_int,  /* n_cells*3 個: (page,row,col) 連結 */
+        cells: *const c_int, /* n_cells*3 個: (page,row,col) 連結 */
         n_cells: c_int,
         cols: c_int,
         rows: c_int,
@@ -280,13 +280,13 @@ unsafe extern "C" {
         layout_w: f32,
         layout_h: f32,
         layout_em: f32,
-        page: c_int,      /* 1始まり */
+        page: c_int, /* 1始まり */
         cols: c_int,
         rows: c_int,
         cell_row: c_int,
         cell_col: c_int,
         dpi: f32,
-        format: c_int,    /* 0=JPEG, 1=PNG, 2=SVG */
+        format: c_int, /* 0=JPEG, 1=PNG, 2=SVG */
         quality: c_int,
         out: *mut mupdf_sys::fz_output,
         result: *mut FfiResult,

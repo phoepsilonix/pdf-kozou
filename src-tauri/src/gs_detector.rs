@@ -71,8 +71,8 @@ pub async fn find_gs_executable(custom_gs_path: Option<String>) -> Option<String
     // 4. Windows レジストリ
     #[cfg(target_os = "windows")]
     {
-        use winreg::enums::*;
         use winreg::RegKey;
+        use winreg::enums::*;
 
         let roots = [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER];
         let vendors = ["SOFTWARE\\GPL Ghostscript", "SOFTWARE\\Artifex Ghostscript"];

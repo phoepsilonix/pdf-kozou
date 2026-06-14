@@ -352,8 +352,8 @@ pub fn detect_transparent_text(
     req: &DetectTransparentRequest,
 ) -> Result<DetectTransparentResponse> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_detect_transparent_text, kozou_drop_buffer,
-        kozou_new_context, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_detect_transparent_text, kozou_drop_buffer,
+        kozou_new_context,
     };
     use std::ffi::CString;
     use std::os::raw::c_int;
@@ -362,8 +362,8 @@ pub fn detect_transparent_text(
         .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
     let alpha_threshold = req.alpha_threshold.unwrap_or(0) as c_int;
-    let layout_w  = req.layout_w.unwrap_or(0.0);
-    let layout_h  = req.layout_h.unwrap_or(0.0);
+    let layout_w = req.layout_w.unwrap_or(0.0);
+    let layout_h = req.layout_h.unwrap_or(0.0);
     let layout_em = req.layout_em.unwrap_or(0.0);
 
     let json_str = unsafe {
@@ -531,8 +531,8 @@ pub fn detect_low_contrast_text(
     req: &DetectLowContrastRequest,
 ) -> Result<DetectLowContrastResponse> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_detect_low_contrast_text, kozou_drop_buffer,
-        kozou_new_context, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_detect_low_contrast_text, kozou_drop_buffer,
+        kozou_new_context,
     };
     use std::ffi::CString;
 
@@ -540,8 +540,8 @@ pub fn detect_low_contrast_text(
         .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
     let contrast_threshold = req.contrast_threshold.unwrap_or(1.5);
-    let layout_w  = req.layout_w.unwrap_or(0.0);
-    let layout_h  = req.layout_h.unwrap_or(0.0);
+    let layout_w = req.layout_w.unwrap_or(0.0);
+    let layout_h = req.layout_h.unwrap_or(0.0);
     let layout_em = req.layout_em.unwrap_or(0.0);
 
     let json_str = unsafe {
@@ -617,7 +617,11 @@ pub fn detect_low_contrast_text(
         internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
-    struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
+    struct RawResp {
+        ok: bool,
+        page: i32,
+        hits: Vec<RawHit>,
+    }
 
     let raw: RawResp = serde_json::from_str(&json_str)
         .map_err(|e| CoreError::MuPdf(format!("JSON parse error: {e}\nraw: {json_str}")))?;
@@ -625,20 +629,24 @@ pub fn detect_low_contrast_text(
     Ok(DetectLowContrastResponse {
         ok: raw.ok,
         page: raw.page,
-        hits: raw.hits.into_iter().map(|h| LowContrastChar {
-            char: h.char,
-            color_rgb: h.color_rgb,
-            bg_color_rgb: h.bg_color_rgb,
-            contrast: h.contrast,
-            delta_e: h.delta_e,
-            reason: h.reason,
-            origin: h.origin,
-            quad: h.quad,
-            size: h.size,
-            is_type3: h.is_type3,
-            xobj_xref: h.xobj_xref,
-            internal_origin: h.internal_origin,
-        }).collect(),
+        hits: raw
+            .hits
+            .into_iter()
+            .map(|h| LowContrastChar {
+                char: h.char,
+                color_rgb: h.color_rgb,
+                bg_color_rgb: h.bg_color_rgb,
+                contrast: h.contrast,
+                delta_e: h.delta_e,
+                reason: h.reason,
+                origin: h.origin,
+                quad: h.quad,
+                size: h.size,
+                is_type3: h.is_type3,
+                xobj_xref: h.xobj_xref,
+                internal_origin: h.internal_origin,
+            })
+            .collect(),
     })
 }
 
@@ -688,8 +696,8 @@ pub struct DetectTinyRequest {
 
 pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_detect_tiny_text, kozou_drop_buffer,
-        kozou_new_context, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_detect_tiny_text, kozou_drop_buffer,
+        kozou_new_context,
     };
     use std::ffi::CString;
 
@@ -765,7 +773,11 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
         internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
-    struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
+    struct RawResp {
+        ok: bool,
+        page: i32,
+        hits: Vec<RawHit>,
+    }
 
     let raw: RawResp = serde_json::from_str(&json_str)
         .map_err(|e| CoreError::MuPdf(format!("JSON parse error: {e}\nraw: {json_str}")))?;
@@ -773,17 +785,21 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
     Ok(DetectTinyResponse {
         ok: raw.ok,
         page: raw.page,
-        hits: raw.hits.into_iter().map(|h| TinyChar {
-            char: h.char,
-            size: h.size,
-            color_rgb: h.color_rgb,
-            reason: h.reason,
-            origin: h.origin,
-            quad: h.quad,
-            is_type3: h.is_type3,
-            xobj_xref: h.xobj_xref,
-            internal_origin: h.internal_origin,
-        }).collect(),
+        hits: raw
+            .hits
+            .into_iter()
+            .map(|h| TinyChar {
+                char: h.char,
+                size: h.size,
+                color_rgb: h.color_rgb,
+                reason: h.reason,
+                origin: h.origin,
+                quad: h.quad,
+                is_type3: h.is_type3,
+                xobj_xref: h.xobj_xref,
+                internal_origin: h.internal_origin,
+            })
+            .collect(),
     })
 }
 
@@ -833,8 +849,8 @@ pub struct DetectBuriedRequest {
 
 pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedResponse> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_detect_buried_text, kozou_drop_buffer,
-        kozou_new_context, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_detect_buried_text, kozou_drop_buffer,
+        kozou_new_context,
     };
     use std::ffi::CString;
 
@@ -884,7 +900,9 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
         let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
         let s = if len > 0 && !data_ptr.is_null() {
             String::from_utf8_lossy(std::slice::from_raw_parts(data_ptr, len)).into_owned()
-        } else { String::new() };
+        } else {
+            String::new()
+        };
         kozou_drop_buffer(ctx, buf);
         mupdf_sys::fz_drop_context(ctx);
         s
@@ -906,7 +924,11 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
         internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
-    struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
+    struct RawResp {
+        ok: bool,
+        page: i32,
+        hits: Vec<RawHit>,
+    }
 
     let raw: RawResp = serde_json::from_str(&json_str)
         .map_err(|e| CoreError::MuPdf(format!("JSON parse error: {e}\nraw: {json_str}")))?;
@@ -914,23 +936,29 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
     Ok(DetectBuriedResponse {
         ok: raw.ok,
         page: raw.page,
-        hits: raw.hits.into_iter().map(|h| BuriedChar {
-            char: h.char,
-            color_rgb: h.color_rgb,
-            size: h.size,
-            reason: h.reason,
-            origin: h.origin,
-            quad: h.quad,
-            is_type3: h.is_type3,
-            xobj_xref: h.xobj_xref,
-            internal_origin: h.internal_origin,
-        }).collect(),
+        hits: raw
+            .hits
+            .into_iter()
+            .map(|h| BuriedChar {
+                char: h.char,
+                color_rgb: h.color_rgb,
+                size: h.size,
+                reason: h.reason,
+                origin: h.origin,
+                quad: h.quad,
+                is_type3: h.is_type3,
+                xobj_xref: h.xobj_xref,
+                internal_origin: h.internal_origin,
+            })
+            .collect(),
     })
 }
 
 // ── 隠しテキスト置き換え（試験的） ──────────────────────────────────────────
 
-fn default_minus_one() -> i32 { -1 }
+fn default_minus_one() -> i32 {
+    -1
+}
 
 /// 置き換え対象の文字原点座標
 #[derive(Debug, Deserialize)]
@@ -1031,7 +1059,7 @@ pub struct SanitizeRequest {
 /// ⚠ この機能は試験的です。全ての隠しテキスト手法を網羅できる保証はなく、
 ///   本機能の使用による損害について開発者は責任を負いません。
 pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
-    use crate::ffi::{kozou_new_context, kozou_sanitize_hidden_text, FfiResult};
+    use crate::ffi::{FfiResult, kozou_new_context, kozou_sanitize_hidden_text};
     use std::ffi::CString;
 
     if req.targets.is_empty() {
@@ -1049,11 +1077,27 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
 
     // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の9要素フラット配列に変換
     // (ストライドは 9 のまま維持。描画モードは別の並列配列で渡し互換性を壊さない)
-    let origins: Vec<f32> = req.targets.iter()
-        .flat_map(|o| [o.x, o.y, o.xobj_xref as f32, o.internal_x, o.internal_y, o.ox, o.oy, o.is_buried as f32, o.page as f32])
+    let origins: Vec<f32> = req
+        .targets
+        .iter()
+        .flat_map(|o| {
+            [
+                o.x,
+                o.y,
+                o.xobj_xref as f32,
+                o.internal_x,
+                o.internal_y,
+                o.ox,
+                o.oy,
+                o.is_buried as f32,
+                o.page as f32,
+            ]
+        })
         .collect();
     // 描画モード (取り違え防止) の並列配列。要素数は n_origins と一致する。
-    let render_class: Vec<std::os::raw::c_int> = req.targets.iter()
+    let render_class: Vec<std::os::raw::c_int> = req
+        .targets
+        .iter()
         .map(|o| o.render_invisible as std::os::raw::c_int)
         .collect();
     let n_origins = req.targets.len() as i32;
@@ -1093,10 +1137,11 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
 
     Ok(SanitizeResponse {
         ok: true,
-        replaced: n_origins,  // 実際の置き換え数はC層で計上していないため目標数を返す
+        replaced: n_origins, // 実際の置き換え数はC層で計上していないため目標数を返す
         warning: Some(
             "⚠ 試験的機能: 全ての隠しテキスト手法を網羅できる保証はありません。\
-             本機能の使用による損害について開発者は責任を負いません。".into(),
+             本機能の使用による損害について開発者は責任を負いません。"
+                .into(),
         ),
     })
 }
@@ -1138,12 +1183,10 @@ pub struct DetectControlCharsRequest {
     pub layout_em: Option<f32>,
 }
 
-pub fn detect_control_chars(
-    req: &DetectControlCharsRequest,
-) -> Result<DetectControlCharsResponse> {
+pub fn detect_control_chars(req: &DetectControlCharsRequest) -> Result<DetectControlCharsResponse> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_detect_control_chars, kozou_drop_buffer,
-        kozou_new_context, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_detect_control_chars, kozou_drop_buffer,
+        kozou_new_context,
     };
     use std::ffi::CString;
 
@@ -1211,7 +1254,11 @@ pub fn detect_control_chars(
         size: f32,
     }
     #[derive(serde::Deserialize)]
-    struct RawResp { ok: bool, page: i32, hits: Vec<RawHit> }
+    struct RawResp {
+        ok: bool,
+        page: i32,
+        hits: Vec<RawHit>,
+    }
 
     let raw: RawResp = serde_json::from_str(&json_str)
         .map_err(|e| CoreError::MuPdf(format!("JSON parse error: {e}\nraw: {json_str}")))?;
@@ -1219,15 +1266,19 @@ pub fn detect_control_chars(
     Ok(DetectControlCharsResponse {
         ok: raw.ok,
         page: raw.page,
-        hits: raw.hits.into_iter().map(|h| ControlChar {
-            char: h.char,
-            codepoint: h.codepoint,
-            category: h.category,
-            reason: h.reason,
-            origin: h.origin,
-            quad: h.quad,
-            size: h.size,
-        }).collect(),
+        hits: raw
+            .hits
+            .into_iter()
+            .map(|h| ControlChar {
+                char: h.char,
+                codepoint: h.codepoint,
+                category: h.category,
+                reason: h.reason,
+                origin: h.origin,
+                quad: h.quad,
+                size: h.size,
+            })
+            .collect(),
     })
 }
 
@@ -1271,8 +1322,8 @@ pub struct RenderImpositionResponse {
 /// JPEG/PNG圧縮は1回のみ → 画質劣化最小。
 pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositionResponse> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_drop_buffer, kozou_new_context,
-        kozou_render_imposition, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_drop_buffer, kozou_new_context,
+        kozou_render_imposition,
     };
     use std::ffi::CString;
 
@@ -1282,7 +1333,7 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
     let fmt_str = req.format.as_deref().unwrap_or("jpeg");
     let fmt_int: i32 = if fmt_str == "png" { 1 } else { 0 };
     let quality = req.quality.unwrap_or(85);
-    let gap_px  = req.gap_px.unwrap_or(0);
+    let gap_px = req.gap_px.unwrap_or(0);
 
     let image_b64 = unsafe {
         let ctx = kozou_new_context();
@@ -1390,7 +1441,7 @@ pub struct RasterizeImpositionResponse {
 pub fn rasterize_imposition(
     req: &RasterizeImpositionRequest,
 ) -> Result<RasterizeImpositionResponse> {
-    use crate::ffi::{kozou_new_context, kozou_rasterize_imposition, FfiResult};
+    use crate::ffi::{FfiResult, kozou_new_context, kozou_rasterize_imposition};
     use std::ffi::CString;
 
     let cells_per_sheet = (req.cols * req.rows).max(1);
@@ -1410,9 +1461,10 @@ pub fn rasterize_imposition(
 
     // 出力先ディレクトリを作成
     if let Some(parent) = std::path::Path::new(&req.output).parent()
-        && !parent.as_os_str().is_empty() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        && !parent.as_os_str().is_empty()
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
 
     let tmp_dir = {
         let base = std::env::temp_dir().join("pdf-kozou");
@@ -1502,10 +1554,8 @@ pub struct SplitImpositionPdfResponse {
 /// 面付け解除して画像PDFを出力する。
 /// 各セルを1ページ（A4相当）として、cells で指定された順に並べた画像PDFを作る。
 /// 例: A3×2(booklet)を A4×4(読み順)に戻す。
-pub fn split_imposition_pdf(
-    req: &SplitImpositionPdfRequest,
-) -> Result<SplitImpositionPdfResponse> {
-    use crate::ffi::{kozou_new_context, kozou_split_imposition_pdf, FfiResult};
+pub fn split_imposition_pdf(req: &SplitImpositionPdfRequest) -> Result<SplitImpositionPdfResponse> {
+    use crate::ffi::{FfiResult, kozou_new_context, kozou_split_imposition_pdf};
     use std::ffi::CString;
 
     let c_input = CString::new(req.input.as_str())
@@ -1514,9 +1564,10 @@ pub fn split_imposition_pdf(
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
     if let Some(parent) = std::path::Path::new(&req.output).parent()
-        && !parent.as_os_str().is_empty() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        && !parent.as_os_str().is_empty()
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
 
     let tmp_dir = {
         let base = std::env::temp_dir().join("pdf-kozou");
@@ -1569,7 +1620,10 @@ pub fn split_imposition_pdf(
     }
 
     let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
-    Ok(SplitImpositionPdfResponse { ok: true, output_bytes: ob })
+    Ok(SplitImpositionPdfResponse {
+        ok: true,
+        output_bytes: ob,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -1607,7 +1661,7 @@ pub struct ComposeImpositionPdfResponse {
 pub fn compose_imposition_pdf(
     req: &ComposeImpositionPdfRequest,
 ) -> Result<ComposeImpositionPdfResponse> {
-    use crate::ffi::{kozou_compose_imposition_pdf, kozou_new_context, FfiResult};
+    use crate::ffi::{FfiResult, kozou_compose_imposition_pdf, kozou_new_context};
     use std::ffi::CString;
 
     let per = (req.cols * req.rows).max(1);
@@ -1629,9 +1683,10 @@ pub fn compose_imposition_pdf(
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
     if let Some(parent) = std::path::Path::new(&req.output).parent()
-        && !parent.as_os_str().is_empty() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        && !parent.as_os_str().is_empty()
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
 
     unsafe {
         let ctx = kozou_new_context();
@@ -1669,7 +1724,10 @@ pub fn compose_imposition_pdf(
     }
 
     let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
-    Ok(ComposeImpositionPdfResponse { ok: true, output_bytes: ob })
+    Ok(ComposeImpositionPdfResponse {
+        ok: true,
+        output_bytes: ob,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -1706,8 +1764,8 @@ pub struct SplitCellRenderResponse {
 /// 個別画像ファイル出力用。呼び出し側が出力順にループして保存する。
 pub fn split_cell_render(req: &SplitCellRenderRequest) -> Result<SplitCellRenderResponse> {
     use crate::ffi::{
-        kozou_buffer_get_data, kozou_drop_buffer, kozou_new_context,
-        kozou_split_cell_render, FfiResult,
+        FfiResult, kozou_buffer_get_data, kozou_drop_buffer, kozou_new_context,
+        kozou_split_cell_render,
     };
     use std::ffi::CString;
 

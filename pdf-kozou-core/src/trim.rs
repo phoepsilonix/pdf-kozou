@@ -107,15 +107,14 @@ where
                             for r in ranges {
                                 if let Value::Array(arr) = r
                                     && arr.len() == 2
-                                        && let (Some(Value::Number(s)), Some(Value::Number(e))) =
-                                            (arr.first(), arr.get(1))
-                                            && let (Some(start), Some(end)) =
-                                                (s.as_i64(), e.as_i64())
-                                            {
-                                                for p in start..=end {
-                                                    pages.push((p - 1) as i32); // 1-based → 0-based
-                                                }
-                                            }
+                                    && let (Some(Value::Number(s)), Some(Value::Number(e))) =
+                                        (arr.first(), arr.get(1))
+                                    && let (Some(start), Some(end)) = (s.as_i64(), e.as_i64())
+                                {
+                                    for p in start..=end {
+                                        pages.push((p - 1) as i32); // 1-based → 0-based
+                                    }
+                                }
                             }
                             Ok(Some(PageSelection::Range { pages }))
                         } else {
@@ -499,7 +498,9 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         match crate::crop_cleanup::remove_out_of_crop_resources(
             &req.output,
             &req.output,
-            0.0, 0.0, 0.0, // PDF は reflowable でないので layout 不要
+            0.0,
+            0.0,
+            0.0, // PDF は reflowable でないので layout 不要
         ) {
             Ok(s) => eprintln!(
                 "[trim] crop_cleanup: {} Do ops removed, {} objects GCed",

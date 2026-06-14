@@ -21,9 +21,9 @@
 //   その他のエラー  → 通常の gc 圧縮にフォールバック
 
 use crate::error::{CoreError, Result};
+use crate::ffi::FfiResult;
 use crate::ffi::kozou_pdf_default_write_options;
 use crate::ffi::kozou_pdf_save_document;
-use crate::ffi::FfiResult;
 
 // ------------------------------------------------------------------ //
 // C ラッパーの extern 宣言 (src/c/mupdf_safe.c と対応)              //
@@ -185,35 +185,37 @@ unsafe fn ffi_run(
     compress_images: bool,
     compress_fonts: bool,
     do_subset: bool,
-) -> Result<()> { unsafe {
-    use mupdf_sys::*;
-    use std::ffi::CString;
+) -> Result<()> {
+    unsafe {
+        use mupdf_sys::*;
+        use std::ffi::CString;
 
-    let input_cstr =
-        CString::new(input).map_err(|_| CoreError::InvalidArg("input path: null byte".into()))?;
-    let output_cstr =
-        CString::new(output).map_err(|_| CoreError::InvalidArg("output path: null byte".into()))?;
+        let input_cstr = CString::new(input)
+            .map_err(|_| CoreError::InvalidArg("input path: null byte".into()))?;
+        let output_cstr = CString::new(output)
+            .map_err(|_| CoreError::InvalidArg("output path: null byte".into()))?;
 
-    let ctx = kozou_fz_new_context();
-    if ctx.is_null() {
-        return Err(CoreError::MuPdf("fz_new_context failed".into()));
+        let ctx = kozou_fz_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("fz_new_context failed".into()));
+        }
+
+        let result = ffi_with_ctx(
+            ctx,
+            &input_cstr,
+            &output_cstr,
+            gc,
+            clean,
+            sanitize,
+            compress_images,
+            compress_fonts,
+            do_subset,
+        );
+
+        fz_drop_context(ctx);
+        result
     }
-
-    let result = ffi_with_ctx(
-        ctx,
-        &input_cstr,
-        &output_cstr,
-        gc,
-        clean,
-        sanitize,
-        compress_images,
-        compress_fonts,
-        do_subset,
-    );
-
-    fz_drop_context(ctx);
-    result
-}}
+}
 
 unsafe fn ffi_with_ctx(
     ctx: *mut mupdf_sys::fz_context,
@@ -225,80 +227,82 @@ unsafe fn ffi_with_ctx(
     compress_images: bool,
     _compress_fonts: bool, // MuPDF 1.28: 廃止 (compress=yes で自動圧縮)
     do_subset: bool,
-) -> Result<()> { unsafe {
-    use mupdf_sys::*;
+) -> Result<()> {
+    unsafe {
+        use mupdf_sys::*;
 
-    // ── fz_open_document ──────────────────────────────────────────────
-    let mut res = FfiResult::zeroed();
-    let fz_doc = kozou_fz_open_document(ctx, input_cstr.as_ptr(), &mut res);
-    if fz_doc.is_null() || !res.is_ok() {
-        return Err(CoreError::MuPdf(format!(
-            "fz_open_document: {}",
-            if !res.is_ok() {
-                res.error_message()
-            } else {
-                "null".into()
-            }
-        )));
-    }
-
-    // ── pdf_document_from_fz_document ─────────────────────────────────
-    let mut res = FfiResult::zeroed();
-    let pdf_doc = kozou_pdf_document_from_fz_document(ctx, fz_doc, &mut res);
-    if pdf_doc.is_null() || !res.is_ok() {
-        fz_drop_document(ctx, fz_doc);
-        return Err(CoreError::MuPdf(format!(
-            "pdf_document_from_fz_document: {}",
-            if !res.is_ok() {
-                res.error_message()
-            } else {
-                "null".into()
-            }
-        )));
-    }
-
-    // ── pdf_subset_fonts (フォントグリフ除去) ─────────────────────────
-    // do_subset=true の場合のみ実行 (Type3 なし、または明示的に有効化)
-    if do_subset {
-        // ページ数を取得して明示的なページ範囲で pdf_subset_fonts を呼ぶ
-        // (MuPDF 1.28: nranges=0/NULL の全ページ指定が変化した可能性への対応)
-        let mut count_res = FfiResult::zeroed();
-        let page_count = kozou_pdf_count_pages(ctx, pdf_doc, &mut count_res);
-        let count_to_use = if count_res.is_ok() && page_count > 0 {
-            page_count
-        } else {
-            0 // フォールバック: C 側で nranges=0 パスに入る
-        };
-
+        // ── fz_open_document ──────────────────────────────────────────────
         let mut res = FfiResult::zeroed();
-        kozou_pdf_subset_fonts(ctx, pdf_doc, count_to_use, &mut res);
-        if !res.is_ok() {
-            // サブセット化失敗は致命的ではない — 警告ログのみで続行
-            eprintln!(
-                "[font_subset] pdf_subset_fonts warning: {} — proceeding without subset",
-                res.error_message()
-            );
+        let fz_doc = kozou_fz_open_document(ctx, input_cstr.as_ptr(), &mut res);
+        if fz_doc.is_null() || !res.is_ok() {
+            return Err(CoreError::MuPdf(format!(
+                "fz_open_document: {}",
+                if !res.is_ok() {
+                    res.error_message()
+                } else {
+                    "null".into()
+                }
+            )));
         }
+
+        // ── pdf_document_from_fz_document ─────────────────────────────────
+        let mut res = FfiResult::zeroed();
+        let pdf_doc = kozou_pdf_document_from_fz_document(ctx, fz_doc, &mut res);
+        if pdf_doc.is_null() || !res.is_ok() {
+            fz_drop_document(ctx, fz_doc);
+            return Err(CoreError::MuPdf(format!(
+                "pdf_document_from_fz_document: {}",
+                if !res.is_ok() {
+                    res.error_message()
+                } else {
+                    "null".into()
+                }
+            )));
+        }
+
+        // ── pdf_subset_fonts (フォントグリフ除去) ─────────────────────────
+        // do_subset=true の場合のみ実行 (Type3 なし、または明示的に有効化)
+        if do_subset {
+            // ページ数を取得して明示的なページ範囲で pdf_subset_fonts を呼ぶ
+            // (MuPDF 1.28: nranges=0/NULL の全ページ指定が変化した可能性への対応)
+            let mut count_res = FfiResult::zeroed();
+            let page_count = kozou_pdf_count_pages(ctx, pdf_doc, &mut count_res);
+            let count_to_use = if count_res.is_ok() && page_count > 0 {
+                page_count
+            } else {
+                0 // フォールバック: C 側で nranges=0 パスに入る
+            };
+
+            let mut res = FfiResult::zeroed();
+            kozou_pdf_subset_fonts(ctx, pdf_doc, count_to_use, &mut res);
+            if !res.is_ok() {
+                // サブセット化失敗は致命的ではない — 警告ログのみで続行
+                eprintln!(
+                    "[font_subset] pdf_subset_fonts warning: {} — proceeding without subset",
+                    res.error_message()
+                );
+            }
+        }
+
+        // ── pdf_write_options 構築 ────────────────────────────────────────
+        let mut wopts: pdf_write_options = std::mem::zeroed();
+        kozou_pdf_default_write_options(&mut wopts);
+        wopts.do_compress = 1;
+        wopts.do_decompress = 0;
+        wopts.do_compress_images = if compress_images { 1 } else { 0 };
+        // do_compress_fonts: MuPDF 1.28 で削除 (compress=1 時は自動的にフォントも圧縮)
+        wopts.do_garbage = gc;
+        wopts.do_sanitize = if sanitize { 1 } else { 0 };
+        wopts.do_clean = if clean { 1 } else { 0 };
+        wopts.do_linear = 0;
+        wopts.do_incremental = 0;
+
+        // ── pdf_save_document ─────────────────────────────────────────────
+        let mut res = FfiResult::zeroed();
+        kozou_pdf_save_document(ctx, pdf_doc, output_cstr.as_ptr(), &wopts, &mut res);
+        let write_result = res.into_result();
+
+        fz_drop_document(ctx, fz_doc);
+        write_result
     }
-
-    // ── pdf_write_options 構築 ────────────────────────────────────────
-    let mut wopts: pdf_write_options = std::mem::zeroed();
-    kozou_pdf_default_write_options(&mut wopts);
-    wopts.do_compress = 1;
-    wopts.do_decompress = 0;
-    wopts.do_compress_images = if compress_images { 1 } else { 0 };
-    // do_compress_fonts: MuPDF 1.28 で削除 (compress=1 時は自動的にフォントも圧縮)
-    wopts.do_garbage = gc;
-    wopts.do_sanitize = if sanitize { 1 } else { 0 };
-    wopts.do_clean = if clean { 1 } else { 0 };
-    wopts.do_linear = 0;
-    wopts.do_incremental = 0;
-
-    // ── pdf_save_document ─────────────────────────────────────────────
-    let mut res = FfiResult::zeroed();
-    kozou_pdf_save_document(ctx, pdf_doc, output_cstr.as_ptr(), &wopts, &mut res);
-    let write_result = res.into_result();
-
-    fz_drop_document(ctx, fz_doc);
-    write_result
-}}
+}

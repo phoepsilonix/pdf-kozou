@@ -51,8 +51,8 @@ pub fn pixmap_to_jpeg_b64(pixmap: &mupdf::Pixmap, quality: u8) -> Result<String>
 
 /// Pixmap → PNG bytes
 pub fn pixmap_to_png(pixmap: &mupdf::Pixmap) -> Result<Vec<u8>> {
-    use image::codecs::png::PngEncoder;
     use image::ImageEncoder;
+    use image::codecs::png::PngEncoder;
 
     let w = pixmap.width();
     let h = pixmap.height();
