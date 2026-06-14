@@ -41,4 +41,10 @@ export default defineConfig({
       },
     },
   },
+  esbuild: {
+    supported: {
+      destructuring: true, // これが重要
+      "top-level-await": true, // 必要なら追加
+    },
+  },
 });
