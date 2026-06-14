@@ -83,6 +83,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/release/bundle/
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-rust-v1-
@@ -256,6 +257,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/release/bundle/
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
   # ===========================================================================
@@ -289,6 +291,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/release/bundle/
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-rust-v1-
@@ -463,6 +466,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/release/bundle/
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
   publish-release:
