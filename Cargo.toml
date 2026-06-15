@@ -25,8 +25,8 @@ lopdf      = "0.41"
 # usvg は svg2pdf::usvg を使う（別途宣言するとバージョン二重化で型不一致になる）。
 svg2pdf    = "=0.11.0"
 
-brotli-decompressor = "=5.0.1"
-alloc-stdlib = "=0.2.2"
+#brotli-decompressor = "=5.0.1"
+#alloc-stdlib = "=0.2.2"
 
 [patch.crates-io]
 mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00" }
