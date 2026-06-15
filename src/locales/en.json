@@ -489,7 +489,8 @@
     "settings_title": "Compression settings",
     "object_stream_on": "Enabled (low risk)",
     "no_dir_placeholder": "Select an output folder...",
-    "pro_gs": "Pro (GS)"
+    "pro_gs": "Pro (GS)",
+    "saved_title": "Saved"
   },
   "viewer": {
     "search_placeholder": "Search all pages… (Enter for next)",

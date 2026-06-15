@@ -489,7 +489,8 @@
     "settings_title": "圧縮設定",
     "object_stream_on": "有効 (リスク小)",
     "no_dir_placeholder": "出力先フォルダを選択してください...",
-    "pro_gs": "プロ (GS)"
+    "pro_gs": "プロ (GS)",
+    "saved_title": "保存しました"
   },
   "viewer": {
     "search_placeholder": "全ページ検索… (Enter で次へ)",

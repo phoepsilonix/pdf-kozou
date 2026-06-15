@@ -253,6 +253,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       setError(t("compress.err_gs_not_found"));
       return;
     }
+    setSavedFilePath(null);
     setPhase("processing");
     try {
       const tmp = await getTmpPath("kozou_compress_preview.pdf");
@@ -437,6 +438,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     setSaving(true);
     try {
       await invoke("copy_file", { src: inputFile, dst: sp });
+      setSavedFilePath(sp);
       if (onDone) onDone();
     } catch (e) {
       //await compressPdf(inputFile, sp, { preset: "light" });
@@ -628,7 +630,13 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     return (
       <div style={c.root}>
         <div style={c.header}>
-          <button style={c.btnBack} onClick={() => setPhase("edit")}>
+          <button
+            style={c.btnBack}
+            onClick={() => {
+              setSavedFilePath(null);
+              setPhase("edit");
+            }}
+          >
             {t("compress.back2")}
           </button>
           <span style={c.title}>{t("compress.result_title")}</span>
@@ -745,43 +753,72 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
             )}
 
             <div style={c.saveChoiceBox}>
-              {savedFilePath && (
-                <button
-                  style={c.btnMetaEdit}
-                  onClick={() => setMetaEditOpen(true)}
-                  aria-label={t("meta_edit.title")}
-                >
-                  ✏️ {t("meta_edit.title")}
-                </button>
+              {savedFilePath ? (
+                <>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ color: "var(--c-accent)" }}>✓</span>
+                    {t("compress.saved_title")}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--c-textSub)", wordBreak: "break-all" }}>
+                    {savedFilePath}
+                  </div>
+                  <div style={c.saveChoiceBtns}>
+                    <button
+                      style={c.btnMetaEdit}
+                      onClick={() => setMetaEditOpen(true)}
+                      aria-label={t("meta_edit.title")}
+                    >
+                      ✏️ {t("meta_edit.title")}
+                    </button>
+                    <button
+                      style={c.btnBack}
+                      onClick={() => {
+                        setSavedFilePath(null);
+                        setPhase("edit");
+                      }}
+                    >
+                      {t("common.back")}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={c.saveChoiceBtns}>
+                  <button
+                    style={c.btnSaveCompressed}
+                    onClick={handleSaveCompressed}
+                    disabled={saving}
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
+                    >
+                      <span style={c.saveBtnIcon}>📦</span>
+                      <div>
+                        <div style={c.saveBtnMain}>{t("compress.save_compressed_main")}</div>
+                        <div style={c.saveBtnSub}>{t("compress.save_compressed_sub")}</div>
+                      </div>
+                    </div>
+                  </button>
+                  <button style={c.btnSaveOriginal} onClick={handleSaveOriginal} disabled={saving}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
+                    >
+                      <span style={c.saveBtnIcon}>📄</span>
+                      <div>
+                        <div style={c.saveBtnMain}>{t("compress.save_original_main")}</div>
+                        <div style={c.saveBtnSub}>{t("compress.save_original_sub")}</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
               )}
-              <div style={c.saveChoiceBtns}>
-                <button
-                  style={c.btnSaveCompressed}
-                  onClick={handleSaveCompressed}
-                  disabled={saving}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
-                  >
-                    <span style={c.saveBtnIcon}>📦</span>
-                    <div>
-                      <div style={c.saveBtnMain}>{t("compress.save_compressed_main")}</div>
-                      <div style={c.saveBtnSub}>{t("compress.save_compressed_sub")}</div>
-                    </div>
-                  </div>
-                </button>
-                <button style={c.btnSaveOriginal} onClick={handleSaveOriginal} disabled={saving}>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
-                  >
-                    <span style={c.saveBtnIcon}>📄</span>
-                    <div>
-                      <div style={c.saveBtnMain}>{t("compress.save_original_main")}</div>
-                      <div style={c.saveBtnSub}>{t("compress.save_original_sub")}</div>
-                    </div>
-                  </div>
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1173,6 +1210,18 @@ const c: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-borderHi)`,
     borderRadius: 7,
     color: "var(--c-textSub)",
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: F,
+  },
+  btnMetaEdit: {
+    flex: 1,
+    padding: "10px 18px",
+    background: "var(--c-accentBg)",
+    border: `1px solid var(--c-accentBd)`,
+    borderRadius: 7,
+    color: "var(--c-accent)",
+    fontWeight: 700,
     cursor: "pointer",
     fontSize: 13,
     fontFamily: F,
