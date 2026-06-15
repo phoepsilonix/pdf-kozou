@@ -18,6 +18,9 @@ import {
   joinPath,
 } from "../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
+import { PageSizeSelector } from "../components/PageSizeSelector";
+import { hasImage } from "../lib/fileTypes";
+import { resolvePageSizePt } from "../lib/pageSize";
 import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { tts } from "../lib/tts";
@@ -47,7 +50,8 @@ interface BatchProgress {
 }
 
 export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
-  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
+  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm, pageSizeId, pageOrientation } =
+    usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
@@ -251,6 +255,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     );
     setPhase("processing");
     try {
+      const psize = resolvePageSizePt(pageSizeId, pageOrientation);
       await rotatePdf(
         filePath,
         saveTo,
@@ -258,6 +263,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         convertLayoutW,
         convertLayoutH,
         convertLayoutEm,
+        psize?.w,
+        psize?.h,
+        pageOrientation === "auto" && pageSizeId !== "image",
       );
       setSavedPath(saveTo);
       setPhase("preview");
@@ -267,7 +275,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       setPhase("error");
       setError(String(e));
     }
-  }, [filePath, changedPages, setError, announceError]);
+  }, [filePath, changedPages, setError, announceError, pageSizeId, pageOrientation]);
 
   const handleExecuteBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
@@ -299,7 +307,18 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .filter((p) => p.angle !== 0);
         if (pages.length > 0) {
           const out = joinPath(resolvedDir, `${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`);
-          await rotatePdf(f.path, out, pages, convertLayoutW, convertLayoutH, convertLayoutEm);
+          const psize = resolvePageSizePt(pageSizeId, pageOrientation);
+          await rotatePdf(
+            f.path,
+            out,
+            pages,
+            convertLayoutW,
+            convertLayoutH,
+            convertLayoutEm,
+            psize?.w,
+            psize?.h,
+            pageOrientation === "auto" && pageSizeId !== "image",
+          );
         }
         prog.done.push({ file: f.filename });
       } catch (e) {
@@ -309,7 +328,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     }
     announceSuccess("done.rotate", { count: String(changedPages.length) });
     setPhase("result");
-  }, [batchFiles, rotations, outDir, pickDir, announceSuccess]);
+  }, [batchFiles, rotations, outDir, pickDir, announceSuccess, pageSizeId, pageOrientation]);
 
   // ── フェーズ ──────────────────────────────────────────────────────────────
   if (phase === "processing" && !isBatch) return <Spinner label={t("rotate.processing")} />;
@@ -376,7 +395,18 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       }).catch(() => null);
       if (!sp) return;
       await moveFile(savedPath, sp).catch(async () => {
-        await rotatePdf(filePath, sp, changedPages);
+        const psize = resolvePageSizePt(pageSizeId, pageOrientation);
+        await rotatePdf(
+          filePath,
+          sp,
+          changedPages,
+          convertLayoutW,
+          convertLayoutH,
+          convertLayoutEm,
+          psize?.w,
+          psize?.h,
+          pageOrientation === "auto" && pageSizeId !== "image",
+        );
       });
       setSavedPath(sp);
       announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
@@ -536,6 +566,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       <div style={s.body}>
         {/* 左パネル（対象ページ・個別設定・出力など） */}
         <div style={s.panel}>
+          {(isBatch ? batchFiles!.some((f) => hasImage([f.filename])) : hasImage([filePath])) && (
+            <div style={{ marginBottom: 12 }}>
+              <PageSizeSelector compact />
+            </div>
+          )}
           <div style={s.secLabel}>{t("rotate.target_pages")}</div>
           <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} type="1" compact />
 

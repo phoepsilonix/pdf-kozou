@@ -45,6 +45,21 @@ export function hasNonPdf(filenames: string[]): boolean {
   });
 }
 
+/**
+ * リフロー（レイアウト依存）変換が意味を持つ文書形式。
+ * EPUB/HTML/DOCX 等はビューポート幅で本文がリフローするためレイアウト設定が効く。
+ * 画像・PDF・固定レイアウト（xps/oxps/cbz/cbr）はリフローしないため含めない。
+ */
+export const REFLOWABLE_EXTENSIONS = ["epub", "html", "htm", "xhtml", "docx", "xlsx", "pptx"];
+
+/** ファイルリストにリフロー文書（レイアウト設定が有効なもの）が含まれるか判定 */
+export function hasReflowable(filenames: string[]): boolean {
+  return filenames.some((f) => {
+    const ext = f.split(".").pop()?.toLowerCase() ?? "";
+    return REFLOWABLE_EXTENSIONS.includes(ext);
+  });
+}
+
 /** 画像ファイル拡張子（MuPDFが画像として読み込むもの） */
 export const IMAGE_EXTENSIONS = [
   "jpg",

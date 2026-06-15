@@ -21,7 +21,7 @@ import { LazyBoundary } from "./components/LazyBoundary";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
-import { isMupdfExtension, hasNonPdf, hasImage } from "./lib/fileTypes";
+import { isMupdfExtension, hasImage, hasReflowable } from "./lib/fileTypes";
 import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
 import { PageSizeSelector } from "./components/PageSizeSelector";
 import type { ConvertOptions } from "./lib/tauri";
@@ -766,8 +766,9 @@ export default function App() {
             </div>
           )}
 
-          {/* 非 PDF が含まれる場合にレイアウト設定パネルを表示 */}
-          {hasNonPdf(fileList.map((f) => f.filename)) && (
+          {/* リフロー文書（EPUB/HTML/DOCX等）が含まれる場合のみレイアウト設定を表示。
+              画像や固定レイアウト文書ではリフローが効かないため出さない。 */}
+          {hasReflowable(fileList.map((f) => f.filename)) && (
             <div style={{ padding: "0 12px" }}>
               <ConvertOptionsPanel
                 options={{

@@ -3318,6 +3318,7 @@ dependencies = [
  "lopdf",
  "mupdf",
  "mupdf-sys",
+ "pdf-writer",
  "serde",
  "serde_json",
  "svg2pdf",

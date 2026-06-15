@@ -716,10 +716,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 input
             };
             // --angle: 0/90/180/270 のみ受け付ける
-            if let Some(a) = angle
-                && (a % 90 != 0 || a > 270)
-            {
-                anyhow::bail!("angle must be 0, 90, 180, or 270");
+            if let Some(a) = angle {
+                if a % 90 != 0 || a > 270 {
+                    anyhow::bail!("angle must be 0, 90, 180, or 270");
+                }
             }
             // --page-angles "1:90,2:180,3:270" をパース
             let rotations = page_angles
@@ -974,6 +974,9 @@ fn dispatch_json(line: &str) -> String {
             }
             "trim" => {
                 let mut req: pdf_kozou_core::trim::TrimRequest = serde_json::from_str(line)?;
+                /* トリムは自然サイズで変換してから行う。ページサイズへのフィットは
+                 * トリム後にフロント側で compose_imposition_pdf(1-up) で行う
+                 * （マージンを自然サイズ基準のまま使えるようにするため）。 */
                 let _tmp =
                     auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
@@ -1085,8 +1088,15 @@ fn dispatch_json(line: &str) -> String {
             }
             "rotate" => {
                 let mut req: pdf_kozou_core::rotate::RotateRequest = serde_json::from_str(line)?;
-                let _tmp =
-                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let _tmp = auto_convert_if_needed(
+                    &req.input.clone(),
+                    lw,
+                    lh,
+                    lem,
+                    pw_pt,
+                    ph_pt,
+                    auto_orient,
+                )?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }

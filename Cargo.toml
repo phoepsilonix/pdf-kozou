@@ -24,9 +24,9 @@ lopdf      = "0.41"
 # 正しく出力することを実機検証済み。0.13(usvg 0.47) は透過が washout する不具合あり。
 # usvg は svg2pdf::usvg を使う（別途宣言するとバージョン二重化で型不一致になる）。
 svg2pdf    = "=0.11.0"
-
-#brotli-decompressor = "=5.0.1"
-#alloc-stdlib = "=0.2.2"
+# pdf-writer は svg2pdf 0.11 が依存するのと同じ 0.10 系に統一する
+# （svg2pdf::to_chunk が返す Chunk/Ref を扱うため。バージョンがズレると型不一致）。
+pdf-writer = "0.10"
 
 [patch.crates-io]
 mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00" }

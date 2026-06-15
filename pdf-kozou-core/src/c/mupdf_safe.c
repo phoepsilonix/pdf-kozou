@@ -3910,7 +3910,23 @@ static int kozou_xobj_place_ctm_scan(
                 pdf_obj *val = pdf_dict_gets(ctx, xdict, name);
                 int xr = pdf_is_indirect(ctx, val) ? pdf_to_num(ctx, val) : 0;
                 if (xr == target_xref) {
-                    *out_ctm = ctm_stack[sp];
+                    /* 対象 XObject 自身の /Matrix を適用してから返す。
+                     * /Name Do の描画では CTM' = Matrix × CTM となり、XObject 内部
+                     * 座標（cm/Tm が住む空間）→デバイスの写像には対象 XObject の
+                     * /Matrix を含める必要がある。再帰側（子 XObject）の xm 適用と対称。
+                     * Matrix が無い/identity の場合は従来どおり ctm_stack[sp] と同じ。 */
+                    fz_matrix tmx = fz_identity;
+                    pdf_obj *tobj = pdf_resolve_indirect(ctx, val);
+                    pdf_obj *tmo = tobj ? pdf_dict_get(ctx, tobj, PDF_NAME(Matrix)) : NULL;
+                    if (pdf_is_array(ctx, tmo) && pdf_array_len(ctx, tmo) == 6) {
+                        tmx.a = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 0));
+                        tmx.b = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 1));
+                        tmx.c = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 2));
+                        tmx.d = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 3));
+                        tmx.e = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 4));
+                        tmx.f = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 5));
+                    }
+                    *out_ctm = fz_concat(tmx, ctm_stack[sp]);
                     return 1;
                 }
                 /* ネスト Form XObject なら再帰探索 */

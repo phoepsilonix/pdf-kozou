@@ -10,6 +10,8 @@ import { TrimCanvas } from "../components/trim/TrimCanvas";
 import { TrimControls } from "../components/trim/TrimControls";
 import { CompressPage } from "./CompressPage";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
+import { hasImage } from "../lib/fileTypes";
+import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   getTempPath,
@@ -17,6 +19,7 @@ import {
   moveFile,
   trimPdf,
   getPdfInfo,
+  composeImpositionPdf,
   type TrimMargins,
   type PdfInfo,
   joinPath,
@@ -45,6 +48,33 @@ const CANVAS_W_DEFAULT = 520;
 type Phase = "edit" | "processing" | "result" | "error" | "compress" | "saved" | "batchResult";
 const zero = (): TrimMargins => ({ left: 0, right: 0, top: 0, bottom: 0 });
 
+/**
+ * 画像をトリムした結果（自然サイズ・1ページ）を、指定ページサイズへアスペクト維持で
+ * フィットさせる。compose_imposition_pdf を 1-up(cols=1,rows=1) で使い、トリム後の
+ * ベクター/JPEG を保ったまま目標サイズの台紙へ中央配置する。
+ * autoOrient=true のときは台紙の向きをトリム結果の向きに合わせる（1-up の仕様）。
+ */
+async function fitTrimmedToPageSize(
+  inputPath: string,
+  outputPath: string,
+  psize: { w: number; h: number },
+  autoOrient: boolean,
+): Promise<void> {
+  await composeImpositionPdf({
+    input: inputPath,
+    output: outputPath,
+    targetW: psize.w,
+    targetH: psize.h,
+    cols: 1,
+    rows: 1,
+    sheetPages: [1],
+    nSheets: 1,
+    margin: 0,
+    gutter: 0,
+    autoOrient,
+  });
+}
+
 export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
   console.log("[TrimPage] pdfInfo:", pdfInfo);
   const isBatch = (batchFiles?.length ?? 0) > 1;
@@ -59,7 +89,8 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
 
 // ── バッチトリム ──────────────────────────────────────────────────────────────
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
-  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
+  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm, pageSizeId, pageOrientation } =
+    usePdfStore();
   const { announceSuccess, announceError } = useA11y();
   const { t } = useI18n();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
@@ -210,9 +241,12 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           excludeSpec,
           extractSpec,
         );
+        const psize = resolvePageSizePt(pageSizeId, pageOrientation);
+        const needFit = hasImage([f.filename]) && psize != null;
+        const trimOut = needFit ? await getTempPath("trimmed_natural_batch_tmp.pdf") : out;
         const res = await trimPdf(
           f.path,
-          out,
+          trimOut,
           trimMargins,
           trimPages,
           excludeSpec,
@@ -222,6 +256,14 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           convertLayoutEm,
           cropCleanup,
         );
+        if (needFit && psize) {
+          await fitTrimmedToPageSize(
+            trimOut,
+            out,
+            psize,
+            pageOrientation === "auto" && pageSizeId !== "image",
+          );
+        }
         console.log("[DEBUG] trim_pdf 結果:", res);
         prog.done.push({ f: f.filename });
       } catch (e) {
@@ -232,7 +274,16 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 
     announceSuccess("done.trim");
     setPhase("result");
-  }, [files, trimMargins, trimPages, excludeSpec, extractSpec, outDir]);
+  }, [
+    files,
+    trimMargins,
+    trimPages,
+    excludeSpec,
+    extractSpec,
+    outDir,
+    pageSizeId,
+    pageOrientation,
+  ]);
 
   // 処理中画面
   if (phase === "processing") {
@@ -487,6 +538,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             onExclude={onExclude}
             extractSpec={extractSpec}
             onExtract={onExtract}
+            showImagePageSize={files.some((f) => hasImage([f.filename]))}
           />
         </aside>
       </div>
@@ -506,6 +558,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
+    pageSizeId,
+    pageOrientation,
   } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
@@ -680,9 +734,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         excludeSpec,
         extractSpec,
       );
+      const psize = resolvePageSizePt(pageSizeId, pageOrientation);
+      // 画像入力 + ページサイズ指定時は「自然サイズでトリム → 結果を目標サイズへフィット」。
+      // マージンは自然サイズ基準のまま使えるので座標の割合再計算が不要。
+      const needFit = hasImage([filePath]) && psize != null;
+      const trimOut = needFit ? await getTempPath("trimmed_natural_tmp.pdf") : tmpPath;
       const res = await trimPdf(
         filePath,
-        tmpPath,
+        trimOut,
         trimMargins,
         trimPages,
         excludeSpec,
@@ -692,6 +751,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         convertLayoutEm,
         cropCleanup,
       );
+      if (needFit && psize) {
+        await fitTrimmedToPageSize(
+          trimOut,
+          tmpPath,
+          psize,
+          pageOrientation === "auto" && pageSizeId !== "image",
+        );
+      }
       /*
       .then(() => { 
         // プレビュー用に結果画像を取得（任意で最大6ページ）
@@ -757,6 +824,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     tmpPageInfo,
     Pages,
     setError,
+    pageSizeId,
+    pageOrientation,
   ]);
 
   const handleSave = async () => {
@@ -985,6 +1054,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           onExtract={onExtract}
           cropCleanup={cropCleanup}
           onCropCleanupChange={setCropCleanup}
+          showImagePageSize={hasImage([filePath])}
         />
       </aside>
       <LiveRegion message={statusMsg} />

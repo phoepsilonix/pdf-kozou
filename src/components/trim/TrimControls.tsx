@@ -8,6 +8,7 @@
 import { useCallback } from "react";
 import type { TrimMargins, PageSelection } from "../../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../PageSelector";
+import { PageSizeSelector } from "../PageSizeSelector";
 import { F } from "../../lib/theme";
 import { useI18n } from "../../lib/i18n";
 import { tts } from "../../lib/tts";
@@ -37,6 +38,8 @@ interface Props {
   onExtract: (v: string) => void;
   topInputRef?: React.RefObject<HTMLInputElement | null>;
   rangeInputRef?: React.RefObject<HTMLInputElement | null>;
+  /** 画像入力があるとき、画像用ページサイズ指定を表示する */
+  showImagePageSize?: boolean;
 }
 
 const PT_TO_MM = 1 / 2.8346;
@@ -66,6 +69,7 @@ export function TrimControls({
   onExtract,
   topInputRef,
   rangeInputRef,
+  showImagePageSize = false,
 }: Props & {
   topInputRef?: React.RefObject<HTMLInputElement | null>;
   rangeInputRef?: React.RefObject<HTMLInputElement | null>;
@@ -86,6 +90,11 @@ export function TrimControls({
   return (
     <div style={s.panel}>
       <div style={s.scrollBody}>
+        {showImagePageSize && (
+          <section style={s.section}>
+            <PageSizeSelector compact />
+          </section>
+        )}
         <section style={s.section}>
           <h3 style={s.heading}>{t("trim_controls.margin_heading")}</h3>
           <div style={s.cross}>

@@ -822,6 +822,9 @@ export async function trimPdf(
   layoutH?: number,
   layoutEm?: number,
   cropCleanup?: boolean,
+  pageWPt?: number,
+  pageHPt?: number,
+  autoOrient?: boolean,
 ): Promise<void> {
   await invoke("trim_pdf", {
     request: {
@@ -841,6 +844,9 @@ export async function trimPdf(
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
       layout_em: layoutEm ?? null,
+      page_w_pt: pageWPt ?? null,
+      page_h_pt: pageHPt ?? null,
+      auto_orient: autoOrient ?? null,
     },
   });
 }
@@ -886,6 +892,9 @@ export async function rotatePdf(
   layoutW?: number,
   layoutH?: number,
   layoutEm?: number,
+  pageWPt?: number,
+  pageHPt?: number,
+  autoOrient?: boolean,
 ): Promise<void> {
   await invoke("rotate_pdf", {
     request: {
@@ -895,6 +904,9 @@ export async function rotatePdf(
       layout_w: layoutW ?? null,
       layout_h: layoutH ?? null,
       layout_em: layoutEm ?? null,
+      page_w_pt: pageWPt ?? null,
+      page_h_pt: pageHPt ?? null,
+      auto_orient: autoOrient ?? null,
     },
   });
 }
