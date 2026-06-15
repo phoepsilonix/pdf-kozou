@@ -42,7 +42,7 @@ const RESULT_DPI = 96;
 const THUMB_DPI = 40;
 const CANVAS_W_DEFAULT = 520;
 
-type Phase = "edit" | "processing" | "result" | "error" | "compress" | "batchResult";
+type Phase = "edit" | "processing" | "result" | "error" | "compress" | "saved" | "batchResult";
 const zero = (): TrimMargins => ({ left: 0, right: 0, top: 0, bottom: 0 });
 
 export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
@@ -587,6 +587,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [cropCleanup, setCropCleanup] = useState(false);
   const { pickSave } = useSaveDialog();
   const [outTmp, setOutTmp] = useState<string>("");
+  const [metaEditOpen, setMetaEditOpen] = useState(false);
 
   const currentPage = pdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
@@ -766,8 +767,20 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         ?.replace(/\.[^/.]+$/, "") ?? "file";
     const sp = await pickSave(`${base}_trimmed.pdf`);
     if (!sp) return;
-    await moveFile(outTmp, sp);
-    setSavedPath(sp);
+    setIsSaving(true);
+    try {
+      // 保存は終端処理。保存後は「保存完了」画面へ遷移し、そこに「圧縮して保存」は
+      // 出さないため、moveFile で一時ファイルを消費して問題ない（後始末も兼ねる）。
+      await moveFile(outTmp, sp);
+      setSavedPath(sp);
+      setPhase("saved");
+    } catch (e) {
+      announceError(String(e));
+      setErrMsg(String(e));
+      setPhase("error");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (phase === "processing")
@@ -799,6 +812,47 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   if (phase === "compress") {
     return <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={outTmp || undefined} />;
   }
+
+  if (phase === "saved")
+    return (
+      <div style={s.center}>
+        <span style={{ fontSize: 40, color: "var(--c-accent)" }}>✓</span>
+        <span style={{ fontSize: 16, fontWeight: 700 }}>{t("trim.saved_title")}</span>
+        <span
+          style={{
+            ...s.centSub,
+            maxWidth: 480,
+            textAlign: "center",
+            wordBreak: "break-all",
+          }}
+        >
+          {savedPath}
+        </span>
+        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+          <button style={s.errBtn} onClick={() => setMetaEditOpen(true)}>
+            ✏️ {t("meta_edit.title")}
+          </button>
+          <button
+            style={s.errBtn}
+            onClick={() => {
+              setPhase("edit");
+              setResultImgs([]);
+              setSavedPath("");
+              setErrMsg("");
+            }}
+          >
+            {t("trim.back_to_edit")}
+          </button>
+        </div>
+        {metaEditOpen && savedPath && (
+          <MetadataEditModal
+            filePath={savedPath}
+            onClose={() => setMetaEditOpen(false)}
+            isOutputFile
+          />
+        )}
+      </div>
+    );
 
   if (phase === "result")
     return (
@@ -1019,26 +1073,6 @@ function ResultView({
             100%
           </button>
         </div>
-        <button style={r.btnCompress} onClick={onCompress}>
-          {t("common.compress_then_save")}
-        </button>
-        {savedPath && (
-          <button
-            style={r.btnMeta}
-            onClick={() => setMetaEditOpen(true)}
-            title={t("meta_edit.title")}
-            aria-label={t("meta_edit.title")}
-          >
-            ✏️ {t("meta_edit.title")}
-          </button>
-        )}
-        <button
-          style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
-          onClick={onSave}
-          disabled={isSaving}
-        >
-          {isSaving ? t("common.saving") : t("common.save_pdf")}
-        </button>
       </div>
 
       <div style={r.gallery} ref={galleryRef}>

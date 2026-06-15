@@ -73,6 +73,9 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu
 
+          #target/release/build
+          #target/release/deps
+          #target/release/incremental
       - name: Restore Cache (復元のみ)
         uses: actions/cache/restore@v5
         id: cache-restore
@@ -82,13 +85,15 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-            !target/release/bundle/
+            target
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-rust-v1-
             ${{ runner.os }}-rust-
             v0-rust-pdf-kozou-v1-${{ runner.os }}
+
+      - name: Cache Check
+        run: find target/release/bundle || true
 
 #      - name: Cache Rust target
 #        uses: actions/cache@v5
@@ -235,17 +240,22 @@ jobs:
           #7z a -mx=9 -m0=lzma:fb230:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
           mv ${PKG_NAME}.7z target/release/bundle/7z/
 
+      - name: move bundle folder
+        run: |
+          rm -rf ./bundle
+          mv target/release/bundle ./bundle/
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
           name: linux-artifacts
           path: |
-            target/release/bundle/deb/*.deb
-            target/release/bundle/rpm/*.rpm
-            target/release/bundle/appimage/*.AppImage
-            target/release/bundle/7z/*.7z
-            #target/release/bundle/tbz/*.tar.bz2
-            #target/release/bundle/zip/*.zip
+            bundle/deb/*.deb
+            bundle/rpm/*.rpm
+            bundle/appimage/*.AppImage
+            bundle/7z/*.7z
+            #bundle/tbz/*.tar.bz2
+            #bundle/zip/*.zip
 
       - name: Save Cache (条件付きで保存のみ実行)
         uses: actions/cache/save@v5
@@ -256,8 +266,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-            !target/release/bundle/
+            target
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
   # ===========================================================================
@@ -290,8 +299,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-            !target/release/bundle/
+            target
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-rust-v1-
@@ -447,14 +455,20 @@ jobs:
         run: |
           ./repackage_msix.ps1 -PfxPassword "${{ env.PFX_PASSWORD }}"
 
+      - name: move bundle folder
+        shell: bash
+        run: |
+          rm -rf ./bundle
+          mv target/release/bundle ./bundle/
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
           name: windows-artifacts
           path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
-            target/release/bundle/msi/*.msix
+            bundle/nsis/*.exe
+            bundle/msi/*.msi
+            bundle/msi/*.msix
 
       - name: Save Cache (条件付きで保存のみ実行)
         uses: actions/cache/save@v5
@@ -465,8 +479,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-            !target/release/bundle/
+            target
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
   publish-release:

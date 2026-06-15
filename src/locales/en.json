@@ -263,7 +263,9 @@
     "result_title": "Trim result",
     "preview_fail": "Preview failed",
     "crop_cleanup": "Remove out-of-crop resources (experimental)",
-    "crop_cleanup_note": "Removes XObjects outside the CropBox to reduce file size. Objects partially overlapping the crop area are preserved."
+    "crop_cleanup_note": "Removes XObjects outside the CropBox to reduce file size. Objects partially overlapping the crop area are preserved.",
+    "saved_title": "Saved",
+    "back_to_edit": "Back to trim"
   },
   "rotate": {
     "processing": "Rotating…",

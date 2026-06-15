@@ -263,7 +263,9 @@
     "result_title": "トリミング結果確認",
     "preview_fail": "プレビュー失敗",
     "crop_cleanup": "領域外リソース削除（試験的）",
-    "crop_cleanup_note": "CropBox外の部品をlopdfで削除しファイルサイズを削減します。CropBoxと一部でも重なる部品は保持します。"
+    "crop_cleanup_note": "CropBox外の部品をlopdfで削除しファイルサイズを削減します。CropBoxと一部でも重なる部品は保持します。",
+    "saved_title": "保存しました",
+    "back_to_edit": "トリミングに戻る"
   },
   "rotate": {
     "processing": "回転処理中…",

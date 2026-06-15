@@ -157,6 +157,28 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
     return resolvedOrient === "landscape" ? { w: base.h, h: base.w } : { w: base.w, h: base.h };
   }, [sizeId, resolvedOrient]);
 
+  // C 側 kozou_compose_imposition_pdf と同じ規則でシートごとの出力サイズを返す。
+  // 向き「自動」かつ 1ページ面付け(per==1)のときは、各シートの向きをそのページの
+  // 表示向き(pdfInfo.pages[i].w/h は Rotate 考慮済み)に合わせる。
+  // それ以外（向き固定 / n-up）は全シート共通の targetPt を使う。
+  const sheetTargetPt = useCallback(
+    (pages: number[]): { w: number; h: number } => {
+      const per = layout.cols * layout.rows;
+      if (orient === "auto" && per === 1) {
+        const pageNo = pages[0] ?? 0;
+        const pg = pageNo > 0 ? pdfInfo?.pages?.[pageNo - 1] : undefined;
+        if (pg && pg.w > 0 && pg.h > 0) {
+          const base = PAGE_SIZE_PT[sizeId];
+          const big = Math.max(base.w, base.h);
+          const small = Math.min(base.w, base.h);
+          return pg.w > pg.h ? { w: big, h: small } : { w: small, h: big };
+        }
+      }
+      return targetPt;
+    },
+    [orient, layout.cols, layout.rows, pdfInfo, sizeId, targetPt],
+  );
+
   const run = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
     const sp = await pickSave("composed.pdf");
@@ -378,9 +400,10 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
           {thumbsReady ? (
             <div style={s.sheetsWrap}>
               {layout.sheets.map((sh, si) => {
-                const W = targetPt.w >= targetPt.h ? 260 : 190; // 横長は広めに
-                const H = W * (targetPt.h / targetPt.w);
-                const scale = W / targetPt.w;
+                const sPt = sheetTargetPt(sh.pages);
+                const W = sPt.w >= sPt.h ? 260 : 190; // 横長は広めに
+                const H = W * (sPt.h / sPt.w);
+                const scale = W / sPt.w;
                 return (
                   <div key={si} style={s.sheetCol}>
                     <div

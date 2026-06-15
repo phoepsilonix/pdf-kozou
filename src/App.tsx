@@ -1027,51 +1027,56 @@ function ToolShell({
   return (
     <div style={sh.root}>
       <nav style={sh.nav}>
-        <button style={sh.homeBtn} onClick={onHome}>
-          PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-          <span
-            style={{
-              color: "var(--c-text)",
-              fontSize: 10,
-              opacity: 0.6,
-              marginLeft: 12,
-              fontWeight: 400,
-            }}
-          >
-            {" "}
-            v{pkg.version}
-          </span>
-          <img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" />
-        </button>
-        <div style={sh.div} />
-        {activeTool === "about" ? (
-          <span style={sh.batchLabel}>{t("app.about_label")}</span>
-        ) : isBatch ? (
-          <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
-        ) : (
-          <span style={sh.filename} title={filePath}>
-            {filename}
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        {TOOLS.map((tool) => (
-          <button
-            key={tool.id}
-            style={{ ...sh.tab, ...(activeTool === tool.id ? sh.tabOn : {}) }}
-            onClick={(e) => {
-              onToolChange(tool.id);
-              (e.currentTarget as HTMLButtonElement).blur();
-            }}
-            title={`${tool.label} (Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1})`}
-            aria-label={`${tool.label} Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1}${activeTool === tool.id ? " 現在のツール" : ""}`}
-          >
-            <span>{tool.icon}</span>
-            <span style={sh.tabLabel}>{tool.label}</span>
+        <div style={sh.navTop}>
+          <button style={sh.homeBtn} onClick={onHome}>
+            PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
+            <span
+              style={{
+                color: "var(--c-text)",
+                fontSize: 10,
+                opacity: 0.6,
+                marginLeft: 12,
+                fontWeight: 400,
+              }}
+            >
+              {" "}
+              v{pkg.version}
+            </span>
+            <img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" />
           </button>
-        ))}
-        <div style={sh.div} />
-        <A11yControls />
-        <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
+          <div style={sh.div} />
+          {activeTool === "about" ? (
+            <span style={sh.batchLabel}>{t("app.about_label")}</span>
+          ) : isBatch ? (
+            <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
+          ) : (
+            <span style={sh.filename} title={filePath}>
+              {filename}
+            </span>
+          )}
+          <div style={{ flex: 1 }} />
+          <div style={sh.navRight}>
+            <A11yControls />
+            <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
+          </div>
+        </div>
+        <div style={sh.navTabs}>
+          {TOOLS.map((tool) => (
+            <button
+              key={tool.id}
+              style={{ ...sh.tab, ...(activeTool === tool.id ? sh.tabOn : {}) }}
+              onClick={(e) => {
+                onToolChange(tool.id);
+                (e.currentTarget as HTMLButtonElement).blur();
+              }}
+              title={`${tool.label} (Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1})`}
+              aria-label={`${tool.label} Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1}${activeTool === tool.id ? " 現在のツール" : ""}`}
+            >
+              <span>{tool.icon}</span>
+              <span style={sh.tabLabel}>{tool.label}</span>
+            </button>
+          ))}
+        </div>
       </nav>
 
       <div style={{ flex: 1, overflow: "hidden" }}>
@@ -1239,16 +1244,18 @@ const s: Record<string, React.CSSProperties> = {
   sumInfo: { fontSize: 15, color: "var(--c-textSub)" },
   sumNone: { fontSize: 14, color: "var(--c-textDim)" },
   toolBar: {
-    display: "flex",
+    // CSS Grid の auto-fill で均等な多段グリッドにする。
+    // 幅に応じて列数が自動で変わり、最終行が1個でもセル幅のまま（横長に伸びない）。
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))",
     gap: 9,
     width: "100%",
     maxWidth: 820,
-    flexWrap: "wrap",
     position: "relative" as const,
     zIndex: 1,
   },
   toolBtn: {
-    flex: "1 1 80px",
+    // 幅・段組みは親(grid)が制御。ボタンはセル幅いっぱいに表示。
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -1369,16 +1376,31 @@ const sh: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", height: "100vh", background: "var(--c-bg)" },
   nav: {
     display: "flex",
-    alignItems: "center",
+    flexDirection: "column",
     gap: 4,
-    padding: "0 14px",
-    height: 46,
+    padding: "4px 14px",
+    minHeight: 46,
     background: "var(--c-navBg)",
     borderBottom: `1px solid var(--c-navBd)`,
     flexShrink: 0,
     fontFamily: F,
     zIndex: 10,
     overflow: "visible",
+  },
+  navTop: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    minHeight: 38,
+  },
+  navTabs: {
+    // タブ専用の行。幅 100% なので幅不足時は確実に複数段へ折り返す（横スクロールなし）。
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 4,
+    rowGap: 4,
+    width: "100%",
   },
   homeBtn: {
     background: "transparent",
@@ -1433,6 +1455,12 @@ const sh: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
   },
   tabLabel: { fontSize: 11 },
+  navRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0, // 言語/テーマ/A11y は縮めず常に表示
+  },
   openBtn: {
     padding: "4px 11px",
     background: "transparent",

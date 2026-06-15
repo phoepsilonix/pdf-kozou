@@ -85,148 +85,184 @@ export function TrimControls({
 
   return (
     <div style={s.panel}>
-      <section style={s.section}>
-        <h3 style={s.heading}>{t("trim_controls.margin_heading")}</h3>
-        <div style={s.cross}>
-          <div style={s.crossTop}>
-            <MmField
-              id="trim-margin-top"
-              label={t("trim_controls.top")}
-              value={toMm(margins.top)}
-              max={toMm(pageH - margins.bottom - MM_TO_PT)}
-              onChange={(v) => set("top", v)}
-              ariaLabel={t("aria.margin_top")}
-              inputRef={topInputRef}
-            />
-          </div>
-          <div style={s.crossMid}>
-            <MmField
-              id="trim-margin-left"
-              label={t("trim_controls.left")}
-              value={toMm(margins.left)}
-              max={toMm(pageW - margins.right - MM_TO_PT)}
-              onChange={(v) => set("left", v)}
-              ariaLabel={t("aria.margin_left")}
-            />
-            <div style={s.pageBox}>
-              <span style={s.pageSize}>
-                {origW} × {origH}
-              </span>
-              <span style={s.pageUnit}>{t("trim_controls.margin_original")}</span>
-              <span style={s.arrow}>↓</span>
-              <span style={{ ...s.pageSize, color: "var(--c-accent)" }}>
-                {trimW} × {trimH}
-              </span>
-              <span style={s.pageUnit}>{t("trim_controls.margin_after")}</span>
+      <div style={s.scrollBody}>
+        <section style={s.section}>
+          <h3 style={s.heading}>{t("trim_controls.margin_heading")}</h3>
+          <div style={s.cross}>
+            <div style={s.crossTop}>
+              <MmField
+                id="trim-margin-top"
+                label={t("trim_controls.top")}
+                value={toMm(margins.top)}
+                max={toMm(pageH - margins.bottom - MM_TO_PT)}
+                onChange={(v) => set("top", v)}
+                ariaLabel={t("aria.margin_top")}
+                inputRef={topInputRef}
+              />
             </div>
-            <MmField
-              id="trim-margin-right"
-              label={t("trim_controls.right")}
-              value={toMm(margins.right)}
-              max={toMm(pageW - margins.left - MM_TO_PT)}
-              onChange={(v) => set("right", v)}
-              ariaLabel={t("aria.margin_right")}
-            />
+            <div style={s.crossMid}>
+              <MmField
+                id="trim-margin-left"
+                label={t("trim_controls.left")}
+                value={toMm(margins.left)}
+                max={toMm(pageW - margins.right - MM_TO_PT)}
+                onChange={(v) => set("left", v)}
+                ariaLabel={t("aria.margin_left")}
+              />
+              <div style={s.pageBox}>
+                <span style={s.pageSize}>
+                  {origW} × {origH}
+                </span>
+                <span style={s.pageUnit}>{t("trim_controls.margin_original")}</span>
+                <span style={s.arrow}>↓</span>
+                <span style={{ ...s.pageSize, color: "var(--c-accent)" }}>
+                  {trimW} × {trimH}
+                </span>
+                <span style={s.pageUnit}>{t("trim_controls.margin_after")}</span>
+              </div>
+              <MmField
+                id="trim-margin-right"
+                label={t("trim_controls.right")}
+                value={toMm(margins.right)}
+                max={toMm(pageW - margins.left - MM_TO_PT)}
+                onChange={(v) => set("right", v)}
+                ariaLabel={t("aria.margin_right")}
+              />
+            </div>
+            <div style={s.crossBot}>
+              <MmField
+                id="trim-margin-bottom"
+                label={t("trim_controls.bottom")}
+                value={toMm(margins.bottom)}
+                max={toMm(pageH - margins.top - MM_TO_PT)}
+                onChange={(v) => set("bottom", v)}
+                ariaLabel={t("aria.margin_bottom")}
+              />
+            </div>
           </div>
-          <div style={s.crossBot}>
-            <MmField
-              id="trim-margin-bottom"
-              label={t("trim_controls.bottom")}
-              value={toMm(margins.bottom)}
-              max={toMm(pageH - margins.top - MM_TO_PT)}
-              onChange={(v) => set("bottom", v)}
-              ariaLabel={t("aria.margin_bottom")}
-            />
+        </section>
+
+        {/* トリミング適用ページ - PageSelector に置き換え。基本は全ページ適用。 */}
+        <section style={s.section}>
+          <h3 style={s.heading}>{t("trim_controls.trim_pages_heading")}</h3>
+          <PageSelector
+            totalPages={totalPages}
+            value={trimPages}
+            onChange={onPages}
+            label={t("trim_controls.trim_pages_label")}
+            type="1"
+            compact
+            rangeInputRef={rangeInputRef}
+          />
+        </section>
+        <section style={s.section}>
+          <h3 style={s.heading}>{t("trim_controls.exclude_heading")}</h3>
+          <PageSelector
+            totalPages={totalPages}
+            value={excludeSpec}
+            onChange={onExclude}
+            label={t("trim_controls.exclude_label")}
+            type="2"
+            compact
+          />
+        </section>
+
+        <section style={s.section}>
+          <h3 style={s.heading}>
+            {t("trim_controls.extract_heading")}{" "}
+            <span style={s.headingOpt}>{t("trim_controls.extract_optional")}</span>
+          </h3>
+          <p style={s.hint2}>{t("trim_controls.extract_hint")}</p>
+          <PageSelector
+            totalPages={totalPages}
+            value={extractSpec}
+            onChange={onExtract}
+            label={t("trim_controls.extract_label")}
+            type="1"
+            compact
+          />
+        </section>
+
+        {/* バッチ用: 出力フォルダ選択（実行ボタンの直上に配置） */}
+        {onPickDir !== undefined && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--c-textDim)", marginBottom: 4 }}>
+              {t("trim_controls.output_folder")}
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div
+                style={{
+                  flex: 1,
+                  fontSize: 11,
+                  color: "var(--c-text)",
+                  background: "var(--c-bgSub)",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {outDir || t("trim_controls.not_selected")}
+              </div>
+              <button
+                type="button"
+                style={{
+                  fontSize: 11,
+                  padding: "4px 10px",
+                  background: "var(--c-bgCard)",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  color: "var(--c-text)",
+                  whiteSpace: "nowrap",
+                }}
+                onClick={onPickDir}
+                disabled={processing}
+                aria-label={t("aria.output_dir_btn")}
+              >
+                {t("trim_controls.select_btn")}
+              </button>
+            </div>
           </div>
-        </div>
-      </section>
+        )}
 
-      {/* トリミング適用ページ - PageSelector に置き換え。基本は全ページ適用。 */}
-      <section style={s.section}>
-        <h3 style={s.heading}>{t("trim_controls.trim_pages_heading")}</h3>
-        <PageSelector
-          totalPages={totalPages}
-          value={trimPages}
-          onChange={onPages}
-          label={t("trim_controls.trim_pages_label")}
-          type="1"
-          compact
-          rangeInputRef={rangeInputRef}
-        />
-      </section>
-      <section style={s.section}>
-        <h3 style={s.heading}>{t("trim_controls.exclude_heading")}</h3>
-        <PageSelector
-          totalPages={totalPages}
-          value={excludeSpec}
-          onChange={onExclude}
-          label={t("trim_controls.exclude_label")}
-          type="2"
-          compact
-        />
-      </section>
+        <p style={s.hint}>{t("trim_controls.drag_hint")}</p>
 
-      <section style={s.section}>
-        <h3 style={s.heading}>
-          {t("trim_controls.extract_heading")}{" "}
-          <span style={s.headingOpt}>{t("trim_controls.extract_optional")}</span>
-        </h3>
-        <p style={s.hint2}>{t("trim_controls.extract_hint")}</p>
-        <PageSelector
-          totalPages={totalPages}
-          value={extractSpec}
-          onChange={onExtract}
-          label={t("trim_controls.extract_label")}
-          type="1"
-          compact
-        />
-      </section>
-
-      {/* バッチ用: 出力フォルダ選択（実行ボタンの直上に配置） */}
-      {onPickDir !== undefined && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--c-textDim)", marginBottom: 4 }}>
-            {t("trim_controls.output_folder")}
-          </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <div
+        <label
+          style={{
+            display: "flex",
+            gap: 6,
+            alignItems: "flex-start",
+            padding: "6px 0 2px",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={cropCleanup}
+            onChange={(e) => onCropCleanupChange?.(e.target.checked)}
+            style={{ marginTop: 2, flexShrink: 0 }}
+          />
+          <span>
+            <span style={{ fontSize: 11 }}>{t("trim.crop_cleanup" as any)}</span>
+            <span
               style={{
-                flex: 1,
-                fontSize: 11,
-                color: "var(--c-text)",
-                background: "var(--c-bgSub)",
-                border: "1px solid var(--c-border)",
-                borderRadius: 4,
-                padding: "4px 8px",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                display: "block",
+                fontSize: 10,
+                color: "var(--c-textDim)",
+                lineHeight: 1.4,
+                marginTop: 2,
               }}
             >
-              {outDir || t("trim_controls.not_selected")}
-            </div>
-            <button
-              type="button"
-              style={{
-                fontSize: 11,
-                padding: "4px 10px",
-                background: "var(--c-bgCard)",
-                border: "1px solid var(--c-border)",
-                borderRadius: 4,
-                cursor: "pointer",
-                color: "var(--c-text)",
-                whiteSpace: "nowrap",
-              }}
-              onClick={onPickDir}
-              disabled={processing}
-              aria-label={t("aria.output_dir_btn")}
-            >
-              {t("trim_controls.select_btn")}
-            </button>
-          </div>
-        </div>
-      )}
+              {t("trim.crop_cleanup_note" as any)}
+            </span>
+          </span>
+        </label>
+      </div>
 
+      {/* 下部固定の操作帯（スクロールしない・常に最下部に表示） */}
       <section style={s.actions}>
         <button
           type="button"
@@ -246,39 +282,6 @@ export function TrimControls({
           {processing ? t("trim_controls.processing") : (applyLabel ?? t("trim_controls.preview"))}
         </button>
       </section>
-
-      <p style={s.hint}>{t("trim_controls.drag_hint")}</p>
-
-      <label
-        style={{
-          display: "flex",
-          gap: 6,
-          alignItems: "flex-start",
-          padding: "6px 0 2px",
-          cursor: "pointer",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={cropCleanup}
-          onChange={(e) => onCropCleanupChange?.(e.target.checked)}
-          style={{ marginTop: 2, flexShrink: 0 }}
-        />
-        <span>
-          <span style={{ fontSize: 11 }}>{t("trim.crop_cleanup" as any)}</span>
-          <span
-            style={{
-              display: "block",
-              fontSize: 10,
-              color: "var(--c-textDim)",
-              lineHeight: 1.4,
-              marginTop: 2,
-            }}
-          >
-            {t("trim.crop_cleanup_note" as any)}
-          </span>
-        </span>
-      </label>
     </div>
   );
 }
@@ -327,14 +330,21 @@ const s: Record<string, React.CSSProperties> = {
   panel: {
     display: "flex",
     flexDirection: "column",
-    gap: 18,
-    padding: "18px 14px",
     background: "var(--c-bgCard)",
     color: "var(--c-text)",
     fontFamily: F,
     fontSize: 14,
     height: "100%",
+    overflow: "hidden",
+  },
+  scrollBody: {
+    flex: 1,
+    minHeight: 0,
     overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+    padding: "18px 14px",
   },
   section: { display: "flex", flexDirection: "column", gap: 10 },
   heading: {
@@ -407,7 +417,14 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
   },
 
-  actions: { display: "flex", gap: 8 },
+  actions: {
+    flexShrink: 0,
+    display: "flex",
+    gap: 8,
+    padding: "10px 14px",
+    borderTop: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+  },
   btnReset: {
     padding: "10px 14px",
     background: "transparent",
