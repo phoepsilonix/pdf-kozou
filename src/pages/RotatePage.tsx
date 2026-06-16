@@ -61,6 +61,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   // Ctrl+S からプレビュー画面の doSave を呼ぶための ref
   const saveHandlerRef = useRef<(() => void) | null>(null);
   const compressHandlerRef = useRef<(() => void) | null>(null);
+  // 回転後（preview 遷移直後）に「そのまま保存」へフォーカスするための ref
+  const saveBtnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     announceScreen("screen.rotate");
@@ -113,6 +115,15 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [pageSpec, setPageSpec] = useState("");
+
+  // 回転後の preview 画面に入ったら「そのまま保存」ボタンへフォーカス
+  useEffect(() => {
+    if (phase === "preview") {
+      // レンダリング確定後にフォーカス
+      const id = window.setTimeout(() => saveBtnRef.current?.focus(), 0);
+      return () => window.clearTimeout(id);
+    }
+  }, [phase]);
 
   useEffect(() => {
     if (!isBatch) return;
@@ -431,8 +442,12 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           </span>
           <span style={s.previewSub}>{t("rotate.select_save_method")}</span>
           <div style={s.previewBtns}>
-            <button style={s.saveBtnPrimary} onClick={doSave} aria-label={t("aria.save_btn")}>
-              {t("rotate.save")}
+            <button
+              style={s.metaBtn}
+              onClick={() => setMetaEditOpen(true)}
+              aria-label={t("meta_edit.title")}
+            >
+              ✏️ {t("meta_edit.title")}
             </button>
             <button
               style={s.compressBtn}
@@ -442,11 +457,12 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               {t("rotate.save_compress")}
             </button>
             <button
-              style={s.metaBtn}
-              onClick={() => setMetaEditOpen(true)}
-              aria-label={t("meta_edit.title")}
+              ref={saveBtnRef}
+              style={s.saveBtnPrimary}
+              onClick={doSave}
+              aria-label={t("aria.save_btn")}
             >
-              ✏️ {t("meta_edit.title")}
+              {t("rotate.save")}
             </button>
           </div>
           <button style={s.btnBack2} onClick={() => setPhase("edit")}>
