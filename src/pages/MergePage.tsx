@@ -502,11 +502,11 @@ useEffect(() => {
           <span style={s.title}>{t("merge.preview_title")}</span>
           <span style={s.sub}>{t("merge.preview_sub", { pages: String(totalPages) })}</span>
           <div style={{ flex: 1 }} />
-          <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")}>
-            {t("merge.save")}
-          </BtnPrimary>
           <BtnPrimary onClick={() => handleSave(true)} aria-label={t("aria.compress_save_btn")}>
             {t("merge.save_compress")}
+          </BtnPrimary>
+          <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")} autoFocus>
+            {t("merge.save")}
           </BtnPrimary>
         </PageHeader>
 
@@ -599,11 +599,11 @@ useEffect(() => {
             }}
           />
           <div style={{ display: "flex", gap: 8 }}>
-            <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")}>
-              {t("merge.save")}
-            </BtnPrimary>
             <BtnPrimary onClick={() => handleSave(true)} aria-label={t("aria.compress_save_btn")}>
               {t("merge.save_compress")}
+            </BtnPrimary>
+            <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")}>
+              {t("merge.save")}
             </BtnPrimary>
           </div>
         </div>
@@ -823,11 +823,11 @@ useEffect(() => {
                 >
                   {t("merge.preview_btn")}
                 </button>
-                <BtnPrimary onClick={() => handleSave(false)} disabled={entries.length < 2}>
-                  {t("merge.execute_btn")}
-                </BtnPrimary>
                 <BtnPrimary onClick={() => handleSave(true)} disabled={entries.length < 2}>
                   {t("merge.execute_compress_btn")}
+                </BtnPrimary>
+                <BtnPrimary onClick={() => handleSave(false)} disabled={entries.length < 2}>
+                  {t("merge.execute_btn")}
                 </BtnPrimary>
               </div>
               {entries.length < 2 && <span style={s.execHint}>{t("merge.need_min")}</span>}

@@ -1082,6 +1082,12 @@ function ResultView({
 }) {
   const [localZoom, setLocalZoom] = useState(0.5);
   const galleryRef = useRef<HTMLDivElement>(null);
+  // 結果画面に入ったら「保存」(圧縮せず保存)ボタンへフォーカス
+  const saveBtnRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const id = window.setTimeout(() => saveBtnRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, []);
   const [cardWidth, setCardWidth] = useState(400);
 
   // ギャラリーコンテナ幅に追従して1枚あたりのカード幅を算出
@@ -1166,7 +1172,14 @@ function ResultView({
         <button style={r.btnBack} onClick={onBack}>
           {t("common.back")}
         </button>
-        <button style={r.btnCompress} onClick={onCompress}>
+        <button
+          style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
+          onClick={onSave}
+          disabled={isSaving}
+        >
+          {isSaving ? t("common.saving") : t("common.save_pdf")}
+        </button>
+        <button ref={saveBtnRef} style={r.btnCompress} onClick={onCompress}>
           {t("common.compress_then_save")}
         </button>
         {savedPath && (
@@ -1179,13 +1192,6 @@ function ResultView({
             ✏️ {t("meta_edit.title")}
           </button>
         )}
-        <button
-          style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
-          onClick={onSave}
-          disabled={isSaving}
-        >
-          {isSaving ? t("common.saving") : t("common.save_pdf")}
-        </button>
       </div>
 
       {metaEditOpen && savedPath && (

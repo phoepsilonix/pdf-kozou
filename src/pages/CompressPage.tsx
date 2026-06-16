@@ -8,7 +8,7 @@
 
 export default CompressPage;
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { usePdfStore } from "../store/usePdfStore";
@@ -195,6 +195,14 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   const inputFile = currentSource;
 
   const [phase, setPhase] = useState<Phase>("edit");
+  // 結果画面（未保存）に入ったら「保存」ボタンへフォーカス
+  const saveCompressedBtnRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (phase === "result" && !savedFilePath) {
+      const id = window.setTimeout(() => saveCompressedBtnRef.current?.focus(), 0);
+      return () => window.clearTimeout(id);
+    }
+  }, [phase, savedFilePath]);
   const [preset, setPreset] = useState<CompressPreset>("standard");
   const [objectStream, setObjectStream] = useState(false);
   const [mergeFonts, setMergeFonts] = useState(false);
@@ -791,7 +799,19 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 </>
               ) : (
                 <div style={c.saveChoiceBtns}>
+                  <button style={c.btnSaveOriginal} onClick={handleSaveOriginal} disabled={saving}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
+                    >
+                      <span style={c.saveBtnIcon}>📄</span>
+                      <div>
+                        <div style={c.saveBtnMain}>{t("compress.save_original_main")}</div>
+                        <div style={c.saveBtnSub}>{t("compress.save_original_sub")}</div>
+                      </div>
+                    </div>
+                  </button>
                   <button
+                    ref={saveCompressedBtnRef}
                     style={c.btnSaveCompressed}
                     onClick={handleSaveCompressed}
                     disabled={saving}
@@ -803,17 +823,6 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                       <div>
                         <div style={c.saveBtnMain}>{t("compress.save_compressed_main")}</div>
                         <div style={c.saveBtnSub}>{t("compress.save_compressed_sub")}</div>
-                      </div>
-                    </div>
-                  </button>
-                  <button style={c.btnSaveOriginal} onClick={handleSaveOriginal} disabled={saving}>
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
-                    >
-                      <span style={c.saveBtnIcon}>📄</span>
-                      <div>
-                        <div style={c.saveBtnMain}>{t("compress.save_original_main")}</div>
-                        <div style={c.saveBtnSub}>{t("compress.save_original_sub")}</div>
                       </div>
                     </div>
                   </button>

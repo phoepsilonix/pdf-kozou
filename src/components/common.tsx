@@ -136,15 +136,18 @@ export function BtnPrimary({
   onClick,
   disabled,
   children,
+  autoFocus,
 }: {
   onClick: () => void;
   disabled?: boolean;
   children: React.ReactNode;
+  autoFocus?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      autoFocus={autoFocus}
       style={{
         padding: "11px 28px",
         background: disabled ? "var(--c-bgCard)" : "var(--c-accentBg)",
