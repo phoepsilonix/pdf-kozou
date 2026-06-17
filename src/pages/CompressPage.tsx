@@ -861,7 +861,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 borderRadius: 4,
                 cursor: "pointer",
                 border: "1px solid var(--c-borderHi)",
-                background: !useGs ? "var(--c-accent)" : "transparent",
+                background: !useGs ? "var(--c-accentBg)" : "transparent",
                 color: !useGs ? "#000" : "var(--c-textSub)",
                 fontFamily: F,
               }}
@@ -876,7 +876,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
                 borderRadius: 4,
                 cursor: "pointer",
                 border: "1px solid var(--c-borderHi)",
-                background: useGs ? "var(--c-accent)" : "transparent",
+                background: useGs ? "var(--c-accentBg)" : "transparent",
                 color: useGs ? "#000" : "var(--c-textSub)",
                 fontFamily: F,
               }}
