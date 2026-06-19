@@ -224,7 +224,7 @@
     "loading": "ファイルを読み込み中…",
     "processing": "結合処理中…",
     "save": "💾 保存",
-    "save_compress": "⊙ 保存して圧縮",
+    "save_compress": "⊙ 圧縮して保存",
     "result_label": "⊕ 結合後: 1ファイル ({{pages}}ページ)",
     "file_count": "{{count}}ファイル · 合計 {{pages}}ページ",
     "add_btn": "＋ PDFを追加",
