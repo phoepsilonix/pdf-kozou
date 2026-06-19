@@ -2916,6 +2916,110 @@ typedef struct {
 
 
 
+/* ──────────────────────────────────────────────────────────────────
+ * パスの実塗り面積を計算する (buried 誤検出防止)
+ *
+ * fz_bound_path はパスのバウンディングボックスを返すため、罫線・枠・グリッド
+ * のように「細い線だが bbox は広い」パスを塗りつぶし矩形と誤認してしまう。
+ * (例: カレンダーの罫線10本 → bbox はカレンダー全体 → 内側の可視テキストを
+ *  すべて buried と誤判定し、無害化で可視テキストを破壊する)
+ *
+ * 各サブパスの符号付き面積 (シューレース公式) を積算し、デバイス座標系での
+ * 実塗り面積を求める。曲線は終点で近似 (枠/線 vs 面塗りの判別には十分)。
+ * 塗り面積 / bbox面積 が小さいパスは「枠・線」とみなし被覆対象から除外する。
+ * ───────────────────────────────────────────────────────────────── */
+typedef struct {
+    fz_matrix ctm;
+    fz_point  start;   /* サブパス始点 (デバイス座標) */
+    fz_point  cur;     /* 現在点 (デバイス座標) */
+    double    area2;   /* 符号付き面積の2倍を積算 */
+    int       has_sub; /* サブパス開始済みか */
+} KozouAreaWalk;
+
+static void kozou_area_close_sub(KozouAreaWalk *w)
+{
+    if (w->has_sub)
+        w->area2 += (double)w->cur.x * w->start.y - (double)w->start.x * w->cur.y;
+}
+static void kozou_area_edge(KozouAreaWalk *w, fz_point p)
+{
+    w->area2 += (double)w->cur.x * p.y - (double)p.x * w->cur.y;
+    w->cur = p;
+}
+static void kozou_area_moveto(fz_context *ctx, void *arg, float x, float y)
+{
+    (void)ctx; KozouAreaWalk *w = (KozouAreaWalk *)arg;
+    kozou_area_close_sub(w); /* 直前サブパスを暗黙クローズ (fill は暗黙閉路) */
+    w->start = w->cur = fz_transform_point(fz_make_point(x, y), w->ctm);
+    w->has_sub = 1;
+}
+static void kozou_area_lineto(fz_context *ctx, void *arg, float x, float y)
+{
+    (void)ctx; KozouAreaWalk *w = (KozouAreaWalk *)arg;
+    kozou_area_edge(w, fz_transform_point(fz_make_point(x, y), w->ctm));
+}
+static void kozou_area_curveto(fz_context *ctx, void *arg,
+    float x1, float y1, float x2, float y2, float x3, float y3)
+{
+    (void)ctx; (void)x1; (void)y1; (void)x2; (void)y2;
+    KozouAreaWalk *w = (KozouAreaWalk *)arg;
+    kozou_area_edge(w, fz_transform_point(fz_make_point(x3, y3), w->ctm));
+}
+static void kozou_area_quadto(fz_context *ctx, void *arg,
+    float x1, float y1, float x2, float y2)
+{
+    (void)ctx; (void)x1; (void)y1;
+    KozouAreaWalk *w = (KozouAreaWalk *)arg;
+    kozou_area_edge(w, fz_transform_point(fz_make_point(x2, y2), w->ctm));
+}
+static void kozou_area_curvetov(fz_context *ctx, void *arg,
+    float x2, float y2, float x3, float y3)
+{
+    (void)ctx; (void)x2; (void)y2;
+    KozouAreaWalk *w = (KozouAreaWalk *)arg;
+    kozou_area_edge(w, fz_transform_point(fz_make_point(x3, y3), w->ctm));
+}
+static void kozou_area_curvetoy(fz_context *ctx, void *arg,
+    float x1, float y1, float x3, float y3)
+{
+    (void)ctx; (void)x1; (void)y1;
+    KozouAreaWalk *w = (KozouAreaWalk *)arg;
+    kozou_area_edge(w, fz_transform_point(fz_make_point(x3, y3), w->ctm));
+}
+static void kozou_area_closepath(fz_context *ctx, void *arg)
+{
+    (void)ctx; KozouAreaWalk *w = (KozouAreaWalk *)arg;
+    w->cur = w->start; /* 始点に戻る (面積寄与は close_sub でまとめて計上) */
+}
+
+/* パスの「実塗り面積 / bbox面積」比を返す (0.0〜約1.0)。
+ * bbox が退化している場合は 0。曲線終点近似のため面塗りは過小評価され得るが、
+ * 枠・線 (比≈0) と面塗り (比が大) の判別には十分。 */
+static float kozou_path_fill_ratio(
+    fz_context *ctx, const fz_path *path, fz_matrix ctm, fz_rect bbox)
+{
+    float bw = bbox.x1 - bbox.x0, bh = bbox.y1 - bbox.y0;
+    float barea = bw * bh;
+    if (barea <= 0.0f) return 0.0f;
+    fz_path_walker walker = {
+        kozou_area_moveto, kozou_area_lineto, kozou_area_curveto,
+        kozou_area_closepath, kozou_area_quadto,
+        kozou_area_curvetov, kozou_area_curvetoy
+    };
+    KozouAreaWalk w;
+    memset(&w, 0, sizeof(w));
+    w.ctm = ctm;
+    fz_walk_path(ctx, path, &walker, &w);
+    kozou_area_close_sub(&w); /* 最終サブパスを暗黙クローズ */
+    double filled = fabs(w.area2) * 0.5;
+    return (float)(filled / (double)barea);
+}
+
+/* 細い線・枠とみなす実塗り面積比の下限。
+ * これ未満のパスは「面塗りで覆っている」のではなく罫線/枠なので被覆対象外。
+ * 罫線グリッドは比≈0、面塗り矩形は≈1、円/角丸も終点近似で 0.5 前後を確保。 */
+#define KOZOU_BURIED_MIN_FILL_RATIO 0.20f
+
 /* ---- デバイス ---- */
 typedef struct {
     fz_device      base;
@@ -2936,6 +3040,14 @@ static void kozou_buried_fill_path(
 
     fz_rect bbox = fz_bound_path(ctx, path, NULL, ctm);
     if (bbox.x0 >= bbox.x1 || bbox.y0 >= bbox.y1) return;
+
+    /* 罫線・枠・グリッドの誤検出防止 (buried 取り違えの主因):
+     * パスの実塗り面積が bbox に対して小さい場合、それは「面で覆う塗り」では
+     * なく細い線なので被覆対象にしない。これを怠ると、カレンダー罫線等の
+     * 広い bbox を持つ線パスが内側の可視テキストを buried と誤判定し、
+     * 無害化で可視テキストを破壊してしまう。 */
+    float fill_ratio = kozou_path_fill_ratio(ctx, path, ctm, bbox);
+    if (fill_ratio < KOZOU_BURIED_MIN_FILL_RATIO) return;
 
     KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
     cr->event_index = dev->list->event_counter++;
