@@ -172,26 +172,23 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     [filePath, locale],
   );
 
-  // 衝突チェック
+  // 衝突チェック（単体PDF出力時のみ）。
+  // バッチPDFは出力名に _画像化 / _rasterized サフィックスが必ず付くため、
+  // 入力フォルダと同じ場所へ出力しても元ファイルと衝突せず、チェック対象外とする。
   useEffect(() => {
     const checkConflict = async () => {
-      if (outputMode !== "pdf" || !outDir) {
+      if (outputMode !== "pdf" || !outDir || isBatch) {
         setConflictPaths([]);
         return;
       }
 
       try {
-        let batchInfo: Array<[string, string]> | null = null;
-        if (isBatch && batchFiles) {
-          batchInfo = batchFiles.map((f) => [f.filename, f.path]);
-        }
-
         const conflicts = await checkPathConflict({
           inputPath: filePath, // ← input_path → inputPath
           outDir: outDir, // ← out_dir → outDir
-          pdfName: isBatch ? undefined : pdfName || undefined,
-          isBatch: isBatch, // ← is_batch → isBatch
-          batchFiles: batchInfo, // ← batch_files → batchFiles
+          pdfName: pdfName || undefined,
+          isBatch: false, // ← is_batch → isBatch
+          batchFiles: null, // ← batch_files → batchFiles
         });
 
         setConflictPaths(conflicts);
@@ -714,8 +711,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       try {
         const stem = f.filename.replace(/\.[^/.]+$/, "");
         if (outputMode === "pdf") {
-          // 画像PDFモード: ファイルごとに1つの .pdf を出力
-          const outPath = joinPath(batchDir, `${stem}.pdf`);
+          // 画像PDFモード: ファイルごとに1つの .pdf を出力。
+          // 出力名は単体保存と同じく i18n サフィックス（_画像化 / _rasterized）を付与し、
+          // 入力PDFと同じフォルダを選んでも元ファイルを上書きしないようにする。
+          const outPath = joinPath(batchDir, buildName(f.filename, ["rasterized"]));
           const res = await exportImagePdf(
             f.path,
             outPath,
