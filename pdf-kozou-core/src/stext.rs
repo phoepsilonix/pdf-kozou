@@ -988,6 +988,14 @@ pub struct SanitizeOrigin {
     /// -1=不明(座標のみで照合, 従来動作)。同一座標に重なる別グリフの誤無害化を防ぐ。
     #[serde(default = "default_minus_one")]
     pub render_invisible: i32,
+    /// 文字 identity (取り違え防止の本命): 検出グリフの Unicode コードポイント。
+    /// -1=不明(従来動作: 座標のみで照合)。無害化時、対象 Tj が実際に描く文字を
+    /// stext で照合し、座標が近いだけの隣接/重なりグリフを巻き込まないために使う。
+    #[serde(default = "default_minus_one")]
+    pub codepoint: i32,
+    /// 検出グリフのサイズ pt (stext 空間, 0=不明)。codepoint と併せて identity 照合。
+    #[serde(default)]
+    pub size: f32,
 }
 
 #[derive(Debug, Serialize)]
@@ -1075,8 +1083,10 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
-    // origin 座標を [x, y, xobj_xref(f32), internal_x, internal_y, ...] の9要素フラット配列に変換
-    // (ストライドは 9 のまま維持。描画モードは別の並列配列で渡し互換性を壊さない)
+    // origin 座標を11要素フラット配列に変換:
+    //   [x, y, xobj_xref, internal_x, internal_y, ox, oy, is_buried, page,
+    //    codepoint, size]
+    // 末尾2要素 (codepoint, size) は取り違え防止の文字 identity 照合に使う。
     let origins: Vec<f32> = req
         .targets
         .iter()
@@ -1091,6 +1101,8 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
                 o.oy,
                 o.is_buried as f32,
                 o.page as f32,
+                o.codepoint as f32,
+                o.size,
             ]
         })
         .collect();

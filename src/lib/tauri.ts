@@ -187,6 +187,11 @@ export interface SanitizeOrigin {
   // 描画モード(取り違え防止): 1=不可視(Tr=3/7)として検出, 0=可視として検出,
   // 省略/-1=不明(座標のみで照合)。同一座標に重なる別グリフの誤無害化を防ぐ。
   render_invisible?: number;
+  // 文字 identity(取り違え防止の本命): 検出グリフの Unicode コードポイント。
+  // 省略/-1=不明。無害化時、対象 Tj が実際に描く文字を stext で照合し、
+  // 座標が近いだけの隣接/重なりグリフを巻き込まないために使う。
+  codepoint?: number;
+  size?: number; // 検出グリフのサイズ pt (identity 照合の補助)
 }
 
 export interface SanitizeResponse {

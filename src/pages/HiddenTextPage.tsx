@@ -155,6 +155,14 @@ function renderInvisibleOf(reason: string): number {
   return reason === "invisible_mode" || reason === "clip_only_mode" ? 1 : 0;
 }
 
+// 検出グリフの先頭 Unicode コードポイントを返す(取り違え防止の文字 identity)。
+// 文字が無い/不明の場合は -1(C 層で従来の座標のみ照合にフォールバック)。
+function codepointOf(ch: string | undefined): number {
+  if (!ch || ch.length === 0) return -1;
+  const cp = ch.codePointAt(0);
+  return cp === undefined ? -1 : cp;
+}
+
 function groupHits(hits: AnyHit[]): HitGroup[] {
   const groups: HitGroup[] = [];
   let gid = 0;
@@ -314,6 +322,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             oy: h.origin[1],
             is_buried: h.type === "buried" ? 1 : 0,
             render_invisible: renderInvisibleOf(h.reason),
+            // 文字 identity(取り違え防止): 検出グリフの Unicode とサイズ
+            codepoint: codepointOf(h.char),
+            size: h.size ?? 0,
           }));
 
         if (targets.length === 0) {
@@ -781,6 +792,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             oy: c.origin[1],
             is_buried: g.type === "buried" ? 1 : 0,
             render_invisible: renderInvisibleOf(c.reason),
+            // 文字 identity(取り違え防止): 検出グリフの Unicode とサイズ
+            codepoint: codepointOf(c.char),
+            size: c.size ?? 0,
           })),
       );
     if (!targets.length) {
