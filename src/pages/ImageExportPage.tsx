@@ -33,6 +33,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { buildName } from "../lib/filename";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   type ImpositionMode,
@@ -81,7 +82,7 @@ interface BatchProgress {
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { pickSave } = useSaveDialog();
   const [statusMsg, setStatusMsg] = useState("");
   const DPI_PRESETS = useMemo(
@@ -156,13 +157,20 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 状態管理
   const [conflictPaths, setConflictPaths] = useState<string[]>([]);
 
-  const rasterizedDefaultName = useMemo(() => {
-    const base = filePath
-      .split(/[/\\]/)
-      .pop()
-      ?.replace(/\.pdf$/i, "");
-    return `${base || "output"}_rasterized.pdf`;
-  }, [filePath]);
+  // 画像化PDF（ラスタライズ）保存時の初期ファイル名。ロケール(ja/en)で
+  // サフィックスを切り替える（_画像化 / _rasterized）。
+  const rasterizedDefaultName = useMemo(
+    () => buildName(filePath, ["rasterized"]),
+    // locale を依存に含め、言語切り替え時に初期名も追従させる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filePath, locale],
+  );
+  // 面付け解除（分割）保存時の初期ファイル名（_面付け解除 / _deimposed）。
+  const deimposedDefaultName = useMemo(
+    () => buildName(filePath, ["deimposed"]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filePath, locale],
+  );
 
   // 衝突チェック
   useEffect(() => {
@@ -324,7 +332,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       ]);
 
       if (outputMode === "pdf") {
-        const outPath = await pickSave(rasterizedDefaultName);
+        const outPath = await pickSave(deimposedDefaultName);
         if (!outPath) {
           setPdfName("");
           return;
@@ -390,7 +398,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             layoutH: convertLayoutH,
             layoutEm: convertLayoutEm,
           });
-          const outName = `${rasterizedDefaultName.replace(/\.pdf$/i, "")}_${String(k + 1).padStart(3, "0")}.${ext}`;
+          const outName = `${deimposedDefaultName.replace(/\.pdf$/i, "")}_${String(k + 1).padStart(3, "0")}.${ext}`;
           const outPath = joinPath(resolvedDir, outName);
           await invoke("save_base64_image", {
             data: res.data_b64,
@@ -669,6 +677,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     resolvedPageCount,
     conflictPaths,
     rasterizedDefaultName,
+    deimposedDefaultName,
     pickSave,
     pickDir,
     setError,
