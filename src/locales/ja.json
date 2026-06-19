@@ -815,5 +815,19 @@
     "detect_current_page": "🔍 {page}ページ検出",
     "detect_all_pages": "🔍 全ページ検出",
     "threshold_contrast_hint": "1.0=完全同色のみ / 1.2=標準 / 1.5=緩め"
+  },
+  "filename": {
+    "suffix": {
+      "trimmed": "_トリミング",
+      "rotated": "_回転",
+      "compressed": "_圧縮",
+      "merged": "_結合",
+      "composed": "_面付け",
+      "resized": "_サイズ変更",
+      "sanitized": "_無害化",
+      "type3sanitized": "_Type3無害化",
+      "deimposed": "_面付け解除",
+      "rasterized": "_画像化"
+    }
   }
 }

@@ -20,6 +20,7 @@ import {
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { PageSizeSelector } from "../components/PageSizeSelector";
 import { hasImage } from "../lib/fileTypes";
+import { buildName, stem, opSuffix } from "../lib/filename";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
@@ -317,7 +318,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .map((v, idx) => ({ page: idx + 1, angle: v }))
           .filter((p) => p.angle !== 0);
         if (pages.length > 0) {
-          const out = joinPath(resolvedDir, `${f.filename.replace(/\.[^/.]+$/, "")}_rotated.pdf`);
+          const out = joinPath(resolvedDir, buildName(f.filename, ["rotated"]));
           const psize = resolvePageSizePt(pageSizeId, pageOrientation);
           await rotatePdf(
             f.path,
@@ -394,14 +395,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     );
 
   if (phase === "preview" && savedPath) {
-    const base =
-      filePath
-        .split(/[/\\]/)
-        .pop()
-        ?.replace(/\.[^/.]+$/, "") ?? "file";
     const doSave = async () => {
       const sp = await invoke<string | null>("pick_save_file", {
-        defaultName: `${base}_rotated.pdf`,
+        defaultName: buildName(filePath, ["rotated"]),
         initialDir: outDir || undefined,
       }).catch(() => null);
       if (!sp) return;
@@ -486,6 +482,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         filePath={filePath}
         pdfInfo={pdfInfo}
         sourceFile={savedPath}
+        outputBaseName={stem(filePath) + opSuffix("rotated")}
         onDone={() => setPhase("result")}
       />
     );

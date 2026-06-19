@@ -19,6 +19,7 @@ import { usePdfStore } from "../store/usePdfStore";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { PageSizeSelector } from "../components/PageSizeSelector";
 import { hasImage } from "../lib/fileTypes";
+import { buildName, stem, opSuffix } from "../lib/filename";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   mergePdf,
@@ -302,7 +303,9 @@ useEffect(() => {
 
   // そのまま保存: 最終パスに直接結合
   const handleSaveDirect = useCallback(async () => {
-    const sp = await pickSave("merged.pdf");
+    const sp = await pickSave(
+      entries.length ? buildName(entries[0].path, ["merged"]) : "merged.pdf",
+    );
     if (!sp) return;
     setSavePath(sp);
     setPhase("processing");
@@ -424,6 +427,7 @@ useEffect(() => {
         filePath={tmpMergedPath}
         pdfInfo={mergedInfo}
         sourceFile={tmpMergedPath}
+        outputBaseName={entries.length ? stem(entries[0].path) + opSuffix("merged") : "merged"}
         onDone={() => setPhase("result")}
       />
     );

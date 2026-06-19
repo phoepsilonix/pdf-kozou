@@ -815,5 +815,19 @@
     "detect_current_page": "🔍 Page {page}",
     "detect_all_pages": "🔍 All Pages",
     "threshold_contrast_hint": "1.0=identical only / 1.2=standard / 1.5=loose"
+  },
+  "filename": {
+    "suffix": {
+      "trimmed": "_trimmed",
+      "rotated": "_rotated",
+      "compressed": "_compressed",
+      "merged": "_merged",
+      "composed": "_composed",
+      "resized": "_resized",
+      "sanitized": "_sanitized",
+      "type3sanitized": "_type3sanitized",
+      "deimposed": "_deimposed",
+      "rasterized": "_rasterized"
+    }
   }
 }

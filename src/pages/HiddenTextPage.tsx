@@ -19,6 +19,7 @@ import {
 } from "../lib/tauri";
 import { Spinner } from "../components/common";
 import { useI18n } from "../lib/i18n";
+import { buildName } from "../lib/filename";
 import { useA11y } from "../hooks/useA11y";
 import { F } from "../lib/theme";
 import { useSaveDialog } from "../hooks/useSaveDialog";
@@ -318,8 +319,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
-          const stem = f.filename.replace(/\.[^/.]+$/, "");
-          const outPath = joinPath(resolvedDir, `${stem}_sanitized.pdf`);
+          const outPath = joinPath(resolvedDir, buildName(f.filename, ["sanitized"]));
           await sanitizeHiddenText({ input: f.path, output: outPath, targets, tolerance: 1.5 });
           prog.done.push({
             file: f.filename,
@@ -789,8 +789,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     }
     const hasType3 =
       !skipType3 && groups.some((g) => selectedIds.has(g.id) && g.chars.some((c) => c.isType3));
-    const base = filePath.split(/[/\\]/).pop() ?? "output.pdf";
-    const outPath = await pickSave(base.replace(/\.pdf$/i, "_sanitized.pdf"));
+    const outPath = await pickSave(buildName(filePath, ["sanitized"]));
     if (!outPath) return;
     setSanitizing(true);
     setStatus(t("hidden.sanitize_btn", { chars: String(targets.length) }));
@@ -824,8 +823,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   }, [filePath, groups, selectedIds, pickSave, t, skipType3]);
 
   const runType3Sanitize = useCallback(async () => {
-    const base = filePath.split(/[/\\]/).pop() ?? "output.pdf";
-    const outPath = await pickSave(base.replace(/\.pdf$/i, "_type3sanitized.pdf"));
+    const outPath = await pickSave(buildName(filePath, ["type3sanitized"]));
     if (!outPath) return;
     setType3Sanitizing(true);
     setStatus(t("hidden.type3_sanitize_running" as any));

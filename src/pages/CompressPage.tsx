@@ -27,6 +27,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { buildName, appendName, stem } from "../lib/filename";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
@@ -34,6 +35,9 @@ interface Props {
   pdfInfo: PdfInfo;
   sourceFile?: string; // 連携元ファイル（trim後など）
   onDone?: () => void;
+  /** 連携元から引き継ぐ出力ベース名（拡張子・_圧縮なし）。
+   *  例: trim から来たら "写真_トリミング"。圧縮保存で "..._圧縮.pdf" になる。 */
+  outputBaseName?: string;
   batchFiles?: import("../store/usePdfStore").FileEntry[];
 }
 
@@ -116,7 +120,14 @@ const GS_PRESETS_KEYS: {
   },
 ];
 
-export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles }: Props) {
+export function CompressPage({
+  filePath,
+  pdfInfo,
+  sourceFile,
+  onDone,
+  outputBaseName,
+  batchFiles,
+}: Props) {
   const {
     setError,
     gsAvailable,
@@ -388,12 +399,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
   }, [sourceFile, filePath, chainedFiles]);
 
   const handleSaveCompressed = useCallback(async () => {
-    const base =
-      filePath
-        .split(/[/\\]/)
-        .pop()
-        ?.replace(/\.[^/.]+$/, "") ?? "file";
-    const sp = await pickSave(`${base}_compressed.pdf`);
+    const sp = await pickSave(appendName(outputBaseName ?? stem(filePath), ["compressed"]));
     if (!sp || (useGs && !gsPath)) return;
     setSaving(true);
     try {
@@ -433,15 +439,11 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     pickSave,
     setError,
     onDone,
+    outputBaseName,
   ]);
 
   const handleSaveOriginal = useCallback(async () => {
-    const base =
-      filePath
-        .split(/[/\\]/)
-        .pop()
-        ?.replace(/\.[^/.]+$/, "") ?? "file";
-    const sp = await pickSave(`${base}.pdf`);
+    const sp = await pickSave(appendName(outputBaseName ?? stem(filePath), []));
     if (!sp) return;
     setSaving(true);
     try {
@@ -454,7 +456,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
     } finally {
       setSaving(false);
     }
-  }, [inputFile, filePath, pickSave, setError, onDone]);
+  }, [inputFile, filePath, pickSave, setError, onDone, outputBaseName]);
 
   const handleBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
@@ -479,7 +481,7 @@ export function CompressPage({ filePath, pdfInfo, sourceFile, onDone, batchFiles
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
-      const out = joinPath(resolvedDir, `${f.filename.replace(/\.[^/.]+$/, "")}_compressed.pdf`);
+      const out = joinPath(resolvedDir, buildName(f.filename, ["compressed"]));
       try {
         let ratio = 0;
 

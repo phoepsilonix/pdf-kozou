@@ -11,6 +11,7 @@ import { TrimControls } from "../components/trim/TrimControls";
 import { CompressPage } from "./CompressPage";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { hasImage } from "../lib/fileTypes";
+import { buildName, stem, opSuffix } from "../lib/filename";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
@@ -230,7 +231,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       setProgress({ ...prog });
 
       try {
-        const out = joinPath(outDir, `${f.filename.replace(/\.[^/.]+$/, "")}_trimmed.pdf`);
+        const out = joinPath(outDir, buildName(f.filename, ["trimmed"]));
 
         console.log(
           "[DEBUG] trim_pdf in out margin pages exclude extract: ",
@@ -829,12 +830,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   ]);
 
   const handleSave = async () => {
-    const base =
-      filePath
-        .split(/[/\\]/)
-        .pop()
-        ?.replace(/\.[^/.]+$/, "") ?? "file";
-    const sp = await pickSave(`${base}_trimmed.pdf`);
+    const sp = await pickSave(buildName(filePath, ["trimmed"]));
     if (!sp) return;
     setIsSaving(true);
     try {
@@ -879,7 +875,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     );
 
   if (phase === "compress") {
-    return <CompressPage filePath={filePath} pdfInfo={pdfInfo} sourceFile={outTmp || undefined} />;
+    return (
+      <CompressPage
+        filePath={filePath}
+        pdfInfo={pdfInfo}
+        sourceFile={outTmp || undefined}
+        outputBaseName={stem(filePath) + opSuffix("trimmed")}
+      />
+    );
   }
 
   if (phase === "saved")

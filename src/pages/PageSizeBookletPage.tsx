@@ -10,6 +10,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useI18n } from "../lib/i18n";
+import { buildName } from "../lib/filename";
 import { useA11y } from "../hooks/useA11y";
 import { composeImpositionPdf, renderPage, type PdfInfo } from "../lib/tauri";
 import type { FileEntry } from "../store/usePdfStore";
@@ -181,7 +182,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
 
   const run = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
-    const sp = await pickSave("composed.pdf");
+    const sp = await pickSave(buildName(filePath, ["composed"]));
     if (!sp) return;
     setPhase("processing");
     try {
