@@ -4419,6 +4419,8 @@ static long kozou_count_tj_ops(fz_context *ctx, fz_buffer *buf)
  * 区別できない。デバイス座標で照合することで一意に特定する。 */
 static void kozou_blank_all_bt_blocks_hv_ctm(
     fz_context                *ctx,
+    pdf_document              *pdf,        /* フォント幅取得用 (NULL可) */
+    pdf_obj                   *font_dict,  /* XObject の Resources/Font (NULL可) */
     fz_buffer                 *in_buf,
     fz_buffer                 *out_buf,
     pdf_obj                   *hv_ref,
@@ -4514,20 +4516,84 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                      * 座標が近いだけの隣接/重なりグリフの巻き込みを防ぐ本命の照合。 */
                     int   g_ucs = -1; float g_size = 0.0f; int have_g = 0;
                     if (qmap)
-                        /* identity照合は隣接グリフを拾わないよう2pt半径に絞る */
                         have_g = kozou_quad_map_lookup_glyph(
                             qmap, dev_x, dev_y, 4.0f, &g_ucs, &g_size);
                     for (int _ti = 0; _ti < n_targets; _ti++) {
                         if (targets[_ti].render_invisible >= 0 &&
                             targets[_ti].render_invisible != cur_invisible)
-                            continue; /* 描画モード不一致は別グリフ */
+                            continue;
                         float dx = targets[_ti].ox - dev_x;
                         float dy = targets[_ti].oy - dev_y;
                         if (dx*dx + dy*dy > tol2) continue;
-                        /* 文字 identity 照合 (安全側: 別グリフなら消さない) */
                         if (!kozou_identity_ok(targets[_ti].codepoint, targets[_ti].size,
                                                have_g, g_ucs, g_size)) continue;
                         do_blank = 1; break;
+                    }
+                    /* Tm 原点がターゲット外でも、文字単位で前進して再照合。
+                     * 先頭文字が検出されない場合 (部分被覆の buried 等) に対応。 */
+                    if (!do_blank && pdf && font_dict) {
+                        /* Tj/TJ 行から文字列を抜き出す */
+                        const char *line_p = (const char *)src + ts;
+                        const char *str_start = NULL;
+                        for (size_t _ci = 0; _ci < trimmed_len; _ci++) {
+                            if (line_p[_ci] == '(') { str_start = line_p + _ci; break; }
+                        }
+                        if (str_start) {
+                            pdf_obj *fobj_c = pdf_dict_gets(ctx, font_dict, cur_font_name);
+                            int is_mb_c = kozou_is_multibyte_font(ctx, fobj_c);
+                            float adv_c = 0.0f;
+                            const char *p_c = str_start + 1;
+                            while (*p_c && *p_c != ')' && !do_blank) {
+                                int cc_c;
+                                if (*p_c == '\\') {
+                                    p_c++;
+                                    if (*p_c >= '0' && *p_c <= '7') {
+                                        cc_c = (*p_c++ - '0');
+                                        if (*p_c >= '0' && *p_c <= '7') cc_c = cc_c*8 + (*p_c++ - '0');
+                                        if (*p_c >= '0' && *p_c <= '7') cc_c = cc_c*8 + (*p_c++ - '0');
+                                    } else { cc_c = (unsigned char)*p_c++; }
+                                } else { cc_c = (unsigned char)*p_c++; }
+                                if (is_mb_c && *p_c && *p_c != ')') {
+                                    int lo_c;
+                                    if (*p_c == '\\') {
+                                        p_c++;
+                                        if (*p_c >= '0' && *p_c <= '7') {
+                                            lo_c = (*p_c++ - '0');
+                                            if (*p_c >= '0' && *p_c <= '7') lo_c = lo_c*8 + (*p_c++ - '0');
+                                            if (*p_c >= '0' && *p_c <= '7') lo_c = lo_c*8 + (*p_c++ - '0');
+                                        } else { lo_c = (unsigned char)*p_c++; }
+                                    } else { lo_c = (unsigned char)*p_c++; }
+                                    cc_c = (cc_c << 8) | lo_c;
+                                }
+                                float cw_c = kozou_get_char_width_1000(ctx, pdf, fobj_c, cc_c);
+                                float adv_pts_c = adv_c * cur_font_size / 1000.0f;
+                                /* 文字の device 座標: テキスト空間 (adv,0) を full 行列で変換 */
+                                fz_matrix txt_c = fz_concat(cur_td, cur_tm);
+                                fz_matrix m1_c  = fz_concat(txt_c, ctm_stack[ctm_sp]);
+                                fz_matrix full_c = fz_concat(m1_c, place_ctm);
+                                fz_point adv_dev = fz_transform_point(
+                                    fz_make_point(adv_pts_c, 0.0f), full_c);
+                                float ch_dev_x = adv_dev.x;
+                                float ch_dev_y = adv_dev.y;
+                                int g_c_ucs = -1; float g_c_size = 0.0f; int have_g_c = 0;
+                                if (qmap)
+                                    have_g_c = kozou_quad_map_lookup_glyph(
+                                        qmap, ch_dev_x, ch_dev_y, 4.0f, &g_c_ucs, &g_c_size);
+                                for (int _ti2 = 0; _ti2 < n_targets && !do_blank; _ti2++) {
+                                    if (targets[_ti2].render_invisible >= 0 &&
+                                        targets[_ti2].render_invisible != cur_invisible)
+                                        continue;
+                                    float dx2 = targets[_ti2].ox - ch_dev_x;
+                                    float dy2 = targets[_ti2].oy - ch_dev_y;
+                                    if (dx2*dx2 + dy2*dy2 > tol2) continue;
+                                    if (!kozou_identity_ok(targets[_ti2].codepoint,
+                                            targets[_ti2].size, have_g_c, g_c_ucs, g_c_size))
+                                        continue;
+                                    do_blank = 1;
+                                }
+                                adv_c += cw_c;
+                            }
+                        }
                     }
                 }
                 if (!do_blank) {
@@ -5814,8 +5880,8 @@ void kozou_sanitize_hidden_text(
                             int got = kozou_get_xobj_place_ctm(ctx, pdf,
                                 xobj_search_page, xref, &place_ctm);
                             if (got) {
-                                kozou_blank_all_bt_blocks_hv_ctm(ctx, xobj_buf,
-                                    new_xobj_buf, hv_ref2,
+                                kozou_blank_all_bt_blocks_hv_ctm(ctx, pdf, xobj_fonts2,
+                                    xobj_buf, new_xobj_buf, hv_ref2,
                                     page_targets, n_page, 4.0f, place_ctm, xqmap);
                             } else {
                                 /* 配置 CTM 不明: 安全側で元ストリームをコピー */
