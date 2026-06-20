@@ -333,6 +333,9 @@
     "dpi_label": "解像度 (DPI)",
     "page_label": "ページ指定",
     "prefix_label": "ファイル名プレフィックス",
+    "outname_label": "出力ファイル名",
+    "outname_keep_original": "元のファイル名を付ける",
+    "outname_preview": "例",
     "subfolder_note": "📁 ファイルごとにサブフォルダを作成して出力します",
     "output_dir": "出力フォルダ",
     "target_files": "対象ファイル — {{count}}件",
@@ -828,6 +831,13 @@
       "type3sanitized": "_Type3無害化",
       "deimposed": "_面付け解除",
       "rasterized": "_画像化"
+    },
+    "label": {
+      "rasterized": "画像化",
+      "2up": "2面",
+      "4up": "4面",
+      "booklet": "中綴じ",
+      "deimposed": "面付け解除"
     }
   }
 }

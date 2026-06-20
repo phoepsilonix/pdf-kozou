@@ -333,6 +333,9 @@
     "dpi_label": "Resolution (DPI)",
     "page_label": "Page range",
     "prefix_label": "Filename prefix",
+    "outname_label": "Output filename",
+    "outname_keep_original": "Include source filename",
+    "outname_preview": "e.g.",
     "subfolder_note": "📁 Creates a subfolder per file",
     "output_dir": "Output folder",
     "target_files": "Target files — {{count}}",
@@ -828,6 +831,13 @@
       "type3sanitized": "_type3sanitized",
       "deimposed": "_deimposed",
       "rasterized": "_rasterized"
+    },
+    "label": {
+      "rasterized": "rasterized",
+      "2up": "2up",
+      "4up": "4up",
+      "booklet": "booklet",
+      "deimposed": "deimposed"
     }
   }
 }

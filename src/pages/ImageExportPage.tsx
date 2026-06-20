@@ -33,7 +33,6 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
-import { buildName } from "../lib/filename";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   type ImpositionMode,
@@ -82,7 +81,7 @@ interface BatchProgress {
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { pickSave } = useSaveDialog();
   const [statusMsg, setStatusMsg] = useState("");
   const DPI_PRESETS = useMemo(
@@ -142,7 +141,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [format, setFormat] = useState<ImageFormat>("jpeg");
   const [dpi, setDpi] = useState(144);
   const [quality, setQuality] = useState(85);
-  const [prefix, setPrefix] = useState("page_");
+  // 出力ファイル名の中間ラベル（初期値はモードの操作トークン。空可・自由入力可）
+  const [label, setLabel] = useState("");
+  // ユーザーがラベルを手動編集したか（編集後はモード/言語切替で上書きしない）
+  const [labelEdited, setLabelEdited] = useState(false);
+  // 先頭に元ファイル名を付けるか（単体・手動処理での衝突回避と追跡用。初期ON）
+  const [keepOriginalName, setKeepOriginalName] = useState(true);
   const [outputMode, setOutputMode] = useState<OutputMode>("images");
   const [pdfName, setPdfName] = useState("");
   const [outDir, setOutDir] = useState("");
@@ -157,20 +161,70 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 状態管理
   const [conflictPaths, setConflictPaths] = useState<string[]>([]);
 
-  // 画像化PDF（ラスタライズ）保存時の初期ファイル名。ロケール(ja/en)で
-  // サフィックスを切り替える（_画像化 / _rasterized）。
-  const rasterizedDefaultName = useMemo(
-    () => buildName(filePath, ["rasterized"]),
-    // locale を依存に含め、言語切り替え時に初期名も追従させる
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filePath, locale],
+  // 入力ファイルのステム（拡張子なし）
+  const srcStem = useMemo(
+    () =>
+      filePath
+        .split(/[/\\]/)
+        .pop()
+        ?.replace(/\.[^/.]+$/, "") || "output",
+    [filePath],
   );
-  // 面付け解除（分割）保存時の初期ファイル名（_面付け解除 / _deimposed）。
-  const deimposedDefaultName = useMemo(
-    () => buildName(filePath, ["deimposed"]),
+
+  // 現在のモードに対応するファイル名トークンのキー
+  const opTokenKey = useMemo(() => {
+    if (processDir === "deimpose") return "deimposed";
+    return impositionMode === "1up" ? "rasterized" : impositionMode; // 2up/4up/booklet
+  }, [processDir, impositionMode]);
+  // ローカライズ済みトークン（例: 画像化 / 2面 / 中綴じ / 面付け解除）
+  const opToken = t(`filename.label.${opTokenKey}` as any);
+  // ラベル未編集ならモード切替・言語切替に追従してトークンを反映
+  useEffect(() => {
+    if (!labelEdited) setLabel(opToken);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filePath, locale],
+  }, [opToken, labelEdited]);
+
+  // 出力名のベース部分を組み立てる。
+  //   keep=元名を付ける / label=中間ラベル。例: 写真_2面 / 2面
+  const composeBase = useCallback(
+    (stem: string, keep: boolean): string => {
+      const parts: string[] = [];
+      if (keep && stem) parts.push(stem);
+      if (label) parts.push(label);
+      return parts.join("_");
+    },
+    [label],
   );
+  // 画像1枚分のファイル名（連番3桁）。ベースが空なら page で補完。
+  const imageName = useCallback(
+    (stem: string, keep: boolean, seq: number, ext: string): string =>
+      `${composeBase(stem, keep) || "page"}_${String(seq).padStart(3, "0")}.${ext}`,
+    [composeBase],
+  );
+  // exportImages 用プレフィックス（バックエンドが連番を後置するため末尾に "_"）
+  const imagePrefix = useCallback(
+    (stem: string, keep: boolean): string => `${composeBase(stem, keep) || "page"}_`,
+    [composeBase],
+  );
+  // PDF1ファイルのファイル名。ベースが空なら output で補完。
+  const composePdfName = useCallback(
+    (stem: string, keep: boolean): string => `${composeBase(stem, keep) || "output"}.pdf`,
+    [composeBase],
+  );
+
+  // ライブプレビュー（設定画面に表示する出力名の例）
+  const namePreview = useMemo(() => {
+    const ext = format === "jpeg" ? "jpg" : format;
+    if (outputMode === "pdf") {
+      // バッチPDFはフラット出力のため常に元名付き
+      return composePdfName(srcStem, isBatch ? true : keepOriginalName);
+    }
+    if (isBatch) {
+      // バッチ画像はサブフォルダ {元名}/ 配下に元名OFF形で出力
+      return `${srcStem}/${imageName(srcStem, false, 1, ext)}`;
+    }
+    return imageName(srcStem, keepOriginalName, 1, ext);
+  }, [format, outputMode, isBatch, srcStem, keepOriginalName, composePdfName, imageName]);
 
   // 衝突チェック（単体PDF出力時のみ）。
   // バッチPDFは出力名に _画像化 / _rasterized サフィックスが必ず付くため、
@@ -329,7 +383,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       ]);
 
       if (outputMode === "pdf") {
-        const outPath = await pickSave(deimposedDefaultName);
+        const outPath = await pickSave(composePdfName(srcStem, keepOriginalName));
         if (!outPath) {
           setPdfName("");
           return;
@@ -395,7 +449,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             layoutH: convertLayoutH,
             layoutEm: convertLayoutEm,
           });
-          const outName = `${deimposedDefaultName.replace(/\.pdf$/i, "")}_${String(k + 1).padStart(3, "0")}.${ext}`;
+          const outName = imageName(srcStem, keepOriginalName, k + 1, ext);
           const outPath = joinPath(resolvedDir, outName);
           await invoke("save_base64_image", {
             data: res.data_b64,
@@ -479,11 +533,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
         const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
         const fmt = format === "png" ? "png" : "jpeg";
-        const base =
-          filePath
-            .split(/[\\/]/)
-            .pop()
-            ?.replace(/\.pdf$/i, "") ?? "page";
         const ext = format === "png" ? "png" : "jpg";
         const totalSheets = sheets.length;
         const savedFiles: string[] = [];
@@ -513,8 +562,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             gapPx: 0,
           });
 
-          // base64 → ファイル保存
-          const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
+          // base64 → ファイル保存（ラベルが操作トークンを内包）
+          const outName = imageName(srcStem, keepOriginalName, si + 1, ext);
           const outPath = joinPath(resolvedDir, outName);
           setStatusMsg(
             t("image.imposition_saving" as any, {
@@ -552,7 +601,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     setPhase("processing");
     try {
       if (outputMode === "pdf") {
-        const outPath = await pickSave(rasterizedDefaultName);
+        const outPath = await pickSave(composePdfName(srcStem, keepOriginalName));
 
         if (!outPath) {
           setPdfName("");
@@ -637,14 +686,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         announceSuccess("done.image");
         setPhase("result");
       } else {
-        console.log("exportImages", prefix, pages, filePath, outDir, format, dpi, format);
         const res = await exportImages(
           filePath,
           effectiveOutDir,
           format,
           dpi,
           format === "jpeg" ? quality : undefined,
-          prefix || undefined,
+          imagePrefix(srcStem, keepOriginalName),
           pages || undefined,
           { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
         );
@@ -669,12 +717,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     format,
     dpi,
     quality,
-    prefix,
     pages,
     resolvedPageCount,
     conflictPaths,
-    rasterizedDefaultName,
-    deimposedDefaultName,
+    srcStem,
+    keepOriginalName,
+    composePdfName,
+    imageName,
+    imagePrefix,
     pickSave,
     pickDir,
     setError,
@@ -711,10 +761,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       try {
         const stem = f.filename.replace(/\.[^/.]+$/, "");
         if (outputMode === "pdf") {
-          // 画像PDFモード: ファイルごとに1つの .pdf を出力。
-          // 出力名は単体保存と同じく i18n サフィックス（_画像化 / _rasterized）を付与し、
-          // 入力PDFと同じフォルダを選んでも元ファイルを上書きしないようにする。
-          const outPath = joinPath(batchDir, buildName(f.filename, ["rasterized"]));
+          // 画像PDFモード: ファイルごとに1つの .pdf をフラット出力。
+          // フラットなので必ず元名を付け（{元名}_{ラベル}.pdf）、入力PDFと
+          // 同じフォルダを選んでも元ファイルを上書きしないようにする。
+          const outPath = joinPath(batchDir, composePdfName(stem, true));
           const res = await exportImagePdf(
             f.path,
             outPath,
@@ -759,7 +809,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               quality: fmt === "jpeg" ? quality : undefined,
               gapPx: 0,
             });
-            const outName = `${prefix}${impositionMode}_${String(si + 1).padStart(3, "0")}.${ext}`;
+            // サブフォルダ名が元名を担うので、中身は元名OFF形（{ラベル}_連番）
+            const outName = imageName(stem, false, si + 1, ext);
             const outPath = joinPath(subDir, outName);
             await invoke("save_base64_image", {
               data: result.image_b64,
@@ -778,7 +829,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             format,
             dpi,
             format === "jpeg" ? quality : undefined,
-            prefix || undefined,
+            imagePrefix(stem, false),
             pages || undefined,
             { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
           );
@@ -799,9 +850,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     format,
     dpi,
     quality,
-    prefix,
     pages,
     conflictPaths,
+    composePdfName,
+    imageName,
+    imagePrefix,
     pickDir,
     announceSuccess,
   ]);
@@ -1282,23 +1335,34 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             rangeInputRef={pagesInputRef}
           />
 
-          {outputMode === "images" ? (
-            <>
-              <div style={s.secLabel}>{t("image.prefix_label")}</div>
-              <div style={s.prefixRow}>
-                <input
-                  type="text"
-                  style={s.textInput}
-                  value={prefix}
-                  placeholder="page"
-                  onChange={(e) => setPrefix(e.target.value)}
-                />
-                <span style={s.prefixSuffix}>0001.{format === "jpeg" ? "jpg" : format}</span>
-              </div>
-            </>
-          ) : (
-            ""
+          {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
+          <div style={s.secLabel}>{t("image.outname_label")}</div>
+          {!isBatch && (
+            <label style={s.keepNameRow}>
+              <input
+                type="checkbox"
+                checked={keepOriginalName}
+                onChange={(e) => setKeepOriginalName(e.target.checked)}
+              />
+              <span>{t("image.outname_keep_original")}</span>
+            </label>
           )}
+          <div style={s.prefixRow}>
+            <input
+              type="text"
+              style={s.textInput}
+              value={label}
+              placeholder={opToken}
+              aria-label={t("image.outname_label")}
+              onChange={(e) => {
+                setLabel(e.target.value);
+                setLabelEdited(true);
+              }}
+            />
+          </div>
+          <div style={s.namePreview} title={namePreview}>
+            {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
+          </div>
 
           {/* 競合警告バナー */}
           {conflictPaths.length > 0 && (
@@ -1973,6 +2037,22 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   prefixSuffix: { fontSize: 11, color: "var(--c-textDim)", flexShrink: 0 },
+  keepNameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    fontSize: 13,
+    color: "var(--c-text)",
+    cursor: "pointer",
+  },
+  namePreview: {
+    fontSize: 12,
+    color: "var(--c-textSub)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  namePreviewName: { color: "var(--c-text)", fontWeight: 600 },
   dirRow: { display: "flex", gap: 7 },
   dirPath: {
     flex: 1,
