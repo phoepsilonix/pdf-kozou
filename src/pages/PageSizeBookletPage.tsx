@@ -866,6 +866,11 @@ const s: Record<string, React.CSSProperties> = {
   namePreview: {
     fontSize: 12,
     color: "var(--c-textSub)",
+    background: "var(--c-bgCard)",
+    border: "1px solid var(--c-border)",
+    borderRadius: 6,
+    padding: "6px 9px",
+    lineHeight: 1.5,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",

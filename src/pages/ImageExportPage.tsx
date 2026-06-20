@@ -1397,32 +1397,34 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           )}
 
-          <BtnPrimary
-            onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
-            disabled={conflictPaths.length > 0}
-          >
-            {outDir
-              ? isBatch
-                ? outputMode === "pdf"
-                  ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
-                  : impositionMode !== "1up"
-                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
-                    : t("image.execute_batch", { count: String(batchFiles!.length) })
-                : outputMode === "pdf"
-                  ? t("image.execute_pdf")
-                  : t("image.execute", {
-                      count: String(
-                        impositionMode !== "1up"
-                          ? calcSheets(impositionMode, resolvedPageCount || total).length
-                          : resolvedPageCount,
-                      ),
-                    })
-              : isBatch
-                ? t("common.no_dir_btn")
-                : outputMode === "pdf"
-                  ? t("image.execute_pdf")
-                  : t("common.no_dir_btn")}
-          </BtnPrimary>
+          <div style={s.actions}>
+            <BtnPrimary
+              onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
+              disabled={conflictPaths.length > 0}
+            >
+              {outDir
+                ? isBatch
+                  ? outputMode === "pdf"
+                    ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
+                    : impositionMode !== "1up"
+                      ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
+                      : t("image.execute_batch", { count: String(batchFiles!.length) })
+                  : outputMode === "pdf"
+                    ? t("image.execute_pdf")
+                    : t("image.execute", {
+                        count: String(
+                          impositionMode !== "1up"
+                            ? calcSheets(impositionMode, resolvedPageCount || total).length
+                            : resolvedPageCount,
+                        ),
+                      })
+                : isBatch
+                  ? t("common.no_dir_btn")
+                  : outputMode === "pdf"
+                    ? t("image.execute_pdf")
+                    : t("common.no_dir_btn")}
+            </BtnPrimary>
+          </div>
         </div>
 
         {/* プレビューエリア */}
@@ -1912,7 +1914,12 @@ const s: Record<string, React.CSSProperties> = {
   },
   outBadge: { fontSize: 14, color: "var(--c-accent)", fontWeight: 700 },
 
-  body: { flex: 1, display: "flex", overflow: "hidden" },
+  body: {
+    flex: 1,
+    display: "flex",
+    overflow: "hidden",
+    minHeight: 0,
+  },
   panel: {
     width: 300,
     flexShrink: 0,
@@ -1921,6 +1928,7 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 12,
     overflowY: "auto",
+    overflowX: "hidden",
     borderRight: `1px solid var(--c-border)`,
   },
   secLabel: {
@@ -2023,6 +2031,28 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-textDim)",
   },
 
+  executeBar: {
+    position: "sticky",
+    bottom: 0,
+    zIndex: 10,
+
+    marginTop: "auto",
+
+    paddingTop: 10,
+    paddingBottom: 10,
+
+    background: "var(--c-bg)",
+    borderTop: "1px solid var(--c-border)",
+  },
+  actions: {
+    flexShrink: 0,
+    display: "flex",
+    gap: 8,
+    padding: "10px 14px",
+    borderTop: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+  },
+
   prefixRow: { display: "flex", alignItems: "center", gap: 6 },
   textInput: {
     flex: 1,
@@ -2048,6 +2078,11 @@ const s: Record<string, React.CSSProperties> = {
   namePreview: {
     fontSize: 12,
     color: "var(--c-textSub)",
+    background: "var(--c-bgCard)",
+    border: "1px solid var(--c-border)",
+    borderRadius: 6,
+    padding: "6px 9px",
+    lineHeight: 1.5,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
