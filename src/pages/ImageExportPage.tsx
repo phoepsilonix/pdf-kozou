@@ -1397,34 +1397,32 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           )}
 
-          <div style={s.actions}>
-            <BtnPrimary
-              onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
-              disabled={conflictPaths.length > 0}
-            >
-              {outDir
-                ? isBatch
-                  ? outputMode === "pdf"
-                    ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
-                    : impositionMode !== "1up"
-                      ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
-                      : t("image.execute_batch", { count: String(batchFiles!.length) })
-                  : outputMode === "pdf"
-                    ? t("image.execute_pdf")
-                    : t("image.execute", {
-                        count: String(
-                          impositionMode !== "1up"
-                            ? calcSheets(impositionMode, resolvedPageCount || total).length
-                            : resolvedPageCount,
-                        ),
-                      })
-                : isBatch
-                  ? t("common.no_dir_btn")
-                  : outputMode === "pdf"
-                    ? t("image.execute_pdf")
-                    : t("common.no_dir_btn")}
-            </BtnPrimary>
-          </div>
+          <BtnPrimary
+            onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
+            disabled={conflictPaths.length > 0}
+          >
+            {outDir
+              ? isBatch
+                ? outputMode === "pdf"
+                  ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
+                  : impositionMode !== "1up"
+                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
+                    : t("image.execute_batch", { count: String(batchFiles!.length) })
+                : outputMode === "pdf"
+                  ? t("image.execute_pdf")
+                  : t("image.execute", {
+                      count: String(
+                        impositionMode !== "1up"
+                          ? calcSheets(impositionMode, resolvedPageCount || total).length
+                          : resolvedPageCount,
+                      ),
+                    })
+              : isBatch
+                ? t("common.no_dir_btn")
+                : outputMode === "pdf"
+                  ? t("image.execute_pdf")
+                  : t("common.no_dir_btn")}
+          </BtnPrimary>
         </div>
 
         {/* プレビューエリア */}
