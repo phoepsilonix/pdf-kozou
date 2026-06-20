@@ -98,19 +98,19 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     if (mode === "1up") return sizeId;
     return `${sizeId}_${t(`filename.label.${mode}` as any)}`;
   }, [mode, sizeId, t]);
-  // ラベル未編集ならモード/サイズ/言語の切替に追従
-  useEffect(() => {
-    if (!labelEdited) setLabel(defaultLabel);
-  }, [defaultLabel, labelEdited]);
+  // 実効ラベルはレンダリング中に派生（state同期のeffectを使わない）。
+  // 未編集なら defaultLabel（mode/サイズ/言語に追従）、編集済みなら手入力値 label。
+  // これで n-up/中綴じ・サイズ切替が同一レンダリングで反映され取りこぼさない。
+  const effectiveLabel = labelEdited ? label : defaultLabel;
   // 出力ファイル名 {元名_}{ラベル}.pdf
   const composePdfName = useCallback(
     (stem: string, keep: boolean): string => {
       const parts: string[] = [];
       if (keep && stem) parts.push(stem);
-      if (label) parts.push(label);
+      if (effectiveLabel) parts.push(effectiveLabel);
       return `${parts.join("_") || "output"}.pdf`;
     },
-    [label],
+    [effectiveLabel],
   );
   // ライブプレビュー（バッチは1フォルダへ複数出力するため常に元名付き）
   const namePreview = useMemo(
@@ -576,7 +576,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               )}
               <input
                 type="text"
-                value={label}
+                value={effectiveLabel}
                 placeholder={defaultLabel}
                 aria-label={t("image.outname_label")}
                 onChange={(e) => {

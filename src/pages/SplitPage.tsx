@@ -110,19 +110,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   );
   // 既定ラベル（分割 / split）。未編集なら言語切替に追従。
   const defaultLabel = t("filename.label.split" as any);
-  useEffect(() => {
-    if (!labelEdited) setLabel(defaultLabel);
-  }, [defaultLabel, labelEdited]);
+  // 実効ラベルはレンダリング中に派生（state同期のeffectを使わない）。
+  // 未編集なら defaultLabel、編集済みなら手入力値 label。初回や言語切替でも
+  // 同一レンダリングで一致するため取りこぼしが起きない。
+  const effectiveLabel = labelEdited ? label : defaultLabel;
   // prefix を組み立てる。バックエンドが _0001.pdf を後置するため末尾に "_" は付けない。
   //   例: 書類_分割 → 書類_分割_0001.pdf
   const splitPrefix = useCallback(
     (stem: string, keep: boolean): string => {
       const parts: string[] = [];
       if (keep && stem) parts.push(stem);
-      if (label) parts.push(label);
+      if (effectiveLabel) parts.push(effectiveLabel);
       return parts.join("_") || "page";
     },
-    [label],
+    [effectiveLabel],
   );
   // ライブプレビュー（バッチは1フォルダへ複数出力するため常に元名付き）
   const namePreview = useMemo(
@@ -822,7 +823,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               <input
                 type="text"
                 style={s.textInput}
-                value={label}
+                value={effectiveLabel}
                 placeholder={defaultLabel}
                 aria-label={t("image.outname_label")}
                 onChange={(e) => {
