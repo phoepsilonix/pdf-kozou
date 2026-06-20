@@ -10,7 +10,6 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useI18n } from "../lib/i18n";
-import { buildName } from "../lib/filename";
 import { useA11y } from "../hooks/useA11y";
 import { composeImpositionPdf, renderPage, type PdfInfo } from "../lib/tauri";
 import type { FileEntry } from "../store/usePdfStore";
@@ -64,7 +63,46 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
   const [errMsg, setErrMsg] = useState("");
   const [outBytes, setOutBytes] = useState(0);
 
+  // ── 出力ファイル名（画像変換ページと同じ「元名トグル＋ラベル＋プレビュー」方式）──
+  const [keepOriginalName, setKeepOriginalName] = useState(true);
+  const [label, setLabel] = useState("");
+  const [labelEdited, setLabelEdited] = useState(false);
+
   const totalPages = pdfInfo?.page_count ?? 0;
+
+  // 入力ファイルのステム（拡張子なし）
+  const srcStem = useMemo(
+    () =>
+      filePath
+        .split(/[/\\]/)
+        .pop()
+        ?.replace(/\.[^/.]+$/, "") || "output",
+    [filePath],
+  );
+  // 既定ラベル: サイズ変更のみ=ページサイズ（例 A4）/
+  //   n-up・製本=ページサイズ＋面数トークン（例 A4_2面 / A4_中綴じ）
+  const defaultLabel = useMemo(() => {
+    if (mode === "1up") return sizeId;
+    return `${sizeId}_${t(`filename.label.${mode}` as any)}`;
+  }, [mode, sizeId, t]);
+  // ラベル未編集ならモード/サイズ/言語の切替に追従
+  useEffect(() => {
+    if (!labelEdited) setLabel(defaultLabel);
+  }, [defaultLabel, labelEdited]);
+  // 出力ファイル名 {元名_}{ラベル}.pdf
+  const composePdfName = useCallback(
+    (keep: boolean): string => {
+      const parts: string[] = [];
+      if (keep && srcStem) parts.push(srcStem);
+      if (label) parts.push(label);
+      return `${parts.join("_") || "output"}.pdf`;
+    },
+    [srcStem, label],
+  );
+  const namePreview = useMemo(
+    () => composePdfName(keepOriginalName),
+    [composePdfName, keepOriginalName],
+  );
 
   // ── プレビュー（手動トリガ＋キャッシュで重さを回避） ─────────────────
   // 元ページのサムネは layout に依らず不変なので一度だけ描画してキャッシュし、
@@ -182,7 +220,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
 
   const run = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
-    const sp = await pickSave(buildName(filePath, ["composed"]));
+    const sp = await pickSave(composePdfName(keepOriginalName));
     if (!sp) return;
     setPhase("processing");
     try {
@@ -216,6 +254,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
     filePath,
     totalPages,
     pickSave,
+    composePdfName,
+    keepOriginalName,
     layout,
     targetPt,
     gutter,
@@ -350,6 +390,33 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
                   />
                   pt
                 </label>
+              </div>
+            </section>
+
+            {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
+            <section style={s.section}>
+              <div style={s.label}>{t("image.outname_label")}</div>
+              <label style={s.keepNameRow}>
+                <input
+                  type="checkbox"
+                  checked={keepOriginalName}
+                  onChange={(e) => setKeepOriginalName(e.target.checked)}
+                />
+                <span>{t("image.outname_keep_original")}</span>
+              </label>
+              <input
+                type="text"
+                value={label}
+                placeholder={defaultLabel}
+                aria-label={t("image.outname_label")}
+                onChange={(e) => {
+                  setLabel(e.target.value);
+                  setLabelEdited(true);
+                }}
+                style={s.nameInput}
+              />
+              <div style={s.namePreview} title={namePreview}>
+                {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
               </div>
             </section>
 
@@ -587,6 +654,33 @@ const s: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   note: { fontSize: 12, color: "var(--c-textDim)" },
+  keepNameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    fontSize: 13,
+    color: "var(--c-text)",
+    cursor: "pointer",
+  },
+  nameInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "7px 10px",
+    borderRadius: 6,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+    color: "var(--c-text)",
+    fontFamily: F,
+    fontSize: 14,
+  },
+  namePreview: {
+    fontSize: 12,
+    color: "var(--c-textSub)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  namePreviewName: { color: "var(--c-text)", fontWeight: 600 },
   sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
   sheetCol: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
   cell: {
