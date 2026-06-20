@@ -178,22 +178,22 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   }, [processDir, impositionMode]);
   // ローカライズ済みトークン（例: 画像化 / 2面 / 中綴じ / 面付け解除）
   const opToken = t(`filename.label.${opTokenKey}` as any);
-  // ラベル未編集ならモード切替・言語切替に追従してトークンを反映
-  useEffect(() => {
-    if (!labelEdited) setLabel(opToken);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opToken, labelEdited]);
+  // 実効ラベルはレンダリング中に派生させる（state同期のeffectを使わない）。
+  // 未編集ならモード/言語に追従した opToken、編集済みなら手入力値 label。
+  // こうすることで impositionMode 切替と同じレンダリングで必ず一致し、
+  // 切替直後の即実行でも n-up/中綴じ等のトークンが取りこぼされない。
+  const effectiveLabel = labelEdited ? label : opToken;
 
   // 出力名のベース部分を組み立てる。
-  //   keep=元名を付ける / label=中間ラベル。例: 写真_2面 / 2面
+  //   keep=元名を付ける / effectiveLabel=中間ラベル。例: 写真_2面 / 2面
   const composeBase = useCallback(
     (stem: string, keep: boolean): string => {
       const parts: string[] = [];
       if (keep && stem) parts.push(stem);
-      if (label) parts.push(label);
+      if (effectiveLabel) parts.push(effectiveLabel);
       return parts.join("_");
     },
-    [label],
+    [effectiveLabel],
   );
   // 画像1枚分のファイル名（連番3桁）。ベースが空なら page で補完。
   const imageName = useCallback(
@@ -1352,7 +1352,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <input
                 type="text"
                 style={s.textInput}
-                value={label}
+                value={effectiveLabel}
                 placeholder={opToken}
                 aria-label={t("image.outname_label")}
                 onChange={(e) => {
