@@ -82,7 +82,12 @@
     "preview": "プレビュー",
     "preview_loading": "プレビュー生成中…",
     "preview_sheet": "シート {{n}}",
-    "preview_hint": "「プレビュー」を押すと出力イメージが表示されます"
+    "preview_hint": "「プレビュー」を押すと出力イメージが表示されます",
+    "title_batch": "サイズ変更・製本 — {{count}}件",
+    "execute_batch": "🔖 {{count}}件をまとめて作成",
+    "batch_processing": "面付け中… {{current}}/{{total}}",
+    "batch_done_title": "一括作成完了",
+    "sheets_count": "{{count}}シート"
   },
   "done": {
     "trim": "トリミングが完了しました。",
@@ -206,7 +211,6 @@
     "every_n_label": "N枚の数",
     "pages_per_file": "ページで1ファイル",
     "range_label": "ページ範囲",
-    "prefix_label": "ファイル名プレフィックス",
     "target_files": "対象ファイル — {{count}}件",
     "batch_label_suffix": "{{count}}件バッチ",
     "preview_head": "グループプレビュー — {{count}}ファイル",
@@ -332,7 +336,6 @@
     "title_single": "画像変換",
     "dpi_label": "解像度 (DPI)",
     "page_label": "ページ指定",
-    "prefix_label": "ファイル名プレフィックス",
     "outname_label": "出力ファイル名",
     "outname_keep_original": "元のファイル名を付ける",
     "outname_preview": "例",
@@ -578,7 +581,6 @@
     "every_n_input": "N枚ごと分割の枚数。矢印キーまたは数値入力",
     "dpi_input": "解像度（DPI）。矢印キーまたは数値入力",
     "quality_input": "JPEG品質（1〜100）。矢印キーまたは数値入力",
-    "prefix_input": "出力ファイル名のプレフィックス",
     "page_range_mode": "ページ選択モード。全ページ・奇数・偶数・範囲指定から選択",
     "save_btn": "保存。Ctrl+Sで実行",
     "compress_save_btn": "続けて圧縮保存。Ctrl+Shift+Sで実行",

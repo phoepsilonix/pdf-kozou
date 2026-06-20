@@ -82,7 +82,12 @@
     "preview": "Preview",
     "preview_loading": "Building preview…",
     "preview_sheet": "Sheet {{n}}",
-    "preview_hint": "Press Preview to see the output layout"
+    "preview_hint": "Press Preview to see the output layout",
+    "title_batch": "Resize & Booklet — {{count}}",
+    "execute_batch": "🔖 Compose {{count}} files",
+    "batch_processing": "Imposing… {{current}}/{{total}}",
+    "batch_done_title": "Batch complete",
+    "sheets_count": "{{count}} sheets"
   },
   "done": {
     "trim": "Trimming complete.",
@@ -206,7 +211,6 @@
     "every_n_label": "Pages per N",
     "pages_per_file": "pages per file",
     "range_label": "Page ranges",
-    "prefix_label": "Filename prefix",
     "target_files": "Target files — {{count}}",
     "batch_label_suffix": "{{count}} files batch",
     "preview_head": "Group preview — {{count}} files",
@@ -332,7 +336,6 @@
     "title_single": "Image export",
     "dpi_label": "Resolution (DPI)",
     "page_label": "Page range",
-    "prefix_label": "Filename prefix",
     "outname_label": "Output filename",
     "outname_keep_original": "Include source filename",
     "outname_preview": "e.g.",
@@ -578,7 +581,6 @@
     "every_n_input": "Pages per file. Use arrow keys or type",
     "dpi_input": "Resolution in DPI. Use arrow keys or type",
     "quality_input": "JPEG quality 1-100. Use arrow keys or type",
-    "prefix_input": "Output filename prefix",
     "page_range_mode": "Page selection mode. Choose all, odd, even, or range",
     "save_btn": "Save. Ctrl+S",
     "compress_save_btn": "Compress and save. Ctrl+Shift+S",

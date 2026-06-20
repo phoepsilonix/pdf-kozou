@@ -7,16 +7,17 @@
 //   - 例: A4×4 → A3×2(見開き製本)
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useI18n } from "../lib/i18n";
 import { useA11y } from "../hooks/useA11y";
-import { composeImpositionPdf, renderPage, type PdfInfo } from "../lib/tauri";
+import { composeImpositionPdf, renderPage, getPdfInfo, joinPath, type PdfInfo } from "../lib/tauri";
 import type { FileEntry } from "../store/usePdfStore";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
 import { PageOrientation } from "../lib/pageSize";
-import { PageHeader, BtnPrimary, Spinner, ErrorView } from "../components/common";
+import { PageHeader, BtnBack, BtnPrimary, Spinner, ErrorView } from "../components/common";
 import { F } from "../lib/theme";
 
 type Props = {
@@ -37,11 +38,21 @@ const MODES: { id: ImpositionMode; labelKey: string }[] = [
 
 const SIZE_IDS: Exclude<PageSizeId, "image">[] = ["A3", "A4", "A5", "B4", "B5"];
 
-export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
+// バッチ実行の進捗
+interface BatchProgress {
+  current: number;
+  total: number;
+  currentFile: string;
+  done: { file: string; sheets: number }[];
+  errors: { file: string; msg: string }[];
+}
+
+export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { pickSave } = useSaveDialog();
   const { t } = useI18n();
   const { announceSuccess, announceError } = useA11y();
+  const isBatch = (batchFiles?.length ?? 0) > 1;
 
   const {
     pageSizeId,
@@ -62,6 +73,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
   const [phase, setPhase] = useState<Phase>("edit");
   const [errMsg, setErrMsg] = useState("");
   const [outBytes, setOutBytes] = useState(0);
+  const [outDir, setOutDir] = useState("");
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
 
   // ── 出力ファイル名（画像変換ページと同じ「元名トグル＋ラベル＋プレビュー」方式）──
   const [keepOriginalName, setKeepOriginalName] = useState(true);
@@ -91,17 +104,18 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
   }, [defaultLabel, labelEdited]);
   // 出力ファイル名 {元名_}{ラベル}.pdf
   const composePdfName = useCallback(
-    (keep: boolean): string => {
+    (stem: string, keep: boolean): string => {
       const parts: string[] = [];
-      if (keep && srcStem) parts.push(srcStem);
+      if (keep && stem) parts.push(stem);
       if (label) parts.push(label);
       return `${parts.join("_") || "output"}.pdf`;
     },
-    [srcStem, label],
+    [label],
   );
+  // ライブプレビュー（バッチは1フォルダへ複数出力するため常に元名付き）
   const namePreview = useMemo(
-    () => composePdfName(keepOriginalName),
-    [composePdfName, keepOriginalName],
+    () => composePdfName(srcStem, isBatch ? true : keepOriginalName),
+    [composePdfName, srcStem, isBatch, keepOriginalName],
   );
 
   // ── プレビュー（手動トリガ＋キャッシュで重さを回避） ─────────────────
@@ -218,9 +232,15 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
     [orient, layout.cols, layout.rows, pdfInfo, sizeId, targetPt],
   );
 
+  const pickDir = useCallback(async (): Promise<string | null> => {
+    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+    if (dir) setOutDir(dir);
+    return dir;
+  }, []);
+
   const run = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
-    const sp = await pickSave(composePdfName(keepOriginalName));
+    const sp = await pickSave(composePdfName(srcStem, keepOriginalName));
     if (!sp) return;
     setPhase("processing");
     try {
@@ -255,6 +275,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
     totalPages,
     pickSave,
     composePdfName,
+    srcStem,
     keepOriginalName,
     layout,
     targetPt,
@@ -268,6 +289,149 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
     announceSuccess,
     announceError,
   ]);
+
+  // ── 実行（バッチ）: 各ファイルを {元名}_{ラベル}.pdf として出力フォルダへ ──
+  const handleBatch = useCallback(async () => {
+    const dir = outDir || (await pickDir());
+    if (!dir) return;
+    const files = batchFiles!;
+    setPhase("processing");
+    const progress: BatchProgress = {
+      current: 0,
+      total: files.length,
+      currentFile: "",
+      done: [],
+      errors: [],
+    };
+    setBatchProgress({ ...progress });
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      progress.current = i + 1;
+      progress.currentFile = f.filename;
+      setBatchProgress({ ...progress });
+      try {
+        // ページ数はファイルごとに異なるので個別に取得してレイアウトを計算
+        const info = await getPdfInfo(f.path, {
+          layoutW: convertLayoutW,
+          layoutH: convertLayoutH,
+          layoutEm: convertLayoutEm,
+        });
+        const fLayout = calcComposeLayout(mode, info.page_count);
+        const { sheetPages, nSheets: ns } = flattenComposeSheets(fLayout);
+        const stem = f.filename.replace(/\.[^/.]+$/, "");
+        const out = joinPath(dir, composePdfName(stem, true));
+        await composeImpositionPdf({
+          input: f.path,
+          output: out,
+          targetW: targetPt.w,
+          targetH: targetPt.h,
+          cols: fLayout.cols,
+          rows: fLayout.rows,
+          sheetPages,
+          nSheets: ns,
+          gutter,
+          margin,
+          autoOrient: orient === "auto",
+          layoutW: convertLayoutW,
+          layoutH: convertLayoutH,
+          layoutEm: convertLayoutEm,
+        });
+        progress.done.push({ file: f.filename, sheets: ns });
+      } catch (e) {
+        progress.errors.push({ file: f.filename, msg: String(e) });
+      }
+      setBatchProgress({ ...progress });
+    }
+    announceSuccess("done.image");
+    setPhase("result");
+  }, [
+    batchFiles,
+    outDir,
+    pickDir,
+    mode,
+    composePdfName,
+    targetPt,
+    gutter,
+    margin,
+    orient,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+    announceSuccess,
+  ]);
+
+  // ── バッチ進捗・結果（単体フローより先に分岐）──
+  if (phase === "processing" && isBatch && batchProgress)
+    return (
+      <div style={s.root}>
+        <div style={s.batchProgress}>
+          <div style={s.bpTitle}>
+            {t("booklet.batch_processing", {
+              current: String(batchProgress.current),
+              total: String(batchProgress.total),
+            })}
+          </div>
+          <div style={s.bpBar}>
+            <div
+              style={{
+                ...s.bpFill,
+                width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+              }}
+            />
+          </div>
+          <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
+        </div>
+      </div>
+    );
+
+  if (phase === "result" && isBatch && batchProgress)
+    return (
+      <div style={s.root}>
+        <PageHeader>
+          <BtnBack
+            onClick={() => {
+              setPhase("edit");
+              setBatchProgress(null);
+            }}
+          />
+          <span style={s.title}>{t("booklet.batch_done_title")}</span>
+        </PageHeader>
+        <div style={s.center}>
+          <span
+            style={{
+              fontSize: 42,
+              color: batchProgress.errors.length ? "var(--c-warn)" : "var(--c-accent)",
+            }}
+          >
+            {batchProgress.errors.length ? "⚠" : "✓"}
+          </span>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>
+            {t("split.success_count", { count: String(batchProgress.done.length) })}
+            {batchProgress.errors.length > 0 &&
+              t("split.error_count", { count: String(batchProgress.errors.length) })}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
+          <div style={s.bpLog}>
+            {batchProgress.done.map((d, i) => (
+              <div key={i} style={s.bpLogRow}>
+                <span style={{ color: "var(--c-accent)" }}>✓</span>
+                <span style={s.bpLogFile}>{d.file}</span>
+                <span style={s.bpLogMeta}>
+                  {t("booklet.sheets_count", { count: String(d.sheets) })}
+                </span>
+              </div>
+            ))}
+            {batchProgress.errors.map((e, i) => (
+              <div key={`e${i}`} style={s.bpLogRow}>
+                <span style={{ color: "var(--c-err)" }}>✕</span>
+                <span style={s.bpLogFile}>{e.file}</span>
+                <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
 
   if (phase === "processing") return <Spinner label={t("booklet.processing")} />;
   if (phase === "error") return <ErrorView msg={errMsg} onBack={() => setPhase("edit")} />;
@@ -307,8 +471,12 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>{t("booklet.title")}</span>
-        <span style={s.sub}>{t("common.pages", { count: String(totalPages) })}</span>
+        <span style={s.title}>
+          {isBatch
+            ? t("booklet.title_batch", { count: String(batchFiles!.length) })
+            : t("booklet.title")}
+        </span>
+        {!isBatch && <span style={s.sub}>{t("common.pages", { count: String(totalPages) })}</span>}
       </PageHeader>
 
       <div style={s.main}>
@@ -396,14 +564,16 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
             {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
             <section style={s.section}>
               <div style={s.label}>{t("image.outname_label")}</div>
-              <label style={s.keepNameRow}>
-                <input
-                  type="checkbox"
-                  checked={keepOriginalName}
-                  onChange={(e) => setKeepOriginalName(e.target.checked)}
-                />
-                <span>{t("image.outname_keep_original")}</span>
-              </label>
+              {!isBatch && (
+                <label style={s.keepNameRow}>
+                  <input
+                    type="checkbox"
+                    checked={keepOriginalName}
+                    onChange={(e) => setKeepOriginalName(e.target.checked)}
+                  />
+                  <span>{t("image.outname_keep_original")}</span>
+                </label>
+              )}
               <input
                 type="text"
                 value={label}
@@ -419,6 +589,21 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
                 {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
               </div>
             </section>
+
+            {/* バッチ: 出力フォルダ */}
+            {isBatch && (
+              <section style={s.section}>
+                <div style={s.label}>{t("split.output_dir")}</div>
+                <div style={s.dirRow}>
+                  <div style={s.dirPath} title={outDir}>
+                    {outDir || t("common.select_dir")}
+                  </div>
+                  <button style={s.dirPickBtn} onClick={pickDir}>
+                    {t("common.browse")}
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* サマリ */}
             <section style={s.summary}>
@@ -457,8 +642,13 @@ export default function PageSizeBookletPage({ filePath, pdfInfo }: Props) {
             >
               {building ? t("booklet.preview_loading") : t("booklet.preview")}
             </button>
-            <BtnPrimary onClick={run} disabled={totalPages <= 0}>
-              {t("booklet.run")}
+            <BtnPrimary
+              onClick={isBatch ? handleBatch : run}
+              disabled={isBatch ? false : totalPages <= 0}
+            >
+              {isBatch
+                ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
+                : t("booklet.run")}
             </BtnPrimary>
           </div>
         </div>
@@ -681,6 +871,82 @@ const s: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
   },
   namePreviewName: { color: "var(--c-text)", fontWeight: 600 },
+  dirRow: { display: "flex", gap: 7 },
+  dirPath: {
+    flex: 1,
+    padding: "7px 9px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-border)`,
+    borderRadius: 6,
+    color: "var(--c-textSub)",
+    fontSize: 11,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  dirPickBtn: {
+    padding: "7px 14px",
+    background: "var(--c-bgCard)",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 6,
+    color: "var(--c-text)",
+    cursor: "pointer",
+    fontSize: 12,
+    fontFamily: F,
+    flexShrink: 0,
+  },
+  batchProgress: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 18,
+    padding: 40,
+  },
+  bpTitle: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  bpBar: {
+    width: "100%",
+    maxWidth: 480,
+    height: 8,
+    background: "var(--c-border)",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  bpFill: {
+    height: "100%",
+    background: "var(--c-accent)",
+    borderRadius: 4,
+    transition: "width 0.3s",
+  },
+  bpCurrent: { fontSize: 13, color: "var(--c-textSub)" },
+  bpLog: {
+    width: "100%",
+    maxWidth: 480,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    maxHeight: 280,
+    overflowY: "auto",
+  },
+  bpLogRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "6px 10px",
+    background: "var(--c-bgCard)",
+    borderRadius: 6,
+    border: `1px solid var(--c-border)`,
+  },
+  bpLogFile: {
+    flex: 1,
+    fontSize: 12,
+    color: "var(--c-text)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  bpLogMeta: { fontSize: 11, color: "var(--c-textSub)", flexShrink: 0 },
   sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
   sheetCol: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
   cell: {
