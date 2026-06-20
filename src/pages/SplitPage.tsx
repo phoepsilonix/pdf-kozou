@@ -865,13 +865,15 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             )}
           </div>
 
-          <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
-            {outDir
-              ? isBatch
-                ? t("split.execute_batch", { count: String(batchFiles!.length) })
-                : t("split.execute", { count: String(groups.length) })
-              : t("common.no_dir_btn")}
-          </BtnPrimary>
+          <div style={s.actionBar}>
+            <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
+              {outDir
+                ? isBatch
+                  ? t("split.execute_batch", { count: String(batchFiles!.length) })
+                  : t("split.execute", { count: String(groups.length) })
+                : t("common.no_dir_btn")}
+            </BtnPrimary>
+          </div>
 
           {/* メタデータ編集モーダル */}
           {metaEditOpen && (
@@ -1193,7 +1195,6 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     padding: "6px 9px",
     lineHeight: 1.5,
-    overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -1398,6 +1399,17 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "var(--c-textSub)",
     minHeight: 60,
+  },
+
+  actionBar: {
+    flexShrink: 0,
+    display: "flex",
+    gap: 10,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    padding: "10px 14px",
+    borderTop: "1px solid var(--c-border)",
+    background: "var(--c-bg)",
   },
 
   // 結果

@@ -1397,32 +1397,34 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           )}
 
-          <BtnPrimary
-            onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
-            disabled={conflictPaths.length > 0}
-          >
-            {outDir
-              ? isBatch
-                ? outputMode === "pdf"
-                  ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
-                  : impositionMode !== "1up"
-                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
-                    : t("image.execute_batch", { count: String(batchFiles!.length) })
-                : outputMode === "pdf"
-                  ? t("image.execute_pdf")
-                  : t("image.execute", {
-                      count: String(
-                        impositionMode !== "1up"
-                          ? calcSheets(impositionMode, resolvedPageCount || total).length
-                          : resolvedPageCount,
-                      ),
-                    })
-              : isBatch
-                ? t("common.no_dir_btn")
-                : outputMode === "pdf"
-                  ? t("image.execute_pdf")
-                  : t("common.no_dir_btn")}
-          </BtnPrimary>
+          <div style={s.actionBar}>
+            <BtnPrimary
+              onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
+              disabled={conflictPaths.length > 0}
+            >
+              {outDir
+                ? isBatch
+                  ? outputMode === "pdf"
+                    ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
+                    : impositionMode !== "1up"
+                      ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
+                      : t("image.execute_batch", { count: String(batchFiles!.length) })
+                  : outputMode === "pdf"
+                    ? t("image.execute_pdf")
+                    : t("image.execute", {
+                        count: String(
+                          impositionMode !== "1up"
+                            ? calcSheets(impositionMode, resolvedPageCount || total).length
+                            : resolvedPageCount,
+                        ),
+                      })
+                : isBatch
+                  ? t("common.no_dir_btn")
+                  : outputMode === "pdf"
+                    ? t("image.execute_pdf")
+                    : t("common.no_dir_btn")}
+            </BtnPrimary>
+          </div>
         </div>
 
         {/* プレビューエリア */}
@@ -2029,26 +2031,15 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-textDim)",
   },
 
-  executeBar: {
-    position: "sticky",
-    bottom: 0,
-    zIndex: 10,
-
-    marginTop: "auto",
-
-    paddingTop: 10,
-    paddingBottom: 10,
-
-    background: "var(--c-bg)",
-    borderTop: "1px solid var(--c-border)",
-  },
-  actions: {
+  actionBar: {
     flexShrink: 0,
     display: "flex",
-    gap: 8,
+    gap: 10,
+    justifyContent: "flex-end",
+    alignItems: "center",
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
-    background: "var(--c-bgCard)",
+    background: "var(--c-bg)",
   },
 
   prefixRow: { display: "flex", alignItems: "center", gap: 6 },

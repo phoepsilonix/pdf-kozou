@@ -871,7 +871,6 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     padding: "6px 9px",
     lineHeight: 1.5,
-    overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
