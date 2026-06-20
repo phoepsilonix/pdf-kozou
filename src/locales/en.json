@@ -837,7 +837,8 @@
       "2up": "2up",
       "4up": "4up",
       "booklet": "booklet",
-      "deimposed": "deimposed"
+      "deimposed": "deimposed",
+      "split": "split"
     }
   }
 }

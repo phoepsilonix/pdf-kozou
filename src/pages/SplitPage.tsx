@@ -5,7 +5,7 @@
 // src/pages/SplitPage.tsx  —  単体 & バッチ対応
 export default SplitPage;
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Spinner,
@@ -84,7 +84,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [everyN, setEveryN] = useState(2);
   const [ranges, setRanges] = useState<[number, number][]>([[1, pdfInfo.page_count]]);
   const [outDir, setOutDir] = useState("");
-  const [prefix, setPrefix] = useState("page");
+  // 出力ファイル名（画像変換ページと同じ「元名トグル＋ラベル＋プレビュー」方式）
+  const [keepOriginalName, setKeepOriginalName] = useState(true);
+  const [label, setLabel] = useState("");
+  const [labelEdited, setLabelEdited] = useState(false);
   const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
   const [result, setResult] = useState<SplitResponse | null>(null);
   const [errMsg, setErrMsg] = useState("");
@@ -94,6 +97,38 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   // バッチ各ファイルの先頭サムネイル
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
+
+  // ── 出力ファイル名ヘルパー ───────────────────────────────────────────────
+  // 入力ファイルのステム（拡張子なし）
+  const srcStem = useMemo(
+    () =>
+      filePath
+        .split(/[/\\]/)
+        .pop()
+        ?.replace(/\.[^/.]+$/, "") || "output",
+    [filePath],
+  );
+  // 既定ラベル（分割 / split）。未編集なら言語切替に追従。
+  const defaultLabel = t("filename.label.split" as any);
+  useEffect(() => {
+    if (!labelEdited) setLabel(defaultLabel);
+  }, [defaultLabel, labelEdited]);
+  // prefix を組み立てる。バックエンドが _0001.pdf を後置するため末尾に "_" は付けない。
+  //   例: 書類_分割 → 書類_分割_0001.pdf
+  const splitPrefix = useCallback(
+    (stem: string, keep: boolean): string => {
+      const parts: string[] = [];
+      if (keep && stem) parts.push(stem);
+      if (label) parts.push(label);
+      return parts.join("_") || "page";
+    },
+    [label],
+  );
+  // ライブプレビュー（バッチは1フォルダへ複数出力するため常に元名付き）
+  const namePreview = useMemo(
+    () => `${splitPrefix(srcStem, isBatch ? true : keepOriginalName)}_0001.pdf`,
+    [splitPrefix, srcStem, isBatch, keepOriginalName],
+  );
 
   // ── サムネイル取得（プレビュー対象ファイル） ─────────────────────────────
   useEffect(() => {
@@ -224,7 +259,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         filePath,
         resolvedDir,
         mode,
-        prefix || undefined,
+        splitPrefix(srcStem, keepOriginalName),
         convertLayoutW,
         convertLayoutH,
         convertLayoutEm,
@@ -248,7 +283,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     modeId,
     everyN,
     ranges,
-    prefix,
+    splitPrefix,
+    srcStem,
+    keepOriginalName,
     pickDir,
     overrideMetadata,
     setError,
@@ -294,9 +331,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     .map(([s, e]) => [s, Math.min(e, info.page_count)] as [number, number])
                     .filter(([s, e]) => s <= info.page_count),
                 };
-        const filePrefix = prefix
-          ? `${prefix}_${f.filename.replace(/\.[^/.]+$/, "")}`
-          : f.filename.replace(/\.[^/.]+$/, "");
+        // バッチは全ファイルを1フォルダへ出すため、必ず元名を付けて衝突回避
+        //   例: 書類_分割_0001.pdf
+        const filePrefix = splitPrefix(f.filename.replace(/\.[^/.]+$/, ""), true);
         const res = await splitPdf(
           f.path,
           resolvedDir,
@@ -321,7 +358,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     modeId,
     everyN,
     ranges,
-    prefix,
+    splitPrefix,
     pickDir,
     overrideMetadata,
     announceSuccess,
@@ -768,16 +805,33 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </>
           )}
 
-          <div style={s.secLabel}>{t("split.prefix_label")}</div>
+          {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
+          <div style={s.secLabel}>{t("image.outname_label")}</div>
+          {!isBatch && (
+            <label style={s.keepNameRow}>
+              <input
+                type="checkbox"
+                checked={keepOriginalName}
+                onChange={(e) => setKeepOriginalName(e.target.checked)}
+              />
+              <span>{t("image.outname_keep_original")}</span>
+            </label>
+          )}
           <div style={s.prefixRow}>
             <input
               type="text"
               style={s.textInput}
-              value={prefix}
-              placeholder="page"
-              onChange={(e) => setPrefix(e.target.value)}
+              value={label}
+              placeholder={defaultLabel}
+              aria-label={t("image.outname_label")}
+              onChange={(e) => {
+                setLabel(e.target.value);
+                setLabelEdited(true);
+              }}
             />
-            <span style={s.prefixSuffix}>_0001.pdf</span>
+          </div>
+          <div style={s.namePreview} title={namePreview}>
+            {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
           </div>
 
           <div style={s.secLabel}>{t("split.output_dir")}</div>
@@ -1123,6 +1177,22 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   prefixSuffix: { fontSize: 11, color: "var(--c-textDim)", flexShrink: 0 },
+  keepNameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    fontSize: 13,
+    color: "var(--c-text)",
+    cursor: "pointer",
+  },
+  namePreview: {
+    fontSize: 12,
+    color: "var(--c-textSub)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  namePreviewName: { color: "var(--c-text)", fontWeight: 600 },
   dirRow: { display: "flex", gap: 7 },
   dirPath: {
     flex: 1,

@@ -837,7 +837,8 @@
       "2up": "2面",
       "4up": "4面",
       "booklet": "中綴じ",
-      "deimposed": "面付け解除"
+      "deimposed": "面付け解除",
+      "split": "分割"
     }
   }
 }
