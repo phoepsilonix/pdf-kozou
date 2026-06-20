@@ -525,6 +525,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           </div>
 
           {/* Type3フォントの扱い */}
+          {/*
           <div style={s.sec}>
             <label style={{ ...s.chkRow, alignItems: "flex-start" as const }}>
               <input
@@ -549,6 +550,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               </span>
             </label>
           </div>
+	  */}
 
           {/* 出力先フォルダ */}
           <div style={s.sec}>
@@ -688,7 +690,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [imgNatH, setImgNatH] = useState(1);
   const { pickSave } = useSaveDialog();
   const { announceSuccess, announceError } = useA11y();
-  const [skipType3, setSkipType3] = useState(false);
+  const [skipType3, setSkipType3] = useState(true);
 
   const pageCount = pdfInfo.page_count;
   const pageInfo = pdfInfo.pages?.[pageIndex];
@@ -801,8 +803,10 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       setStatus(t("hidden.no_targets" as any));
       return;
     }
+    /*
     const hasType3 =
       !skipType3 && groups.some((g) => selectedIds.has(g.id) && g.chars.some((c) => c.isType3));
+    */
     const outPath = await pickSave(buildName(filePath, ["sanitized"]));
     if (!outPath) return;
     setSanitizing(true);
@@ -812,13 +816,16 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       await sanitizeHiddenText({ input: filePath, output: outPath, targets, tolerance: 1.5 });
       // ② Type3フォントがあれば続けて Type3 無害化（出力ファイルを上書き）
       let type3Msg = "";
+      /*
       if (hasType3) {
         setStatus(t("hidden.type3_sanitize_running" as any));
         const res = await sanitizeType3Text(outPath, outPath);
         if (res.removed > 0) type3Msg = ` +Type3(${res.removed})`;
       }
+      */
       const doneName = outPath.split(/[/\\]/).pop() ?? "";
-      setStatus(t("hidden.sanitize_done", { name: doneName }) + type3Msg);
+      //setStatus(t("hidden.sanitize_done", { name: doneName }) + type3Msg);
+      setStatus(t("hidden.sanitize_done", { name: doneName }));
       announceSuccess("hidden.sanitize_done", { name: doneName });
     } catch (e) {
       const msg =
@@ -836,6 +843,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     }
   }, [filePath, groups, selectedIds, pickSave, t, skipType3]);
 
+  /*
   const runType3Sanitize = useCallback(async () => {
     const outPath = await pickSave(buildName(filePath, ["type3sanitized"]));
     if (!outPath) return;
@@ -860,6 +868,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       setType3Sanitizing(false);
     }
   }, [filePath, pickSave, t]);
+  */
 
   const toggleGroup = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -1102,7 +1111,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           {groups.length > 0 && (
             <div style={s.groupList}>
               {/* Type3フォント検出時の注記 */}
-              {groups.some((g) => g.chars.some((c) => c.isType3)) && (
+              {/*
+		      groups.some((g) => g.chars.some((c) => c.isType3)) && (
                 <div style={s.type3Note}>
                   <div>{t("hidden.type3_note" as any)}</div>
                   <label
@@ -1116,7 +1126,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                     {t("hidden.skip_type3" as any)}
                   </label>
                 </div>
-              )}
+              )
+		      */}
               {groups.map((g) => {
                 const sel = selectedIds.has(g.id);
                 const color = typeColor(g.type);

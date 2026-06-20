@@ -239,7 +239,8 @@ export function TrimControls({
 
         <p style={s.hint}>{t("trim_controls.drag_hint")}</p>
 
-        <label
+        {/*
+	<label
           style={{
             display: "flex",
             gap: 6,
@@ -269,6 +270,7 @@ export function TrimControls({
             </span>
           </span>
         </label>
+	*/}
       </div>
 
       {/* 下部固定の操作帯（スクロールしない・常に最下部に表示） */}
