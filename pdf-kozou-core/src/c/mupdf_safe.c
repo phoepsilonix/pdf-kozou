@@ -5325,7 +5325,57 @@ void kozou_sanitize_hidden_text(
                         int   g_ucs = -1; float g_size = 0.0f;
                         int   have_g = kozou_quad_map_lookup_glyph(
                             qmap, dev_x, dev_y, tol2, &g_ucs, &g_size);
-                        if (kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2,kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size)) {
+                        int should_blank = kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2,kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size);
+
+                        /* Tj 原点がターゲットでない場合、文字単位で前進しながら再チェック。
+                         * detect_low_contrast 等は stext の文字位置(原点ではなく各文字位置)を
+                         * 返すため、Tj 文字列の先頭文字が検出されないと原点チェックが外れる。 */
+                        if (!should_blank) {
+                            pdf_obj *fobj2 = font_dict ?
+                                pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
+                            int is_mb2 = kozou_is_multibyte_font(ctx, fobj2);
+                            float adv = 0.0f;
+                            const char *p2 = stk[stk_top-1].s + 1;
+                            while (*p2 && *p2 != ')') {
+                                int cc2;
+                                if (*p2 == '\\') {
+                                    p2++;
+                                    if (*p2 >= '0' && *p2 <= '7') {
+                                        cc2 = (*p2++ - '0');
+                                        if (*p2 >= '0' && *p2 <= '7') cc2 = cc2*8 + (*p2++ - '0');
+                                        if (*p2 >= '0' && *p2 <= '7') cc2 = cc2*8 + (*p2++ - '0');
+                                    } else { cc2 = (unsigned char)*p2++; }
+                                } else { cc2 = (unsigned char)*p2++; }
+                                if (is_mb2 && *p2 && *p2 != ')') {
+                                    int lo2;
+                                    if (*p2 == '\\') {
+                                        p2++;
+                                        if (*p2 >= '0' && *p2 <= '7') {
+                                            lo2 = (*p2++ - '0');
+                                            if (*p2 >= '0' && *p2 <= '7') lo2 = lo2*8 + (*p2++ - '0');
+                                            if (*p2 >= '0' && *p2 <= '7') lo2 = lo2*8 + (*p2++ - '0');
+                                        } else { lo2 = (unsigned char)*p2++; }
+                                    } else { lo2 = (unsigned char)*p2++; }
+                                    cc2 = (cc2 << 8) | lo2;
+                                }
+                                float cw = kozou_get_char_width_1000(ctx, pdf, fobj2, cc2);
+                                float adv_pts = adv * font_size / 1000.0f;
+                                float cx = tm[4] + adv_pts * tm[0];
+                                float cy = tm[5] + adv_pts * tm[1];
+                                fz_point cp = fz_transform_point(fz_make_point(cx, cy), gs_stack[gs_sp]);
+                                cp = fz_transform_point(cp, page_ctm);
+                                int g2_ucs = -1; float g2_size = 0.0f;
+                                int have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2, &g2_ucs, &g2_size);
+                                if (kozou_sanitize_is_target(pi_targets,pi_n,cp.x,cp.y,tol2,
+                                        kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size)) {
+                                    should_blank = 1;
+                                    break;
+                                }
+                                adv += cw;
+                            }
+                        }
+
+                        if (should_blank) {
                             const char *orig=stk[stk_top-1].s;
                             /* 文字数と元グリフ幅を計算 */
                             pdf_obj *fobj = font_dict ?
@@ -5417,7 +5467,62 @@ void kozou_sanitize_hidden_text(
                         int   g_ucs = -1; float g_size = 0.0f;
                         int   have_g = kozou_quad_map_lookup_glyph(
                             qmap, dev_x, dev_y, tol2, &g_ucs, &g_size);
-                        if (kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2,kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size)) {
+                        int tj_should_blank = kozou_sanitize_is_target(pi_targets,pi_n,dev_x,dev_y,tol2,kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size);
+                        /* TJ 原点がターゲットでない場合、配列内の各文字列を文字単位でスキャン */
+                        if (!tj_should_blank) {
+                            pdf_obj *fobj_tj = font_dict ?
+                                pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
+                            int is_mb_tj = kozou_is_multibyte_font(ctx, fobj_tj);
+                            float tj_adv = 0.0f;
+                            int arr_s = -1;
+                            for (int k = 0; k < stk_top; k++)
+                                if (!strcmp(stk[k].s,"[")) { arr_s = k+1; break; }
+                            for (int k = arr_s >= 0 ? arr_s : 0; k < stk_top && !tj_should_blank; k++) {
+                                if (stk[k].is_str) {
+                                    const char *p2 = stk[k].s + 1;
+                                    while (*p2 && *p2 != ')' && !tj_should_blank) {
+                                        int cc2;
+                                        if (*p2 == '\\') {
+                                            p2++;
+                                            if (*p2 >= '0' && *p2 <= '7') {
+                                                cc2 = (*p2++ - '0');
+                                                if (*p2 >= '0' && *p2 <= '7') cc2 = cc2*8 + (*p2++ - '0');
+                                                if (*p2 >= '0' && *p2 <= '7') cc2 = cc2*8 + (*p2++ - '0');
+                                            } else { cc2 = (unsigned char)*p2++; }
+                                        } else { cc2 = (unsigned char)*p2++; }
+                                        if (is_mb_tj && *p2 && *p2 != ')') {
+                                            int lo2;
+                                            if (*p2 == '\\') {
+                                                p2++;
+                                                if (*p2 >= '0' && *p2 <= '7') {
+                                                    lo2 = (*p2++ - '0');
+                                                    if (*p2 >= '0' && *p2 <= '7') lo2 = lo2*8 + (*p2++ - '0');
+                                                    if (*p2 >= '0' && *p2 <= '7') lo2 = lo2*8 + (*p2++ - '0');
+                                                } else { lo2 = (unsigned char)*p2++; }
+                                            } else { lo2 = (unsigned char)*p2++; }
+                                            cc2 = (cc2 << 8) | lo2;
+                                        }
+                                        float cw2 = kozou_get_char_width_1000(ctx, pdf, fobj_tj, cc2);
+                                        float adv_pts2 = tj_adv * font_size / 1000.0f;
+                                        float cx2 = tm[4] + adv_pts2 * tm[0];
+                                        float cy2 = tm[5] + adv_pts2 * tm[1];
+                                        fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
+                                        cp2 = fz_transform_point(cp2, page_ctm);
+                                        int g3_ucs = -1; float g3_size = 0.0f;
+                                        int have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2, &g3_ucs, &g3_size);
+                                        if (kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2,
+                                                kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size)) {
+                                            tj_should_blank = 1;
+                                        }
+                                        tj_adv += cw2;
+                                    }
+                                } else if (strcmp(stk[k].s,"[") && strcmp(stk[k].s,"]")) {
+                                    /* TJ カーニング値は 1/1000 em 単位 (負=前進、正=後退) */
+                                    tj_adv -= (float)atof(stk[k].s);
+                                }
+                            }
+                        }
+                        if (tj_should_blank) {
                             pdf_obj *fobj = font_dict ?
                                 pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
                             /* TJ全体の幅をquadマップから取得 */
