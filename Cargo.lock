@@ -3265,7 +3265,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou"
-version = "1.7.5"
+version = "1.7.6"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3294,7 +3294,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou-core"
-version = "1.7.5"
+version = "1.7.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
