@@ -541,328 +541,332 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       <div style={s.body}>
         {/* ── 左パネル: 設定 ── */}
         <div style={s.panel}>
-          <div style={s.secLabel}>{t("split.mode_label")}</div>
-          <div style={s.modeList}>
-            {(
-              [
-                {
-                  id: "all",
-                  icon: "⧉",
-                  label: t("split.mode_all"),
-                  desc: t("split.mode_all_desc"),
-                },
-                {
-                  id: "every",
-                  icon: "⊞",
-                  label: t("split.mode_every"),
-                  desc: t("split.mode_every_desc"),
-                },
-                {
-                  id: "ranges",
-                  icon: "⊟",
-                  label: t("split.mode_ranges"),
-                  desc: t("split.mode_ranges_desc"),
-                },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setModeId(m.id)}
-                style={{ ...s.modeBtn, ...(modeId === m.id ? s.modeBtnOn : {}) }}
-              >
-                <span style={s.modeIcon}>{m.icon}</span>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-start",
-                    gap: 2,
+          <div style={s.panelScroll}>
+            <div style={s.secLabel}>{t("split.mode_label")}</div>
+            <div style={s.modeList}>
+              {(
+                [
+                  {
+                    id: "all",
+                    icon: "⧉",
+                    label: t("split.mode_all"),
+                    desc: t("split.mode_all_desc"),
+                  },
+                  {
+                    id: "every",
+                    icon: "⊞",
+                    label: t("split.mode_every"),
+                    desc: t("split.mode_every_desc"),
+                  },
+                  {
+                    id: "ranges",
+                    icon: "⊟",
+                    label: t("split.mode_ranges"),
+                    desc: t("split.mode_ranges_desc"),
+                  },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setModeId(m.id)}
+                  style={{ ...s.modeBtn, ...(modeId === m.id ? s.modeBtnOn : {}) }}
+                >
+                  <span style={s.modeIcon}>{m.icon}</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      gap: 2,
+                    }}
+                  >
+                    <span style={s.modeName}>{m.label}</span>
+                    <span style={s.modeDesc}>{m.desc}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {modeId === "every" && (
+              <>
+                <div style={s.secLabel}>{t("split.every_n_label")}</div>
+                {isBatch && <div style={s.batchRangeNote}>{t("split.every_apply_all")}</div>}
+                <div style={s.numRow}>
+                  <button style={s.stepBtn} onClick={() => setEveryN((v) => Math.max(1, v - 1))}>
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    style={s.numInput}
+                    value={everyN}
+                    min={1}
+                    max={isBatch ? 999 : total}
+                    aria-label={t("aria.every_n_input")}
+                    onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                  <button style={s.stepBtn} onClick={() => setEveryN((v) => v + 1)}>
+                    ＋
+                  </button>
+                  <span style={s.numLabel}>{t("split.pages_per_file")}</span>
+                </div>
+              </>
+            )}
+
+            {modeId === "ranges" && !isBatch && (
+              <>
+                <div style={s.secLabel}>{t("split.range_label")}</div>
+                {ranges.map((rng, i) => (
+                  <div key={i} style={s.rangeRow}>
+                    <span style={s.rangeIdx}>#{i + 1}</span>
+                    <div style={s.rangeGroup}>
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [Math.max(1, x[0] - 1), x[1]] : x)),
+                          )
+                        }
+                      >
+                        ◀
+                      </button>
+                      <input
+                        type="number"
+                        style={s.rangeInput}
+                        ref={i === 0 ? rangeRef : undefined}
+                        aria-label={
+                          i === 0 ? t("aria.range_input") : `${t("aria.range_input")} #${i + 1}`
+                        }
+                        value={rng[0]}
+                        min={1}
+                        max={total}
+                        onChange={(e) =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [parseInt(e.target.value) || 1, x[1]] : x)),
+                          )
+                        }
+                      />
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [Math.min(x[1], x[0] + 1), x[1]] : x)),
+                          )
+                        }
+                      >
+                        ▶
+                      </button>
+                    </div>
+                    <span style={s.rangeSep}>〜</span>
+                    <div style={s.rangeGroup}>
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [x[0], Math.max(x[0], x[1] - 1)] : x)),
+                          )
+                        }
+                      >
+                        ◀
+                      </button>
+                      <input
+                        type="number"
+                        style={s.rangeInput}
+                        value={rng[1]}
+                        min={1}
+                        max={total}
+                        onChange={(e) =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),
+                          )
+                        }
+                      />
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [x[0], Math.min(total, x[1] + 1)] : x)),
+                          )
+                        }
+                      >
+                        ▶
+                      </button>
+                    </div>
+                    {ranges.length > 1 && (
+                      <button
+                        style={s.delBtn}
+                        onClick={() => setRanges((r) => r.filter((_, j) => j !== i))}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  style={s.addBtn}
+                  onClick={(e) => {
+                    setRanges((r) => [...r, [1, total]]);
+                    (e.currentTarget as HTMLButtonElement).blur();
                   }}
                 >
-                  <span style={s.modeName}>{m.label}</span>
-                  <span style={s.modeDesc}>{m.desc}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {modeId === "every" && (
-            <>
-              <div style={s.secLabel}>{t("split.every_n_label")}</div>
-              {isBatch && <div style={s.batchRangeNote}>{t("split.every_apply_all")}</div>}
-              <div style={s.numRow}>
-                <button style={s.stepBtn} onClick={() => setEveryN((v) => Math.max(1, v - 1))}>
-                  −
+                  {t("split.add_range")}
                 </button>
-                <input
-                  type="number"
-                  style={s.numInput}
-                  value={everyN}
-                  min={1}
-                  max={isBatch ? 999 : total}
-                  aria-label={t("aria.every_n_input")}
-                  onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value) || 1))}
-                />
-                <button style={s.stepBtn} onClick={() => setEveryN((v) => v + 1)}>
-                  ＋
-                </button>
-                <span style={s.numLabel}>{t("split.pages_per_file")}</span>
-              </div>
-            </>
-          )}
-
-          {modeId === "ranges" && !isBatch && (
-            <>
-              <div style={s.secLabel}>{t("split.range_label")}</div>
-              {ranges.map((rng, i) => (
-                <div key={i} style={s.rangeRow}>
-                  <span style={s.rangeIdx}>#{i + 1}</span>
-                  <div style={s.rangeGroup}>
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [Math.max(1, x[0] - 1), x[1]] : x)),
-                        )
-                      }
-                    >
-                      ◀
-                    </button>
-                    <input
-                      type="number"
-                      style={s.rangeInput}
-                      ref={i === 0 ? rangeRef : undefined}
-                      aria-label={
-                        i === 0 ? t("aria.range_input") : `${t("aria.range_input")} #${i + 1}`
-                      }
-                      value={rng[0]}
-                      min={1}
-                      max={total}
-                      onChange={(e) =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [parseInt(e.target.value) || 1, x[1]] : x)),
-                        )
-                      }
-                    />
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [Math.min(x[1], x[0] + 1), x[1]] : x)),
-                        )
-                      }
-                    >
-                      ▶
-                    </button>
-                  </div>
-                  <span style={s.rangeSep}>〜</span>
-                  <div style={s.rangeGroup}>
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [x[0], Math.max(x[0], x[1] - 1)] : x)),
-                        )
-                      }
-                    >
-                      ◀
-                    </button>
-                    <input
-                      type="number"
-                      style={s.rangeInput}
-                      value={rng[1]}
-                      min={1}
-                      max={total}
-                      onChange={(e) =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),
-                        )
-                      }
-                    />
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [x[0], Math.min(total, x[1] + 1)] : x)),
-                        )
-                      }
-                    >
-                      ▶
-                    </button>
-                  </div>
-                  {ranges.length > 1 && (
-                    <button
-                      style={s.delBtn}
-                      onClick={() => setRanges((r) => r.filter((_, j) => j !== i))}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                style={s.addBtn}
-                onClick={(e) => {
-                  setRanges((r) => [...r, [1, total]]);
-                  (e.currentTarget as HTMLButtonElement).blur();
-                }}
-              >
-                {t("split.add_range")}
-              </button>
-            </>
-          )}
-
-          {modeId === "ranges" && isBatch && (
-            <>
-              <div style={s.batchRangeNote}>{t("split.batch_clip_hint")}</div>
-              {ranges.map((rng, i) => (
-                <div key={i} style={s.rangeRow}>
-                  <span style={s.rangeIdx}>#{i + 1}</span>
-                  <div style={s.rangeGroup}>
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [Math.max(1, x[0] - 1), x[1]] : x)),
-                        )
-                      }
-                    >
-                      ◀
-                    </button>
-                    <input
-                      type="number"
-                      style={s.rangeInput}
-                      value={rng[0]}
-                      min={1}
-                      onChange={(e) =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [parseInt(e.target.value) || 1, x[1]] : x)),
-                        )
-                      }
-                    />
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [Math.min(x[1], x[0] + 1), x[1]] : x)),
-                        )
-                      }
-                    >
-                      ▶
-                    </button>
-                  </div>
-                  <span style={s.rangeSep}>〜</span>
-                  <div style={s.rangeGroup}>
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [x[0], Math.max(x[0], x[1] - 1)] : x)),
-                        )
-                      }
-                    >
-                      ◀
-                    </button>
-                    <input
-                      type="number"
-                      style={s.rangeInput}
-                      value={rng[1]}
-                      min={1}
-                      onChange={(e) =>
-                        setRanges((r) =>
-                          r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),
-                        )
-                      }
-                    />
-                    <button
-                      style={s.rangeArrow}
-                      onClick={() =>
-                        setRanges((r) => r.map((x, j) => (j === i ? [x[0], x[1] + 1] : x)))
-                      }
-                    >
-                      ▶
-                    </button>
-                  </div>
-                  {ranges.length > 1 && (
-                    <button
-                      style={s.delBtn}
-                      onClick={() => setRanges((r) => r.filter((_, j) => j !== i))}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                style={s.addBtn}
-                onClick={(e) => {
-                  setRanges((r) => [...r, [1, 99]]);
-                  (e.currentTarget as HTMLButtonElement).blur();
-                }}
-              >
-                {t("split.add_range")}
-              </button>
-            </>
-          )}
-
-          {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
-          <div style={s.secLabel}>{t("image.outname_label")}</div>
-          {!isBatch && (
-            <label style={s.keepNameRow}>
-              <input
-                type="checkbox"
-                checked={keepOriginalName}
-                onChange={(e) => setKeepOriginalName(e.target.checked)}
-              />
-              <span>{t("image.outname_keep_original")}</span>
-            </label>
-          )}
-          <div style={s.prefixRow}>
-            <input
-              type="text"
-              style={s.textInput}
-              value={label}
-              placeholder={defaultLabel}
-              aria-label={t("image.outname_label")}
-              onChange={(e) => {
-                setLabel(e.target.value);
-                setLabelEdited(true);
-              }}
-            />
-          </div>
-          <div style={s.namePreview} title={namePreview}>
-            {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
-          </div>
-
-          <div style={s.secLabel}>{t("split.output_dir")}</div>
-          <div style={s.dirRow}>
-            <div style={s.dirPath} title={outDir}>
-              <span aria-label={t("aria.output_dir_btn")}>{outDir || t("common.select_dir")}</span>
-            </div>
-            <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
-              {t("common.browse")}
-            </button>
-          </div>
-
-          {/* メタデータを分割前に編集（任意）*/}
-          <div style={s.metaEditRow}>
-            <button
-              style={s.btnMetaEdit}
-              onClick={() => setMetaEditOpen(true)}
-              aria-label={t("split.meta_edit_btn")}
-            >
-              ✏️ {overrideMetadata ? t("split.meta_edit_set") : t("split.meta_edit_btn")}
-            </button>
-            {overrideMetadata && (
-              <button
-                style={s.btnMetaClear}
-                onClick={() => setOverrideMetadata(undefined)}
-                title={t("split.meta_clear")}
-                aria-label={t("split.meta_clear")}
-              >
-                ✕
-              </button>
+              </>
             )}
+
+            {modeId === "ranges" && isBatch && (
+              <>
+                <div style={s.batchRangeNote}>{t("split.batch_clip_hint")}</div>
+                {ranges.map((rng, i) => (
+                  <div key={i} style={s.rangeRow}>
+                    <span style={s.rangeIdx}>#{i + 1}</span>
+                    <div style={s.rangeGroup}>
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [Math.max(1, x[0] - 1), x[1]] : x)),
+                          )
+                        }
+                      >
+                        ◀
+                      </button>
+                      <input
+                        type="number"
+                        style={s.rangeInput}
+                        value={rng[0]}
+                        min={1}
+                        onChange={(e) =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [parseInt(e.target.value) || 1, x[1]] : x)),
+                          )
+                        }
+                      />
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [Math.min(x[1], x[0] + 1), x[1]] : x)),
+                          )
+                        }
+                      >
+                        ▶
+                      </button>
+                    </div>
+                    <span style={s.rangeSep}>〜</span>
+                    <div style={s.rangeGroup}>
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [x[0], Math.max(x[0], x[1] - 1)] : x)),
+                          )
+                        }
+                      >
+                        ◀
+                      </button>
+                      <input
+                        type="number"
+                        style={s.rangeInput}
+                        value={rng[1]}
+                        min={1}
+                        onChange={(e) =>
+                          setRanges((r) =>
+                            r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),
+                          )
+                        }
+                      />
+                      <button
+                        style={s.rangeArrow}
+                        onClick={() =>
+                          setRanges((r) => r.map((x, j) => (j === i ? [x[0], x[1] + 1] : x)))
+                        }
+                      >
+                        ▶
+                      </button>
+                    </div>
+                    {ranges.length > 1 && (
+                      <button
+                        style={s.delBtn}
+                        onClick={() => setRanges((r) => r.filter((_, j) => j !== i))}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  style={s.addBtn}
+                  onClick={(e) => {
+                    setRanges((r) => [...r, [1, 99]]);
+                    (e.currentTarget as HTMLButtonElement).blur();
+                  }}
+                >
+                  {t("split.add_range")}
+                </button>
+              </>
+            )}
+
+            {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
+            <div style={s.secLabel}>{t("image.outname_label")}</div>
+            {!isBatch && (
+              <label style={s.keepNameRow}>
+                <input
+                  type="checkbox"
+                  checked={keepOriginalName}
+                  onChange={(e) => setKeepOriginalName(e.target.checked)}
+                />
+                <span>{t("image.outname_keep_original")}</span>
+              </label>
+            )}
+            <div style={s.prefixRow}>
+              <input
+                type="text"
+                style={s.textInput}
+                value={label}
+                placeholder={defaultLabel}
+                aria-label={t("image.outname_label")}
+                onChange={(e) => {
+                  setLabel(e.target.value);
+                  setLabelEdited(true);
+                }}
+              />
+            </div>
+            <div style={s.namePreview} title={namePreview}>
+              {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
+            </div>
+
+            <div style={s.secLabel}>{t("split.output_dir")}</div>
+            <div style={s.dirRow}>
+              <div style={s.dirPath} title={outDir}>
+                <span aria-label={t("aria.output_dir_btn")}>
+                  {outDir || t("common.select_dir")}
+                </span>
+              </div>
+              <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
+                {t("common.browse")}
+              </button>
+            </div>
+
+            {/* メタデータを分割前に編集（任意）*/}
+            <div style={s.metaEditRow}>
+              <button
+                style={s.btnMetaEdit}
+                onClick={() => setMetaEditOpen(true)}
+                aria-label={t("split.meta_edit_btn")}
+              >
+                ✏️ {overrideMetadata ? t("split.meta_edit_set") : t("split.meta_edit_btn")}
+              </button>
+              {overrideMetadata && (
+                <button
+                  style={s.btnMetaClear}
+                  onClick={() => setOverrideMetadata(undefined)}
+                  title={t("split.meta_clear")}
+                  aria-label={t("split.meta_clear")}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
 
           <div style={s.actionBar}>
@@ -1026,16 +1030,25 @@ const s: Record<string, React.CSSProperties> = {
   },
   groupCount: { fontSize: 13, color: "var(--c-accent)", fontWeight: 700 },
 
-  body: { flex: 1, display: "flex", overflow: "hidden" },
+  body: { flex: 1, display: "flex", overflow: "hidden", minHeight: 0 },
   panel: {
     width: 296,
     flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    borderRight: `1px solid var(--c-border)`,
+  },
+  // 設定値だけをスクロールさせ、actionBar（ボタン）は下部固定にする
+  panelScroll: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
     padding: "16px 18px",
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    overflowY: "auto",
-    borderRight: `1px solid var(--c-border)`,
   },
 
   secLabel: {

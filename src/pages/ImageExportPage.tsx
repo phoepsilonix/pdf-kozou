@@ -1082,320 +1082,322 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       <div style={s.body}>
         {/* 設定パネル */}
         <div style={s.panel}>
-          <div style={s.secLabel}>フォーマット</div>
-          <div style={s.fmtRow}>
-            {(["jpeg", "png", "svg"] as const).map((f) => (
+          <div style={s.panelScroll}>
+            <div style={s.secLabel}>フォーマット</div>
+            <div style={s.fmtRow}>
+              {(["jpeg", "png", "svg"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={(e) => {
+                    setFormat(f);
+                    if (f === "svg") setOutputMode("images"); // SVGは画像PDF非対応
+                    (e.currentTarget as HTMLButtonElement).blur();
+                  }}
+                  style={{ ...s.fmtBtn, ...(format === f ? s.fmtBtnOn : {}) }}
+                >
+                  <span style={s.fmtIcon}>{f === "jpeg" ? "🖼" : "📐"}</span>
+                  <span style={s.fmtName}>{f.toUpperCase()}</span>
+                  <span style={s.fmtDesc}>
+                    {f === "jpeg"
+                      ? t("image.jpeg_small")
+                      : f === "png"
+                        ? t("image.png_desc")
+                        : t("image.svg_desc")}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* 処理方向: 通常変換/面付け ⇔ 面付け解除/分割 */}
+            <div style={s.secLabel}>{t("image.process_dir_label" as any)}</div>
+            <div style={s.fmtRow}>
               <button
-                key={f}
                 onClick={(e) => {
-                  setFormat(f);
-                  if (f === "svg") setOutputMode("images"); // SVGは画像PDF非対応
+                  setProcessDir("normal");
+                  setStatusMsg("");
                   (e.currentTarget as HTMLButtonElement).blur();
                 }}
-                style={{ ...s.fmtBtn, ...(format === f ? s.fmtBtnOn : {}) }}
+                style={{ ...s.modeBtn, ...(processDir === "normal" ? s.modeBtnOn : {}) }}
               >
-                <span style={s.fmtIcon}>{f === "jpeg" ? "🖼" : "📐"}</span>
-                <span style={s.fmtName}>{f.toUpperCase()}</span>
-                <span style={s.fmtDesc}>
-                  {f === "jpeg"
-                    ? t("image.jpeg_small")
-                    : f === "png"
-                      ? t("image.png_desc")
-                      : t("image.svg_desc")}
-                </span>
+                <span style={s.fmtName}>{t("image.process_dir_normal" as any)}</span>
+                <span style={s.fmtDesc}>{t("image.process_dir_normal_sub" as any)}</span>
               </button>
-            ))}
-          </div>
+              <button
+                onClick={(e) => {
+                  setProcessDir("deimpose");
+                  // 面付け解除は面付けと排他: 面付けモードを 1up に戻す
+                  setImpositionMode("1up");
+                  setStatusMsg("");
+                  (e.currentTarget as HTMLButtonElement).blur();
+                }}
+                style={{
+                  ...s.modeBtn,
+                  ...(processDir === "deimpose"
+                    ? { ...s.modeBtnOn, borderColor: "var(--c-accent2, var(--c-accent))" }
+                    : {}),
+                }}
+              >
+                <span style={s.fmtName}>{t("image.process_dir_split" as any)}</span>
+                <span style={s.fmtDesc}>{t("image.process_dir_split_sub" as any)}</span>
+              </button>
+            </div>
 
-          {/* 処理方向: 通常変換/面付け ⇔ 面付け解除/分割 */}
-          <div style={s.secLabel}>{t("image.process_dir_label" as any)}</div>
-          <div style={s.fmtRow}>
-            <button
-              onClick={(e) => {
-                setProcessDir("normal");
-                setStatusMsg("");
-                (e.currentTarget as HTMLButtonElement).blur();
-              }}
-              style={{ ...s.modeBtn, ...(processDir === "normal" ? s.modeBtnOn : {}) }}
-            >
-              <span style={s.fmtName}>{t("image.process_dir_normal" as any)}</span>
-              <span style={s.fmtDesc}>{t("image.process_dir_normal_sub" as any)}</span>
-            </button>
-            <button
-              onClick={(e) => {
-                setProcessDir("deimpose");
-                // 面付け解除は面付けと排他: 面付けモードを 1up に戻す
-                setImpositionMode("1up");
-                setStatusMsg("");
-                (e.currentTarget as HTMLButtonElement).blur();
-              }}
-              style={{
-                ...s.modeBtn,
-                ...(processDir === "deimpose"
-                  ? { ...s.modeBtnOn, borderColor: "var(--c-accent2, var(--c-accent))" }
-                  : {}),
-              }}
-            >
-              <span style={s.fmtName}>{t("image.process_dir_split" as any)}</span>
-              <span style={s.fmtDesc}>{t("image.process_dir_split_sub" as any)}</span>
-            </button>
-          </div>
+            <div style={s.secLabel}>{t("image.output_mode")}</div>
+            <div style={s.fmtRow}>
+              <button
+                onClick={(e) => {
+                  setOutputMode("images");
+                  (e.currentTarget as HTMLButtonElement).blur();
+                }}
+                style={{ ...s.modeBtn, ...(outputMode === "images" ? s.modeBtnOn : {}) }}
+              >
+                <span style={s.fmtName}>{t("image.mode_images")}</span>
+                <span style={s.fmtDesc}>{t("image.mode_images_sub")}</span>
+              </button>
+              <button
+                disabled={format === "svg"}
+                onClick={(e) => {
+                  setOutputMode("pdf");
+                  setStatusMsg("");
+                  (e.currentTarget as HTMLButtonElement).blur();
+                }}
+                style={{
+                  ...s.modeBtn,
+                  ...(outputMode === "pdf" ? s.modeBtnOn : {}),
+                  ...(format === "svg" ? { opacity: 0.4, cursor: "not-allowed" } : {}),
+                }}
+              >
+                <span style={s.fmtName}>{t("image.mode_pdf")}</span>
+                <span style={s.fmtDesc}>{t("image.mode_pdf_sub_1")}</span>
+                <span style={s.fmtDesc}>{t("image.mode_pdf_sub_2")}</span>
+              </button>
+            </div>
 
-          <div style={s.secLabel}>{t("image.output_mode")}</div>
-          <div style={s.fmtRow}>
-            <button
-              onClick={(e) => {
-                setOutputMode("images");
-                (e.currentTarget as HTMLButtonElement).blur();
-              }}
-              style={{ ...s.modeBtn, ...(outputMode === "images" ? s.modeBtnOn : {}) }}
-            >
-              <span style={s.fmtName}>{t("image.mode_images")}</span>
-              <span style={s.fmtDesc}>{t("image.mode_images_sub")}</span>
-            </button>
-            <button
-              disabled={format === "svg"}
-              onClick={(e) => {
-                setOutputMode("pdf");
-                setStatusMsg("");
-                (e.currentTarget as HTMLButtonElement).blur();
-              }}
-              style={{
-                ...s.modeBtn,
-                ...(outputMode === "pdf" ? s.modeBtnOn : {}),
-                ...(format === "svg" ? { opacity: 0.4, cursor: "not-allowed" } : {}),
-              }}
-            >
-              <span style={s.fmtName}>{t("image.mode_pdf")}</span>
-              <span style={s.fmtDesc}>{t("image.mode_pdf_sub_1")}</span>
-              <span style={s.fmtDesc}>{t("image.mode_pdf_sub_2")}</span>
-            </button>
-          </div>
+            {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
+            {processDir === "normal" && format !== "svg" && (
+              <>
+                <div style={s.secLabel}>{t("image.imposition_section_label" as any)}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {IMPOSITION_MODES_I18N.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={(e) => {
+                        setImpositionMode(m.id);
+                        setStatusMsg("");
+                        (e.currentTarget as HTMLButtonElement).blur();
+                      }}
+                      style={{
+                        ...s.modeBtn,
+                        ...(impositionMode === m.id ? s.modeBtnOn : {}),
+                        flexBasis: "calc(50% - 3px)",
+                      }}
+                    >
+                      <span style={s.fmtIcon}>{m.icon}</span>
+                      <span style={s.fmtName}>{m.label}</span>
+                      <span style={s.fmtDesc}>{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+                {impositionMode !== "1up" && (
+                  <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
+                    {(() => {
+                      const n = resolvedPageCount || total;
+                      const sheetCount = calcSheets(impositionMode, n).length;
+                      const pageLabel =
+                        n !== total
+                          ? t("image.imposition_page_label_filtered" as any, { n: String(n) })
+                          : t("image.imposition_page_label_all" as any, { total: String(total) });
+                      return impositionMode === "booklet"
+                        ? t("image.imposition_sheet_count_booklet" as any, {
+                            count: String(sheetCount),
+                            pages: pageLabel,
+                          })
+                        : t("image.imposition_sheet_count" as any, {
+                            count: String(sheetCount),
+                            pages: String(n),
+                          });
+                    })()}
+                  </div>
+                )}
+              </>
+            )}
 
-          {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
-          {processDir === "normal" && format !== "svg" && (
-            <>
-              <div style={s.secLabel}>{t("image.imposition_section_label" as any)}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {IMPOSITION_MODES_I18N.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={(e) => {
-                      setImpositionMode(m.id);
-                      setStatusMsg("");
-                      (e.currentTarget as HTMLButtonElement).blur();
-                    }}
-                    style={{
-                      ...s.modeBtn,
-                      ...(impositionMode === m.id ? s.modeBtnOn : {}),
-                      flexBasis: "calc(50% - 3px)",
-                    }}
-                  >
-                    <span style={s.fmtIcon}>{m.icon}</span>
-                    <span style={s.fmtName}>{m.label}</span>
-                    <span style={s.fmtDesc}>{m.desc}</span>
-                  </button>
-                ))}
-              </div>
-              {impositionMode !== "1up" && (
+            {/* 面付け解除モード（分割時） */}
+            {processDir === "deimpose" && (
+              <>
+                <div style={s.secLabel}>{t("image.deimp_section_label" as any)}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {DE_IMPOSITION_MODE_DEFS.map((m, idx) => (
+                    <button
+                      key={idx}
+                      onClick={(e) => {
+                        setDeimpIndex(idx);
+                        setStatusMsg("");
+                        (e.currentTarget as HTMLButtonElement).blur();
+                      }}
+                      style={{
+                        ...s.modeBtn,
+                        ...(deimpIndex === idx ? s.modeBtnOn : {}),
+                        flexBasis: "calc(50% - 3px)",
+                      }}
+                    >
+                      <span style={s.fmtIcon}>{m.icon}</span>
+                      <span style={s.fmtName}>{t(m.labelKey as any)}</span>
+                      <span style={s.fmtDesc}>{t(m.descKey as any)}</span>
+                    </button>
+                  ))}
+                </div>
                 <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
                   {(() => {
+                    const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
                     const n = resolvedPageCount || total;
-                    const sheetCount = calcSheets(impositionMode, n).length;
-                    const pageLabel =
-                      n !== total
-                        ? t("image.imposition_page_label_filtered" as any, { n: String(n) })
-                        : t("image.imposition_page_label_all" as any, { total: String(total) });
-                    return impositionMode === "booklet"
-                      ? t("image.imposition_sheet_count_booklet" as any, {
-                          count: String(sheetCount),
-                          pages: pageLabel,
-                        })
-                      : t("image.imposition_sheet_count" as any, {
-                          count: String(sheetCount),
-                          pages: String(n),
-                        });
+                    const outCount = n * def.cols * def.rows;
+                    return t("image.deimp_page_count" as any, {
+                      sheets: String(n),
+                      pages: String(outCount),
+                    });
                   })()}
                 </div>
-              )}
-            </>
-          )}
+              </>
+            )}
 
-          {/* 面付け解除モード（分割時） */}
-          {processDir === "deimpose" && (
-            <>
-              <div style={s.secLabel}>{t("image.deimp_section_label" as any)}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {DE_IMPOSITION_MODE_DEFS.map((m, idx) => (
-                  <button
-                    key={idx}
-                    onClick={(e) => {
-                      setDeimpIndex(idx);
-                      setStatusMsg("");
-                      (e.currentTarget as HTMLButtonElement).blur();
-                    }}
-                    style={{
-                      ...s.modeBtn,
-                      ...(deimpIndex === idx ? s.modeBtnOn : {}),
-                      flexBasis: "calc(50% - 3px)",
-                    }}
-                  >
-                    <span style={s.fmtIcon}>{m.icon}</span>
-                    <span style={s.fmtName}>{t(m.labelKey as any)}</span>
-                    <span style={s.fmtDesc}>{t(m.descKey as any)}</span>
-                  </button>
-                ))}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
-                {(() => {
-                  const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
-                  const n = resolvedPageCount || total;
-                  const outCount = n * def.cols * def.rows;
-                  return t("image.deimp_page_count" as any, {
-                    sheets: String(n),
-                    pages: String(outCount),
-                  });
-                })()}
-              </div>
-            </>
-          )}
-
-          {format !== "svg" && (
-            <>
-              <div style={s.secLabel}>{t("image.dpi_label")}</div>
-              <div style={s.dpiGrid}>
-                {DPI_PRESETS.map((p) => (
-                  <button
-                    key={p.val}
-                    onClick={(e) => {
-                      setDpi(p.val);
-                      (e.currentTarget as HTMLButtonElement).blur();
-                    }}
-                    style={{ ...s.dpiBtn, ...(dpi === p.val ? s.dpiBtnOn : {}) }}
-                  >
-                    <span style={s.dpiLabel}>{p.label}</span>
-                    <span style={s.dpiDesc}>{p.desc}</span>
-                  </button>
-                ))}
-              </div>
-              {/* DPI 数値直接入力 — 大きめフォント */}
-              <div style={s.numRow}>
-                <button style={s.stepBtn} onClick={() => setDpi((v) => Math.max(36, v - 12))}>
-                  −
-                </button>
-                <input
-                  type="number"
-                  style={s.numInput}
-                  value={dpi}
-                  min={36}
-                  max={1200}
-                  onChange={(e) => setDpi(parseInt(e.target.value) || 72)}
-                />
-                <button style={s.stepBtn} onClick={() => setDpi((v) => Math.min(1200, v + 12))}>
-                  ＋
-                </button>
-                <span style={s.numLabel}>
-                  dpi → {pw}×{ph}px
-                </span>
-              </div>
-            </>
-          )}
-          {format === "jpeg" && (
-            <>
-              <div style={s.secLabel}>
-                {t("image.quality_label")}{" "}
-                <span style={{ fontSize: 20, fontWeight: 700, color: "var(--c-text)" }}>
-                  {quality}
-                </span>
-                %
-              </div>
-              <input
-                type="range"
-                min={10}
-                max={100}
-                step={5}
-                value={quality}
-                onChange={(e) => setQuality(parseInt(e.target.value))}
-                style={{ width: "100%", accentColor: "var(--c-accent)" }}
-              />
-              <div style={s.rangeLabels}>
-                <span>{t("image.quality_low")}</span>
-                <span>{t("image.quality_high")}</span>
-              </div>
-            </>
-          )}
-
-          <div style={s.secLabel}>{t("image.page_label")}</div>
-          <PageSelector
-            totalPages={isBatch ? 0 : total}
-            value={pages}
-            onChange={setPages}
-            type="1"
-            compact
-            rangeInputRef={pagesInputRef}
-          />
-
-          {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
-          <div style={s.secLabel}>{t("image.outname_label")}</div>
-          {!isBatch && (
-            <label style={s.keepNameRow}>
-              <input
-                type="checkbox"
-                checked={keepOriginalName}
-                onChange={(e) => setKeepOriginalName(e.target.checked)}
-              />
-              <span>{t("image.outname_keep_original")}</span>
-            </label>
-          )}
-          <div style={s.prefixRow}>
-            <input
-              type="text"
-              style={s.textInput}
-              value={label}
-              placeholder={opToken}
-              aria-label={t("image.outname_label")}
-              onChange={(e) => {
-                setLabel(e.target.value);
-                setLabelEdited(true);
-              }}
-            />
-          </div>
-          <div style={s.namePreview} title={namePreview}>
-            {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
-          </div>
-
-          {/* 競合警告バナー */}
-          {conflictPaths.length > 0 && (
-            <div style={s.conflictBanner}>
-              {isBatch
-                ? t("image.conflict_batch", { files: conflictPaths.join(", ") })
-                : t("image.conflict_single")}
-            </div>
-          )}
-
-          {isBatch && (
-            <div style={s.batchNote}>
-              {outputMode === "pdf" ? t("image.subfolder_note_pdf") : t("image.subfolder_note")}
-            </div>
-          )}
-
-          {(isBatch || outputMode === "images") && (
-            <>
-              <div style={s.secLabel}>{t("image.output_dir")}</div>
-              <div style={s.dirRow}>
-                <div style={s.dirPath} title={outDir}>
-                  {outDir || t("common.select_dir")}
+            {format !== "svg" && (
+              <>
+                <div style={s.secLabel}>{t("image.dpi_label")}</div>
+                <div style={s.dpiGrid}>
+                  {DPI_PRESETS.map((p) => (
+                    <button
+                      key={p.val}
+                      onClick={(e) => {
+                        setDpi(p.val);
+                        (e.currentTarget as HTMLButtonElement).blur();
+                      }}
+                      style={{ ...s.dpiBtn, ...(dpi === p.val ? s.dpiBtnOn : {}) }}
+                    >
+                      <span style={s.dpiLabel}>{p.label}</span>
+                      <span style={s.dpiDesc}>{p.desc}</span>
+                    </button>
+                  ))}
                 </div>
-                <button
-                  style={s.dirPickBtn}
-                  onClick={pickDir}
-                  aria-label={t("aria.output_dir_btn")}
-                >
-                  {t("common.browse")}
-                </button>
+                {/* DPI 数値直接入力 — 大きめフォント */}
+                <div style={s.numRow}>
+                  <button style={s.stepBtn} onClick={() => setDpi((v) => Math.max(36, v - 12))}>
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    style={s.numInput}
+                    value={dpi}
+                    min={36}
+                    max={1200}
+                    onChange={(e) => setDpi(parseInt(e.target.value) || 72)}
+                  />
+                  <button style={s.stepBtn} onClick={() => setDpi((v) => Math.min(1200, v + 12))}>
+                    ＋
+                  </button>
+                  <span style={s.numLabel}>
+                    dpi → {pw}×{ph}px
+                  </span>
+                </div>
+              </>
+            )}
+            {format === "jpeg" && (
+              <>
+                <div style={s.secLabel}>
+                  {t("image.quality_label")}{" "}
+                  <span style={{ fontSize: 20, fontWeight: 700, color: "var(--c-text)" }}>
+                    {quality}
+                  </span>
+                  %
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={quality}
+                  onChange={(e) => setQuality(parseInt(e.target.value))}
+                  style={{ width: "100%", accentColor: "var(--c-accent)" }}
+                />
+                <div style={s.rangeLabels}>
+                  <span>{t("image.quality_low")}</span>
+                  <span>{t("image.quality_high")}</span>
+                </div>
+              </>
+            )}
+
+            <div style={s.secLabel}>{t("image.page_label")}</div>
+            <PageSelector
+              totalPages={isBatch ? 0 : total}
+              value={pages}
+              onChange={setPages}
+              type="1"
+              compact
+              rangeInputRef={pagesInputRef}
+            />
+
+            {/* 出力ファイル名: 元名トグル ＋ ラベル自由入力 ＋ ライブプレビュー */}
+            <div style={s.secLabel}>{t("image.outname_label")}</div>
+            {!isBatch && (
+              <label style={s.keepNameRow}>
+                <input
+                  type="checkbox"
+                  checked={keepOriginalName}
+                  onChange={(e) => setKeepOriginalName(e.target.checked)}
+                />
+                <span>{t("image.outname_keep_original")}</span>
+              </label>
+            )}
+            <div style={s.prefixRow}>
+              <input
+                type="text"
+                style={s.textInput}
+                value={label}
+                placeholder={opToken}
+                aria-label={t("image.outname_label")}
+                onChange={(e) => {
+                  setLabel(e.target.value);
+                  setLabelEdited(true);
+                }}
+              />
+            </div>
+            <div style={s.namePreview} title={namePreview}>
+              {t("image.outname_preview")} → <span style={s.namePreviewName}>{namePreview}</span>
+            </div>
+
+            {/* 競合警告バナー */}
+            {conflictPaths.length > 0 && (
+              <div style={s.conflictBanner}>
+                {isBatch
+                  ? t("image.conflict_batch", { files: conflictPaths.join(", ") })
+                  : t("image.conflict_single")}
               </div>
-            </>
-          )}
+            )}
+
+            {isBatch && (
+              <div style={s.batchNote}>
+                {outputMode === "pdf" ? t("image.subfolder_note_pdf") : t("image.subfolder_note")}
+              </div>
+            )}
+
+            {(isBatch || outputMode === "images") && (
+              <>
+                <div style={s.secLabel}>{t("image.output_dir")}</div>
+                <div style={s.dirRow}>
+                  <div style={s.dirPath} title={outDir}>
+                    {outDir || t("common.select_dir")}
+                  </div>
+                  <button
+                    style={s.dirPickBtn}
+                    onClick={pickDir}
+                    aria-label={t("aria.output_dir_btn")}
+                  >
+                    {t("common.browse")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
           <div style={s.actionBar}>
             <BtnPrimary
@@ -1923,13 +1925,21 @@ const s: Record<string, React.CSSProperties> = {
   panel: {
     width: 300,
     flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    borderRight: `1px solid var(--c-border)`,
+  },
+  // 設定値だけをスクロールさせ、actionBar（ボタン）は下部固定にする
+  panelScroll: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
     padding: "16px 18px",
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    overflowY: "auto",
-    overflowX: "hidden",
-    borderRight: `1px solid var(--c-border)`,
   },
   secLabel: {
     fontSize: 12,
