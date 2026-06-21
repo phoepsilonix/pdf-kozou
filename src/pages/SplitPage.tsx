@@ -503,14 +503,24 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
             {result.files.length > 20 && (
               <div
-                style={{ fontSize: 12, color: "var(--c-textDim)", textAlign: "center", padding: 8 }}
+                style={{
+                  fontSize: FS.small,
+                  color: "var(--c-textDim)",
+                  textAlign: "center",
+                  padding: 8,
+                }}
               >
                 {t("split.other_files", { count: String(result.files.length - 20) })}
               </div>
             )}
           </div>
           <div
-            style={{ fontSize: 12, color: "var(--c-textDim)", marginTop: 4, textAlign: "center" }}
+            style={{
+              fontSize: FS.small,
+              color: "var(--c-textDim)",
+              marginTop: 4,
+              textAlign: "center",
+            }}
           >
             {t("split.result_hint")}
           </div>
@@ -1015,7 +1025,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   sub: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     maxWidth: 180,
     overflow: "hidden",
@@ -1027,10 +1037,10 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     border: `1px solid var(--c-border)`,
     borderRadius: 12,
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
   },
-  groupCount: { fontSize: 13, color: "var(--c-accent)", fontWeight: 700 },
+  groupCount: { fontSize: FS.body, color: "var(--c-accent)", fontWeight: 700 },
 
   body: { flex: 1, display: "flex", overflow: "hidden", minHeight: 0 },
   panel: {
@@ -1054,7 +1064,7 @@ const s: Record<string, React.CSSProperties> = {
   },
 
   secLabel: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
     letterSpacing: "0.08em",
     textTransform: "uppercase" as const,
@@ -1076,8 +1086,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   modeBtnOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
   modeIcon: { fontSize: 20, flexShrink: 0 },
-  modeName: { fontSize: 13, fontWeight: 600, color: "var(--c-text)" },
-  modeDesc: { fontSize: 11, color: "var(--c-textSub)" },
+  modeName: { fontSize: FS.body, fontWeight: 600, color: "var(--c-text)" },
+  modeDesc: { fontSize: FS.caption, color: "var(--c-textSub)" },
 
   numRow: { display: "flex", alignItems: "center", gap: 7 },
   stepBtn: {
@@ -1110,11 +1120,11 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "center" as const,
     fontWeight: 700,
   },
-  numLabel: { fontSize: 12, color: "var(--c-textSub)" },
+  numLabel: { fontSize: FS.small, color: "var(--c-textSub)" },
 
   rangeRow: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const },
   rangeGroup: { display: "flex", alignItems: "center", gap: 2 },
-  rangeIdx: { fontSize: 11, color: "var(--c-textDim)", width: 24, flexShrink: 0 },
+  rangeIdx: { fontSize: FS.caption, color: "var(--c-textDim)", width: 24, flexShrink: 0 },
   rangeInput: {
     width: 80,
     padding: "8px 4px",
@@ -1129,7 +1139,7 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "center" as const,
     fontWeight: 700,
   },
-  rangeSep: { fontSize: 14, color: "var(--c-textDim)" },
+  rangeSep: { fontSize: FS.label, color: "var(--c-textDim)" },
   rangeArrow: {
     width: 44,
     height: 44,
@@ -1155,7 +1165,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "none",
     color: "var(--c-textDim)",
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: FS.label,
     padding: 0,
     fontFamily: F,
   },
@@ -1166,7 +1176,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
   },
   batchRangeNote: {
@@ -1174,7 +1184,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-accentBg)",
     border: `1px solid var(--c-accentBd)`,
     borderRadius: 7,
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
     lineHeight: 1.6,
   },
@@ -1193,17 +1203,17 @@ const s: Record<string, React.CSSProperties> = {
     lineHeight: "36px",
     fontFamily: F,
   },
-  prefixSuffix: { fontSize: 11, color: "var(--c-textDim)", flexShrink: 0 },
+  prefixSuffix: { fontSize: FS.caption, color: "var(--c-textDim)", flexShrink: 0 },
   keepNameRow: {
     display: "flex",
     alignItems: "center",
     gap: 7,
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-text)",
     cursor: "pointer",
   },
   namePreview: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     background: "var(--c-bgCard)",
     border: "1px solid var(--c-border)",
@@ -1222,7 +1232,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
     borderRadius: 6,
     color: "var(--c-textSub)",
-    fontSize: 11,
+    fontSize: FS.caption,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -1234,7 +1244,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-text)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
     flexShrink: 0,
   },
@@ -1252,7 +1262,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-accent)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: "inherit",
     textAlign: "left" as const,
   },
@@ -1263,7 +1273,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-textDim)",
     cursor: "pointer",
-    fontSize: 11,
+    fontSize: FS.caption,
     fontFamily: "inherit",
   },
 
@@ -1277,7 +1287,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 18,
     padding: 40,
   },
-  bpTitle: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   bpBar: {
     width: "100%",
     maxWidth: 480,
@@ -1292,7 +1302,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurrent: { fontSize: 13, color: "var(--c-textSub)" },
+  bpCurrent: { fontSize: FS.body, color: "var(--c-textSub)" },
   bpLog: {
     width: "100%",
     maxWidth: 480,
@@ -1313,19 +1323,19 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpLogFile: {
     flex: 1,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpLogMeta: { fontSize: 11, color: "var(--c-textSub)" },
+  bpLogMeta: { fontSize: FS.caption, color: "var(--c-textSub)" },
 
   // プレビューエリア
   preview: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   previewHead: {
     padding: "10px 18px",
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     borderBottom: `1px solid var(--c-border)`,
     flexShrink: 0,
@@ -1360,13 +1370,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   batchFileInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
   batchFileName: {
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  batchFileMeta: { fontSize: 11, color: "var(--c-textSub)" },
+  batchFileMeta: { fontSize: FS.caption, color: "var(--c-textSub)" },
 
   // 単体グループプレビュー
   groupList: {
@@ -1394,9 +1404,9 @@ const s: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid var(--c-border)`,
     background: "var(--c-bg)",
   },
-  groupNum: { fontSize: 12, fontWeight: 700, color: "var(--c-accent)", minWidth: 28 },
-  groupPages: { fontSize: 11, color: "var(--c-textSub)" },
-  groupRange: { fontSize: 11, color: "var(--c-textDim)", marginLeft: "auto" },
+  groupNum: { fontSize: FS.small, fontWeight: 700, color: "var(--c-accent)", minWidth: 28 },
+  groupPages: { fontSize: FS.caption, color: "var(--c-textSub)" },
+  groupRange: { fontSize: FS.caption, color: "var(--c-textDim)", marginLeft: "auto" },
   groupThumbs: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))",
@@ -1411,7 +1421,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     background: "var(--c-border)",
     borderRadius: 4,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     minHeight: 60,
   },
@@ -1439,7 +1449,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   resultIcon: { fontSize: 52, color: "var(--c-accent)" },
   resultStat: { fontSize: 18, fontWeight: 700, color: "var(--c-text)" },
-  resultDir: { fontSize: 12, color: "var(--c-textSub)" },
+  resultDir: { fontSize: FS.small, color: "var(--c-textSub)" },
   fileList: { width: "100%", maxWidth: 500, display: "flex", flexDirection: "column", gap: 4 },
   fileRow: {
     display: "flex",
@@ -1450,5 +1460,5 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     border: `1px solid var(--c-border)`,
   },
-  fileName: { fontSize: 12, color: "var(--c-text)" },
+  fileName: { fontSize: FS.small, color: "var(--c-text)" },
 };

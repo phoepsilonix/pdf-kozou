@@ -1,5 +1,6 @@
 import { usePdfStore } from "../store/usePdfStore";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 import { PAGE_SIZE_DEFS, PAGE_ORIENTATION_DEFS } from "../lib/pageSize";
 
 /**
@@ -23,10 +24,10 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
         background: "var(--c-surface, var(--c-bg))",
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+      <div style={{ fontSize: FS.body, fontWeight: 600, marginBottom: 2 }}>
         {t("pagesize.title" as any)}
       </div>
-      <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
+      <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
         {t("pagesize.hint" as any)}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
@@ -43,7 +44,7 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
               border: `1px solid ${pageSizeId === ps.id ? "var(--c-accent, #e0457b)" : "var(--c-border)"}`,
               background: pageSizeId === ps.id ? "var(--c-accent, #e0457b)" : "transparent",
               color: pageSizeId === ps.id ? "#fff" : "var(--c-text)",
-              fontSize: 13,
+              fontSize: FS.body,
               fontWeight: pageSizeId === ps.id ? 700 : 400,
               cursor: "pointer",
             }}
@@ -53,7 +54,7 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 12, color: "var(--c-textSub)" }}>
+        <span style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
           {t("pagesize.orientation" as any)}:
         </span>
         {PAGE_ORIENTATION_DEFS.map((o) => (
@@ -78,7 +79,7 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
                   : pageOrientation === o.id
                     ? "#fff"
                     : "var(--c-text)",
-              fontSize: 12,
+              fontSize: FS.small,
               cursor: pageSizeId === "image" ? "default" : "pointer",
               opacity: pageSizeId === "image" ? 0.5 : 1,
             }}

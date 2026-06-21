@@ -18,6 +18,7 @@ export type TypeRole =
   | "small" // 小ラベル・メタ情報
   | "body" // 本文・標準ラベル
   | "label" // 強調ラベル・小見出し
+  | "subtitle" // セクション見出し・カード見出し（中位の見出し）
   | "title" // 各画面の先頭タイトル（ページ見出し）
   | "heading" // セクション大見出し
   | "display"; // ブランド等の特大表示
@@ -29,6 +30,7 @@ export const TYPE_SCALE: Record<TypeRole, number> = {
   small: 12,
   body: 13,
   label: 14,
+  subtitle: 16,
   title: 18,
   heading: 20,
   display: 52,

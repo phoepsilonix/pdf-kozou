@@ -38,7 +38,7 @@ function ShortcutGroup({
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span
           style={{
-            fontSize: 12,
+            fontSize: FS.small,
             fontWeight: 700,
             color: "var(--c-textSub)",
             letterSpacing: "0.06em",
@@ -60,7 +60,7 @@ function ShortcutGroup({
           </span>
         )}
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: FS.body }}>
         <tbody>
           {rows.map((row, i) => (
             <tr key={i} style={{ borderBottom: "1px solid var(--c-border)" }}>
@@ -69,7 +69,7 @@ function ShortcutGroup({
                   k === "〜" || k === "/" ? (
                     <span
                       key={j}
-                      style={{ fontSize: 11, color: "var(--c-textDim)", margin: "0 3px" }}
+                      style={{ fontSize: FS.caption, color: "var(--c-textDim)", margin: "0 3px" }}
                     >
                       {k}
                     </span>
@@ -83,7 +83,7 @@ function ShortcutGroup({
                         border: "1px solid var(--c-borderHi)",
                         borderRadius: 4,
                         fontFamily: "monospace",
-                        fontSize: 12,
+                        fontSize: FS.small,
                         color: "var(--c-text)",
                         marginRight: 3,
                       }}
@@ -264,7 +264,12 @@ const LicensePage: React.FC = () => {
             {t("license.formats_note_body")}
             <br />
             <span
-              style={{ color: "var(--c-textDim)", fontSize: 11, marginTop: 6, display: "block" }}
+              style={{
+                color: "var(--c-textDim)",
+                fontSize: FS.caption,
+                marginTop: 6,
+                display: "block",
+              }}
             >
               {t("license.formats_note_caveat")}
             </span>
@@ -430,7 +435,9 @@ const LicensePage: React.FC = () => {
           {/* 候補パス */}
           {gsCandidates.length > 0 && (
             <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap" as const, gap: 4 }}>
-              <span style={{ fontSize: 11, color: "var(--c-textDim)", alignSelf: "center" }}>
+              <span
+                style={{ fontSize: FS.caption, color: "var(--c-textDim)", alignSelf: "center" }}
+              >
                 {t("license.gs_candidates")}:
               </span>
               {gsCandidates.map((c) => (
@@ -680,7 +687,7 @@ const s: Record<string, React.CSSProperties> = {
   settingDesc: { fontSize: "12px", color: "var(--c-textDim)", marginTop: "4px", lineHeight: "1.4" },
   formatGroup: { marginBottom: 12 },
   formatLabel: {
-    fontSize: 12,
+    fontSize: FS.small,
     fontWeight: 700,
     color: "var(--c-textDim)",
     marginBottom: 6,
@@ -693,7 +700,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bg)",
     border: "1px solid var(--c-border)",
     borderRadius: 12,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-text)",
     fontFamily: "monospace",
   },
@@ -712,7 +719,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 6,
     color: "var(--c-text)",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: "monospace",
   },
   btnSmall: {
@@ -722,7 +729,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: "inherit",
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
@@ -736,7 +743,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     color: "var(--c-accent)",
     cursor: "pointer",
-    fontSize: 11,
+    fontSize: FS.caption,
     fontFamily: "inherit",
     maxWidth: 180,
     overflow: "hidden",
@@ -744,8 +751,8 @@ const s: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap" as const,
   },
   btnDisabled: { opacity: 0.5, cursor: "not-allowed" as const },
-  verifyMsg: { marginTop: 6, fontSize: 12, fontWeight: 600 },
-  currentPath: { marginTop: 6, fontSize: 11, color: "var(--c-textDim)" },
+  verifyMsg: { marginTop: 6, fontSize: FS.small, fontWeight: 600 },
+  currentPath: { marginTop: 6, fontSize: FS.caption, color: "var(--c-textDim)" },
   footer: { textAlign: "center", marginTop: "48px", fontSize: "11px", color: "var(--c-textDim)" },
 };
 

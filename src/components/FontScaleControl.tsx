@@ -14,6 +14,7 @@
 import { useState, useCallback } from "react";
 import { F } from "../lib/theme";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 import {
   UI_SCALE_MIN,
   UI_SCALE_MAX,
@@ -47,7 +48,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
     color: "var(--c-textSub)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 12,
+    fontSize: FS.small,
     flexShrink: 0,
   };
 
@@ -63,7 +64,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
     color: "var(--c-text)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 16,
+    fontSize: FS.subtitle,
     lineHeight: 1,
     flexShrink: 0,
   };
@@ -78,7 +79,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <span style={{ fontSize: 14 }}>🔎</span>
+        <span style={{ fontSize: FS.label }}>🔎</span>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{scale}%</span>
         <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
       </button>
@@ -107,7 +108,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
           >
             <div
               style={{
-                fontSize: 11,
+                fontSize: FS.caption,
                 color: "var(--c-textDim)",
                 letterSpacing: "0.1em",
                 marginBottom: 10,
@@ -158,7 +159,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
             >
               <span
                 style={{
-                  fontSize: 16,
+                  fontSize: FS.subtitle,
                   fontWeight: 700,
                   color: "var(--c-accent)",
                   fontVariantNumeric: "tabular-nums",
@@ -178,7 +179,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
                   cursor: scale === UI_SCALE_DEFAULT ? "default" : "pointer",
                   opacity: scale === UI_SCALE_DEFAULT ? 0.45 : 1,
                   fontFamily: F,
-                  fontSize: 12,
+                  fontSize: FS.small,
                 }}
               >
                 {t("fontscale.reset")}

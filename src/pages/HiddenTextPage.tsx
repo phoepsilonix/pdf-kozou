@@ -382,7 +382,11 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 />
               </div>
               <div
-                style={{ fontSize: 12, color: "var(--c-textSub)", wordBreak: "break-all" as const }}
+                style={{
+                  fontSize: FS.small,
+                  color: "var(--c-textSub)",
+                  wordBreak: "break-all" as const,
+                }}
               >
                 {progress.currentFile}
               </div>
@@ -422,7 +426,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <div style={s.left}>
             <div style={s.sec}>
               <div style={s.secTitle}>{t("hidden.batch_done")}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: FS.label }}>
                 <div style={{ color: "#10b981" }}>
                   {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
                 </div>
@@ -521,7 +525,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   }}
                 />
                 <span style={{ color: dt.color }}>{dt.icon}</span>
-                <span style={{ fontSize: 13 }}>{dt.label}</span>
+                <span style={{ fontSize: FS.body }}>{dt.label}</span>
               </label>
             ))}
           </div>
@@ -545,11 +549,11 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 style={{ marginTop: 2, flexShrink: 0 }}
               />
               <span>
-                <span style={{ fontSize: 13 }}>{t("hidden.skip_type3" as any)}</span>
+                <span style={{ fontSize: FS.body }}>{t("hidden.skip_type3" as any)}</span>
                 <span
                   style={{
                     display: "block",
-                    fontSize: 11,
+                    fontSize: FS.caption,
                     color: "var(--c-textDim)",
                     lineHeight: 1.4,
                     marginTop: 2,
@@ -567,7 +571,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             <div style={s.secTitle}>出力先フォルダ</div>
             <div
               style={{
-                fontSize: 12,
+                fontSize: FS.small,
                 color: outDir ? "var(--c-text)" : "var(--c-textDim)",
                 background: "var(--c-bgCard)",
                 border: "1px solid var(--c-border)",
@@ -583,7 +587,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             <button style={s.navBtn} onClick={pickDir}>
               {t("hidden.output_dir_pick" as any)}
             </button>
-            <div style={{ fontSize: 11, color: "var(--c-textDim)", lineHeight: 1.4 }}>
+            <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", lineHeight: 1.4 }}>
               {t("hidden.output_dir_note")}
             </div>
           </div>
@@ -604,7 +608,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           {/* 注意書き */}
           <div
             style={{
-              fontSize: 11,
+              fontSize: FS.caption,
               color: "#f59e0b",
               background: "#f59e0b18",
               border: "1px solid #f59e0b44",
@@ -622,7 +626,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <div
             style={{
               padding: "8px 12px",
-              fontSize: 12,
+              fontSize: FS.small,
               color: "var(--c-textDim)",
               borderBottom: "1px solid var(--c-border)",
               flexShrink: 0,
@@ -640,7 +644,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   gap: 10,
                   padding: "7px 12px",
                   borderBottom: "1px solid var(--c-border)",
-                  fontSize: 13,
+                  fontSize: FS.body,
                 }}
               >
                 <span
@@ -665,7 +669,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 >
                   {f.filename}
                 </span>
-                <span style={{ color: "var(--c-textDim)", flexShrink: 0, fontSize: 12 }}>
+                <span style={{ color: "var(--c-textDim)", flexShrink: 0, fontSize: FS.small }}>
                   {f.pageCount}p
                 </span>
               </div>
@@ -962,7 +966,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                   }}
                 />
                 <span style={{ color: dt.color }}>{dt.icon}</span>
-                <span style={{ fontSize: 13 }}>{dt.label}</span>
+                <span style={{ fontSize: FS.body }}>{dt.label}</span>
               </label>
             ))}
           </div>
@@ -1013,7 +1017,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    fontSize: 12,
+                    fontSize: FS.small,
                     padding: "1px 0",
                   }}
                 >
@@ -1028,7 +1032,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               {(() => {
                 const wc = groups.filter((g) => g.isWs).reduce((s, g) => s + g.chars.length, 0);
                 return wc > 0 ? (
-                  <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
+                  <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginTop: 2 }}>
                     {t("hidden.whitespace_note", { count: String(wc) })}
                   </div>
                 ) : null;
@@ -1046,7 +1050,12 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                   全解除
                 </button>
                 <span
-                  style={{ fontSize: 11, color: "var(--c-textDim)", flex: 1, textAlign: "right" }}
+                  style={{
+                    fontSize: FS.caption,
+                    color: "var(--c-textDim)",
+                    flex: 1,
+                    textAlign: "right",
+                  }}
                 >
                   {selectedIds.size}行/{selCharCount}字
                 </span>
@@ -1187,7 +1196,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                       ) : (
                         <span style={{ width: 13, flexShrink: 0 }} />
                       )}
-                      <span style={{ color, fontSize: 14, flexShrink: 0 }}>{icon}</span>
+                      <span style={{ color, fontSize: FS.label, flexShrink: 0 }}>{icon}</span>
                       <span style={s.groupLabel}>{g.label}</span>
                       <span style={s.groupReason}>
                         {t((REASON_KEY[g.reason] ?? "hidden.reason_whitespace") as any)}
@@ -1212,7 +1221,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                             <span style={s.charCell}>{c.char === " " ? "·" : c.char || "?"}</span>
                             <span
                               style={{
-                                fontSize: 11,
+                                fontSize: FS.caption,
                                 color: "var(--c-textDim)",
                                 fontFamily: "monospace",
                               }}
@@ -1223,11 +1232,11 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                                 .toUpperCase()
                                 .padStart(4, "0")}
                             </span>
-                            <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
+                            <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
                               ({c.origin[0].toFixed(1)},{c.origin[1].toFixed(1)})
                             </span>
                             {c.extra && (
-                              <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
+                              <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
                                 {c.extra}
                               </span>
                             )}
@@ -1300,7 +1309,12 @@ function ThrPanel({
       {/* プリセットボタン */}
       <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" as const }}>
         <span
-          style={{ fontSize: 11, color: "var(--c-textDim)", alignSelf: "center", flexShrink: 0 }}
+          style={{
+            fontSize: FS.caption,
+            color: "var(--c-textDim)",
+            alignSelf: "center",
+            flexShrink: 0,
+          }}
         >
           {t("hidden.preset_label")}:
         </span>
@@ -1312,7 +1326,7 @@ function ThrPanel({
               style={{
                 padding: "2px 8px",
                 borderRadius: 4,
-                fontSize: 11,
+                fontSize: FS.caption,
                 cursor: "pointer",
                 fontFamily: "inherit",
                 background: active ? "var(--c-accent)" : "var(--c-bgCard)",
@@ -1332,7 +1346,7 @@ function ThrPanel({
             style={{
               padding: "2px 8px",
               borderRadius: 4,
-              fontSize: 11,
+              fontSize: FS.caption,
               cursor: "pointer",
               fontFamily: "inherit",
               background: "var(--c-bgCard)",
@@ -1351,8 +1365,8 @@ function ThrPanel({
       {sliders.map(({ key, label, min, max, step }) => (
         <div key={key} style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 11, color: "var(--c-textSub)" }}>{label}</span>
-            <span style={{ fontSize: 11, fontWeight: 600 }}>
+            <span style={{ fontSize: FS.caption, color: "var(--c-textSub)" }}>{label}</span>
+            <span style={{ fontSize: FS.caption, fontWeight: 600 }}>
               {key === "alpha"
                 ? Math.round((thr as any)[key])
                 : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
@@ -1399,8 +1413,8 @@ const s: Record<string, React.CSSProperties> = {
     margin: "5px 8px",
     flexShrink: 0,
   },
-  expTitle: { fontSize: 12, fontWeight: 700, color: "#a78bfa", marginBottom: 1 },
-  expBody: { fontSize: 11, color: "#c4b5fd", lineHeight: 1.5 },
+  expTitle: { fontSize: FS.small, fontWeight: 700, color: "#a78bfa", marginBottom: 1 },
+  expBody: { fontSize: FS.caption, color: "#c4b5fd", lineHeight: 1.5 },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   layout: { display: "flex", flex: 1, overflow: "hidden" },
   left: {
@@ -1437,25 +1451,25 @@ const s: Record<string, React.CSSProperties> = {
     padding: "5px 8px",
     cursor: "pointer",
     userSelect: "none" as const,
-    fontSize: 13,
+    fontSize: FS.body,
   },
   groupLabel: {
     flex: 1,
     fontFamily: "monospace",
-    fontSize: 13,
+    fontSize: FS.body,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
     color: "var(--c-text)",
   },
   groupReason: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
   groupCount: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     flexShrink: 0,
     minWidth: 28,
@@ -1466,7 +1480,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "none",
     cursor: "pointer",
     color: "var(--c-textDim)",
-    fontSize: 11,
+    fontSize: FS.caption,
     padding: "0 2px",
     flexShrink: 0,
     fontFamily: F,
@@ -1478,7 +1492,7 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 2,
   },
-  charRow: { display: "flex", gap: 8, alignItems: "center", fontSize: 12 },
+  charRow: { display: "flex", gap: 8, alignItems: "center", fontSize: FS.small },
   charCell: {
     fontFamily: "monospace",
     background: "var(--c-bg)",
@@ -1489,7 +1503,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   sec: { display: "flex", flexDirection: "column", gap: 4 },
   secTitle: {
-    fontSize: 11,
+    fontSize: FS.caption,
     fontWeight: 700,
     color: "var(--c-textDim)",
     textTransform: "uppercase" as const,
@@ -1503,19 +1517,19 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     color: "var(--c-text)",
     fontFamily: F,
-    fontSize: 13,
+    fontSize: FS.body,
   },
   pageLbl: {
     flex: 1,
     textAlign: "center" as const,
-    fontSize: 13,
+    fontSize: FS.body,
     fontVariantNumeric: "tabular-nums",
   },
   chkRow: {
     display: "flex",
     alignItems: "center",
     gap: 4,
-    fontSize: 13,
+    fontSize: FS.body,
     cursor: "pointer",
     padding: "1px 0",
   },
@@ -1526,7 +1540,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     cursor: "pointer",
     color: "var(--c-textSub)",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
     textAlign: "left" as const,
   },
@@ -1542,7 +1556,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 3,
     cursor: "pointer",
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
     fontFamily: F,
   },
@@ -1553,7 +1567,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-accent)",
     fontWeight: 700,
-    fontSize: 13,
+    fontSize: FS.body,
     cursor: "pointer",
     fontFamily: F,
     display: "flex",
@@ -1571,7 +1585,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "#a78bfa",
     fontWeight: 700,
-    fontSize: 13,
+    fontSize: FS.body,
     cursor: "pointer",
     fontFamily: F,
     display: "flex",
@@ -1587,7 +1601,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 8,
     padding: "0 6px",
-    fontSize: 11,
+    fontSize: FS.caption,
     fontWeight: 600,
   },
   smBtn: {
@@ -1596,12 +1610,12 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 4,
     cursor: "pointer",
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
     fontFamily: F,
   },
   statusBox: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     padding: "5px 7px",
     background: "var(--c-bgCard)",
@@ -1609,7 +1623,7 @@ const s: Record<string, React.CSSProperties> = {
     wordBreak: "break-all" as const,
   },
   type3Note: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "#f59e0b",
     background: "#f59e0b12",
     borderBottom: "1px solid #f59e0b33",
@@ -1625,7 +1639,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid #f59e0b88",
     borderRadius: 4,
     color: "#f59e0b",
-    fontSize: 12,
+    fontSize: FS.small,
     fontWeight: 700,
     cursor: "pointer",
     fontFamily: "inherit",
@@ -1634,7 +1648,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 4,
     alignSelf: "flex-start" as const,
   },
-  logRow: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0" },
+  logRow: { display: "flex", alignItems: "center", gap: 8, fontSize: FS.body, padding: "4px 0" },
   logFile: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
-  logMeta: { fontSize: 12, color: "var(--c-textSub)", flexShrink: 0 },
+  logMeta: { fontSize: FS.small, color: "var(--c-textSub)", flexShrink: 0 },
 };

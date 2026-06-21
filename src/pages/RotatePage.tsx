@@ -764,7 +764,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   sub: {
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-textSub)",
     maxWidth: 200,
     overflow: "hidden",
@@ -776,7 +776,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     border: `1px solid var(--c-border)`,
     borderRadius: 11,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
   },
   changeBadge: {
@@ -784,7 +784,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-accentBg)",
     border: `1px solid var(--c-accentBd)`,
     borderRadius: 11,
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-accent)",
     fontWeight: 600,
   },
@@ -800,7 +800,7 @@ const s: Record<string, React.CSSProperties> = {
     overflowY: "auto",
   },
   secLabel: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
     letterSpacing: "0.08em",
     textTransform: "uppercase" as const,
@@ -817,7 +817,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
     borderRadius: 8,
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-text)",
     fontFamily: F,
     whiteSpace: "nowrap" as const,
@@ -829,8 +829,8 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-accentBg)",
     color: "var(--c-accent)",
   },
-  rotIcon: { fontSize: 16 },
-  hint: { fontSize: 12, color: "var(--c-textSub)", lineHeight: 1.6, margin: 0 },
+  rotIcon: { fontSize: FS.subtitle },
+  hint: { fontSize: FS.small, color: "var(--c-textSub)", lineHeight: 1.6, margin: 0 },
   resetBtn: {
     padding: "9px 0",
     background: "transparent",
@@ -838,7 +838,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   fileList: {
@@ -880,7 +880,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   fileItemInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
   fileItemName: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -895,7 +895,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
     borderRadius: 6,
     color: "var(--c-textSub)",
-    fontSize: 12,
+    fontSize: FS.small,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -907,7 +907,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-text)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
     flexShrink: 0,
   },
@@ -943,7 +943,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "6px 8px",
     borderTop: `1px solid var(--c-border)`,
   },
-  pageNum: { fontSize: 11, color: "var(--c-textDim)" },
+  pageNum: { fontSize: FS.caption, color: "var(--c-textDim)" },
   rotBadge: {
     fontSize: FS.caption,
     padding: "1px 6px",
@@ -977,7 +977,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: 32,
   },
   previewTitle: { fontSize: 20, fontWeight: 700, color: "var(--c-text)" },
-  previewSub: { fontSize: 13, color: "var(--c-textSub)" },
+  previewSub: { fontSize: FS.body, color: "var(--c-textSub)" },
   previewBtns: {
     display: "flex",
     gap: 12,
@@ -1014,7 +1014,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   resultBody: {
@@ -1027,7 +1027,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   resultIcon: { fontSize: 56, color: "var(--c-accent)" },
   resultStat: { fontSize: 20, fontWeight: 700, color: "var(--c-text)" },
-  resultDir: { fontSize: 12, color: "var(--c-textSub)" },
+  resultDir: { fontSize: FS.small, color: "var(--c-textSub)" },
   batchProgress: {
     flex: 1,
     display: "flex",
@@ -1037,7 +1037,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 16,
     padding: 32,
   },
-  bpTitle: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   bpBarWrap: {
     width: "100%",
     maxWidth: 440,
@@ -1052,7 +1052,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurrent: { fontSize: 13, color: "var(--c-textSub)" },
+  bpCurrent: { fontSize: FS.body, color: "var(--c-textSub)" },
   bpLog: {
     width: "100%",
     maxWidth: 440,
@@ -1073,7 +1073,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpFile: {
     flex: 1,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -1125,14 +1125,14 @@ const s: Record<string, React.CSSProperties> = {
     marginBottom: 6,
   },
   batchCardName: {
-    fontSize: 12,
+    fontSize: FS.small,
     fontWeight: 600,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
   batchCardMeta: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
   },
   rightArea: {

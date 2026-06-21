@@ -331,7 +331,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         <div style={b.title}>
           {t("trim.batch_done_title", { count: String(progress.done.length) })}
         </div>
-        <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>
+        <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
           {usePdfStore.getState().lastSaveDir}
         </div>
         <div style={b.log}>
@@ -400,7 +400,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         <span style={{ fontSize: FS.title, fontWeight: 700 }}>
           {t("trim.batch_title", { count: String(files.length) })}
         </span>
-        <span style={{ fontSize: 13, color: "var(--c-textSub)" }}>{t("trim.apply_all")}</span>
+        <span style={{ fontSize: FS.body, color: "var(--c-textSub)" }}>{t("trim.apply_all")}</span>
       </div>
 
       {/* 本体 */}
@@ -419,7 +419,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           <div
             style={{
               padding: "8px 12px",
-              fontSize: 11,
+              fontSize: FS.caption,
               color: "var(--c-textDim)",
               borderBottom: `1px solid var(--c-border)`,
               background: "var(--c-bgCard)",
@@ -467,7 +467,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             >
               −
             </button>
-            <span style={{ fontSize: 11, minWidth: 36, textAlign: "center" }}>
+            <span style={{ fontSize: FS.caption, minWidth: 36, textAlign: "center" }}>
               {Math.round(zoom * 100)}%
             </span>
             <button
@@ -870,7 +870,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     return (
       <div style={s.center}>
         <span style={{ fontSize: 40, color: "var(--c-err)" }}>✕</span>
-        <span style={{ fontSize: 16, fontWeight: 700, color: "var(--c-err)" }}>エラー</span>
+        <span style={{ fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-err)" }}>
+          エラー
+        </span>
         <pre style={s.errMsg}>{errMsg}</pre>
         <button
           style={s.errBtn}
@@ -1003,7 +1005,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             >
               −
             </button>
-            <span style={{ fontSize: 11, minWidth: 36, textAlign: "center" }}>
+            <span style={{ fontSize: FS.caption, minWidth: 36, textAlign: "center" }}>
               {Math.round(zoom * 100)}%
             </span>
             <button
@@ -1149,7 +1151,7 @@ function ResultView({
           >
             −
           </button>
-          <span style={{ fontSize: 11, minWidth: 36, textAlign: "center" }}>
+          <span style={{ fontSize: FS.caption, minWidth: 36, textAlign: "center" }}>
             {Math.round(localZoom * 100)}%
           </span>
           <button
@@ -1246,7 +1248,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: "50%",
     animation: "spin 0.8s linear infinite",
   },
-  centSub: { color: "var(--c-textSub)", fontSize: 13 },
+  centSub: { color: "var(--c-textSub)", fontSize: FS.body },
 
   sidebar: {
     width: 128,
@@ -1306,7 +1308,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   mainHead: { display: "flex", alignItems: "center", gap: 12 },
   mainTitle: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
-  pageInd: { fontSize: 12, color: "var(--c-textSub)" },
+  pageInd: { fontSize: FS.small, color: "var(--c-textSub)" },
   canvasWrap: {
     flex: 1,
     overflow: "auto",
@@ -1315,7 +1317,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
   },
   zBtn: {
-    fontSize: 12,
+    fontSize: FS.small,
     padding: "2px 6px",
     background: "var(--c-bgCard)",
     border: "1px solid var(--c-border)",
@@ -1335,7 +1337,7 @@ const s: Record<string, React.CSSProperties> = {
   panel: { width: 280, flexShrink: 0, borderLeft: `1px solid var(--c-border)`, overflow: "hidden" },
 
   errMsg: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-err)",
     background: "var(--c-errBg)",
     border: `1px solid var(--c-errBd)`,
@@ -1352,7 +1354,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-err)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
 };
@@ -1381,7 +1383,7 @@ const r: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   btnCompress: {
@@ -1392,7 +1394,7 @@ const r: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 600,
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   btnMeta: {
@@ -1402,7 +1404,7 @@ const r: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-accent)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: "inherit",
   },
   btnSave: {
@@ -1413,12 +1415,12 @@ const r: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 700,
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: FS.label,
     fontFamily: F,
   },
   dis: { opacity: 0.4, cursor: "not-allowed" },
   title: { fontSize: 15, fontWeight: 600, color: "var(--c-text)" },
-  sub: { fontSize: 12, color: "var(--c-textSub)" },
+  sub: { fontSize: FS.small, color: "var(--c-textSub)" },
   gallery: {
     flex: 1,
     overflowY: "auto",
@@ -1438,7 +1440,7 @@ const r: Record<string, React.CSSProperties> = {
     borderRadius: 9,
     padding: 14,
   },
-  pageN: { fontSize: 11, color: "var(--c-textSub)" },
+  pageN: { fontSize: FS.caption, color: "var(--c-textSub)" },
   img: { display: "block", borderRadius: 4, height: "auto" },
   imgPh: {
     width: 200,
@@ -1449,14 +1451,14 @@ const r: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     color: "var(--c-textDim)",
-    fontSize: 12,
+    fontSize: FS.small,
   },
   more: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     color: "var(--c-textDim)",
-    fontSize: 13,
+    fontSize: FS.body,
     padding: "30px 20px",
   },
   footer: {
@@ -1510,7 +1512,7 @@ const b: Record<string, React.CSSProperties> = {
   },
   logFile: {
     flex: 1,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -1523,7 +1525,7 @@ const b: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
     marginTop: 8,
   },

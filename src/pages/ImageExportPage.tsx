@@ -950,7 +950,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               ? t("image.error_count", { count: String(batchProgress.errors.length) })
               : ""}
           </div>
-          <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
+          <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpRow}>
@@ -1007,11 +1007,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   count: String(pdfPageCount),
                 })}
               </div>
-              <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{pdfOutPath}</div>
+              <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{pdfOutPath}</div>
               {statusMsg && (
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: FS.small,
                     color: "var(--c-warn)",
                     background: "var(--c-bgCard)",
                     padding: "8px 12px",
@@ -1029,7 +1029,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div style={s.bpTitle}>
                 {t("image.output_count", { count: String(images.length) })}
               </div>
-              <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
+              <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
               <div style={s.bpLog}>
                 {images.slice(0, 20).map((f, i) => (
                   <div key={i} style={s.bpRow}>
@@ -1040,7 +1040,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 {images.length > 20 && (
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: FS.small,
                       color: "var(--c-textDim)",
                       textAlign: "center",
                       padding: 8,
@@ -1200,7 +1200,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   ))}
                 </div>
                 {impositionMode !== "1up" && (
-                  <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
+                  <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginTop: 2 }}>
                     {(() => {
                       const n = resolvedPageCount || total;
                       const sheetCount = calcSheets(impositionMode, n).length;
@@ -1248,7 +1248,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     </button>
                   ))}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--c-textDim)", marginTop: 2 }}>
+                <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginTop: 2 }}>
                   {(() => {
                     const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
                     const n = resolvedPageCount || total;
@@ -1590,7 +1590,7 @@ function ImpositionPreview({
 
   return (
     <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
-      <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
+      <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
         {t("image.imposition_preview_header" as any, {
           icon: modeInfo.icon,
           mode: modeInfo.label,
@@ -1762,7 +1762,7 @@ function DeImpositionPreview({
 
   return (
     <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
-      <div style={{ fontSize: 11, color: "var(--c-textSub)", marginBottom: 8 }}>
+      <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
         {def.icon} {t(def.labelKey as any)} —{" "}
         {t("image.deimp_page_count" as any, {
           sheets: String(sheetIdx.length),
@@ -1871,7 +1871,7 @@ function DeImpositionPreview({
               {/* 下側のページ番号（rows>1 のときのみ、最終 row） */}
               {def.rows > 1 && numberBar(def.rows - 1)}
 
-              <div style={{ textAlign: "center", fontSize: 11, color: "var(--c-textSub)" }}>
+              <div style={{ textAlign: "center", fontSize: FS.caption, color: "var(--c-textSub)" }}>
                 {t("common.page_n" as any, { n: String(i + 1) })}
               </div>
             </div>
@@ -1890,7 +1890,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     background: "var(--c-accent, #e0457b)",
     color: "#fff",
-    fontSize: 13,
+    fontSize: FS.body,
     fontWeight: 700,
     lineHeight: 1.4,
   },
@@ -1905,7 +1905,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   sub: {
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-textSub)",
     maxWidth: 200,
     overflow: "hidden",
@@ -1917,10 +1917,10 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     border: `1px solid var(--c-border)`,
     borderRadius: 12,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
   },
-  outBadge: { fontSize: 14, color: "var(--c-accent)", fontWeight: 700 },
+  outBadge: { fontSize: FS.label, color: "var(--c-accent)", fontWeight: 700 },
 
   body: {
     flex: 1,
@@ -1948,7 +1948,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 12,
   },
   secLabel: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     letterSpacing: "0.07em",
     textTransform: "uppercase" as const,
@@ -1972,8 +1972,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   fmtBtnOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
   fmtIcon: { fontSize: 22 },
-  fmtName: { fontSize: 14, fontWeight: 700, color: "var(--c-text)" },
-  fmtDesc: { fontSize: 11, color: "var(--c-textSub)", textAlign: "center" as const },
+  fmtName: { fontSize: FS.label, fontWeight: 700, color: "var(--c-text)" },
+  fmtDesc: { fontSize: FS.caption, color: "var(--c-textSub)", textAlign: "center" as const },
 
   modeBtn: {
     flex: 1,
@@ -2004,8 +2004,8 @@ const s: Record<string, React.CSSProperties> = {
     transition: "all 0.1s",
   },
   dpiBtnOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
-  dpiLabel: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
-  dpiDesc: { fontSize: 11, color: "var(--c-textSub)" },
+  dpiLabel: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
+  dpiDesc: { fontSize: FS.caption, color: "var(--c-textSub)" },
 
   // 数値入力 — 大きめ
   numRow: { display: "flex", alignItems: "center", gap: 7 },
@@ -2039,11 +2039,11 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "center" as const,
     fontWeight: 700,
   },
-  numLabel: { fontSize: 11, color: "var(--c-textSub)" },
+  numLabel: { fontSize: FS.caption, color: "var(--c-textSub)" },
   rangeLabels: {
     display: "flex",
     justifyContent: "space-between",
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
   },
 
@@ -2071,17 +2071,17 @@ const s: Record<string, React.CSSProperties> = {
     lineHeight: "48px",
     fontFamily: F,
   },
-  prefixSuffix: { fontSize: 11, color: "var(--c-textDim)", flexShrink: 0 },
+  prefixSuffix: { fontSize: FS.caption, color: "var(--c-textDim)", flexShrink: 0 },
   keepNameRow: {
     display: "flex",
     alignItems: "center",
     gap: 7,
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-text)",
     cursor: "pointer",
   },
   namePreview: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     background: "var(--c-bgCard)",
     border: "1px solid var(--c-border)",
@@ -2100,7 +2100,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
     borderRadius: 7,
     color: "var(--c-textSub)",
-    fontSize: 12,
+    fontSize: FS.small,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -2112,7 +2112,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-text)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
     flexShrink: 0,
   },
@@ -2121,7 +2121,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     border: `1px solid var(--c-accentBd)`,
     borderRadius: 7,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     lineHeight: 1.6,
   },
@@ -2131,7 +2131,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-errBg)",
     border: `1px solid var(--c-errBd)`,
     borderRadius: 7,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-err)",
     lineHeight: 1.6,
     fontWeight: 500,
@@ -2162,7 +2162,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurrent: { fontSize: 13, color: "var(--c-textSub)" },
+  bpCurrent: { fontSize: FS.body, color: "var(--c-textSub)" },
   bpLog: {
     width: "100%",
     maxWidth: 480,
@@ -2183,18 +2183,18 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpFile: {
     flex: 1,
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpMeta: { fontSize: 12, color: "var(--c-textSub)", flexShrink: 0 },
+  bpMeta: { fontSize: FS.small, color: "var(--c-textSub)", flexShrink: 0 },
 
   preview: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   previewHead: {
     padding: "11px 18px",
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-textSub)",
     borderBottom: `1px solid var(--c-border)`,
     flexShrink: 0,
@@ -2236,11 +2236,11 @@ const s: Record<string, React.CSSProperties> = {
   },
   batchFileInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
   batchFileName: {
-    fontSize: 14,
+    fontSize: FS.label,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  batchFileMeta: { fontSize: 12, color: "var(--c-textSub)" },
+  batchFileMeta: { fontSize: FS.small, color: "var(--c-textSub)" },
 };

@@ -716,7 +716,7 @@ function InfoDrawer({
         <div style={{ flex: 1 }} />
         {(filePath.toLowerCase().endsWith(".pdf") || isImagePath(filePath)) && (
           <button
-            style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
+            style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: FS.caption }}
             onClick={() => setMetaEditOpen(true)}
             title={t("meta_edit.title")}
             aria-label={t("meta_edit.title")}
@@ -725,7 +725,7 @@ function InfoDrawer({
           </button>
         )}
         <button
-          style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: 11 }}
+          style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: FS.caption }}
           onClick={handleCopyAll}
         >
           {allCopied ? t("viewer.copied") : t("viewer.copy_all")}
@@ -794,7 +794,7 @@ function InfoDrawer({
           <div
             style={{
               color: "var(--c-textDim)",
-              fontSize: 11,
+              fontSize: FS.caption,
               padding: "10px 0",
               textAlign: "center",
             }}
@@ -959,7 +959,9 @@ function SearchBar({
         autoFocus
       />
       {searching && (
-        <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>{t("viewer.searching")}</span>
+        <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
+          {t("viewer.searching")}
+        </span>
       )}
       {!searching && q && (
         <span style={ss.count}>
@@ -1669,9 +1671,14 @@ const ss: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     background: "var(--c-bg)",
     color: "var(--c-text)",
-    fontSize: 13,
+    fontSize: FS.body,
   },
-  count: { fontSize: 11, color: "var(--c-textDim)", minWidth: 60, textAlign: "center" as const },
+  count: {
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
+    minWidth: 60,
+    textAlign: "center" as const,
+  },
   navBtn: {
     width: 26,
     height: 26,
@@ -1680,7 +1687,7 @@ const ss: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     background: "var(--c-bgSub)",
     color: "var(--c-text)",
-    fontSize: 12,
+    fontSize: FS.small,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1690,7 +1697,7 @@ const ss: Record<string, React.CSSProperties> = {
     border: "none",
     color: "var(--c-textDim)",
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: FS.label,
   },
 };
 
@@ -1720,7 +1727,7 @@ const ds: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     zIndex: 1,
   },
-  drawerTitle: { fontWeight: 700, fontSize: 13, color: "var(--c-text)" },
+  drawerTitle: { fontWeight: 700, fontSize: FS.body, color: "var(--c-text)" },
   drawerBody: { flex: 1, padding: "10px 12px", overflowY: "auto" },
   section: {
     fontSize: FS.caption,
@@ -1747,7 +1754,7 @@ const ds: Record<string, React.CSSProperties> = {
   },
   value: {
     flex: 1,
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-text)",
     wordBreak: "break-word",
     lineHeight: 1.5,
@@ -1759,7 +1766,7 @@ const ds: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 4,
     color: "var(--c-textDim)",
-    fontSize: 11,
+    fontSize: FS.caption,
     cursor: "pointer",
     padding: "1px 5px",
     lineHeight: 1.4,
@@ -1773,7 +1780,7 @@ const ds: Record<string, React.CSSProperties> = {
     background: "transparent",
     border: "none",
     color: "var(--c-textDim)",
-    fontSize: 14,
+    fontSize: FS.label,
     cursor: "pointer",
     padding: "2px 6px",
   },
@@ -1844,7 +1851,7 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "left",
   },
   filePaneName: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-text)",
     whiteSpace: "nowrap",
     overflow: "hidden",
@@ -1893,12 +1900,12 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     background: "var(--c-bgSub)",
     color: "var(--c-text)",
-    fontSize: 14,
+    fontSize: FS.label,
   },
-  pageInfo: { fontSize: 12, color: "var(--c-text)", minWidth: 80, textAlign: "center" },
+  pageInfo: { fontSize: FS.small, color: "var(--c-text)", minWidth: 80, textAlign: "center" },
   title: { fontWeight: 700, fontSize: FS.title, fontFamily: F },
   fileSub: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     maxWidth: 200,
     overflow: "hidden",
@@ -1906,14 +1913,14 @@ const s: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
   },
   pageBadge: {
-    fontSize: 11,
+    fontSize: FS.caption,
     background: "var(--c-border)",
     padding: "2px 8px",
     borderRadius: 10,
     marginLeft: 8,
   },
   paneHead: {
-    fontSize: 11,
+    fontSize: FS.caption,
     fontWeight: 700,
     padding: "8px 12px",
     color: "var(--c-textDim)",
@@ -1928,18 +1935,18 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     background: "var(--c-bgSub)",
     color: "var(--c-text)",
-    fontSize: 14,
+    fontSize: FS.label,
   },
   btnOn: { background: "var(--c-accent, #3a7a4a)", color: "#fff", borderColor: "transparent" },
   zBtnSm: {
     height: 24,
     padding: "0 8px",
     cursor: "pointer",
-    fontSize: 11,
+    fontSize: FS.caption,
     borderRadius: 4,
     border: "1px solid var(--c-border)",
     background: "var(--c-bgSub)",
     color: "var(--c-text)",
   },
-  zVal: { fontSize: 12, minWidth: 40, textAlign: "center" },
+  zVal: { fontSize: FS.small, minWidth: 40, textAlign: "center" },
 };

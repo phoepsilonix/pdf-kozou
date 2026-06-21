@@ -406,12 +406,12 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
           >
             {batchProgress.errors.length ? "⚠" : "✓"}
           </span>
-          <div style={{ fontSize: 16, fontWeight: 600 }}>
+          <div style={{ fontSize: FS.subtitle, fontWeight: 600 }}>
             {t("split.success_count", { count: String(batchProgress.done.length) })}
             {batchProgress.errors.length > 0 &&
               t("split.error_count", { count: String(batchProgress.errors.length) })}
           </div>
-          <div style={{ fontSize: 12, color: "var(--c-textSub)" }}>{outDir}</div>
+          <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
@@ -446,7 +446,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         </PageHeader>
         <div style={s.center}>
           <span style={{ fontSize: 42, color: "var(--c-accent)" }}>✓</span>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>{t("booklet.done")}</span>
+          <span style={{ fontSize: FS.subtitle, fontWeight: 600 }}>{t("booklet.done")}</span>
           <span style={{ color: "var(--c-textSub)" }}>
             {t("common.pages", { count: String(nSheets) })} / {mb} MB
           </span>
@@ -723,7 +723,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
-  sub: { fontSize: 13, color: "var(--c-textDim)", marginLeft: 8 },
+  sub: { fontSize: FS.body, color: "var(--c-textDim)", marginLeft: 8 },
   body: {
     flex: 1,
     overflowY: "auto",
@@ -774,7 +774,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 13,
+    fontSize: FS.body,
     transition: "background 0.2s, color 0.2s", // テーマ切り替え時を滑らかにする場合
   },
   previewEmpty: {
@@ -783,7 +783,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     color: "var(--c-textDim)",
-    fontSize: 13,
+    fontSize: FS.body,
     textAlign: "center",
   },
   center: {
@@ -795,7 +795,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 14,
   },
   section: { display: "flex", flexDirection: "column", gap: 8 },
-  label: { fontSize: 13, fontWeight: 600, color: "var(--c-textSub)" },
+  label: { fontSize: FS.body, fontWeight: 600, color: "var(--c-textSub)" },
   btnRow: {
     display: "flex",
     gap: 8,
@@ -809,7 +809,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 14,
+    fontSize: FS.label,
   },
   choiceSel: {
     border: "1px solid var(--c-accent)",
@@ -820,7 +820,7 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-textSub)",
   },
   num: {
@@ -838,18 +838,18 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     border: "1px solid var(--c-border)",
     background: "var(--c-bgCard)",
-    fontSize: 14,
+    fontSize: FS.label,
     color: "var(--c-text)",
     display: "flex",
     flexDirection: "column",
     gap: 6,
   },
-  note: { fontSize: 12, color: "var(--c-textDim)" },
+  note: { fontSize: FS.small, color: "var(--c-textDim)" },
   keepNameRow: {
     display: "flex",
     alignItems: "center",
     gap: 7,
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-text)",
     cursor: "pointer",
   },
@@ -862,10 +862,10 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     color: "var(--c-text)",
     fontFamily: F,
-    fontSize: 14,
+    fontSize: FS.label,
   },
   namePreview: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     background: "var(--c-bgCard)",
     border: "1px solid var(--c-border)",
@@ -884,7 +884,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
     borderRadius: 6,
     color: "var(--c-textSub)",
-    fontSize: 11,
+    fontSize: FS.caption,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -896,7 +896,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-text)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
     flexShrink: 0,
   },
@@ -909,7 +909,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 18,
     padding: 40,
   },
-  bpTitle: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   bpBar: {
     width: "100%",
     maxWidth: 480,
@@ -924,7 +924,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurrent: { fontSize: 13, color: "var(--c-textSub)" },
+  bpCurrent: { fontSize: FS.body, color: "var(--c-textSub)" },
   bpLog: {
     width: "100%",
     maxWidth: 480,
@@ -945,13 +945,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpLogFile: {
     flex: 1,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpLogMeta: { fontSize: 11, color: "var(--c-textSub)", flexShrink: 0 },
+  bpLogMeta: { fontSize: FS.caption, color: "var(--c-textSub)", flexShrink: 0 },
   sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
   sheetCol: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
   cell: {
@@ -963,5 +963,5 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 0,
   },
   cellImg: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" },
-  sheetLabel: { fontSize: 12, color: "var(--c-textSub)" },
+  sheetLabel: { fontSize: FS.small, color: "var(--c-textSub)" },
 };

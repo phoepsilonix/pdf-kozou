@@ -31,6 +31,7 @@ import { useA11y } from "./hooks/useA11y";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { tts } from "./lib/tts";
 import { useI18n } from "./lib/i18n";
+import { FS } from "./lib/typography";
 
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
 import {
@@ -1212,7 +1213,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   emptyIcon: { fontSize: 44, color: "var(--c-borderHi)" },
   emptyTitle: { fontSize: 18, fontWeight: 600, color: "var(--c-textSub)" },
-  emptySub: { fontSize: 14, color: "var(--c-textDim)" },
+  emptySub: { fontSize: FS.label, color: "var(--c-textDim)" },
   btnAddBig: {
     padding: "12px 32px",
     background: "var(--c-accentBg)",
@@ -1240,7 +1241,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-accent)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
     fontWeight: 600,
   },
@@ -1251,7 +1252,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   btnClear: {
@@ -1261,14 +1262,14 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-err)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   summary: { display: "flex", alignItems: "center", gap: 9, height: 28 },
-  sumSel: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  sumSel: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   sumDot: { color: "var(--c-textDim)" },
   sumInfo: { fontSize: 15, color: "var(--c-textSub)" },
-  sumNone: { fontSize: 14, color: "var(--c-textDim)" },
+  sumNone: { fontSize: FS.label, color: "var(--c-textDim)" },
   toolBar: {
     // CSS Grid の auto-fill で均等な多段グリッドにする。
     // 幅に応じて列数が自動で変わり、最終行が1個でもセル幅のまま（横長に伸びない）。
@@ -1305,8 +1306,8 @@ const s: Record<string, React.CSSProperties> = {
     opacity: 0.38,
   },
   toolIcon: { fontSize: 24 },
-  toolLabel: { fontSize: 14, fontWeight: 700, color: "inherit" },
-  toolDesc: { fontSize: 11, color: "var(--c-textSub)", textAlign: "center" as const },
+  toolLabel: { fontSize: FS.label, fontWeight: 700, color: "inherit" },
+  toolDesc: { fontSize: FS.caption, color: "var(--c-textSub)", textAlign: "center" as const },
   dragOverlay: {
     position: "fixed" as const, // fixedにすることで他の要素を動かさない
     inset: 0,
@@ -1327,7 +1328,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-errBd)`,
     borderRadius: 9,
     color: "var(--c-err)",
-    fontSize: 13,
+    fontSize: FS.body,
     maxWidth: 460,
     textAlign: "center" as const,
   },
@@ -1362,10 +1363,10 @@ const fr: Record<string, React.CSSProperties> = {
     transition: "all 0.1s",
   },
   checkOn: { background: "var(--c-accent)", borderColor: "var(--c-accent)" },
-  checkMark: { fontSize: 13, color: "var(--c-accentText)", fontWeight: 700, lineHeight: 1 },
-  handle: { fontSize: 16, color: "var(--c-borderHi)", cursor: "grab", flexShrink: 0 },
+  checkMark: { fontSize: FS.body, color: "var(--c-accentText)", fontWeight: 700, lineHeight: 1 },
+  handle: { fontSize: FS.subtitle, color: "var(--c-borderHi)", cursor: "grab", flexShrink: 0 },
   num: {
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-textDim)",
     width: 22,
     textAlign: "center" as const,
@@ -1379,7 +1380,7 @@ const fr: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  meta: { fontSize: 12, color: "var(--c-textSub)" },
+  meta: { fontSize: FS.small, color: "var(--c-textSub)" },
   del: {
     width: 26,
     height: 26,
@@ -1444,7 +1445,7 @@ const sh: Record<string, React.CSSProperties> = {
   },
   div: { width: 1, height: 20, background: "var(--c-border)", margin: "0 3px", flexShrink: 0 },
   filename: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     maxWidth: 180,
     overflow: "hidden",
@@ -1453,7 +1454,7 @@ const sh: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   batchLabel: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-accent)",
     fontWeight: 600,
     whiteSpace: "nowrap",
@@ -1470,7 +1471,7 @@ const sh: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     color: "var(--c-textSub)",
     fontFamily: F,
-    fontSize: 12,
+    fontSize: FS.small,
     transition: "all 0.1s",
     whiteSpace: "nowrap",
     flexShrink: 0,
@@ -1480,7 +1481,7 @@ const sh: Record<string, React.CSSProperties> = {
     borderColor: "var(--c-accentBd)",
     color: "var(--c-accent)",
   },
-  tabLabel: { fontSize: 11 },
+  tabLabel: { fontSize: FS.caption },
   navRight: {
     display: "flex",
     alignItems: "center",
@@ -1495,7 +1496,7 @@ const sh: Record<string, React.CSSProperties> = {
     color: "var(--c-textSub)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 12,
+    fontSize: FS.small,
     flexShrink: 0,
   },
   BgBtn: {

@@ -7,6 +7,7 @@ import { useState, useCallback } from "react";
 //import { THEMES, getTheme, type ThemeId } from "../lib/themes";
 import { THEMES, type ThemeId } from "../lib/themes";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 
 interface Props {
   currentId: ThemeId;
@@ -43,7 +44,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
           color: "var(--c-textSub)",
           cursor: "pointer",
           fontFamily: F,
-          fontSize: 12,
+          fontSize: FS.small,
           transition: "all 0.12s",
         }}
         title={t("theme.switcher_title")}
@@ -76,7 +77,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
             <div
               style={{
                 padding: "8px 14px",
-                fontSize: 11,
+                fontSize: FS.caption,
                 color: "var(--c-textDim)",
                 letterSpacing: "0.1em",
                 borderBottom: `1px solid var(--c-border)`,
@@ -119,10 +120,10 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
                     />
                   ))}
                 </div>
-                <span style={{ fontSize: 14 }}>{theme.emoji}</span>
+                <span style={{ fontSize: FS.label }}>{theme.emoji}</span>
                 <span
                   style={{
-                    fontSize: 13,
+                    fontSize: FS.body,
                     color: theme.id === currentId ? "var(--c-accent)" : "var(--c-text)",
                     fontWeight: theme.id === currentId ? 700 : 400,
                   }}
@@ -130,7 +131,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
                   {t(`theme.${theme.id}`)}
                 </span>
                 {theme.id === currentId && (
-                  <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--c-accent)" }}>
+                  <span style={{ marginLeft: "auto", fontSize: FS.body, color: "var(--c-accent)" }}>
                     ✓
                   </span>
                 )}

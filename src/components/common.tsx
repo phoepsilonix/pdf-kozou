@@ -5,6 +5,7 @@
 // src/components/common.tsx — 共通 UI コンポーネント
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
 import { useI18n } from "../lib/i18n";
 
 export function Spinner({ label }: { label?: string }) {
@@ -31,7 +32,9 @@ export function Spinner({ label }: { label?: string }) {
         }}
       />
       {label && (
-        <span style={{ color: "var(--c-textSub)", fontSize: 14, fontFamily: F }}>{label}</span>
+        <span style={{ color: "var(--c-textSub)", fontSize: FS.label, fontFamily: F }}>
+          {label}
+        </span>
       )}
     </div>
   );
@@ -53,10 +56,12 @@ export function ErrorView({ msg, onBack }: { msg: string; onBack: () => void }) 
       }}
     >
       <span style={{ fontSize: 42, color: "var(--c-err)" }}>✕</span>
-      <span style={{ fontSize: 16, fontWeight: 600, color: "#ff7070" }}>{t("error.prefix")}</span>
+      <span style={{ fontSize: FS.subtitle, fontWeight: 600, color: "#ff7070" }}>
+        {t("error.prefix")}
+      </span>
       <pre
         style={{
-          fontSize: 12,
+          fontSize: FS.small,
           color: "#cc5555",
           background: "var(--c-errBg)",
           border: `1px solid var(--c-errBd)`,
@@ -77,7 +82,7 @@ export function ErrorView({ msg, onBack }: { msg: string; onBack: () => void }) 
           borderRadius: 8,
           color: "#cc5555",
           cursor: "pointer",
-          fontSize: 14,
+          fontSize: FS.label,
           fontFamily: F,
         }}
         onClick={onBack}
@@ -123,7 +128,7 @@ export function BtnBack({
         borderRadius: 7,
         color: "var(--c-textSub)",
         cursor: "pointer",
-        fontSize: 13,
+        fontSize: FS.body,
         fontFamily: F,
       }}
     >
@@ -156,7 +161,7 @@ export function BtnPrimary({
         color: disabled ? "var(--c-textDim)" : "var(--c-accent)",
         fontWeight: 700,
         cursor: disabled ? "not-allowed" : "pointer",
-        fontSize: 14,
+        fontSize: FS.label,
         fontFamily: F,
         opacity: disabled ? 0.5 : 1,
       }}
@@ -235,7 +240,7 @@ export function ThumbCard({
           <div style={{ width, height: h, background: "var(--c-border)", borderRadius: 3 }} />
         )}
       </div>
-      <span style={{ fontSize: 13, color: selected ? "var(--c-accent)" : "var(--c-textDim)" }}>
+      <span style={{ fontSize: FS.body, color: selected ? "var(--c-accent)" : "var(--c-textDim)" }}>
         {pageNum}
       </span>
     </button>

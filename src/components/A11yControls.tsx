@@ -19,6 +19,7 @@ import { tts } from "../lib/tts";
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "../lib/i18n";
 import type { Locale } from "../lib/i18n";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
 
 // ── 読み上げトグルボタン ──────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ export function TtsToggleButton() {
     color: enabled ? "var(--c-accent)" : "var(--c-textSub)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 12,
+    fontSize: FS.small,
     display: "flex",
     alignItems: "center",
     gap: 4,
@@ -80,7 +81,7 @@ export function TtsToggleButton() {
       aria-pressed={enabled}
       aria-disabled={!isSupported}
     >
-      <span style={{ fontSize: 14 }}>{enabled ? "🔊" : "🔇"}</span>
+      <span style={{ fontSize: FS.label }}>{enabled ? "🔊" : "🔇"}</span>
       <span>{t("tts.label")}</span>
     </button>
   );
@@ -117,7 +118,7 @@ export function LocaleSelector() {
     color: "var(--c-textSub)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 12,
+    fontSize: FS.small,
     flexShrink: 0,
   };
 
@@ -172,7 +173,7 @@ export function LocaleSelector() {
                   fontWeight: loc === locale ? 700 : 400,
                   cursor: "pointer",
                   fontFamily: F,
-                  fontSize: 13,
+                  fontSize: FS.body,
                   textAlign: "left" as const,
                 }}
               >

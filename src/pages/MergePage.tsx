@@ -530,7 +530,7 @@ useEffect(() => {
             {/* 大枠ラベル */}
             <div
               style={{
-                fontSize: 12,
+                fontSize: FS.small,
                 color: "var(--c-accent)",
                 fontWeight: 700,
                 letterSpacing: "0.08em",
@@ -856,7 +856,7 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
   },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
-  sub: { fontSize: 14, color: "var(--c-textSub)" },
+  sub: { fontSize: FS.label, color: "var(--c-textSub)" },
   btnClear: {
     padding: "5px 14px",
     background: "transparent",
@@ -864,7 +864,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-err)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
   },
 
@@ -885,7 +885,7 @@ const s: Record<string, React.CSSProperties> = {
   dropZoneOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
   dropIcon: { fontSize: 48, color: "var(--c-borderHi)" },
   dropTitle: { fontSize: 19, fontWeight: 600, color: "var(--c-textSub)" },
-  dropSub: { fontSize: 13, color: "var(--c-textDim)" },
+  dropSub: { fontSize: FS.body, color: "var(--c-textDim)" },
   btnAddBig: {
     padding: "12px 32px",
     background: "var(--c-accentBg)",
@@ -894,7 +894,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 700,
     cursor: "pointer",
-    fontSize: 16,
+    fontSize: FS.subtitle,
     fontFamily: F,
   },
 
@@ -933,7 +933,7 @@ const s: Record<string, React.CSSProperties> = {
     transform: "translateY(-2px)",
   },
   itemSeq: {
-    fontSize: 13,
+    fontSize: FS.body,
     fontWeight: 700,
     color: "var(--c-textDim)",
     width: 22,
@@ -950,18 +950,18 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     background: "var(--c-border)",
     borderRadius: 4,
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
   },
   itemInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
   itemName: {
-    fontSize: 14,
+    fontSize: FS.label,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  itemPages: { fontSize: 12, color: "var(--c-textSub)" },
+  itemPages: { fontSize: FS.small, color: "var(--c-textSub)" },
   moveBtns: { display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 },
   moveBtn: {
     width: 30,
@@ -974,7 +974,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 5,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   delBtn: {
@@ -987,7 +987,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "none",
     color: "var(--c-textDim)",
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: FS.label,
     fontFamily: F,
     flexShrink: 0,
   },
@@ -1008,11 +1008,11 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
     flexShrink: 0,
   },
-  addHint: { fontSize: 11, color: "var(--c-textDim)" },
+  addHint: { fontSize: FS.caption, color: "var(--c-textDim)" },
 
   execArea: {
     flexShrink: 0,
@@ -1023,11 +1023,11 @@ const s: Record<string, React.CSSProperties> = {
     borderTop: `1px solid var(--c-border)`,
   },
   summaryRow: { display: "flex", alignItems: "center", gap: 9, justifyContent: "center" },
-  sumFile: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  sumFile: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   sumDot: { color: "var(--c-textDim)" },
-  sumPages: { fontSize: 14, color: "var(--c-textSub)" },
-  sumArrow: { fontSize: 16, color: "var(--c-textDim)" },
-  sumOut: { fontSize: 16, fontWeight: 700, color: "var(--c-accent)" },
+  sumPages: { fontSize: FS.label, color: "var(--c-textSub)" },
+  sumArrow: { fontSize: FS.subtitle, color: "var(--c-textDim)" },
+  sumOut: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-accent)" },
   execBtns: { display: "flex", gap: 9, justifyContent: "center" },
   btnPreview: {
     padding: "12px 26px",
@@ -1041,14 +1041,14 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   btnDis: { opacity: 0.35, cursor: "not-allowed" },
-  execHint: { textAlign: "center" as const, fontSize: 13, color: "var(--c-textDim)" },
+  execHint: { textAlign: "center" as const, fontSize: FS.body, color: "var(--c-textDim)" },
 
   // プレビュー
   previewBody: { flex: 1, overflowY: "auto", padding: "0 18px 16px", minHeight: 0 },
   segDivider: { display: "flex", alignItems: "center", gap: 10, padding: "14px 0 8px" },
   segLine: { flex: 1, height: 1, background: "var(--c-border)" },
-  segLabel: { fontSize: 14, fontWeight: 700, color: "var(--c-accent)", whiteSpace: "nowrap" },
-  segPageCount: { fontSize: 11, color: "var(--c-textSub)", fontWeight: 400 },
+  segLabel: { fontSize: FS.label, fontWeight: 700, color: "var(--c-accent)", whiteSpace: "nowrap" },
+  segPageCount: { fontSize: FS.caption, color: "var(--c-textSub)", fontWeight: 400 },
   previewThumbs: { display: "flex", flexWrap: "wrap" as const, gap: 8, paddingBottom: 4 },
   prevThumbWrap: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 },
   prevLocalNum: { fontSize: FS.caption, color: "var(--c-textDim)" },
@@ -1071,7 +1071,7 @@ const s: Record<string, React.CSSProperties> = {
   resultIcon: { fontSize: 52, color: "var(--c-green)" },
   resultStat: { fontSize: 22, fontWeight: 700, color: "var(--c-text)" },
   resultSub: { fontSize: 15, color: "var(--c-textSub)" },
-  resultDetail: { fontSize: 12, color: "var(--c-textDim)" },
+  resultDetail: { fontSize: FS.small, color: "var(--c-textDim)" },
   compressBtn: {
     padding: "12px 32px",
     background: "var(--c-accentBg)",
@@ -1091,7 +1091,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-accent)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: "inherit",
   },
 };

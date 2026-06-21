@@ -231,7 +231,7 @@ export function MetadataEditModal({
         {/* 編集フォーム */}
         <div style={s.body}>
           {loading && (
-            <div style={{ color: "var(--c-textDim)", fontSize: 13, padding: "8px 0" }}>
+            <div style={{ color: "var(--c-textDim)", fontSize: FS.body, padding: "8px 0" }}>
               {t("meta_edit.loading")}
             </div>
           )}
@@ -352,13 +352,13 @@ const s: Record<string, React.CSSProperties> = {
     border: "none",
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 16,
+    fontSize: FS.subtitle,
     padding: "2px 6px",
     borderRadius: 4,
   },
   filepath: {
     padding: "6px 18px",
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     borderBottom: "1px solid var(--c-border)",
     flexShrink: 0,
@@ -382,7 +382,7 @@ const s: Record<string, React.CSSProperties> = {
   label: {
     width: 82,
     flexShrink: 0,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     textAlign: "right" as const,
   },
@@ -393,7 +393,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 6,
     color: "var(--c-text)",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
     outline: "none",
   },
@@ -403,14 +403,14 @@ const s: Record<string, React.CSSProperties> = {
     borderTop: "1px dashed var(--c-border)",
   },
   readonlyHeading: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     marginBottom: 8,
     letterSpacing: "0.06em",
   },
   readonlyValue: {
     color: "var(--c-textDim)",
-    fontSize: 12,
+    fontSize: FS.small,
     background: "transparent",
     border: "1px solid transparent",
     cursor: "default",
@@ -421,7 +421,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-errBg)",
     border: "1px solid var(--c-errBd)",
     borderRadius: 6,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "#cc5555",
     flexShrink: 0,
   },
@@ -431,7 +431,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "rgba(var(--c-accent-rgb), 0.1)",
     border: "1px solid var(--c-accent)",
     borderRadius: 6,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-accent)",
     flexShrink: 0,
   },
@@ -453,7 +453,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
     flexShrink: 0,
   },
@@ -464,7 +464,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "#000",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontWeight: 700,
     fontFamily: F,
     minWidth: 80,
@@ -476,7 +476,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   outputNote: {
     padding: "6px 18px",
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-ok, #4caf50)",
     background: "rgba(76,175,80,0.08)",
     borderBottom: "1px solid var(--c-border)",

@@ -573,7 +573,9 @@ export function CompressPage({
     return (
       <div style={c.center}>
         <span style={{ fontSize: 38, color: "var(--c-err)" }}>✕</span>
-        <span style={{ fontSize: 16, fontWeight: 700, color: "var(--c-err)" }}>エラー</span>
+        <span style={{ fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-err)" }}>
+          エラー
+        </span>
         <pre style={c.errPre}>{errMsg}</pre>
         <button
           style={c.btnBackSm}
@@ -746,7 +748,7 @@ export function CompressPage({
               >
                 <div
                   style={{
-                    fontSize: 11,
+                    fontSize: FS.caption,
                     color: "var(--c-accent)",
                     fontWeight: 700,
                     marginBottom: 6,
@@ -768,7 +770,7 @@ export function CompressPage({
                 <>
                   <div
                     style={{
-                      fontSize: 13,
+                      fontSize: FS.body,
                       fontWeight: 700,
                       display: "flex",
                       alignItems: "center",
@@ -778,7 +780,13 @@ export function CompressPage({
                     <span style={{ color: "var(--c-accent)" }}>✓</span>
                     {t("compress.saved_title")}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--c-textSub)", wordBreak: "break-all" }}>
+                  <div
+                    style={{
+                      fontSize: FS.caption,
+                      color: "var(--c-textSub)",
+                      wordBreak: "break-all",
+                    }}
+                  >
                     {savedFilePath}
                   </div>
                   <div style={c.saveChoiceBtns}>
@@ -860,7 +868,7 @@ export function CompressPage({
             <button
               style={{
                 padding: "2px 10px",
-                fontSize: 11,
+                fontSize: FS.caption,
                 borderRadius: 4,
                 cursor: "pointer",
                 border: "1px solid var(--c-borderHi)",
@@ -875,7 +883,7 @@ export function CompressPage({
             <button
               style={{
                 padding: "2px 10px",
-                fontSize: 11,
+                fontSize: FS.caption,
                 borderRadius: 4,
                 cursor: "pointer",
                 border: "1px solid var(--c-borderHi)",
@@ -896,7 +904,7 @@ export function CompressPage({
             style={{
               marginLeft: 12,
               padding: "4px 10px",
-              fontSize: 11,
+              fontSize: FS.caption,
               borderRadius: 4,
               background: "var(--c-errBg)",
               color: "var(--c-err)",
@@ -993,7 +1001,7 @@ export function CompressPage({
             <div
               style={{
                 padding: "24px 22px",
-                fontSize: 12,
+                fontSize: FS.small,
                 color: "var(--c-textDim)",
                 lineHeight: 1.6,
               }}
@@ -1055,7 +1063,7 @@ function PRow({ label, val }: { label: string; val: string | React.ReactNode }) 
         justifyContent: "space-between",
         padding: "4px 0",
         borderBottom: `1px solid var(--c-border)`,
-        fontSize: 12,
+        fontSize: FS.small,
       }}
     >
       <span style={{ color: "var(--c-textDim)" }}>{label}</span>
@@ -1089,18 +1097,18 @@ const c: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-accentBd)`,
     borderRadius: 12,
     color: "var(--c-accent)",
-    fontSize: 11,
+    fontSize: FS.caption,
   },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   fileSub: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     maxWidth: 160,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  pageSub: { fontSize: 11, color: "var(--c-textDim)" },
+  pageSub: { fontSize: FS.caption, color: "var(--c-textDim)" },
 
   scrollArea: { flex: 1, overflowY: "auto", minHeight: 0 },
   presetGrid: {
@@ -1124,8 +1132,8 @@ const c: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
   },
   cardIcon: { fontSize: 30 },
-  cardLabel: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
-  cardDesc: { fontSize: 11, color: "var(--c-textSub)", textAlign: "center" },
+  cardLabel: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
+  cardDesc: { fontSize: FS.caption, color: "var(--c-textSub)", textAlign: "center" },
   cardNote: {
     fontSize: FS.caption,
     color: "var(--c-textDim)",
@@ -1137,11 +1145,11 @@ const c: Record<string, React.CSSProperties> = {
   optLabel: {
     display: "flex",
     alignItems: "center",
-    fontSize: 13,
+    fontSize: FS.body,
     color: "var(--c-text)",
     cursor: "pointer",
   },
-  optHint: { fontSize: 11, color: "var(--c-textSub)" },
+  optHint: { fontSize: FS.caption, color: "var(--c-textSub)" },
 
   execArea: {
     padding: "24px 22px",
@@ -1174,7 +1182,7 @@ const c: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     border: `1px solid var(--c-border)`,
     borderRadius: 8,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -1186,7 +1194,7 @@ const c: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-borderHi)`,
     borderRadius: 8,
     color: "var(--c-text)",
-    fontSize: 12,
+    fontSize: FS.small,
     cursor: "pointer",
     fontFamily: F,
   },
@@ -1209,9 +1217,9 @@ const c: Record<string, React.CSSProperties> = {
     borderRadius: "50%",
     animation: "spin 0.8s linear infinite",
   },
-  spinSub: { color: "var(--c-textSub)", fontSize: 14 },
+  spinSub: { color: "var(--c-textSub)", fontSize: FS.label },
   errPre: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-err)",
     background: "var(--c-errBg)",
     border: `1px solid var(--c-errBd)`,
@@ -1228,7 +1236,7 @@ const c: Record<string, React.CSSProperties> = {
     borderRadius: 7,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   btnMetaEdit: {
@@ -1240,7 +1248,7 @@ const c: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 700,
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
   btnBackSm: {
@@ -1250,7 +1258,7 @@ const c: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 13,
+    fontSize: FS.body,
     fontFamily: F,
   },
 
@@ -1279,7 +1287,7 @@ const c: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     color: "var(--c-textDim)",
-    fontSize: 13,
+    fontSize: FS.body,
   },
   statsCol: { flex: 1, display: "flex", flexDirection: "column", gap: 14, minWidth: 0 },
   statBig: {
@@ -1291,7 +1299,7 @@ const c: Record<string, React.CSSProperties> = {
     lineHeight: 1,
   },
   statInfo: { padding: "4px 0 12px" },
-  statLabel: { fontSize: 11, color: "var(--c-textDim)", marginBottom: 4 },
+  statLabel: { fontSize: FS.caption, color: "var(--c-textDim)", marginBottom: 4 },
   statVal: { fontSize: 15, color: "var(--c-textSub)" },
   paramsBox: {
     padding: "12px 14px",
@@ -1315,7 +1323,7 @@ const c: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-warnBd)`,
     borderRadius: 6,
     color: "var(--c-warn)",
-    fontSize: 12,
+    fontSize: FS.small,
   },
   infoBox: {
     padding: "8px 12px",
@@ -1323,7 +1331,7 @@ const c: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-accentBd)`,
     borderRadius: 6,
     color: "var(--c-textSub)",
-    fontSize: 12,
+    fontSize: FS.small,
   },
   saveChoiceBox: {
     marginTop: "auto",
@@ -1357,10 +1365,10 @@ const c: Record<string, React.CSSProperties> = {
     transition: "all 0.12s",
   },
   saveBtnIcon: { fontSize: 22 },
-  saveBtnMain: { fontSize: 14, fontWeight: 700, color: "var(--c-text)" },
-  saveBtnSub: { fontSize: 11, color: "var(--c-textSub)" },
+  saveBtnMain: { fontSize: FS.label, fontWeight: 700, color: "var(--c-text)" },
+  saveBtnSub: { fontSize: FS.caption, color: "var(--c-textSub)" },
 
-  bpTitle: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   bpBarWrap: {
     width: "100%",
     maxWidth: 440,
@@ -1375,8 +1383,8 @@ const c: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurFile: { fontSize: 12, color: "var(--c-textSub)" },
-  bpOutDir: { fontSize: 11, color: "var(--c-textDim)" },
+  bpCurFile: { fontSize: FS.small, color: "var(--c-textSub)" },
+  bpOutDir: { fontSize: FS.caption, color: "var(--c-textDim)" },
   bpLog: {
     width: "100%",
     maxWidth: 480,
@@ -1397,13 +1405,13 @@ const c: Record<string, React.CSSProperties> = {
   },
   bpFile: {
     flex: 1,
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpPct: { fontSize: 12, fontWeight: 700, color: "#4fe090" },
+  bpPct: { fontSize: FS.small, fontWeight: 700, color: "#4fe090" },
   btnChain: {
     flex: 1,
     padding: "8px 12px",
@@ -1411,10 +1419,10 @@ const c: Record<string, React.CSSProperties> = {
     color: "#000",
     border: "none",
     borderRadius: 6,
-    fontSize: 12,
+    fontSize: FS.small,
     fontWeight: 700,
     cursor: "pointer",
     fontFamily: F,
   },
-  bpErrMsg: { fontSize: 11, color: "var(--c-err)" },
+  bpErrMsg: { fontSize: FS.caption, color: "var(--c-err)" },
 };

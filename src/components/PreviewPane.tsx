@@ -6,6 +6,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useI18n } from "../lib/i18n";
 import { usePreview } from "../hooks/usePreview";
+import { FS } from "../lib/typography";
 
 interface PreviewPaneProps {
   pageKey: string;
@@ -110,7 +111,7 @@ const s: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "10px 16px",
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     borderBottom: "1px solid var(--c-border)",
     flexShrink: 0,
@@ -132,7 +133,7 @@ const s: Record<string, CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 5,
     cursor: "pointer",
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textSub)",
     fontFamily: "inherit",
     flexShrink: 0,
@@ -173,7 +174,7 @@ const s: Record<string, CSSProperties> = {
     gap: 8,
   },
   placeholderText: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textDim)",
   },
   showBtn: {
@@ -183,7 +184,7 @@ const s: Record<string, CSSProperties> = {
     border: "1px solid var(--c-border)",
     borderRadius: 6,
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     fontFamily: "inherit",
   },

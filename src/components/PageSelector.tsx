@@ -3,6 +3,7 @@
 // -------------------------------------------------------------------------
 import { useI18n } from "../lib/i18n";
 import { tts } from "../lib/tts";
+import { FS } from "../lib/typography";
 
 // src/components/PageSelector.tsx — 共通ページ範囲指定コンポーネント
 // 対応表記: "1-3,5,7-", "odd", "even", "-5" (末尾から5ページ), "all"
@@ -133,7 +134,7 @@ export function PageSelector({
         {label && (
           <span
             style={{
-              fontSize: 11,
+              fontSize: FS.caption,
               color: "var(--c-textDim)",
               letterSpacing: "0.08em",
               textTransform: "uppercase",
@@ -170,21 +171,21 @@ export function PageSelector({
                 border: `1px solid var(--c-borderHi)`,
                 borderRadius: 6,
                 color: "var(--c-text)",
-                fontSize: 16,
+                fontSize: FS.subtitle,
                 height: 36,
                 fontFamily: F,
                 width: "100%",
                 boxSizing: "border-box",
               }}
             />
-            <span style={{ fontSize: 11, color: "var(--c-textDim)", lineHeight: 1.5 }}>
+            <span style={{ fontSize: FS.caption, color: "var(--c-textDim)", lineHeight: 1.5 }}>
               書式: <code style={{ color: "var(--c-textSub)" }}>1-3,5,8-</code>{" "}
               {t("page_selector.hint")}
             </span>
           </div>
         )}
         {totalPages > 0 && (
-          <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
+          <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
             {t("page_selector.total", { total: String(totalPages) })}
             {value && value !== "all" && t("page_selector.specified", { value })}
           </span>
@@ -197,7 +198,7 @@ export function PageSelector({
         {label && (
           <span
             style={{
-              fontSize: 11,
+              fontSize: FS.caption,
               color: "var(--c-textDim)",
               letterSpacing: "0.08em",
               textTransform: "uppercase",
@@ -247,20 +248,20 @@ export function PageSelector({
                 border: `1px solid var(--c-borderHi)`,
                 borderRadius: 6,
                 color: "var(--c-text)",
-                fontSize: 13,
+                fontSize: FS.body,
                 fontFamily: F,
                 width: "100%",
                 boxSizing: "border-box",
               }}
             />
-            <span style={{ fontSize: 11, color: "var(--c-textDim)", lineHeight: 1.5 }}>
+            <span style={{ fontSize: FS.caption, color: "var(--c-textDim)", lineHeight: 1.5 }}>
               書式: <code style={{ color: "var(--c-textSub)" }}>1-3,5,8-</code>{" "}
               {t("page_selector.hint")}
             </span>
           </div>
         )}
         {totalPages > 0 && (
-          <span style={{ fontSize: 11, color: "var(--c-textDim)" }}>
+          <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
             {t("page_selector.total", { total: String(totalPages) })}
             {value && value !== "all" && t("page_selector.specified", { value })}
           </span>

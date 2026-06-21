@@ -196,14 +196,14 @@ export function TrimControls({
         {/* バッチ用: 出力フォルダ選択（実行ボタンの直上に配置） */}
         {onPickDir !== undefined && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: "var(--c-textDim)", marginBottom: 4 }}>
+            <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginBottom: 4 }}>
               {t("trim_controls.output_folder")}
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <div
                 style={{
                   flex: 1,
-                  fontSize: 11,
+                  fontSize: FS.caption,
                   color: "var(--c-text)",
                   background: "var(--c-bgSub)",
                   border: "1px solid var(--c-border)",
@@ -219,7 +219,7 @@ export function TrimControls({
               <button
                 type="button"
                 style={{
-                  fontSize: 11,
+                  fontSize: FS.caption,
                   padding: "4px 10px",
                   background: "var(--c-bgCard)",
                   border: "1px solid var(--c-border)",
@@ -257,7 +257,7 @@ export function TrimControls({
             style={{ marginTop: 2, flexShrink: 0 }}
           />
           <span>
-            <span style={{ fontSize: 11 }}>{t("trim.crop_cleanup" as any)}</span>
+            <span style={{ fontSize: FS.caption }}>{t("trim.crop_cleanup" as any)}</span>
             <span
               style={{
                 display: "block",
@@ -345,7 +345,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     color: "var(--c-text)",
     fontFamily: F,
-    fontSize: 14,
+    fontSize: FS.label,
     height: "100%",
     overflow: "hidden",
   },
@@ -361,7 +361,7 @@ const s: Record<string, React.CSSProperties> = {
   section: { display: "flex", flexDirection: "column", gap: 10 },
   heading: {
     margin: 0,
-    fontSize: 11,
+    fontSize: FS.caption,
     letterSpacing: "0.1em",
     textTransform: "uppercase",
     color: "var(--c-textDim)",
@@ -373,7 +373,7 @@ const s: Record<string, React.CSSProperties> = {
     letterSpacing: 0,
     textTransform: "none",
   },
-  hint2: { margin: 0, fontSize: 11, color: "var(--c-textSub)", lineHeight: 1.5 },
+  hint2: { margin: 0, fontSize: FS.caption, color: "var(--c-textSub)", lineHeight: 1.5 },
 
   cross: { display: "flex", flexDirection: "column", alignItems: "center", gap: 8 },
   crossTop: { display: "flex", justifyContent: "center" },
@@ -387,12 +387,12 @@ const s: Record<string, React.CSSProperties> = {
     gap: 2,
     minWidth: 100,
   },
-  pageSize: { fontSize: 12, color: "var(--c-textSub)" },
+  pageSize: { fontSize: FS.small, color: "var(--c-textSub)" },
   pageUnit: { fontSize: FS.caption, color: "var(--c-textDim)" },
-  arrow: { fontSize: 14, color: "var(--c-textDim)" },
+  arrow: { fontSize: FS.label, color: "var(--c-textDim)" },
 
   field: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 },
-  fieldLabel: { fontSize: 12, color: "var(--c-textSub)", fontWeight: 600 },
+  fieldLabel: { fontSize: FS.small, color: "var(--c-textSub)", fontWeight: 600 },
   input: {
     width: 76,
     height: 42,
@@ -419,7 +419,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     color: "var(--c-textSub)",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: FS.small,
     fontFamily: F,
     transition: "all 0.12s",
   },
@@ -445,7 +445,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-textSub)",
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 13,
+    fontSize: FS.body,
   },
   btnApply: {
     flex: 1,
@@ -457,8 +457,8 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: "pointer",
     fontFamily: F,
-    fontSize: 14,
+    fontSize: FS.label,
   },
   btnDisabled: { opacity: 0.4, cursor: "not-allowed" },
-  hint: { margin: 0, fontSize: 11, color: "var(--c-textDim)", lineHeight: 1.6 },
+  hint: { margin: 0, fontSize: FS.caption, color: "var(--c-textDim)", lineHeight: 1.6 },
 };
