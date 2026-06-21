@@ -63,8 +63,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   // Ctrl+S からプレビュー画面の doSave を呼ぶための ref
   const saveHandlerRef = useRef<(() => void) | null>(null);
   const compressHandlerRef = useRef<(() => void) | null>(null);
-  // 回転後（preview 遷移直後）に「そのまま保存」へフォーカスするための ref
-  const saveBtnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     announceScreen("screen.rotate");
@@ -117,15 +115,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [pageSpec, setPageSpec] = useState("");
-
-  // 回転後の preview 画面に入ったら「そのまま保存」ボタンへフォーカス
-  useEffect(() => {
-    if (phase === "preview") {
-      // レンダリング確定後にフォーカス
-      const id = window.setTimeout(() => saveBtnRef.current?.focus(), 0);
-      return () => window.clearTimeout(id);
-    }
-  }, [phase]);
 
   useEffect(() => {
     if (!isBatch) return;
@@ -446,21 +435,15 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             >
               ✏️ {t("meta_edit.title")}
             </button>
-            <button
-              style={s.compressBtn}
+            <BtnPrimary
               onClick={() => setPhase("compress")}
-              aria-label={t("aria.compress_save_btn")}
+              ariaLabel={t("aria.compress_save_btn")}
             >
               {t("rotate.save_compress")}
-            </button>
-            <button
-              ref={saveBtnRef}
-              style={s.saveBtnPrimary}
-              onClick={doSave}
-              aria-label={t("aria.save_btn")}
-            >
+            </BtnPrimary>
+            <BtnPrimary onClick={doSave} autoFocus ariaLabel={t("aria.save_btn")}>
               {t("rotate.save")}
-            </button>
+            </BtnPrimary>
           </div>
           <button style={s.btnBack2} onClick={() => setPhase("edit")}>
             {t("rotate.redo")}
@@ -995,28 +978,6 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: "pointer",
     fontSize: FS.body,
-    fontFamily: F,
-  },
-  saveBtnPrimary: {
-    padding: "12px 32px",
-    background: "var(--c-accentBg)",
-    border: `1px solid var(--c-accentBd)`,
-    borderRadius: 9,
-    color: "var(--c-accent)",
-    fontWeight: 700,
-    cursor: "pointer",
-    fontSize: FS.label,
-    fontFamily: F,
-  },
-  compressBtn: {
-    padding: "12px 28px",
-    background: "var(--c-accentBg)",
-    border: `1px solid var(--c-accentBd)`,
-    borderRadius: 9,
-    color: "var(--c-accent)",
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: FS.label,
     fontFamily: F,
   },
   btnBack2: {

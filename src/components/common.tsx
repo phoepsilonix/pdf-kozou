@@ -142,17 +142,20 @@ export function BtnPrimary({
   disabled,
   children,
   autoFocus,
+  ariaLabel,
 }: {
   onClick: () => void;
   disabled?: boolean;
   children: React.ReactNode;
   autoFocus?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       autoFocus={autoFocus}
+      aria-label={ariaLabel}
       style={{
         padding: "11px 28px",
         background: disabled ? "var(--c-bgCard)" : "var(--c-accentBg)",

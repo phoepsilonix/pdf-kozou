@@ -507,10 +507,10 @@ useEffect(() => {
           <span style={s.title}>{t("merge.preview_title")}</span>
           <span style={s.sub}>{t("merge.preview_sub", { pages: String(totalPages) })}</span>
           <div style={{ flex: 1 }} />
-          <BtnPrimary onClick={() => handleSave(true)} aria-label={t("aria.compress_save_btn")}>
+          <BtnPrimary onClick={() => handleSave(true)} ariaLabel={t("aria.compress_save_btn")}>
             {t("merge.save_compress")}
           </BtnPrimary>
-          <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")} autoFocus>
+          <BtnPrimary onClick={() => handleSave(false)} ariaLabel={t("aria.save_btn")} autoFocus>
             {t("merge.save")}
           </BtnPrimary>
         </PageHeader>
@@ -604,10 +604,10 @@ useEffect(() => {
             }}
           />
           <div style={{ display: "flex", gap: 8 }}>
-            <BtnPrimary onClick={() => handleSave(true)} aria-label={t("aria.compress_save_btn")}>
+            <BtnPrimary onClick={() => handleSave(true)} ariaLabel={t("aria.compress_save_btn")}>
               {t("merge.save_compress")}
             </BtnPrimary>
-            <BtnPrimary onClick={() => handleSave(false)} aria-label={t("aria.save_btn")}>
+            <BtnPrimary onClick={() => handleSave(false)} ariaLabel={t("aria.save_btn")}>
               {t("merge.save")}
             </BtnPrimary>
           </div>
