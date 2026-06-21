@@ -31,6 +31,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
@@ -396,7 +397,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 16, fontWeight: 700 }}>
+        <span style={{ fontSize: FS.title, fontWeight: 700 }}>
           {t("trim.batch_title", { count: String(files.length) })}
         </span>
         <span style={{ fontSize: 13, color: "var(--c-textSub)" }}>{t("trim.apply_all")}</span>
@@ -898,7 +899,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     return (
       <div style={s.center}>
         <span style={{ fontSize: 40, color: "var(--c-accent)" }}>✓</span>
-        <span style={{ fontSize: 16, fontWeight: 700 }}>{t("trim.saved_title")}</span>
+        <span style={{ fontSize: FS.title, fontWeight: 700 }}>{t("trim.saved_title")}</span>
         <span
           style={{
             ...s.centSub,
@@ -1304,7 +1305,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 12,
   },
   mainHead: { display: "flex", alignItems: "center", gap: 12 },
-  mainTitle: { fontSize: 15, fontWeight: 600, color: "var(--c-text)" },
+  mainTitle: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   pageInd: { fontSize: 12, color: "var(--c-textSub)" },
   canvasWrap: {
     flex: 1,

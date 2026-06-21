@@ -17,11 +17,12 @@ import {
   type SanitizeOrigin,
   joinPath,
 } from "../lib/tauri";
-import { Spinner } from "../components/common";
+import { Spinner, PageHeader } from "../components/common";
 import { useI18n } from "../lib/i18n";
 import { buildName } from "../lib/filename";
 import { useA11y } from "../hooks/useA11y";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { type FileEntry } from "../store/usePdfStore";
 
@@ -351,6 +352,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   if (phase === "processing" && progress) {
     return (
       <div style={s.root}>
+        <PageHeader>
+          <span style={s.title}>{t("hidden.title_batch")}</span>
+        </PageHeader>
         <BatchBanner />
         <div style={s.layout}>
           {/* 左: 進捗情報 */}
@@ -409,6 +413,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     const skipped = progress.done.filter((d) => d.hits === 0).length;
     return (
       <div style={s.root}>
+        <PageHeader>
+          <span style={s.title}>{t("hidden.title_batch")}</span>
+        </PageHeader>
         <BatchBanner />
         <div style={s.layout}>
           {/* 左: サマリー */}
@@ -492,6 +499,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   // ── 設定画面 ──────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
+      <PageHeader>
+        <span style={s.title}>{t("hidden.title_batch")}</span>
+      </PageHeader>
       <BatchBanner />
       <div style={s.layout}>
         {/* 左: 設定・実行 */}
@@ -895,6 +905,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
 
   return (
     <div style={s.root}>
+      <PageHeader>
+        <span style={s.title}>{t("hidden.title_single")}</span>
+      </PageHeader>
       <SingleBanner />
       <div style={s.layout}>
         {/* 左パネル */}
@@ -1388,6 +1401,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   expTitle: { fontSize: 12, fontWeight: 700, color: "#a78bfa", marginBottom: 1 },
   expBody: { fontSize: 11, color: "#c4b5fd", lineHeight: 1.5 },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   layout: { display: "flex", flex: 1, overflow: "hidden" },
   left: {
     width: 230,
