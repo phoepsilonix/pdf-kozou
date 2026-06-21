@@ -549,6 +549,15 @@ export function CompressPage({
     setError,
   ]);
 
+  if (saving && !isBatch) {
+    return (
+      <div style={c.center}>
+        <div style={c.spinner} />
+        <span style={c.spinSub}>{t("common.saving")}</span>
+      </div>
+    );
+  }
+
   if (phase === "processing" && !isBatch) {
     return (
       <div style={c.center}>
@@ -646,11 +655,6 @@ export function CompressPage({
 
     return (
       <div style={c.root}>
-        {saving && (
-          <div style={c.busyOverlay}>
-            <Spinner label={t("common.saving")} />
-          </div>
-        )}
         <div style={c.header}>
           <button
             style={c.btnBack}
@@ -1099,17 +1103,6 @@ const c: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     fontFamily: F,
     overflow: "hidden",
-  },
-  // 保存処理中のオーバーレイ（待機カーソル＋スピナーで処理中を明示）
-  busyOverlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 2000,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "rgba(0,0,0,0.35)",
-    cursor: "wait",
   },
   header: {
     display: "flex",
