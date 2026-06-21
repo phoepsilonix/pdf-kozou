@@ -1152,7 +1152,7 @@ function ToolShell({
 
 const s: Record<string, React.CSSProperties> = {
   root: {
-    minHeight: "100vh",
+    minHeight: "100%",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -1396,7 +1396,7 @@ const fr: Record<string, React.CSSProperties> = {
 };
 
 const sh: Record<string, React.CSSProperties> = {
-  root: { display: "flex", flexDirection: "column", height: "100vh", background: "var(--c-bg)" },
+  root: { display: "flex", flexDirection: "column", height: "100%", background: "var(--c-bg)" },
   nav: {
     display: "flex",
     flexDirection: "column",

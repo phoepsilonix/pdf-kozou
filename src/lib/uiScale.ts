@@ -40,13 +40,30 @@ export function saveUiScale(pct: number) {
   } catch {}
 }
 
-/** html 要素へ zoom を適用（ブラウザのズームと同等に全体が比率拡大される） */
+/**
+ * #root 要素へ zoom を適用し、寸法を 1/scale で補正する。
+ *
+ * `zoom: S` を掛けると要素は描画上 S 倍に拡大されるため、`100vh`/`100vw` を
+ * そのまま使うと画面からはみ出してしまう（縦に溢れて画面下部固定のボタンが
+ * 隠れる）。そこで #root の寸法を `calc(100vh / S)` 等に補正すると、ズーム後に
+ * ちょうど「画面1枚分」として描画される。これによりアプリの外枠は常に
+ * ビューポートにロックされ、内側の設定リストだけがスクロールし、下部固定の
+ * 実行ボタンは全ズーム率で常時表示されたまま、文字・余白のみが拡大される。
+ *
+ * `zoom` は WebKit/Blink で実装されており Tauri(WebKitGTK/WKWebView) で動作する。
+ * 型定義に zoom が無いため any 経由で設定する。
+ */
 export function applyUiScale(pct: number) {
   if (typeof document === "undefined") return;
   const scale = clampUiScale(pct) / 100;
-  // `zoom` は WebKit/Blink で実装されており Tauri(WebKitGTK/WKWebView) で動作する。
-  // 型定義に zoom が無いため any 経由で設定する。
-  (document.documentElement.style as any).zoom = String(scale);
+  const root = document.getElementById("root");
+  if (!root) return;
+  const style = root.style as any;
+  style.zoom = String(scale);
+  style.width = `calc(100vw / ${scale})`;
+  style.height = `calc(100vh / ${scale})`;
+  // 補正後の高さを超えるコンテンツ（ホーム画面など）は #root 内でスクロールさせる
+  style.overflow = "auto";
 }
 
 /** 永続化された値を読み込んで即時適用する（起動時に呼ぶ） */
