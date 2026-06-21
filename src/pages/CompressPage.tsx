@@ -30,6 +30,7 @@ import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
 import { buildName, appendName, stem } from "../lib/filename";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
+import { Spinner } from "../components/common";
 
 interface Props {
   filePath: string;
@@ -645,6 +646,11 @@ export function CompressPage({
 
     return (
       <div style={c.root}>
+        {saving && (
+          <div style={c.busyOverlay}>
+            <Spinner label={t("common.saving")} />
+          </div>
+        )}
         <div style={c.header}>
           <button
             style={c.btnBack}
@@ -1093,6 +1099,17 @@ const c: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     fontFamily: F,
     overflow: "hidden",
+  },
+  // 保存処理中のオーバーレイ（待機カーソル＋スピナーで処理中を明示）
+  busyOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 2000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(0,0,0,0.35)",
+    cursor: "wait",
   },
   header: {
     display: "flex",
