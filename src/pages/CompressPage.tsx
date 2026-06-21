@@ -857,11 +857,11 @@ export function CompressPage({
   return (
     <div style={c.root}>
       <div style={c.header}>
+        <span style={c.title}>{t("compress.settings_title")}</span>
         <span style={c.fileSub} title={fname}>
           {currentSource !== (sourceFile ?? filePath) ? `🔗 ${fname}` : fname}
         </span>
         {currentSource && <span style={c.chainBadge}>{t("compress.chain_badge")}</span>}
-        <span style={c.title}>{t("compress.settings_title")}</span>
 
         {gsAvailable && (
           <div style={{ display: "flex", gap: 4, marginLeft: 16 }}>
