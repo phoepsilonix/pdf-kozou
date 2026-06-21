@@ -4,12 +4,12 @@
 
 // src/components/FontScaleControl.tsx
 //
-// アプリ全体の表示サイズ（フォント含む）を調整するコントロール。
+// アプリ全体の表示サイズを調整するコントロール。
 // ThemeSwitcher / A11yControls の隣に配置することを想定。
 //
 // クリックでポップオーバーを開き、スライダー・[−]/[＋]・リセットで
 // 80%〜150% を 5% 刻みで調整する。値は localStorage に永続化され、
-// html 要素の zoom として即時反映される（レイアウト比率は維持）。
+// #root 要素の zoom として即時反映される（レイアウト比率は維持）。
 
 import { useState, useCallback } from "react";
 import { F } from "../lib/theme";
@@ -78,7 +78,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <span style={{ fontSize: 14 }}>🔠</span>
+        <span style={{ fontSize: 14 }}>🔎</span>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{scale}%</span>
         <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
       </button>

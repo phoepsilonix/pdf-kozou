@@ -134,9 +134,9 @@
     "changed_en": "Language changed to English"
   },
   "fontscale": {
-    "label": "Display size (font)",
+    "label": "Display size",
     "select_aria": "Adjust display size",
-    "select_title": "Adjust display size (font)",
+    "select_title": "Adjust display size",
     "decrease": "Smaller",
     "increase": "Larger",
     "reset": "Reset"
