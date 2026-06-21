@@ -484,7 +484,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         pdfInfo={pdfInfo}
         sourceFile={savedPath}
         outputBaseName={stem(filePath) + opSuffix("rotated")}
-        onDone={() => setPhase("result")}
         onBack={() => setPhase("preview")}
       />
     );

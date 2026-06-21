@@ -35,7 +35,6 @@ interface Props {
   filePath: string;
   pdfInfo: PdfInfo;
   sourceFile?: string; // 連携元ファイル（trim後など）
-  onDone?: () => void;
   /** 連携元（trim/rotate 等）から来た場合に、前の保存選択画面へ戻すコールバック。
    *  指定時はヘッダーに「← 前の画面に戻る」ボタンを表示する。 */
   onBack?: () => void;
@@ -128,7 +127,6 @@ export function CompressPage({
   filePath,
   pdfInfo,
   sourceFile,
-  onDone,
   onBack,
   outputBaseName,
   batchFiles,
@@ -426,7 +424,9 @@ export function CompressPage({
         });
       }
       setSavedFilePath(sp);
-      if (onDone) onDone();
+      // 連携(trim/rotate/merge)時もここで親へ遷移せず、CompressPage 自身の
+      // 「保存完了」画面（savedFilePath による文書情報編集つき）を表示する。
+      // 即時に onDone() で親へ遷移すると、その編集画面に到達できないため呼ばない。
     } catch (e) {
       setError(String(e));
     } finally {
@@ -443,7 +443,6 @@ export function CompressPage({
     objectStream,
     pickSave,
     setError,
-    onDone,
     outputBaseName,
   ]);
 
@@ -454,14 +453,14 @@ export function CompressPage({
     try {
       await invoke("copy_file", { src: inputFile, dst: sp });
       setSavedFilePath(sp);
-      if (onDone) onDone();
+      // 同上: 親へ即時遷移せず、保存完了画面（文書情報編集つき）を表示する。
     } catch (e) {
       //await compressPdf(inputFile, sp, { preset: "light" });
       setError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [inputFile, filePath, pickSave, setError, onDone, outputBaseName]);
+  }, [inputFile, filePath, pickSave, setError, outputBaseName]);
 
   const handleBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
