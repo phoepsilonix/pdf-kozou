@@ -745,7 +745,9 @@ function InfoDrawer({
         </div>
         <div style={ds.row}>
           <span style={ds.label}>{t("viewer.meta_path")}</span>
-          <span style={{ ...ds.value, wordBreak: "break-all", fontSize: 10 }}>{filePath}</span>
+          <span style={{ ...ds.value, wordBreak: "break-all", fontSize: FS.caption }}>
+            {filePath}
+          </span>
           <button style={ds.copyBtn} onClick={() => navigator.clipboard.writeText(filePath)}>
             ⎘
           </button>
@@ -1721,7 +1723,7 @@ const ds: Record<string, React.CSSProperties> = {
   drawerTitle: { fontWeight: 700, fontSize: 13, color: "var(--c-text)" },
   drawerBody: { flex: 1, padding: "10px 12px", overflowY: "auto" },
   section: {
-    fontSize: 10,
+    fontSize: FS.caption,
     fontWeight: 700,
     letterSpacing: "0.08em",
     color: "var(--c-textDim)",
@@ -1736,7 +1738,13 @@ const ds: Record<string, React.CSSProperties> = {
     padding: "5px 0",
     borderBottom: "1px solid var(--c-border)",
   },
-  label: { flexShrink: 0, width: 72, fontSize: 10, color: "var(--c-textDim)", paddingTop: 1 },
+  label: {
+    flexShrink: 0,
+    width: 72,
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
+    paddingTop: 1,
+  },
   value: {
     flex: 1,
     fontSize: 11,
@@ -1790,7 +1798,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   thumbItemOn: { borderColor: "var(--c-accent)" },
-  thumbN: { fontSize: 10, marginTop: 4, color: "var(--c-textDim)" },
+  thumbN: { fontSize: FS.caption, marginTop: 4, color: "var(--c-textDim)" },
   thumbNOn: { color: "var(--c-accent)" },
   filePane: {
     width: 220,
@@ -1843,7 +1851,7 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     fontWeight: 500,
   },
-  filePaneMeta: { fontSize: 10, color: "var(--c-textDim)" },
+  filePaneMeta: { fontSize: FS.caption, color: "var(--c-textDim)" },
   mainView: {
     flex: 1,
     display: "flex",

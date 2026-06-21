@@ -15,6 +15,7 @@ import React, { useEffect, useState } from "react";
 
 import { usePdfStore } from "../store/usePdfStore";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 
 // ── ShortcutGroup サブコンポーネント ────────────────────────────────────────
 
@@ -48,7 +49,7 @@ function ShortcutGroup({
         {badge && (
           <span
             style={{
-              fontSize: 10,
+              fontSize: FS.caption,
               padding: "1px 6px",
               background: "rgba(var(--c-accent-rgb),0.15)",
               color: "var(--c-accent)",

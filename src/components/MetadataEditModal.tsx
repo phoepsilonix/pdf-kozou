@@ -19,6 +19,7 @@ import { setPdfMetadata, getPdfInfo, getImageMetadata, setImageMetadata } from "
 import { useI18n } from "../lib/i18n";
 import { tts } from "../lib/tts";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
 
 // ── 型定義 ─────────────────────────────────────────────────────────────────
 
@@ -220,7 +221,7 @@ export function MetadataEditModal({
 
         {/* ファイルパス */}
         <div style={s.filepath}>
-          <span style={{ color: "var(--c-textDim)", marginRight: 6, fontSize: 10 }}>
+          <span style={{ color: "var(--c-textDim)", marginRight: 6, fontSize: FS.caption }}>
             {isOutputFile ? t("meta_edit.file_label_output") : t("meta_edit.file_label_source")}
           </span>
           <span>{filePath.split(/[/\\]/).pop()}</span>

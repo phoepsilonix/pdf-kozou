@@ -1051,7 +1051,7 @@ const s: Record<string, React.CSSProperties> = {
   segPageCount: { fontSize: 11, color: "var(--c-textSub)", fontWeight: 400 },
   previewThumbs: { display: "flex", flexWrap: "wrap" as const, gap: 8, paddingBottom: 4 },
   prevThumbWrap: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 },
-  prevLocalNum: { fontSize: 9, color: "var(--c-textDim)" },
+  prevLocalNum: { fontSize: FS.caption, color: "var(--c-textDim)" },
   previewFooter: {
     flexShrink: 0,
     display: "flex",

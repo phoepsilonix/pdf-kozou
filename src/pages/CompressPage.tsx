@@ -757,7 +757,7 @@ export function CompressPage({
                 <button style={c.btnChain} onClick={handleChainNext}>
                   {useGs ? t("compress.chain_hint_mupdf") : t("compress.chain_hint_gs")}
                 </button>
-                <div style={{ fontSize: 10, color: "var(--c-textDim)", marginTop: 4 }}>
+                <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginTop: 4 }}>
                   {t("compress.chain_note")}
                 </div>
               </div>
@@ -1126,7 +1126,12 @@ const c: Record<string, React.CSSProperties> = {
   cardIcon: { fontSize: 30 },
   cardLabel: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
   cardDesc: { fontSize: 11, color: "var(--c-textSub)", textAlign: "center" },
-  cardNote: { fontSize: 10, color: "var(--c-textDim)", textAlign: "center", lineHeight: 1.5 },
+  cardNote: {
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
+    textAlign: "center",
+    lineHeight: 1.5,
+  },
 
   optRow: { display: "flex", alignItems: "center", gap: 12, padding: "14px 22px 2px" },
   optLabel: {
@@ -1298,7 +1303,7 @@ const c: Record<string, React.CSSProperties> = {
     gap: 2,
   },
   paramsHd: {
-    fontSize: 10,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     letterSpacing: "0.1em",
     textTransform: "uppercase" as const,

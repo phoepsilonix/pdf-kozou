@@ -352,7 +352,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             >
               <span style={{ color: "var(--c-err)" }}>✕</span>
               <span style={b.logFile}>{e.f}</span>
-              <span style={{ fontSize: 10, color: "var(--c-err)" }}>{e.msg}</span>
+              <span style={{ fontSize: FS.caption, color: "var(--c-err)" }}>{e.msg}</span>
             </div>
           ))}
         </div>
@@ -479,7 +479,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             <button style={s.zBtn} onClick={() => setZoom(1.0)}>
               100%
             </button>
-            <span style={{ fontSize: 10, color: "var(--c-textDim)", marginLeft: 4 }}>
+            <span style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginLeft: 4 }}>
               {t("trim.scroll_hint")}
             </span>
           </div>
@@ -1265,12 +1265,12 @@ const s: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid var(--c-border)`,
   },
   sbTitle: {
-    fontSize: 10,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     letterSpacing: "0.1em",
     textTransform: "uppercase",
   },
-  sbCount: { fontSize: 10, color: "var(--c-textDim)" },
+  sbCount: { fontSize: FS.caption, color: "var(--c-textDim)" },
   thumbList: {
     flex: 1,
     overflowY: "auto",
@@ -1294,7 +1294,7 @@ const s: Record<string, React.CSSProperties> = {
   thumbOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
   thumbImg: { width: 104, height: "auto", borderRadius: 2, display: "block" },
   thumbPh: { width: 104, height: 140, background: "var(--c-border)", borderRadius: 2 },
-  thumbN: { fontSize: 10, color: "var(--c-textDim)" },
+  thumbN: { fontSize: FS.caption, color: "var(--c-textDim)" },
 
   main: {
     flex: 1,

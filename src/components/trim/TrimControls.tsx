@@ -10,6 +10,7 @@ import type { TrimMargins, PageSelection } from "../../lib/tauri";
 import { PageSelector, resolvePageSpec } from "../PageSelector";
 import { PageSizeSelector } from "../PageSizeSelector";
 import { F } from "../../lib/theme";
+import { FS } from "../../lib/typography";
 import { useI18n } from "../../lib/i18n";
 import { tts } from "../../lib/tts";
 
@@ -260,7 +261,7 @@ export function TrimControls({
             <span
               style={{
                 display: "block",
-                fontSize: 10,
+                fontSize: FS.caption,
                 color: "var(--c-textDim)",
                 lineHeight: 1.4,
                 marginTop: 2,
@@ -366,7 +367,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-textDim)",
   },
   headingOpt: {
-    fontSize: 10,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     fontWeight: 400,
     letterSpacing: 0,
@@ -387,7 +388,7 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 100,
   },
   pageSize: { fontSize: 12, color: "var(--c-textSub)" },
-  pageUnit: { fontSize: 10, color: "var(--c-textDim)" },
+  pageUnit: { fontSize: FS.caption, color: "var(--c-textDim)" },
   arrow: { fontSize: 14, color: "var(--c-textDim)" },
 
   field: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 },
@@ -408,7 +409,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     fontWeight: 700,
   },
-  unit: { fontSize: 10, color: "var(--c-textDim)" },
+  unit: { fontSize: FS.caption, color: "var(--c-textDim)" },
 
   chips: { display: "flex", gap: 6, flexWrap: "wrap" },
   chip: {

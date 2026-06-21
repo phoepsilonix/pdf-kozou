@@ -1610,7 +1610,7 @@ function ImpositionPreview({
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {sheets.map((sheet, si) => (
           <div key={si}>
-            <div style={{ fontSize: 10, color: "var(--c-textDim)", marginBottom: 4 }}>
+            <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginBottom: 4 }}>
               {sheet.label}
             </div>
             <div
@@ -1672,7 +1672,7 @@ function ImpositionPreview({
                         alt={`p${pageNo}`}
                       />
                     ) : (
-                      <span style={{ fontSize: 10, color: "#aaa" }}>
+                      <span style={{ fontSize: FS.caption, color: "#aaa" }}>
                         {pageNo === 0 ? "空白" : "…"}
                       </span>
                     )}
@@ -1683,7 +1683,7 @@ function ImpositionPreview({
                           position: "absolute",
                           bottom: 2,
                           right: 3,
-                          fontSize: 9,
+                          fontSize: FS.caption,
                           color: "rgba(0,0,0,0.45)",
                           background: "rgba(255,255,255,0.7)",
                           borderRadius: 2,
@@ -1705,7 +1705,7 @@ function ImpositionPreview({
                           justifyContent: "center",
                         }}
                       >
-                        <span style={{ fontSize: 9, color: "white" }}>対象外</span>
+                        <span style={{ fontSize: FS.caption, color: "white" }}>対象外</span>
                       </div>
                     )}
                   </div>
@@ -1771,7 +1771,12 @@ function DeImpositionPreview({
       </div>
       {/* 凡例: セル内の数字が出力ページ番号であることを明示 */}
       <div
-        style={{ fontSize: 10, color: "var(--c-textDim)", marginBottom: 8, textAlign: "center" }}
+        style={{
+          fontSize: FS.caption,
+          color: "var(--c-textDim)",
+          marginBottom: 8,
+          textAlign: "center",
+        }}
       >
         {t("image.deimp_cell_legend" as any)}
       </div>

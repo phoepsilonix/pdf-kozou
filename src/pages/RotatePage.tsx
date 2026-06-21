@@ -376,7 +376,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={`e${i}`} style={s.bpRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpFile}>{e.file}</span>
-                <span style={{ fontSize: 10, color: "var(--c-err)" }}>{e.msg}</span>
+                <span style={{ fontSize: FS.caption, color: "var(--c-err)" }}>{e.msg}</span>
               </div>
             ))}
           </div>
@@ -886,7 +886,7 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  fileItemMeta: { fontSize: 10, color: "var(--c-textSub)" },
+  fileItemMeta: { fontSize: FS.caption, color: "var(--c-textSub)" },
   dirRow: { display: "flex", gap: 6 },
   dirPath: {
     flex: 1,
@@ -945,7 +945,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   pageNum: { fontSize: 11, color: "var(--c-textDim)" },
   rotBadge: {
-    fontSize: 10,
+    fontSize: FS.caption,
     padding: "1px 6px",
     background: "var(--c-accentBg)",
     border: `1px solid var(--c-accentBd)`,
