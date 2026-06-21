@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { ConvertOptions } from "../lib/tauri";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 
 export interface ConvertOptionsPanelProps {
   options: ConvertOptions;
@@ -159,7 +160,7 @@ const s: Record<string, React.CSSProperties> = {
     marginTop: 8,
   },
   header: {
-    fontSize: 13,
+    fontSize: FS.body,
     fontWeight: 700,
     color: "var(--c-accent)",
     marginBottom: 10,
@@ -168,7 +169,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   hint: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     fontWeight: 400,
   },
@@ -179,13 +180,13 @@ const s: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   label: {
-    fontSize: 12,
+    fontSize: FS.small,
     color: "var(--c-textSub)",
     whiteSpace: "nowrap",
   },
   select: {
     flex: 1,
-    fontSize: 12,
+    fontSize: FS.small,
     padding: "3px 6px",
     borderRadius: 4,
     border: "1px solid var(--c-border)",
@@ -195,7 +196,7 @@ const s: Record<string, React.CSSProperties> = {
   numInput: {
     width: 64,
     height: 28,
-    fontSize: 12,
+    fontSize: FS.small,
     lineHeight: "28px",
     padding: "0 6px",
     boxSizing: "border-box" as const,
@@ -206,7 +207,7 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "right" as const,
   },
   note: {
-    fontSize: 11,
+    fontSize: FS.caption,
     color: "var(--c-textDim)",
     marginTop: 4,
   },

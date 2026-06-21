@@ -402,7 +402,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-borderHi)`,
     borderRadius: 7,
     color: "var(--c-text)",
-    fontSize: 17,
+    fontSize: FS.subtitle,
     lineHeight: "48px",
     textAlign: "center" as const,
     outline: "none",

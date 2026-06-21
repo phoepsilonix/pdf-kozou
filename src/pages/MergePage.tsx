@@ -940,7 +940,7 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "center" as const,
     flexShrink: 0,
   },
-  handle: { fontSize: 17, color: "var(--c-borderHi)", cursor: "grab", flexShrink: 0 },
+  handle: { fontSize: FS.subtitle, color: "var(--c-borderHi)", cursor: "grab", flexShrink: 0 },
   itemThumbs: { display: "flex", gap: 4, flexShrink: 0 },
   thumbMore: {
     width: 68,
@@ -1037,7 +1037,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     fontWeight: 600,
     cursor: "pointer",
-    fontSize: 15,
+    fontSize: FS.label,
     fontFamily: F,
   },
   btnDis: { opacity: 0.35, cursor: "not-allowed" },
@@ -1070,7 +1070,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   resultIcon: { fontSize: 52, color: "var(--c-green)" },
   resultStat: { fontSize: 22, fontWeight: 700, color: "var(--c-text)" },
-  resultSub: { fontSize: 15, color: "var(--c-textSub)" },
+  resultSub: { fontSize: FS.label, color: "var(--c-textSub)" },
   resultDetail: { fontSize: FS.small, color: "var(--c-textDim)" },
   compressBtn: {
     padding: "12px 32px",
@@ -1080,7 +1080,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 600,
     cursor: "pointer",
-    fontSize: 15,
+    fontSize: FS.label,
     fontFamily: F,
   },
   btnMeta: {

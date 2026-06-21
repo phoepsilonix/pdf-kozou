@@ -1268,7 +1268,7 @@ const s: Record<string, React.CSSProperties> = {
   summary: { display: "flex", alignItems: "center", gap: 9, height: 28 },
   sumSel: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   sumDot: { color: "var(--c-textDim)" },
-  sumInfo: { fontSize: 15, color: "var(--c-textSub)" },
+  sumInfo: { fontSize: FS.label, color: "var(--c-textSub)" },
   sumNone: { fontSize: FS.label, color: "var(--c-textDim)" },
   toolBar: {
     // CSS Grid の auto-fill で均等な多段グリッドにする。
@@ -1374,7 +1374,7 @@ const fr: Record<string, React.CSSProperties> = {
   },
   info: { flex: 1, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
   name: {
-    fontSize: 15,
+    fontSize: FS.label,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -1389,7 +1389,7 @@ const fr: Record<string, React.CSSProperties> = {
     border: "none",
     color: "var(--c-textDim)",
     cursor: "pointer",
-    fontSize: 17,
+    fontSize: FS.subtitle,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1436,7 +1436,7 @@ const sh: Record<string, React.CSSProperties> = {
     padding: "4px 8px",
     borderRadius: 5,
     fontFamily: F,
-    fontSize: 15,
+    fontSize: FS.label,
     fontWeight: 700,
     color: "var(--c-text)",
     whiteSpace: "nowrap",

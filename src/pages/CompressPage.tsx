@@ -1168,7 +1168,7 @@ const c: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     color: "var(--c-accent)",
     fontWeight: 700,
-    fontSize: 15,
+    fontSize: FS.label,
     cursor: "pointer",
     fontFamily: F,
   },
@@ -1300,7 +1300,7 @@ const c: Record<string, React.CSSProperties> = {
   },
   statInfo: { padding: "4px 0 12px" },
   statLabel: { fontSize: FS.caption, color: "var(--c-textDim)", marginBottom: 4 },
-  statVal: { fontSize: 15, color: "var(--c-textSub)" },
+  statVal: { fontSize: FS.label, color: "var(--c-textSub)" },
   paramsBox: {
     padding: "12px 14px",
     background: "var(--c-bgCard)",

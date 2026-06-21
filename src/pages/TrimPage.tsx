@@ -1419,7 +1419,7 @@ const r: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   dis: { opacity: 0.4, cursor: "not-allowed" },
-  title: { fontSize: 15, fontWeight: 600, color: "var(--c-text)" },
+  title: { fontSize: FS.label, fontWeight: 600, color: "var(--c-text)" },
   sub: { fontSize: FS.small, color: "var(--c-textSub)" },
   gallery: {
     flex: 1,
@@ -1482,7 +1482,7 @@ const b: Record<string, React.CSSProperties> = {
     background: "var(--c-bg)",
     padding: 32,
   },
-  title: { fontSize: 17, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   barWrap: {
     width: "100%",
     maxWidth: 460,

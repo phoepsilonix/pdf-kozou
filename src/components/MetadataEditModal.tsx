@@ -343,7 +343,7 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   headerTitle: {
-    fontSize: 15,
+    fontSize: FS.label,
     fontWeight: 700,
     color: "var(--c-text)",
   },

@@ -2147,7 +2147,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 16,
     padding: 32,
   },
-  bpTitle: { fontSize: 17, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
   bpBar: {
     width: "100%",
     maxWidth: 480,

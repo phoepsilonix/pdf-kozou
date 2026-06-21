@@ -993,7 +993,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-accentText)",
     fontWeight: 700,
     cursor: "pointer",
-    fontSize: 15,
+    fontSize: FS.label,
     fontFamily: F,
   },
   compressBtn: {
@@ -1004,7 +1004,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 600,
     cursor: "pointer",
-    fontSize: 15,
+    fontSize: FS.label,
     fontFamily: F,
   },
   btnBack2: {

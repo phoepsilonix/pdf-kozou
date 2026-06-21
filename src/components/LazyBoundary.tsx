@@ -9,6 +9,7 @@
 //    これにより、あるツールで読み込みエラーが出ても、別ツールへ切り替えれば
 //    再読み込みなしで自動復帰する。
 import { Component, type ReactNode } from "react";
+import { FS } from "../lib/typography";
 
 type Props = {
   children: ReactNode;
@@ -60,11 +61,11 @@ export class LazyBoundary extends Component<Props, State> {
         }}
       >
         <span style={{ fontSize: 32 }}>⚠</span>
-        <div style={{ fontSize: 15, fontWeight: 600 }}>ツールの読み込みに失敗しました</div>
+        <div style={{ fontSize: FS.label, fontWeight: 600 }}>ツールの読み込みに失敗しました</div>
         {this.state.message && (
           <div
             style={{
-              fontSize: 12,
+              fontSize: FS.small,
               color: "var(--c-textDim)",
               maxWidth: 420,
               wordBreak: "break-word",

@@ -49,7 +49,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
         }}
         title={t("theme.switcher_title")}
       >
-        <span style={{ fontSize: 15 }}>{cur.emoji}</span>
+        <span style={{ fontSize: FS.label }}>{cur.emoji}</span>
         <span>{t(`theme.${cur.id}`)}</span>
         <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
       </button>

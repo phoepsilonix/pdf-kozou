@@ -1199,7 +1199,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-borderHi)`,
     borderRadius: 6,
     color: "var(--c-text)",
-    fontSize: 15,
+    fontSize: FS.label,
     lineHeight: "36px",
     fontFamily: F,
   },
