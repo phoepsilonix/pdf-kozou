@@ -114,22 +114,28 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [zoom, setZoom] = useState(0.75);
   const [canvasWidth, setCanvasWidth] = useState(CANVAS_W_DEFAULT);
-  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
 
   const currentPage = firstPdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
   const pageH = currentPage.h;
 
-  // コンテナ幅に追従してプレビューサイズを動的更新
-  useEffect(() => {
-    const el = canvasWrapRef.current;
-    if (!el) return;
+  // コンテナ幅に追従してプレビューサイズを動的更新。
+  // コールバック ref にすることで、フェーズ遷移（編集→プレビュー→編集）で
+  // 要素が再マウントされても観測対象を張り直す。useEffect+useRef だと最初の
+  // 要素しか観測せず、戻ったときに幅0でクランプされた小さいままになる不具合があった。
+  const canvasWrapRef = useCallback((el: HTMLDivElement | null) => {
+    roRef.current?.disconnect();
+    if (!el) {
+      roRef.current = null;
+      return;
+    }
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? CANVAS_W_DEFAULT;
-      setCanvasWidth(Math.max(300, Math.floor(w - 24)));
+      if (w > 0) setCanvasWidth(Math.max(300, Math.floor(w - 24)));
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    roRef.current = ro;
   }, []);
 
   // Ctrl+ホイール でズーム（document レベルで捕捉して WebView のピンチズームより先に処理）
@@ -610,18 +616,21 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
 
   const [zoom, setZoom] = useState(0.75);
   const [canvasWidth, setCanvasWidth] = useState(CANVAS_W_DEFAULT);
-  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
 
-  // コンテナ幅追従
-  useEffect(() => {
-    const el = canvasWrapRef.current;
-    if (!el) return;
+  // コンテナ幅追従（コールバック ref で再マウント時も観測を張り直す）
+  const canvasWrapRef = useCallback((el: HTMLDivElement | null) => {
+    roRef.current?.disconnect();
+    if (!el) {
+      roRef.current = null;
+      return;
+    }
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? CANVAS_W_DEFAULT;
-      setCanvasWidth(Math.max(300, Math.floor(w - 24)));
+      if (w > 0) setCanvasWidth(Math.max(300, Math.floor(w - 24)));
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    roRef.current = ro;
   }, []);
 
   const [previewPage, setPreviewPage] = useState(0);
