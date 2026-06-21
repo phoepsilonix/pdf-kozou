@@ -454,7 +454,7 @@
     "chain_hint_gs": "この結果を GS でさらに再構築する",
     "chain_note": "※ 現在の圧縮結果を「入力ファイル」として再セットします",
     "chain_badge": "🔗 MuPDF↔GS 連続圧縮中",
-    "reset_chain": "↩ 連携を解除して最初からやり直す",
+    "reset_chain": "↩ MuPDF↔GS 連携を解除して最初からやり直す",
     "back_to_source": "← 前の画面に戻る",
     "obj_stream_label": "オブジェクトのストリーム圧縮",
     "merge_fonts_label": "CIDフォント統合 (merge-fonts)",

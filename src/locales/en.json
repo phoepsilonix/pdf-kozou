@@ -454,7 +454,7 @@
     "chain_hint_gs": "Further rebuild this result with GS",
     "chain_note": "※ Sets current result as input for next compression",
     "chain_badge": "🔗 MuPDF↔GS chain compress",
-    "reset_chain": "↩ Reset chain and start over",
+    "reset_chain": "↩ Reset MuPDF↔GS chain and start over",
     "back_to_source": "← Back",
     "obj_stream_label": "Object stream compression",
     "merge_fonts_label": "CID font merge (merge-fonts)",
