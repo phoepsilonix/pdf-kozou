@@ -11,14 +11,20 @@ interface PreviewPaneProps {
   pageKey: string;
   label: string;
   children: ReactNode;
+  /**
+   * true(既定): 親の高さを埋め、内部(body)でスクロールする。
+   * false: 内容の高さに伸び、スクロールは親に委ねる（一括回転などと一体で
+   *        親ペインをスクロールさせたい場合に使う）。
+   */
+  fill?: boolean;
 }
 
-export function PreviewPane({ pageKey, label, children }: PreviewPaneProps) {
+export function PreviewPane({ pageKey, label, children, fill = true }: PreviewPaneProps) {
   const { t } = useI18n();
   const { enabled, toggle } = usePreview(pageKey);
 
   return (
-    <div style={s.root}>
+    <div style={fill ? s.root : s.rootGrow}>
       <div style={s.head}>
         <span style={s.headLabel}>{label}</span>
         <button
@@ -61,9 +67,9 @@ export function PreviewPane({ pageKey, label, children }: PreviewPaneProps) {
       </div>
 
       {enabled ? (
-        <div style={s.body}>{children}</div>
+        <div style={fill ? s.body : s.bodyGrow}>{children}</div>
       ) : (
-        <div style={s.placeholder}>
+        <div style={fill ? s.placeholder : s.placeholderGrow}>
           <svg
             width="28"
             height="28"
@@ -139,6 +145,24 @@ const s: Record<string, CSSProperties> = {
     flexDirection: "column",
     // flex 子がスクロール可能になる必須設定
     minHeight: 0,
+  },
+  // fill=false 用: 内部スクロールせず内容の高さに伸びる（スクロールは親に委ねる）
+  rootGrow: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+  },
+  bodyGrow: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  placeholderGrow: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: "48px 0",
   },
   placeholder: {
     flex: 1,

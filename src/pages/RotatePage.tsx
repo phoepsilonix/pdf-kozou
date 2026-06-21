@@ -621,9 +621,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           )}
         </div>
 
-        {/* 右側プレビューエリア */}
+        {/* 右側プレビューエリア：一括回転とプレビューを兄弟として並べ、
+            右ペイン(rightArea)全体をスクロール対象にする。
+            一括回転は PreviewPane の外なのでプレビューのオンオフに影響されない。 */}
         <div style={s.rightArea}>
-          {/* 一括回転ボタンをここに移動（プレビューを見ながら操作しやすい） */}
+          {/* 一括回転 */}
           <div style={s.globalBtnsWrapper}>
             <div style={s.secLabel}>
               {t("rotate.bulk_label", {
@@ -654,8 +656,12 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
           </div>
 
-          {/* ページグリッド（仮想化なしのまま、元のスタイル） */}
-          <PreviewPane pageKey="rotate" label={t("common.preview_pages", { count: String(n) })}>
+          {/* ページグリッド（PreviewPane は内部スクロールせず親に委ねる） */}
+          <PreviewPane
+            pageKey="rotate"
+            label={t("common.preview_pages", { count: String(n) })}
+            fill={false}
+          >
             <div style={s.grid}>
               {Array.from({ length: n }, (_, i) => {
                 const rot = rotations[i] ?? 0;
@@ -798,20 +804,23 @@ const s: Record<string, React.CSSProperties> = {
     letterSpacing: "0.08em",
     textTransform: "uppercase" as const,
   },
-  globalBtns: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 },
+  globalBtns: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 },
   globalBtn: {
     display: "flex",
-    flexDirection: "column",
+    flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    padding: "11px 8px",
+    justifyContent: "center",
+    gap: 6,
+    padding: "6px 8px",
     background: "var(--c-bgCard)",
     border: `1px solid var(--c-border)`,
     borderRadius: 8,
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: 13,
     color: "var(--c-text)",
     fontFamily: F,
+    whiteSpace: "nowrap" as const,
+    minWidth: 0,
     transition: "all 0.12s",
   },
   globalBtnOn: {
@@ -819,7 +828,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-accentBg)",
     color: "var(--c-accent)",
   },
-  rotIcon: { fontSize: 22 },
+  rotIcon: { fontSize: 16 },
   hint: { fontSize: 12, color: "var(--c-textSub)", lineHeight: 1.6, margin: 0 },
   resetBtn: {
     padding: "9px 0",
@@ -902,14 +911,12 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   grid: {
-    flex: 1,
-    overflowY: "auto",
+    overflow: "visible",
     padding: 14,
     display: "flex",
     flexWrap: "wrap" as const,
     gap: 10,
     alignContent: "flex-start",
-    minHeight: 0,
   },
   pageCard: {
     display: "flex",
@@ -1129,9 +1136,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   rightArea: {
     flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
+    // 一括回転＋プレビューをまとめてスクロールさせる対象
+    overflowY: "auto",
+    minHeight: 0,
   },
   globalBtnsWrapper: {
     padding: "8px 16px",
