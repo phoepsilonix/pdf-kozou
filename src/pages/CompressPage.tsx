@@ -861,7 +861,9 @@ export function CompressPage({
         <span style={c.fileSub} title={fname}>
           {currentSource !== (sourceFile ?? filePath) ? `🔗 ${fname}` : fname}
         </span>
-        {currentSource && <span style={c.chainBadge}>{t("compress.chain_badge")}</span>}
+        {currentSource !== filePath && (
+          <span style={c.chainBadge}>{t("compress.chain_badge")}</span>
+        )}
 
         {gsAvailable && (
           <div style={{ display: "flex", gap: 4, marginLeft: 16 }}>
@@ -899,7 +901,7 @@ export function CompressPage({
         )}
 
         {/* 連携中（初期ファイルと異なる）場合のみリセットボタンを表示 */}
-        {currentSource !== (sourceFile ?? filePath) && (
+        {currentSource !== filePath && (
           <button
             style={{
               marginLeft: 12,
