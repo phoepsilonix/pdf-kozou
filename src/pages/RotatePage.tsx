@@ -440,7 +440,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           <span style={s.previewSub}>{t("rotate.select_save_method")}</span>
           <div style={s.previewBtns}>
             <button
-              style={s.metaBtn}
+              style={s.btnMetaEdit}
               onClick={() => setMetaEditOpen(true)}
               aria-label={t("meta_edit.title")}
             >
@@ -985,12 +985,24 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     marginTop: 8,
   },
+  btnMetaEdit: {
+    flex: 1,
+    padding: "10px 18px",
+    background: "var(--c-accentBg)",
+    border: `1px solid var(--c-accentBd)`,
+    borderRadius: 7,
+    color: "var(--c-accent)",
+    fontWeight: 700,
+    cursor: "pointer",
+    fontSize: FS.body,
+    fontFamily: F,
+  },
   saveBtnPrimary: {
     padding: "12px 32px",
-    background: "var(--c-accent)",
-    border: "none",
+    background: "var(--c-accentBg)",
+    border: `1px solid var(--c-accentBd)`,
     borderRadius: 9,
-    color: "var(--c-accentText)",
+    color: "var(--c-accent)",
     fontWeight: 700,
     cursor: "pointer",
     fontSize: FS.label,
