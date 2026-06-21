@@ -867,7 +867,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
 
-  body: { flex: 1, display: "flex", overflow: "hidden" },
+  body: { flex: 1, display: "flex", overflow: "hidden", minHeight: 0 },
   dropZone: {
     flex: 1,
     display: "flex",
@@ -1043,7 +1043,7 @@ const s: Record<string, React.CSSProperties> = {
   execHint: { textAlign: "center" as const, fontSize: 13, color: "var(--c-textDim)" },
 
   // プレビュー
-  previewBody: { flex: 1, overflowY: "auto", padding: "0 18px 16px" },
+  previewBody: { flex: 1, overflowY: "auto", padding: "0 18px 16px", minHeight: 0 },
   segDivider: { display: "flex", alignItems: "center", gap: 10, padding: "14px 0 8px" },
   segLine: { flex: 1, height: 1, background: "var(--c-border)" },
   segLabel: { fontSize: 14, fontWeight: 700, color: "var(--c-accent)", whiteSpace: "nowrap" },

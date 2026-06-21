@@ -95,6 +95,9 @@ const s: Record<string, CSSProperties> = {
     flexDirection: "column",
     flex: 1,
     overflow: "hidden",
+    // flex 子がスクロール可能になる必須設定（無いと内容の高さまで膨らみクリップされる）
+    minHeight: 0,
+    minWidth: 0,
   },
   head: {
     display: "flex",
@@ -134,6 +137,8 @@ const s: Record<string, CSSProperties> = {
     overflow: "auto",
     display: "flex",
     flexDirection: "column",
+    // flex 子がスクロール可能になる必須設定
+    minHeight: 0,
   },
   placeholder: {
     flex: 1,

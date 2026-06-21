@@ -1101,7 +1101,7 @@ const c: Record<string, React.CSSProperties> = {
   },
   pageSub: { fontSize: 11, color: "var(--c-textDim)" },
 
-  scrollArea: { flex: 1, overflowY: "auto" },
+  scrollArea: { flex: 1, overflowY: "auto", minHeight: 0 },
   presetGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(4,1fr)",

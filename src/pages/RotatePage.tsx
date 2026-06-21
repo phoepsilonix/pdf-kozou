@@ -781,7 +781,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontWeight: 600,
   },
-  body: { flex: 1, display: "flex", overflow: "hidden" },
+  body: { flex: 1, display: "flex", overflow: "hidden", minHeight: 0 },
   panel: {
     width: 260,
     flexShrink: 0,
@@ -909,6 +909,7 @@ const s: Record<string, React.CSSProperties> = {
     flexWrap: "wrap" as const,
     gap: 10,
     alignContent: "flex-start",
+    minHeight: 0,
   },
   pageCard: {
     display: "flex",
