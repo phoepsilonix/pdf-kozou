@@ -43,6 +43,8 @@ import {
   initThemeCssVars,
 } from "./lib/theme";
 import { ThemeSwitcher } from "./components/ThemeSwitcher";
+import { FontScaleControl } from "./components/FontScaleControl";
+import { loadUiScale, applyUiScale, saveUiScale } from "./lib/uiScale";
 import type { ThemeId } from "./lib/themes";
 
 const copyToClipboard = async (text: string) => {
@@ -127,6 +129,7 @@ export default function App() {
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
   const [photoOverlayHover, setPhotoOverlayHover] = useState(false);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemeId);
+  const [uiScale, setUiScale] = useState<number>(loadUiScale);
   const dragCounter = useRef(0);
   const [statusMsg, setStatusMsg] = useState("");
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
@@ -153,6 +156,17 @@ export default function App() {
     setThemeId(id);
     applyThemeCssVars(THEMES[id]);
   }, []);
+
+  const handleUiScaleChange = useCallback((pct: number) => {
+    setUiScale(pct);
+    applyUiScale(pct);
+    saveUiScale(pct);
+  }, []);
+
+  // 起動時／復帰時に保存済みの表示スケールを適用
+  useEffect(() => {
+    applyUiScale(uiScale);
+  }, [uiScale]);
 
   // ホーム画面表示時に読み上げ
   useEffect(() => {
@@ -422,6 +436,8 @@ export default function App() {
         isBatch={isBatch}
         themeId={themeId}
         onThemeChange={handleThemeChange}
+        uiScale={uiScale}
+        onUiScaleChange={handleUiScaleChange}
       />
     );
   }
@@ -486,6 +502,7 @@ export default function App() {
             }}
           >
             <A11yControls />
+            <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
             <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
           </div>
         </>
@@ -950,6 +967,8 @@ function ToolShell({
   isBatch,
   themeId,
   onThemeChange,
+  uiScale,
+  onUiScaleChange,
 }: {
   activeTool: ToolId;
   toolFiles: FileEntry[];
@@ -960,6 +979,8 @@ function ToolShell({
   isBatch: boolean;
   themeId: ThemeId;
   onThemeChange: (id: ThemeId) => void;
+  uiScale: number;
+  onUiScaleChange: (pct: number) => void;
 }) {
   const { t } = useI18n();
   const { announceKey } = useA11y();
@@ -1058,6 +1079,7 @@ function ToolShell({
           <div style={{ flex: 1 }} />
           <div style={sh.navRight}>
             <A11yControls />
+            <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
             <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
           </div>
         </div>

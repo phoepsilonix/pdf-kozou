@@ -133,6 +133,14 @@
     "changed_ja": "言語を日本語に変更しました",
     "changed_en": "Language changed to English"
   },
+  "fontscale": {
+    "label": "Display size (font)",
+    "select_aria": "Adjust display size",
+    "select_title": "Adjust display size (font)",
+    "decrease": "Smaller",
+    "increase": "Larger",
+    "reset": "Reset"
+  },
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",
     "select_file": "Select files…",
