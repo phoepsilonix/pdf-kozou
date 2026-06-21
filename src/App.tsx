@@ -60,7 +60,10 @@ const copyToClipboard = async (text: string) => {
 function makeGlobalCss(t: typeof C) {
   return `
   * { box-sizing: border-box; }
-  body { margin: 0; background: ${t.bg}; font-size: 15px; }
+  /* ページ自体はスクロールさせず #root 内でスクロールさせる
+     （表示サイズ補正で #root を実ビューポートにロックするため） */
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { background: ${t.bg}; font-size: 15px; }
   @keyframes spin   { to { transform: rotate(360deg); } }
   @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
   input[type=number]::-webkit-inner-spin-button { opacity:0.5; }
