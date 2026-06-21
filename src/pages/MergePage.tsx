@@ -430,6 +430,7 @@ useEffect(() => {
         sourceFile={tmpMergedPath}
         outputBaseName={entries.length ? stem(entries[0].path) + opSuffix("merged") : "merged"}
         onDone={() => setPhase("result")}
+        onBack={() => setPhase("preview")}
       />
     );
 

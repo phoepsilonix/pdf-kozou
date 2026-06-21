@@ -893,6 +893,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         pdfInfo={pdfInfo}
         sourceFile={outTmp || undefined}
         outputBaseName={stem(filePath) + opSuffix("trimmed")}
+        onBack={() => setPhase("result")}
       />
     );
   }

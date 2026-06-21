@@ -36,6 +36,9 @@ interface Props {
   pdfInfo: PdfInfo;
   sourceFile?: string; // 連携元ファイル（trim後など）
   onDone?: () => void;
+  /** 連携元（trim/rotate 等）から来た場合に、前の保存選択画面へ戻すコールバック。
+   *  指定時はヘッダーに「← 前の画面に戻る」ボタンを表示する。 */
+  onBack?: () => void;
   /** 連携元から引き継ぐ出力ベース名（拡張子・_圧縮なし）。
    *  例: trim から来たら "写真_トリミング"。圧縮保存で "..._圧縮.pdf" になる。 */
   outputBaseName?: string;
@@ -126,6 +129,7 @@ export function CompressPage({
   pdfInfo,
   sourceFile,
   onDone,
+  onBack,
   outputBaseName,
   batchFiles,
 }: Props) {
@@ -857,11 +861,16 @@ export function CompressPage({
   return (
     <div style={c.root}>
       <div style={c.header}>
+        {onBack && (
+          <button style={c.backBtn} onClick={onBack}>
+            {t("compress.back_to_source")}
+          </button>
+        )}
         <span style={c.title}>{t("compress.settings_title")}</span>
         <span style={c.fileSub} title={fname}>
           {currentSource !== (sourceFile ?? filePath) ? `🔗 ${fname}` : fname}
         </span>
-        {currentSource !== filePath && (
+        {currentSource !== (sourceFile ?? filePath) && (
           <span style={c.chainBadge}>{t("compress.chain_badge")}</span>
         )}
 
@@ -900,8 +909,9 @@ export function CompressPage({
           </div>
         )}
 
-        {/* 連携中（初期ファイルと異なる）場合のみリセットボタンを表示 */}
-        {currentSource !== filePath && (
+        {/* 圧縮内で再連携(GS↔MuPDF)した場合のみ、その連携を解除するリセットを表示。
+            連携元(trim/rotate 等)へ戻るには上の「戻る」ボタンを使う。 */}
+        {currentSource !== (sourceFile ?? filePath) && (
           <button
             style={{
               marginLeft: 12,
@@ -1102,6 +1112,18 @@ const c: Record<string, React.CSSProperties> = {
     fontSize: FS.caption,
   },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
+  backBtn: {
+    padding: "6px 14px",
+    background: "transparent",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 7,
+    color: "var(--c-textSub)",
+    cursor: "pointer",
+    fontSize: FS.body,
+    fontFamily: F,
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
+  },
   fileSub: {
     fontSize: FS.small,
     color: "var(--c-textSub)",
