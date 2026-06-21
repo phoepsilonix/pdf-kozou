@@ -14,6 +14,7 @@
 //import { useRef, useEffect, useCallback, useState } from "react";
 import { useRef, useEffect, useCallback } from "react";
 import type { TrimMargins } from "../../lib/tauri";
+import { getUiScale } from "../../lib/uiScale";
 
 interface Props {
   pageImageB64: string;
@@ -241,7 +242,10 @@ export function TrimCanvas({
   // ── マウスイベント ────────────────────────────────────────────────────────
   const getPos = (e: React.MouseEvent) => {
     const r = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    // #root の zoom 下では rect / clientX とも視覚座標になるため、
+    // zoom 倍率で割って canvas 内部座標（ズーム前 px）へ戻す。
+    const z = getUiScale();
+    return { x: (e.clientX - r.left) / z, y: (e.clientY - r.top) / z };
   };
 
   const onMouseDown = useCallback(

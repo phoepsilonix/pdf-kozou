@@ -25,6 +25,7 @@ import {
 import { Spinner, PageHeader } from "../components/common";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
+import { getUiScale } from "../lib/uiScale";
 import { useI18n } from "../lib/i18n";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { useA11y } from "../hooks/useA11y";
@@ -223,7 +224,10 @@ function LinuxTextLayer({
 
   const relPos = useCallback((e: React.MouseEvent): [number, number] => {
     const r = containerRef.current!.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top];
+    // #root の zoom 下では rect / clientX とも視覚座標になるため、
+    // zoom 倍率で割ってコンテナ内部座標（ズーム前 px）へ戻す。
+    const z = getUiScale();
+    return [(e.clientX - r.left) / z, (e.clientY - r.top) / z];
   }, []);
 
   const handleMouseDown = useCallback(

@@ -56,6 +56,7 @@ export function saveUiScale(pct: number) {
 export function applyUiScale(pct: number) {
   if (typeof document === "undefined") return;
   const scale = clampUiScale(pct) / 100;
+  _scale = scale;
   const root = document.getElementById("root");
   if (!root) return;
   const style = root.style as any;
@@ -64,6 +65,18 @@ export function applyUiScale(pct: number) {
   style.height = `calc(100vh / ${scale})`;
   // 補正後の高さを超えるコンテンツ（ホーム画面など）は #root 内でスクロールさせる
   style.overflow = "auto";
+}
+
+// 現在 #root に適用されている zoom 倍率（1.0 = 100%）。
+// #root に zoom がかかっていると getBoundingClientRect() は視覚（ズーム済み）
+// 座標を返す一方、MouseEvent.clientX も視覚座標なので、
+// `clientX - rect.left` は「視覚px」になる。これを canvas など内部座標
+// （ズーム前 CSS px）へ戻すには、この倍率で割る必要がある。
+let _scale = 1;
+
+/** 現在適用中の表示倍率（1.0 = 100%）を返す */
+export function getUiScale(): number {
+  return _scale;
 }
 
 /** 永続化された値を読み込んで即時適用する（起動時に呼ぶ） */
