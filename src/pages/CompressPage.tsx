@@ -22,6 +22,7 @@ import {
   joinPath,
 } from "../lib/tauri";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
 import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -1090,7 +1091,7 @@ const c: Record<string, React.CSSProperties> = {
     color: "var(--c-accent)",
     fontSize: 11,
   },
-  title: { fontSize: 14, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   fileSub: {
     fontSize: 12,
     color: "var(--c-textSub)",

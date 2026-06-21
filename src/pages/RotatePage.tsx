@@ -23,6 +23,7 @@ import { hasImage } from "../lib/fileTypes";
 import { buildName, stem, opSuffix } from "../lib/filename";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
 import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -761,7 +762,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     overflow: "hidden",
   },
-  title: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   sub: {
     fontSize: 13,
     color: "var(--c-textSub)",

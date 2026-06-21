@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
 import { composeImpositionPdf, renderPage, getPdfInfo, joinPath, type PdfInfo } from "../lib/tauri";
 import type { FileEntry } from "../store/usePdfStore";
@@ -721,7 +722,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bg)",
     fontFamily: F,
   },
-  title: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   sub: { fontSize: 13, color: "var(--c-textDim)", marginLeft: 8 },
   body: {
     flex: 1,

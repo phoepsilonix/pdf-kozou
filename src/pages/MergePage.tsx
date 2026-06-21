@@ -37,6 +37,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 import { MetadataEditModal } from "../components/MetadataEditModal";
 import { listen } from "@tauri-apps/api/event";
 import { isMupdfExtension } from "../lib/fileTypes";
@@ -854,7 +855,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     overflow: "hidden",
   },
-  title: { fontSize: 17, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   sub: { fontSize: 14, color: "var(--c-textSub)" },
   btnClear: {
     padding: "5px 14px",

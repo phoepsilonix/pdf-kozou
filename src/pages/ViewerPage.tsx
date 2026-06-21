@@ -26,6 +26,7 @@ import { Spinner, PageHeader } from "../components/common";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
 import { getUiScale } from "../lib/uiScale";
+import { FS } from "../lib/typography";
 import { useI18n } from "../lib/i18n";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { useA11y } from "../hooks/useA11y";
@@ -1887,7 +1888,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   pageInfo: { fontSize: 12, color: "var(--c-text)", minWidth: 80, textAlign: "center" },
-  title: { fontWeight: 700, fontSize: 14, fontFamily: F },
+  title: { fontWeight: 700, fontSize: FS.title, fontFamily: F },
   fileSub: {
     fontSize: 11,
     color: "var(--c-textDim)",

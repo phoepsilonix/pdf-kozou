@@ -33,6 +33,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { FS } from "../lib/typography";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   type ImpositionMode,
@@ -1897,7 +1898,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     overflow: "hidden",
   },
-  title: { fontSize: 16, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
   sub: {
     fontSize: 13,
     color: "var(--c-textSub)",
