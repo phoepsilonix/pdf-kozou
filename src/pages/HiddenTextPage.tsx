@@ -961,7 +961,12 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           </div>
           <div style={{ display: "flex", gap: 4 }}>
             <button
-              style={{ ...s.detectBtn, flex: 1, ...(running ? s.btnDis : {}) }}
+              style={{
+                ...s.detectBtn,
+                flex: "0 0 auto",
+                width: "auto",
+                ...(running ? s.btnDis : {}),
+              }}
               onClick={() => {
                 setAllPagesMode(false);
                 runDetect(false);
@@ -1528,7 +1533,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   detectBtn: {
-    padding: "7px 8px",
+    padding: "7px 6px",
     background: "var(--c-accentBg)",
     border: "1px solid var(--c-accentBd)",
     borderRadius: 6,
@@ -1542,6 +1547,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: 4,
     width: "100%",
+    whiteSpace: "nowrap" as const,
     boxSizing: "border-box" as const,
   },
   sanBtn: {
