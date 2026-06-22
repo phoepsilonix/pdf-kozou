@@ -21,6 +21,8 @@ import { Spinner, PageHeader } from "../components/common";
 import { useI18n } from "../lib/i18n";
 import { buildName } from "../lib/filename";
 import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { tts } from "../lib/tts";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useSaveDialog } from "../hooks/useSaveDialog";
@@ -250,6 +252,11 @@ export function HiddenTextPage({
   batchFiles?: FileEntry[];
 }) {
   const isBatch = (batchFiles?.length ?? 0) > 1;
+  const { announceScreen } = useA11y();
+  useEffect(() => {
+    announceScreen("screen.hidden");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return isBatch ? (
     <BatchView batchFiles={batchFiles!} />
@@ -347,6 +354,23 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     setRunning(false);
     setPhase("result");
   }, [batchFiles, outDir, enabled, thr, pickDir, skipType3]);
+
+  const { announceKey } = useA11y();
+  useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        tts.speak(t("shortcut.executing"));
+        runBatch();
+      }
+    },
+    Escape: () => {
+      if (phase === "result") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
+    F1: () => announceKey("shortcut.tool"),
+  });
 
   // ── 処理中画面 ────────────────────────────────────────────────────────────
   if (phase === "processing" && progress) {
@@ -703,7 +727,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [imgNatW, setImgNatW] = useState(1);
   const [imgNatH, setImgNatH] = useState(1);
   const { pickSave } = useSaveDialog();
-  const { announceSuccess, announceError } = useA11y();
+  const { announceSuccess, announceError, announceKey } = useA11y();
   const [skipType3, setSkipType3] = useState(true);
 
   const pageCount = pdfInfo.page_count;
@@ -894,6 +918,23 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const toggleExpand = useCallback((id: string) => {
     setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, expanded: !g.expanded } : g)));
   }, []);
+
+  // 検出: Ctrl+Enter / 無害化: Ctrl+Shift+Enter（画面読み上げの案内と一致）
+  useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (!running) {
+        tts.speak(t("shortcut.executing"));
+        runDetect();
+      }
+    },
+    "Ctrl+Shift+Enter": () => {
+      if (!sanitizing && groups.length > 0) {
+        tts.speak(t("shortcut.executing"));
+        runSanitize();
+      }
+    },
+    F1: () => announceKey("shortcut.tool"),
+  });
 
   const scaleX = pageInfo ? imgNatW / pageInfo.w : 1;
   const scaleY = pageInfo ? imgNatH / pageInfo.h : 1;

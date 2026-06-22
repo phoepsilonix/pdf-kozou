@@ -13,6 +13,8 @@ import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { tts } from "../lib/tts";
 import { composeImpositionPdf, renderPage, getPdfInfo, joinPath, type PdfInfo } from "../lib/tauri";
 import type { FileEntry } from "../store/usePdfStore";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
@@ -52,7 +54,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { pickSave } = useSaveDialog();
   const { t } = useI18n();
-  const { announceSuccess, announceError } = useA11y();
+  const { announceSuccess, announceError, announceScreen, announceKey } = useA11y();
   const isBatch = (batchFiles?.length ?? 0) > 1;
 
   const {
@@ -360,6 +362,27 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     convertLayoutEm,
     announceSuccess,
   ]);
+
+  // 画面読み上げ＋ショートカット（他ツールと同様）
+  useEffect(() => {
+    announceScreen("screen.booklet");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        tts.speak(t("shortcut.executing"));
+        isBatch ? handleBatch() : run();
+      }
+    },
+    Escape: () => {
+      if (phase === "result" || phase === "error") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
+    F1: () => announceKey("shortcut.tool"),
+  });
 
   // ── バッチ進捗・結果（単体フローより先に分岐）──
   if (phase === "processing" && isBatch && batchProgress)
