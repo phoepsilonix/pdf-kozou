@@ -25,9 +25,10 @@ rustflags = [
 [dependencies]
 # PDF処理 — MuPDF 静的リンク (依存はここだけ)
 # 0.6.0: MuPDF 1.27.0 ベース、GraftMap/insert_page API 整備済み
-mupdf     = { version = "0.7", default-features = false, features = ["js", "xps", "svg", "cbz", "img", "html", "epub","system-fonts"] }
-mupdf-sys = "0.7"
-#default = ["js", "xps", "svg", "cbz", "img", "html", "epub", "system-fonts", "tesseract"]
+#mupdf     = { version = "0.8", default-features = false, features = ["js", "xps", "svg", "cbz", "img", "html", "epub","system-fonts"] }
+#mupdf-sys = "0.8"
+mupdf     = { version = "0.8", default-features = false, features = ["js", "xps", "svg", "cbz", "img", "html", "epub","system-fonts", "base14-fonts"] }
+mupdf-sys = { version = "0.8", default-features = false, features = ["zerocopy"] }
 
 # workspace 共通
 serde      = { workspace = true }

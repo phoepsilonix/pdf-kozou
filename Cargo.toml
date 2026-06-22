@@ -29,8 +29,8 @@ svg2pdf    = "=0.11.0"
 pdf-writer = "0.10"
 
 [patch.crates-io]
-mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00" }
-mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "1c4b95df57f07cc9ecfd3fc2cbde2bbeff7a1d00" }
+mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "35d329c6578c52d4845abe56d384c1e24958fb58" }
+mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "35d329c6578c52d4845abe56d384c1e24958fb58" }
 
 [profile.release]
 strip = "symbols"
