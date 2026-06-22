@@ -324,7 +324,7 @@ export const THEMES: Record<ThemeId, Theme> = {
   },*/
 };
 
-export const DEFAULT_THEME: ThemeId = "nordic";
+export const DEFAULT_THEME: ThemeId = "paper";
 const STORAGE_KEY = "pdf-kozou-theme";
 
 // ── 永続化 ───────────────────────────────────────────────────────────────────
