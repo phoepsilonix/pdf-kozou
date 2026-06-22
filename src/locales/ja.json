@@ -158,7 +158,8 @@
     "changed": "{{name}} を {{value}} に変更しました",
     "checkbox_changed_on": "{{name}} をオンにしました",
     "checkbox_changed_off": "{{name}} をオフにしました",
-    "radio_selected": "{{name}} を選択しました"
+    "radio_selected": "{{name}} を選択しました",
+    "preview_shown": "プレビューが表示されました"
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · オフライン完全動作",

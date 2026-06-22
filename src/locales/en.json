@@ -158,7 +158,8 @@
     "changed": "{{name}} changed to {{value}}",
     "checkbox_changed_on": "{{name}} turned on",
     "checkbox_changed_off": "{{name}} turned off",
-    "radio_selected": "{{name}} selected"
+    "radio_selected": "{{name}} selected",
+    "preview_shown": "Preview is shown"
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",

@@ -271,6 +271,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       );
       setSavedPath(saveTo);
       setPhase("preview");
+      announceSuccess("voice.preview_shown");
     } catch (e) {
       announceError(String(e));
       setErrMsg(String(e));

@@ -297,7 +297,8 @@ useEffect(() => {
       }
     }
     setPreviewThumbs(all);
-  }, [entries, convertLayoutW, convertLayoutH, convertLayoutEm]);
+    announceSuccess("voice.preview_shown");
+  }, [entries, convertLayoutW, convertLayoutH, convertLayoutEm, announceSuccess]);
 
   // ── 保存 ─────────────────────────────────────────────────────────────────
   const [tmpMergedPath, setTmpMergedPath] = useState("");
