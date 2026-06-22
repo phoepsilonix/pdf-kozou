@@ -159,6 +159,7 @@
     "checkbox_changed_on": "{{name}} をオンにしました",
     "checkbox_changed_off": "{{name}} をオフにしました",
     "radio_selected": "{{name}} を選択しました",
+    "selected": "{{name}} を選択しました",
     "preview_shown": "プレビューが表示されました"
   },
   "app": {

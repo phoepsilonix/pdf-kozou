@@ -849,6 +849,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       await moveFile(outTmp, sp);
       setSavedPath(sp);
       setPhase("saved");
+      announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
     } catch (e) {
       announceError(String(e));
       setErrMsg(String(e));

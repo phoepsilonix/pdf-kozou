@@ -159,6 +159,7 @@
     "checkbox_changed_on": "{{name}} turned on",
     "checkbox_changed_off": "{{name}} turned off",
     "radio_selected": "{{name}} selected",
+    "selected": "{{name}} selected",
     "preview_shown": "Preview is shown"
   },
   "app": {

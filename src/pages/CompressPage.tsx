@@ -891,7 +891,11 @@ export function CompressPage({
                 color: !useGs ? "#000" : "var(--c-textSub)",
                 fontFamily: F,
               }}
-              onClick={() => setUseGs(false)}
+              aria-pressed={!useGs}
+              onClick={() => {
+                setUseGs(false);
+                announceSuccess("voice.selected", { name: t("compress.standard_mupdf") });
+              }}
             >
               {t("compress.standard_mupdf")}
             </button>
@@ -906,7 +910,11 @@ export function CompressPage({
                 color: useGs ? "#000" : "var(--c-textSub)",
                 fontFamily: F,
               }}
-              onClick={() => setUseGs(true)}
+              aria-pressed={useGs}
+              onClick={() => {
+                setUseGs(true);
+                announceSuccess("voice.selected", { name: t("compress.pro_gs") });
+              }}
             >
               {t("compress.pro_gs")}
             </button>
@@ -948,7 +956,12 @@ export function CompressPage({
               {PRESET_OPTIONS_I18N.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => setPreset(p.id)}
+                  onClick={() => {
+                    setPreset(p.id);
+                    announceSuccess("voice.selected", { name: p.label });
+                  }}
+                  aria-label={p.label}
+                  aria-pressed={preset === p.id}
                   style={{
                     ...c.card,
                     ...(preset === p.id
@@ -999,7 +1012,12 @@ export function CompressPage({
               {GS_PRESETS_I18N.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => setGsPreset(p.id)} // GS用のステートを更新
+                  onClick={() => {
+                    setGsPreset(p.id); // GS用のステートを更新
+                    announceSuccess("voice.selected", { name: p.label });
+                  }}
+                  aria-label={p.label}
+                  aria-pressed={gsPreset === p.id}
                   style={{
                     ...c.card,
                     ...(gsPreset === p.id
