@@ -8,7 +8,7 @@
 
 export default CompressPage;
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { usePdfStore } from "../store/usePdfStore";
@@ -210,14 +210,8 @@ export function CompressPage({
   const inputFile = currentSource;
 
   const [phase, setPhase] = useState<Phase>("edit");
-  // 結果画面（未保存）に入ったら「保存」ボタンへフォーカス
-  const saveCompressedBtnRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    if (phase === "result" && !savedFilePath) {
-      const id = window.setTimeout(() => saveCompressedBtnRef.current?.focus(), 0);
-      return () => window.clearTimeout(id);
-    }
-  }, [phase, savedFilePath]);
+  // 結果画面では自動フォーカスを与えない（縦幅の短い画面で上部の結果表示が
+  // スクロールで隠れるのを避けるため）。保存は Ctrl+S（圧縮して保存）で行える。
   const [preset, setPreset] = useState<CompressPreset>("standard");
   const [objectStream, setObjectStream] = useState(false);
   const [mergeFonts, setMergeFonts] = useState(false);
@@ -835,7 +829,6 @@ export function CompressPage({
                     </div>
                   </button>
                   <button
-                    ref={saveCompressedBtnRef}
                     style={c.btnSaveCompressed}
                     onClick={handleSaveCompressed}
                     disabled={saving}

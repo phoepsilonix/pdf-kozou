@@ -441,7 +441,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             >
               {t("rotate.save_compress")}
             </BtnPrimary>
-            <BtnPrimary onClick={doSave} autoFocus ariaLabel={t("aria.save_btn")}>
+            <BtnPrimary onClick={doSave} ariaLabel={t("aria.save_btn")}>
               {t("rotate.save")}
             </BtnPrimary>
           </div>

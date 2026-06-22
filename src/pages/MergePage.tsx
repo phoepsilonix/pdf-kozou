@@ -510,7 +510,7 @@ useEffect(() => {
           <BtnPrimary onClick={() => handleSave(true)} ariaLabel={t("aria.compress_save_btn")}>
             {t("merge.save_compress")}
           </BtnPrimary>
-          <BtnPrimary onClick={() => handleSave(false)} ariaLabel={t("aria.save_btn")} autoFocus>
+          <BtnPrimary onClick={() => handleSave(false)} ariaLabel={t("aria.save_btn")}>
             {t("merge.save")}
           </BtnPrimary>
         </PageHeader>
