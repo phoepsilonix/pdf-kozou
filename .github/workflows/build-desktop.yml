@@ -156,7 +156,7 @@ jobs:
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
 
       - name: Build Frontend check
-        run: npm run build
+        run: npm run build:frontend
 
       - name: Install tauri-cli via binstall
         run: |
@@ -172,7 +172,8 @@ jobs:
           LINUXDEPLOY_EXCLUDE_LIBS: "libglib-2.0.so.0:libgobject-2.0.so.0:libgio-2.0.so.0:libgmodule-2.0.so.0:libdbus-1.so.3:libibus-1.0.so.5:libfcitx*.so:libwayland-client.so.0:libwayland-cursor.so.0:libwayland-server.so.0:libwayland-egl.so.1:libEGL.so.1:libGL.so.1:libGLX.so.0:libepoxy.so.0:libpcre2-8.so.0:libmount.so.1:libblkid.so.1"
         run: |
           . $HOME/.cargo/env
-          cargo tauri build
+          npm run build
+          #cargo tauri build
 
       - name: appimagetool install
         run: |
@@ -396,7 +397,7 @@ jobs:
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
 
       - name: Build Frontend check
-        run: npm run build
+        run: npm run build:frontend
 
       - name: Install tauri-cli via binstall
         run: |
@@ -437,7 +438,8 @@ jobs:
           #which perl
           #which clang
           #USE_MAKE=1 CC="gcc" CXX="g++" HAVE_OBJCOPY="no" OS="mingw" cargo tauri build
-          cargo tauri build
+          npm run build
+          #cargo tauri build
 
       - name: Decode PFX Certificate
         shell: pwsh

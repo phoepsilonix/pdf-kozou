@@ -4,11 +4,12 @@
   "version": "1.7.10",
   "type": "module",
   "scripts": {
+    "dev:core": "cargo build --bin pdf-kozou-core",
     "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "tauri": "cargo tauri",
-    "tauri:windows:build": "tauri-windows-bundle build"
+    "tauri:dev": "cargo build --bin pdf-kozou-core && cargo tauri dev",
+    "build:core": "cargo build --release --bin pdf-kozou-core",
+    "build:frontend": "tsc && vite build",
+    "build": "npm run build:core && cargo tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
@@ -23,7 +24,6 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
-    "esbuild": "^0.28",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.14"

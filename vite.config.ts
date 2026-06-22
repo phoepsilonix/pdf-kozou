@@ -13,37 +13,34 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
+    // TS側と合わせてES2022以降をターゲットに
     target: ["es2022"],
-    minify: "esbuild",
     sourcemap: !!process.env.TAURI_DEBUG,
+
+    // Oxc(またはRolldown内蔵高速ミニファイア)による圧縮を明示
+    minify: "oxc",
     cssMinify: true,
-    chunkSizeWarningLimit: 400, // 警告閾値を下げる
+    chunkSizeWarningLimit: 400,
 
-    rolldownOptions: {
+    // Vite 8/Rolldown環境のコード分割設定
+    // ※環境や使用するViteのラッパーによっては 'rollupOptions' として記述します
+    rollupOptions: {
       output: {
-        codeSplitting: {
-          minSize: 10000,
-          minShareCount: 1,
-
-          groups: [
-            {
-              name: "react",
-              test: /node_modules[\\/](react|react-dom|zustand|scheduler)/,
-              priority: 100,
-            },
-            {
-              name: "vendor",
-              test: /node_modules/,
-              priority: 50,
-            },
-          ],
+        // manualChunks または最新の規格に合わせたコードスプリッティング
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (
+              id.includes("react") ||
+              id.includes("react-dom") ||
+              id.includes("zustand") ||
+              id.includes("scheduler")
+            ) {
+              return "react";
+            }
+            return "vendor";
+          }
         },
       },
-    },
-  },
-  esbuild: {
-    supported: {
-      destructuring: true,
     },
   },
 });
