@@ -85,7 +85,7 @@ pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
             let s = if let Ok(s) = v.as_string() {
                 s.trim().to_string()
             } else if let Ok(b) = v.as_name() {
-                String::from_utf8_lossy(b).trim().to_string()
+                String::from_utf8_lossy(&b).trim().to_string()
             } else {
                 continue;
             };
@@ -1267,6 +1267,7 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                     .and_then(|o| {
                         o.as_name()
                             .ok()
+                            .as_ref()
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
                 match sub.as_deref() {
@@ -1289,6 +1290,7 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                                 .and_then(|o| {
                                     o.as_name()
                                         .ok()
+                                        .as_ref()
                                         .map(|b| String::from_utf8_lossy(b).to_string())
                                 });
                             if let Some(dt) = ds {
@@ -1320,6 +1322,7 @@ fn collect_unsafe_font_types(resources: &mupdf::pdf::PdfObject, found: &mut Vec<
                     .and_then(|o| {
                         o.as_name()
                             .ok()
+                            .as_ref()
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
                 if st.as_deref() == Some("Form")
@@ -1397,6 +1400,7 @@ fn resources_has_type3(resources: &mupdf::pdf::PdfObject) -> bool {
                     .and_then(|o| {
                         o.as_name()
                             .ok()
+                            .as_ref()
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
                 if sub.as_deref() == Some("Type3") {
@@ -1423,6 +1427,7 @@ fn resources_has_type3(resources: &mupdf::pdf::PdfObject) -> bool {
                     .and_then(|o| {
                         o.as_name()
                             .ok()
+                            .as_ref()
                             .map(|b| String::from_utf8_lossy(b).to_string())
                     });
                 if st.as_deref() == Some("Form")

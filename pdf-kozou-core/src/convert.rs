@@ -253,7 +253,7 @@ fn svg_to_pdf_sized(
     // SVG 固有サイズ（pt）。取得できなければ自然サイズにフォールバック。
     let svg_w = tree.size().width();
     let svg_h = tree.size().height();
-    if !(svg_w > 0.0) || !(svg_h > 0.0) {
+    if !(svg_w > 0.0 && svg_h > 0.0) {
         return svg_to_pdf(input, output);
     }
 

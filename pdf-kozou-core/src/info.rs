@@ -280,6 +280,7 @@ fn collect_fonts_from_resources(
                 .and_then(|o| {
                     o.as_name()
                         .ok()
+                        .as_ref()
                         .map(|b| String::from_utf8_lossy(b).to_string())
                 });
             if sub.as_deref() == Some("Form")
@@ -366,10 +367,10 @@ fn pdf_name_str(o: &mupdf::pdf::PdfObject, k: &str) -> Option<String> {
     let v = o.get_dict(k).ok()??;
     let v = v.resolve().ok()??;
     if let Ok(b) = v.as_name() {
-        return Some(String::from_utf8_lossy(b).into());
+        return Some(String::from_utf8_lossy(&b).into());
     }
     if let Ok(s) = v.as_string() {
-        return Some(s.into());
+        return Some(s);
     }
     None
 }
