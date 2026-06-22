@@ -142,6 +142,24 @@
     "increase": "大きく",
     "reset": "リセット"
   },
+  "voice": {
+    "button": "{{name}} ボタン",
+    "button_unnamed": "ボタン",
+    "link": "{{name}} リンク",
+    "select": "{{name}} 選択リスト、現在 {{value}}",
+    "input": "{{name}} 入力欄、{{value}}",
+    "slider": "{{name}} スライダー、{{value}}",
+    "checkbox_on": "{{name}} チェックボックス、オン",
+    "checkbox_off": "{{name}} チェックボックス、オフ",
+    "radio_on": "{{name}}、選択中",
+    "radio_off": "{{name}} ラジオボタン",
+    "option_selected": "{{name}}、選択中",
+    "option_unselected": "{{name}}、未選択",
+    "changed": "{{name}} を {{value}} に変更しました",
+    "checkbox_changed_on": "{{name}} をオンにしました",
+    "checkbox_changed_off": "{{name}} をオフにしました",
+    "radio_selected": "{{name}} を選択しました"
+  },
   "app": {
     "tagline": "Rust with tauri · MuPDF · オフライン完全動作",
     "select_file": "ファイルを選択…",

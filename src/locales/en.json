@@ -142,6 +142,24 @@
     "increase": "Larger",
     "reset": "Reset"
   },
+  "voice": {
+    "button": "{{name}}, button",
+    "button_unnamed": "button",
+    "link": "{{name}}, link",
+    "select": "{{name}}, dropdown, currently {{value}}",
+    "input": "{{name}}, text field, {{value}}",
+    "slider": "{{name}}, slider, {{value}}",
+    "checkbox_on": "{{name}}, checkbox, checked",
+    "checkbox_off": "{{name}}, checkbox, unchecked",
+    "radio_on": "{{name}}, selected",
+    "radio_off": "{{name}}, radio button",
+    "option_selected": "{{name}}, selected",
+    "option_unselected": "{{name}}, not selected",
+    "changed": "{{name}} changed to {{value}}",
+    "checkbox_changed_on": "{{name}} turned on",
+    "checkbox_changed_off": "{{name}} turned off",
+    "radio_selected": "{{name}} selected"
+  },
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",
     "select_file": "Select files…",

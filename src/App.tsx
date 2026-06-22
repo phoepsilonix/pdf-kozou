@@ -28,6 +28,7 @@ import type { ConvertOptions } from "./lib/tauri";
 import pkg from "../package.json";
 import { A11yControls, LiveRegion } from "./components/A11yControls";
 import { useA11y } from "./hooks/useA11y";
+import { useFocusAnnouncer } from "./hooks/useFocusAnnouncer";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { tts } from "./lib/tts";
 import { useI18n } from "./lib/i18n";
@@ -138,6 +139,8 @@ export default function App() {
   const [statusMsg, setStatusMsg] = useState("");
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { locale, setLocale, t } = useI18n();
+  // アプリ全体のフォーカス読み上げ（ボタン/入力/選択などにフォーカスが当たると読み上げ）
+  useFocusAnnouncer();
 
   // TOOLS を言語に応じて動的生成（言語切り替え時に再レンダリングされる）
   const TOOLS = useMemo(
