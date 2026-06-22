@@ -924,7 +924,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     "Ctrl+Enter": () => {
       if (!running) {
         tts.speak(t("shortcut.executing"));
-        runDetect();
+        setAllPagesMode(true);
+        runDetect(true);
       }
     },
     "Ctrl+Shift+Enter": () => {
