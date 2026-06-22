@@ -334,7 +334,7 @@ export default function App() {
     ],
   );
 
-  // ツール番号ショートカット（Alt+1〜7）
+  // ツール番号ショートカット（Alt+1〜9）
   // handleLaunchTool・handleToolChange の後に定義して "used before declaration" を回避
   const handleToolShortcut = useCallback(
     (toolId: ToolId, _num: number) => {

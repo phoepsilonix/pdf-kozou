@@ -1,6 +1,6 @@
 {
   "screen": {
-    "home": "PDF Kozou home screen. Press Ctrl+O to open files. Alt+1 through 7 to launch tools. Alt+T to toggle text to speech. Press F1 for keyboard shortcuts.",
+    "home": "PDF Kozou home screen. Press Ctrl+O to open files. Alt+1 through 9 to launch tools. Alt+T to toggle text to speech. Press F1 for keyboard shortcuts.",
     "trim": "Trim page. Enter margin values and press Ctrl+Enter to execute.",
     "split": "Split page. Select split method and press Ctrl+Enter to execute.",
     "merge": "Merge page. Add files and press Ctrl+Enter to execute.",
@@ -13,13 +13,13 @@
     "booklet": "Resize & booklet page. Select mode and output size, then press Ctrl+Enter to run."
   },
   "shortcut": {
-    "home": "Keyboard shortcuts. Ctrl+O to open files. Alt+1 through 7 to launch tools. Alt+H to go home. Alt+T to toggle speech. Alt+L to switch language. F1 to repeat.",
-    "tool": "Keyboard shortcuts. Ctrl+Enter to execute. Ctrl+S to save on result screen. Ctrl+Shift+S to compress and save. Alt+D to select output folder. Alt+R to focus page range. Escape to go back. Alt+1 through 7 to switch tools. F1 to repeat.",
-    "viewer": "Keyboard shortcuts. Arrow keys to navigate. Ctrl+F to search. Alt+1 through 7 to switch tools. Alt+H to go home. Alt+T to toggle speech. F1 to repeat.",
+    "home": "Keyboard shortcuts. Ctrl+O to open files. Alt+1 through 9 to launch tools. Alt+H to go home. Alt+T to toggle speech. Alt+L to switch language. F1 to repeat.",
+    "tool": "Keyboard shortcuts. Ctrl+Enter to execute. Ctrl+S to save on result screen. Ctrl+Shift+S to compress and save. Alt+D to select output folder. Alt+R to focus page range. Escape to go back. Alt+1 through 9 to switch tools. F1 to repeat.",
+    "viewer": "Keyboard shortcuts. Arrow keys to navigate. Ctrl+F to search. Alt+1 through 9 to switch tools. Alt+H to go home. Alt+T to toggle speech. F1 to repeat.",
     "tool_announce": "Alt+{{num}} opens {{name}}. Please select a file first.",
     "tool_switched": "Switched to {{name}}.",
     "tool_no_file": "Please select a file to use {{name}}. Press Ctrl+O to open files.",
-    "tool_list": "Alt+1 Split. Alt+2 Merge. Alt+3 Trim. Alt+4 Rotate. Alt+5 Compress. Alt+6 Image Export. Alt+7 Viewer.",
+    "tool_list": "Alt+1 Split. Alt+2 Merge. Alt+3 Trim. Alt+4 Rotate. Alt+5 Compress. Alt+6 Image Export. Alt+7 Resize & Booklet. Alt+8 Hidden Text. Alt+9 Viewer.",
     "trim_tool": "Keyboard shortcuts. Ctrl+Enter to execute. Ctrl+S to save. Ctrl+Shift+S to compress and save. Alt+D for output folder. Alt+M to focus margin. Alt+R to focus page range. Escape to go back. F1 to repeat.",
     "save_done": "Saved.",
     "back_to_edit": "Back to settings.",
