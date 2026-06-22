@@ -128,6 +128,27 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const [thumbsReady, setThumbsReady] = useState(false);
   const [building, setBuilding] = useState(false);
 
+  // 画面読み上げ＋ショートカット（他ツールと同様）
+  useEffect(() => {
+    announceScreen("screen.booklet");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useKeyboardShortcuts({
+    "Ctrl+Enter": () => {
+      if (phase === "edit") {
+        tts.speak(t("shortcut.executing"));
+        isBatch ? handleBatch() : run();
+      }
+    },
+    Escape: () => {
+      if (phase === "result" || phase === "error") {
+        setPhase("edit");
+        tts.speak(t("shortcut.back_to_edit"));
+      }
+    },
+    F1: () => announceKey("shortcut.tool"),
+  });
+
   const buildPreview = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
     setBuilding(true);
@@ -362,27 +383,6 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     convertLayoutEm,
     announceSuccess,
   ]);
-
-  // 画面読み上げ＋ショートカット（他ツールと同様）
-  useEffect(() => {
-    announceScreen("screen.booklet");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useKeyboardShortcuts({
-    "Ctrl+Enter": () => {
-      if (phase === "edit") {
-        tts.speak(t("shortcut.executing"));
-        isBatch ? handleBatch() : run();
-      }
-    },
-    Escape: () => {
-      if (phase === "result" || phase === "error") {
-        setPhase("edit");
-        tts.speak(t("shortcut.back_to_edit"));
-      }
-    },
-    F1: () => announceKey("shortcut.tool"),
-  });
 
   // ── バッチ進捗・結果（単体フローより先に分岐）──
   if (phase === "processing" && isBatch && batchProgress)
