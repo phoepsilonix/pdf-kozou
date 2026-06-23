@@ -92,6 +92,13 @@ function describe(el: HTMLElement, t: TFn): string {
   const role = el.getAttribute("role");
   const name = accName(el);
 
+  // role=checkbox は <button role="checkbox"> 等のカスタムチェックも含めてオン/オフで読む。
+  // （button 判定より先に置く。後段の button 分岐に吸われると「選択中」になってしまう）
+  if (role === "checkbox")
+    return t(el.getAttribute("aria-checked") === "true" ? "voice.checkbox_on" : "voice.checkbox_off", {
+      name,
+    });
+
   if (
     tag === "button" ||
     role === "button" ||
@@ -125,14 +132,6 @@ function describe(el: HTMLElement, t: TFn): string {
       return name ? t("voice.button", { name }) : t("voice.button_unnamed");
     return t("voice.input", { name, value: collapse(inp.value || "") });
   }
-  // role ベースのウィジェット
-  if (role === "checkbox")
-    return t(
-      el.getAttribute("aria-checked") === "true" ? "voice.checkbox_on" : "voice.checkbox_off",
-      {
-        name,
-      },
-    );
   if (role === "link") return name ? t("voice.link", { name }) : "";
   // それ以外は、明示的な名前と（role かフォーカス可能 tabindex）がある場合のみ名前を読む
   if (name && (role || (el.tabIndex !== undefined && el.tabIndex >= 0))) return name;
@@ -204,6 +203,11 @@ function describeClick(el: HTMLElement, t: TFn): string {
   if (!hasState) return "";
   const name = accName(el);
   if (!name) return "";
+  // role=checkbox は更新後の aria-checked でオン/オフを読む
+  if (role === "checkbox") {
+    const checked = el.getAttribute("aria-checked") === "true";
+    return t(checked ? "voice.checkbox_changed_on" : "voice.checkbox_changed_off", { name });
+  }
   const state =
     el.getAttribute("aria-pressed") ??
     el.getAttribute("aria-selected") ??

@@ -751,7 +751,13 @@ export default function App() {
                       entry={f}
                       index={i}
                       onToggle={() => toggleSelect(f.id)}
-                      onRemove={() => removeFile(f.id)}
+                      onRemove={() => {
+                        // 「削除」ではなく読み込み対象の一覧から外す操作
+                        removeFile(f.id);
+                        announceSuccess("file.removed", {
+                          name: formatFilenameForSpeech(f.filename),
+                        });
+                      }}
                       onDragReorder={reorderFiles}
                     />
                   ))}
@@ -767,7 +773,16 @@ export default function App() {
                     {t("file.deselect")}
                   </button>
                   <div style={{ flex: 1 }} />
-                  <button style={s.btnClear} onClick={clearList}>
+                  <button
+                    style={s.btnClear}
+                    onClick={() => {
+                      // 全ファイルを読み込み対象の一覧から外す（ディスクからの削除ではない）
+                      clearList();
+                      announceSuccess("file.cleared");
+                    }}
+                    aria-label={t("file.clear_aria")}
+                    title={t("file.clear_aria")}
+                  >
                     {t("file.clear")}
                   </button>
                 </div>
@@ -945,7 +960,14 @@ function FileRow({
         ...(isDragging ? fr.rowDrag : {}),
       }}
     >
-      <button style={{ ...fr.check, ...(entry.selected ? fr.checkOn : {}) }} onClick={onToggle}>
+      <button
+        style={{ ...fr.check, ...(entry.selected ? fr.checkOn : {}) }}
+        onClick={onToggle}
+        role="checkbox"
+        aria-checked={entry.selected}
+        aria-label={t("file.use_target")}
+        title={t("file.use_target")}
+      >
         {entry.selected && <span style={fr.checkMark}>✓</span>}
       </button>
       <span style={fr.handle}>⣿</span>
@@ -960,8 +982,8 @@ function FileRow({
           {mb ? "  " + mb : ""}
         </span>
       </div>
-      <button style={fr.del} onClick={onRemove} title={t("app.delete_file")}>
-        ×
+      <button style={fr.del} onClick={onRemove} aria-label={t("file.remove_one")} title={t("file.remove_one")}>
+        ✘
       </button>
     </div>
   );
