@@ -598,6 +598,13 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       if (phase === "result") {
       }
     },
+    "Ctrl+Shift+O": () => {
+      // 圧縮せずそのまま保存（Ctrl+S と同じ直接保存。圧縮保存と対のキー）
+      if (phase === "result") {
+        tts.speak(t("shortcut.save_original"));
+        handleSave();
+      }
+    },
     "Alt+D": () => {
       // TrimPageSingle では保存先は実行時に選択するため、その旨を読み上げる
       tts.speak(t("aria.output_dir_btn"));

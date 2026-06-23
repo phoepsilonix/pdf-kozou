@@ -562,6 +562,7 @@ const LicensePage: React.FC = () => {
               { keys: ["Ctrl+Enter"], desc: t("shortcuts.execute") },
               { keys: ["Ctrl+S"], desc: t("shortcuts.save") },
               { keys: ["Ctrl+Shift+S"], desc: t("shortcuts.save_compress") },
+              { keys: ["Ctrl+Shift+O"], desc: t("shortcuts.save_original") },
               { keys: ["Alt+D"], desc: t("shortcuts.output_dir") },
               { keys: ["Alt+R"], desc: t("shortcuts.range_focus") },
               { keys: ["Alt+M"], desc: t("shortcuts.margin_focus") },

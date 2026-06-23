@@ -195,7 +195,21 @@ export function CompressPage({
         handleSaveCompressed();
       }
     },
-    "Ctrl+Shift+S": () => {},
+    "Ctrl+Shift+S": () => {
+      // 他ページでは「圧縮して保存」(連携圧縮)が割り当てられている。
+      // 圧縮ページでは「保存」と意味が同じ。
+      if (phase === "result") {
+        tts.speak(t("shortcut.saving"));
+        handleSaveCompressed();
+      }
+    },
+    "Ctrl+Shift+O": () => {
+      // 圧縮せず元のまま保存（結果画面の「圧縮せず保存」ボタンと同じ）
+      if (phase === "result") {
+        tts.speak(t("shortcut.save_original"));
+        handleSaveOriginal();
+      }
+    },
     "Alt+D": () => {
       pickDir?.();
       tts.speak(t("aria.output_dir_btn"));

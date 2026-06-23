@@ -14,19 +14,20 @@
   },
   "shortcut": {
     "home": "ショートカット一覧。Ctrl+Oでファイルを開く。Alt+1から9でツールを起動。Alt+Hでホームに戻る。Alt+Tで読み上げのオン・オフ。Alt+Lで言語切り替え。F1でこの一覧を再度読み上げます。",
-    "tool": "ショートカット一覧。Ctrl+Enterで実行。Ctrl+Sで保存（結果画面）。Ctrl+Shift+Sで続けて圧縮保存。Alt+Dで出力先フォルダ選択。Alt+Rでページ範囲入力にフォーカス。Escapeで戻る。Alt+1から9でツール切り替え。F1でこの一覧を再度読み上げます。",
+    "tool": "ショートカット一覧。Ctrl+Enterで実行。Ctrl+Sで保存（結果画面）。Ctrl+Shift+Sで続けて圧縮保存。Ctrl+Shift+Oで圧縮せず保存。Alt+Dで出力先フォルダ選択。Alt+Rでページ範囲入力にフォーカス。Escapeで戻る。Alt+1から9でツール切り替え。F1でこの一覧を再度読み上げます。",
     "viewer": "ショートカット一覧。左右矢印キーでページ移動。Ctrl+Fで検索。Alt+1から9でツール切り替え。Alt+Hでホームに戻る。Alt+Tで読み上げのオン・オフ。F1でこの一覧を再度読み上げます。",
     "tool_announce": "Alt+{{num}}で{{name}}を開きます。ファイルを選択してください。",
     "tool_switched": "{{name}}に切り替えました。",
     "tool_no_file": "{{name}}を使うにはファイルを選択してください。Ctrl+Oでファイルを開けます。",
     "tool_list": "Alt+1 分割。Alt+2 結合。Alt+3 トリミング。Alt+4 回転。Alt+5 圧縮。Alt+6 画像変換。Alt+7 サイズ変更・製本。Alt+8 隠しテキスト。Alt+9 ビューワー。",
-    "trim_tool": "ショートカット一覧。Ctrl+Enterで実行。Ctrl+Sで保存。Ctrl+Shift+Sで続けて圧縮保存。Alt+Dで出力先フォルダ選択。Alt+Mで余白入力にフォーカス。Alt+Rでページ範囲入力にフォーカス。Escapeで戻る。F1でこの一覧を再度読み上げます。",
+    "trim_tool": "ショートカット一覧。Ctrl+Enterで実行。Ctrl+Sで保存。Ctrl+Shift+Sで続けて圧縮保存。Ctrl+Shift+Oで圧縮せず保存。Alt+Dで出力先フォルダ選択。Alt+Mで余白入力にフォーカス。Alt+Rでページ範囲入力にフォーカス。Escapeで戻る。F1でこの一覧を再度読み上げます。",
     "save_done": "保存しました。",
     "back_to_edit": "設定画面に戻ります。",
     "back_to_home": "ホーム画面に戻ります。",
     "executing": "実行します。",
     "saving": "保存します。",
-    "compress_saving": "圧縮して保存します。"
+    "compress_saving": "圧縮して保存します。",
+    "save_original": "圧縮せず保存します。"
   },
   "file": {
     "added": "{{name}}を追加しました。{{pages}}ページ。",
@@ -746,6 +747,7 @@
     "execute": "実行 / プレビュー",
     "save": "保存（結果画面で有効）",
     "save_compress": "続けて圧縮して保存",
+    "save_original": "圧縮せず保存（結果画面で有効）",
     "output_dir": "出力先フォルダを選択（D = Destination）",
     "range_focus": "ページ範囲入力にフォーカス（R = Range）",
     "margin_focus": "余白入力にフォーカス（M = Margin、TrimPage のみ）",

@@ -93,6 +93,13 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
         handleSaveWithCompress();
       }
     },
+    "Ctrl+Shift+O": () => {
+      // 圧縮せずそのまま保存（Ctrl+S と同じ直接保存。圧縮保存と対のキー）
+      if (phase === "preview" || phase === "result") {
+        tts.speak(t("shortcut.save_original"));
+        handleSave();
+      }
+    },
     Escape: () => {
       if (phase === "result") {
         setPhase("edit");

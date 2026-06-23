@@ -89,6 +89,13 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         compressHandlerRef.current?.();
       }
     },
+    "Ctrl+Shift+O": () => {
+      // 圧縮せずそのまま保存（Ctrl+S と同じ。圧縮保存と対のキー）
+      if (phase === "preview") {
+        tts.speak(t("shortcut.save_original"));
+        saveHandlerRef.current?.();
+      }
+    },
     "Alt+D": () => {
       pickDir();
       tts.speak(t("aria.output_dir_btn"));
