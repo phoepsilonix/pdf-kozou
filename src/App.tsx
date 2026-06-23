@@ -31,6 +31,7 @@ import { useA11y } from "./hooks/useA11y";
 import { useFocusAnnouncer } from "./hooks/useFocusAnnouncer";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { tts } from "./lib/tts";
+import { formatFilenameForSpeech } from "./lib/speakName";
 import { useI18n } from "./lib/i18n";
 import { FS } from "./lib/typography";
 
@@ -222,7 +223,11 @@ export default function App() {
             ]);
             const addedMsg = t("file.added", { name: fname, pages: String(info.page_count) });
             setStatusMsg(addedMsg);
-            announceSuccess("file.added", { name: fname, pages: String(info.page_count) });
+            // 読み上げはハッシュ等の不透明名を綴り読みに整形（表示はそのまま）
+            announceSuccess("file.added", {
+              name: formatFilenameForSpeech(fname),
+              pages: String(info.page_count),
+            });
           } catch (e) {
             announceError(String(e));
             setError(`${path.split(/[/\\]/).pop()}: ${e}`);
@@ -911,7 +916,7 @@ function FileRow({
       role="listitem"
       draggable
       onFocus={() => {
-        const info = `${entry.filename}、${entry.pageCount}${t("file.pages_unit")}`;
+        const info = `${formatFilenameForSpeech(entry.filename)}、${entry.pageCount}${t("file.pages_unit")}`;
         tts.speak(info);
       }}
       onDragStart={(e) => {
