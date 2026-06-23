@@ -275,6 +275,11 @@ export function CompressPage({
     setPhase("processing");
     try {
       const tmp = await getTmpPath("kozou_compress_preview.pdf");
+      // 圧縮後サイズ ÷ 元サイズ（残存率）。読み上げ・表示はこの確定値を使う。
+      // ※ React の result(state) は setResult 直後はまだ更新されておらず stale な
+      //   ため、ここで参照すると初回は null→100% を読み上げてしまう。必ず今回の
+      //   計算値をローカルで保持して使う。
+      let ratioVal = 1;
       if (useGs && gsPath) {
         // 1. Ghostscript 実行
         const gsLog = await invoke<string>("run_gs_optimize", {
@@ -298,11 +303,12 @@ export function CompressPage({
           throw new Error(t("compress.err_gs_output_empty"));
         }
 
+        ratioVal = outSize / inSize;
         setResult({
           ok: true,
           input_bytes: inSize,
           output_bytes: outSize,
-          ratio: outSize / inSize,
+          ratio: ratioVal,
           params_used: undefined as any,
         });
       } else {
@@ -314,6 +320,7 @@ export function CompressPage({
           layout_h: convertLayoutH,
           layout_em: convertLayoutEm,
         });
+        ratioVal = res.ratio;
         setResult(res);
       }
 
@@ -329,7 +336,9 @@ export function CompressPage({
       } catch (e) {
         setPreview("");
       }
-      announceSuccess("done.compress", { ratio: String(Math.round((result?.ratio ?? 1) * 100)) });
+      // 画面表示（−X%）と同じ「削減率」を読み上げる。負（増加）の場合は 0 とみなす。
+      const reducedPct = Math.max(0, Math.round((1 - ratioVal) * 100));
+      announceSuccess("done.compress", { ratio: String(reducedPct) });
       setPhase("result");
     } catch (e) {
       announceError(String(e));

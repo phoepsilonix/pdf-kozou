@@ -95,7 +95,7 @@
     "split": "Split into {{count}} files.",
     "merge": "Merged {{count}} files.",
     "compose": "Imposed into {{sheets}} sheets.",
-    "compress": "Compression complete. Reduced to {{ratio}} percent.",
+    "compress": "Compression complete. Reduced by {{ratio}} percent.",
     "rotate": "Rotated {{count}} pages.",
     "image": "Image export complete.",
     "save": "Saved to {{name}}."
