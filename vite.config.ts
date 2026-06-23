@@ -23,8 +23,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 400,
 
     // Vite 8/Rolldown環境のコード分割設定
-    // ※環境や使用するViteのラッパーによっては 'rollupOptions' として記述します
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         // manualChunks または最新の規格に合わせたコードスプリッティング
         manualChunks(id) {
