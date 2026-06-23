@@ -1089,6 +1089,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               {(["jpeg", "png", "svg"] as const).map((f) => (
                 <button
                   key={f}
+                  aria-label={f.toUpperCase()}
+                  aria-pressed={format === f}
                   onClick={(e) => {
                     setFormat(f);
                     if (f === "svg") setOutputMode("images"); // SVGは画像PDF非対応
@@ -1113,6 +1115,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.secLabel}>{t("image.process_dir_label" as any)}</div>
             <div style={s.fmtRow}>
               <button
+                aria-label={t("image.process_dir_normal" as any)}
+                aria-pressed={processDir === "normal"}
                 onClick={(e) => {
                   setProcessDir("normal");
                   setStatusMsg("");
@@ -1124,6 +1128,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.fmtDesc}>{t("image.process_dir_normal_sub" as any)}</span>
               </button>
               <button
+                aria-label={t("image.process_dir_split" as any)}
+                aria-pressed={processDir === "deimpose"}
                 onClick={(e) => {
                   setProcessDir("deimpose");
                   // 面付け解除は面付けと排他: 面付けモードを 1up に戻す
@@ -1146,6 +1152,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.secLabel}>{t("image.output_mode")}</div>
             <div style={s.fmtRow}>
               <button
+                aria-label={t("image.mode_images")}
+                aria-pressed={outputMode === "images"}
                 onClick={(e) => {
                   setOutputMode("images");
                   (e.currentTarget as HTMLButtonElement).blur();
@@ -1156,6 +1164,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.fmtDesc}>{t("image.mode_images_sub")}</span>
               </button>
               <button
+                aria-label={t("image.mode_pdf")}
+                aria-pressed={outputMode === "pdf"}
                 disabled={format === "svg"}
                 onClick={(e) => {
                   setOutputMode("pdf");
@@ -1182,6 +1192,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   {IMPOSITION_MODES_I18N.map((m) => (
                     <button
                       key={m.id}
+                      aria-label={m.label}
+                      aria-pressed={impositionMode === m.id}
                       onClick={(e) => {
                         setImpositionMode(m.id);
                         setStatusMsg("");
@@ -1231,6 +1243,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   {DE_IMPOSITION_MODE_DEFS.map((m, idx) => (
                     <button
                       key={idx}
+                      aria-label={t(m.labelKey as any)}
+                      aria-pressed={deimpIndex === idx}
                       onClick={(e) => {
                         setDeimpIndex(idx);
                         setStatusMsg("");
@@ -1269,6 +1283,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   {DPI_PRESETS.map((p) => (
                     <button
                       key={p.val}
+                      aria-label={p.label}
+                      aria-pressed={dpi === p.val}
                       onClick={(e) => {
                         setDpi(p.val);
                         (e.currentTarget as HTMLButtonElement).blur();
@@ -1291,6 +1307,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     value={dpi}
                     min={36}
                     max={1200}
+                    aria-label={t("image.dpi_label")}
                     onChange={(e) => setDpi(parseInt(e.target.value) || 72)}
                   />
                   <button style={s.stepBtn} onClick={() => setDpi((v) => Math.min(1200, v + 12))}>
@@ -1317,6 +1334,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   max={100}
                   step={5}
                   value={quality}
+                  aria-label={t("image.quality_label")}
                   onChange={(e) => setQuality(parseInt(e.target.value))}
                   style={{ width: "100%", accentColor: "var(--c-accent)" }}
                 />

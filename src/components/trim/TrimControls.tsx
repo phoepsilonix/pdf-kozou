@@ -12,7 +12,6 @@ import { PageSizeSelector } from "../PageSizeSelector";
 import { F } from "../../lib/theme";
 import { FS } from "../../lib/typography";
 import { useI18n } from "../../lib/i18n";
-import { tts } from "../../lib/tts";
 
 interface Props {
   margins: TrimMargins;
@@ -330,7 +329,6 @@ function MmField({
         max={max}
         step={0.5}
         aria-label={ariaLabel ?? label}
-        onFocus={() => ariaLabel && tts.speak(ariaLabel)}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
       />
       <span style={s.unit}>mm</span>

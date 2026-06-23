@@ -89,23 +89,77 @@ function describe(el: HTMLElement, t: TFn): string {
   return "";
 }
 
-/** 値変更時の読み上げ文（input/select/textarea のみ。対象外は空文字） */
+/**
+ * change イベント時の読み上げ文。
+ * select / checkbox / radio のみを対象にする（これらはフォーカスを保ったまま
+ * change が発火するため確実に読み上げできる）。テキスト・数値・スライダー等の
+ * 連続入力は input イベント側（describeInput）で扱う。対象外は空文字。
+ */
 function describeChange(el: HTMLElement, t: TFn): string {
   const tag = el.tagName.toLowerCase();
-  if (tag !== "input" && tag !== "select" && tag !== "textarea") return "";
   const name = accName(el);
   if (tag === "select") {
     const sel = el as HTMLSelectElement;
     const val = collapse(sel.options[sel.selectedIndex]?.text ?? sel.value ?? "");
     return t("voice.changed", { name, value: val });
   }
+  if (tag !== "input") return "";
   const inp = el as HTMLInputElement;
   const type = (inp.type || "text").toLowerCase();
   if (type === "checkbox")
     return t(inp.checked ? "voice.checkbox_changed_on" : "voice.checkbox_changed_off", { name });
   if (type === "radio") return inp.checked ? t("voice.radio_selected", { name }) : "";
-  if (type === "button" || type === "submit") return "";
+  // text / number / range / textarea などは input イベントで読み上げる
+  return "";
+}
+
+/**
+ * input イベント時の読み上げ文（テキスト・数値・スライダー等の連続入力）。
+ * 入力中のフォーカス保持時に「〇〇 を □□ に変更しました」と現在値を読む。
+ * チェック/ラジオ/ボタン系は change 側で扱うので空文字。
+ */
+function describeInput(el: HTMLElement, t: TFn): string {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== "input" && tag !== "textarea") return "";
+  const inp = el as HTMLInputElement;
+  const type = (inp.type || "text").toLowerCase();
+  if (
+    type === "checkbox" ||
+    type === "radio" ||
+    type === "button" ||
+    type === "submit" ||
+    type === "file"
+  )
+    return "";
+  const name = accName(el);
   return t("voice.changed", { name, value: collapse(inp.value || "") });
+}
+
+/**
+ * click イベント時の読み上げ文（選択系コントロールのみ）。
+ * aria-pressed / aria-selected / aria-checked、または role が tab/radio/option/
+ * checkbox の要素をクリックしたとき、更新後の状態で「〇〇 を選択しました」/
+ * 「〇〇 未選択」と読む。通常のアクションボタン（マーカー無し）は空文字。
+ */
+function describeClick(el: HTMLElement, t: TFn): string {
+  const role = el.getAttribute("role") || "";
+  const hasState =
+    el.hasAttribute("aria-pressed") ||
+    el.hasAttribute("aria-selected") ||
+    el.hasAttribute("aria-checked") ||
+    role === "tab" ||
+    role === "radio" ||
+    role === "option" ||
+    role === "checkbox";
+  if (!hasState) return "";
+  const name = accName(el);
+  if (!name) return "";
+  const state =
+    el.getAttribute("aria-pressed") ??
+    el.getAttribute("aria-selected") ??
+    el.getAttribute("aria-checked");
+  if (state === "false") return t("voice.option_unselected", { name });
+  return t("voice.selected", { name });
 }
 
 export function useFocusAnnouncer() {
@@ -119,7 +173,7 @@ export function useFocusAnnouncer() {
       const msg = describe(el, t);
       if (msg) tts.speak(msg, true);
     };
-    // 値変更時: 「〇〇を□□に変更しました」と現在値を読み上げ
+    // 値変更時（選択リスト・チェック・ラジオ）: 現在値を読み上げ
     const onChange = (e: Event) => {
       if (!tts.enabled) return;
       const el = e.target as HTMLElement | null;
@@ -127,11 +181,45 @@ export function useFocusAnnouncer() {
       const msg = describeChange(el, t);
       if (msg) tts.speak(msg, true);
     };
+    // テキスト・数値・スライダー等の連続入力: 入力が落ち着いてから現在値を読む
+    let inputTimer: ReturnType<typeof setTimeout> | undefined;
+    const onInput = (e: Event) => {
+      if (!tts.enabled) return;
+      const el = e.target as HTMLElement | null;
+      if (!el || el.nodeType !== 1) return;
+      if (el.tagName.toLowerCase() !== "input" && el.tagName.toLowerCase() !== "textarea") return;
+      if (inputTimer) clearTimeout(inputTimer);
+      inputTimer = setTimeout(() => {
+        const msg = describeInput(el, t);
+        if (msg) tts.speak(msg, true);
+      }, 500);
+    };
+    // 選択系ボタン（aria-pressed/selected/checked, role=tab/radio/option）クリック:
+    // React 更新後の状態で「〇〇 を選択しました」と読む。
+    const onClick = (e: MouseEvent) => {
+      if (!tts.enabled) return;
+      const target = e.target as HTMLElement | null;
+      if (!target || typeof target.closest !== "function") return;
+      const el = target.closest<HTMLElement>(
+        'button, [role="button"], [role="tab"], [role="radio"], [role="option"], [role="checkbox"]',
+      );
+      if (!el) return;
+      // 状態更新が DOM に反映されてから読み上げる
+      setTimeout(() => {
+        const msg = describeClick(el, t);
+        if (msg) tts.speak(msg, true);
+      }, 0);
+    };
     document.addEventListener("focusin", onFocus);
     document.addEventListener("change", onChange);
+    document.addEventListener("input", onInput);
+    document.addEventListener("click", onClick);
     return () => {
       document.removeEventListener("focusin", onFocus);
       document.removeEventListener("change", onChange);
+      document.removeEventListener("input", onInput);
+      document.removeEventListener("click", onClick);
+      if (inputTimer) clearTimeout(inputTimer);
     };
   }, [t]);
 }

@@ -621,6 +621,10 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               {([0, 90, 180, 270] as const).map((deg) => (
                 <button
                   key={deg}
+                  aria-label={
+                    deg === 0 ? t("rotate.reset_to") : t("rotate.rotate_deg", { deg: String(deg) })
+                  }
+                  aria-pressed={globalRot === deg}
                   style={{
                     ...s.globalBtn,
                     ...(globalRot === deg ? s.globalBtnOn : {}),

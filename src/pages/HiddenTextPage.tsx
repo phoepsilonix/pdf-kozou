@@ -1365,6 +1365,8 @@ function ThrPanel({
           return (
             <button
               key={p.id}
+              aria-label={t(p.labelKey as any)}
+              aria-pressed={active}
               style={{
                 padding: "2px 8px",
                 borderRadius: 4,
@@ -1420,6 +1422,7 @@ function ThrPanel({
             max={max}
             step={step}
             value={(thr as any)[key]}
+            aria-label={label}
             onChange={(e) => setThr((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
             style={{ width: "100%" }}
           />

@@ -580,6 +580,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               ).map((m) => (
                 <button
                   key={m.id}
+                  aria-label={m.label}
+                  aria-pressed={modeId === m.id}
                   onClick={() => setModeId(m.id)}
                   style={{ ...s.modeBtn, ...(modeId === m.id ? s.modeBtnOn : {}) }}
                 >
@@ -686,6 +688,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                         value={rng[1]}
                         min={1}
                         max={total}
+                        aria-label={`${t("aria.range_input")} #${i + 1}`}
                         onChange={(e) =>
                           setRanges((r) =>
                             r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),
@@ -747,6 +750,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                         style={s.rangeInput}
                         value={rng[0]}
                         min={1}
+                        aria-label={`${t("aria.range_input")} #${i + 1}`}
                         onChange={(e) =>
                           setRanges((r) =>
                             r.map((x, j) => (j === i ? [parseInt(e.target.value) || 1, x[1]] : x)),
@@ -781,6 +785,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                         style={s.rangeInput}
                         value={rng[1]}
                         min={1}
+                        aria-label={`${t("aria.range_input")} #${i + 1}`}
                         onChange={(e) =>
                           setRanges((r) =>
                             r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),

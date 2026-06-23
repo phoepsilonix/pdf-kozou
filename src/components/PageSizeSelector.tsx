@@ -34,6 +34,8 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
         {PAGE_SIZE_DEFS.map((ps) => (
           <button
             key={ps.id}
+            aria-label={t(ps.labelKey as any)}
+            aria-pressed={pageSizeId === ps.id}
             onClick={(e) => {
               setPageSize(ps.id, pageOrientation);
               (e.currentTarget as HTMLButtonElement).blur();
@@ -60,6 +62,8 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
         {PAGE_ORIENTATION_DEFS.map((o) => (
           <button
             key={o.id}
+            aria-label={t(o.labelKey as any)}
+            aria-pressed={pageOrientation === o.id && pageSizeId !== "image"}
             disabled={pageSizeId === "image"}
             onClick={(e) => {
               setPageSize(pageSizeId, o.id);

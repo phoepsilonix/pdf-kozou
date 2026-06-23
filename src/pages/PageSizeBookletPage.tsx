@@ -514,6 +514,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 {MODES.map((m) => (
                   <button
                     key={m.id}
+                    aria-label={t(m.labelKey)}
+                    aria-pressed={mode === m.id}
                     onClick={() => onModeChange(m.id)}
                     style={{ ...s.choice, ...(mode === m.id ? s.choiceSel : {}) }}
                   >
@@ -530,6 +532,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 {SIZE_IDS.map((id) => (
                   <button
                     key={id}
+                    aria-label={id}
+                    aria-pressed={sizeId === id}
                     onClick={() => onPageSizeChange(id)}
                     style={{ ...s.choice, ...(sizeId === id ? s.choiceSel : {}) }}
                   >
@@ -541,6 +545,14 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 {(["auto", "portrait", "landscape"] as Orient[]).map((o) => (
                   <button
                     key={o}
+                    aria-label={t(
+                      o === "auto"
+                        ? "pagesize.orient_auto"
+                        : o === "portrait"
+                          ? "pagesize.orient_portrait"
+                          : "pagesize.orient_landscape",
+                    )}
+                    aria-pressed={orient === o}
                     onClick={() => onOrientChange(o)}
                     style={{ ...s.choice, ...(orient === o ? s.choiceSel : {}) }}
                   >
@@ -566,6 +578,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                     type="number"
                     min={0}
                     value={margin}
+                    aria-label={t("booklet.margin")}
                     onChange={(e) => setMargin(Math.max(0, Number(e.target.value) || 0))}
                     style={s.num}
                   />
@@ -577,6 +590,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                     type="number"
                     min={0}
                     value={gutter}
+                    aria-label={t("booklet.gutter")}
                     onChange={(e) => setGutter(Math.max(0, Number(e.target.value) || 0))}
                     style={s.num}
                   />

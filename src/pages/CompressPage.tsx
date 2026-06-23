@@ -892,10 +892,7 @@ export function CompressPage({
                 fontFamily: F,
               }}
               aria-pressed={!useGs}
-              onClick={() => {
-                setUseGs(false);
-                announceSuccess("voice.selected", { name: t("compress.standard_mupdf") });
-              }}
+              onClick={() => setUseGs(false)}
             >
               {t("compress.standard_mupdf")}
             </button>
@@ -911,10 +908,7 @@ export function CompressPage({
                 fontFamily: F,
               }}
               aria-pressed={useGs}
-              onClick={() => {
-                setUseGs(true);
-                announceSuccess("voice.selected", { name: t("compress.pro_gs") });
-              }}
+              onClick={() => setUseGs(true)}
             >
               {t("compress.pro_gs")}
             </button>
@@ -956,10 +950,7 @@ export function CompressPage({
               {PRESET_OPTIONS_I18N.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => {
-                    setPreset(p.id);
-                    announceSuccess("voice.selected", { name: p.label });
-                  }}
+                  onClick={() => setPreset(p.id)}
                   aria-label={p.label}
                   aria-pressed={preset === p.id}
                   style={{
@@ -1012,10 +1003,7 @@ export function CompressPage({
               {GS_PRESETS_I18N.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => {
-                    setGsPreset(p.id); // GS用のステートを更新
-                    announceSuccess("voice.selected", { name: p.label });
-                  }}
+                  onClick={() => setGsPreset(p.id)}
                   aria-label={p.label}
                   aria-pressed={gsPreset === p.id}
                   style={{

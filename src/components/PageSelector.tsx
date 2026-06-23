@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 import { useI18n } from "../lib/i18n";
-import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
 
 // src/components/PageSelector.tsx — 共通ページ範囲指定コンポーネント
@@ -145,7 +144,12 @@ export function PageSelector({
         )}
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {(["all", "odd", "even", "range"] as Mode[]).map((m) => (
-            <button key={m} style={mode === m ? btnOn : btnBase} onClick={() => handleMode(m)}>
+            <button
+              key={m}
+              style={mode === m ? btnOn : btnBase}
+              onClick={() => handleMode(m)}
+              aria-pressed={mode === m}
+            >
               {m === "all"
                 ? t("page_selector.all")
                 : m === "odd"
@@ -162,7 +166,6 @@ export function PageSelector({
               ref={rangeInputRef}
               aria-label={t("aria.range_input")}
               value={rangeText}
-              onFocus={() => tts.speak(t("aria.range_input"))}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}
               style={{
@@ -224,9 +227,8 @@ export function PageSelector({
                 key={m}
                 style={mode === m ? btnOn : btnBase}
                 onClick={() => handleMode(m)}
-                onFocus={() =>
-                  tts.speak(modeLabel + (mode === m ? t("page_selector.selected_suffix") : ""))
-                }
+                aria-label={modeLabel}
+                aria-pressed={mode === m}
               >
                 {modeLabel}
               </button>
@@ -239,7 +241,6 @@ export function PageSelector({
               ref={rangeInputRef}
               aria-label={t("aria.range_input")}
               value={rangeText}
-              onFocus={() => tts.speak(t("aria.range_input"))}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}
               style={{
