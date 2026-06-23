@@ -22,6 +22,8 @@ interface Props {
   pageHeightPt: number;
   margins: TrimMargins; // pt単位の余白幅
   onChange: (m: TrimMargins) => void;
+  /** ドラッグ操作が終わったときに最終的な余白で1回だけ呼ばれる（音声ガイド用） */
+  onCommit?: (m: TrimMargins) => void;
   displayWidth: number;
 }
 
@@ -49,12 +51,18 @@ export function TrimCanvas({
   pageHeightPt,
   margins,
   onChange,
+  onCommit,
   displayWidth,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const dragging = useRef<DragTarget>(null);
   const dragStart = useRef({ x: 0, y: 0, margins: margins });
+  // 最新の margins を参照するための ref（onMouseUp の依存配列が空のため stale を防ぐ）
+  const marginsRef = useRef(margins);
+  marginsRef.current = margins;
+  // ドラッグで実際に余白が動いたかどうか（クリックのみのときは読み上げない）
+  const movedRef = useRef(false);
 
   const scale = displayWidth / pageWidthPt;
   const displayHeight = Math.round(pageHeightPt * scale);
@@ -304,6 +312,7 @@ export function TrimCanvas({
           nm.bottom = clamp(sm.bottom - dyPt, 0, maxB);
       }
 
+      movedRef.current = true;
       draw(nm);
       onChange(nm);
     },
@@ -312,10 +321,12 @@ export function TrimCanvas({
 
   const onMouseUp = useCallback(() => {
     // マウスアップ時にスナップ適用
-    if (dragging.current) {
-      const m = { ...margins };
+    const wasDragging = dragging.current;
+    if (wasDragging) {
+      const m = { ...marginsRef.current };
       const pw = pageWidthPt,
         ph = pageHeightPt;
+      let final: typeof m = m;
       const snapped: typeof m = {
         left: snapPt(m.left, pw - m.right),
         right: snapPt(m.right, pw - m.left),
@@ -328,12 +339,16 @@ export function TrimCanvas({
         snapped.top !== m.top ||
         snapped.bottom !== m.bottom
       ) {
+        final = snapped;
         draw(snapped);
         onChange(snapped);
       }
+      // 実際に動かしたドラッグのときだけ、最終的な余白を読み上げる
+      if (movedRef.current) onCommit?.(final);
     }
+    movedRef.current = false;
     dragging.current = null;
-  }, []);
+  }, [pageWidthPt, pageHeightPt, draw, onChange, onCommit]);
 
   return (
     <canvas

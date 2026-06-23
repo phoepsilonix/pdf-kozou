@@ -35,6 +35,7 @@ import { FS } from "../lib/typography";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
+import { announceMargins } from "../lib/announce";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
@@ -515,6 +516,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
                 pageHeightPt={curH}
                 margins={trimMargins}
                 onChange={setTrimMargins}
+                onCommit={announceMargins}
                 displayWidth={Math.round(canvasWidth * zoom)}
               />
             ) : (
@@ -1037,6 +1039,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               pageHeightPt={pageH}
               margins={trimMargins}
               onChange={setTrimMargins}
+              onCommit={announceMargins}
               displayWidth={Math.round(canvasWidth * zoom)}
             />
           ) : (

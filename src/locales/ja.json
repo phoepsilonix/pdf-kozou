@@ -162,7 +162,8 @@
     "selected": "{{name}} を選択しました",
     "preview_shown": "プレビューが表示されました",
     "processing": "処理中です。しばらくお待ちください",
-    "page_changed": "{{page}} ページ目、全 {{total}} ページ"
+    "page_changed": "{{page}} ページ目、全 {{total}} ページ",
+    "margins_changed": "余白を 上 {{top}}、下 {{bottom}}、左 {{left}}、右 {{right}} ミリに変更しました"
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · オフライン完全動作",

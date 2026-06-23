@@ -33,6 +33,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { announceValueChange } from "../lib/announce";
 import { FS } from "../lib/typography";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
@@ -1298,7 +1299,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 </div>
                 {/* DPI 数値直接入力 — 大きめフォント */}
                 <div style={s.numRow}>
-                  <button style={s.stepBtn} onClick={() => setDpi((v) => Math.max(36, v - 12))}>
+                  <button
+                    style={s.stepBtn}
+                    onClick={() => {
+                      const nv = Math.max(36, dpi - 12);
+                      setDpi(nv);
+                      announceValueChange(t("image.dpi_label"), nv);
+                    }}
+                  >
                     −
                   </button>
                   <input
@@ -1310,7 +1318,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     aria-label={t("image.dpi_label")}
                     onChange={(e) => setDpi(parseInt(e.target.value) || 72)}
                   />
-                  <button style={s.stepBtn} onClick={() => setDpi((v) => Math.min(1200, v + 12))}>
+                  <button
+                    style={s.stepBtn}
+                    onClick={() => {
+                      const nv = Math.min(1200, dpi + 12);
+                      setDpi(nv);
+                      announceValueChange(t("image.dpi_label"), nv);
+                    }}
+                  >
                     ＋
                   </button>
                   <span style={s.numLabel}>

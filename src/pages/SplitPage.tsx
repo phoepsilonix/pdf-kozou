@@ -34,6 +34,7 @@ import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
+import { announceValueChange } from "../lib/announce";
 import { FS } from "../lib/typography";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
@@ -606,7 +607,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.secLabel}>{t("split.every_n_label")}</div>
                 {isBatch && <div style={s.batchRangeNote}>{t("split.every_apply_all")}</div>}
                 <div style={s.numRow}>
-                  <button style={s.stepBtn} onClick={() => setEveryN((v) => Math.max(1, v - 1))}>
+                  <button
+                    style={s.stepBtn}
+                    onClick={() => {
+                      const nv = Math.max(1, everyN - 1);
+                      setEveryN(nv);
+                      announceValueChange(t("aria.every_n_input"), nv);
+                    }}
+                  >
                     −
                   </button>
                   <input
@@ -618,7 +626,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     aria-label={t("aria.every_n_input")}
                     onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value) || 1))}
                   />
-                  <button style={s.stepBtn} onClick={() => setEveryN((v) => v + 1)}>
+                  <button
+                    style={s.stepBtn}
+                    onClick={() => {
+                      const nv = everyN + 1;
+                      setEveryN(nv);
+                      announceValueChange(t("aria.every_n_input"), nv);
+                    }}
+                  >
                     ＋
                   </button>
                   <span style={s.numLabel}>{t("split.pages_per_file")}</span>

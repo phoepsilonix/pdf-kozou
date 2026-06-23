@@ -162,7 +162,8 @@
     "selected": "{{name}} selected",
     "preview_shown": "Preview is shown",
     "processing": "Processing. Please wait.",
-    "page_changed": "Page {{page}} of {{total}}"
+    "page_changed": "Page {{page}} of {{total}}",
+    "margins_changed": "Margins set to top {{top}}, bottom {{bottom}}, left {{left}}, right {{right}} mm"
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",
