@@ -127,7 +127,20 @@ export function PageSelector({
     color: "var(--c-accent)",
     fontWeight: 700,
   };
+  // 読み上げ用のグループ名（label から末尾の "(all/even/odd/...)" を除いた部分）。
+  // これを各選択肢の前に付けて、どの指定（適用/除外/抽出など）の選択かを分かるようにする。
+  const groupName = (label ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const ariaFor = (modeLabel: string) => (groupName ? `${groupName} ${modeLabel}` : modeLabel);
+  const rangeAria = groupName ? `${groupName} ${t("aria.range_input")}` : t("aria.range_input");
   if (type === "1") {
+    const modeLabel1 = (m: Mode) =>
+      m === "all"
+        ? t("page_selector.all")
+        : m === "odd"
+          ? t("page_selector.odd")
+          : m === "even"
+            ? t("page_selector.even")
+            : t("page_selector.range");
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: compact ? 4 : 6 }}>
         {label && (
@@ -148,15 +161,10 @@ export function PageSelector({
               key={m}
               style={mode === m ? btnOn : btnBase}
               onClick={() => handleMode(m)}
+              aria-label={ariaFor(modeLabel1(m))}
               aria-pressed={mode === m}
             >
-              {m === "all"
-                ? t("page_selector.all")
-                : m === "odd"
-                  ? t("page_selector.odd")
-                  : m === "even"
-                    ? t("page_selector.even")
-                    : t("page_selector.range")}
+              {modeLabel1(m)}
             </button>
           ))}
         </div>
@@ -164,7 +172,7 @@ export function PageSelector({
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <input
               ref={rangeInputRef}
-              aria-label={t("aria.range_input")}
+              aria-label={rangeAria}
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}
@@ -227,7 +235,7 @@ export function PageSelector({
                 key={m}
                 style={mode === m ? btnOn : btnBase}
                 onClick={() => handleMode(m)}
-                aria-label={modeLabel}
+                aria-label={ariaFor(modeLabel)}
                 aria-pressed={mode === m}
               >
                 {modeLabel}
@@ -239,7 +247,7 @@ export function PageSelector({
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <input
               ref={rangeInputRef}
-              aria-label={t("aria.range_input")}
+              aria-label={rangeAria}
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
               placeholder={t("page_selector.placeholder")}
