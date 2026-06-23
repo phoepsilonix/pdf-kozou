@@ -161,7 +161,8 @@
     "radio_selected": "{{name}} selected",
     "selected": "{{name}} selected",
     "preview_shown": "Preview is shown",
-    "processing": "Processing. Please wait."
+    "processing": "Processing. Please wait.",
+    "page_changed": "Page {{page}} of {{total}}"
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",

@@ -34,6 +34,7 @@ import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
+import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
@@ -658,6 +659,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const pageW = currentPage.w;
   const pageH = currentPage.h;
   const [Pages, setPages] = useState(pdfInfo.page_count) || 1;
+  // 左ペインで選択中ページが変わったら「何ページ目か」を読み上げる
+  usePageAnnouncer(previewPage, pdfInfo.page_count);
 
   // プレビューページ変更時に画像を再取得
   useEffect(() => {

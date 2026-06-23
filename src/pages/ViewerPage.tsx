@@ -23,6 +23,7 @@ import {
   type PageLink,
 } from "../lib/tauri";
 import { Spinner, PageHeader } from "../components/common";
+import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
 import { getUiScale } from "../lib/uiScale";
@@ -1031,6 +1032,8 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const [viewPage, setViewPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [zoom, setZoom] = useState(1.0);
+  // 左ペインで選択中ページが変わったら「何ページ目か」を読み上げる
+  usePageAnnouncer(viewPage, total);
 
   // ホーム画面のレイアウト設定（リフロー可能文書用）
   const { convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
