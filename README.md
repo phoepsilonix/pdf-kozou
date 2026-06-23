@@ -141,11 +141,20 @@ pdf-kozou/
 └── src-tauri/        デスクトップ GUI (Tauri v2)
 ```
 
-```bash
+```sh
 git clone https://github.com/phoepsilonix/pdf-kozou.git
 cd pdf-kozou
+```
+
+```sh
 cargo build --release -p pdf-kozou-core
 cargo tauri build
+```
+
+または
+
+```sh
+npm run build
 ```
 
 ビルド済みバイナリは `target/release/pdf-kozou-core` `target/release/pdf-kozou` に生成されます。  
