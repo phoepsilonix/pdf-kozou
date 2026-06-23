@@ -95,9 +95,12 @@ function describe(el: HTMLElement, t: TFn): string {
   // role=checkbox は <button role="checkbox"> 等のカスタムチェックも含めてオン/オフで読む。
   // （button 判定より先に置く。後段の button 分岐に吸われると「選択中」になってしまう）
   if (role === "checkbox")
-    return t(el.getAttribute("aria-checked") === "true" ? "voice.checkbox_on" : "voice.checkbox_off", {
-      name,
-    });
+    return t(
+      el.getAttribute("aria-checked") === "true" ? "voice.checkbox_on" : "voice.checkbox_off",
+      {
+        name,
+      },
+    );
 
   if (
     tag === "button" ||
@@ -258,6 +261,8 @@ export function useFocusAnnouncer() {
         'button, [role="button"], [role="tab"], [role="radio"], [role="option"], [role="checkbox"]',
       );
       if (!el) return;
+      // data-voice-skip 配下は各操作箇所が明示的に読み上げるため、汎用読み上げは抑止
+      if (el.closest("[data-voice-skip]")) return;
       // 状態更新が DOM に反映されてから読み上げる
       setTimeout(() => {
         const msg = describeClick(el, t);

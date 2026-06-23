@@ -30,10 +30,10 @@
   },
   "file": {
     "added": "{{name}}を追加しました。{{pages}}ページ。",
-    "removed": "{{name}}を一覧から外しました。",
     "cleared": "すべてのファイルを一覧から外しました。",
-    "use_target": "対象PDFとして使う",
-    "remove_one": "この一覧から外す",
+    "use_target_on": "{{name}} を対象PDFとして使う",
+    "use_target_off": "{{name}} を対象から外す",
+    "remove_one": "{{name}} をファイル一覧から外す",
     "clear_aria": "すべてのファイルを一覧から外す",
     "selected": "{{count}}件のファイルが選択されています。",
     "none_selected": "ファイルが選択されていません。",

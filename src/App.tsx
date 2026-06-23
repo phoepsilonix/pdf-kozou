@@ -750,11 +750,18 @@ export default function App() {
                       key={f.id}
                       entry={f}
                       index={i}
-                      onToggle={() => toggleSelect(f.id)}
+                      onToggle={() => {
+                        // 対象PDFとして使うかどうかのオンオフ。新しい状態をファイル名付きで読み上げ
+                        const willUse = !f.selected;
+                        toggleSelect(f.id);
+                        announceSuccess(willUse ? "file.use_target_on" : "file.use_target_off", {
+                          name: formatFilenameForSpeech(f.filename),
+                        });
+                      }}
                       onRemove={() => {
                         // 「削除」ではなく読み込み対象の一覧から外す操作
                         removeFile(f.id);
-                        announceSuccess("file.removed", {
+                        announceSuccess("file.remove_one", {
                           name: formatFilenameForSpeech(f.filename),
                         });
                       }}
@@ -930,6 +937,9 @@ function FileRow({
       tabIndex={0}
       role="listitem"
       draggable
+      // 行・チェック・✘ の汎用読み上げは抑止し、行は下の onFocus（整形済み
+      // ファイル名）、チェック/✘ は操作ハンドラの明示読み上げに一本化する。
+      data-voice-skip
       onFocus={() => {
         const info = `${formatFilenameForSpeech(entry.filename)}、${entry.pageCount}${t("file.pages_unit")}`;
         tts.speak(info);
@@ -965,8 +975,8 @@ function FileRow({
         onClick={onToggle}
         role="checkbox"
         aria-checked={entry.selected}
-        aria-label={t("file.use_target")}
-        title={t("file.use_target")}
+        aria-label={t("file.use_target_on", { name: entry.filename })}
+        title={t("file.use_target_on", { name: entry.filename })}
       >
         {entry.selected && <span style={fr.checkMark}>✓</span>}
       </button>
@@ -982,7 +992,12 @@ function FileRow({
           {mb ? "  " + mb : ""}
         </span>
       </div>
-      <button style={fr.del} onClick={onRemove} aria-label={t("file.remove_one")} title={t("file.remove_one")}>
+      <button
+        style={fr.del}
+        onClick={onRemove}
+        aria-label={t("file.remove_one", { name: entry.filename })}
+        title={t("file.remove_one", { name: entry.filename })}
+      >
         ✘
       </button>
     </div>

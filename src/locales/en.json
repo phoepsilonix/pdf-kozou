@@ -30,10 +30,10 @@
   },
   "file": {
     "added": "Added {{name}}. {{pages}} pages.",
-    "removed": "Removed {{name}} from the list.",
     "cleared": "Removed all files from the list.",
-    "use_target": "Use as target PDF",
-    "remove_one": "Remove from list",
+    "use_target_on": "Use {{name}} as target PDF",
+    "use_target_off": "Exclude {{name}} from targets",
+    "remove_one": "Remove {{name}} from the list",
     "clear_aria": "Remove all files from the list",
     "selected": "{{count}} file(s) selected.",
     "none_selected": "No files selected.",
