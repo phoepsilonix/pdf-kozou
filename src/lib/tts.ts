@@ -15,6 +15,16 @@
 
 import { getCurrentLocale, translate } from "./i18n";
 
+// 読み上げから絵文字・絵文字的記号を除去する（⚡ や ✏️ 🔍 などのアイコンは
+// 読み上げると邪魔になるため）。異体字セレクタ・ZWJ も併せて除去する。
+function stripEmoji(text: string): string {
+  return text
+    .replace(/[\u{FE00}-\u{FE0F}\u{200D}]/gu, "")
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const STORAGE_ENABLED_KEY = "pdf-kozou-tts-enabled";
 const STORAGE_RATE_KEY = "pdf-kozou-tts-rate";
 const STORAGE_PITCH_KEY = "pdf-kozou-tts-pitch";
@@ -118,10 +128,11 @@ class TtsService {
 
   /** テキストを読み上げる。enabled=false または未対応環境では何もしない */
   speak(text: string, interrupt = true): void {
-    if (!this._supported || !this._enabled || !text.trim()) return;
+    const clean = stripEmoji(text);
+    if (!this._supported || !this._enabled || !clean.trim()) return;
     try {
       if (interrupt) window.speechSynthesis.cancel();
-      const utt = new SpeechSynthesisUtterance(text);
+      const utt = new SpeechSynthesisUtterance(clean);
       utt.lang = getCurrentLocale() === "ja" ? "ja-JP" : "en-US";
       utt.rate = this._rate;
       utt.pitch = this._pitch;

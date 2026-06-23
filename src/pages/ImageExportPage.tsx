@@ -1301,6 +1301,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.numRow}>
                   <button
                     style={s.stepBtn}
+                    data-voice-skip
                     onClick={() => {
                       const nv = Math.max(36, dpi - 12);
                       setDpi(nv);
@@ -1320,6 +1321,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   />
                   <button
                     style={s.stepBtn}
+                    data-voice-skip
                     onClick={() => {
                       const nv = Math.min(1200, dpi + 12);
                       setDpi(nv);

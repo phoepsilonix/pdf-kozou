@@ -602,7 +602,7 @@
     "reset": "リセット"
   },
   "aria": {
-    "range_input": "ページ範囲。例: 1から3と5と8から10。ハイフン末尾は最終ページまで。Alt+Rでフォーカス",
+    "range_input": "ページ範囲。Alt+Rでフォーカス",
     "exclude_input": "除外ページ。例: 1から3と5。Tabで次へ",
     "extract_input": "抽出ページ。例: 1から3と5。Tabで次へ",
     "margin_top": "上の余白（ミリメートル）。Alt+Mでフォーカス",

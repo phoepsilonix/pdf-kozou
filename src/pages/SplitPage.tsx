@@ -622,6 +622,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.numRow}>
                   <button
                     style={s.stepBtn}
+                    data-voice-skip
                     onClick={() => {
                       const nv = Math.max(1, everyN - 1);
                       setEveryN(nv);
@@ -641,6 +642,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   />
                   <button
                     style={s.stepBtn}
+                    data-voice-skip
                     onClick={() => {
                       const nv = everyN + 1;
                       setEveryN(nv);
@@ -661,7 +663,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   <div key={i} style={s.rangeRow}>
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, -1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 0, -1)}
+                      >
                         ◀
                       </button>
                       <input
@@ -680,13 +686,21 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, 1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 0, 1)}
+                      >
                         ▶
                       </button>
                     </div>
                     <span style={s.rangeSep}>〜</span>
                     <div style={s.rangeGroup}>
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, -1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 1, -1)}
+                      >
                         ◀
                       </button>
                       <input
@@ -702,7 +716,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, 1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 1, 1)}
+                      >
                         ▶
                       </button>
                     </div>
@@ -735,7 +753,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   <div key={i} style={s.rangeRow}>
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, -1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 0, -1)}
+                      >
                         ◀
                       </button>
                       <input
@@ -750,13 +772,21 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, 1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 0, 1)}
+                      >
                         ▶
                       </button>
                     </div>
                     <span style={s.rangeSep}>〜</span>
                     <div style={s.rangeGroup}>
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, -1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 1, -1)}
+                      >
                         ◀
                       </button>
                       <input
@@ -771,7 +801,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, 1)}>
+                      <button
+                        style={s.rangeArrow}
+                        data-voice-skip
+                        onClick={() => stepRange(i, 1, 1)}
+                      >
                         ▶
                       </button>
                     </div>

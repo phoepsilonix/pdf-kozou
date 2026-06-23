@@ -38,6 +38,9 @@ type TFn = (key: string, vars?: Record<string, string>) => string;
 
 /** フォーカス要素を説明する読み上げ文を組み立てる（対象外なら空文字） */
 function describe(el: HTMLElement, t: TFn): string {
+  // data-voice-skip が付いた要素（ステッパー等）はフォーカス時に読み上げない。
+  // 値変更そのものは各操作箇所が明示的に読み上げるため、ボタン名の繰り返しは省く。
+  if (el.closest("[data-voice-skip]")) return "";
   const tag = el.tagName.toLowerCase();
   const role = el.getAttribute("role");
   const name = accName(el);
