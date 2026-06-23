@@ -184,7 +184,9 @@ export function CompressPage({
     "Ctrl+Enter": () => {
       if (phase === "edit") {
         tts.speak(t("shortcut.executing"));
-        handleSaveCompressed();
+        // edit では保存ダイアログに直行せず、実行して結果プレビュー画面へ遷移する
+        // （画面の主ボタンと同じ handlePreview）。保存は結果画面で Ctrl+S。
+        handlePreview();
       }
     },
     "Ctrl+S": () => {

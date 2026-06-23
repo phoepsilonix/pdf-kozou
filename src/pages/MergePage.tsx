@@ -76,17 +76,19 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     "Ctrl+Enter": () => {
       if (phase === "edit") {
         tts.speak(t("shortcut.executing"));
-        handleSave();
+        // edit では保存に直行せず、まずプレビュー画面へ遷移する（画面の
+        // プレビューボタンと同じ）。保存はプレビュー画面で Ctrl+S / Ctrl+Shift+S。
+        handlePreview();
       }
     },
     "Ctrl+S": () => {
-      if (phase === "edit" || phase === "result") {
+      if (phase === "preview" || phase === "result") {
         tts.speak(t("shortcut.saving"));
         handleSave();
       }
     },
     "Ctrl+Shift+S": () => {
-      if (phase === "edit" || phase === "result") {
+      if (phase === "preview" || phase === "result") {
         tts.speak(t("shortcut.compress_saving"));
         handleSaveWithCompress();
       }
