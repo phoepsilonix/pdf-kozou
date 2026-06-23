@@ -85,6 +85,19 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [modeId, setModeId] = useState<ModeId>("all");
   const [everyN, setEveryN] = useState(2);
   const [ranges, setRanges] = useState<[number, number][]>([[1, pdfInfo.page_count]]);
+  // 範囲指定の ◀▶ ステッパー: 開始(idx=0)/終了(idx=1)を増減し、新しい値を読み上げる
+  const stepRange = (i: number, idx: 0 | 1, delta: 1 | -1) => {
+    const cur = ranges[i];
+    if (!cur) return;
+    let nv: number;
+    if (idx === 0) {
+      nv = delta < 0 ? Math.max(1, cur[0] - 1) : Math.min(cur[1], cur[0] + 1);
+    } else {
+      nv = delta < 0 ? Math.max(cur[0], cur[1] - 1) : Math.min(total, cur[1] + 1);
+    }
+    setRanges((r) => r.map((x, j) => (j === i ? (idx === 0 ? [nv, x[1]] : [x[0], nv]) : x)));
+    announceValueChange(`${t("aria.range_input")} #${i + 1}`, nv);
+  };
   const [outDir, setOutDir] = useState("");
   // 出力ファイル名（画像変換ページと同じ「元名トグル＋ラベル＋プレビュー」方式）
   const [keepOriginalName, setKeepOriginalName] = useState(true);
@@ -648,14 +661,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   <div key={i} style={s.rangeRow}>
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) =>
-                            r.map((x, j) => (j === i ? [Math.max(1, x[0] - 1), x[1]] : x)),
-                          )
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, -1)}>
                         ◀
                       </button>
                       <input
@@ -674,27 +680,13 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) =>
-                            r.map((x, j) => (j === i ? [Math.min(x[1], x[0] + 1), x[1]] : x)),
-                          )
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, 1)}>
                         ▶
                       </button>
                     </div>
                     <span style={s.rangeSep}>〜</span>
                     <div style={s.rangeGroup}>
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) =>
-                            r.map((x, j) => (j === i ? [x[0], Math.max(x[0], x[1] - 1)] : x)),
-                          )
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, -1)}>
                         ◀
                       </button>
                       <input
@@ -710,14 +702,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) =>
-                            r.map((x, j) => (j === i ? [x[0], Math.min(total, x[1] + 1)] : x)),
-                          )
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, 1)}>
                         ▶
                       </button>
                     </div>
@@ -750,14 +735,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   <div key={i} style={s.rangeRow}>
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) =>
-                            r.map((x, j) => (j === i ? [Math.max(1, x[0] - 1), x[1]] : x)),
-                          )
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, -1)}>
                         ◀
                       </button>
                       <input
@@ -772,27 +750,13 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) =>
-                            r.map((x, j) => (j === i ? [Math.min(x[1], x[0] + 1), x[1]] : x)),
-                          )
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 0, 1)}>
                         ▶
                       </button>
                     </div>
                     <span style={s.rangeSep}>〜</span>
                     <div style={s.rangeGroup}>
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) =>
-                            r.map((x, j) => (j === i ? [x[0], Math.max(x[0], x[1] - 1)] : x)),
-                          )
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, -1)}>
                         ◀
                       </button>
                       <input
@@ -807,12 +771,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                           )
                         }
                       />
-                      <button
-                        style={s.rangeArrow}
-                        onClick={() =>
-                          setRanges((r) => r.map((x, j) => (j === i ? [x[0], x[1] + 1] : x)))
-                        }
-                      >
+                      <button style={s.rangeArrow} onClick={() => stepRange(i, 1, 1)}>
                         ▶
                       </button>
                     </div>
