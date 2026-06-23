@@ -21,6 +21,7 @@ import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { PageSizeSelector } from "../components/PageSizeSelector";
 import { hasImage } from "../lib/fileTypes";
 import { buildName, stem, opSuffix } from "../lib/filename";
+import { formatFilenameForSpeech } from "../lib/speakName";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
@@ -409,7 +410,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         );
       });
       setSavedPath(sp);
-      announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
+      announceSuccess("done.save", {
+        name: formatFilenameForSpeech(sp.split(/[/\\]/).pop() ?? sp),
+      });
       setPhase("result");
     };
     // Ctrl+S でアクセスできるよう ref に登録

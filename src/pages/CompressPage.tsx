@@ -30,6 +30,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
 import { useI18n } from "../lib/i18n";
 import { buildName, appendName, stem } from "../lib/filename";
+import { formatFilenameForSpeech } from "../lib/speakName";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { Spinner } from "../components/common";
 
@@ -429,7 +430,9 @@ export function CompressPage({
         });
       }
       setSavedFilePath(sp);
-      announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
+      announceSuccess("done.save", {
+        name: formatFilenameForSpeech(sp.split(/[/\\]/).pop() ?? sp),
+      });
       // 連携(trim/rotate/merge)時もここで親へ遷移せず、CompressPage 自身の
       // 「保存完了」画面（savedFilePath による文書情報編集つき）を表示する。
       // 即時に onDone() で親へ遷移すると、その編集画面に到達できないため呼ばない。
@@ -459,7 +462,9 @@ export function CompressPage({
     try {
       await invoke("copy_file", { src: inputFile, dst: sp });
       setSavedFilePath(sp);
-      announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
+      announceSuccess("done.save", {
+        name: formatFilenameForSpeech(sp.split(/[/\\]/).pop() ?? sp),
+      });
       // 同上: 親へ即時遷移せず、保存完了画面（文書情報編集つき）を表示する。
     } catch (e) {
       //await compressPdf(inputFile, sp, { preset: "light" });

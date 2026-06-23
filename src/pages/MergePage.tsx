@@ -20,6 +20,7 @@ import { resolvePageSizePt } from "../lib/pageSize";
 import { PageSizeSelector } from "../components/PageSizeSelector";
 import { hasImage } from "../lib/fileTypes";
 import { buildName, stem, opSuffix } from "../lib/filename";
+import { formatFilenameForSpeech } from "../lib/speakName";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
   mergePdf,
@@ -187,12 +188,13 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
         }
       }
       // 追加結果を読み上げる。1件はファイル名、複数件は件数＋ファイル名一覧。
+      // ハッシュ等の不透明な英数字名は綴り読みに整形してから渡す。
       if (added.length === 1) {
-        announceSuccess("voice.file_added", { name: added[0] });
+        announceSuccess("voice.file_added", { name: formatFilenameForSpeech(added[0]) });
       } else if (added.length > 1) {
         announceSuccess("voice.files_added", {
           count: String(added.length),
-          names: added.join(", "),
+          names: added.map(formatFilenameForSpeech).join(", "),
         });
       }
     },

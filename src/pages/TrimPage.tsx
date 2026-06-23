@@ -12,6 +12,7 @@ import { CompressPage } from "./CompressPage";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import { hasImage } from "../lib/fileTypes";
 import { buildName, stem, opSuffix } from "../lib/filename";
+import { formatFilenameForSpeech } from "../lib/speakName";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import {
@@ -858,7 +859,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       await moveFile(outTmp, sp);
       setSavedPath(sp);
       setPhase("saved");
-      announceSuccess("done.save", { name: sp.split(/[/\\]/).pop() ?? sp });
+      announceSuccess("done.save", {
+        name: formatFilenameForSpeech(sp.split(/[/\\]/).pop() ?? sp),
+      });
     } catch (e) {
       announceError(String(e));
       setErrMsg(String(e));
