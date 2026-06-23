@@ -120,6 +120,13 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   // プレビューを押すたびに再レンダリングするのを防ぐ。
   const thumbCache = useRef<Map<string, string>>(new Map());
   const tkey = (path: string, i: number) => `${path}#${i}`;
+  // 既に取り込み済みのパス集合。ファイル追加時に「実際に追加された分」だけを
+  // 音声ガイドで読み上げるため、重複・既存を同期的に判定するのに使う。
+  // entries の変化（削除を含む）に追従させる。
+  const knownPaths = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    knownPaths.current = new Set(entries.map((e) => e.path));
+  }, [entries]);
 
   // ── initPaths: マウント時に1回だけ ──────────────────────────────────────
   useEffect(() => {
@@ -131,7 +138,11 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   // ── ファイル追加 ─────────────────────────────────────────────────────────
   const loadPaths = useCallback(
     async (paths: string[]) => {
+      // 実際に追加できたファイル名（重複・失敗を除く）。最後に音声ガイドで読み上げる。
+      const added: string[] = [];
       for (const path of paths) {
+        // 既存・このバッチで追加済みのパスはスキップ（同期判定）。
+        if (knownPaths.current.has(path)) continue;
         try {
           const info = await getPdfInfo(path, {
             layoutW: convertLayoutW,
@@ -152,6 +163,10 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
               thumbs[i] = undefined;
             }
           }
+          const filename = path.split(/[/\\]/).pop() ?? path;
+          // 取り込み確定したパスを即座に既知集合へ（連続追加時の重複防止）。
+          knownPaths.current.add(path);
+          added.push(filename);
           setEntries((prev) => {
             // 同じパスの重複追加を防ぐ
             if (prev.some((e) => e.path === path)) return prev;
@@ -160,7 +175,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
               {
                 id: _id++,
                 path,
-                filename: path.split(/[/\\]/).pop() ?? path,
+                filename,
                 pageCount: info.page_count,
                 thumbs,
                 pages: info.pages,
@@ -171,8 +186,17 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
           setError(`${path}: ${e}`);
         }
       }
+      // 追加結果を読み上げる。1件はファイル名、複数件は件数＋ファイル名一覧。
+      if (added.length === 1) {
+        announceSuccess("voice.file_added", { name: added[0] });
+      } else if (added.length > 1) {
+        announceSuccess("voice.files_added", {
+          count: String(added.length),
+          names: added.join(", "),
+        });
+      }
     },
-    [setError],
+    [setError, convertLayoutW, convertLayoutH, convertLayoutEm, announceSuccess],
   );
 
   const pickFiles = useCallback(async () => {

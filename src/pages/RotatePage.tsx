@@ -271,7 +271,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       );
       setSavedPath(saveTo);
       setPhase("preview");
-      announceSuccess("voice.preview_shown");
+      // 回転実行後の画面は画像プレビューではなく「保存方法の選択」。
+      // そのため「プレビュー表示」ではなく、回転完了と次の操作を読み上げる。
+      announceSuccess("voice.rotate_ready", { count: String(changedPages.length) });
     } catch (e) {
       announceError(String(e));
       setErrMsg(String(e));

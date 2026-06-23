@@ -161,6 +161,9 @@
     "radio_selected": "{{name}} selected",
     "selected": "{{name}} selected",
     "preview_shown": "Preview is shown",
+    "rotate_ready": "{{count}} pages rotated. Select how to save.",
+    "file_added": "Added {{name}}",
+    "files_added": "Added {{count}} files. {{names}}",
     "processing": "Processing. Please wait.",
     "page_changed": "Page {{page}} of {{total}}",
     "margins_changed": "Margins set to top {{top}}, bottom {{bottom}}, left {{left}}, right {{right}} mm"
