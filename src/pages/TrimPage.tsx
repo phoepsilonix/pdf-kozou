@@ -602,12 +602,16 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       tts.speak(t("aria.output_dir_btn"));
     },
     "Alt+M": () => {
+      // フォーカスすればフォーカス読み上げが働くので、明示読み上げはしない（重複防止）
       marginTopRef.current?.focus();
-      tts.speak(t("aria.margin_top"));
     },
     "Alt+R": () => {
-      rangeRef.current?.focus();
-      tts.speak(t("aria.range_input"));
+      // 範囲指定（適用/除外/抽出）が開いている入力欄を順番にトグルしてフォーカス。
+      const inputs = Array.from(document.querySelectorAll<HTMLInputElement>("[data-range-input]"));
+      if (inputs.length === 0) return;
+      const cur = inputs.indexOf(document.activeElement as HTMLInputElement);
+      const next = inputs[(cur + 1) % inputs.length] ?? inputs[0];
+      next.focus();
     },
     Escape: () => {
       if (phase === "result") {

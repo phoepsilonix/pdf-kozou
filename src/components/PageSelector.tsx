@@ -172,6 +172,7 @@ export function PageSelector({
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <input
               ref={rangeInputRef}
+              data-range-input
               aria-label={rangeAria}
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
@@ -247,6 +248,7 @@ export function PageSelector({
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <input
               ref={rangeInputRef}
+              data-range-input
               aria-label={rangeAria}
               value={rangeText}
               onChange={(e) => handleRange(e.target.value)}
