@@ -21,10 +21,57 @@ function collapse(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
-/** 要素のアクセシブル名（aria-label > テキスト > title > placeholder） */
+/**
+ * フォーム部品（input/select/textarea）に紐づくラベル文字列を返す。
+ * チェックボックスやラジオは要素自身に textContent が無いため、これが無いと
+ * 「（無名）をオンにしました」のように何をオンにしたか分からなくなる。
+ * 標準的な3経路（aria-labelledby ／ <label for> ／ 祖先の <label> でラップ）を
+ * 順に調べる。いずれも純粋な DOM API なので WebKitGTK・WebView2(Blink) 双方で
+ * 同じように動作する。見つからなければ空文字。
+ */
+function labelText(el: HTMLElement): string {
+  // 1) aria-labelledby（複数 ID を空白区切りで参照）
+  const lb = el.getAttribute("aria-labelledby");
+  if (lb) {
+    const txt = lb
+      .split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ");
+    const c = collapse(txt);
+    if (c) return c;
+  }
+  // 2) <label for="id"> による関連付け
+  const id = el.id;
+  if (id) {
+    const forLabel = document.querySelector<HTMLElement>(`label[for="${CSS.escape(id)}"]`);
+    if (forLabel) {
+      const c = collapse(forLabel.textContent || "");
+      if (c) return c;
+    }
+  }
+  // 3) 祖先の <label> でラップされている場合（このアプリの主パターン）。
+  //    ラベル内に入力欄自身が含まれるので、複製してから input/select/textarea を
+  //    取り除き、ラベル文言だけを取り出す（入力値の二重読みを防ぐ）。
+  const wrap = el.closest("label");
+  if (wrap) {
+    const clone = wrap.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("input, select, textarea").forEach((n) => n.remove());
+    const c = collapse(clone.textContent || "");
+    if (c) return c;
+  }
+  return "";
+}
+
+/** 要素のアクセシブル名（aria-label > ラベル > テキスト > title > placeholder） */
 function accName(el: HTMLElement): string {
   const aria = el.getAttribute("aria-label");
   if (aria && aria.trim()) return collapse(aria);
+  // フォーム部品は紐づくラベルから名前を得る（チェック/ラジオは自身に文言が無い）
+  const tag = el.tagName.toLowerCase();
+  if (tag === "input" || tag === "select" || tag === "textarea") {
+    const lbl = labelText(el);
+    if (lbl) return lbl.length > 80 ? lbl.slice(0, 80) + "…" : lbl;
+  }
   const text = collapse(el.textContent || "");
   if (text) return text.length > 80 ? text.slice(0, 80) + "…" : text;
   const title = el.getAttribute("title");
