@@ -7,8 +7,11 @@
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useI18n } from "../lib/i18n";
+import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
 
 export function Spinner({ label }: { label?: string }) {
+  // スピナー表示中（=処理中）に長引いたら音声で知らせる。
+  useBusyAnnouncer(true, label);
   return (
     <div
       style={{

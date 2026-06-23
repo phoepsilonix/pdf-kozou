@@ -24,6 +24,7 @@ import {
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
+import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
 import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { LiveRegion } from "../components/A11yControls";
@@ -544,6 +545,12 @@ export function CompressPage({
     pickDir,
     setError,
   ]);
+
+  // 圧縮・保存が長引くときは音声で「処理中です」と知らせる（独自スピナー使用のため個別に計測）。
+  useBusyAnnouncer(
+    (saving || phase === "processing") && !isBatch,
+    saving ? t("common.saving") : t("compress.processing"),
+  );
 
   if (saving && !isBatch) {
     return (

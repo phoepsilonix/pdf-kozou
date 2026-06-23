@@ -160,7 +160,8 @@
     "checkbox_changed_off": "{{name}} turned off",
     "radio_selected": "{{name}} selected",
     "selected": "{{name}} selected",
-    "preview_shown": "Preview is shown"
+    "preview_shown": "Preview is shown",
+    "processing": "Processing. Please wait."
   },
   "app": {
     "tagline": "Rust with tauri · MuPDF · Fully offline",
