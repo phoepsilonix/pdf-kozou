@@ -595,7 +595,10 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       if (phase === "result") handleSave();
     },
     "Ctrl+Shift+S": () => {
+      // 続けて圧縮: 結果画面から圧縮画面へ遷移（結果画面の「⚡続けて圧縮」ボタンと同じ）
       if (phase === "result") {
+        tts.speak(t("shortcut.compress_saving"));
+        setPhase("compress");
       }
     },
     "Ctrl+Shift+O": () => {
