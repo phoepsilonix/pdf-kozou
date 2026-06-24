@@ -147,6 +147,42 @@ pub fn run() {
             gs::run_gs_optimize,
         ])
         .setup(|app| {
+            // ── メインウィンドウを生成（入口 index.html だけ Cache-Control: no-store）──
+            // 目的: MSIX 更新後に WebView が旧フロントをキャッシュから読み続け、
+            //   ショートカット等が更新されない問題を防ぐ。入口 HTML だけ no-store に
+            //   すれば、ハッシュ化された JS/CSS は従来どおりキャッシュされ起動性能を
+            //   維持しつつ、更新は確実に反映される（localStorage には無影響）。
+            //   tauri.conf.json 側は create:false で自動生成を止め、ここで同じ設定
+            //   (from_config) ＋ ヘッダ注入で生成する。
+            if let Some(win_cfg) = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+            {
+                tauri::WebviewWindowBuilder::from_config(app.handle(), &win_cfg)?
+                    .on_web_resource_request(|request, response| {
+                        let uri = request.uri();
+                        // アプリ自身の配信元のみ
+                        //   Linux/macOS: tauri://localhost、Windows: http://tauri.localhost
+                        let is_app = uri.scheme_str() == Some("tauri")
+                            || uri.host() == Some("tauri.localhost");
+                        // 入口 HTML（"/" もしくは *.html）だけ no-store。ハッシュ済み資産は据え置き。
+                        let path = uri.path();
+                        let is_entry =
+                            path == "/" || path == "/index.html" || path.ends_with(".html");
+                        if is_app && is_entry {
+                            response.headers_mut().insert(
+                                tauri::http::header::CACHE_CONTROL,
+                                tauri::http::HeaderValue::from_static("no-store"),
+                            );
+                        }
+                    })
+                    .build()?;
+            }
+
             // pdf-kozou-coreのパス取得＆保存
             let path = get_core_bin_path(app.handle());
             let _ = CORE_BIN_PATH.set(path);

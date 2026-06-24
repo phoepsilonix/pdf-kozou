@@ -13,6 +13,8 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "create": false,
         "title": "PDF Kozou",
         "width": 1280,
         "height": 820,
