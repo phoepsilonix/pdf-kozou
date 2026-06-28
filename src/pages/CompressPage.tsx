@@ -217,6 +217,7 @@ export function CompressPage({
     },
     Escape: () => {
       if (phase === "result") {
+        setTmpFile("");
         setPhase("edit");
         tts.speak(t("shortcut.back_to_edit"));
       }
@@ -394,6 +395,7 @@ export function CompressPage({
 
       // UIをリセットして設定画面へ
       setResult(null);
+      setTmpFile("");
       setPhase("edit");
 
       // モードを自動で切り替える（GSならMuPDFへ、MuPDFならGSへ）
@@ -419,6 +421,7 @@ export function CompressPage({
     setCurrentSource(sourceFile ?? filePath);
     setPhase("edit");
     setResult(null);
+    setTmpFile("");
     setPreview("");
     // 必要ならモードも初期（MuPDF）に戻す
     //setUseGs(false);
@@ -640,6 +643,7 @@ export function CompressPage({
           style={c.btnBackSm}
           onClick={() => {
             setPhase("edit");
+            setTmpFile("");
             setErrMsg("");
           }}
         >
@@ -706,6 +710,7 @@ export function CompressPage({
             style={c.btnBack}
             onClick={() => {
               setSavedFilePath(null);
+              setTmpFile("");
               setPhase("edit");
             }}
           >
@@ -860,6 +865,7 @@ export function CompressPage({
                       style={c.btnBack}
                       onClick={() => {
                         setSavedFilePath(null);
+                        setTmpFile("");
                         setPhase("edit");
                       }}
                     >
