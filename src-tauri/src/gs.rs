@@ -108,6 +108,12 @@ pub async fn run_gs_optimize(
             }
         }
 
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(
+            // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+            0x00000008 | 0x00000200 | 0x08000000,
+        );
+
         cmd.args([
             "-sDEVICE=pdfwrite",
             "-dCompatibilityLevel=1.5",
