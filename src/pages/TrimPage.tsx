@@ -15,7 +15,7 @@ import { buildName, stem, opSuffix } from "../lib/filename";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
-import { Spinner } from "../components/common";
+import { Spinner, SPINNER_CSS } from "../components/common";
 import {
   getTempPath,
   renderPage,
@@ -892,7 +892,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   if (phase === "processing")
     return (
       <div style={s.center}>
-        <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
+        <style>{SPINNER_CSS}</style>
         <div style={s.spinner} className="kozou-spinner" />
         <span style={s.centSub}>{t("trim.processing_preview")}</span>
       </div>

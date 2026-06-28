@@ -16,6 +16,7 @@ import React, { useEffect, useState } from "react";
 import { usePdfStore } from "../store/usePdfStore";
 import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
+import { SPINNER_CSS } from "../components/common";
 
 // ── ShortcutGroup サブコンポーネント ────────────────────────────────────────
 
@@ -220,7 +221,7 @@ const LicensePage: React.FC = () => {
 
   return (
     <div style={s.container}>
-      <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
+      <style>{SPINNER_CSS}</style>
       <h1 style={s.title}>{t("license.title")}</h1>
 
       {/* 対応形式セクション */}
