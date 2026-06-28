@@ -37,6 +37,7 @@ const MODES: { id: ImpositionMode; labelKey: string }[] = [
   { id: "2up", labelKey: "booklet.mode_2up" },
   { id: "4up", labelKey: "booklet.mode_4up" },
   { id: "booklet", labelKey: "booklet.mode_booklet" },
+  { id: "booklet-rtl", labelKey: "booklet.mode_booklet_rtl" },
 ];
 
 const SIZE_IDS: Exclude<PageSizeId, "image">[] = ["A3", "A4", "A5", "B4", "B5"];
@@ -184,16 +185,10 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const onModeChange = (m: ImpositionMode) => {
     setMode(m);
     setImpositionMode(m);
-    setOrient((prev) =>
-      prev === "auto" ? "auto" : m === "2up" || m === "booklet" ? "landscape" : "portrait",
-    );
-    setOrientation(
-      pageOrientation === "auto"
-        ? "auto"
-        : m === "2up" || m === "booklet"
-          ? "landscape"
-          : "portrait",
-    );
+    // booklet / booklet-rtl / 2up は横向き、1up / 4up は縦向きがデフォルト
+    const isWide = m === "2up" || m === "booklet" || m === "booklet-rtl";
+    setOrient((prev) => (prev === "auto" ? "auto" : isWide ? "landscape" : "portrait"));
+    setOrientation(pageOrientation === "auto" ? "auto" : isWide ? "landscape" : "portrait");
   };
   const onPageSizeChange = (id: Exclude<PageSizeId, "image">) => {
     setSizeId(id);
@@ -222,7 +217,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const resolvedOrient = useMemo<Exclude<Orient, "auto">>(() => {
     if (orient === "portrait" || orient === "landscape") return orient;
     if (sourceAspect === undefined) {
-      return mode === "2up" || mode === "booklet" ? "landscape" : "portrait";
+      return mode === "2up" || mode === "booklet" || mode === "booklet-rtl"
+        ? "landscape"
+        : "portrait";
     }
     // 面付け時はシート比だけでなくセル比（= シート比 × rows/cols）で判定する。
     const adjustedAspect = sourceAspect * (layout.cols / layout.rows);
@@ -670,7 +667,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                   sheets: String(nSheets),
                 })}
               </div>
-              {mode === "booklet" && totalPages % 4 !== 0 && (
+              {(mode === "booklet" || mode === "booklet-rtl") && totalPages % 4 !== 0 && (
                 <div style={s.note}>{t("booklet.blank_note")}</div>
               )}
             </section>
