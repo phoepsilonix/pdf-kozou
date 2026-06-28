@@ -33,7 +33,7 @@ import { useI18n } from "../lib/i18n";
 import { buildName, appendName, stem } from "../lib/filename";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
-import { Spinner } from "../components/common";
+import { Spinner, SPINNER_CSS } from "../components/common";
 
 interface Props {
   filePath: string;
@@ -607,7 +607,7 @@ export function CompressPage({
   if (saving && !isBatch) {
     return (
       <div style={c.center}>
-        <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
+        <style>{SPINNER_CSS}</style>
         <div style={c.spinner} className="kozou-spinner" />
         <span style={c.spinSub}>{t("common.saving")}</span>
       </div>
