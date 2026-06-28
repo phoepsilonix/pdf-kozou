@@ -385,6 +385,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
+        <Spinner />
       </div>
     );
 

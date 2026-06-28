@@ -408,6 +408,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             />
           </div>
           <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
+          <Spinner />
         </div>
       </div>
     );
@@ -746,7 +747,11 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             </div>
           ) : (
             <div style={s.previewEmpty}>
-              {building ? t("booklet.preview_loading") : t("booklet.preview_hint")}
+              {building ? (
+                <Spinner label={t("booklet.preview_loading")} />
+              ) : (
+                t("booklet.preview_hint")
+              )}
             </div>
           )}
         </div>

@@ -415,7 +415,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               total: String(batchProgress.total),
             })}
           </div>
-          <Spinner />
           <div style={s.bpBar}>
             <div
               style={{
@@ -444,6 +443,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
+        <Spinner />;
       </div>
     );
 

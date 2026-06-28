@@ -15,6 +15,7 @@ import { buildName, stem, opSuffix } from "../lib/filename";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
+import { Spinner } from "../components/common";
 import {
   getTempPath,
   renderPage,
@@ -317,6 +318,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             </div>
           ))}
         </div>
+        <Spinner />
       </div>
     );
   }
