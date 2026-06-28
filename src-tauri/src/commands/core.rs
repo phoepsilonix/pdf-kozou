@@ -15,39 +15,63 @@ use serde_json::Value;
 async fn call_core(args: Vec<String>) -> Result<Value> {
     let core_path = core_bin_path();
 
-    let child = tokio::process::Command::new(&core_path)
-        .args(&args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
+    #[cfg(target_os = "windows")]
+    let output = {
+        use std::process::{Command, Stdio};
 
-    // タイムアウト: 120秒（DOCX変換等の重い処理を考慮）
-    // wait_with_output は self を consume するため、timeout 後の kill は
-    // Command::kill_on_drop(true) で対応する
-    let output = tokio::time::timeout(
-        std::time::Duration::from_secs(120),
-        child.wait_with_output(),
-    )
-    .await;
+        let core_path = core_path.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut cmd = Command::new(&core_path);
+            cmd.args(&args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
 
-    match output {
-        Err(_) => {
-            // タイムアウト — kill_on_drop により子プロセスは自動終了する
-            Err(Error::Core("core process timed out (120s)".into()))
-        }
-        Ok(Err(e)) => Err(Error::Core(format!("core process error: {e}"))),
-        Ok(Ok(out)) => {
-            if !out.status.success() {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                return Err(Error::Core(format!("core exited with error: {stderr}")));
-            }
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            serde_json::from_str(stdout.trim())
-                .map_err(|e| Error::Core(format!("JSON parse error: {e}\nraw: {stdout}")))
-        }
+            // Windows のプロセス生成フラグ
+            cmd.creation_flags(
+                // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+                0x00000008 | 0x00000200 | 0x08000000,
+            );
+
+            let mut child = cmd
+                .spawn()
+                .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
+
+            // wait_with_output は同期なので spawn_blocking 内で実行
+            child
+                .wait_with_output()
+                .map_err(|e| Error::Core(format!("core process error: {e}")))
+        })
+        .await
+        .map_err(|e| Error::Core(format!("join error: {e}")))??;
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let output = {
+        let child = tokio::process::Command::new(&core_path)
+            .args(&args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            child.wait_with_output(),
+        )
+        .await
+        .map_err(|_| Error::Core("core process timed out (120s)".into()))?
+        .map_err(|e| Error::Core(format!("core process error: {e}")))?
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Error::Core(format!("core exited with error: {stderr}")));
     }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str(stdout.trim())
+        .map_err(|e| Error::Core(format!("JSON parse error: {e}\nraw: {stdout}")))
 }
 
 /// pdf-kozou-core バイナリのパスを解決
@@ -750,48 +774,78 @@ pub async fn get_file_stat(path: String) -> Result<Value> {
 
 /// JSON モードで core を呼ぶ (stdin 経由)
 async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
-    payload["cmd"] = serde_json::Value::String(cmd.to_string());
+    payload["cmd"] = Value::String(cmd.to_string());
     let json_line = serde_json::to_string(&payload).map_err(|e| Error::Core(e.to_string()))?;
 
     let core_path = core_bin_path();
 
-    let mut child = tokio::process::Command::new(&core_path)
-        .arg("json")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
+    #[cfg(target_os = "windows")]
+    let output = {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
 
-    use tokio::io::AsyncWriteExt;
-    eprintln!("{:?}", json_line);
-    // stdin に JSON を書き込んだ後、明示的に drop して EOF を送る。
-    // drop しないと run_json_mode の BufRead::lines() が EOF を待ち続けて
-    // フリーズする（特に Windows で顕著）。
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(json_line.as_bytes())
-            .await
-            .map_err(|e| Error::Core(e.to_string()))?;
-        stdin.write_all(b"\n").await.ok();
-        stdin.flush().await.ok();
-        // ここで stdin を drop → パイプの書き込み端が閉じられ EOF が伝わる
-    } // stdin がスコープを抜けて drop される
+        let core_path = core_path.clone();
+        let json_line = json_line.clone();
 
-    let timeout_result = tokio::time::timeout(
-        std::time::Duration::from_secs(120),
-        child.wait_with_output(),
-    )
-    .await;
+        tokio::task::spawn_blocking(move || {
+            let mut cmd = Command::new(&core_path);
+            cmd.arg("json")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
 
-    let output = match timeout_result {
-        Err(_) => {
-            // タイムアウト — kill_on_drop により子プロセスは自動終了する
-            return Err(Error::Core("core json process timed out (120s)".into()));
+            // Windows のプロセス生成フラグ
+            cmd.creation_flags(
+                // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+                0x00000008 | 0x00000200 | 0x08000000,
+            );
+
+            let mut child = cmd
+                .spawn()
+                .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(json_line.as_bytes())
+                    .map_err(|e| Error::Core(e.to_string()))?;
+                stdin.write_all(b"\n").ok();
+            }
+
+            child
+                .wait_with_output()
+                .map_err(|e| Error::Core(format!("core json process error: {e}")))
+        })
+        .await
+        .map_err(|e| Error::Core(format!("join error: {e}")))??;
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let output = {
+        let mut child = tokio::process::Command::new(&core_path)
+            .arg("json")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
+
+        use tokio::io::AsyncWriteExt;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(json_line.as_bytes())
+                .await
+                .map_err(|e| Error::Core(e.to_string()))?;
+            stdin.write_all(b"\n").await.ok();
         }
-        Ok(Err(e)) => return Err(Error::Core(e.to_string())),
-        Ok(Ok(out)) => out,
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            child.wait_with_output(),
+        )
+        .await
+        .map_err(|_| Error::Core("core json process timed out (120s)".into()))?
+        .map_err(|e| Error::Core(e.to_string()))?
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
