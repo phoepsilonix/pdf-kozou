@@ -416,6 +416,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               >
                 {progress.currentFile}
               </div>
+              <Spinner />
             </div>
           </div>
           {/* 右: ログ */}
