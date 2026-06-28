@@ -49,7 +49,7 @@ interface Props {
   batchFiles?: import("../store/usePdfStore").FileEntry[];
 }
 
-type Phase = "edit" | "processing" | "result" | "batchResult" | "error";
+type Phase = "edit" | "processing" | "waiting" | "preresult" | "result" | "batchResult" | "error";
 
 const PRESET_OPTIONS_KEYS: {
   id: CompressPreset;
@@ -147,6 +147,14 @@ function waitForGsJob(jobId: number): Promise<GsJobFinishedPayload> {
   });
 }
 
+function handleJobFinished(payload: GsJobFinishedPayload) {
+  if (payload.result.ok) {
+    return payload.result.ok;
+  } else {
+    return payload.result;
+  }
+}
+
 export function CompressPage({
   filePath,
   pdfInfo,
@@ -172,6 +180,8 @@ export function CompressPage({
   const { t } = useI18n();
   const [statusMsg, setStatusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
+  const [jobId, setJobId] = useState();
+  const [tmp, setTmp] = useState("");
   const [savedFilePath, setSavedFilePath] = useState<string | null>(null);
   const PRESET_OPTIONS_I18N = useMemo(
     () =>
@@ -312,10 +322,11 @@ export function CompressPage({
     }
     setSavedFilePath(null);
     setPhase("processing");
-    //await new Promise((resolve) => requestAnimationFrame(resolve));
-    //await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
-      const tmp = await getTmpPath("kozou_compress_preview.pdf");
+      const _tmp = await getTmpPath("kozou_compress_preview.pdf");
+      setTmp(_tmp);
       // 圧縮後サイズ ÷ 元サイズ（残存率）。読み上げ・表示はこの確定値を使う。
       // ※ React の result(state) は setResult 直後はまだ更新されておらず stale な
       //   ため、ここで参照すると初回は null→100% を読み上げてしまう。必ず今回の
@@ -324,51 +335,15 @@ export function CompressPage({
       if (useGs && gsPath) {
         // 1. Ghostscript 実行
         // ジョブ開始
-        const jobId = await invoke<number>("start_gs_job", {
+        await invoke<number>("start_gs_job", {
           gsPath: gsPath,
           input: inputFile,
-          output: tmp,
+          output: _tmp,
           level: gsPreset,
         });
-
-        // 完了イベント待ち
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        const result = await waitForGsJob(jobId); // ★ここで「待てる」
-        console.log(result);
-        /*
-        const gsLog = await invoke<string>("run_gs_optimize", {
-          gsPath: gsPath,
-          input: inputFile,
-          output: tmp,
-          level: gsPreset,
-        });
-        console.log("GS Full Log:", gsLog);
-	*/
-        // GSにはMuPDFのような詳細なパラメータ報告がないため、
-        // 便宜上、結果表示用のダミーレスポンスを作成します
-        // 2. get_file_stat で入力と出力のサイズを取得
-        // Rust側で json!({ "size": ... }) となっているので .size でアクセス
-        const inStat = await invoke<{ size: number }>("get_file_stat", { path: inputFile });
-        const outStat = await invoke<{ size: number }>("get_file_stat", { path: tmp });
-        console.log("Stat Results:", { inStat, outStat });
-
-        const inSize = inStat.size;
-        const outSize = outStat.size;
-        if (inSize === 0 || outSize === 0) {
-          throw new Error(t("compress.err_gs_output_empty"));
-        }
-
-        ratioVal = outSize / inSize;
-        setResult({
-          ok: true,
-          input_bytes: inSize,
-          output_bytes: outSize,
-          ratio: ratioVal,
-          params_used: undefined as any,
-        });
+        setPhase("waiting");
       } else {
-        const res = await compressPdf(inputFile, tmp, {
+        const res = await compressPdf(inputFile, _tmp, {
           preset,
           merge_fonts: mergeFonts || undefined,
           object_stream: objectStream || undefined,
@@ -378,24 +353,10 @@ export function CompressPage({
         });
         ratioVal = res.ratio;
         setResult(res);
+        //setResult(null);
+        //setTmpFile("");
+        setPhase("preresult");
       }
-
-      setTmpFile(tmp);
-      try {
-        setPreview(
-          await renderPage(tmp, 0, 108, {
-            layoutW: convertLayoutW,
-            layoutH: convertLayoutH,
-            layoutEm: convertLayoutEm,
-          }),
-        );
-      } catch (e) {
-        setPreview("");
-      }
-      // 画面表示（−X%）と同じ「削減率」を読み上げる。負（増加）の場合は 0 とみなす。
-      const reducedPct = Math.max(0, Math.round((1 - ratioVal) * 100));
-      announceSuccess("done.compress", { ratio: String(reducedPct) });
-      setPhase("result");
     } catch (e) {
       announceError(String(e));
       setErrMsg(String(e));
@@ -412,8 +373,112 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     pdfInfo,
+    tmp,
     setError,
+    phase
   ]);
+
+  async function handlePreResultPhase() {
+    console.log("preresult");
+    /*
+        const gsLog = await invoke<string>("run_gs_optimize", {
+          gsPath: gsPath,
+          input: inputFile,
+          output: tmp,
+          level: gsPreset,
+        });
+        console.log("GS Full Log:", gsLog);
+	*/
+    // GSにはMuPDFのような詳細なパラメータ報告がないため、
+    // 便宜上、結果表示用のダミーレスポンスを作成します
+    // 2. get_file_stat で入力と出力のサイズを取得
+    // Rust側で json!({ "size": ... }) となっているので .size でアクセス
+
+    // ★ await して Promise を解決する（Windows でも UI は止まらない）
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const inStat = await invoke<{ size: number }>("get_file_stat", { path: inputFile });
+    const outStat = await invoke<{ size: number }>("get_file_stat", { path: tmp });
+
+    console.log("Stat Results:", { inStat, outStat });
+
+    const inSize = inStat.size;
+    const outSize = outStat.size;
+    console.log("Stat Results:", inSize, outSize);
+    if (useGs && gsPath) {
+      if (inSize === 0 || outSize === 0) {
+        setPhase("error");
+        throw new Error(t("compress.err_gs_output_empty"));
+      }
+    }
+
+    const ratioVal = outSize / inSize;
+
+    if (useGs && gsPath) {
+      setResult({
+        ok: true,
+        input_bytes: inSize,
+        output_bytes: outSize,
+        ratio: ratioVal,
+        params_used: undefined as any,
+      });
+    }
+    setTmpFile(tmp);
+    try {
+      const _preview = await renderPage(tmp, 0, 108, {
+        layoutW: convertLayoutW,
+        layoutH: convertLayoutH,
+        layoutEm: convertLayoutEm,
+      });
+      setPreview(_preview);
+    } catch (e) {
+      setPreview("");
+    }
+    // 画面表示（−X%）と同じ「削減率」を読み上げる。負（増加）の場合は 0 とみなす。
+    const reducedPct = Math.max(0, Math.round((1 - ratioVal) * 100));
+    announceSuccess("done.compress", { ratio: String(reducedPct) });
+    setPhase("result");
+  }
+
+  useEffect(() => {
+    if (phase === "preresult" && !isBatch) {
+      handlePreResultPhase();
+    }
+  }, [phase, result, tmp, preview]);
+
+  useEffect(() => {
+    if (phase === "waiting" && !isBatch) {
+      handleWaitingPhase();
+    }
+  }, [phase]);
+
+  async function handleWaitingPhase() {
+    console.log("waiting");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    listen<GsJobFinishedPayload>("gs-job-finished", (event) => {
+      /*
+      async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+      */
+      //if (event.payload.job_id !== jobId) return;
+      const _result = handleJobFinished(event.payload);
+      if (event.payload.result) {
+        setPhase("preresult");
+      } else if (!event.payload.result) {
+        /*
+	announceError(String(result));
+        setErrMsg(String(result));
+        setError(String(result));
+	*/
+        setPhase("error");
+      } else {
+        return;
+      }
+    });
+  }
 
   const handleChainNext = useCallback(async () => {
     if (!tmpFile) return;
@@ -459,6 +524,7 @@ export function CompressPage({
     setPhase("edit");
     setResult(null);
     setTmpFile("");
+    setTmp("");
     setPreview("");
     // 必要ならモードも初期（MuPDF）に戻す
     //setUseGs(false);
@@ -682,6 +748,15 @@ export function CompressPage({
       </div>
     );
   }
+
+  if ((phase === "waiting" || phase === "preresult") && !isBatch) {
+    return (
+      <div style={c.center}>
+        <Spinner label={t("compress.processing")} />
+      </div>
+    );
+  }
+
   if (phase === "processing" && isBatch && batchProg) {
     return (
       <div style={c.center}>
