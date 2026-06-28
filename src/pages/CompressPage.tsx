@@ -10,6 +10,7 @@ export default CompressPage;
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { usePdfStore } from "../store/usePdfStore";
 import {
@@ -303,6 +304,25 @@ export function CompressPage({
       let ratioVal = 1;
       if (useGs && gsPath) {
         // 1. Ghostscript 実行
+        // ジョブ開始
+        const jobId = invoke<number>("start_gs_job", {
+          gsPath: gsPath,
+          input: inputFile,
+          output: tmp,
+          level: gsPreset,
+        });
+
+        // 完了イベント待ち
+        await listen("gs-job-finished", (event: any) => {
+          if (event.payload.job_id !== jobId) return;
+
+          if (event.payload.ok) {
+            console.log("GS OK:", event.payload.stdout);
+          } else {
+            console.error("GS ERROR:", event.payload.error);
+          }
+        });
+        /*
         const gsLog = await invoke<string>("run_gs_optimize", {
           gsPath: gsPath,
           input: inputFile,
@@ -310,6 +330,7 @@ export function CompressPage({
           level: gsPreset,
         });
         console.log("GS Full Log:", gsLog);
+	*/
         // GSにはMuPDFのような詳細なパラメータ報告がないため、
         // 便宜上、結果表示用のダミーレスポンスを作成します
         // 2. get_file_stat で入力と出力のサイズを取得
@@ -447,12 +468,33 @@ export function CompressPage({
       } else {
         // 万一 tmpFile が消えていた場合のフォールバック（通常は到達しない）
         if (useGs && gsPath) {
+          // 1. Ghostscript 実行
+          // ジョブ開始
+          const jobId = invoke<number>("start_gs_job", {
+            gsPath: gsPath,
+            input: inputFile,
+            output: sp,
+            level: gsPreset,
+          });
+
+          // 完了イベント待ち
+          await listen("gs-job-finished", (event: any) => {
+            if (event.payload.job_id !== jobId) return;
+
+            if (event.payload.ok) {
+              console.log("GS OK:", event.payload.stdout);
+            } else {
+              console.error("GS ERROR:", event.payload.error);
+            }
+          });
+          /*
           await invoke("run_gs_optimize", {
             gsPath: gsPath,
             input: inputFile,
             output: sp,
             level: gsPreset,
           });
+	  */
         } else {
           await compressPdf(inputFile, sp, {
             preset,
@@ -540,13 +582,34 @@ export function CompressPage({
         let ratio = 0;
 
         if (useGs && gsPath) {
+          // 1. Ghostscript 実行
+          // ジョブ開始
+          const jobId = invoke<number>("start_gs_job", {
+            gsPath: gsPath,
+            input: inputFile,
+            output: out,
+            level: gsPreset,
+          });
+
+          // 完了イベント待ち
+          await listen("gs-job-finished", (event: any) => {
+            if (event.payload.job_id !== jobId) return;
+
+            if (event.payload.ok) {
+              console.log("GS OK:", event.payload.stdout);
+            } else {
+              console.error("GS ERROR:", event.payload.error);
+            }
+          });
           // --- Ghostscript モードの一括処理 ---
+          /*
           await invoke("run_gs_optimize", {
             gsPath: gsPath,
             input: f.path,
             output: out,
             level: gsPreset,
           });
+	  */
           // GS実行後のファイルサイズを確認して圧縮率を計算
           // f.size は Store から渡される元のサイズ
           const o = await invoke<{ size: number }>("get_file_stat", { path: out });

@@ -10,11 +10,14 @@ mod gs_detector;
 mod platform;
 pub mod tempdir;
 
+use std::sync::atomic::AtomicU64;
+struct JobCounter(AtomicU64);
+
 use commands::{core, platform as platform_cmd};
-use tauri::Emitter;
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use tauri::Emitter;
 use tauri::Manager;
 
 // パスを保持する静的な入れ物
@@ -92,6 +95,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
+        .manage(JobCounter(AtomicU64::new(1)))
         .invoke_handler(tauri::generate_handler![
             core::get_pdf_info,
             core::render_page,
@@ -145,6 +149,7 @@ pub fn run() {
             gs_detector::find_gs_in_dir,
             gs_detector::suggest_gs_candidates,
             gs::run_gs_optimize,
+            gs::start_gs_job,
         ])
         .setup(|app| {
             // ── メインウィンドウを生成（入口 index.html だけ Cache-Control: no-store）──

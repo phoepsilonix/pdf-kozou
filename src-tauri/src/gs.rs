@@ -7,7 +7,12 @@
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+use crate::JobCounter;
+use std::sync::atomic::Ordering;
+use tauri::State;
+
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 
 #[cfg(target_os = "linux")]
 use std::sync::OnceLock;
@@ -60,59 +65,46 @@ impl GsCompressionLevel {
     }
 }
 
+#[tauri::command]
+pub async fn start_gs_job(
+    gs_path: String,
+    input: String,
+    output: String,
+    level: GsCompressionLevel,
+    app: tauri::AppHandle,
+    counter: State<'_, JobCounter>,
+) -> Result<u64, String> {
+    let job_id = counter.0.fetch_add(1, Ordering::Relaxed);
+
+    tauri::async_runtime::spawn(async move {
+        let result = run_gs_job_internal(gs_path, input, output, level).await;
+
+        let _ = app.emit(
+            "gs-job-finished",
+            serde_json::json!({
+                "job_id": job_id,
+                "result": result,
+            }),
+        );
+    });
+
+    Ok(job_id)
+}
+
 /// Ghostscriptを使用してPDFを再構築・圧縮する
 /// gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dEmbedAllFonts=true -dSubsetFonts=true -dColorConversionStrategy=/LeaveColorUnchanged -dNOPAUSE -dBATCH
 
-#[tauri::command]
-pub async fn run_gs_optimize(
+#[cfg(target_os = "windows")]
+async fn run_gs_job_internal(
     gs_path: String,
     input: String,
     output: String,
     level: GsCompressionLevel,
 ) -> Result<String, String> {
-    use tokio::fs;
+    use std::process::{Command, Stdio};
 
-    // 入力ファイルの存在確認
-    if fs::metadata(&input).await.is_err() {
-        return Err(format!("入力ファイルが見つかりません: {input}"));
-    }
-
-    let input_canonical = fs::canonicalize(&input).await.map_err(|e| e.to_string())?;
-    let output_parent = std::path::Path::new(&output)
-        .parent()
-        .ok_or("出力パスが無効です")?;
-
-    fs::create_dir_all(output_parent)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if fs::metadata(&output).await.is_ok() {
-        let output_canonical = fs::canonicalize(&output).await.map_err(|e| e.to_string())?;
-        if input_canonical == output_canonical {
-            return Err("入力と出力が同じファイルです。別のパスを指定してください。".to_string());
-        }
-    }
-
-    // ★ Ghostscript 実行を別スレッドに逃がす（UI が止まらない）
-    let _output = output.clone();
-    let handle = tauri::async_runtime::spawn(async move {
-        let mut cmd = tokio::process::Command::new(&gs_path);
-
-        #[cfg(target_os = "linux")]
-        {
-            let filtered = get_filtered_ld_path();
-            if filtered.is_empty() {
-                cmd.env_remove("LD_LIBRARY_PATH");
-            } else {
-                cmd.env("LD_LIBRARY_PATH", filtered);
-            }
-        }
-
-        #[cfg(target_os = "windows")]
-        cmd.creation_flags(
-            // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-            0x00000008 | 0x00000200 | 0x08000000,
-        );
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = Command::new(&gs_path);
 
         cmd.args([
             "-sDEVICE=pdfwrite",
@@ -124,32 +116,169 @@ pub async fn run_gs_optimize(
             "-dSubsetFonts=true",
             "-dColorConversionStrategy=/LeaveColorUnchanged",
             "-dAutoRotatePages=/None",
-            &format!("-sOutputFile={}", &_output),
+            &format!("-sOutputFile={}", &output),
             &input,
         ]);
 
-        cmd.stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-        // ★ tokio::process::Command のまま → Windows でも UI が止まらない
-        cmd.output().await.map_err(|e| format!("GS 起動失敗: {e}"))
-    });
+        // ★ tokio::process::Command では効かない
+        cmd.creation_flags(
+            0x00000008 | // DETACHED_PROCESS
+            0x00000200 | // CREATE_NEW_PROCESS_GROUP
+            0x08000000, // CREATE_NO_WINDOW
+        );
 
-    // spawn の結果を受け取る
-    let out = handle.await.map_err(|e| format!("join error: {e}"))??;
+        cmd.output()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
 
-    // Ghostscript の結果処理（元コードと同じ）
-    if out.status.success() {
-        if fs::metadata(&output).await.is_err() {
-            return Err("GS は成功を返しましたが出力ファイルが生成されませんでした".to_string());
+    match out {
+        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn run_gs_job_internal(
+    gs_path: String,
+    input: String,
+    output: String,
+    level: GsCompressionLevel,
+) -> Result<String, String> {
+    let mut cmd = tokio::process::Command::new(&gs_path);
+
+    #[cfg(target_os = "linux")]
+    {
+        let filtered = get_filtered_ld_path();
+        if filtered.is_empty() {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        } else {
+            cmd.env("LD_LIBRARY_PATH", filtered);
         }
+    }
+
+    cmd.args([
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.5",
+        &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
+        "-dNOPAUSE",
+        "-dBATCH",
+        "-dEmbedAllFonts=true",
+        "-dSubsetFonts=true",
+        "-dColorConversionStrategy=/LeaveColorUnchanged",
+        "-dAutoRotatePages=/None",
+        &format!("-sOutputFile={}", &output),
+        &input,
+    ])
+    .stdin(std::process::Stdio::null())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+
+    let out = cmd.output().await.map_err(|e| e.to_string())?;
+
+    if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
-        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-        let code = out.status.code().unwrap_or(-1);
-        let detail = if !stderr.is_empty() { &stderr } else { &stdout };
-        Err(format!("GS エラー (exit code {code}):\n{detail}"))
+        Err(String::from_utf8_lossy(&out.stderr).to_string())
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn run_gs_optimize(
+    gs_path: String,
+    input: String,
+    output: String,
+    level: GsCompressionLevel,
+) -> Result<String, String> {
+    use std::process::{Command, Stdio};
+
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = Command::new(&gs_path);
+
+        cmd.args([
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.5",
+            &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
+            "-dNOPAUSE",
+            "-dBATCH",
+            "-dEmbedAllFonts=true",
+            "-dSubsetFonts=true",
+            "-dColorConversionStrategy=/LeaveColorUnchanged",
+            "-dAutoRotatePages=/None",
+            &format!("-sOutputFile={}", &output),
+            &input,
+        ]);
+
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        // ★ tokio::process::Command では効かない
+        cmd.creation_flags(
+            0x00000008 | // DETACHED_PROCESS
+            0x00000200 | // CREATE_NEW_PROCESS_GROUP
+            0x08000000, // CREATE_NO_WINDOW
+        );
+
+        cmd.output()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match out {
+        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub async fn run_gs_optimize(
+    gs_path: String,
+    input: String,
+    output: String,
+    level: GsCompressionLevel,
+) -> Result<String, String> {
+    let mut cmd = tokio::process::Command::new(&gs_path);
+    #[cfg(target_os = "linux")]
+    {
+        let filtered = get_filtered_ld_path();
+        if filtered.is_empty() {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        } else {
+            cmd.env("LD_LIBRARY_PATH", filtered);
+        }
+    }
+
+    cmd.args([
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.5",
+        &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
+        "-dNOPAUSE",
+        "-dBATCH",
+        "-dEmbedAllFonts=true",
+        "-dSubsetFonts=true",
+        "-dColorConversionStrategy=/LeaveColorUnchanged",
+        "-dAutoRotatePages=/None",
+        &format!("-sOutputFile={}", &output),
+        &input,
+    ])
+    .stdin(std::process::Stdio::null())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+
+    let out = cmd.output().await.map_err(|e| e.to_string())?;
+
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).to_string())
     }
 }

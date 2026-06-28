@@ -23,13 +23,13 @@ async fn call_core(args: Vec<String>) -> Result<Value> {
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
-
-        #[cfg(target_os = "windows")]
-        child.creation_flags(
-            // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-            0x00000008 | 0x00000200 | 0x08000000,
-        );
-
+        /*
+                #[cfg(target_os = "windows")]
+                child.creation_flags(
+                    // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+                    0x00000008 | 0x00000200 | 0x08000000,
+                );
+        */
         // wait_with_output は self を consume するため、timeout 後の kill は
         // Command::kill_on_drop(true) で対応する
         tokio::time::timeout(
