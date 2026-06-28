@@ -4,12 +4,13 @@
 
 /**
  * 面付けモード
- * - "1up"     : 通常（1ページ/枚）
- * - "2up"     : 2ページ横並び（順番通り）
- * - "4up"     : 4ページ 2×2 格子（順番通り）
- * - "booklet" : 製本見開き（折り丁順序）
+ * - "1up"         : 通常（1ページ/枚）
+ * - "2up"         : 2ページ横並び（順番通り）
+ * - "4up"         : 4ページ 2×2 格子（順番通り）
+ * - "booklet"     : 左綴じ・右開き製本（横書き・洋書向け）折り丁順序
+ * - "booklet-rtl" : 右綴じ・左開き製本（縦書き・和書向け）折り丁順序
  */
-export type ImpositionMode = "1up" | "2up" | "4up" | "booklet";
+export type ImpositionMode = "1up" | "2up" | "4up" | "booklet" | "booklet-rtl";
 
 export interface Sheet {
   /** 左上から右下順に並んだページ番号（1始まり、0=空白ページ） */
@@ -25,15 +26,20 @@ export interface Sheet {
  * 出力されるシートの順序は印刷後に重ねて二つ折りにした時に
  * 正しい製本になる順序。
  *
- * 例: 4ページ →
- *   シート1 表: [4, 1]  (右綴じ: 右=p4, 左=p1)
+ * ltr（左綴じ・右開き / 横書き）例: 4ページ →
+ *   シート1 表: [4, 1]  (左=p4, 右=p1) ← 右側が表紙
  *   シート1 裏: [2, 3]
+ *
+ * rtl（右綴じ・左開き / 縦書き）例: 4ページ →
+ *   シート1 表: [1, 4]  (左=p1, 右=p4) ← 左側が表紙
+ *   シート1 裏: [3, 2]
  */
 export function calcBookletSheets(
   totalPages: number,
   blankLabel = "Blank",
   frontLabel = (n: number) => `Sheet ${n} Front`,
   backLabel = (n: number) => `Sheet ${n} Back`,
+  rtl = false,
 ): Sheet[] {
   // 4の倍数に切り上げ
   const n = totalPages % 4 === 0 ? totalPages : totalPages + (4 - (totalPages % 4));
@@ -44,19 +50,19 @@ export function calcBookletSheets(
   let sheetIdx = 1;
 
   while (lo < hi) {
-    // 表: 右=hi, 左=lo
-    sheets.push({
-      pages: [hi, lo],
-      label: frontLabel(sheetIdx),
-    });
-    lo++;
-    hi--;
-
-    // 裏: 左=lo, 右=hi
-    sheets.push({
-      pages: [lo, hi],
-      label: backLabel(sheetIdx),
-    });
+    if (rtl) {
+      // 右綴じ・左開き: 左=lo(表紙側), 右=hi
+      sheets.push({ pages: [lo, hi], label: frontLabel(sheetIdx) });
+      lo++;
+      hi--;
+      sheets.push({ pages: [hi, lo], label: backLabel(sheetIdx) });
+    } else {
+      // 左綴じ・右開き: 右=lo(表紙側), 左=hi
+      sheets.push({ pages: [hi, lo], label: frontLabel(sheetIdx) });
+      lo++;
+      hi--;
+      sheets.push({ pages: [lo, hi], label: backLabel(sheetIdx) });
+    }
     lo++;
     hi--;
     sheetIdx++;
@@ -128,6 +134,12 @@ export function calcComposeLayout(mode: ImpositionMode, totalPages: number): Com
       return { cols: 2, rows: 2, sheets: calc4upSheets(totalPages) };
     case "booklet":
       return { cols: 2, rows: 1, sheets: calcBookletSheets(totalPages) };
+    case "booklet-rtl":
+      return {
+        cols: 2,
+        rows: 1,
+        sheets: calcBookletSheets(totalPages, "Blank", undefined, undefined, true),
+      };
   }
 }
 
@@ -168,6 +180,8 @@ export function calcSheets(
   if (mode === "2up") return calc2upSheets(totalPages, blankLabel);
   if (mode === "4up") return calc4upSheets(totalPages);
   if (mode === "booklet") return calcBookletSheets(totalPages, blankLabel, frontLabel, backLabel);
+  if (mode === "booklet-rtl")
+    return calcBookletSheets(totalPages, blankLabel, frontLabel, backLabel, true);
   return [];
 }
 

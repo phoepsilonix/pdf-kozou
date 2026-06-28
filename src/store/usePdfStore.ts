@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PdfInfo, TrimMargins } from "../lib/tauri";
 
-export type ImpositionMode = "1up" | "2up" | "4up" | "booklet";
+export type ImpositionMode = "1up" | "2up" | "4up" | "booklet" | "booklet-rtl";
 
 export interface FileEntry {
   id: number;

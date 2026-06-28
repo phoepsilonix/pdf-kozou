@@ -78,7 +78,8 @@
     "mode_1up": "サイズ変更のみ",
     "mode_2up": "2-up（横並び）",
     "mode_4up": "4-up（2×2）",
-    "mode_booklet": "見開き製本",
+    "mode_booklet": "見開き製本（左綴じ）",
+    "mode_booklet_rtl": "見開き製本（右綴じ）",
     "target_size": "出力ページサイズ",
     "spacing": "余白・隙間",
     "margin": "外周余白",
@@ -882,7 +883,8 @@
       "rasterized": "画像化",
       "2up": "2面",
       "4up": "4面",
-      "booklet": "中綴じ",
+      "booklet": "左綴じ中綴じ",
+      "booklet-rtl": "右綴じ中綴じ",
       "deimposed": "面付け解除",
       "split": "分割"
     }
