@@ -742,7 +742,9 @@ pub async fn get_tmp_path(filename: String) -> Result<String> {
 #[tauri::command]
 pub async fn get_file_stat(path: String) -> Result<Value> {
     use serde_json::json;
-    let meta = std::fs::metadata(&path).map_err(|e| Error::Core(format!("stat {path}: {e}")))?;
+    let meta = tokio::fs::metadata(path.clone())
+        .await
+        .map_err(|e| Error::Core(format!("stat {path}: {e}")))?;
     Ok(json!({ "size": meta.len() }))
 }
 
@@ -825,25 +827,29 @@ pub async fn get_temp_path(name: String) -> Result<String> {
 /// ファイルを移動 (rename → 失敗なら copy + delete)
 #[tauri::command]
 pub async fn move_file(src: String, dst: String) -> Result<()> {
-    if std::fs::rename(&src, &dst).is_ok() {
+    if tokio::fs::rename(&src, &dst).await.is_ok() {
         return Ok(());
     }
-    std::fs::copy(&src, &dst).map_err(|e| Error::Core(e.to_string()))?;
-    let _ = std::fs::remove_file(&src);
+    tokio::fs::copy(&src, &dst)
+        .await
+        .map_err(|e| Error::Core(e.to_string()))?;
+    let _ = tokio::fs::remove_file(&src).await;
     Ok(())
 }
 
 /// ファイルをコピー
 #[tauri::command]
 pub async fn copy_file(src: String, dst: String) -> Result<()> {
-    std::fs::copy(&src, &dst).map_err(|e| Error::Core(e.to_string()))?;
+    tokio::fs::copy(&src, &dst)
+        .await
+        .map_err(|e| Error::Core(e.to_string()))?;
     Ok(())
 }
 
 /// ファイルを削除 (存在しない場合はエラーにしない)
 #[tauri::command]
 pub async fn remove_file(path: String) -> Result<()> {
-    match std::fs::remove_file(&path) {
+    match tokio::fs::remove_file(&path).await {
         Ok(_) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(Error::Core(format!("remove {path}: {e}"))),
