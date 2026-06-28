@@ -24,6 +24,7 @@ async fn call_core(args: Vec<String>) -> Result<Value> {
             .spawn()
             .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
         /*
+         * tokioでは使えない
                 #[cfg(target_os = "windows")]
                 child.creation_flags(
                     // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
@@ -769,13 +770,14 @@ async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
-
-        #[cfg(target_os = "windows")]
-        child.creation_flags(
-            // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-            0x00000008 | 0x00000200 | 0x08000000,
-        );
-
+        /*
+         * tokioでは使えない
+                #[cfg(target_os = "windows")]
+                child.creation_flags(
+                    // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+                    0x00000008 | 0x00000200 | 0x08000000,
+                );
+        */
         // stdin に JSON を書き込んだ後、明示的に drop して EOF を送る。
         // drop しないと run_json_mode の BufRead::lines() が EOF を待ち続けて
         // フリーズする（特に Windows で顕著）。

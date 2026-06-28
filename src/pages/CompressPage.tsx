@@ -128,6 +128,25 @@ const GS_PRESETS_KEYS: {
   },
 ];
 
+interface GsJobFinishedPayload {
+  job_id: number;
+  result: {
+    ok: boolean;
+    stdout?: string;
+    error?: string;
+  };
+}
+
+function waitForGsJob(jobId: number): Promise<GsJobFinishedPayload> {
+  return new Promise((resolve) => {
+    listen<GsJobFinishedPayload>("gs-job-finished", (event) => {
+      if (event.payload.job_id === jobId) {
+        resolve(event.payload);
+      }
+    });
+  });
+}
+
 export function CompressPage({
   filePath,
   pdfInfo,
@@ -293,8 +312,8 @@ export function CompressPage({
     }
     setSavedFilePath(null);
     setPhase("processing");
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    //await new Promise((resolve) => requestAnimationFrame(resolve));
+    //await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       const tmp = await getTmpPath("kozou_compress_preview.pdf");
       // 圧縮後サイズ ÷ 元サイズ（残存率）。読み上げ・表示はこの確定値を使う。
@@ -305,7 +324,7 @@ export function CompressPage({
       if (useGs && gsPath) {
         // 1. Ghostscript 実行
         // ジョブ開始
-        const jobId = invoke<number>("start_gs_job", {
+        const jobId = await invoke<number>("start_gs_job", {
           gsPath: gsPath,
           input: inputFile,
           output: tmp,
@@ -313,15 +332,10 @@ export function CompressPage({
         });
 
         // 完了イベント待ち
-        await listen("gs-job-finished", (event: any) => {
-          if (event.payload.job_id !== jobId) return;
-
-          if (event.payload.ok) {
-            console.log("GS OK:", event.payload.stdout);
-          } else {
-            console.error("GS ERROR:", event.payload.error);
-          }
-        });
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const result = await waitForGsJob(jobId); // ★ここで「待てる」
+        console.log(result);
         /*
         const gsLog = await invoke<string>("run_gs_optimize", {
           gsPath: gsPath,
@@ -470,7 +484,7 @@ export function CompressPage({
         if (useGs && gsPath) {
           // 1. Ghostscript 実行
           // ジョブ開始
-          const jobId = invoke<number>("start_gs_job", {
+          const jobId = await invoke<number>("start_gs_job", {
             gsPath: gsPath,
             input: inputFile,
             output: sp,
@@ -478,15 +492,7 @@ export function CompressPage({
           });
 
           // 完了イベント待ち
-          await listen("gs-job-finished", (event: any) => {
-            if (event.payload.job_id !== jobId) return;
-
-            if (event.payload.ok) {
-              console.log("GS OK:", event.payload.stdout);
-            } else {
-              console.error("GS ERROR:", event.payload.error);
-            }
-          });
+          const result = await waitForGsJob(jobId); // ★ここで「待てる」
           /*
           await invoke("run_gs_optimize", {
             gsPath: gsPath,
@@ -584,7 +590,7 @@ export function CompressPage({
         if (useGs && gsPath) {
           // 1. Ghostscript 実行
           // ジョブ開始
-          const jobId = invoke<number>("start_gs_job", {
+          const jobId = await invoke<number>("start_gs_job", {
             gsPath: gsPath,
             input: inputFile,
             output: out,
@@ -592,15 +598,7 @@ export function CompressPage({
           });
 
           // 完了イベント待ち
-          await listen("gs-job-finished", (event: any) => {
-            if (event.payload.job_id !== jobId) return;
-
-            if (event.payload.ok) {
-              console.log("GS OK:", event.payload.stdout);
-            } else {
-              console.error("GS ERROR:", event.payload.error);
-            }
-          });
+          const result = await waitForGsJob(jobId); // ★ここで「待てる」
           // --- Ghostscript モードの一括処理 ---
           /*
           await invoke("run_gs_optimize", {
@@ -680,7 +678,7 @@ export function CompressPage({
   if (phase === "processing" && !isBatch) {
     return (
       <div style={c.center}>
-        <Spinner label={t("compress.processing")} />;
+        <Spinner label={t("compress.processing")} />
       </div>
     );
   }
@@ -697,7 +695,7 @@ export function CompressPage({
           <div style={{ ...c.bpBar, width: `${(batchProg.cur / batchProg.total) * 100}%` }} />
         </div>
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
-        <Spinner label={t("compress.processing")} />;
+        <Spinner label={t("compress.processing")} />
       </div>
     );
   }

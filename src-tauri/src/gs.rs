@@ -150,41 +150,48 @@ async fn run_gs_job_internal(
     output: String,
     level: GsCompressionLevel,
 ) -> Result<String, String> {
-    let mut cmd = tokio::process::Command::new(&gs_path);
+    use std::process::{Command, Stdio};
 
-    #[cfg(target_os = "linux")]
-    {
-        let filtered = get_filtered_ld_path();
-        if filtered.is_empty() {
-            cmd.env_remove("LD_LIBRARY_PATH");
-        } else {
-            cmd.env("LD_LIBRARY_PATH", filtered);
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = Command::new(&gs_path);
+
+        #[cfg(target_os = "linux")]
+        {
+            let filtered = get_filtered_ld_path();
+            if filtered.is_empty() {
+                cmd.env_remove("LD_LIBRARY_PATH");
+            } else {
+                cmd.env("LD_LIBRARY_PATH", filtered);
+            }
         }
-    }
 
-    cmd.args([
-        "-sDEVICE=pdfwrite",
-        "-dCompatibilityLevel=1.5",
-        &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
-        "-dNOPAUSE",
-        "-dBATCH",
-        "-dEmbedAllFonts=true",
-        "-dSubsetFonts=true",
-        "-dColorConversionStrategy=/LeaveColorUnchanged",
-        "-dAutoRotatePages=/None",
-        &format!("-sOutputFile={}", &output),
-        &input,
-    ])
-    .stdin(std::process::Stdio::null())
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped());
+        cmd.args([
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.5",
+            &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
+            "-dNOPAUSE",
+            "-dBATCH",
+            "-dEmbedAllFonts=true",
+            "-dSubsetFonts=true",
+            "-dColorConversionStrategy=/LeaveColorUnchanged",
+            "-dAutoRotatePages=/None",
+            &format!("-sOutputFile={}", &output),
+            &input,
+        ]);
 
-    let out = cmd.output().await.map_err(|e| e.to_string())?;
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).to_string())
+        cmd.output()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match out {
+        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
+        Err(e) => Err(e.to_string()),
     }
 }
 
