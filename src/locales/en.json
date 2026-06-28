@@ -78,7 +78,8 @@
     "mode_1up": "Resize only",
     "mode_2up": "2-up (side by side)",
     "mode_4up": "4-up (2×2)",
-    "mode_booklet": "Booklet",
+    "mode_booklet": "Booklet (left-bound)",
+    "mode_booklet_rtl": "Booklet (right-bound)",
     "target_size": "Output page size",
     "spacing": "Margins & gutter",
     "margin": "Outer margin",
@@ -882,7 +883,8 @@
       "rasterized": "rasterized",
       "2up": "2up",
       "4up": "4up",
-      "booklet": "booklet",
+      "booklet": "booklet-ltr",
+      "booklet-rtl": "booklet-rtl",
       "deimposed": "deimposed",
       "split": "split"
     }
