@@ -742,8 +742,10 @@ pub async fn get_tmp_path(filename: String) -> Result<String> {
 #[tauri::command]
 pub async fn get_file_stat(path: String) -> Result<Value> {
     use serde_json::json;
-    let meta = std::fs::metadata(&path).map_err(|e| Error::Core(format!("stat {path}: {e}")))?;
-    Ok(json!({ "size": meta.len() }))
+    let metadata = tokio::fs::metadata(path.clone())
+        .await
+        .map_err(|e| Error::Core(format!("stat {path}: {e}")))?;
+    Ok(json!({ "size": metadata.len() }))
 }
 
 /// JSON モードで core を呼ぶ (stdin 経由)
