@@ -70,110 +70,74 @@ pub async fn run_gs_optimize(
     output: String,
     level: GsCompressionLevel,
 ) -> Result<String, String> {
-    use tokio::fs;
-
     // 入力ファイルの存在確認
-    if fs::metadata(&input).await.is_err() {
+    if !std::path::Path::new(&input).exists() {
         return Err(format!("入力ファイルが見つかりません: {input}"));
     }
 
-    let input_canonical = fs::canonicalize(&input).await.map_err(|e| e.to_string())?;
+    // input と output が同じパスの場合はエラー
+    let input_canonical = std::fs::canonicalize(&input).map_err(|e| e.to_string())?;
     let output_parent = std::path::Path::new(&output)
         .parent()
         .ok_or("出力パスが無効です")?;
-
-    fs::create_dir_all(output_parent)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if fs::metadata(&output).await.is_ok() {
-        let output_canonical = fs::canonicalize(&output).await.map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(output_parent).map_err(|e| e.to_string())?;
+    // output はまだ存在しない場合があるので親ディレクトリで比較
+    if std::path::Path::new(&output).exists() {
+        let output_canonical = std::fs::canonicalize(&output).map_err(|e| e.to_string())?;
         if input_canonical == output_canonical {
             return Err("入力と出力が同じファイルです。別のパスを指定してください。".to_string());
         }
     }
 
-    #[cfg(target_os = "windows")]
-    let out = {
-        use std::process::{Command, Stdio};
+    let mut cmd = std::process::Command::new(&gs_path);
 
-        let gs_path = gs_path.clone();
-        let input = input.clone();
-        let output = output.clone();
-        let level = level.clone();
-
-        tokio::task::spawn_blocking(move || {
-            let mut cmd = Command::new(&gs_path);
-
-            cmd.args([
-                "-sDEVICE=pdfwrite",
-                "-dCompatibilityLevel=1.5",
-                &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
-                "-dNOPAUSE",
-                "-dBATCH",
-                "-dEmbedAllFonts=true",
-                "-dSubsetFonts=true",
-                "-dColorConversionStrategy=/LeaveColorUnchanged",
-                "-dAutoRotatePages=/None",
-                &format!("-sOutputFile={}", &output),
-                &input,
-            ]);
-
-            cmd.stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            // Windows のプロセス生成フラグ
-            cmd.creation_flags(
-                // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-                0x00000008 | 0x00000200 | 0x08000000,
-            );
-
-            cmd.output().map_err(|e| format!("GS 起動失敗: {e}"))
-        })
-        .await
-        .map_err(|e| format!("join error: {e}"))??;
-    };
-
-    #[cfg(not(target_os = "windows"))]
-    let out = {
-        let mut cmd = tokio::process::Command::new(&gs_path);
-
-        #[cfg(target_os = "linux")]
-        {
-            let filtered = get_filtered_ld_path();
-            if filtered.is_empty() {
-                cmd.env_remove("LD_LIBRARY_PATH");
-            } else {
-                cmd.env("LD_LIBRARY_PATH", filtered);
-            }
+    // AppImage対策。AppImageで優先されている内部のライブラリを無視して、
+    // システムのライブラリを優先してシステムのgsを呼び出すことで、整合性を保つ
+    // --- LD_LIBRARY_PATH フィルタリング（Linux AppImage 対策）---
+    #[cfg(target_os = "linux")]
+    {
+        let filtered = get_filtered_ld_path();
+        if filtered.is_empty() {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        } else {
+            cmd.env("LD_LIBRARY_PATH", filtered);
         }
+    }
 
-        cmd.args([
-            "-sDEVICE=pdfwrite",
-            "-dCompatibilityLevel=1.5",
-            &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
-            "-dNOPAUSE",
-            "-dBATCH",
-            "-dEmbedAllFonts=true",
-            "-dSubsetFonts=true",
-            "-dColorConversionStrategy=/LeaveColorUnchanged",
-            "-dAutoRotatePages=/None",
-            &format!("-sOutputFile={}", &output),
-            &input,
-        ]);
+    // その他の環境変数はそのまま継承（ユーザーのカスタマイズを尊重）
+    // args をそのまま渡す
 
-        cmd.stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+    cmd.args([
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.5",
+        &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
+        "-dNOPAUSE",
+        "-dBATCH",
+        "-dEmbedAllFonts=true",
+        "-dSubsetFonts=true",
+        "-dColorConversionStrategy=/LeaveColorUnchanged",
+        "-dAutoRotatePages=/None",
+        &format!("-sOutputFile={}", &output),
+        &input,
+    ]);
 
-        cmd.output()
-            .await
-            .map_err(|e| format!("GS 起動失敗: {e}"))?
-    };
+    // stdin/stdout/stderr をすべて明示する
+    // Windows GUI サブシステムでは未指定だと INVALID_HANDLE_VALUE が渡される
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    {
+        // CREATE_NO_WINDOW フラグ (0x08000000)
+        cmd.creation_flags(0x08000000);
+    }
+
+    let out = cmd.output().map_err(|e| format!("GS 起動失敗: {e}"))?;
 
     if out.status.success() {
-        if fs::metadata(&output).await.is_err() {
+        // 出力ファイルの存在確認
+        if !std::path::Path::new(&output).exists() {
             return Err("GS は成功を返しましたが出力ファイルが生成されませんでした".to_string());
         }
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
@@ -181,6 +145,7 @@ pub async fn run_gs_optimize(
         let stderr = String::from_utf8_lossy(&out.stderr).to_string();
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         let code = out.status.code().unwrap_or(-1);
+        // GS のエラーメッセージは stdout に出ることもある
         let detail = if !stderr.is_empty() { &stderr } else { &stdout };
         Err(format!("GS エラー (exit code {code}):\n{detail}"))
     }
