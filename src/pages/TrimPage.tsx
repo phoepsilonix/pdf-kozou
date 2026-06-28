@@ -228,6 +228,8 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     if (!outDir) return;
 
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const prog = {
       current: 0,
       done: [] as { f: string }[],
@@ -751,6 +753,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
 
   const handleExecute = useCallback(async () => {
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     setResultImgs([]);
     try {
       const tmpPath = await getTempPath("trimmed_tmp.pdf");
@@ -863,6 +867,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     const sp = await pickSave(buildName(filePath, ["trimmed"]));
     if (!sp) return;
     setIsSaving(true);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       // 保存は終端処理。保存後は「保存完了」画面へ遷移し、そこに「圧縮して保存」は
       // 出さないため、moveFile で一時ファイルを消費して問題ない（後始末も兼ねる）。
@@ -884,7 +890,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   if (phase === "processing")
     return (
       <div style={s.center}>
-        <div style={s.spinner} />
+        <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
+        <div style={s.spinner} className="kozou-spinner" />
         <span style={s.centSub}>{t("trim.processing_preview")}</span>
       </div>
     );
@@ -1067,7 +1074,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
                 height: Math.round((canvasWidth * pageH) / pageW),
               }}
             >
-              <div style={s.spinner} />
+              <div style={s.spinner} className="kozou-spinner" />
               <span style={s.centSub}>{t("trim.loading")}</span>
             </div>
           )}
@@ -1271,7 +1278,7 @@ const s: Record<string, React.CSSProperties> = {
     border: `3px solid var(--c-border)`,
     borderTop: `3px solid var(--c-accent)`,
     borderRadius: "50%",
-    animation: "spin 0.8s linear infinite",
+    /* animation は kozou-spinner クラスで付与 */
   },
   centSub: { color: "var(--c-textSub)", fontSize: FS.body },
 

@@ -1549,7 +1549,8 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
               <div style={s.viewInner}>
                 {mainLoading && !mainImg && (
                   <div style={s.viewCenter}>
-                    <div style={s.viewSpinner} />
+                    <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
+                    <div style={s.viewSpinner} className="kozou-spinner" />
                   </div>
                 )}
                 {mainImg && (
@@ -1884,7 +1885,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: "50%",
     border: "3px solid var(--c-border)",
     borderTopColor: "var(--c-accent)",
-    animation: "spin 0.8s linear infinite",
+    /* animation は kozou-spinner クラスで付与 */
   },
   pageNav: {
     display: "flex",

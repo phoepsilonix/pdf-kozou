@@ -220,7 +220,7 @@ const LicensePage: React.FC = () => {
 
   return (
     <div style={s.container}>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
       <h1 style={s.title}>{t("license.title")}</h1>
 
       {/* 対応形式セクション */}
@@ -335,7 +335,7 @@ const LicensePage: React.FC = () => {
               >
                 {(gsVerifying || gsStatus === "checking") && (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>
+                    <span className="kozou-spinner" style={{ display: "inline-block" }}>
                       ⏳
                     </span>
                     {t("license.diag_checking")}

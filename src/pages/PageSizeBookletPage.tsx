@@ -267,6 +267,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     const sp = await pickSave(composePdfName(srcStem, keepOriginalName));
     if (!sp) return;
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       const { sheetPages, nSheets: ns } = flattenComposeSheets(layout);
       const res = await composeImpositionPdf({
@@ -320,6 +322,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     if (!dir) return;
     const files = batchFiles!;
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const progress: BatchProgress = {
       current: 0,
       total: files.length,

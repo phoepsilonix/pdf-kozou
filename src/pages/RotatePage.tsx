@@ -264,6 +264,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       () => `/tmp/${base}_rotated_tmp.pdf`,
     );
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       const psize = resolvePageSizePt(pageSizeId, pageOrientation);
       await rotatePdf(
@@ -295,6 +297,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     if (!resolvedDir) return;
     const files = batchFiles!;
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const prog: BatchProgress = {
       current: 0,
       total: files.length,

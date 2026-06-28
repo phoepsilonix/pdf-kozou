@@ -24,14 +24,27 @@ export function Spinner({ label }: { label?: string }) {
         background: "var(--c-bg)",
       }}
     >
+      {/* WebKitGTK では @keyframes をインラインスタイルから参照できないため
+          <style> タグをコンポーネント内に直接埋め込む。
+          kozou-spin という固有名でグローバルの spin と衝突しない。
+          1.6s/回転・ease-in-out で「ゆっくり動いている」感を演出。 */}
+      <style>{`
+        @keyframes kozou-spin {
+          0%   { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        .kozou-spinner {
+          animation: kozou-spin 1.6s ease-in-out infinite;
+        }
+      `}</style>
       <div
+        className="kozou-spinner"
         style={{
           width: 36,
           height: 36,
           border: `3px solid var(--c-border)`,
           borderTop: `3px solid var(--c-accent)`,
           borderRadius: "50%",
-          animation: "spin 0.8s linear infinite",
         }}
       />
       {label && (

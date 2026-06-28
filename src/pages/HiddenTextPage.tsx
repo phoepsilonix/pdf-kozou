@@ -300,6 +300,8 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     setRunning(true);
     saveLastThr(thr); // 閾値を履歴保存
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const prog: BatchProgress = {
       current: 0,
       total: batchFiles.length,
@@ -755,6 +757,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
 
   const runDetect = useCallback(
     async (forceAllPages?: boolean) => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const effectiveAllPages = forceAllPages ?? allPagesMode;
       setRunning(true);
       setGroups([]);
@@ -816,6 +820,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   );
 
   const runSanitize = useCallback(async () => {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const targets: SanitizeOrigin[] = groups
       .filter((g) => selectedIds.has(g.id))
       .flatMap((g) =>

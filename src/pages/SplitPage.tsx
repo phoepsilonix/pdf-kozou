@@ -264,6 +264,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       const mode: SplitMode =
         modeId === "all"
@@ -315,6 +317,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (!resolvedDir) return;
     const files = batchFiles!;
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const progress: BatchProgress = {
       current: 0,
       total: files.length,

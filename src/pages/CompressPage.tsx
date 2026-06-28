@@ -292,6 +292,8 @@ export function CompressPage({
     }
     setSavedFilePath(null);
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       const tmp = await getTmpPath("kozou_compress_preview.pdf");
       // 圧縮後サイズ ÷ 元サイズ（残存率）。読み上げ・表示はこの確定値を使う。
@@ -431,6 +433,8 @@ export function CompressPage({
     const sp = await pickSave(appendName(outputBaseName ?? stem(filePath), ["compressed"]));
     if (!sp || (useGs && !gsPath)) return;
     setSaving(true);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       if (tmpFile) {
         // プレビュー時に作成済みの一時ファイルをユーザー指定パスへ移動するだけでよい。
@@ -515,6 +519,8 @@ export function CompressPage({
     }
 
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const prog = {
       cur: 0,
       total: batchFiles!.length,
@@ -601,7 +607,8 @@ export function CompressPage({
   if (saving && !isBatch) {
     return (
       <div style={c.center}>
-        <div style={c.spinner} />
+        <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
+        <div style={c.spinner} className="kozou-spinner" />
         <span style={c.spinSub}>{t("common.saving")}</span>
       </div>
     );
@@ -610,7 +617,8 @@ export function CompressPage({
   if (phase === "processing" && !isBatch) {
     return (
       <div style={c.center}>
-        <div style={c.spinner} />
+        <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
+        <div style={c.spinner} className="kozou-spinner" />
         <span style={c.spinSub}>{t("compress.processing")}</span>
       </div>
     );
@@ -1305,7 +1313,7 @@ const c: Record<string, React.CSSProperties> = {
     border: `3px solid var(--c-border)`,
     borderTop: `3px solid var(--c-accent)`,
     borderRadius: "50%",
-    animation: "spin 0.8s linear infinite",
+    /* animation は kozou-spinner クラスで付与 */
   },
   spinSub: { color: "var(--c-textSub)", fontSize: FS.label },
   errPre: {

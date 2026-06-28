@@ -393,6 +393,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         const dir = outPath.replace(/[/\\][^/\\]+$/, "");
         if (dir) setOutDir(dir);
         setPhase("processing");
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        await new Promise((resolve) => setTimeout(resolve, 0));
         try {
           await splitImpositionPdf({
             input: filePath,
@@ -426,6 +428,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return;
       setPhase("processing");
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       try {
         const ext = format === "png" ? "png" : format === "svg" ? "svg" : "jpg";
         const savedFiles: string[] = [];
@@ -488,6 +492,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (!resolvedDir) return; // キャンセル
       setPhase("processing");
       setStatusMsg(t("image.imposition_rendering_init" as any));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       try {
         // 高DPI × 多ページのメモリ試算（600MB超は確認ダイアログ）
         const modeInfo0 = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
@@ -601,6 +607,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     }
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       if (outputMode === "pdf") {
         const outPath = await pickSave(composePdfName(srcStem, keepOriginalName));
@@ -760,6 +768,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       progress.current = i + 1;
       progress.currentFile = f.filename;
       setBatchProgress({ ...progress });
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       try {
         const stem = f.filename.replace(/\.[^/.]+$/, "");
         if (outputMode === "pdf") {

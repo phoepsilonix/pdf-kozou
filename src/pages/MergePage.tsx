@@ -308,6 +308,8 @@ useEffect(() => {
   const handlePreview = useCallback(async () => {
     if (entries.length < 2) return;
     setPhase("preview");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const all: string[] = [];
     for (const e of entries) {
       for (let i = 0; i < e.pageCount; i++) {
@@ -346,6 +348,8 @@ useEffect(() => {
     if (!sp) return;
     setSavePath(sp);
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       const psize = resolvePageSizePt(pageSizeId, pageOrientation);
       const res = await mergePdf(
@@ -383,6 +387,8 @@ useEffect(() => {
   // 圧縮して保存: まず tmp に結合し、CompressPage へ
   const handleSaveWithCompress = useCallback(async () => {
     setPhase("processing");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       const tmp = await getTempPath("kozou_merge_tmp.pdf");
       const psize = resolvePageSizePt(pageSizeId, pageOrientation);
