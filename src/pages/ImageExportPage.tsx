@@ -80,6 +80,49 @@ interface BatchProgress {
   errors: { file: string; msg: string }[];
 }
 
+function buildOpToken({
+  processDir,
+  impositionMode,
+  outputMode,
+  deimpIndex,
+  t,
+}: {
+  processDir: string;
+  impositionMode: string;
+  outputMode: string;
+  deimpIndex: number;
+  t: any;
+}) {
+  const opTokenKey =
+    processDir === "deimpose"
+      ? "deimposed"
+      : impositionMode === "1up"
+        ? "rasterized"
+        : impositionMode;
+
+  const modePrefixMap: Record<string, string> = {
+    "image.deimp_2up": "2up",
+    "image.deimp_4up": "4up",
+    "image.deimp_booklet": "booklet",
+  };
+
+  // deimpose 以外
+  if (opTokenKey !== "deimposed") {
+    if (impositionMode !== "1up" && outputMode === "pdf") {
+      return t("filename.label.rasterized") + "_" + t(`filename.label.${opTokenKey}`);
+    }
+    if (impositionMode === "1up" && outputMode !== "pdf") {
+      return "";
+    }
+    return t(`filename.label.${opTokenKey}`);
+  }
+
+  // deimpose の場合
+  const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+  const prefix = modePrefixMap[def.labelKey] ?? "booklet";
+  return t(`filename.label.${prefix}`) + "_" + t(`filename.label.${opTokenKey}`);
+}
+
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
@@ -178,8 +221,39 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (processDir === "deimpose") return "deimposed";
     return impositionMode === "1up" ? "rasterized" : impositionMode; // 2up/4up/booklet
   }, [processDir, impositionMode]);
+
   // ローカライズ済みトークン（例: 画像化 / 2面 / 中綴じ / 面付け解除）
-  const opToken = t(`filename.label.${opTokenKey}` as any);
+  /*
+  let opTokenTmp;
+  if (opTokenKey !== "deimposed") {
+    if (impositionMode !== "1up" && outputMode === "pdf") {
+      opTokenTmp = t(`filename.label.rasterized`) + "_" + t(`filename.label.${opTokenKey}` as any);
+    } else if (impositionMode === "1up" && outputMode !== "pdf") {
+      opTokenTmp = "";
+    } else {
+      opTokenTmp = t(`filename.label.${opTokenKey}` as any);
+    }
+  } else {
+    const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+    if (def.id === "sequential") {
+      if (def.labelKey === "image.deimp_2up") {
+        opTokenTmp = t("filename.label.2up") + "_" + t(`filename.label.${opTokenKey}` as any);
+      } else if (def.labelKey === "image.deimp_4up") {
+        opTokenTmp = t("filename.label.4up") + "_" + t(`filename.label.${opTokenKey}` as any);
+      }
+    } else {
+      opTokenTmp = t("filename.label.booklet") + "_" + t(`filename.label.${opTokenKey}` as any);
+    }
+  }
+  const opToken = opTokenTmp;*/
+  const opToken = buildOpToken({
+    processDir,
+    impositionMode,
+    outputMode,
+    deimpIndex,
+    t,
+  });
+
   // 実効ラベルはレンダリング中に派生させる（state同期のeffectを使わない）。
   // 未編集ならモード/言語に追従した opToken、編集済みなら手入力値 label。
   // こうすることで impositionMode 切替と同じレンダリングで必ず一致し、
@@ -919,6 +993,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
+        <Spinner />
       </div>
     );
 

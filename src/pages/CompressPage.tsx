@@ -617,9 +617,7 @@ export function CompressPage({
   if (phase === "processing" && !isBatch) {
     return (
       <div style={c.center}>
-        <style>{`@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`}</style>
-        <div style={c.spinner} className="kozou-spinner" />
-        <span style={c.spinSub}>{t("compress.processing")}</span>
+        <Spinner label={t("compress.processing")} />;
       </div>
     );
   }
@@ -636,6 +634,7 @@ export function CompressPage({
           <div style={{ ...c.bpBar, width: `${(batchProg.cur / batchProg.total) * 100}%` }} />
         </div>
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
+        <Spinner label={t("compress.processing")} />;
       </div>
     );
   }

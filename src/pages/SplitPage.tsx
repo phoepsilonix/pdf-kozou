@@ -443,6 +443,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
+        <Spinner />;
       </div>
     );
 
