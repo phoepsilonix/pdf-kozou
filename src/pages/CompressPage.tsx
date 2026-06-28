@@ -15,6 +15,7 @@ import { usePdfStore } from "../store/usePdfStore";
 import {
   compressPdf,
   getTmpPath,
+  moveFile,
   renderPage,
   type CompressPreset,
   type CompressResponse,
@@ -428,22 +429,33 @@ export function CompressPage({
     if (!sp || (useGs && !gsPath)) return;
     setSaving(true);
     try {
-      if (useGs && gsPath) {
-        await invoke("run_gs_optimize", {
-          gsPath: gsPath,
-          input: inputFile,
-          output: sp,
-          level: gsPreset,
-        });
+      if (tmpFile) {
+        // プレビュー時に作成済みの一時ファイルをユーザー指定パスへ移動するだけでよい。
+        // move_file は同一ボリューム内なら rename(2) で一瞬で完了し、
+        // クロスデバイスの場合は copy+delete にフォールバックする。
+        // これにより再圧縮（run_gs_optimize / compressPdf の2回目呼び出し）を回避する。
+        await moveFile(tmpFile, sp);
+        // tmpFile を消費したのでリセット（再保存ボタン連打を防ぐ）
+        setTmpFile("");
       } else {
-        await compressPdf(inputFile, sp, {
-          preset,
-          merge_fonts: mergeFonts || undefined,
-          object_stream: objectStream || undefined,
-          layout_w: convertLayoutW,
-          layout_h: convertLayoutH,
-          layout_em: convertLayoutEm,
-        });
+        // 万一 tmpFile が消えていた場合のフォールバック（通常は到達しない）
+        if (useGs && gsPath) {
+          await invoke("run_gs_optimize", {
+            gsPath: gsPath,
+            input: inputFile,
+            output: sp,
+            level: gsPreset,
+          });
+        } else {
+          await compressPdf(inputFile, sp, {
+            preset,
+            merge_fonts: mergeFonts || undefined,
+            object_stream: objectStream || undefined,
+            layout_w: convertLayoutW,
+            layout_h: convertLayoutH,
+            layout_em: convertLayoutEm,
+          });
+        }
       }
       setSavedFilePath(sp);
       announceSuccess("done.save", {
@@ -458,6 +470,7 @@ export function CompressPage({
       setSaving(false);
     }
   }, [
+    tmpFile,
     useGs,
     gsPath,
     inputFile,
