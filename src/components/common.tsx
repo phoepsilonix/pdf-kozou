@@ -9,6 +9,12 @@ import { FS } from "../lib/typography";
 import { useI18n } from "../lib/i18n";
 import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
 
+/** kozou-spinner クラスと @keyframes kozou-spin の CSS 文字列。
+ *  WebKitGTK / WebView2(Blink) ではインラインスタイルの animation から
+ *  グローバルの @keyframes を参照できないため、スピナーを使う各箇所で
+ *  <style>{SPINNER_CSS}</style> を直接埋め込む。 */
+export const SPINNER_CSS = `@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`;
+
 export function Spinner({ label }: { label?: string }) {
   // スピナー表示中（=処理中）に長引いたら音声で知らせる。
   useBusyAnnouncer(true, label);
@@ -28,15 +34,7 @@ export function Spinner({ label }: { label?: string }) {
           <style> タグをコンポーネント内に直接埋め込む。
           kozou-spin という固有名でグローバルの spin と衝突しない。
           1.6s/回転・ease-in-out で「ゆっくり動いている」感を演出。 */}
-      <style>{`
-        @keyframes kozou-spin {
-          0%   { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .kozou-spinner {
-          animation: kozou-spin 1.6s ease-in-out infinite;
-        }
-      `}</style>
+      <style>{SPINNER_CSS}</style>
       <div
         className="kozou-spinner"
         style={{
