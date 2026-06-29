@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PDF小僧</title>
+    <!-- kozou-spinner アニメーション定義。
+         WebView2(Windows) では React が動的に挿入する <style> タグの
+         @keyframes 適用がフレーム遅延するため、ここで静的に定義する。
+         .kozou-spinner クラスを付与した要素は即座にアニメーションが始まる。 -->
+    <style>
+      @keyframes kozou-spin {
+        0%   { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .kozou-spinner {
+        animation: kozou-spin 1.6s ease-in-out infinite;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
