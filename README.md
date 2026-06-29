@@ -109,7 +109,7 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 ### バイナリ (推奨)
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
-macOS版の提供は未定。動作確認環境がないため。
+macOS版のパッケージは動作未チェック。動作確認環境がないため。
 
 ※AppImage版について  
 現時点のAppImage版は、日本語入力やキー入力に制約があります。
@@ -122,7 +122,7 @@ macOS版の提供は未定。動作確認環境がないため。
 | --------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Windows (x64)         | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`                                  |
 | Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb` `PDF-Kozou_${version}_amd64.AppImage` |
-| macOS (Apple Silicon) | （未定）                                                                                                   |
+| macOS (Apple Silicon) | `PDF-Kozou_${version}_universal.dmg`                                                                       |
 
 ### Microsoft Store(Windows)
 

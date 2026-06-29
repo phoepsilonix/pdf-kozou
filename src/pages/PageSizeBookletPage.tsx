@@ -443,7 +443,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file}</span>
                 <span style={s.bpLogMeta}>
-                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : "" } {t("booklet.sheets_count", { count: String(d.sheets) })}
+                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}{" "}
+                  {t("booklet.sheets_count", { count: String(d.sheets) })}
                 </span>
               </div>
             ))}
