@@ -341,6 +341,14 @@ export const IMPOSITION_MODE_DEFS: {
     icon: "📖",
   },
   {
+    id: "booklet-rtl",
+    labelKey: "image.imposition_booklet_rtl",
+    descKey: "image.imposition_booklet_rtl_desc",
+    cols: 2,
+    rows: 1,
+    icon: "📗",
+  },
+  {
     id: "4up",
     labelKey: "image.imposition_4up",
     descKey: "image.imposition_4up_desc",

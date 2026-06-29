@@ -114,6 +114,7 @@ function buildOpToken({
     if (impositionMode === "1up" && outputMode !== "pdf") {
       return "";
     }
+    // booklet-rtl は filename.label.booklet-rtl を参照
     return t(`filename.label.${opTokenKey}`);
   }
 
@@ -1306,7 +1307,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                         n !== total
                           ? t("image.imposition_page_label_filtered" as any, { n: String(n) })
                           : t("image.imposition_page_label_all" as any, { total: String(total) });
-                      return impositionMode === "booklet"
+                      return impositionMode === "booklet" || impositionMode === "booklet-rtl"
                         ? t("image.imposition_sheet_count_booklet" as any, {
                             count: String(sheetCount),
                             pages: pageLabel,
@@ -1721,7 +1722,7 @@ function ImpositionPreview({
             {t("image.imposition_preview_filtered" as any, { n: String(effectiveTotal) })}
           </span>
         )}
-        {impositionMode === "booklet" && (
+        {(impositionMode === "booklet" || impositionMode === "booklet-rtl") && (
           <span style={{ marginLeft: 6, color: "var(--c-textDim)" }}>
             {t("image.imposition_booklet_note" as any)}
           </span>
