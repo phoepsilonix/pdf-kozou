@@ -642,7 +642,6 @@ jobs:
             ./dist/windows-artifacts/**/*.msi
             ./dist/windows-artifacts/**/*.msix
             ./dist/macos-artifacts/**/*.dmg
-            ./dist/macos-artifacts/**/*.app
-            ./dist/macos-artifacts/**/*.zip
+            ./dist/macos-artifacts/**/*.7z
           draft: false
           prerelease: ${{ contains(github.ref_name, 'pre') }}
