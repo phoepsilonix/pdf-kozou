@@ -562,18 +562,43 @@ jobs:
           #npm run build
           npm run build -- --target universal-apple-darwin
 
+      - name: 7zip packages
+        run: |
+          APP_VER=$(jq -r ".version" package.json)
+          PKG_NAME="PDF-Kozou_${APP_VER}_universal-macos"
+          PKG_FOLDER="PDF-Kozou.app"
+          APP_FOLDER="target/universal-apple-darwin/release/bundle/macos/PDF-Kozou.app"
+          mkdir -p ${PKG_FOLDER}
+          #cp -a ${APP_FOLDER} ${PKG_FOLDER}
+          mv ${APP_FOLDER} ${PKG_FOLDER}
+
+          # tar.bz2
+          # tar cf ${PKG_NAME}.tar ${PKG_FOLDER}/
+          # bzip2 -z -9 -f --best ${PKG_NAME}.tar
+          # mkdir -p target/release/bundle/tbz/
+          # mv ${PKG_NAME}.tar.bz2 target/release/bundle/tbz/
+
+          # zip
+          # 7z a -mx=9 -m0=lzma:fb273:mc441:lc3:pb2 ${PKG_NAME}.zip ${PKG_FOLDER}/
+          # mkdir -p target/release/bundle/zip/
+          # mv ${PKG_NAME}.zip target/release/bundle/zip/
+
+          # 7zip
+          rm -rf ./bundle
+          mkdir -p bundle/macos
+          7z a -mx=9 -m0=lzma:fb273:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
+          #7z a -mx=9 -m0=lzma:fb230:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
+          mv ${PKG_NAME}.7z bundle/macos/
 
       - name: move bundle folder
         run: |
-          rm -rf ./bundle
-          mkdir -p bundle/macos
           # /Users/runner/work/pdf-kozou/pdf-kozou/target/universal-apple-darwin/release/bundle/macos/PDF-Kozou.app
           # /Users/runner/work/pdf-kozou/pdf-kozou/target/universal-apple-darwin/release/bundle/dmg/PDF-Kozou_1.7.14_universal.dmg
 
           mv target/release/bundle/dmg/*.dmg bundle/macos/ 2>/dev/null || true
-          mv target/release/bundle/macos/*.app bundle/macos/ 2>/dev/null || true
+          #mv target/release/bundle/macos/*.app bundle/macos/ 2>/dev/null || true
           mv target/universal-apple-darwin/release/bundle/dmg/*.dmg bundle/macos/ 2>/dev/null || true
-          mv target/universal-apple-darwin/release/bundle/macos/*.app bundle/macos/ 2>/dev/null || true
+          #mv target/universal-apple-darwin/release/bundle/macos/*.app bundle/macos/ 2>/dev/null || true
           find ./bundle/macos -ls
 
       - name: Upload artifacts
