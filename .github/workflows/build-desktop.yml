@@ -559,34 +559,19 @@ jobs:
           #npm run build -- --no-bundle   # まずバイナリだけビルド
           # または署名を明示的に無効化
           #npm run build -- --target universal-apple-darwin --no-bundle
-          npm run build
+          #npm run build
           npm run build -- --target universal-apple-darwin
 
-      - name: Create simple DMG (署名なし)
-        run: |
-          APP_VER=$(jq -r ".version" package.json)
-          # .appをDMGにまとめる（簡易版）
-          ls -l target/universal-apple-darwin/release/bundle/*.{dmg,app} || true
-          BASE_DIR=$PWD
-          mkdir -p $BASE_DIR/unsigned
-          ( cd target/universal-apple-darwin/release/bundle && cp -R *.app $BASE_DIR/unsigned/ || true)
-          ( cd target/release/bundle && cp -R *.app $BASE_DIR/unsigned/ || true )
-          # hdiutilでDMG作成（署名なし）
-          cd $BASE_DIR
-          rm -rf ./bundle
-          mkdir -p bundle/macos
-          hdiutil create -volname "PDF-Kozou ${APP_VER}" \
-            -srcfolder $BASE_DIR/unsigned \
-            -ov -format UDZO \
-            "$BASE_DIR/bundle/macos/PDF-Kozou_${APP_VER}_universal.dmg"
-          find ./bundle/macos -ls
 
       - name: move bundle folder
         run: |
-          #mv target/release/bundle/*.dmg bundle/macos/ 2>/dev/null || true
+          rm -rf ./bundle
+          mkdir -p bundle/macos
+          mv target/release/bundle/*.dmg bundle/macos/ 2>/dev/null || true
           mv target/release/bundle/*.app bundle/macos/ 2>/dev/null || true
-          #mv target/universal-apple-darwin/release/bundle/*.dmg bundle/macos/ 2>/dev/null || true
+          mv target/universal-apple-darwin/release/bundle/*.dmg bundle/macos/ 2>/dev/null || true
           mv target/universal-apple-darwin/release/bundle/*.app bundle/macos/ 2>/dev/null || true
+          find ./bundle/macos -ls
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
