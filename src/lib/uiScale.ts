@@ -95,11 +95,12 @@ function applyToRoot() {
   style.width = `${Math.floor(vw / _scale)}px`;
   style.height = `${Math.floor(vh / _scale)}px`;
 
-  // 縦方向のみスクロールを許可し、横スクロールバーは常に非表示にする。
-  // overflow:"auto" だと 1px の計算誤差でも横スクロールバーが出て
-  // 内側が狭まりさらに縦スクロールバーが出る悪循環が起きる（Linux 特に顕著）。
-  style.overflowY = "auto";
-  style.overflowX = "hidden";
+  // 縦横ともスクロールバーを出さない。
+  // ホーム画面ではコンテンツをビューポートに収める設計とし、
+  // ファイル一覧が溢れる場合は listCard 側の max-height で制御する。
+  // ツール画面は flex:1+overflow:hidden の内部レイアウトが受け持つ。
+  //style.overflowY = "hidden";
+  //style.overflowX = "hidden";
 }
 
 function bindResize() {

@@ -504,13 +504,13 @@ export default function App() {
           {/* 読み上げ・言語・テーマ選択 */}
           <div
             style={{
-              position: "absolute",
-              top: 16,
-              right: 20,
+              width: "100%",
+              maxWidth: 820,
               display: "flex",
+              justifyContent: "flex-end",
               gap: 8,
               alignItems: "center",
-              zIndex: 1,
+              flexShrink: 0,
             }}
           >
             <A11yControls />
@@ -548,8 +548,8 @@ export default function App() {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 12,
-                padding: "12px 8px 8px",
+                gap: 8,
+                padding: "4px 8px 8px",
                 position: "relative",
               }}
             >
@@ -1201,19 +1201,20 @@ function ToolShell({
 
 const s: Record<string, React.CSSProperties> = {
   root: {
-    minHeight: "100%",
+    height: "100%",
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 24,
+    justifyContent: "flex-start",
+    gap: 16,
     background: "var(--c-bg)",
     color: "var(--c-text)",
     fontFamily: F,
-    padding: "28px 32px",
+    padding: "12px 24px 16px",
     position: "relative",
     transition: "background 0.15s",
+    overflowX: "hidden",
   },
   rootDrag: { background: "var(--c-accentBg)" },
   header: {
@@ -1245,7 +1246,10 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
     borderRadius: 12,
     overflow: "hidden",
-    minHeight: 180,
+    minHeight: 120,
+    maxHeight: "45vh",
+    display: "flex",
+    flexDirection: "column",
     position: "relative" as const,
     zIndex: 1, // 背景画像より前面に
   },
@@ -1255,7 +1259,8 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     gap: 14,
-    padding: "48px 28px",
+    padding: "32px 28px",
+    flex: 1,
   },
   emptyIcon: { fontSize: 44, color: "var(--c-borderHi)" },
   emptyTitle: { fontSize: 18, fontWeight: 600, color: "var(--c-textSub)" },
@@ -1271,7 +1276,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "15px",
     fontFamily: F,
   },
-  fileRows: { display: "flex", flexDirection: "column" },
+  fileRows: { display: "flex", flexDirection: "column", overflowY: "auto", flex: 1 },
   listFooter: {
     display: "flex",
     alignItems: "center",
