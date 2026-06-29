@@ -98,9 +98,9 @@ pub async fn pick_output_dir() -> Option<std::path::PathBuf> {
         .await
         .map(|f| f.path().to_path_buf())
 }
-#[cfg(all(desktop, not(target_os = "linux")))]
+#[cfg(all(desktop, (target_os = "windows")))]
 pub fn setup_webkit_env() {}
-#[cfg(all(desktop, not(target_os = "linux")))]
+#[cfg(all(desktop, (target_os = "windows")))]
 pub fn log_display_environment() {}
 
 #[cfg(mobile)]
