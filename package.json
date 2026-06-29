@@ -1,7 +1,7 @@
 {
   "name": "pdf-kozou",
   "private": true,
-  "version": "1.7.14",
+  "version": "1.7.15",
   "type": "module",
   "scripts": {
     "dev:core": "cargo build --bin pdf-kozou-core",
