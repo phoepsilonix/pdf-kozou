@@ -825,10 +825,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   ]);
 
   // バッチ実行
+  // バッチ実行（面付け解除・面付けPDF・全モード対応版）
   const handleExecuteBatch = useCallback(async () => {
     const batchDir = outDir || (await pickDir());
     if (!batchDir) return; // キャンセル
-    if (conflictPaths.length > 0) return; // 警告表示中は実行しない
+    if (conflictPaths.length > 0) return;
+
     const files = batchFiles!;
     setPhase("processing");
     const progress: BatchProgress = {
@@ -839,53 +841,162 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       errors: [],
     };
     setBatchProgress({ ...progress });
+
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       progress.current = i + 1;
       progress.currentFile = f.filename;
       setBatchProgress({ ...progress });
+
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 0));
+
       try {
         const stem = f.filename.replace(/\.[^/.]+$/, "");
-        if (outputMode === "pdf") {
-          // 画像PDFモード: ファイルごとに1つの .pdf をフラット出力。
-          // フラットなので必ず元名を付け（{元名}_{ラベル}.pdf）、入力PDFと
-          // 同じフォルダを選んでも元ファイルを上書きしないようにする。
+        const fileTotal = f.pageCount || 0;
+        const filePageSpec = resolvePageSpec(pages || "", fileTotal).map((idx) => idx + 1);
+        const filePageSet = new Set(filePageSpec);
+        const fileEffective = filePageSpec.length || fileTotal;
+
+        // ==================== 面付け解除 (deimpose) ====================
+        if (processDir === "deimpose") {
+          const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+          const sheetPageNums = filePageSpec.length
+            ? filePageSpec
+            : Array.from({ length: fileTotal }, (_, idx) => idx + 1);
+
+          const cellsLogical = calcSplitCells(sheetPageNums.length, def.cols, def.rows, def.id);
+          const cells: [number, number, number][] = cellsLogical.map((c) => [
+            sheetPageNums[c.page - 1],
+            c.row,
+            c.col,
+          ]);
+
+          if (outputMode === "pdf") {
+            // PDF出力（1ファイル）
+            const outPath = joinPath(batchDir, composePdfName(stem, true));
+            await splitImpositionPdf({
+              input: f.path,
+              output: outPath,
+              cells,
+              cols: def.cols,
+              rows: def.rows,
+              dpi,
+              quality,
+              usePng: format === "png",
+              layoutW: convertLayoutW,
+              layoutH: convertLayoutH,
+              layoutEm: convertLayoutEm,
+            });
+            progress.done.push({ file: f.filename, count: cells.length, pdfPath: outPath });
+          } else {
+            // 画像出力（セルごとに分割）
+            const subDir = joinPath(batchDir, stem);
+            const ext = format === "png" ? "png" : format === "svg" ? "svg" : "jpg";
+            const savedFiles: string[] = [];
+
+            for (let k = 0; k < cells.length; k++) {
+              const [pg, row, col] = cells[k];
+              const res = await splitCellRender({
+                input: f.path,
+                page: pg,
+                cols: def.cols,
+                rows: def.rows,
+                cellRow: row,
+                cellCol: col,
+                dpi,
+                format,
+                quality,
+                layoutW: convertLayoutW,
+                layoutH: convertLayoutH,
+                layoutEm: convertLayoutEm,
+              });
+
+              const outName = imageName(stem, false, k + 1, ext);
+              const outPath = joinPath(subDir, outName);
+              await invoke("save_base64_image", {
+                data: res.data_b64,
+                path: outPath,
+                sourcePath: format === "svg" ? undefined : f.path,
+              });
+              savedFiles.push(outPath);
+            }
+            progress.done.push({ file: f.filename, count: savedFiles.length });
+          }
+        }
+        // ==================== 通常モード（面付け含む） ====================
+        else if (outputMode === "pdf") {
           const outPath = joinPath(batchDir, composePdfName(stem, true));
-          const res = await exportImagePdf(
-            f.path,
-            outPath,
-            dpi,
-            quality,
-            format === "png",
-            pages || undefined,
-            { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
-          );
-          const pageCount =
-            resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount || 0;
-          progress.done.push({ file: f.filename, count: pageCount, pdfPath: outPath });
-          if (res.warning) console.warn(res.warning);
+
+          if (impositionMode !== "1up") {
+            // 面付けPDF（rasterizeImposition）
+            const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
+            const sheets = calcSheets(
+              impositionMode,
+              fileEffective,
+              t("common.imposition_blank_page" as any),
+              (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
+              (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+            );
+            const cells = modeInfo.cols * modeInfo.rows;
+            const hasPageFilter = filePageSpec.length > 0;
+            const sheetPages: number[] = [];
+
+            for (const sheet of sheets) {
+              for (let c = 0; c < cells; c++) {
+                const p = sheet.pages[c] ?? 0;
+                sheetPages.push(p !== 0 && hasPageFilter && !filePageSet.has(p) ? 0 : p);
+              }
+            }
+
+            await rasterizeImposition({
+              input: f.path,
+              output: outPath,
+              sheetPages,
+              nSheets: sheets.length,
+              cols: modeInfo.cols,
+              rows: modeInfo.rows,
+              dpi,
+              quality,
+              usePng: format === "png",
+              gapPx: 0,
+              layoutW: convertLayoutW,
+              layoutH: convertLayoutH,
+              layoutEm: convertLayoutEm,
+            });
+            progress.done.push({ file: f.filename, count: sheets.length, pdfPath: outPath });
+          } else {
+            // 1up PDF
+            const res = await exportImagePdf(
+              f.path,
+              outPath,
+              dpi,
+              quality,
+              format === "png",
+              pages || undefined,
+              { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
+            );
+            const pageCount = filePageSpec.length || fileTotal;
+            progress.done.push({ file: f.filename, count: pageCount, pdfPath: outPath });
+            if (res.warning) console.warn(res.warning);
+          }
         } else if (impositionMode !== "1up") {
-          // 面付けモード: サブフォルダにシートごとに出力
+          // 面付け画像（既存ロジックを維持）
           const subDir = joinPath(batchDir, stem);
-          const fileTotal = f.pageCount || 0;
-          const filePageSpec = resolvePageSpec(pages || "", fileTotal).map((i) => i + 1);
-          const filePageSet = new Set(filePageSpec);
-          const fileEffective = filePageSpec.length || fileTotal;
-          const fileSheets = calcSheets(
+          const modeInfo = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
+          const fmt = format === "png" ? "png" : "jpeg";
+          const ext = format === "png" ? "png" : "jpg";
+          const sheets = calcSheets(
             impositionMode,
             fileEffective,
             t("common.imposition_blank_page" as any),
             (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
             (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
           );
-          const modeInfo = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
-          const fmt = format === "png" ? "png" : "jpeg";
-          const ext = format === "png" ? "png" : "jpg";
           const savedFiles: string[] = [];
-          for (let si = 0; si < fileSheets.length; si++) {
-            const sheet = fileSheets[si];
+
+          for (let si = 0; si < sheets.length; si++) {
+            const sheet = sheets[si];
             const pageNums = sheet.pages.map((p) => (p === 0 || filePageSet.has(p) ? p : 0));
             const result = await renderImposition({
               path: f.path,
@@ -897,7 +1008,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               quality: fmt === "jpeg" ? quality : undefined,
               gapPx: 0,
             });
-            // サブフォルダ名が元名を担うので、中身は元名OFF形（{ラベル}_連番）
+
             const outName = imageName(stem, false, si + 1, ext);
             const outPath = joinPath(subDir, outName);
             await invoke("save_base64_image", {
@@ -909,7 +1020,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           }
           progress.done.push({ file: f.filename, count: savedFiles.length });
         } else {
-          // 1-upモード: サブフォルダに1ページずつ
+          // 1-up 画像（既存）
           const subDir = joinPath(batchDir, stem);
           const res = await exportImages(
             f.path,
@@ -925,9 +1036,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         }
       } catch (e) {
         progress.errors.push({ file: f.filename, msg: String(e) });
+        console.error(`Batch error on ${f.filename}:`, e);
       }
+
       setBatchProgress({ ...progress });
     }
+
     announceSuccess("done.image");
     setPhase("result");
   }, [
@@ -935,6 +1049,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     outDir,
     outputMode,
     impositionMode,
+    processDir,
+    deimpIndex,
     format,
     dpi,
     quality,
@@ -945,6 +1061,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     imagePrefix,
     pickDir,
     announceSuccess,
+    t,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
   ]);
 
   // ─────────── フェーズ ───────────
