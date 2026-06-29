@@ -887,8 +887,8 @@
       "rasterized": "画像化",
       "2up": "2面",
       "4up": "4面",
-      "booklet": "左綴じ中綴じ",
-      "booklet-rtl": "右綴じ中綴じ",
+      "booklet": "左綴じ右開き",
+      "booklet-rtl": "右綴じ左開き",
       "deimposed": "面付け解除",
       "split": "分割"
     }
