@@ -559,6 +559,7 @@ jobs:
           #npm run build -- --no-bundle   # まずバイナリだけビルド
           # または署名を明示的に無効化
           #npm run build -- --target universal-apple-darwin --no-bundle
+          npm run build
           npm run build -- --target universal-apple-darwin
 
       - name: Create simple DMG (署名なし)
@@ -578,6 +579,7 @@ jobs:
             -srcfolder $BASE_DIR/unsigned \
             -ov -format UDZO \
             "$BASE_DIR/bundle/macos/PDF-Kozou_${APP_VER}_universal.dmg"
+          find ./bundle/macos -ls
 
       - name: move bundle folder
         run: |
@@ -606,8 +608,8 @@ jobs:
 
   publish-release:
     runs-on: ubuntu-latest
-    needs: [build-linux, build-windows] # 両方の完了を待つ
-    #needs: [build-linux, build-windows, build-macos] # 両方の完了を待つ
+    #needs: [build-linux, build-windows] # 両方の完了を待つ
+    needs: [build-linux, build-windows, build-macos] # 両方の完了を待つ
     if: startsWith(github.ref, 'refs/tags/') # タグ時のみ
     steps:
       - name: Download all artifacts
