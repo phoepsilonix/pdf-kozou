@@ -365,10 +365,11 @@ export const IMPOSITION_MODES = IMPOSITION_MODE_DEFS;
 
 /**
  * 面付け解除の並べ替えモード
- * - "sequential" : 単純分割（物理順そのまま。2-up/4-up の解除）
- * - "booklet"    : 製本解除（折り丁順を読み順に戻す）
+ * - "sequential"  : 単純分割（物理順そのまま。2-up/4-up の解除）
+ * - "booklet"     : 左綴じ製本解除（折り丁順を読み順に戻す）
+ * - "booklet-rtl" : 右綴じ製本解除（RTL折り丁順を読み順に戻す）
  */
-export type DeImpositionMode = "sequential" | "booklet";
+export type DeImpositionMode = "sequential" | "booklet" | "booklet-rtl";
 
 /** 出力1ページ分のセル指定 */
 export interface SplitCell {
@@ -416,12 +417,11 @@ export function calcSplitCells(
     return physical;
   }
 
-  // booklet 解除: 物理順を読み順に並べ替える。
+  // booklet / booklet-rtl 解除: 物理順を読み順に並べ替える。
   // calcBookletSheets と対になる逆写像を作る。
-  // booklet 製本では、論理ページ数 = sheetCount * cells（4の倍数前提）。
   const total = sheetCount * cells;
-  const sheets = calcBookletSheets(total);
-  // sheets[s].pages を行優先で並べた物理flat（製本時の配置）
+  const rtl = mode === "booklet-rtl";
+  const sheets = calcBookletSheets(total, "Blank", undefined, undefined, rtl);
   // flat[i] = 物理位置 i に置かれた論理ページ番号
   const flat: number[] = [];
   for (const sh of sheets) {
@@ -471,6 +471,14 @@ export const DE_IMPOSITION_MODE_DEFS: {
     labelKey: "image.deimp_booklet",
     descKey: "image.deimp_booklet_desc",
     icon: "📖",
+  },
+  {
+    id: "booklet-rtl",
+    cols: 2,
+    rows: 1,
+    labelKey: "image.deimp_booklet_rtl",
+    descKey: "image.deimp_booklet_rtl_desc",
+    icon: "📗",
   },
   {
     id: "sequential",

@@ -104,6 +104,7 @@ function buildOpToken({
     "image.deimp_2up": "2up",
     "image.deimp_4up": "4up",
     "image.deimp_booklet": "booklet",
+    "image.deimp_booklet_rtl": "booklet-rtl",
   };
 
   // deimpose 以外
