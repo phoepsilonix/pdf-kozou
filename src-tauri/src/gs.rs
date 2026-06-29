@@ -8,8 +8,6 @@
 use std::os::windows::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
-use tokio::fs;
-use tokio::process::Command;
 
 #[cfg(target_os = "linux")]
 use std::sync::OnceLock;
@@ -72,31 +70,26 @@ pub async fn run_gs_optimize(
     output: String,
     level: GsCompressionLevel,
 ) -> Result<String, String> {
-    // 入力ファイルの存在確認（async）
-    if fs::metadata(&input).await.is_err() {
+    // 入力ファイルの存在確認
+    if !std::path::Path::new(&input).exists() {
         return Err(format!("入力ファイルが見つかりません: {input}"));
     }
 
-    // input と output が同じパスか確認（async）
-    let input_canonical = fs::canonicalize(&input).await.map_err(|e| e.to_string())?;
-
+    // input と output が同じパスの場合はエラー
+    let input_canonical = std::fs::canonicalize(&input).map_err(|e| e.to_string())?;
     let output_parent = std::path::Path::new(&output)
         .parent()
         .ok_or("出力パスが無効です")?;
-
-    fs::create_dir_all(output_parent)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if fs::metadata(&output).await.is_ok() {
-        let output_canonical = fs::canonicalize(&output).await.map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(output_parent).map_err(|e| e.to_string())?;
+    // output はまだ存在しない場合があるので親ディレクトリで比較
+    if std::path::Path::new(&output).exists() {
+        let output_canonical = std::fs::canonicalize(&output).map_err(|e| e.to_string())?;
         if input_canonical == output_canonical {
             return Err("入力と出力が同じファイルです。別のパスを指定してください。".to_string());
         }
     }
 
-    // Ghostscript コマンド（async）
-    let mut cmd = Command::new(&gs_path);
+    let mut cmd = std::process::Command::new(&gs_path);
 
     // AppImage対策。AppImageで優先されている内部のライブラリを無視して、
     // システムのライブラリを優先してシステムのgsを呼び出すことで、整合性を保つ
@@ -140,15 +133,11 @@ pub async fn run_gs_optimize(
         cmd.creation_flags(0x08000000);
     }
 
-    // ★ 非同期でプロセス実行（UI をブロックしない）
-    let out = cmd
-        .output()
-        .await
-        .map_err(|e| format!("GS 起動失敗: {e}"))?;
+    let out = cmd.output().map_err(|e| format!("GS 起動失敗: {e}"))?;
 
     if out.status.success() {
         // 出力ファイルの存在確認
-        if fs::metadata(&output).await.is_err() {
+        if !std::path::Path::new(&output).exists() {
             return Err("GS は成功を返しましたが出力ファイルが生成されませんでした".to_string());
         }
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
