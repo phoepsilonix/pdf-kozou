@@ -233,56 +233,6 @@ pub fn run() {
                     let _ = handle.emit("open-pdf-files", paths);
                 });
             }
-
-            // ── macOS: open-file イベント（Dock アイコンへの D&D） ────────────
-            #[cfg(target_os = "macos")]
-            {
-                let handle = app.handle().clone();
-                app.on_file_drop_event(move |event| {
-                    use tauri::FileDropEvent;
-                    if let FileDropEvent::Dropped { paths, .. } = event {
-                        let pdf_paths: Vec<String> = paths
-                            .iter()
-                            .filter(|p| {
-                                p.extension()
-                                    .map(|e| {
-                                        let ext = e.to_string_lossy().to_lowercase();
-                                        matches!(
-                                            ext.as_str(),
-                                            "pdf"
-                                                | "epub"
-                                                | "docx"
-                                                | "xlsx"
-                                                | "pptx"
-                                                | "xps"
-                                                | "oxps"
-                                                | "cbz"
-                                                | "cbr"
-                                                | "html"
-                                                | "htm"
-                                                | "xhtml"
-                                                | "svg"
-                                                | "jpg"
-                                                | "jpeg"
-                                                | "png"
-                                                | "bmp"
-                                                | "gif"
-                                                | "tiff"
-                                                | "tif"
-                                                | "webp"
-                                        )
-                                    })
-                                    .unwrap_or(false)
-                            })
-                            .map(|p| p.display().to_string())
-                            .collect();
-                        if !pdf_paths.is_empty() {
-                            let _ = handle.emit("open-pdf-files", pdf_paths);
-                        }
-                    }
-                });
-            }
-
             Ok(())
         })
         .build(tauri::generate_context!())

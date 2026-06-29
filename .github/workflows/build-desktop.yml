@@ -484,9 +484,124 @@ jobs:
             target
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
+  # ===========================================================================
+  # macOS (Universal: x86_64 + aarch64)
+  # ===========================================================================
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Restore Cache (復元のみ)
+        uses: actions/cache/restore@v5.0.5
+        id: cache-restore
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-v1-
+            ${{ runner.os }}-rust-
+            v0-rust-pdf-kozou-v1-${{ runner.os }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+
+      - name: Restore npm cache
+        id: npm-cache
+        uses: actions/cache/restore@v5.0.5
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=moderate
+
+      - name: Save npm cache
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Build Frontend check
+        run: npm run build:frontend
+
+      - name: Install tauri-cli via binstall
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall tauri-cli -y --force
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build (release) - 署名なし
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""   # 空で署名をスキップ
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          . $HOME/.cargo/env
+          #npm run build -- --no-bundle   # まずバイナリだけビルド
+          # または署名を明示的に無効化
+          npm run build -- --target universal-apple-darwin --no-bundle
+
+      - name: Create simple DMG (署名なし)
+        run: |
+          APP_VER=$(jq -r ".version" package.json)
+          cd target/release/bundle
+          # .appをDMGにまとめる（簡易版）
+          mkdir -p unsigned
+          cp -R *.app unsigned/ || true
+          # hdiutilでDMG作成（署名なし）
+          hdiutil create -volname "PDF-Kozou ${APP_VER}" \
+            -srcfolder unsigned \
+            -ov -format UDZO \
+            "PDF-Kozou_${APP_VER}_universal.dmg"
+
+      - name: move bundle folder
+        run: |
+          rm -rf ./bundle
+          mkdir -p bundle/macos
+          mv target/release/bundle/*.dmg bundle/macos/ 2>/dev/null || true
+          mv target/release/bundle/*.app bundle/macos/ 2>/dev/null || true
+          mv target/release/pdf-kozou* bundle/macos/ 2>/dev/null || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-artifacts
+          path: bundle/macos/
+
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
   publish-release:
     runs-on: ubuntu-latest
-    needs: [build-linux, build-windows] # 両方の完了を待つ
+    needs: [build-linux, build-windows, build-macos] # 両方の完了を待つ
     if: startsWith(github.ref, 'refs/tags/') # タグ時のみ
     steps:
       - name: Download all artifacts
@@ -505,5 +620,8 @@ jobs:
             ./dist/windows-artifacts/**/*.exe
             ./dist/windows-artifacts/**/*.msi
             ./dist/windows-artifacts/**/*.msix
+            ./dist/macos-artifacts/**/*.dmg
+            ./dist/macos-artifacts/**/*.app
+            ./dist/macos-artifacts/**/*.zip
           draft: false
           prerelease: ${{ contains(github.ref_name, 'pre') }}
