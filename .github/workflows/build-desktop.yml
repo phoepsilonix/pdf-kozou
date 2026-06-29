@@ -567,10 +567,13 @@ jobs:
         run: |
           rm -rf ./bundle
           mkdir -p bundle/macos
-          mv target/release/bundle/*.dmg bundle/macos/ 2>/dev/null || true
-          mv target/release/bundle/*.app bundle/macos/ 2>/dev/null || true
-          mv target/universal-apple-darwin/release/bundle/*.dmg bundle/macos/ 2>/dev/null || true
-          mv target/universal-apple-darwin/release/bundle/*.app bundle/macos/ 2>/dev/null || true
+          # /Users/runner/work/pdf-kozou/pdf-kozou/target/universal-apple-darwin/release/bundle/macos/PDF-Kozou.app
+          # /Users/runner/work/pdf-kozou/pdf-kozou/target/universal-apple-darwin/release/bundle/dmg/PDF-Kozou_1.7.14_universal.dmg
+
+          mv target/release/bundle/dmg/*.dmg bundle/macos/ 2>/dev/null || true
+          mv target/release/bundle/macos/*.app bundle/macos/ 2>/dev/null || true
+          mv target/universal-apple-darwin/release/bundle/dmg/*.dmg bundle/macos/ 2>/dev/null || true
+          mv target/universal-apple-darwin/release/bundle/macos/*.app bundle/macos/ 2>/dev/null || true
           find ./bundle/macos -ls
 
       - name: Upload artifacts
