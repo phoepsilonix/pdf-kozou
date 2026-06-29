@@ -47,7 +47,7 @@ interface BatchProgress {
   current: number;
   total: number;
   currentFile: string;
-  done: { file: string; sheets: number }[];
+  done: { file: string; sheets: number; pdfPath?: string }[];
   errors: { file: string; msg: string }[];
 }
 
@@ -361,7 +361,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
           layoutH: convertLayoutH,
           layoutEm: convertLayoutEm,
         });
-        progress.done.push({ file: f.filename, sheets: ns });
+        progress.done.push({ file: f.filename, sheets: ns, pdfPath: out });
       } catch (e) {
         progress.errors.push({ file: f.filename, msg: String(e) });
       }
