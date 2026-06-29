@@ -1202,6 +1202,7 @@ function ToolShell({
 const s: Record<string, React.CSSProperties> = {
   root: {
     minHeight: "100%",
+    boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -1213,6 +1214,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "28px 32px",
     position: "relative",
     transition: "background 0.15s",
+    overflowX: "hidden",
   },
   rootDrag: { background: "var(--c-accentBg)" },
   header: {

@@ -81,15 +81,25 @@ function applyToRoot() {
   const root = document.getElementById("root");
   if (!root) return;
   const style = root.style as any;
-  style.zoom = String(_scale);
-  // clientWidth/Height はスクロールバーを除いた実ピクセル。これを 1/S して
-  // zoom で S 倍されると、ちょうど実ビューポートを覆う。
+
+  // 一時的に overflow を hidden にして scrollbar を消した状態で
+  // clientWidth/Height を計測する（scrollbar 幅の影響を排除するため）。
+  style.overflowX = "hidden";
+  style.overflowY = "hidden";
+
   const vw = document.documentElement.clientWidth;
   const vh = document.documentElement.clientHeight;
-  style.width = `${vw / _scale}px`;
-  style.height = `${vh / _scale}px`;
-  // 補正後の高さを超えるコンテンツ（ホーム画面など）は #root 内でスクロールさせる
-  style.overflow = "auto";
+
+  style.zoom = String(_scale);
+  // Math.floor で端数を切り捨て、zoom 後にビューポートを 1px もはみ出さないようにする
+  style.width = `${Math.floor(vw / _scale)}px`;
+  style.height = `${Math.floor(vh / _scale)}px`;
+
+  // 縦方向のみスクロールを許可し、横スクロールバーは常に非表示にする。
+  // overflow:"auto" だと 1px の計算誤差でも横スクロールバーが出て
+  // 内側が狭まりさらに縦スクロールバーが出る悪循環が起きる（Linux 特に顕著）。
+  style.overflowY = "auto";
+  style.overflowX = "hidden";
 }
 
 function bindResize() {
