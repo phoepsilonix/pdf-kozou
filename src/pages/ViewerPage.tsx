@@ -22,7 +22,7 @@ import {
   type STextBlock,
   type PageLink,
 } from "../lib/tauri";
-import { Spinner, SPINNER_CSS, PageHeader } from "../components/common";
+import { Spinner, PageHeader } from "../components/common";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { F } from "../lib/theme";
@@ -1549,7 +1549,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
               <div style={s.viewInner}>
                 {mainLoading && !mainImg && (
                   <div style={s.viewCenter}>
-                    <style>{SPINNER_CSS}</style>
                     <div style={s.viewSpinner} className="kozou-spinner" />
                   </div>
                 )}
