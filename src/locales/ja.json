@@ -409,7 +409,7 @@
     "imposition_booklet": "製本見開き（左綴じ）",
     "imposition_booklet_desc": "折って綴じる製本用・横書き向け・右開き（A4×2→A3）",
     "imposition_booklet_rtl": "製本見開き（右綴じ）",
-    "imposition_booklet_rtl_desc": "折って綴じる製本用・縦書き向け（A4×2→A3）",
+    "imposition_booklet_rtl_desc": "折って綴じる製本用・縦書き向け・左開き（A4×2→A3）",
     "imposition_4up": "4ページ格子",
     "imposition_4up_desc": "4ページを2×2に並べる",
     "imposition_info": "{{count}}枚が生成されます（{{pages}}）",
