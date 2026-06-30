@@ -76,7 +76,9 @@ interface BatchProgress {
   current: number;
   total: number;
   currentFile: string;
-  done: { file: string; count: number; pdfPath?: string }[];
+  // pdfPath: PDF 1ファイルとして保存した場合の出力パス
+  // savedFiles: 画像分割など複数ファイルに出力した場合の全保存パス一覧
+  done: { file: string; count: number; pdfPath?: string; savedFiles?: string[] }[];
   errors: { file: string; msg: string }[];
 }
 
@@ -921,7 +923,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               });
               savedFiles.push(outPath);
             }
-            progress.done.push({ file: f.filename, count: savedFiles.length });
+            progress.done.push({
+              file: f.filename,
+              count: savedFiles.length,
+              savedFiles,
+            });
           }
         }
         // ==================== 通常モード（面付け含む） ====================
@@ -1018,7 +1024,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             });
             savedFiles.push(outPath);
           }
-          progress.done.push({ file: f.filename, count: savedFiles.length });
+          progress.done.push({ file: f.filename, count: savedFiles.length, savedFiles });
         } else {
           // 1-up 画像（既存）
           const subDir = joinPath(batchDir, stem);
@@ -1032,7 +1038,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             pages || undefined,
             { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
           );
-          progress.done.push({ file: f.filename, count: res.files.length });
+          progress.done.push({ file: f.filename, count: res.files.length, savedFiles: res.files });
         }
       } catch (e) {
         progress.errors.push({ file: f.filename, msg: String(e) });
@@ -1109,7 +1115,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                         name: d.pdfPath.split(/[\/\\]/).pop() ?? "",
                         count: String(d.count),
                       })
-                    : t("image.pages_count", { count: String(d.count) })}
+                    : d.savedFiles && d.savedFiles.length > 0
+                      ? d.savedFiles.length > 1
+                        ? t("image.output_images_many", {
+                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
+                            count: String(d.savedFiles.length - 1),
+                          })
+                        : t("image.output_images_one", {
+                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
+                          })
+                      : t("image.pages_count", { count: String(d.count) })}
                 </span>
               </div>
             ))}
@@ -1170,7 +1185,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                         name: d.pdfPath.split(/[\/\\]/).pop() ?? "",
                         count: String(d.count),
                       })
-                    : t("image.pages_count", { count: String(d.count) })}
+                    : d.savedFiles && d.savedFiles.length > 0
+                      ? d.savedFiles.length > 1
+                        ? t("image.output_images_many", {
+                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
+                            count: String(d.savedFiles.length - 1),
+                          })
+                        : t("image.output_images_one", {
+                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
+                          })
+                      : t("image.pages_count", { count: String(d.count) })}
                 </span>
               </div>
             ))}

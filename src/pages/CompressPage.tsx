@@ -247,7 +247,7 @@ export function CompressPage({
     cur: number;
     total: number;
     curFile: string;
-    done: { file: string; pct: string }[];
+    done: { file: string; pct: string; saved: string }[];
     errors: { file: string; msg: string }[];
   } | null>(null);
 
@@ -562,7 +562,11 @@ export function CompressPage({
           });
           ratio = res.ratio;
         }
-        prog.done.push({ file: f.filename, pct: ((1 - ratio) * 100).toFixed(1) });
+        prog.done.push({
+          file: f.filename,
+          pct: ((1 - ratio) * 100).toFixed(1),
+          saved: out.split(/[/\\]/).pop() ?? "",
+        });
       } catch (e) {
         prog.errors.push({ file: f.filename, msg: String(e) });
         console.warn(`圧縮失敗: ${f.filename}. 元ファイルをコピーします。`);
@@ -634,6 +638,24 @@ export function CompressPage({
         </div>
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
         <Spinner label={t("compress.processing")} />;
+        <div style={c.bpLog}>
+          {batchProg.done.map((d, i) => (
+            <div key={i} style={c.bpRow}>
+              <span style={{ color: "#4fe090" }}>✓</span>
+              <span style={c.bpFile}>{d.file}</span>
+              <span style={c.bpPct}>
+                {d.saved} -{d.pct}%
+              </span>
+            </div>
+          ))}
+          {batchProg.errors.map((e, i) => (
+            <div key={i} style={c.bpRow}>
+              <span style={{ color: "var(--c-err)" }}>✕</span>
+              <span style={c.bpFile}>{e.file}</span>
+              <span style={c.bpErrMsg}>{e.msg}</span>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -678,7 +700,9 @@ export function CompressPage({
             <div key={i} style={c.bpRow}>
               <span style={{ color: "#4fe090" }}>✓</span>
               <span style={c.bpFile}>{d.file}</span>
-              <span style={c.bpPct}>-{d.pct}%</span>
+              <span style={c.bpPct}>
+                {d.saved} -{d.pct}%
+              </span>
             </div>
           ))}
           {batchProg.errors.map((e, i) => (

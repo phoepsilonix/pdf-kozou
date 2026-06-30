@@ -48,7 +48,8 @@ interface BatchProgress {
   current: number;
   total: number;
   currentFile: string;
-  done: { file: string }[];
+  // saved: 出力したファイル名（回転角度0で出力をスキップした場合は undefined）
+  done: { file: string; saved?: string }[];
   errors: { file: string; msg: string }[];
 }
 
@@ -322,6 +323,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .slice(0, info.page_count)
           .map((v, idx) => ({ page: idx + 1, angle: v }))
           .filter((p) => p.angle !== 0);
+        let savedName: string | undefined;
         if (pages.length > 0) {
           const out = joinPath(resolvedDir, buildName(f.filename, ["rotated"]));
           const psize = resolvePageSizePt(pageSizeId, pageOrientation);
@@ -336,8 +338,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             psize?.h,
             pageOrientation === "auto" && pageSizeId !== "image",
           );
+          savedName = out.split(/[/\\]/).pop() ?? "";
         }
-        prog.done.push({ file: f.filename });
+        prog.done.push({ file: f.filename, saved: savedName });
       } catch (e) {
         prog.errors.push({ file: f.filename, msg: String(e) });
       }
@@ -374,6 +377,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file}</span>
+                <span style={s.bpMeta}>{d.saved ?? t("rotate.no_change")}</span>
               </div>
             ))}
             {batchProgress.errors.map((e, i) => (
@@ -515,6 +519,22 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                   : ""}
               </div>
               <div style={s.resultDir}>{outDir}</div>
+              <div style={s.bpLog}>
+                {batchProgress.done.map((d, i) => (
+                  <div key={i} style={s.bpRow}>
+                    <span style={{ color: "var(--c-accent)" }}>✓</span>
+                    <span style={s.bpFile}>{d.file}</span>
+                    <span style={s.bpMeta}>{d.saved ?? t("rotate.no_change")}</span>
+                  </div>
+                ))}
+                {batchProgress.errors.map((e, i) => (
+                  <div key={`e${i}`} style={s.bpRow}>
+                    <span style={{ color: "var(--c-err)" }}>✕</span>
+                    <span style={s.bpFile}>{e.file}</span>
+                    <span style={{ fontSize: FS.caption, color: "var(--c-err)" }}>{e.msg}</span>
+                  </div>
+                ))}
+              </div>
             </>
           ) : (
             <div style={s.resultStat}>
@@ -1073,6 +1093,15 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  bpMeta: {
+    flexShrink: 0,
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 160,
   },
   batchFileSelector: {
     padding: "8px 16px",

@@ -397,6 +397,8 @@
     "execute_pdf": "🗒 画像化PDFを作成",
     "done_title_pdf": "画像化（フラット化）PDF作成完了",
     "output_pdf": "{{name}}（{{count}}ページ）を出力",
+    "output_images_one": "{{name}} を保存",
+    "output_images_many": "{{name}} ほか{{count}}枚を保存",
     "rasterize_warning": "⚠ テキスト選択・検索不可の画像化PDFです",
     "result_suffix_pdf": "→ 1PDF（{{pages}}ページ）",
     "subfolder_note_pdf": "📄 ファイルごとに1つの画像化PDFを出力します",

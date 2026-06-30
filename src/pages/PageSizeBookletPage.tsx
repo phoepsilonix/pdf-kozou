@@ -406,6 +406,25 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
           </div>
           <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
           <Spinner />
+          <div style={s.bpLog}>
+            {batchProgress.done.map((d, i) => (
+              <div key={i} style={s.bpLogRow}>
+                <span style={{ color: "var(--c-accent)" }}>✓</span>
+                <span style={s.bpLogFile}>{d.file}</span>
+                <span style={s.bpLogMeta}>
+                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}{" "}
+                  {t("booklet.sheets_count", { count: String(d.sheets) })}
+                </span>
+              </div>
+            ))}
+            {batchProgress.errors.map((e, i) => (
+              <div key={`e${i}`} style={s.bpLogRow}>
+                <span style={{ color: "var(--c-err)" }}>✕</span>
+                <span style={s.bpLogFile}>{e.file}</span>
+                <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );

@@ -1473,8 +1473,8 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
       <div style={s.body}>
         {/* 左ペイン（ファイル一覧） */}
-        {isMulti && (
-          filePaneCollapsed ? (
+        {isMulti &&
+          (filePaneCollapsed ? (
             <button
               style={s.paneCollapsedBar}
               onClick={toggleFilePane}
@@ -1533,8 +1533,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                 })}
               </div>
             </div>
-          )
-        )}
+          ))}
 
         {/* サムネイルペイン */}
         {thumbPaneCollapsed ? (
@@ -1589,7 +1588,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                           alt=""
                         />
                       ) : (
-                        <div style={{ width: THUMB_W, height: th, background: "var(--c-border)" }} />
+                        <div
+                          style={{ width: THUMB_W, height: th, background: "var(--c-border)" }}
+                        />
                       )}
                     </div>
                     <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>

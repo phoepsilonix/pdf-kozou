@@ -397,6 +397,8 @@
     "execute_pdf": "🗒 Create image PDF",
     "done_title_pdf": "Image(Flattened) PDF created",
     "output_pdf": "{{name}} ({{count}} pages) exported",
+    "output_images_one": "Saved {{name}}",
+    "output_images_many": "Saved {{name}} and {{count}} more",
     "rasterize_warning": "⚠ Text selection and search are not available in image(Flattened) PDFs",
     "result_suffix_pdf": "→ 1 PDF ({{pages}} pages)",
     "subfolder_note_pdf": "📄 One image(Flattened) PDF per file",
