@@ -220,6 +220,8 @@
     "pane_files": "ファイル ({{count}})",
     "collapse_pane": "パネルを閉じる",
     "expand_pane": "パネルを開く",
+    "prev_page": "前のページ",
+    "next_page": "次のページ",
     "preview_pages": "プレビュー — {{count}}ページ",
     "imposition_blank_page": "空白",
     "label_error": "エラー",

@@ -104,7 +104,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
   const [progress, setProgress] = useState<{
     current: number;
-    done: { f: string }[];
+    done: { f: string; saved?: string }[];
     errors: { f: string; msg: string }[];
   }>({ current: 0, done: [], errors: [] });
   const [previewIdx, setPreviewIdx] = useState(0);
@@ -184,6 +184,11 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 
   // {t("trim.preview_target")}ファイルの情報 + 画像取得
   useEffect(() => {
+    // ファイルが切り替わったらページ番号を先頭にリセットする
+    setPreviewPage(0);
+  }, [previewIdx]);
+
+  useEffect(() => {
     const path = files[previewIdx]?.path;
     if (!path) return;
 
@@ -233,7 +238,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     await new Promise((resolve) => setTimeout(resolve, 0));
     const prog = {
       current: 0,
-      done: [] as { f: string }[],
+      done: [] as { f: string; saved?: string }[],
       errors: [] as { f: string; msg: string }[],
     };
     setProgress({ ...prog });
@@ -279,7 +284,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           );
         }
         console.log("[DEBUG] trim_pdf 結果:", res);
-        prog.done.push({ f: f.filename });
+        prog.done.push({ f: f.filename, saved: out.split(/[/\\]/).pop() ?? "" });
       } catch (e) {
         prog.errors.push({ f: f.filename, msg: String(e) });
       }
@@ -315,6 +320,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             <div key={i} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={b.logFile}>{d.f}</span>
+              <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}
         </div>
@@ -346,6 +352,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             <div key={i} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={b.logFile}>{d.f}</span>
+              <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}
           {progress.errors.map((e, i) => (
@@ -359,7 +366,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             >
               <span style={{ color: "var(--c-err)" }}>✕</span>
               <span style={b.logFile}>{e.f}</span>
-              <span style={{ fontSize: FS.caption, color: "var(--c-err)" }}>{e.msg}</span>
+              <span style={{ ...b.logMeta, color: "var(--c-err)" }}>{e.msg}</span>
             </div>
           ))}
         </div>
@@ -466,8 +473,16 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             gap: 12,
           }}
         >
-          {/* ズームコントロール */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {/* ズーム + ページナビゲーション */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexShrink: 0,
+              flexWrap: "wrap",
+            }}
+          >
             <button
               style={s.zBtn}
               onClick={() => setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
@@ -485,6 +500,50 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             </button>
             <button style={s.zBtn} onClick={() => setZoom(1.0)}>
               100%
+            </button>
+            {/* ページ切り替え */}
+            <div
+              style={{
+                width: 1,
+                height: 18,
+                background: "var(--c-border)",
+                margin: "0 4px",
+                flexShrink: 0,
+              }}
+            />
+            <button
+              style={{ ...s.zBtn, opacity: previewPage === 0 ? 0.35 : 1 }}
+              disabled={previewPage === 0}
+              onClick={() => {
+                setPreviewPage((p) => Math.max(0, p - 1));
+                setPageImage("");
+              }}
+              title={t("common.prev_page")}
+              aria-label={t("common.prev_page")}
+            >
+              ◀
+            </button>
+            <span
+              style={{
+                fontSize: FS.caption,
+                minWidth: 52,
+                textAlign: "center",
+                color: "var(--c-textSub)",
+              }}
+            >
+              {previewPage + 1} / {curPages}
+            </span>
+            <button
+              style={{ ...s.zBtn, opacity: previewPage >= curPages - 1 ? 0.35 : 1 }}
+              disabled={previewPage >= curPages - 1}
+              onClick={() => {
+                setPreviewPage((p) => Math.min(curPages - 1, p + 1));
+                setPageImage("");
+              }}
+              title={t("common.next_page")}
+              aria-label={t("common.next_page")}
+            >
+              ▶
             </button>
             <span style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginLeft: 4 }}>
               {t("trim.scroll_hint")}
@@ -1527,17 +1586,17 @@ const b: Record<string, React.CSSProperties> = {
   bar: { height: "100%", background: "var(--c-accent)", borderRadius: 4, transition: "width 0.3s" },
   log: {
     width: "100%",
-    maxWidth: 460,
+    maxWidth: 480,
     display: "flex",
     flexDirection: "column",
     gap: 5,
-    maxHeight: 300,
+    maxHeight: 280,
     overflowY: "auto",
   },
   logRow: {
     display: "flex",
     alignItems: "center",
-    gap: 9,
+    gap: 10,
     padding: "6px 10px",
     background: "var(--c-bgCard)",
     borderRadius: 6,
@@ -1545,11 +1604,21 @@ const b: Record<string, React.CSSProperties> = {
   },
   logFile: {
     flex: 1,
+    minWidth: 0,
     fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  logMeta: {
+    flexShrink: 0,
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "45%",
   },
   backBtn: {
     padding: "9px 26px",

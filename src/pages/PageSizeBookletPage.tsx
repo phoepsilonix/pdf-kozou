@@ -1008,13 +1008,22 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpLogFile: {
     flex: 1,
+    minWidth: 0,
     fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpLogMeta: { fontSize: FS.caption, color: "var(--c-textSub)", flexShrink: 0 },
+  bpLogMeta: {
+    flexShrink: 0,
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "45%",
+  },
   sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
   sheetCol: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
   cell: {

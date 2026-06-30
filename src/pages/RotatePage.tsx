@@ -384,7 +384,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={`e${i}`} style={s.bpRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpFile}>{e.file}</span>
-                <span style={{ fontSize: FS.caption, color: "var(--c-err)" }}>{e.msg}</span>
+                <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
               </div>
             ))}
           </div>
@@ -531,7 +531,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                   <div key={`e${i}`} style={s.bpRow}>
                     <span style={{ color: "var(--c-err)" }}>✕</span>
                     <span style={s.bpFile}>{e.file}</span>
-                    <span style={{ fontSize: FS.caption, color: "var(--c-err)" }}>{e.msg}</span>
+                    <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
                   </div>
                 ))}
               </div>
@@ -1053,15 +1053,15 @@ const s: Record<string, React.CSSProperties> = {
     padding: 32,
   },
   bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
-  bpBar: {
+  bpBarWrap: {
     width: "100%",
-    maxWidth: 480,
+    maxWidth: 440,
     height: 8,
     background: "var(--c-border)",
     borderRadius: 4,
     overflow: "hidden",
   },
-  bpFill: {
+  bpBar: {
     height: "100%",
     background: "var(--c-accent)",
     borderRadius: 4,
@@ -1088,21 +1088,21 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpFile: {
     flex: 1,
+    minWidth: 0,
     fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpMeta: { fontSize: FS.caption, color: "var(--c-textSub)", flexShrink: 0 },
-  sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
-  bpBarWrap: {
-    width: "100%",
-    maxWidth: 440,
-    height: 8,
-    background: "var(--c-border)",
-    borderRadius: 4,
+  bpMeta: {
+    flexShrink: 0,
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
     overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "45%",
   },
   batchFileSelector: {
     padding: "8px 16px",

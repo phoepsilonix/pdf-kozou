@@ -698,7 +698,7 @@ export function CompressPage({
         <div style={c.bpLog}>
           {batchProg.done.map((d, i) => (
             <div key={i} style={c.bpRow}>
-              <span style={{ color: "#4fe090" }}>✓</span>
+              <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file}</span>
               <span style={c.bpPct}>
                 {d.saved} -{d.pct}%
@@ -757,14 +757,14 @@ export function CompressPage({
             )}
           </div>
           <div style={c.statsCol}>
-            <div style={{ ...c.statBig, color: gain ? "#4fe090" : "#ff6060" }}>
+            <div style={{ ...c.statBig, color: gain ? "var(--c-green)" : "var(--c-err)" }}>
               {gain ? `−${pct}%` : `+${Math.abs(Number(pct))}%`}
             </div>
             <div style={c.statInfo}>
               <div style={c.statLabel}>{t("compress.stat_label")}</div>
               <div style={c.statVal}>
                 {inMB} MB →{" "}
-                <span style={{ color: gain ? "#4fe090" : "#ff6060", fontWeight: 700 }}>
+                <span style={{ color: gain ? "var(--c-green)" : "var(--c-err)", fontWeight: 700 }}>
                   {outMB} MB
                 </span>
               </div>
@@ -1510,28 +1510,37 @@ const c: Record<string, React.CSSProperties> = {
     maxWidth: 480,
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    maxHeight: 300,
+    gap: 5,
+    maxHeight: 280,
     overflowY: "auto",
   },
   bpRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: "5px 10px",
+    gap: 10,
+    padding: "6px 10px",
     background: "var(--c-bgCard)",
     borderRadius: 6,
     border: `1px solid var(--c-border)`,
   },
   bpFile: {
     flex: 1,
+    minWidth: 0,
     fontSize: FS.small,
     color: "var(--c-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpPct: { fontSize: FS.small, fontWeight: 700, color: "#4fe090" },
+  bpPct: {
+    flexShrink: 0,
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "45%",
+  },
   btnChain: {
     flex: 1,
     padding: "8px 12px",

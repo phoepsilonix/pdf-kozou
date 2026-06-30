@@ -220,6 +220,8 @@
     "pane_files": "Files ({{count}})",
     "collapse_pane": "Collapse panel",
     "expand_pane": "Expand panel",
+    "prev_page": "Previous page",
+    "next_page": "Next page",
     "preview_pages": "Preview — {{count}} pages",
     "imposition_blank_page": "Blank",
     "label_error": "Error",
