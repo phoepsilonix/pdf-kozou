@@ -6,10 +6,10 @@
   "scripts": {
     "dev:core": "cargo build --bin pdf-kozou-core",
     "dev": "vite",
-    "tauri:dev": "cargo build --bin pdf-kozou-core && cargo tauri dev",
+    "tauri:dev": "cargo build --bin pdf-kozou-core && tauri dev",
     "build:core": "cargo build --release --bin pdf-kozou-core",
     "build:frontend": "tsc && vite build",
-    "build": "npm run build:core && cargo tauri build"
+    "build": "npm run build:core && tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
