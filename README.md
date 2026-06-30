@@ -109,7 +109,7 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 ### バイナリ (推奨)
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
-macOS版のパッケージは動作未チェック。動作確認環境がないため。
+macOS版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。
 
 ※AppImage版について  
 現時点のAppImage版は、日本語入力やキー入力に制約があります。
@@ -118,11 +118,12 @@ macOS版のパッケージは動作未チェック。動作確認環境がない
 いずれは直したいですが使用しているユーザーの環境によるので、すぐには難しそうです。  
 7zip版のアーカイブのバイナリ(v1.4.8〜)が起動できる場合には、そちらの利用もご検討ください。(`webkit2gtk-4.1`があれば、7-zip版アーカイブのバイナリも動作するかもしれません。Arch系でも動いています。)
 
-| プラットフォーム      | ファイル                                                                                                   |
-| --------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Windows (x64)         | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`                                  |
-| Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb` `PDF-Kozou_${version}_amd64.AppImage` |
-| macOS (Apple Silicon) | `PDF-Kozou_${version}_universal.dmg`                                                                       |
+| プラットフォーム      | ファイル                                                                       |
+| --------------------- | ------------------------------------------------------------------------------ |
+| Windows (x64)         | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`      |
+| Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb`           |
+|                       | `PDF-Kozou_${version}_amd64.AppImage` `PDF-Kozou_${version}_amd64-linux.7z`    |
+| macOS (Apple Silicon) | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
 
 ### Microsoft Store(Windows)
 
