@@ -218,6 +218,8 @@
     "files_split_done": "Split into {{count}} files.",
     "files_arrow": "→ {{count}} files",
     "pane_files": "Files ({{count}})",
+    "collapse_pane": "Collapse panel",
+    "expand_pane": "Expand panel",
     "preview_pages": "Preview — {{count}} pages",
     "imposition_blank_page": "Blank",
     "label_error": "Error",

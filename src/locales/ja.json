@@ -218,6 +218,8 @@
     "files_split_done": "{{count}}ファイルに分割しました。",
     "files_arrow": "→ {{count}}ファイル",
     "pane_files": "ファイル ({{count}})",
+    "collapse_pane": "パネルを閉じる",
+    "expand_pane": "パネルを開く",
     "preview_pages": "プレビュー — {{count}}ページ",
     "imposition_blank_page": "空白",
     "label_error": "エラー",

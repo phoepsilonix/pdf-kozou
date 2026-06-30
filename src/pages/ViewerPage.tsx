@@ -1001,6 +1001,41 @@ interface Props {
 export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const isMulti = fileList.length > 1;
   const [activeIdx, setActiveIdx] = useState(0);
+  // ファイル一覧／サムネイルパネルの折りたたみ状態。
+  // 横長PDF表示時など画面が狭く感じる場合に手動で隠せるようにする。
+  // 設定は端末に永続化し、次回起動時も維持する。
+  const [filePaneCollapsed, setFilePaneCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("pdf-kozou-viewer-filepane-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [thumbPaneCollapsed, setThumbPaneCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("pdf-kozou-viewer-thumbpane-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleFilePane = () => {
+    setFilePaneCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("pdf-kozou-viewer-filepane-collapsed", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  };
+  const toggleThumbPane = () => {
+    setThumbPaneCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("pdf-kozou-viewer-thumbpane-collapsed", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  };
   const { announceScreen, announceKey, announce } = useA11y();
   const { t } = useI18n();
 
@@ -1437,93 +1472,135 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       )}
 
       <div style={s.body}>
-        {/* 左ペイン */}
+        {/* 左ペイン（ファイル一覧） */}
         {isMulti && (
-          <div style={s.filePane}>
-            <div style={s.paneHead}>
-              {t("common.pane_files", { count: String(fileList.length) })}
+          filePaneCollapsed ? (
+            <button
+              style={s.paneCollapsedBar}
+              onClick={toggleFilePane}
+              title={t("common.pane_files", { count: String(fileList.length) })}
+              aria-label={t("common.pane_files", { count: String(fileList.length) })}
+            >
+              ▶
+            </button>
+          ) : (
+            <div style={s.filePane}>
+              <div style={s.paneHead}>
+                <span style={{ flex: 1 }}>
+                  {t("common.pane_files", { count: String(fileList.length) })}
+                </span>
+                <button
+                  style={s.paneCollapseBtn}
+                  onClick={toggleFilePane}
+                  title={t("common.collapse_pane")}
+                  aria-label={t("common.collapse_pane")}
+                >
+                  ◀
+                </button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                {fileList.map((f, i) => {
+                  const cover = fileCoverThumbs.get(f.path);
+                  return (
+                    <button
+                      key={f.id}
+                      style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
+                      onClick={() => {
+                        setActiveIdx(i);
+                        setViewPage(0);
+                        setInfoOpen(false);
+                      }}
+                    >
+                      <div style={s.filePaneThumbBox}>
+                        {cover ? (
+                          <img
+                            src={`data:image/jpeg;base64,${cover}`}
+                            style={s.filePaneThumbImg}
+                            alt=""
+                          />
+                        ) : (
+                          <span style={s.filePaneIcon}>📄</span>
+                        )}
+                      </div>
+                      <div style={s.filePaneInfo}>
+                        <div style={s.filePaneName} title={f.filename}>
+                          {f.filename || t("viewer.untitled")}
+                        </div>
+                        <div style={s.filePaneMeta}>{f.pageCount}p</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{ flex: 1, overflowY: "auto" }}>
-              {fileList.map((f, i) => {
-                const cover = fileCoverThumbs.get(f.path);
+          )
+        )}
+
+        {/* サムネイルペイン */}
+        {thumbPaneCollapsed ? (
+          <button
+            style={s.paneCollapsedBar}
+            onClick={toggleThumbPane}
+            title={`${viewPage + 1} / ${total}`}
+            aria-label={t("common.expand_pane")}
+          >
+            ▶
+          </button>
+        ) : (
+          <div style={s.thumbPane}>
+            <div style={s.paneHead}>
+              <span style={{ flex: 1 }}>
+                {viewPage + 1} / {total}
+              </span>
+              <button
+                style={s.paneCollapseBtn}
+                onClick={toggleThumbPane}
+                title={t("common.collapse_pane")}
+                aria-label={t("common.collapse_pane")}
+              >
+                ◀
+              </button>
+            </div>
+            <div>
+              {Array.from({ length: total }, (_, i) => {
+                const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
                 return (
                   <button
-                    key={f.id}
-                    style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
-                    onClick={() => {
-                      setActiveIdx(i);
-                      setViewPage(0);
-                      setInfoOpen(false);
-                    }}
+                    key={i}
+                    style={{ ...s.thumbItem, ...(i === viewPage ? s.thumbItemOn : {}) }}
+                    onClick={() => setViewPage(i)}
                   >
-                    <div style={s.filePaneThumbBox}>
-                      {cover ? (
+                    <div
+                      style={{
+                        width: THUMB_W,
+                        height: th,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        background: "var(--c-bg)",
+                        borderRadius: 2,
+                      }}
+                    >
+                      {thumbs[i] ? (
                         <img
-                          src={`data:image/jpeg;base64,${cover}`}
-                          style={s.filePaneThumbImg}
+                          src={`data:image/jpeg;base64,${thumbs[i]}`}
+                          style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain" }}
                           alt=""
                         />
                       ) : (
-                        <span style={s.filePaneIcon}>📄</span>
+                        <div style={{ width: THUMB_W, height: th, background: "var(--c-border)" }} />
                       )}
                     </div>
-                    <div style={s.filePaneInfo}>
-                      <div style={s.filePaneName} title={f.filename}>
-                        {f.filename || t("viewer.untitled")}
-                      </div>
-                      <div style={s.filePaneMeta}>{f.pageCount}p</div>
-                    </div>
+                    <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>
+                      {i + 1}
+                    </span>
                   </button>
                 );
               })}
             </div>
           </div>
         )}
-
-        {/* サムネイルペイン */}
-        <div style={s.thumbPane}>
-          <div style={s.paneHead}>
-            {viewPage + 1} / {total}
-          </div>
-          <div>
-            {Array.from({ length: total }, (_, i) => {
-              const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
-              return (
-                <button
-                  key={i}
-                  style={{ ...s.thumbItem, ...(i === viewPage ? s.thumbItemOn : {}) }}
-                  onClick={() => setViewPage(i)}
-                >
-                  <div
-                    style={{
-                      width: THUMB_W,
-                      height: th,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      overflow: "hidden",
-                      background: "var(--c-bg)",
-                      borderRadius: 2,
-                    }}
-                  >
-                    {thumbs[i] ? (
-                      <img
-                        src={`data:image/jpeg;base64,${thumbs[i]}`}
-                        style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain" }}
-                        alt=""
-                      />
-                    ) : (
-                      <div style={{ width: THUMB_W, height: th, background: "var(--c-border)" }} />
-                    )}
-                  </div>
-                  <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>
-                    {i + 1}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* メインビュー + ドロワー */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
@@ -1923,11 +2000,45 @@ const s: Record<string, React.CSSProperties> = {
     marginLeft: 8,
   },
   paneHead: {
+    display: "flex",
+    alignItems: "center",
     fontSize: FS.caption,
     fontWeight: 700,
-    padding: "8px 12px",
+    padding: "8px 8px 8px 12px",
     color: "var(--c-textDim)",
     borderBottom: "1px solid var(--c-border)",
+  },
+  paneCollapseBtn: {
+    flexShrink: 0,
+    width: 24,
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "transparent",
+    border: "none",
+    color: "var(--c-textDim)",
+    cursor: "pointer",
+    borderRadius: 4,
+    fontSize: 11,
+  },
+  // 折りたたみ時に残す細い帯。クリックで再展開できる。
+  paneCollapsedBar: {
+    flexShrink: 0,
+    width: 18,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--c-bgCard)",
+    borderRight: "1px solid var(--c-border)",
+    border: "none",
+    borderLeft: "none",
+    borderTop: "none",
+    borderBottom: "none",
+    cursor: "pointer",
+    color: "var(--c-textDim)",
+    fontSize: 10,
+    padding: 0,
   },
   zoomRow: { display: "flex", alignItems: "center", gap: 8 },
   zBtn: {
