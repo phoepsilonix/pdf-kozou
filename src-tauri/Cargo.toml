@@ -1,6 +1,6 @@
 [package]
 name    = "pdf-kozou"
-version = "1.7.16"
+version = "1.7.17"
 edition = "2024"
 description = "PDF小僧 - MuPDF ベース GUI(tauri) and CLI"
 license = "AGPL-3.0-only"   # または "AGPL-3.0"（SPDX準拠）
