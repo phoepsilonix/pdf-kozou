@@ -1053,15 +1053,15 @@ const s: Record<string, React.CSSProperties> = {
     padding: 32,
   },
   bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
-  bpBarWrap: {
+  bpBar: {
     width: "100%",
-    maxWidth: 440,
+    maxWidth: 480,
     height: 8,
     background: "var(--c-border)",
     borderRadius: 4,
     overflow: "hidden",
   },
-  bpBar: {
+  bpFill: {
     height: "100%",
     background: "var(--c-accent)",
     borderRadius: 4,
@@ -1070,17 +1070,17 @@ const s: Record<string, React.CSSProperties> = {
   bpCurrent: { fontSize: FS.body, color: "var(--c-textSub)" },
   bpLog: {
     width: "100%",
-    maxWidth: 440,
+    maxWidth: 480,
     display: "flex",
     flexDirection: "column",
     gap: 5,
-    maxHeight: 260,
+    maxHeight: 280,
     overflowY: "auto",
   },
   bpRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     padding: "6px 10px",
     background: "var(--c-bgCard)",
     borderRadius: 6,
@@ -1094,14 +1094,15 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  bpMeta: {
-    flexShrink: 0,
-    fontSize: FS.caption,
-    color: "var(--c-textDim)",
+  bpMeta: { fontSize: FS.caption, color: "var(--c-textSub)", flexShrink: 0 },
+  sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
+  bpBarWrap: {
+    width: "100%",
+    maxWidth: 440,
+    height: 8,
+    background: "var(--c-border)",
+    borderRadius: 4,
     overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    maxWidth: 160,
   },
   batchFileSelector: {
     padding: "8px 16px",

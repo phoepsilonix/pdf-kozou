@@ -641,7 +641,7 @@ export function CompressPage({
         <div style={c.bpLog}>
           {batchProg.done.map((d, i) => (
             <div key={i} style={c.bpRow}>
-              <span style={{ color: "#4fe090" }}>✓</span>
+              <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file}</span>
               <span style={c.bpPct}>
                 {d.saved} -{d.pct}%
