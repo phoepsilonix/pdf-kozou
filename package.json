@@ -7,6 +7,7 @@
     "dev:core": "cargo build --bin pdf-kozou-core",
     "dev": "vite",
     "tauri:dev": "cargo build --bin pdf-kozou-core && tauri dev",
+    "tauri:dev2": "tauri dev",
     "build:core": "cargo build --release --bin pdf-kozou-core",
     "build:frontend": "tsc && vite build",
     "build": "npm run build:core && tauri build"

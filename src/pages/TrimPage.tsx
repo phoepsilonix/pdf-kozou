@@ -227,82 +227,95 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     if (dir) {
       setOutDir(dir);
       usePdfStore.getState().setLastSaveDir(dir);
+      // フォルダ選択完了後、そのまま実行する。
+      // useCallback で束縛した handleExecute はこの時点でまだ outDir="" の
+      // クロージャを持つため、取得した dir を直接 executeWithDir() に渡す。
+      executeWithDir(dir);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const executeWithDir = useCallback(
+    async (resolvedDir: string) => {
+      setPhase("processing");
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const prog = {
+        current: 0,
+        done: [] as { f: string; saved?: string }[],
+        errors: [] as { f: string; msg: string }[],
+      };
+      setProgress({ ...prog });
+
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        prog.current = i + 1;
+        setProgress({ ...prog });
+
+        try {
+          const out = joinPath(resolvedDir, buildName(f.filename, ["trimmed"]));
+
+          console.log(
+            "[DEBUG] trim_pdf in out margin pages exclude extract: ",
+            f.path,
+            out,
+            trimMargins,
+            trimPages,
+            excludeSpec,
+            extractSpec,
+          );
+          const psize = resolvePageSizePt(pageSizeId, pageOrientation);
+          const needFit = hasImage([f.filename]) && psize != null;
+          const trimOut = needFit ? await getTempPath("trimmed_natural_batch_tmp.pdf") : out;
+          const res = await trimPdf(
+            f.path,
+            trimOut,
+            trimMargins,
+            trimPages,
+            excludeSpec,
+            extractSpec,
+            convertLayoutW,
+            convertLayoutH,
+            convertLayoutEm,
+            cropCleanup,
+          );
+          if (needFit && psize) {
+            await fitTrimmedToPageSize(
+              trimOut,
+              out,
+              psize,
+              pageOrientation === "auto" && pageSizeId !== "image",
+            );
+          }
+          console.log("[DEBUG] trim_pdf 結果:", res);
+          prog.done.push({ f: f.filename, saved: out.split(/[/\\]/).pop() ?? "" });
+        } catch (e) {
+          prog.errors.push({ f: f.filename, msg: String(e) });
+        }
+        setProgress({ ...prog });
+      }
+
+      announceSuccess("done.trim");
+      setPhase("result");
+    },
+    [
+      files,
+      trimMargins,
+      trimPages,
+      excludeSpec,
+      extractSpec,
+      pageSizeId,
+      pageOrientation,
+      convertLayoutW,
+      convertLayoutH,
+      convertLayoutEm,
+      cropCleanup,
+    ],
+  );
 
   const handleExecute = useCallback(async () => {
     if (!outDir) return;
-
-    setPhase("processing");
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const prog = {
-      current: 0,
-      done: [] as { f: string; saved?: string }[],
-      errors: [] as { f: string; msg: string }[],
-    };
-    setProgress({ ...prog });
-
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      prog.current = i + 1;
-      setProgress({ ...prog });
-
-      try {
-        const out = joinPath(outDir, buildName(f.filename, ["trimmed"]));
-
-        console.log(
-          "[DEBUG] trim_pdf in out margin pages exclude extract: ",
-          f.path,
-          out,
-          trimMargins,
-          trimPages,
-          excludeSpec,
-          extractSpec,
-        );
-        const psize = resolvePageSizePt(pageSizeId, pageOrientation);
-        const needFit = hasImage([f.filename]) && psize != null;
-        const trimOut = needFit ? await getTempPath("trimmed_natural_batch_tmp.pdf") : out;
-        const res = await trimPdf(
-          f.path,
-          trimOut,
-          trimMargins,
-          trimPages,
-          excludeSpec,
-          extractSpec,
-          convertLayoutW,
-          convertLayoutH,
-          convertLayoutEm,
-          cropCleanup,
-        );
-        if (needFit && psize) {
-          await fitTrimmedToPageSize(
-            trimOut,
-            out,
-            psize,
-            pageOrientation === "auto" && pageSizeId !== "image",
-          );
-        }
-        console.log("[DEBUG] trim_pdf 結果:", res);
-        prog.done.push({ f: f.filename, saved: out.split(/[/\\]/).pop() ?? "" });
-      } catch (e) {
-        prog.errors.push({ f: f.filename, msg: String(e) });
-      }
-      setProgress({ ...prog });
-    }
-
-    announceSuccess("done.trim");
-    setPhase("result");
-  }, [
-    files,
-    trimMargins,
-    trimPages,
-    excludeSpec,
-    extractSpec,
-    outDir,
-    pageSizeId,
-    pageOrientation,
-  ]);
+    executeWithDir(outDir);
+  }, [outDir, executeWithDir]);
 
   // 処理中画面
   if (phase === "processing") {
@@ -1590,35 +1603,28 @@ const b: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 5,
-    maxHeight: 280,
+    maxHeight: 360,
     overflowY: "auto",
   },
   logRow: {
     display: "flex",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "baseline",
+    flexWrap: "wrap" as const,
+    gap: "2px 8px",
     padding: "6px 10px",
     background: "var(--c-bgCard)",
     borderRadius: 6,
     border: `1px solid var(--c-border)`,
   },
   logFile: {
-    flex: 1,
-    minWidth: 0,
     fontSize: FS.small,
     color: "var(--c-text)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    wordBreak: "break-all" as const,
   },
   logMeta: {
-    flexShrink: 0,
     fontSize: FS.caption,
     color: "var(--c-textSub)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    maxWidth: "45%",
+    wordBreak: "break-all" as const,
   },
   backBtn: {
     padding: "9px 26px",
