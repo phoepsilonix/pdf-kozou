@@ -41,21 +41,20 @@ export function saveUiScale(pct: number) {
 }
 
 /**
- * #root 要素へ zoom を適用し、寸法を 1/scale で補正する。
+ * #root 要素へ zoom を適用し、position:fixed; inset:0 でビューポートへ直接固定する。
  *
- * `zoom: S` を掛けると要素は描画上 S 倍に拡大されるため、ビューポートいっぱい
- * のサイズをそのまま使うと画面からはみ出す（縦に溢れて画面下部固定のボタンが
- * 隠れる／横に溢れる）。そこで #root の寸法を 1/S に補正すると、ズーム後に
- * ちょうど「画面1枚分」として描画される。これによりアプリの外枠は常に
- * ビューポートにロックされ、内側の設定リストだけがスクロールし、下部固定の
- * 実行ボタンは全ズーム率で常時表示されたまま、文字・余白のみが拡大される。
+ * `zoom: S` を掛けると要素は描画上 S 倍に拡大される。以前は #root の width/height を
+ * JS で `documentElement.clientWidth/Height / S` として計算し px で固定していたが、
+ * この方式は「JSで計測した瞬間のビューポート寸法」に依存しており、OSのDPI設定や
+ * ウィンドウ装飾、レンダリングエンジンの内部タイミングによって実際のビューポートと
+ * 数px ズレることがあり、そのズレがそのままスクロールバーとして露出していた
+ * （Linux・Windows 両方で報告された＝JS計測依存に起因する構造的な問題）。
  *
- * 補正に CSS の `calc(100vw / S)` を使うと、`vw`/`vh` と `zoom` の解決順序が
- * レンダリングエンジンで異なる（Blink/WebView2 と WebKitGTK で挙動が違い、
- * Linux では右側に隙間が空きスクロールバーが内側にずれる）。そのため
- * `documentElement.clientWidth/clientHeight`（スクロールバーを除く実ピクセル）
- * から px で寸法を算出する。px は zoom がそのまま倍率を掛けるため、両エンジンで
- * 一致する。ウィンドウサイズ変更時は resize で再適用する。
+ * `position: fixed; inset: 0` を使うと、JS計測を介さずブラウザのレイアウトエンジンが
+ * 直接「ビューポートぴったり」のサイズを算出してくれる。`zoom` は fixed 要素の
+ * 位置決定（ビューポート基準）には影響しないため、内側のコンテンツ座標系だけが
+ * 1/S に圧縮された状態で fixed の枠内に収まる。これにより JS 側の計測誤差が
+ * 原理的に発生しなくなる。
  *
  * `zoom` は WebKit/Blink で実装されており Tauri(WebKitGTK/WKWebView) で動作する。
  * 型定義に zoom が無いため any 経由で設定する。
@@ -82,25 +81,31 @@ function applyToRoot() {
   if (!root) return;
   const style = root.style as any;
 
-  // 一時的に overflow を hidden にして scrollbar を消した状態で
-  // clientWidth/Height を計測する（scrollbar 幅の影響を排除するため）。
-  style.overflowX = "hidden";
-  style.overflowY = "hidden";
-
-  const vw = document.documentElement.clientWidth;
-  const vh = document.documentElement.clientHeight;
-
+  // #root を viewport に直接固定する。
+  // 旧実装は documentElement.clientWidth/Height を JS で計測し、
+  // それを 1/scale した px 値を width/height に書き込んでいた。
+  // これは「計測した瞬間のビューポート寸法」を前提にしており、
+  // OSのDPIスケーリング・ウィンドウのpadding・スクロールバー領域の扱いが
+  // 環境（WebKitGTK/WebView2/OS設定）によって異なると数px〜のズレが生じ、
+  // そのズレがそのままスクロールバー表示として露出していた
+  // （Linux/Windows 両方で報告されたのはこのため＝JS計測依存の構造的な問題）。
+  //
+  // 代わりに `position: fixed; inset: 0` でビューポートそのものに張り付け、
+  // 寸法計算をブラウザのレイアウトエンジンに完全に委ねる。
+  // zoom は描画スケールのみを変えるため、fixed要素の位置決定（ビューポート基準）
+  // には影響しない。これにより JS 側の計測誤差が原理的に発生しなくなる。
+  style.position = "fixed";
+  style.inset = "0";
+  style.width = "";
+  style.height = "";
   style.zoom = String(_scale);
-  // Math.floor で端数を切り捨て、zoom 後にビューポートを 1px もはみ出さないようにする
-  style.width = `${Math.floor(vw / _scale)}px`;
-  style.height = `${Math.floor(vh / _scale)}px`;
 
   // 縦横ともスクロールバーを出さない。
   // ホーム画面ではコンテンツをビューポートに収める設計とし、
   // ファイル一覧が溢れる場合は listCard 側の max-height で制御する。
   // ツール画面は flex:1+overflow:hidden の内部レイアウトが受け持つ。
-  //style.overflowY = "hidden";
-  //style.overflowX = "hidden";
+  style.overflowY = "hidden";
+  style.overflowX = "hidden";
 }
 
 function bindResize() {

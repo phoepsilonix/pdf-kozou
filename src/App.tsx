@@ -65,7 +65,8 @@ function makeGlobalCss(t: typeof C) {
   * { box-sizing: border-box; }
   /* ページ自体はスクロールさせず #root 内でスクロールさせる
      （表示サイズ補正で #root を実ビューポートにロックするため） */
-  html, body { margin: 0; height: 100%; overflow: hidden; }
+  /* html, body のリセット（margin/height/overflow）は index.html に静的記述済み。
+     initUiScale() の初回計測タイミングより前に確定させる必要があるため。 */
   body { background: ${t.bg}; font-size: 15px; }
   @keyframes spin   { to { transform: rotate(360deg); } }
   @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }

@@ -16,6 +16,14 @@
       .kozou-spinner {
         animation: kozou-spin 1.6s ease-in-out infinite;
       }
+      /* html/body のリセットをここで静的に確定させる。
+         以前は App.tsx の useEffect（テーマ切替時）で動的に <style> 注入していたが、
+         そのタイミングは Reactマウント後 = main.tsx の initUiScale() より後になる。
+         initUiScale() は #root の zoom 計算のため documentElement.clientWidth/Height を
+         計測するが、その時点でまだ body の既定 margin:8px が外れていないと計測値が
+         ズレ、WebKitGTK 環境ではそのズレがそのままスクロールバーとして露出する。
+         ここで最初から確定させておけば、initUiScale() の初回計測から正しい値になる。 */
+      html, body { margin: 0; height: 100%; overflow: hidden; }
     </style>
   </head>
   <body>
