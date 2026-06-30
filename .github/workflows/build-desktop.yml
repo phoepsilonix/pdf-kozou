@@ -158,11 +158,11 @@ jobs:
       - name: Build Frontend check
         run: npm run build:frontend
 
-      - name: Install tauri-cli via binstall
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall tauri-cli -y --force
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      #- name: Install tauri-cli via binstall
+      #  run: |
+      #    curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+      #    cargo binstall tauri-cli -y --force
+      #    echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Build (release)
         env:
@@ -399,11 +399,11 @@ jobs:
       - name: Build Frontend check
         run: npm run build:frontend
 
-      - name: Install tauri-cli via binstall
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall tauri-cli -y --force
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      #- name: Install tauri-cli via binstall
+      #  run: |
+      #    curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+      #    cargo binstall tauri-cli -y --force
+      #    echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       #- name: Install cargo-xwin via binstall
       #  run: |
@@ -544,11 +544,11 @@ jobs:
       - name: Build Frontend check
         run: npm run build:frontend
 
-      - name: Install tauri-cli via binstall
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall tauri-cli -y --force
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      #- name: Install tauri-cli via binstall
+      #  run: |
+      #    curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+      #    cargo binstall tauri-cli -y --force
+      #    echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Build (release) - 署名なし
         env:
