@@ -1618,12 +1618,12 @@ const b: Record<string, React.CSSProperties> = {
   },
   logFile: {
     fontSize: FS.small,
-    color: "var(--c-text)",
+    color: "var(--c-textSub)",
     wordBreak: "break-all" as const,
   },
   logMeta: {
     fontSize: FS.caption,
-    color: "var(--c-textSub)",
+    color: "var(--c-text)",
     wordBreak: "break-all" as const,
   },
   backBtn: {

@@ -1009,12 +1009,12 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpLogFile: {
     fontSize: FS.small,
-    color: "var(--c-text)",
+    color: "var(--c-textSub)",
     wordBreak: "break-all" as const,
   },
   bpLogMeta: {
     fontSize: FS.caption,
-    color: "var(--c-textSub)",
+    color: "var(--c-text)",
     wordBreak: "break-all" as const,
   },
   sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },

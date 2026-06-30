@@ -2450,12 +2450,12 @@ const s: Record<string, React.CSSProperties> = {
   },
   bpFile: {
     fontSize: FS.body,
-    color: "var(--c-text)",
+    color: "var(--c-textSub)",
     wordBreak: "break-all" as const,
   },
   bpMeta: {
     fontSize: FS.small,
-    color: "var(--c-textSub)",
+    color: "var(--c-text)",
     wordBreak: "break-all" as const,
   },
 

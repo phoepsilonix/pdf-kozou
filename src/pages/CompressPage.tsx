@@ -247,7 +247,7 @@ export function CompressPage({
     cur: number;
     total: number;
     curFile: string;
-    done: { file: string; pct: string; saved: string }[];
+    done: { file: string; pct: number; saved: string }[];
     errors: { file: string; msg: string }[];
   } | null>(null);
 
@@ -643,9 +643,12 @@ export function CompressPage({
             <div key={i} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file}</span>
-              <span style={c.bpPct}>
-                {d.saved} -{d.pct}%
-              </span>
+              <span style={c.bpFile2}>{d.saved}</span>
+              {d.pct >= 0 ? (
+                <span style={c.bpPct}> -{d.pct}%</span>
+              ) : (
+                <span style={c.bpPct2}> +{d.pct}%</span>
+              )}
             </div>
           ))}
           {batchProg.errors.map((e, i) => (
@@ -700,9 +703,12 @@ export function CompressPage({
             <div key={i} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file}</span>
-              <span style={c.bpPct}>
-                {d.saved} -{d.pct}%
-              </span>
+              <span style={c.bpFile2}>{d.saved}</span>
+              {d.pct >= 0 ? (
+                <span style={c.bpPct}> -{d.pct}%</span>
+              ) : (
+                <span style={c.bpPct2}> +{d.pct}%</span>
+              )}
             </div>
           ))}
           {batchProg.errors.map((e, i) => (
@@ -1526,12 +1532,22 @@ const c: Record<string, React.CSSProperties> = {
   },
   bpFile: {
     fontSize: FS.small,
+    color: "var(--c-textSub)",
+    wordBreak: "break-all" as const,
+  },
+  bpFile2: {
+    fontSize: FS.small,
     color: "var(--c-text)",
     wordBreak: "break-all" as const,
   },
   bpPct: {
     fontSize: FS.caption,
-    color: "var(--c-textSub)",
+    color: "var(--c-green)",
+    wordBreak: "break-all" as const,
+  },
+  bpPct2: {
+    fontSize: FS.caption,
+    color: "var(--c-err)",
     wordBreak: "break-all" as const,
   },
   btnChain: {
