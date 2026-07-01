@@ -564,7 +564,7 @@ export function CompressPage({
         }
         prog.done.push({
           file: f.filename,
-          pct: ((1 - ratio) * 100).toFixed(1),
+          pct: +((1 - ratio) * 100).toFixed(1),
           saved: out.split(/[/\\]/).pop() ?? "",
         });
       } catch (e) {
@@ -735,8 +735,8 @@ export function CompressPage({
   if (phase === "result" && result) {
     const inMB = (result.input_bytes / 1048576).toFixed(2);
     const outMB = (result.output_bytes / 1048576).toFixed(2);
-    const pct = ((1 - result.ratio) * 100).toFixed(1);
-    const gain = Number(pct) > 0;
+    const pct = +((1 - result.ratio) * 100).toFixed(1);
+    const gain = pct > 0;
     const p = result.params_used; // 原本の変数定義
 
     return (
@@ -764,7 +764,7 @@ export function CompressPage({
           </div>
           <div style={c.statsCol}>
             <div style={{ ...c.statBig, color: gain ? "var(--c-green)" : "var(--c-err)" }}>
-              {gain ? `−${pct}%` : `+${Math.abs(Number(pct))}%`}
+              {gain ? `−${pct}%` : `+${Math.abs(pct)}%`}
             </div>
             <div style={c.statInfo}>
               <div style={c.statLabel}>{t("compress.stat_label")}</div>
