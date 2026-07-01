@@ -78,6 +78,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const [errMsg, setErrMsg] = useState("");
   const [outBytes, setOutBytes] = useState(0);
   const [outDir, setOutDir] = useState("");
+  const [savedPath, setSavedPath] = useState("");
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
 
   // ── 出力ファイル名（画像変換ページと同じ「元名トグル＋ラベル＋プレビュー」方式）──
@@ -263,6 +264,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     if (!filePath || totalPages <= 0) return;
     const sp = await pickSave(composePdfName(srcStem, keepOriginalName));
     if (!sp) return;
+    setSavedPath(sp);
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -496,9 +498,34 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         <div style={s.center}>
           <span style={{ fontSize: 42, color: "var(--c-accent)" }}>✓</span>
           <span style={{ fontSize: FS.subtitle, fontWeight: 600 }}>{t("booklet.done")}</span>
-          <span style={{ color: "var(--c-textSub)" }}>
+          {savedPath && (
+            <span
+              style={{
+                fontSize: FS.small,
+                fontWeight: 700,
+                color: "var(--c-text)",
+                wordBreak: "break-all",
+                textAlign: "center",
+              }}
+            >
+              {savedPath.split(/[/\\]/).pop()}
+            </span>
+          )}
+          <span style={{ fontSize: FS.small, fontWeight: 700, color: "var(--c-accent)" }}>
             {t("common.pages", { count: String(nSheets) })} / {mb} MB
           </span>
+          {savedPath && (
+            <span
+              style={{
+                fontSize: FS.caption,
+                color: "var(--c-textDim)",
+                wordBreak: "break-all",
+                textAlign: "center",
+              }}
+            >
+              {savedPath}
+            </span>
+          )}
           <BtnPrimary onClick={() => setPhase("edit")}>{t("common.back_btn")}</BtnPrimary>
         </div>
       </div>

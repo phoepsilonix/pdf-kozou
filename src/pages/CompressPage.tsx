@@ -882,8 +882,18 @@ export function CompressPage({
                   </div>
                   <div
                     style={{
+                      fontSize: FS.small,
+                      fontWeight: 700,
+                      color: "var(--c-text)",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {savedFilePath.split(/[/\\]/).pop()}
+                  </div>
+                  <div
+                    style={{
                       fontSize: FS.caption,
-                      color: "var(--c-textSub)",
+                      color: "var(--c-textDim)",
                       wordBreak: "break-all",
                     }}
                   >

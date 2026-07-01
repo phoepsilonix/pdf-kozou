@@ -1008,6 +1008,17 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         <span style={{ fontSize: FS.title, fontWeight: 700 }}>{t("trim.saved_title")}</span>
         <span
           style={{
+            fontSize: FS.small,
+            fontWeight: 700,
+            color: "var(--c-text)",
+            wordBreak: "break-all",
+            textAlign: "center",
+          }}
+        >
+          {savedPath.split(/[/\\]/).pop()}
+        </span>
+        <span
+          style={{
             ...s.centSub,
             maxWidth: 480,
             textAlign: "center",

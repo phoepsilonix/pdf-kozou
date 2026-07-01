@@ -377,6 +377,7 @@
     "done_title": "Image export complete",
     "output_count": "{{count}} files output",
     "pages_count": "→ {{count}} pages",
+    "images_total": "{{count}} files",
     "title_batch": "Image export — {{count}} files batch",
     "title_single": "Image export",
     "dpi_label": "Resolution (DPI)",

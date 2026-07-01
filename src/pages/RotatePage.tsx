@@ -551,9 +551,27 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               </div>
             </>
           ) : (
-            <div style={s.resultStat}>
-              {t("rotate.done_stat", { count: String(changedPages.length) })}
-            </div>
+            <>
+              <div style={s.resultStat}>
+                {t("rotate.done_stat", { count: String(changedPages.length) })}
+              </div>
+              {savedPath && (
+                <>
+                  <div
+                    style={{
+                      fontSize: FS.small,
+                      fontWeight: 700,
+                      color: "var(--c-text)",
+                      wordBreak: "break-all",
+                      textAlign: "center",
+                    }}
+                  >
+                    {savedPath.split(/[/\\]/).pop()}
+                  </div>
+                  <div style={s.resultDir}>{savedPath}</div>
+                </>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -377,6 +377,7 @@
     "done_title": "画像変換完了",
     "output_count": "{{count}}ファイルを出力",
     "pages_count": "→ {{count}}枚",
+    "images_total": "含む{{count}}枚",
     "title_batch": "画像変換 — {{count}}件バッチ",
     "title_single": "画像変換",
     "dpi_label": "解像度 (DPI)",

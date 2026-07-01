@@ -428,7 +428,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
-                <span style={s.bpLogFile}>{d.file} → </span>
+                <span style={s.bpLogFile}>{d.file}</span>
                 <span style={s.bpLogMeta}>
                   {t("common.files_arrow", { count: String(d.count) })}
                 </span>
@@ -482,7 +482,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
-                <span style={s.bpLogFile}>{d.file} → </span>
+                <span style={s.bpLogFile}>{d.file}</span>
                 <span style={s.bpLogMeta}>
                   {t("common.files_arrow", { count: String(d.count) })}
                 </span>

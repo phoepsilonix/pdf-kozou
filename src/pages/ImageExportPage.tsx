@@ -1119,9 +1119,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 ) : d.savedFiles && d.savedFiles.length > 0 ? (
                   <>
                     <span style={s.bpMeta}>{d.savedFiles[0].split(/[\/\\]/).pop() ?? ""}</span>
-                    {d.savedFiles.length > 1 && (
-                      <span style={s.bpCount}>+{d.savedFiles.length - 1}</span>
-                    )}
+                    <span style={s.bpCount}>
+                      {t("image.images_total", { count: String(d.savedFiles.length) })}
+                    </span>
                   </>
                 ) : (
                   <span style={s.bpCount}>
@@ -1191,9 +1191,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 ) : d.savedFiles && d.savedFiles.length > 0 ? (
                   <>
                     <span style={s.bpMeta}>{d.savedFiles[0].split(/[\/\\]/).pop() ?? ""}</span>
-                    {d.savedFiles.length > 1 && (
-                      <span style={s.bpCount}>+{d.savedFiles.length - 1}</span>
-                    )}
+                    <span style={s.bpCount}>
+                      {t("image.images_total", { count: String(d.savedFiles.length) })}
+                    </span>
                   </>
                 ) : (
                   <span style={s.bpCount}>
