@@ -1109,23 +1109,25 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
-                <span style={s.bpMeta}>
-                  {d.pdfPath
-                    ? t("image.output_pdf", {
-                        name: d.pdfPath.split(/[\/\\]/).pop() ?? "",
-                        count: String(d.count),
-                      })
-                    : d.savedFiles && d.savedFiles.length > 0
-                      ? d.savedFiles.length > 1
-                        ? t("image.output_images_many", {
-                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
-                            count: String(d.savedFiles.length - 1),
-                          })
-                        : t("image.output_images_one", {
-                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
-                          })
-                      : t("image.pages_count", { count: String(d.count) })}
-                </span>
+                {d.pdfPath ? (
+                  <>
+                    <span style={s.bpMeta}>{d.pdfPath.split(/[\/\\]/).pop() ?? ""}</span>
+                    <span style={s.bpCount}>
+                      {t("image.pages_count", { count: String(d.count) })}
+                    </span>
+                  </>
+                ) : d.savedFiles && d.savedFiles.length > 0 ? (
+                  <>
+                    <span style={s.bpMeta}>{d.savedFiles[0].split(/[\/\\]/).pop() ?? ""}</span>
+                    {d.savedFiles.length > 1 && (
+                      <span style={s.bpCount}>+{d.savedFiles.length - 1}</span>
+                    )}
+                  </>
+                ) : (
+                  <span style={s.bpCount}>
+                    {t("image.pages_count", { count: String(d.count) })}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -1179,23 +1181,25 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
-                <span style={s.bpMeta}>
-                  {d.pdfPath
-                    ? t("image.output_pdf", {
-                        name: d.pdfPath.split(/[\/\\]/).pop() ?? "",
-                        count: String(d.count),
-                      })
-                    : d.savedFiles && d.savedFiles.length > 0
-                      ? d.savedFiles.length > 1
-                        ? t("image.output_images_many", {
-                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
-                            count: String(d.savedFiles.length - 1),
-                          })
-                        : t("image.output_images_one", {
-                            name: d.savedFiles[0].split(/[\/\\]/).pop() ?? "",
-                          })
-                      : t("image.pages_count", { count: String(d.count) })}
-                </span>
+                {d.pdfPath ? (
+                  <>
+                    <span style={s.bpMeta}>{d.pdfPath.split(/[\/\\]/).pop() ?? ""}</span>
+                    <span style={s.bpCount}>
+                      {t("image.pages_count", { count: String(d.count) })}
+                    </span>
+                  </>
+                ) : d.savedFiles && d.savedFiles.length > 0 ? (
+                  <>
+                    <span style={s.bpMeta}>{d.savedFiles[0].split(/[\/\\]/).pop() ?? ""}</span>
+                    {d.savedFiles.length > 1 && (
+                      <span style={s.bpCount}>+{d.savedFiles.length - 1}</span>
+                    )}
+                  </>
+                ) : (
+                  <span style={s.bpCount}>
+                    {t("image.pages_count", { count: String(d.count) })}
+                  </span>
+                )}
               </div>
             ))}
             {batchProgress.errors.map((e, i) => (
@@ -2449,13 +2453,20 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
   },
   bpFile: {
-    fontSize: FS.body,
-    color: "var(--c-textSub)",
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
     wordBreak: "break-all" as const,
   },
   bpMeta: {
     fontSize: FS.small,
+    fontWeight: 700,
     color: "var(--c-text)",
+    wordBreak: "break-all" as const,
+  },
+  bpCount: {
+    fontSize: FS.small,
+    fontWeight: 700,
+    color: "var(--c-accent)",
     wordBreak: "break-all" as const,
   },
 

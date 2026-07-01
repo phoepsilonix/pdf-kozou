@@ -1617,12 +1617,13 @@ const b: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
   },
   logFile: {
-    fontSize: FS.small,
-    color: "var(--c-textSub)",
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
     wordBreak: "break-all" as const,
   },
   logMeta: {
-    fontSize: FS.caption,
+    fontSize: FS.small,
+    fontWeight: 700,
     color: "var(--c-text)",
     wordBreak: "break-all" as const,
   },

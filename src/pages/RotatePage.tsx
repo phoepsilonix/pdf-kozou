@@ -377,7 +377,13 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
-                <span style={s.bpMeta}>{d.saved ?? t("rotate.no_change")}</span>
+                <span
+                  style={
+                    d.saved ? s.bpMeta : { ...s.bpMeta, color: "var(--c-textDim)", fontWeight: 400 }
+                  }
+                >
+                  {d.saved ?? t("rotate.no_change")}
+                </span>
               </div>
             ))}
             {batchProgress.errors.map((e, i) => (
@@ -524,7 +530,15 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                   <div key={i} style={s.bpRow}>
                     <span style={{ color: "var(--c-accent)" }}>✓</span>
                     <span style={s.bpFile}>{d.file} → </span>
-                    <span style={s.bpMeta}>{d.saved ?? t("rotate.no_change")}</span>
+                    <span
+                      style={
+                        d.saved
+                          ? s.bpMeta
+                          : { ...s.bpMeta, color: "var(--c-textDim)", fontWeight: 400 }
+                      }
+                    >
+                      {d.saved ?? t("rotate.no_change")}
+                    </span>
                   </div>
                 ))}
                 {batchProgress.errors.map((e, i) => (
@@ -1088,12 +1102,13 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
   },
   bpFile: {
-    fontSize: FS.small,
-    color: "var(--c-textSub)",
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
     wordBreak: "break-all" as const,
   },
   bpMeta: {
-    fontSize: FS.caption,
+    fontSize: FS.small,
+    fontWeight: 700,
     color: "var(--c-text)",
     wordBreak: "break-all" as const,
   },

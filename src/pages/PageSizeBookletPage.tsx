@@ -412,7 +412,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
-                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}{" "}
+                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}
+                </span>
+                <span style={s.bpLogCount}>
                   {t("booklet.sheets_count", { count: String(d.sheets) })}
                 </span>
               </div>
@@ -462,7 +464,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
-                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}{" "}
+                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}
+                </span>
+                <span style={s.bpLogCount}>
                   {t("booklet.sheets_count", { count: String(d.sheets) })}
                 </span>
               </div>
@@ -1008,13 +1012,20 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
   },
   bpLogFile: {
-    fontSize: FS.small,
-    color: "var(--c-textSub)",
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
     wordBreak: "break-all" as const,
   },
   bpLogMeta: {
-    fontSize: FS.caption,
+    fontSize: FS.small,
+    fontWeight: 700,
     color: "var(--c-text)",
+    wordBreak: "break-all" as const,
+  },
+  bpLogCount: {
+    fontSize: FS.small,
+    fontWeight: 700,
+    color: "var(--c-accent)",
     wordBreak: "break-all" as const,
   },
   sheetsWrap: { display: "flex", flexWrap: "wrap", gap: 18 },
