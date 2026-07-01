@@ -379,6 +379,8 @@ export interface SplitCell {
   row: number;
   /** セルの列（0始まり） */
   col: number;
+  /**  面付け解除時のページ番号 */
+  outPage?: number;
 }
 
 /**
@@ -401,8 +403,7 @@ export function calcSplitCells(
   mode: DeImpositionMode,
 ): SplitCell[] {
   const cells = cols * rows;
-  // 物理順のセル列: シートごとに行優先で並べる
-  // physical[i] = { page: シート番号(1始まり), row, col }
+
   const physical: SplitCell[] = [];
   for (let s = 0; s < sheetCount; s++) {
     for (let i = 0; i < cells; i++) {
@@ -413,33 +414,51 @@ export function calcSplitCells(
   }
 
   if (mode === "sequential") {
-    // 単純分割: 物理順そのまま
     return physical;
   }
 
-  // booklet / booklet-rtl 解除: 物理順を読み順に並べ替える。
-  // calcBookletSheets と対になる逆写像を作る。
-  const total = sheetCount * cells;
-  const rtl = mode === "booklet-rtl";
-  const sheets = calcBookletSheets(total, "Blank", undefined, undefined, rtl);
-  // flat[i] = 物理位置 i に置かれた論理ページ番号
+  // booklet解除
+  const rawTotal = sheetCount * cells;
+  const total = rawTotal % 4 === 0 ? rawTotal : rawTotal + (4 - (rawTotal % 4));
+  const isRtl = mode === "booklet-rtl";
+
+  const sheets = calcBookletSheets(total, "Blank", undefined, undefined, isRtl);
+
   const flat: number[] = [];
   for (const sh of sheets) {
     for (let c = 0; c < cells; c++) {
       flat.push(sh.pages[c] ?? 0);
     }
   }
-  // 論理ページ p (1..total) が物理位置のどこにあるか
+
   const pageToPhys = new Map<number, number>();
   flat.forEach((p, i) => {
-    if (p !== 0) pageToPhys.set(p, i);
+    //if (p !== 0) pageToPhys.set(p, i);
+    pageToPhys.set(p, i);
   });
-  // 読み順 1..total に対応する物理セルを取り出す
+
   const out: SplitCell[] = [];
   for (let p = 1; p <= total; p++) {
     const physIdx = pageToPhys.get(p);
-    if (physIdx === undefined) continue; // 空白ページ（末尾埋め）はスキップ
-    out.push(physical[physIdx]);
+
+    // ここで flat[p-1] を参照して outPage に設定する
+    const outPageNum = p; // flat の並び順そのものが「出力されるべきページ順(1始まり)」
+
+    if (physIdx === undefined || physIdx >= physical.length) {
+      // ダミーページの場合、座標もここで適切に計算してセット
+      const cellsPerSheet = cols * rows;
+      const indexInSheet = (p - 1) % cellsPerSheet;
+      out.push({
+        //page: physIdx ? Math.floor(physIdx / 2) : Math.floor(physical.length/ 2),
+        page: 0,
+        row: Math.floor(indexInSheet / cols),
+        col: isRtl ? indexInSheet % cols : (indexInSheet + 1) % cols,
+        outPage: outPageNum,
+      });
+    } else {
+      const cell = { ...physical[physIdx], outPage: outPageNum };
+      out.push(cell);
+    }
   }
   return out;
 }

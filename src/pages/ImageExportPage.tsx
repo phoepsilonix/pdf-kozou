@@ -43,6 +43,7 @@ import {
   calcSheets,
   type DeImpositionMode,
   DE_IMPOSITION_MODE_DEFS,
+  calcBookletSheets,
   calcSplitCells,
 } from "../lib/imposition";
 import {
@@ -442,22 +443,28 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     // ── 面付け解除（split / de-imposition）: A3見開きなどを分割 ──
     if (processDir === "deimpose") {
       const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+
       // 入力（A3等）シートの枚数 = 対象ページ数
       const pageSpec = resolvePageSpec(pages || "", total); // 0始まり
-      const sheetPageNums = (
+      let sheetPageNums = (
         pageSpec.length ? pageSpec : Array.from({ length: total }, (_, i) => i)
       ).map((i) => i + 1); // 1始まり
+
+      // calcSplitCells 内で total を4の倍数に切り上げるため、
+      // 手動での 1ページ補完は不要（以前は必要だったが修正済み）。
+
       const sheetCount = sheetPageNums.length;
       if (sheetCount === 0) {
         setStatusMsg(t("image.deimp_no_pages" as any));
         return;
       }
-      // calcSplitCells はシート番号1..sheetCount で計算するので、
-      // 実ページ番号へのマッピングを用意する
+
+      // calcSplitCells はシート番号1..sheetCount で計算する
       const cellsLogical = calcSplitCells(sheetCount, def.cols, def.rows, def.id);
+
       // logical sheet番号(1..sheetCount) → 実ページ番号
       const cells: [number, number, number][] = cellsLogical.map((c) => [
-        sheetPageNums[c.page - 1],
+        sheetPageNums[c.page - 1] ?? 0, // ← ここも安全に0フォールバック
         c.row,
         c.col,
       ]);
@@ -860,16 +867,31 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         const filePageSet = new Set(filePageSpec);
         const fileEffective = filePageSpec.length || fileTotal;
 
-        // ==================== 面付け解除 (deimpose) ====================
+        // ── 面付け解除（split / de-imposition）: A3見開きなどを分割 ──
         if (processDir === "deimpose") {
           const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
-          const sheetPageNums = filePageSpec.length
-            ? filePageSpec
-            : Array.from({ length: fileTotal }, (_, idx) => idx + 1);
 
-          const cellsLogical = calcSplitCells(sheetPageNums.length, def.cols, def.rows, def.id);
+          // 入力（A3等）シートの枚数 = 対象ページ数
+          const pageSpec = resolvePageSpec(pages || "", total); // 0始まり
+          let sheetPageNums = (
+            pageSpec.length ? pageSpec : Array.from({ length: total }, (_, i) => i)
+          ).map((i) => i + 1); // 1始まり
+
+          // calcSplitCells 内で total を4の倍数に切り上げるため、
+          // 手動での 1ページ補完は不要（以前は必要だったが修正済み）。
+
+          const sheetCount = sheetPageNums.length;
+          if (sheetCount === 0) {
+            setStatusMsg(t("image.deimp_no_pages" as any));
+            return;
+          }
+
+          // calcSplitCells はシート番号1..sheetCount で計算する
+          const cellsLogical = calcSplitCells(sheetCount, def.cols, def.rows, def.id);
+
+          // logical sheet番号(1..sheetCount) → 実ページ番号
           const cells: [number, number, number][] = cellsLogical.map((c) => [
-            sheetPageNums[c.page - 1],
+            sheetPageNums[c.page - 1] ?? 0, // ← ここも安全に0フォールバック
             c.row,
             c.col,
           ]);
@@ -2032,20 +2054,28 @@ function DeImpositionPreview({
   const { t } = useI18n();
   const targetIdx = resolvePageSpec(pages || "", total); // 0始まり
   const sheetIdx = targetIdx.length ? targetIdx : Array.from({ length: total }, (_, i) => i);
-  const outCount = sheetIdx.length * def.cols * def.rows;
 
-  // 出力ページ番号の逆引きマップを作る:
-  // calcSplitCells は出力順に並んだセル割り当てを返す。
-  // 配列インデックス+1 が「そのセルが出力で第何ページになるか」。
-  // キー: 論理シート番号(1始まり)・row・col → 出力ページ番号
-  const cellToOutPage = useMemo(() => {
-    const cells = calcSplitCells(sheetIdx.length, def.cols, def.rows, def.id);
-    const map = new Map<string, number>();
-    cells.forEach((c, idx) => {
-      map.set(`${c.page}:${c.row}:${c.col}`, idx + 1);
-    });
-    return map;
-  }, [sheetIdx.length, def.cols, def.rows, def.id]);
+  // calcSplitCells 内で total を4の倍数に切り上げるため、
+  // 手動での 1ページ補完は不要（以前は必要だったが修正済み）。
+
+  // calcSplitCells の出力セル一覧。
+  // 各要素: { page: 論理シート番号(1始まり、0=空白), row, col }
+  // 出力ページ番号 = インデックス+1
+  const splitCells = useMemo(
+    () => calcSplitCells(sheetIdx.length, def.cols, def.rows, def.id),
+    [sheetIdx.length, def.cols, def.rows, def.id],
+  );
+  const outCount = splitCells.length;
+
+  // 代表アスペクト（空白ページのサイズ決定にも使う）
+  const repPb = pdfInfo.pages?.[sheetIdx[0]];
+  const repAspect = repPb ? repPb.w / repPb.h : 1.414;
+  const MAX_SHEET_H = 220;
+  const MAX_SHEET_W = 320;
+  const repThumbW =
+    repAspect >= MAX_SHEET_W / MAX_SHEET_H ? MAX_SHEET_W : Math.round(MAX_SHEET_H * repAspect);
+  const repThumbH =
+    repAspect >= MAX_SHEET_W / MAX_SHEET_H ? Math.round(MAX_SHEET_W / repAspect) : MAX_SHEET_H;
 
   return (
     <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
@@ -2068,113 +2098,167 @@ function DeImpositionPreview({
         {t("image.deimp_cell_legend" as any)}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
-        {sheetIdx.map((i, logicalIdx) => {
-          const pb = pdfInfo.pages?.[i];
-          const aspect = pb ? pb.w / pb.h : 1.414;
-          // 高さを基準に固定し、幅をアスペクト比から算出する。
-          // シートのアスペクト比を保ちながら 320×220 の枠に収める。
-          // 横長シートは幅基準、縦長シートは高さ基準でフィット。
-          const MAX_SHEET_H = 220;
-          const MAX_SHEET_W = 320;
-          let thumbH: number, thumbW: number;
-          if (aspect >= MAX_SHEET_W / MAX_SHEET_H) {
-            thumbW = MAX_SHEET_W;
-            thumbH = Math.round(MAX_SHEET_W / aspect);
-          } else {
-            thumbH = MAX_SHEET_H;
-            thumbW = Math.round(MAX_SHEET_H * aspect);
-          }
-          const logicalSheet = logicalIdx + 1; // calcSplitCells の page は1始まり論理番号
+        {/* 出力ページ順（splitCells の並び）でシートカードを表示。
+            同じ入力シートのセルをグループ化し、1つのカードにまとめる。 */}
+        {(() => {
+          // 入力シートごとにセルをグループ化（論理シート番号 → セルインデックス[]）
+          const groupBySheet = new Map<number, number[]>();
+          splitCells.forEach((c, idx) => {
+            const key = c.page; // 0=空白, 1..n=入力シート
+            if (!groupBySheet.has(key)) groupBySheet.set(key, []);
+            groupBySheet.get(key)!.push(idx);
+          });
 
-          // 各列の番号を、指定 row について取得する
-          const numbersForRow = (row: number) =>
-            Array.from({ length: def.cols }, (_, col) =>
-              cellToOutPage.get(`${logicalSheet}:${row}:${col}`),
+          // 出力順を保つため、splitCells の登場順で unique な page を取り出す
+          const sheetOrder: number[] = [];
+          const seen = new Set<number>();
+          splitCells.forEach((c) => {
+            if (!seen.has(c.page)) {
+              seen.add(c.page);
+              sheetOrder.push(c.page);
+            }
+          });
+
+          return sheetOrder.map((logicalSheet) => {
+            const cellIndices = groupBySheet.get(logicalSheet) ?? [];
+            const isBlank = logicalSheet === 0;
+            const inputSheetArrayIdx = isBlank ? -1 : logicalSheet - 1; // sheetIdx への添字
+            const inputPageIdx = isBlank ? -1 : (sheetIdx[inputSheetArrayIdx] ?? -1); // pdfInfo.pages[]への添字
+            const pb = inputPageIdx >= 0 ? pdfInfo.pages?.[inputPageIdx] : undefined;
+            const aspect = pb ? pb.w / pb.h : repAspect;
+            let thumbW: number, thumbH: number;
+            if (aspect >= MAX_SHEET_W / MAX_SHEET_H) {
+              thumbW = MAX_SHEET_W;
+              thumbH = Math.round(MAX_SHEET_W / aspect);
+            } else {
+              thumbH = MAX_SHEET_H;
+              thumbW = Math.round(MAX_SHEET_H * aspect);
+            }
+
+            // 出力ページ番号バッジ（row ごとに横並び）
+            const badgesByRow: (number | undefined)[][] = Array.from({ length: def.rows }, () =>
+              Array(def.cols).fill(undefined),
             );
-          // ページ番号バッジの行（画像の外側に置く）
-          const numberBar = (row: number) => (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
-                width: thumbW,
-                gap: 0,
-              }}
-            >
-              {numbersForRow(row).map((outPage, col) => (
-                <div key={col} style={{ textAlign: "center" }}>
-                  <span style={s.deimpPageBadge}>
-                    {t("image.deimp_cell_prefix" as any)}
-                    {outPage ?? "—"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          );
+            cellIndices.forEach((idx) => {
+              const c = splitCells[idx];
+              if (c.row < def.rows && c.col < def.cols) {
+                badgesByRow[c.row][c.col] = c.outPage || idx + 1;
+              }
+            });
 
-          return (
-            <div
-              key={i}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
-            >
-              {/* 上側のページ番号（row 0） */}
-              {numberBar(0)}
+            const numberBar = (row: number) => (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
+                  width: thumbW,
+                  gap: 0,
+                }}
+              >
+                {badgesByRow[row].map((outPage, col) => (
+                  <div key={col} style={{ textAlign: "center" }}>
+                    <span style={s.deimpPageBadge}>
+                      {t("image.deimp_cell_prefix" as any)}
+                      {outPage ?? "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
 
-              <div style={{ position: "relative", width: thumbW }}>
-                {thumbs[i] ? (
-                  <img
-                    src={`data:image/jpeg;base64,${thumbs[i]}`}
-                    style={{
-                      width: thumbW,
-                      height: thumbH,
-                      borderRadius: 4,
-                      display: "block",
-                      border: "1px solid var(--c-border)",
-                    }}
-                    alt=""
-                  />
-                ) : (
+            if (isBlank) {
+              // 空白ページ: 点線枠で表示
+              return (
+                <div
+                  key={`blank-${logicalSheet}-${cellIndices[0]}`}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+                >
+                  {numberBar(0)}
                   <div
                     style={{
-                      width: thumbW,
-                      height: thumbH,
-                      background: "var(--c-border)",
-                      borderRadius: 4,
+                      width: repThumbW,
+                      height: repThumbH,
+                      background: "var(--c-bgCard)",
+                      border: "2px dashed var(--c-border)",
+                      borderRadius: 6,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--c-textDim)",
+                      fontSize: FS.caption,
                     }}
-                  />
-                )}
-                {/* 分割線オーバーレイ（区切りのみ。番号は外側に配置） */}
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "grid",
-                    gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
-                    gridTemplateRows: `repeat(${def.rows}, 1fr)`,
-                    pointerEvents: "none",
-                  }}
-                >
-                  {Array.from({ length: def.cols * def.rows }).map((_, k) => (
-                    <div
-                      key={k}
-                      style={{
-                        border: "1px dashed var(--c-accent, #e0457b)",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  ))}
+                  >
+                    {t("common.imposition_blank_page" as any)}
+                  </div>
+                  {def.rows > 1 && numberBar(def.rows - 1)}
+                  <div
+                    style={{ textAlign: "center", fontSize: FS.caption, color: "var(--c-textDim)" }}
+                  >
+                    {t("common.imposition_blank_page" as any)}
+                  </div>
                 </div>
-              </div>
-
-              {/* 下側のページ番号（rows>1 のときのみ、最終 row） */}
-              {def.rows > 1 && numberBar(def.rows - 1)}
-
-              <div style={{ textAlign: "center", fontSize: FS.caption, color: "var(--c-textSub)" }}>
-                {t("common.page_n" as any, { n: String(i + 1) })}
-              </div>
-            </div>
-          );
-        })}
+              );
+            } else
+              return (
+                <div
+                  key={`sheet-${logicalSheet}`}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+                >
+                  {numberBar(0)}
+                  <div style={{ position: "relative", width: thumbW }}>
+                    {thumbs[inputPageIdx] ? (
+                      <img
+                        src={`data:image/jpeg;base64,${thumbs[inputPageIdx]}`}
+                        style={{
+                          width: thumbW,
+                          height: thumbH,
+                          borderRadius: 4,
+                          display: "block",
+                          border: "1px solid var(--c-border)",
+                        }}
+                        alt=""
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: thumbW,
+                          height: thumbH,
+                          background: "var(--c-border)",
+                          borderRadius: 4,
+                        }}
+                      />
+                    )}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "grid",
+                        gridTemplateColumns: `repeat(${def.cols}, 1fr)`,
+                        gridTemplateRows: `repeat(${def.rows}, 1fr)`,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {Array.from({ length: def.cols * def.rows }).map((_, k) => (
+                        <div
+                          key={k}
+                          style={{
+                            border: "1px dashed var(--c-accent, #e0457b)",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {def.rows > 1 && numberBar(def.rows - 1)}
+                  <div
+                    style={{ textAlign: "center", fontSize: FS.caption, color: "var(--c-textSub)" }}
+                  >
+                    {t("common.page_n" as any, { n: String(inputPageIdx + 1) })}
+                  </div>
+                </div>
+              );
+          });
+        })()}
       </div>
     </div>
   );

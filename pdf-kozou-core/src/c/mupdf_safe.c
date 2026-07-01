@@ -6368,7 +6368,38 @@ void kozou_split_imposition_pdf(
             int page = cells[k*3 + 0] - 1; /* 0始まり */
             int row  = cells[k*3 + 1];
             int col  = cells[k*3 + 2];
-            if (page < 0 || page >= page_count) continue;
+
+            /* page=0 (元の値が0=空白セル) の場合は白紙ページを挿入する。
+             * page=-1 になるのでその条件で空白処理へ分岐する。 */
+            if (page < 0) {
+                /* 空白ページサイズ: 最初の有効ページ(page=0実体)のセルサイズを流用。
+                 * 見つからなければデフォルト A4 相当(595×842pt)を使う。 */
+                float blank_w = 595.0f, blank_h = 842.0f;
+                /* 最初の有効セルを探してセルサイズを取得 */
+                for (int j = 0; j < n_cells; j++) {
+                    int pg2 = cells[j*3 + 0] - 1;
+                    if (pg2 >= 0 && pg2 < page_count) {
+                        float cw2 = 0, ch2 = 0;
+                        fz_pixmap *pix2 = kozou_render_cell(ctx, doc, pg2,
+                            cols, rows, cells[j*3+1], cells[j*3+2],
+                            dpi, &cw2, &ch2);
+                        fz_drop_pixmap(ctx, pix2);
+                        if (cw2 > 0 && ch2 > 0) { blank_w = cw2; blank_h = ch2; }
+                        break;
+                    }
+                }
+                pdf_obj *bp_resources = pdf_new_dict(ctx, pdfout, 1);
+                fz_buffer *bp_contents = fz_new_buffer(ctx, 4);
+                fz_append_string(ctx, bp_contents, " ");
+                fz_rect bp_box = { 0, 0, blank_w, blank_h };
+                pdf_obj *bp_obj = pdf_add_page(ctx, pdfout, bp_box, 0,
+                    bp_resources, bp_contents);
+                pdf_insert_page(ctx, pdfout, -1, bp_obj);
+                pdf_drop_obj(ctx, bp_obj);
+                pdf_drop_obj(ctx, bp_resources);
+                fz_drop_buffer(ctx, bp_contents);
+                continue;
+            } else if (page >= page_count) continue;
 
             fz_pixmap *pix      = NULL;
             fz_image  *image    = NULL;
