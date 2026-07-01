@@ -750,13 +750,19 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             <div style={s.sheetsWrap}>
               {layout.sheets.map((sh, si) => {
                 const sPt = sheetTargetPt(sh.pages);
-                // 高さを基準値に固定し、幅をアスペクト比から算出する。
-                // 固定幅方式では横長シートが縦に潰れて小さく見えてしまうため。
-                // 最大幅 320px で上限を設けて横長すぎる場合は縮小。
-                const BASE_H = 220;
-                const MAX_W = 320;
-                const H = BASE_H;
-                const W = Math.min(Math.round(BASE_H * (sPt.w / sPt.h)), MAX_W);
+                // シートのアスペクト比を保ちながら 320×220 の枠に収める。
+                // 横長シートは幅基準、縦長シートは高さ基準でフィット。
+                const sheetAspect = sPt.w / sPt.h;
+                const MAX_SHEET_H = 220;
+                const MAX_SHEET_W = 320;
+                let W: number, H: number;
+                if (sheetAspect >= MAX_SHEET_W / MAX_SHEET_H) {
+                  W = MAX_SHEET_W;
+                  H = Math.round(MAX_SHEET_W / sheetAspect);
+                } else {
+                  H = MAX_SHEET_H;
+                  W = Math.round(MAX_SHEET_H * sheetAspect);
+                }
                 const scale = W / sPt.w;
                 return (
                   <div key={si} style={s.sheetCol}>

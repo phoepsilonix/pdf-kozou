@@ -1855,8 +1855,28 @@ function ImpositionPreview({
   };
   const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
-  // 1枚のサムネイル表示サイズ
-  const thumbW = modeInfo.cols === 1 ? 200 : 130;
+  // 「1ページあたりの表示サイズ」を基準に固定し、シートサイズを導出する。
+  // これにより 1-up / 2-up / 4-up / booklet のどのモードでも
+  // 元の1ページが同じ大きさで見え、製本・面付けの状態が直感的に分かる。
+  //
+  // ページの向きに関わらず「短辺を PAGE_SHORT_SIDE px」に統一:
+  //   縦長ページ(h>w): w=PAGE_SHORT_SIDE, h=PAGE_SHORT_SIDE/aspect
+  //   横長ページ(w>h): h=PAGE_SHORT_SIDE, w=PAGE_SHORT_SIDE*aspect
+  const repPage = pdfInfo.pages?.[0];
+  const repAspect = repPage ? repPage.w / repPage.h : 1 / 1.414;
+  const PAGE_SHORT_SIDE = 120; // 1ページの短辺を120pxに統一
+  let PAGE_W: number, PAGE_H: number;
+  if (repAspect >= 1) {
+    // 横長ページ: 高さが短辺
+    PAGE_H = PAGE_SHORT_SIDE;
+    PAGE_W = Math.round(PAGE_SHORT_SIDE * repAspect);
+  } else {
+    // 縦長ページ: 幅が短辺
+    PAGE_W = PAGE_SHORT_SIDE;
+    PAGE_H = Math.round(PAGE_SHORT_SIDE / repAspect);
+  }
+  const CELL_W = PAGE_W;
+  const CELL_H = PAGE_H;
 
   return (
     <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
@@ -1886,8 +1906,8 @@ function ImpositionPreview({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(${modeInfo.cols}, ${thumbW}px)`,
-                gridTemplateRows: `repeat(${modeInfo.rows}, auto)`,
+                gridTemplateColumns: `repeat(${modeInfo.cols}, ${CELL_W}px)`,
+                gridTemplateRows: `repeat(${modeInfo.rows}, ${CELL_H}px)`,
                 gap: 2,
                 background: "var(--c-bgCard)",
                 border: "1px solid var(--c-border)",
@@ -1916,15 +1936,12 @@ function ImpositionPreview({
                 const pageNo = sheet.pages[ci] ?? 0;
                 const inRange = pageNo > 0 && pageSet.has(pageNo);
                 const b64 = pageNo > 0 ? thumbs[pageNo - 1] : undefined;
-                const pb = pageNo > 0 ? pdfInfo.pages?.[pageNo - 1] : undefined;
-                const aspect = pb ? pb.w / pb.h : 1 / 1.414;
-                const thumbH = Math.round(thumbW / aspect);
                 return (
                   <div
                     key={ci}
                     style={{
-                      width: thumbW,
-                      height: thumbH,
+                      width: CELL_W,
+                      height: CELL_H,
                       background: pageNo === 0 ? "#f0f0f0" : "white",
                       border: `1px solid ${inRange ? "var(--c-accentBd)" : "var(--c-border)"}`,
                       borderRadius: 2,
@@ -2055,12 +2072,18 @@ function DeImpositionPreview({
           const pb = pdfInfo.pages?.[i];
           const aspect = pb ? pb.w / pb.h : 1.414;
           // 高さを基準に固定し、幅をアスペクト比から算出する。
-          // 固定幅方式では横長シートが縦に潰れて小さく見えてしまうため。
-          // 最大幅 300px で上限を設けて横長すぎる場合は縮小。
-          const BASE_H = 200;
-          const MAX_W = 300;
-          const thumbH = BASE_H;
-          const thumbW = Math.min(Math.round(BASE_H * aspect), MAX_W);
+          // シートのアスペクト比を保ちながら 320×220 の枠に収める。
+          // 横長シートは幅基準、縦長シートは高さ基準でフィット。
+          const MAX_SHEET_H = 220;
+          const MAX_SHEET_W = 320;
+          let thumbH: number, thumbW: number;
+          if (aspect >= MAX_SHEET_W / MAX_SHEET_H) {
+            thumbW = MAX_SHEET_W;
+            thumbH = Math.round(MAX_SHEET_W / aspect);
+          } else {
+            thumbH = MAX_SHEET_H;
+            thumbW = Math.round(MAX_SHEET_H * aspect);
+          }
           const logicalSheet = logicalIdx + 1; // calcSplitCells の page は1始まり論理番号
 
           // 各列の番号を、指定 row について取得する
