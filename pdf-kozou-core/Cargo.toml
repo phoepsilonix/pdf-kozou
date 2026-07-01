@@ -1,6 +1,6 @@
 [package]
 name    = "pdf-kozou-core"
-version = "1.7.17"
+version = "1.7.18"
 edition = "2024"
 description = "PDF処理エンジン — MuPDF ベース CLI / sidecar"
 license = "AGPL-3.0-only"   # または "AGPL-3.0"（SPDX準拠）
