@@ -108,7 +108,7 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 
 ### バイナリ (推奨)
 
-[Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
+[Releases](https://github.com/phoepsilonix/pdf-kozou/releases)
 
 ※AppImage版(Linux向け)について  
 現時点のAppImage版は、日本語入力やキー入力に制約があります。
@@ -129,6 +129,7 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 [PDF-Kozou(PDF小僧)](https://apps.microsoft.com/detail/9P2HDLPTT5WR?hl=ja-jp&gl=JP&ocid=pdpshare)
 
 ### MacOS
+
 macOS版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。
 
 ### ソースからビルド

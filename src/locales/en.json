@@ -10,7 +10,7 @@
     "viewer": "Viewer page. Use arrow keys to navigate pages.",
     "about": "About this application.",
     "hidden": "Hidden text detection page. Select detection types and press Ctrl+Enter to detect, Ctrl+Shift+Enter to sanitize.",
-    "booklet": "Resize & booklet page. Select mode and output size, then press Ctrl+Enter to run."
+    "booklet": "Resize & booklet binding page. Select mode and output size, then press Ctrl+Enter to run."
   },
   "shortcut": {
     "home": "Keyboard shortcuts. Ctrl+O to open files. Alt+1 through 9 to launch tools. Alt+H to go home. Alt+T to toggle speech. Alt+L to switch language. F1 to repeat.",
@@ -67,7 +67,7 @@
     "hidden": "Hidden Text",
     "hidden_desc": "Detect & sanitize hidden text",
     "booklet": "Resize & Booklet",
-    "booklet_desc": "n-up / booklet / page resize"
+    "booklet_desc": "n-up / booklet (binding) / page resize"
   },
   "booklet": {
     "title": "Resize & Booklet",
