@@ -2054,8 +2054,13 @@ function DeImpositionPreview({
         {sheetIdx.map((i, logicalIdx) => {
           const pb = pdfInfo.pages?.[i];
           const aspect = pb ? pb.w / pb.h : 1.414;
-          const thumbW = 180;
-          const thumbH = thumbW / aspect;
+          // 高さを基準に固定し、幅をアスペクト比から算出する。
+          // 固定幅方式では横長シートが縦に潰れて小さく見えてしまうため。
+          // 最大幅 300px で上限を設けて横長すぎる場合は縮小。
+          const BASE_H = 200;
+          const MAX_W = 300;
+          const thumbH = BASE_H;
+          const thumbW = Math.min(Math.round(BASE_H * aspect), MAX_W);
           const logicalSheet = logicalIdx + 1; // calcSplitCells の page は1始まり論理番号
 
           // 各列の番号を、指定 row について取得する
