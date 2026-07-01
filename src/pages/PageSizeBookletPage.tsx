@@ -410,7 +410,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
-                <span style={s.bpLogFile}>{d.file}</span>
+                <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
                   {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}{" "}
                   {t("booklet.sheets_count", { count: String(d.sheets) })}
@@ -460,7 +460,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
-                <span style={s.bpLogFile}>{d.file}</span>
+                <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
                   {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}{" "}
                   {t("booklet.sheets_count", { count: String(d.sheets) })}

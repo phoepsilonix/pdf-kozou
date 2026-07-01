@@ -1108,7 +1108,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
-                <span style={s.bpFile}>{d.file}</span>
+                <span style={s.bpFile}>{d.file} → </span>
                 <span style={s.bpMeta}>
                   {d.pdfPath
                     ? t("image.output_pdf", {
@@ -1178,7 +1178,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
-                <span style={s.bpFile}>{d.file}</span>
+                <span style={s.bpFile}>{d.file} → </span>
                 <span style={s.bpMeta}>
                   {d.pdfPath
                     ? t("image.output_pdf", {

@@ -642,7 +642,7 @@ export function CompressPage({
           {batchProg.done.map((d, i) => (
             <div key={i} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
-              <span style={c.bpFile}>{d.file}</span>
+              <span style={c.bpFile}>{d.file} → </span>
               <span style={c.bpFile2}>{d.saved}</span>
               {d.pct >= 0 ? (
                 <span style={c.bpPct}> -{d.pct}%</span>
@@ -702,7 +702,7 @@ export function CompressPage({
           {batchProg.done.map((d, i) => (
             <div key={i} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
-              <span style={c.bpFile}>{d.file}</span>
+              <span style={c.bpFile}>{d.file} → </span>
               <span style={c.bpFile2}>{d.saved}</span>
               {d.pct >= 0 ? (
                 <span style={c.bpPct}> -{d.pct}%</span>

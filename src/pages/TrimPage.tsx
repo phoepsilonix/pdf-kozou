@@ -332,7 +332,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           {progress.done.map((d, i) => (
             <div key={i} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
-              <span style={b.logFile}>{d.f}</span>
+              <span style={b.logFile}>{d.f} → </span>
               <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}
@@ -364,7 +364,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           {progress.done.map((d, i) => (
             <div key={i} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
-              <span style={b.logFile}>{d.f}</span>
+              <span style={b.logFile}>{d.f} → </span>
               <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}

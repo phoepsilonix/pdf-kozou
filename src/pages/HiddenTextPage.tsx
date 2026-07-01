@@ -425,7 +425,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               {progress.done.map((d, i) => (
                 <div key={i} style={s.logRow}>
                   <span style={{ color: "var(--c-accent)", flexShrink: 0 }}>✓</span>
-                  <span style={s.logFile}>{d.file}</span>
+                  <span style={s.logFile}>{d.file} → </span>
                   <span style={s.logMeta}>
                     {d.hits === 0 ? t("hidden.batch_no_detection") : `${d.hits}字 → ${d.saved}`}
                   </span>
@@ -497,7 +497,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   >
                     {d.hits > 0 ? "✓" : "–"}
                   </span>
-                  <span style={s.logFile}>{d.file}</span>
+                  <span style={s.logFile}>{d.file} → </span>
                   <span style={s.logMeta}>
                     {d.hits === 0
                       ? t("hidden.batch_no_detection")
@@ -1701,6 +1701,16 @@ const s: Record<string, React.CSSProperties> = {
     alignSelf: "flex-start" as const,
   },
   logRow: { display: "flex", alignItems: "center", gap: 8, fontSize: FS.body, padding: "4px 0" },
-  logFile: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
-  logMeta: { fontSize: FS.small, color: "var(--c-textSub)", flexShrink: 0 },
+  logFile: {
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
+    flex: 1,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  logMeta: {
+    fontSize: FS.caption,
+    color: "var(--c-text)",
+    wordBreak: "break-all" as const,
+  },
 };
