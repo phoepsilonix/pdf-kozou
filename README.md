@@ -109,9 +109,8 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 ### バイナリ (推奨)
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)  
-macOS版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。
 
-※AppImage版について  
+※AppImage版(Linux向け)について  
 現時点のAppImage版は、日本語入力やキー入力に制約があります。
 ページ範囲の選択やビューワーの検索ボタンを押してフリーズする場合があります。
 その場合には、環境変数の`GTK_IM_MODULE=gtk-im-context-simple`を追加してAppImageを起動することで、問題が改善する場合があります。(この回避策では日本語入力はできませんが、コピーペーストはできます。)  
@@ -128,6 +127,9 @@ macOS版のパッケージは動作未チェック。動作確認環境がない
 ### Microsoft Store(Windows)
 
 [PDF-Kozou(PDF小僧)](https://apps.microsoft.com/detail/9P2HDLPTT5WR?hl=ja-jp&gl=JP&ocid=pdpshare)
+
+### MacOS
+macOS版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。
 
 ### ソースからビルド
 
