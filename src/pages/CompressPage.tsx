@@ -647,7 +647,7 @@ export function CompressPage({
               {d.pct >= 0 ? (
                 <span style={c.bpPct}> -{d.pct}%</span>
               ) : (
-                <span style={c.bpPct2}> +{d.pct}%</span>
+                <span style={c.bpPct2}> +{Math.abs(d.pct)}%</span>
               )}
             </div>
           ))}
@@ -707,7 +707,7 @@ export function CompressPage({
               {d.pct >= 0 ? (
                 <span style={c.bpPct}> -{d.pct}%</span>
               ) : (
-                <span style={c.bpPct2}> +{d.pct}%</span>
+                <span style={c.bpPct2}> +{Math.abs(d.pct)}%</span>
               )}
             </div>
           ))}
