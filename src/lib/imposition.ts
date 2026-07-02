@@ -449,7 +449,6 @@ export function calcSplitCells(
       const cellsPerSheet = cols * rows;
       const indexInSheet = (p - 1) % cellsPerSheet;
       out.push({
-        //page: physIdx ? Math.floor(physIdx / 2) : Math.floor(physical.length/ 2),
         page: 0,
         row: Math.floor(indexInSheet / cols),
         col: isRtl ? indexInSheet % cols : (indexInSheet + 1) % cols,
