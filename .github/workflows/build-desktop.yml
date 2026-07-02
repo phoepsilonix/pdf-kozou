@@ -77,7 +77,7 @@ jobs:
           #target/release/deps
           #target/release/incremental
       - name: Restore Cache (復元のみ)
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         id: cache-restore
         with:
           path: |
@@ -135,7 +135,7 @@ jobs:
 
       - name: Restore npm cache
         id: npm-cache
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -149,7 +149,7 @@ jobs:
         run: npm audit --audit-level=moderate
 
       - name: Save npm cache
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ~/.npm
@@ -259,7 +259,7 @@ jobs:
             #bundle/zip/*.zip
 
       - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
@@ -292,7 +292,7 @@ jobs:
           #targets: x86_64-pc-windows-msvc
 
       - name: Restore Cache (復元のみ)
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         id: cache-restore
         with:
           path: |
@@ -372,7 +372,7 @@ jobs:
 
       - name: Restore npm cache
         id: npm-cache
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -390,7 +390,7 @@ jobs:
         run: npm audit --audit-level=moderate
 
       - name: Save npm cache
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
@@ -473,7 +473,7 @@ jobs:
             bundle/msi/*.msix
 
       - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
@@ -499,7 +499,7 @@ jobs:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
       - name: Restore Cache (復元のみ)
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         id: cache-restore
         with:
           path: |
@@ -521,7 +521,7 @@ jobs:
 
       - name: Restore npm cache
         id: npm-cache
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -535,7 +535,7 @@ jobs:
         run: npm audit --audit-level=moderate
 
       - name: Save npm cache
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ~/.npm
@@ -608,7 +608,7 @@ jobs:
           path: bundle/macos/
 
       - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
