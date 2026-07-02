@@ -1248,11 +1248,13 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     overflow: "hidden",
     minHeight: 120,
-    maxHeight: "45vh",
+    // 【修正】maxHeight を削除し、height で 5ファイル分の高さを上限にする
+    // FileRow のパディングやボーダーを含めて 5個分（約 260px 前後）を上限とします
+    maxHeight: "calc(11px * 2 + 1px + (44px * 5))", 
     display: "flex",
     flexDirection: "column",
     position: "relative" as const,
-    zIndex: 1, // 背景画像より前面に
+    zIndex: 1,
   },
   emptyZone: {
     display: "flex",
