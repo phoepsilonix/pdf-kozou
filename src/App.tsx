@@ -1250,7 +1250,7 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 120,
     // 【修正】maxHeight を削除し、height で 5ファイル分の高さを上限にする
     // FileRow のパディングやボーダーを含めて 5個分（約 260px 前後）を上限とします
-    maxHeight: "calc(11px * 2 + 1px + (44px * 5))", 
+    maxHeight: "calc(11px * 2 + 1px + (44px * 7))", 
     display: "flex",
     flexDirection: "column",
     position: "relative" as const,
