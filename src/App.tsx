@@ -483,6 +483,9 @@ export default function App() {
     </div>
   );
 
+  const showOptions =
+    hasReflowable(fileList.map((f) => f.filename)) || hasImage(fileList.map((f) => f.filename));
+
   return (
     <div
       key={themeId}
@@ -728,142 +731,172 @@ export default function App() {
             </div>
           )}
 
-          <div style={s.listCard}>
-            {fileList.length === 0 ? (
-              <div style={s.emptyZone}>
-                {/*            <span style={s.emptyIcon}>⊕</span>
-            <span style={s.emptyTitle}>PDFをドロップ、または追加</span>
-            <span style={s.emptySub}>複数ファイルを一度に追加できます</span>*/}
-                <button
-                  style={s.btnAddBig}
-                  onClick={handlePickFiles}
-                  aria-label={t("app.select_file_hint")}
-                  onFocus={() => tts.speak(t("app.select_file_hint"))}
-                >
-                  {t("app.select_file")}
-                </button>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: showOptions ? "row" : "column", // ここで動的に切り替え
+              justifyContent: "center",
+              alignItems: "center", // 未指定だとサマリがrow時は上端に張り付き、column時は幅いっぱいに伸びてしまうため明示
+              gap: 24,
+              padding: 24,
+            }}
+          >
+            {/* ファイル一覧とファイル情報のサマリ */}
+            <div>
+              {/* ファイル一覧エリア */}
+              <div
+                style={{
+                  ...s.listCard,
+                  width: showOptions ? "100%" : 720, // 2カラム時は幅を柔軟に、1カラム時は固定幅
+                  maxWidth: showOptions ? 720 : 720,
+                  transition: "all 0.3s ease",
+                }}
+              >
+                {fileList.length === 0 ? (
+                  <div style={s.emptyZone}>
+                    <button
+                      style={s.btnAddBig}
+                      onClick={handlePickFiles}
+                      aria-label={t("app.select_file_hint")}
+                      onFocus={() => tts.speak(t("app.select_file_hint"))}
+                    >
+                      {t("app.select_file")}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={s.fileRows}>
+                      {fileList.map((f, i) => (
+                        <FileRow
+                          key={f.id}
+                          entry={f}
+                          index={i}
+                          onToggle={() => {
+                            // 対象PDFとして使うかどうかのオンオフ。新しい状態をファイル名付きで読み上げ
+                            const willUse = !f.selected;
+                            toggleSelect(f.id);
+                            announceSuccess(
+                              willUse ? "file.use_target_on" : "file.use_target_off",
+                              {
+                                name: formatFilenameForSpeech(f.filename),
+                              },
+                            );
+                          }}
+                          onRemove={() => {
+                            // 「削除」ではなく読み込み対象の一覧から外す操作
+                            removeFile(f.id);
+                            announceSuccess("file.remove_one", {
+                              name: formatFilenameForSpeech(f.filename),
+                            });
+                          }}
+                          onDragReorder={reorderFiles}
+                        />
+                      ))}
+                    </div>
+                    <div style={s.listFooter}>
+                      <button style={s.btnAdd} onClick={handlePickFiles}>
+                        {t("file.add")}
+                      </button>
+                      <button style={s.btnSm} onClick={selectAll}>
+                        {t("file.select_all")}
+                      </button>
+                      <button style={s.btnSm} onClick={selectNone}>
+                        {t("file.deselect")}
+                      </button>
+                      <div style={{ flex: 1 }} />
+                      <button
+                        style={s.btnClear}
+                        onClick={() => {
+                          // 全ファイルを読み込み対象の一覧から外す（ディスクからの削除ではない）
+                          clearList();
+                          announceSuccess("file.cleared");
+                        }}
+                        aria-label={t("file.clear_aria")}
+                        title={t("file.clear_aria")}
+                      >
+                        {t("file.clear")}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {/* ファイル一欄 閉じ */}
               </div>
-            ) : (
-              <>
-                <div style={s.fileRows}>
-                  {fileList.map((f, i) => (
-                    <FileRow
-                      key={f.id}
-                      entry={f}
-                      index={i}
-                      onToggle={() => {
-                        // 対象PDFとして使うかどうかのオンオフ。新しい状態をファイル名付きで読み上げ
-                        const willUse = !f.selected;
-                        toggleSelect(f.id);
-                        announceSuccess(willUse ? "file.use_target_on" : "file.use_target_off", {
-                          name: formatFilenameForSpeech(f.filename),
-                        });
-                      }}
-                      onRemove={() => {
-                        // 「削除」ではなく読み込み対象の一覧から外す操作
-                        removeFile(f.id);
-                        announceSuccess("file.remove_one", {
-                          name: formatFilenameForSpeech(f.filename),
-                        });
-                      }}
-                      onDragReorder={reorderFiles}
-                    />
-                  ))}
-                </div>
-                <div style={s.listFooter}>
-                  <button style={s.btnAdd} onClick={handlePickFiles}>
-                    {t("file.add")}
-                  </button>
-                  <button style={s.btnSm} onClick={selectAll}>
-                    {t("file.select_all")}
-                  </button>
-                  <button style={s.btnSm} onClick={selectNone}>
-                    {t("file.deselect")}
-                  </button>
-                  <div style={{ flex: 1 }} />
-                  <button
-                    style={s.btnClear}
-                    onClick={() => {
-                      // 全ファイルを読み込み対象の一覧から外す（ディスクからの削除ではない）
-                      clearList();
-                      announceSuccess("file.cleared");
-                    }}
-                    aria-label={t("file.clear_aria")}
-                    title={t("file.clear_aria")}
-                  >
-                    {t("file.clear")}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
 
-          {fileList.length > 0 && (
-            <div style={s.summary}>
-              {selCount > 0 ? (
-                <>
-                  <span style={s.sumSel}>{t("file.sel_count", { count: String(selCount) })}</span>
-                  <span style={s.sumDot}>·</span>
-                  <span style={s.sumInfo}>{t("file.sel_pages", { pages: String(selPages) })}</span>
-                  {selBytes > 0 && (
+              {fileList.length > 0 && (
+                <div style={s.summary}>
+                  {selCount > 0 ? (
                     <>
+                      <span style={s.sumSel}>
+                        {t("file.sel_count", { count: String(selCount) })}
+                      </span>
                       <span style={s.sumDot}>·</span>
-                      <span style={s.sumInfo}>{(selBytes / 1048576).toFixed(1)} MB</span>
+                      <span style={s.sumInfo}>
+                        {t("file.sel_pages", { pages: String(selPages) })}
+                      </span>
+                      {selBytes > 0 && (
+                        <>
+                          <span style={s.sumDot}>·</span>
+                          <span style={s.sumInfo}>{(selBytes / 1048576).toFixed(1)} MB</span>
+                        </>
+                      )}
                     </>
+                  ) : (
+                    <span style={s.sumNone}>{t("app.no_file_hint")}</span>
                   )}
-                </>
-              ) : (
-                <span style={s.sumNone}>{t("app.no_file_hint")}</span>
+                </div>
+              )}
+              {/* ファイル一覧とファイル情報のサマリ 閉じ*/}
+            </div>
+
+            <div>
+              {/* リフロー文書（EPUB/HTML/DOCX等）が含まれる場合のみレイアウト設定を表示。
+              画像や固定レイアウト文書ではリフローが効かないため出さない。 */}
+              {showOptions && hasReflowable(fileList.map((f) => f.filename)) && (
+                <div style={{ padding: "0 12px", width: 300, flexShrink: 0 }}>
+                  <ConvertOptionsPanel
+                    options={{
+                      layoutW: convertLayoutW,
+                      layoutH: convertLayoutH,
+                      layoutEm: convertLayoutEm,
+                    }}
+                    onChange={async (opts) => {
+                      const w = opts.layoutW ?? 450;
+                      const h = opts.layoutH ?? 600;
+                      const em = opts.layoutEm ?? 12;
+                      setConvertLayout(w, h, em);
+                      // レイアウト変更後、非 PDF ファイルのページ数を再取得
+                      const nonPdfFiles = fileList.filter(
+                        (f) => !f.filename.toLowerCase().endsWith(".pdf"),
+                      );
+                      for (const f of nonPdfFiles) {
+                        try {
+                          const info = await getPdfInfo(f.path, {
+                            layoutW: w,
+                            layoutH: h,
+                            layoutEm: em,
+                          });
+                          updatePageCount(f.path, info.page_count);
+                          // 現在アクティブなファイルの pdfInfo も更新する
+                          if (f.path === filePath) {
+                            setFile(f.path, info);
+                          }
+                        } catch {
+                          /* 失敗は無視 */
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* 画像が含まれる場合に標準ページサイズ設定を表示 */}
+              {showOptions && hasImage(fileList.map((f) => f.filename)) && (
+                <div style={{ padding: "8px 12px", width: 300, flexShrink: 0 }}>
+                  <PageSizeSelector />
+                </div>
               )}
             </div>
-          )}
-
-          {/* リフロー文書（EPUB/HTML/DOCX等）が含まれる場合のみレイアウト設定を表示。
-              画像や固定レイアウト文書ではリフローが効かないため出さない。 */}
-          {hasReflowable(fileList.map((f) => f.filename)) && (
-            <div style={{ padding: "0 12px" }}>
-              <ConvertOptionsPanel
-                options={{
-                  layoutW: convertLayoutW,
-                  layoutH: convertLayoutH,
-                  layoutEm: convertLayoutEm,
-                }}
-                onChange={async (opts) => {
-                  const w = opts.layoutW ?? 450;
-                  const h = opts.layoutH ?? 600;
-                  const em = opts.layoutEm ?? 12;
-                  setConvertLayout(w, h, em);
-                  // レイアウト変更後、非 PDF ファイルのページ数を再取得
-                  const nonPdfFiles = fileList.filter(
-                    (f) => !f.filename.toLowerCase().endsWith(".pdf"),
-                  );
-                  for (const f of nonPdfFiles) {
-                    try {
-                      const info = await getPdfInfo(f.path, {
-                        layoutW: w,
-                        layoutH: h,
-                        layoutEm: em,
-                      });
-                      updatePageCount(f.path, info.page_count);
-                      // 現在アクティブなファイルの pdfInfo も更新する
-                      if (f.path === filePath) {
-                        setFile(f.path, info);
-                      }
-                    } catch {
-                      /* 失敗は無視 */
-                    }
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          {/* 画像が含まれる場合に標準ページサイズ設定を表示 */}
-          {hasImage(fileList.map((f) => f.filename)) && (
-            <div style={{ padding: "8px 12px" }}>
-              <PageSizeSelector />
-            </div>
-          )}
+          </div>
         </>
       )}
 
@@ -1248,9 +1281,9 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     overflow: "hidden",
     minHeight: 120,
-    // 【修正】maxHeight を削除し、height で 5ファイル分の高さを上限にする
-    // FileRow のパディングやボーダーを含めて 5個分（約 260px 前後）を上限とします
-    maxHeight: "calc(11px * 2 + 1px + (44px * 7))", 
+    // 【修正】maxHeight を削除し、height で 5-7ファイル分の高さを上限にする
+    // FileRow のパディングやボーダーを含めて 5-7個分（約 260px 前後）を上限とします
+    maxHeight: "calc(11px * 2 + 1px + (44px * 9))",
     display: "flex",
     flexDirection: "column",
     position: "relative" as const,

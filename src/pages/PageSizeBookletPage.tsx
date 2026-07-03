@@ -69,7 +69,11 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   } = usePdfStore();
 
   const [mode, setMode] = useState<ImpositionMode>(impositionMode);
-  const [sizeId, setSizeId] = useState<Exclude<PageSizeId, "image">>(pageSizeId as any);
+  // 「画像に合わせる」(image) はページごとにサイズが異なり、固定シートサイズが前提の
+  // このページでは扱えないため、その場合は既定値(A4)にフォールバックする。
+  const [sizeId, setSizeId] = useState<Exclude<PageSizeId, "image">>(
+    pageSizeId === "image" ? "A4" : pageSizeId,
+  );
   const [orient, setOrient] = useState<Orient>(pageOrientation);
 
   const [gutter, setGutter] = useState(0);
@@ -750,11 +754,13 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             <div style={s.sheetsWrap}>
               {layout.sheets.map((sh, si) => {
                 const sPt = sheetTargetPt(sh.pages);
-                // シートのアスペクト比を保ちながら 320×220 の枠に収める。
+                // シートのアスペクト比を保ちながら 480×330 の枠に収める。
                 // 横長シートは幅基準、縦長シートは高さ基準でフィット。
                 const sheetAspect = sPt.w / sPt.h;
-                const MAX_SHEET_H = 220;
-                const MAX_SHEET_W = 320;
+                // プレビュー基準サイズ: 従来(320×220)の1.5倍。
+                // Rotate/ImageExport のプレビューもこのサイズを基準に統一している。
+                const MAX_SHEET_H = 330;
+                const MAX_SHEET_W = 480;
                 let W: number, H: number;
                 if (sheetAspect >= MAX_SHEET_W / MAX_SHEET_H) {
                   W = MAX_SHEET_W;

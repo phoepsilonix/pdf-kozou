@@ -130,6 +130,8 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
             emitDebounced(localW, v, localEm);
           }}
         />
+      </div>
+      <div style={s.row}>
         <label style={{ ...s.label, marginLeft: 12 }}>{t("convert_options.font_pt")}</label>
         <input
           type="number"

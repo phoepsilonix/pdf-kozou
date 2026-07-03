@@ -1834,7 +1834,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     key={i}
                     b64={thumbs[i]}
                     pageNum={i + 1}
-                    width={130}
+                    width={195}
                     aspectRatio={aspect}
                   />
                 );
@@ -1886,7 +1886,9 @@ function ImpositionPreview({
   //   横長ページ(w>h): h=PAGE_SHORT_SIDE, w=PAGE_SHORT_SIDE*aspect
   const repPage = pdfInfo.pages?.[0];
   const repAspect = repPage ? repPage.w / repPage.h : 1 / 1.414;
-  const PAGE_SHORT_SIDE = 120; // 1ページの短辺を120pxに統一
+  // 1ページの短辺サイズ。サイズ変更・製本ページの基準(480×330)と同じ
+  // 1.5倍スケールに合わせて 120px → 180px に統一。
+  const PAGE_SHORT_SIDE = 180;
   let PAGE_W: number, PAGE_H: number;
   if (repAspect >= 1) {
     // 横長ページ: 高さが短辺
@@ -2070,8 +2072,9 @@ function DeImpositionPreview({
   // 代表アスペクト（空白ページのサイズ決定にも使う）
   const repPb = pdfInfo.pages?.[sheetIdx[0]];
   const repAspect = repPb ? repPb.w / repPb.h : 1.414;
-  const MAX_SHEET_H = 220;
-  const MAX_SHEET_W = 320;
+  // プレビュー基準サイズ: サイズ変更・製本ページの基準(480×330)に統一。
+  const MAX_SHEET_H = 330;
+  const MAX_SHEET_W = 480;
   const repThumbW =
     repAspect >= MAX_SHEET_W / MAX_SHEET_H ? MAX_SHEET_W : Math.round(MAX_SHEET_H * repAspect);
   const repThumbH =

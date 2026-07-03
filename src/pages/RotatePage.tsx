@@ -726,10 +726,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 const changed = rot !== 0;
                 const inTarget = targetIndices.includes(i);
                 const isLandscape = rot === 90 || rot === 270;
-                const cardW = isLandscape ? 168 : 120;
-                const cardH = isLandscape ? 120 : 168;
-                const imgW = isLandscape ? 150 : 106;
-                const imgH = isLandscape ? 106 : 150;
+                // サイズ変更・製本ページの基準(480×330)と同じ1.5倍スケールに統一。
+                const cardW = isLandscape ? 252 : 180;
+                const cardH = isLandscape ? 180 : 252;
+                const imgW = isLandscape ? 225 : 159;
+                const imgH = isLandscape ? 159 : 225;
 
                 return (
                   <div
