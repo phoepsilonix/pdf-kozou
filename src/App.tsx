@@ -747,15 +747,44 @@ export default function App() {
             </div>
           )}
 
+          {/* 幅に応じたレイアウト:
+              ・狭い画面: 縦積み（実測pxベースの幅。理由は useViewport.ts のコメント参照）
+              ・広い画面・設定パネルあり: CSS Grid で2カラムを流動的に伸縮させる。
+                Grid のトラックサイズは常に確定値として計算されるため、
+                Flexbox の align-items:center + width:"%" で起きていた
+                WebKitGTK の潰れ問題を経由しない。
+              ・広い画面・設定パネルなし: ファイル一覧のみを中央寄せ（従来通り固定720px、
+                768px以上では常に収まるため流動化の必要なし） */}
           <div
-            style={{
-              display: "flex",
-              flexDirection: isNarrow ? "column" : showOptions ? "row" : "column", // ここで動的に切り替え
-              justifyContent: "center",
-              alignItems: "center", // 未指定だとサマリがrow時は上端に張り付き、column時は幅いっぱいに伸びてしまうため明示
-              gap: 24,
-              padding: isNarrow ? "16px 12px" : 24,
-            }}
+            style={
+              isNarrow
+                ? {
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 24,
+                    padding: "16px 12px",
+                  }
+                : showOptions
+                  ? {
+                      display: "grid",
+                      // 1カラム目(ファイル一覧): 280〜720pxの間で流動的に伸縮
+                      // 2カラム目(変換設定): 240〜300pxの間で流動的に伸縮
+                      gridTemplateColumns: "minmax(280px, 720px) minmax(240px, 300px)",
+                      justifyContent: "center",
+                      alignItems: "start",
+                      gap: 24,
+                      padding: 24,
+                    }
+                  : {
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 24,
+                      padding: 24,
+                    }
+            }
           >
             {/* ファイル一覧とファイル情報のサマリ */}
             <div ref={fileListTopRef}>
@@ -763,8 +792,11 @@ export default function App() {
               <div
                 style={{
                   ...s.listCard,
-                  width: isNarrow ? narrowContentWidth : showOptions ? "100%" : 720, // 2カラム時は幅を柔軟に、1カラム時は固定幅
-                  maxWidth: isNarrow ? narrowContentWidth : 720,
+                  // Grid/縦積み時は各トラック・親要素の幅がすでに確定しているため
+                  // width:"100%" のままで安全（潰れ問題は起きない）。
+                  // !showOptions（1カラムのみ）の時だけ従来通り固定720pxにする。
+                  width: !isNarrow && !showOptions ? 720 : isNarrow ? narrowContentWidth : "100%",
+                  maxWidth: !isNarrow && !showOptions ? 720 : isNarrow ? narrowContentWidth : "100%",
                   transition: "all 0.3s ease",
                 }}
               >
@@ -892,9 +924,8 @@ export default function App() {
                 <div
                   style={{
                     padding: "0 12px",
-                    width: isNarrow ? "100%" : 300,
+                    width: "100%",
                     boxSizing: "border-box",
-                    flexShrink: 0,
                   }}
                 >
                   <ConvertOptionsPanel
@@ -938,9 +969,8 @@ export default function App() {
                 <div
                   style={{
                     padding: "8px 12px",
-                    width: isNarrow ? "100%" : 300,
+                    width: "100%",
                     boxSizing: "border-box",
-                    flexShrink: 0,
                   }}
                 >
                   <PageSizeSelector />
