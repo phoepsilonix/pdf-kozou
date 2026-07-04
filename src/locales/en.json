@@ -204,6 +204,8 @@
     "down": "Down",
     "jump_to_preview": "View preview",
     "jump_to_settings": "Back to settings",
+    "jump_to_options": "View conversion settings",
+    "jump_to_filelist": "Back to file list",
     "pages_suffix": " pages",
     "files_suffix": " files",
     "need_min_files": "{{min}} or more files required",
@@ -797,6 +799,15 @@
     "bg": "Image",
     "switcher_label": "Theme",
     "switcher_title": "Switch theme"
+  },
+  "layout": {
+    "mode_label": "Screen layout",
+    "mode_auto": "Auto",
+    "mode_wide": "Side by side",
+    "mode_narrow": "Stacked",
+    "mode_hint": "Switch how settings and preview are arranged (auto / always side by side / always stacked)",
+    "switcher_label": "Screen layout",
+    "switcher_title": "Switch layout (auto / side by side / stacked)"
   },
   "preview": {
     "hide": "Hide preview",

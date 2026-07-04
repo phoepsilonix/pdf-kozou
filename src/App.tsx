@@ -48,6 +48,9 @@ import {
 import { ThemeSwitcher } from "./components/ThemeSwitcher";
 import { FontScaleControl } from "./components/FontScaleControl";
 import { loadUiScale, applyUiScale, saveUiScale } from "./lib/uiScale";
+import { useViewport } from "./hooks/useViewport";
+import { JumpButton } from "./components/JumpNav";
+import { LayoutModeControl } from "./components/LayoutModeControl";
 import type { ThemeId } from "./lib/themes";
 
 const copyToClipboard = async (text: string) => {
@@ -128,9 +131,14 @@ export default function App() {
     convertLayoutEm,
     setConvertLayout,
     updatePageCount,
+    layoutModeOverride,
+    setLayoutModeOverride,
   } = usePdfStore();
 
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
+  const { isNarrow, width: viewportWidth } = useViewport();
+  const fileListTopRef = useRef<HTMLDivElement>(null);
+  const optionsTopRef = useRef<HTMLDivElement>(null);
   const [toolFiles, setToolFiles] = useState<FileEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
@@ -486,6 +494,12 @@ export default function App() {
   const showOptions =
     hasReflowable(fileList.map((f) => f.filename)) || hasImage(fileList.map((f) => f.filename));
 
+  // 狭い画面ではファイル一覧と変換設定を縦積みにする。
+  // listCard 等は align-items:center な親の直下で width:"%" を使うと
+  // WebKitGTK環境で意図しない幅に潰れる既知の事象があるため、
+  // 狭幅時は % ではなく実測pxから計算した固定値を使う。
+  const narrowContentWidth = Math.max(240, Math.min(720, viewportWidth - 48));
+
   return (
     <div
       key={themeId}
@@ -511,6 +525,7 @@ export default function App() {
               width: "100%",
               maxWidth: 820,
               display: "flex",
+              flexWrap: "wrap",
               justifyContent: "flex-end",
               gap: 8,
               alignItems: "center",
@@ -520,6 +535,7 @@ export default function App() {
             <A11yControls />
             <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
             <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
+            <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
           </div>
         </>
       )}
@@ -734,21 +750,21 @@ export default function App() {
           <div
             style={{
               display: "flex",
-              flexDirection: showOptions ? "row" : "column", // ここで動的に切り替え
+              flexDirection: isNarrow ? "column" : showOptions ? "row" : "column", // ここで動的に切り替え
               justifyContent: "center",
               alignItems: "center", // 未指定だとサマリがrow時は上端に張り付き、column時は幅いっぱいに伸びてしまうため明示
               gap: 24,
-              padding: 24,
+              padding: isNarrow ? "16px 12px" : 24,
             }}
           >
             {/* ファイル一覧とファイル情報のサマリ */}
-            <div>
+            <div ref={fileListTopRef}>
               {/* ファイル一覧エリア */}
               <div
                 style={{
                   ...s.listCard,
-                  width: showOptions ? "100%" : 720, // 2カラム時は幅を柔軟に、1カラム時は固定幅
-                  maxWidth: showOptions ? 720 : 720,
+                  width: isNarrow ? narrowContentWidth : showOptions ? "100%" : 720, // 2カラム時は幅を柔軟に、1カラム時は固定幅
+                  maxWidth: isNarrow ? narrowContentWidth : 720,
                   transition: "all 0.3s ease",
                 }}
               >
@@ -846,13 +862,41 @@ export default function App() {
                 </div>
               )}
               {/* ファイル一覧とファイル情報のサマリ 閉じ*/}
+              {isNarrow && showOptions && (
+                <div style={{ paddingTop: 12 }}>
+                  <JumpButton
+                    targetRef={optionsTopRef}
+                    label={t("common.jump_to_options")}
+                    direction="down"
+                  />
+                </div>
+              )}
             </div>
 
-            <div>
+            <div
+              ref={optionsTopRef}
+              style={isNarrow ? { width: narrowContentWidth } : undefined}
+            >
+              {isNarrow && showOptions && (
+                <div style={{ paddingBottom: 8 }}>
+                  <JumpButton
+                    targetRef={fileListTopRef}
+                    label={t("common.jump_to_filelist")}
+                    direction="up"
+                  />
+                </div>
+              )}
               {/* リフロー文書（EPUB/HTML/DOCX等）が含まれる場合のみレイアウト設定を表示。
               画像や固定レイアウト文書ではリフローが効かないため出さない。 */}
               {showOptions && hasReflowable(fileList.map((f) => f.filename)) && (
-                <div style={{ padding: "0 12px", width: 300, flexShrink: 0 }}>
+                <div
+                  style={{
+                    padding: "0 12px",
+                    width: isNarrow ? "100%" : 300,
+                    boxSizing: "border-box",
+                    flexShrink: 0,
+                  }}
+                >
                   <ConvertOptionsPanel
                     options={{
                       layoutW: convertLayoutW,
@@ -891,7 +935,14 @@ export default function App() {
 
               {/* 画像が含まれる場合に標準ページサイズ設定を表示 */}
               {showOptions && hasImage(fileList.map((f) => f.filename)) && (
-                <div style={{ padding: "8px 12px", width: 300, flexShrink: 0 }}>
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    width: isNarrow ? "100%" : 300,
+                    boxSizing: "border-box",
+                    flexShrink: 0,
+                  }}
+                >
                   <PageSizeSelector />
                 </div>
               )}

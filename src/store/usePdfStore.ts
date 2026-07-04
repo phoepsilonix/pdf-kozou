@@ -83,6 +83,11 @@ interface PdfStore {
   previewEnabled: Record<string, boolean>;
   setPreviewEnabled: (page: string, enabled: boolean) => void;
   autoDetectOrientation: (info: PdfInfo | FileEntry[] | null) => "portrait" | "landscape";
+
+  /// レイアウト切り替え（設定/プレビューの横並び・縦積み）を手動で強制するか。
+  /// "auto" = 画面幅で自動判定（既定）、"narrow" = 常に縦積み、"wide" = 常に横並び
+  layoutModeOverride: "auto" | "narrow" | "wide";
+  setLayoutModeOverride: (mode: "auto" | "narrow" | "wide") => void;
 }
 
 export const usePdfStore = create<PdfStore>()(
@@ -177,6 +182,9 @@ export const usePdfStore = create<PdfStore>()(
       previewEnabled: {},
       setPreviewEnabled: (page, enabled) =>
         set((s) => ({ previewEnabled: { ...s.previewEnabled, [page]: enabled } })),
+
+      layoutModeOverride: "auto",
+      setLayoutModeOverride: (mode) => set({ layoutModeOverride: mode }),
       // 自動向き判定
       autoDetectOrientation: (input) => {
         let aspects: number[] = [];
@@ -209,6 +217,7 @@ export const usePdfStore = create<PdfStore>()(
         pageOrientation: state.pageOrientation,
         impositionMode: state.impositionMode,
         previewEnabled: state.previewEnabled,
+        layoutModeOverride: state.layoutModeOverride,
       }),
     },
   ),

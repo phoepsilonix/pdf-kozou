@@ -204,6 +204,8 @@
     "down": "下へ",
     "jump_to_preview": "プレビューを見る",
     "jump_to_settings": "設定に戻る",
+    "jump_to_options": "変換設定を見る",
+    "jump_to_filelist": "ファイル一覧に戻る",
     "pages_suffix": "ページ",
     "files_suffix": "ファイル",
     "need_min_files": "{{min}}ファイル以上必要です",
@@ -797,6 +799,15 @@
     "bg": "背景画像",
     "switcher_label": "テーマ",
     "switcher_title": "テーマ切り替え"
+  },
+  "layout": {
+    "mode_label": "画面レイアウト",
+    "mode_auto": "自動",
+    "mode_wide": "横並び",
+    "mode_narrow": "縦積み",
+    "mode_hint": "設定とプレビューの並び方（自動判定 / 常に横並び / 常に縦積み）を切り替えます",
+    "switcher_label": "画面レイアウト",
+    "switcher_title": "レイアウト切り替え（自動 / 横並び / 縦積み）"
   },
   "preview": {
     "hide": "プレビュー非表示",

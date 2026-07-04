@@ -73,6 +73,11 @@ export function applyUiScale(pct: number) {
   _scale = clampUiScale(pct) / 100;
   applyToRoot();
   bindResize();
+  // #root の zoom 変更を他コンポーネント（useViewport など）へ通知する。
+  // resize イベントは発生しないため、独自イベントで知らせる。
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("kozou-uiscale-change"));
+  }
 }
 
 function applyToRoot() {
