@@ -588,7 +588,15 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         {/* ── 左: 設定（スクロール）＋ 下部固定の操作帯 ── */}
         <div style={leftColStyle} ref={settingsTopRef}>
           {isNarrow && thumbsReady && (
-            <div style={{ padding: "10px 14px 0" }}>
+            <div
+              style={{
+                padding: "10px 14px",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                background: "var(--c-bg)",
+              }}
+            >
               <JumpButton
                 targetRef={previewTopRef}
                 label={t("common.jump_to_preview")}
@@ -784,7 +792,15 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         {/* ── 右: プレビューペイン ── */}
         <div style={rightColStyle} ref={previewTopRef}>
           {isNarrow && thumbsReady && (
-            <div style={{ paddingBottom: 12 }}>
+            <div
+              style={{
+                paddingBottom: 12,
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                background: "var(--c-bg)",
+              }}
+            >
               <JumpButton
                 targetRef={settingsTopRef}
                 label={t("common.jump_to_settings")}
