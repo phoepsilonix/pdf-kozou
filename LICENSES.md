@@ -91,7 +91,7 @@ MuPDF 1.27.0 の C ソースコードを `mupdf-sys` クレートを通じて静
 
 [Tauri](https://tauri.app/) は Rust 製のクロスプラットフォーム デスクトップアプリケーションフレームワークです。
 フロントエンドに Web 技術 (HTML/CSS/JavaScript) を使い、バックエンドを Rust で実装します。
-Electron と比較してバイナリサイズが小さく、メモリ消費が少ない特徴があります。
+Electron と比較してバイナリサイズが小さく、メモリ消費が少ない傾向があります。
 
 - GitHub: https://github.com/tauri-apps/tauri
 - ライセンス: MIT / Apache-2.0
