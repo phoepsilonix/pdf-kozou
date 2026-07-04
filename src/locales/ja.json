@@ -202,6 +202,8 @@
     "back2": "← 戻る",
     "up": "上へ",
     "down": "下へ",
+    "jump_to_preview": "プレビューを見る",
+    "jump_to_settings": "設定に戻る",
     "pages_suffix": "ページ",
     "files_suffix": "ファイル",
     "need_min_files": "{{min}}ファイル以上必要です",

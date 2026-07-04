@@ -22,6 +22,8 @@ import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "..
 import { PageOrientation } from "../lib/pageSize";
 import { PageHeader, BtnBack, BtnPrimary, Spinner, ErrorView } from "../components/common";
 import { F } from "../lib/theme";
+import { useViewport } from "../hooks/useViewport";
+import { JumpButton } from "../components/JumpNav";
 
 type Props = {
   filePath: string;
@@ -57,6 +59,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const { t } = useI18n();
   const { announceSuccess, announceError, announceScreen, announceKey } = useA11y();
   const isBatch = (batchFiles?.length ?? 0) > 1;
+  const { isNarrow } = useViewport();
+  const settingsTopRef = useRef<HTMLDivElement>(null);
+  const previewTopRef = useRef<HTMLDivElement>(null);
 
   const {
     pageSizeId,
@@ -549,6 +554,25 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     );
   }
 
+  // 狭い画面（スマホ / 縦長に狭めたPCウィンドウ）では設定とプレビューを
+  // 横並びではなく縦積みにする。設定変更は今まで通り即座にプレビューへ
+  // 反映されるため、両方を常にマウントしたままスクロールで行き来する。
+  const mainStyle: React.CSSProperties = isNarrow
+    ? { flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0 }
+    : s.main;
+  const leftColStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", flexDirection: "column", minHeight: 0 }
+    : s.leftCol;
+  const settingsScrollStyle: React.CSSProperties = isNarrow
+    ? { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }
+    : s.settingsScroll;
+  const actionBarStyle: React.CSSProperties = isNarrow
+    ? { ...s.actionBar, position: "sticky", bottom: 0, flexShrink: 0 }
+    : s.actionBar;
+  const rightColStyle: React.CSSProperties = isNarrow
+    ? { minWidth: 0, padding: 18, background: "var(--c-bg)" }
+    : s.rightCol;
+
   return (
     <div style={s.root}>
       <PageHeader>
@@ -560,10 +584,19 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         {!isBatch && <span style={s.sub}>{t("common.pages", { count: String(totalPages) })}</span>}
       </PageHeader>
 
-      <div style={s.main}>
+      <div style={mainStyle}>
         {/* ── 左: 設定（スクロール）＋ 下部固定の操作帯 ── */}
-        <div style={s.leftCol}>
-          <div style={s.settingsScroll}>
+        <div style={leftColStyle} ref={settingsTopRef}>
+          {isNarrow && thumbsReady && (
+            <div style={{ padding: "10px 14px 0" }}>
+              <JumpButton
+                targetRef={previewTopRef}
+                label={t("common.jump_to_preview")}
+                direction="down"
+              />
+            </div>
+          )}
+          <div style={settingsScrollStyle}>
             {/* モード */}
             <section style={s.section}>
               <div style={s.label}>{t("booklet.mode")}</div>
@@ -728,8 +761,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             </section>
           </div>
 
-          {/* 下部固定の操作帯（スクロールしない・常に左下に表示） */}
-          <div style={s.actionBar}>
+          {/* 下部固定の操作帯（横並び時: 常に左下に表示 / 縦積み時: sticky で追随） */}
+          <div style={actionBarStyle}>
             <button
               onClick={buildPreview}
               disabled={totalPages <= 0 || building}
@@ -749,7 +782,16 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         </div>
 
         {/* ── 右: プレビューペイン ── */}
-        <div style={s.rightCol}>
+        <div style={rightColStyle} ref={previewTopRef}>
+          {isNarrow && thumbsReady && (
+            <div style={{ paddingBottom: 12 }}>
+              <JumpButton
+                targetRef={settingsTopRef}
+                label={t("common.jump_to_settings")}
+                direction="up"
+              />
+            </div>
+          )}
           {thumbsReady ? (
             <div style={s.sheetsWrap}>
               {layout.sheets.map((sh, si) => {
@@ -759,8 +801,10 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 const sheetAspect = sPt.w / sPt.h;
                 // プレビュー基準サイズ: 従来(320×220)の1.5倍。
                 // Rotate/ImageExport のプレビューもこのサイズを基準に統一している。
-                const MAX_SHEET_H = 330;
-                const MAX_SHEET_W = 480;
+                // 狭い画面では一般的なスマホ幅（〜390px前後）に収まるよう縮小する
+                // （アスペクト比は維持: 480×330 と同じ比率）。
+                const MAX_SHEET_H = isNarrow ? 210 : 330;
+                const MAX_SHEET_W = isNarrow ? 300 : 480;
                 let W: number, H: number;
                 if (sheetAspect >= MAX_SHEET_W / MAX_SHEET_H) {
                   W = MAX_SHEET_W;

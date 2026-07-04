@@ -202,6 +202,8 @@
     "back2": "← Back",
     "up": "Up",
     "down": "Down",
+    "jump_to_preview": "View preview",
+    "jump_to_settings": "Back to settings",
     "pages_suffix": " pages",
     "files_suffix": " files",
     "need_min_files": "{{min}} or more files required",
