@@ -796,7 +796,8 @@ export default function App() {
                   // width:"100%" のままで安全（潰れ問題は起きない）。
                   // !showOptions（1カラムのみ）の時だけ従来通り固定720pxにする。
                   width: !isNarrow && !showOptions ? 720 : isNarrow ? narrowContentWidth : "100%",
-                  maxWidth: !isNarrow && !showOptions ? 720 : isNarrow ? narrowContentWidth : "100%",
+                  maxWidth:
+                    !isNarrow && !showOptions ? 720 : isNarrow ? narrowContentWidth : "100%",
                   transition: "all 0.3s ease",
                 }}
               >
@@ -905,10 +906,7 @@ export default function App() {
               )}
             </div>
 
-            <div
-              ref={optionsTopRef}
-              style={isNarrow ? { width: narrowContentWidth } : undefined}
-            >
+            <div ref={optionsTopRef} style={isNarrow ? { width: narrowContentWidth } : undefined}>
               {isNarrow && showOptions && (
                 <div style={{ paddingBottom: 8 }}>
                   <JumpButton

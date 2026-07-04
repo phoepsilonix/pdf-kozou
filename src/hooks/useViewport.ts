@@ -62,11 +62,7 @@ export function useViewport() {
 
   const autoIsNarrow = width < NARROW_BREAKPOINT;
   const isNarrow =
-    layoutModeOverride === "narrow"
-      ? true
-      : layoutModeOverride === "wide"
-        ? false
-        : autoIsNarrow;
+    layoutModeOverride === "narrow" ? true : layoutModeOverride === "wide" ? false : autoIsNarrow;
 
   return { isNarrow, width, layoutModeOverride };
 }
