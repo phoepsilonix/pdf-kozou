@@ -3,7 +3,17 @@
 // -------------------------------------------------------------------------
 
 // src/App.tsx
-import { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useMemo,
+  lazy,
+  Suspense,
+  RefObject,
+} from "react";
+
 import { listen } from "@tauri-apps/api/event";
 
 const TrimPage = lazy(() => import("./pages/TrimPage"));

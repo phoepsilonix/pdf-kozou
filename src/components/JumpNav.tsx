@@ -8,7 +8,7 @@
 import type { CSSProperties, RefObject } from "react";
 
 interface JumpButtonProps {
-  targetRef: RefObject<HTMLElement>;
+  targetRef: RefObject<HTMLElement | null>;
   label: string;
   direction: "down" | "up";
 }
