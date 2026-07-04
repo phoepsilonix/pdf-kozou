@@ -54,6 +54,8 @@ import {
 } from "../lib/tauri";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
+import { useViewport } from "../hooks/useViewport";
+import { JumpButton } from "../components/JumpNav";
 
 interface Props {
   filePath: string;
@@ -176,6 +178,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     desc: t(m.descKey as any),
   }));
   const { enabled: previewEnabled } = usePreview("image");
+  const { isNarrow } = useViewport();
+  const settingsTopRef = useRef<HTMLDivElement>(null);
+  const previewTopRef = useRef<HTMLDivElement>(null);
   const total = pdfInfo.page_count;
   console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
   console.log("Image: total(pages)", total);
@@ -1315,6 +1320,23 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     );
   }
   // ─────────── 設定画面 ───────────
+  // 狭い画面（スマホ / 縦長に狭めたPCウィンドウ）では設定とプレビューを縦積みにする。
+  const bodyStyle: React.CSSProperties = isNarrow
+    ? { flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0 }
+    : s.body;
+  const panelStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", flexDirection: "column", minHeight: 0 }
+    : s.panel;
+  const panelScrollStyle: React.CSSProperties = isNarrow
+    ? { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }
+    : s.panelScroll;
+  const actionBarStyle: React.CSSProperties = isNarrow
+    ? { ...s.actionBar, position: "sticky", bottom: 0, flexShrink: 0 }
+    : s.actionBar;
+  const previewWrapStyle: React.CSSProperties = isNarrow
+    ? {}
+    : { flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" };
+
   return (
     <div style={s.root}>
       <PageHeader>
@@ -1338,10 +1360,19 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         </span>
       </PageHeader>
 
-      <div style={s.body}>
+      <div style={bodyStyle}>
         {/* 設定パネル */}
-        <div style={s.panel}>
-          <div style={s.panelScroll}>
+        <div style={panelStyle} ref={settingsTopRef}>
+          {isNarrow && previewEnabled && (
+            <div style={{ padding: "10px 14px 0" }}>
+              <JumpButton
+                targetRef={previewTopRef}
+                label={t("common.jump_to_preview")}
+                direction="down"
+              />
+            </div>
+          )}
+          <div style={panelScrollStyle}>
             <div style={s.secLabel}>フォーマット</div>
             <div style={s.fmtRow}>
               {(["jpeg", "png", "svg"] as const).map((f) => (
@@ -1692,7 +1723,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             )}
           </div>
 
-          <div style={s.actionBar}>
+          <div style={actionBarStyle}>
             <BtnPrimary
               onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
               disabled={conflictPaths.length > 0}
@@ -1723,16 +1754,26 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
 
         {/* プレビューエリア */}
-        <PreviewPane
-          pageKey="image"
-          label={
-            isBatch
-              ? impositionMode !== "1up"
-                ? `${batchFiles!.length}件 — ${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}`
-                : t("image.target_files", { count: String(batchFiles!.length) })
-              : t("common.preview_pages", { count: String(resolvedPageCount) })
-          }
-        >
+        <div style={previewWrapStyle} ref={previewTopRef}>
+          {isNarrow && previewEnabled && (
+            <div style={{ padding: "10px 14px 0" }}>
+              <JumpButton
+                targetRef={settingsTopRef}
+                label={t("common.jump_to_settings")}
+                direction="up"
+              />
+            </div>
+          )}
+          <PreviewPane
+            pageKey="image"
+            label={
+              isBatch
+                ? impositionMode !== "1up"
+                  ? `${batchFiles!.length}件 — ${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}`
+                  : t("image.target_files", { count: String(batchFiles!.length) })
+                : t("common.preview_pages", { count: String(resolvedPageCount) })
+            }
+          >
           {isBatch ? (
             <div style={s.batchFileList}>
               {batchFiles!.map((f, i) => (
@@ -1842,6 +1883,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
           )}
         </PreviewPane>
+        </div>
       </div>
       <LiveRegion message={statusMsg} />
     </div>
@@ -1869,6 +1911,7 @@ function ImpositionPreview({
   pages: string;
 }) {
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   // effectiveTotal: pages指定を反映した実際の対象ページ数
   const sheets = calcSheets(impositionMode, effectiveTotal);
   const modeInfo = {
@@ -1888,7 +1931,8 @@ function ImpositionPreview({
   const repAspect = repPage ? repPage.w / repPage.h : 1 / 1.414;
   // 1ページの短辺サイズ。サイズ変更・製本ページの基準(480×330)と同じ
   // 1.5倍スケールに合わせて 120px → 180px に統一。
-  const PAGE_SHORT_SIDE = 180;
+  // 狭い画面ではサイズ変更・製本ページと同じ比率(0.625倍)で縮小する。
+  const PAGE_SHORT_SIDE = isNarrow ? 112 : 180;
   let PAGE_W: number, PAGE_H: number;
   if (repAspect >= 1) {
     // 横長ページ: 高さが短辺
@@ -1903,7 +1947,7 @@ function ImpositionPreview({
   const CELL_H = PAGE_H;
 
   return (
-    <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
+    <div style={{ padding: 10, overflowY: "auto", overflowX: "auto", width: "100%" }}>
       <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
         {t("image.imposition_preview_header" as any, {
           icon: modeInfo.icon,
@@ -2054,6 +2098,7 @@ function DeImpositionPreview({
   pdfInfo: PdfInfo;
 }) {
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const targetIdx = resolvePageSpec(pages || "", total); // 0始まり
   const sheetIdx = targetIdx.length ? targetIdx : Array.from({ length: total }, (_, i) => i);
 
@@ -2073,15 +2118,16 @@ function DeImpositionPreview({
   const repPb = pdfInfo.pages?.[sheetIdx[0]];
   const repAspect = repPb ? repPb.w / repPb.h : 1.414;
   // プレビュー基準サイズ: サイズ変更・製本ページの基準(480×330)に統一。
-  const MAX_SHEET_H = 330;
-  const MAX_SHEET_W = 480;
+  // 狭い画面では同ページと同じ比率(0.625倍)で縮小する。
+  const MAX_SHEET_H = isNarrow ? 210 : 330;
+  const MAX_SHEET_W = isNarrow ? 300 : 480;
   const repThumbW =
     repAspect >= MAX_SHEET_W / MAX_SHEET_H ? MAX_SHEET_W : Math.round(MAX_SHEET_H * repAspect);
   const repThumbH =
     repAspect >= MAX_SHEET_W / MAX_SHEET_H ? Math.round(MAX_SHEET_W / repAspect) : MAX_SHEET_H;
 
   return (
-    <div style={{ padding: 10, overflowY: "auto", width: "100%" }}>
+    <div style={{ padding: 10, overflowY: "auto", overflowX: "auto", width: "100%" }}>
       <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
         {def.icon} {t(def.labelKey as any)} —{" "}
         {t("image.deimp_page_count" as any, {
