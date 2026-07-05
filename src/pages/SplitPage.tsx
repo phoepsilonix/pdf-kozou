@@ -38,6 +38,9 @@ import { announceValueChange } from "../lib/announce";
 import { FS } from "../lib/typography";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
+import { useViewport } from "../hooks/useViewport";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
 
@@ -68,11 +71,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const [statusMsg, setStatusMsg] = useState("");
   const rangeRef = useRef<HTMLInputElement | null>(null);
   const dirBtnRef = useRef<HTMLButtonElement | null>(null);
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const [overrideMetadata, setOverrideMetadata] = useState<OverrideMeta[] | undefined>(undefined);
+  // 縦積みレイアウト用: 設定パネル⇄プレビューの表示切替とジャンプ
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const settingsTopRef = useRef<HTMLDivElement>(null);
+  const previewTopRef = useRef<HTMLDivElement>(null);
+  const { showingB: showingPreview, toggle: toggleSection } = useSectionToggle(
+    bodyScrollRef,
+    previewTopRef,
+  );
 
   // 現在表示中のファイル（バッチの場合はプレビュー用に切り替え可能）
   const [previewIdx, setPreviewIdx] = useState(0);
@@ -550,6 +562,49 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   // ── 圧縮フェーズ ─────────────────────────────────────────────────────────
   if (phase === "compress") return null; // 分割は複数ファイルのため未対応 (バッチ圧縮を使用)
 
+  // 狭い画面では左パネル（設定）とプレビューを横並びではなく縦積みにする。
+  // 【重要】panel/プレビュー側 は flex-shrink: 0 を明示すること。
+  // 既定値(flex-shrink:1)のままだと column 方向の flex コンテナ(body)の
+  // 可視領域に収めようと両方が圧縮され、内容が重なって見える崩れ方をする。
+  const bodyStyle: React.CSSProperties = isNarrow
+    ? {
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        overflowY: "auto",
+        minHeight: 0,
+        paddingBottom: 56,
+      }
+    : s.body;
+  const panelStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 }
+    : s.panel;
+  const panelScrollStyle: React.CSSProperties = isNarrow
+    ? { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }
+    : s.panelScroll;
+  // プレビュー側(PreviewPane)は狭幅では fill=false にして自然な高さで
+  // 伸ばし、body 全体のスクロールに委ねる（Rotate のページグリッドと同じ方式）。
+  const previewWrapStyle: React.CSSProperties = isNarrow
+    ? { flexShrink: 0, minWidth: 0 }
+    : {
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      };
+
+  const executeBtn = (
+    <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
+      {outDir
+        ? isBatch
+          ? t("split.execute_batch", { count: String(batchFiles!.length) })
+          : t("split.execute", { count: String(groups.length) })
+        : t("common.no_dir_btn")}
+    </BtnPrimary>
+  );
+
   // ── 設定画面 ──────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -569,10 +624,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         </span>
       </PageHeader>
 
-      <div style={s.body}>
+      <div style={bodyStyle} ref={bodyScrollRef}>
         {/* ── 左パネル: 設定 ── */}
-        <div style={s.panel}>
-          <div style={s.panelScroll}>
+        <div style={panelStyle} ref={settingsTopRef}>
+          <div style={panelScrollStyle}>
             <div style={s.secLabel}>{t("split.mode_label")}</div>
             <div style={s.modeList}>
               {(
@@ -899,15 +954,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
           </div>
 
-          <div style={s.actionBar}>
-            <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
-              {outDir
-                ? isBatch
-                  ? t("split.execute_batch", { count: String(batchFiles!.length) })
-                  : t("split.execute", { count: String(groups.length) })
-                : t("common.no_dir_btn")}
-            </BtnPrimary>
-          </div>
+          {/* 実行ボタン欄（横並び時: 左下に常時表示 / 縦積み時: 画面下部の
+              共通固定バー(FixedMobileNav)にのみ表示し、ここには出さない） */}
+          {!isNarrow && <div style={s.actionBar}>{executeBtn}</div>}
 
           {/* メタデータ編集モーダル */}
           {metaEditOpen && (
@@ -944,87 +993,101 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
 
         {/* ── 右: プレビューエリア ── */}
-        <PreviewPane
-          pageKey="split"
-          label={
-            isBatch
-              ? t("split.target_files", { count: String(batchFiles!.length) })
-              : t("split.preview_head", { count: String(groups.length) })
-          }
-        >
-          {isBatch ? (
-            // バッチ: ファイル一覧 + 先頭ページサムネイル
-            <div style={s.batchFileList}>
-              {batchFiles!.map((f, i) => (
-                <div
-                  key={f.id}
-                  style={{ ...s.batchFileItem, ...(i === previewIdx ? s.batchFileItemOn : {}) }}
-                  onClick={() => setPreviewIdx(i)}
-                >
-                  {batchThumbs[i] ? (
-                    <img
-                      src={`data:image/jpeg;base64,${batchThumbs[i]}`}
-                      style={s.batchThumb}
-                      alt=""
-                    />
-                  ) : (
-                    <div style={s.batchThumbPh} />
-                  )}
-                  <div style={s.batchFileInfo}>
-                    <span style={s.batchFileName}>{f.filename}</span>
-                    <span style={s.batchFileMeta}>{f.pageCount}p</span>
-                    <span style={s.batchFileMeta}>
-                      {modeId === "all"
-                        ? t("common.files_arrow", { count: String(f.pageCount) })
-                        : modeId === "every"
-                          ? t("common.files_arrow", {
-                              count: String(Math.ceil(f.pageCount / everyN)),
-                            })
-                          : t("split.select_as_ranges")}
-                    </span>
+        {/* ── 右: プレビューエリア ── */}
+        <div style={previewWrapStyle} ref={previewTopRef}>
+          <PreviewPane
+            pageKey="split"
+            label={
+              isBatch
+                ? t("split.target_files", { count: String(batchFiles!.length) })
+                : t("split.preview_head", { count: String(groups.length) })
+            }
+            fill={!isNarrow}
+          >
+            {isBatch ? (
+              // バッチ: ファイル一覧 + 先頭ページサムネイル
+              <div style={s.batchFileList}>
+                {batchFiles!.map((f, i) => (
+                  <div
+                    key={f.id}
+                    style={{ ...s.batchFileItem, ...(i === previewIdx ? s.batchFileItemOn : {}) }}
+                    onClick={() => setPreviewIdx(i)}
+                  >
+                    {batchThumbs[i] ? (
+                      <img
+                        src={`data:image/jpeg;base64,${batchThumbs[i]}`}
+                        style={s.batchThumb}
+                        alt=""
+                      />
+                    ) : (
+                      <div style={s.batchThumbPh} />
+                    )}
+                    <div style={s.batchFileInfo}>
+                      <span style={s.batchFileName}>{f.filename}</span>
+                      <span style={s.batchFileMeta}>{f.pageCount}p</span>
+                      <span style={s.batchFileMeta}>
+                        {modeId === "all"
+                          ? t("common.files_arrow", { count: String(f.pageCount) })
+                          : modeId === "every"
+                            ? t("common.files_arrow", {
+                                count: String(Math.ceil(f.pageCount / everyN)),
+                              })
+                            : t("split.select_as_ranges")}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            // 単体: グループプレビュー
-            <div style={s.groupList}>
-              {groups.map((pages, gi) => (
-                <div key={gi} style={s.group}>
-                  <div style={s.groupLabel}>
-                    <span style={s.groupNum}>#{gi + 1}</span>
-                    <span style={s.groupPages}>
-                      {t("common.pages", { count: String(pages.length) })}
-                    </span>
-                    <span style={s.groupRange}>
-                      {pages.length === 1
-                        ? `p.${pages[0] + 1}`
-                        : `p.${pages[0] + 1}〜${pages[pages.length - 1] + 1}`}
-                    </span>
+                ))}
+              </div>
+            ) : (
+              // 単体: グループプレビュー
+              <div style={s.groupList}>
+                {groups.map((pages, gi) => (
+                  <div key={gi} style={s.group}>
+                    <div style={s.groupLabel}>
+                      <span style={s.groupNum}>#{gi + 1}</span>
+                      <span style={s.groupPages}>
+                        {t("common.pages", { count: String(pages.length) })}
+                      </span>
+                      <span style={s.groupRange}>
+                        {pages.length === 1
+                          ? `p.${pages[0] + 1}`
+                          : `p.${pages[0] + 1}〜${pages[pages.length - 1] + 1}`}
+                      </span>
+                    </div>
+                    <div style={s.groupThumbs}>
+                      {pages.slice(0, 8).map((pi) => {
+                        const pb = pdfInfo?.pages[pi];
+                        const aspect = pb ? pb.w / pb.h : undefined;
+                        return (
+                          <ThumbCard
+                            key={pi}
+                            b64={thumbs[pi]}
+                            pageNum={pi + 1}
+                            width={70}
+                            aspectRatio={aspect}
+                          />
+                        );
+                      })}
+                      {pages.length > 8 && <div style={s.groupMore}>+{pages.length - 8}</div>}
+                    </div>
                   </div>
-                  <div style={s.groupThumbs}>
-                    {pages.slice(0, 8).map((pi) => {
-                      const pb = pdfInfo?.pages[pi];
-                      const aspect = pb ? pb.w / pb.h : undefined;
-                      return (
-                        <ThumbCard
-                          key={pi}
-                          b64={thumbs[pi]}
-                          pageNum={pi + 1}
-                          width={70}
-                          aspectRatio={aspect}
-                        />
-                      );
-                    })}
-                    {pages.length > 8 && <div style={s.groupMore}>+{pages.length - 8}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </PreviewPane>
+                ))}
+              </div>
+            )}
+          </PreviewPane>
+        </div>
       </div>
       <LiveRegion message={statusMsg} />
+      {isNarrow && (
+        <FixedMobileNav
+          showingSecondSection={showingPreview}
+          onToggle={toggleSection}
+          toSecondLabel={t("common.jump_to_preview")}
+          toFirstLabel={t("common.jump_to_settings")}
+        >
+          {executeBtn}
+        </FixedMobileNav>
+      )}
     </div>
   );
 }
