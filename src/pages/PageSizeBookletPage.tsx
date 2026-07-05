@@ -23,7 +23,8 @@ import { PageOrientation } from "../lib/pageSize";
 import { PageHeader, BtnBack, BtnPrimary, Spinner, ErrorView } from "../components/common";
 import { F } from "../lib/theme";
 import { useViewport } from "../hooks/useViewport";
-import { JumpButton } from "../components/JumpNav";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 
 type Props = {
   filePath: string;
@@ -62,6 +63,11 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const { isNarrow } = useViewport();
   const settingsTopRef = useRef<HTMLDivElement>(null);
   const previewTopRef = useRef<HTMLDivElement>(null);
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+  const { showingB: showingPreview, toggle: toggleSection } = useSectionToggle(
+    mainScrollRef,
+    previewTopRef,
+  );
 
   const {
     pageSizeId,
@@ -564,7 +570,14 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   // 「内容が重なって見える」といった崩れ方をする。overflowY:auto で
   // スクロールさせたいので、各ブロックは常に自然な高さのまま確保する。
   const mainStyle: React.CSSProperties = isNarrow
-    ? { flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0 }
+    ? {
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        overflowY: "auto",
+        minHeight: 0,
+        paddingBottom: 56,
+      }
     : s.main;
   const leftColStyle: React.CSSProperties = isNarrow
     ? { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 }
@@ -590,26 +603,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         {!isBatch && <span style={s.sub}>{t("common.pages", { count: String(totalPages) })}</span>}
       </PageHeader>
 
-      <div style={mainStyle}>
+      <div style={mainStyle} ref={mainScrollRef}>
         {/* ── 左: 設定（スクロール）＋ 下部固定の操作帯 ── */}
         <div style={leftColStyle} ref={settingsTopRef}>
-          {isNarrow && thumbsReady && (
-            <div
-              style={{
-                padding: "10px 14px",
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-                background: "var(--c-bg)",
-              }}
-            >
-              <JumpButton
-                targetRef={previewTopRef}
-                label={t("common.jump_to_preview")}
-                direction="down"
-              />
-            </div>
-          )}
           <div style={settingsScrollStyle}>
             {/* モード */}
             <section style={s.section}>
@@ -775,7 +771,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             </section>
           </div>
 
-          {/* 下部固定の操作帯（横並び時: 常に左下に表示 / 縦積み時: sticky で追随） */}
+          {/* 下部固定の操作帯（横並び時: 常に左下に表示 / 縦積み時: sticky で追随）
+              縦積み時は実行ボタンをここに置かず、画面下部の共通固定バーに1つだけ表示する。 */}
           <div style={actionBarStyle}>
             <button
               onClick={buildPreview}
@@ -784,36 +781,21 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             >
               {building ? t("booklet.preview_loading") : t("booklet.preview")}
             </button>
-            <BtnPrimary
-              onClick={isBatch ? handleBatch : run}
-              disabled={isBatch ? false : totalPages <= 0}
-            >
-              {isBatch
-                ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
-                : t("booklet.run")}
-            </BtnPrimary>
+            {!isNarrow && (
+              <BtnPrimary
+                onClick={isBatch ? handleBatch : run}
+                disabled={isBatch ? false : totalPages <= 0}
+              >
+                {isBatch
+                  ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
+                  : t("booklet.run")}
+              </BtnPrimary>
+            )}
           </div>
         </div>
 
         {/* ── 右: プレビューペイン ── */}
         <div style={rightColStyle} ref={previewTopRef}>
-          {isNarrow && thumbsReady && (
-            <div
-              style={{
-                paddingBottom: 12,
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-                background: "var(--c-bg)",
-              }}
-            >
-              <JumpButton
-                targetRef={settingsTopRef}
-                label={t("common.jump_to_settings")}
-                direction="up"
-              />
-            </div>
-          )}
           {thumbsReady ? (
             <div style={s.sheetsWrap}>
               {layout.sheets.map((sh, si) => {
@@ -885,20 +867,25 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               )}
             </div>
           )}
-          {isNarrow && thumbsReady && (
-            <div style={actionBarStyle}>
-              <BtnPrimary
-                onClick={isBatch ? handleBatch : run}
-                disabled={isBatch ? false : totalPages <= 0}
-              >
-                {isBatch
-                  ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
-                  : t("booklet.run")}
-              </BtnPrimary>
-            </div>
-          )}
         </div>
       </div>
+      {isNarrow && (
+        <FixedMobileNav
+          showingSecondSection={showingPreview}
+          onToggle={toggleSection}
+          toSecondLabel={t("common.jump_to_preview")}
+          toFirstLabel={t("common.jump_to_settings")}
+        >
+          <BtnPrimary
+            onClick={isBatch ? handleBatch : run}
+            disabled={isBatch ? false : totalPages <= 0}
+          >
+            {isBatch
+              ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
+              : t("booklet.run")}
+          </BtnPrimary>
+        </FixedMobileNav>
+      )}
     </div>
   );
 }

@@ -55,7 +55,8 @@ import {
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { useViewport } from "../hooks/useViewport";
-import { JumpButton } from "../components/JumpNav";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 
 interface Props {
   filePath: string;
@@ -181,6 +182,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { isNarrow } = useViewport();
   const settingsTopRef = useRef<HTMLDivElement>(null);
   const previewTopRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const { showingB: showingPreview, toggle: toggleSection } = useSectionToggle(
+    bodyScrollRef,
+    previewTopRef,
+  );
   const total = pdfInfo.page_count;
   console.log("Image: filePath,pdfInfo", filePath, pdfInfo);
   console.log("Image: total(pages)", total);
@@ -1328,7 +1334,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 「領域がほとんど確保できない」といった崩れ方をする。overflowY:auto で
   // スクロールさせたいので、各ブロックは常に自然な高さのまま確保する。
   const bodyStyle: React.CSSProperties = isNarrow
-    ? { flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0 }
+    ? {
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        overflowY: "auto",
+        minHeight: 0,
+        paddingBottom: 56,
+      }
     : s.body;
   const panelStyle: React.CSSProperties = isNarrow
     ? { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 }
@@ -1366,26 +1379,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         </span>
       </PageHeader>
 
-      <div style={bodyStyle}>
+      <div style={bodyStyle} ref={bodyScrollRef}>
         {/* 設定パネル */}
         <div style={panelStyle} ref={settingsTopRef}>
-          {isNarrow && previewEnabled && (
-            <div
-              style={{
-                padding: "10px 14px",
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-                background: "var(--c-bg)",
-              }}
-            >
-              <JumpButton
-                targetRef={previewTopRef}
-                label={t("common.jump_to_preview")}
-                direction="down"
-              />
-            </div>
-          )}
           <div style={panelScrollStyle}>
             <div style={s.secLabel}>フォーマット</div>
             <div style={s.fmtRow}>
@@ -1737,55 +1733,40 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             )}
           </div>
 
-          <div style={actionBarStyle}>
-            <BtnPrimary
-              onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
-              disabled={conflictPaths.length > 0}
-            >
-              {outDir
-                ? isBatch
-                  ? outputMode === "pdf"
-                    ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
-                    : impositionMode !== "1up"
-                      ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
-                      : t("image.execute_batch", { count: String(batchFiles!.length) })
-                  : outputMode === "pdf"
-                    ? t("image.execute_pdf")
-                    : t("image.execute", {
-                        count: String(
-                          impositionMode !== "1up"
-                            ? calcSheets(impositionMode, resolvedPageCount || total).length
-                            : resolvedPageCount,
-                        ),
-                      })
-                : isBatch
-                  ? t("common.no_dir_btn")
-                  : outputMode === "pdf"
-                    ? t("image.execute_pdf")
-                    : t("common.no_dir_btn")}
-            </BtnPrimary>
-          </div>
+          {!isNarrow && (
+            <div style={actionBarStyle}>
+              <BtnPrimary
+                onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
+                disabled={conflictPaths.length > 0}
+              >
+                {outDir
+                  ? isBatch
+                    ? outputMode === "pdf"
+                      ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
+                      : impositionMode !== "1up"
+                        ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
+                        : t("image.execute_batch", { count: String(batchFiles!.length) })
+                    : outputMode === "pdf"
+                      ? t("image.execute_pdf")
+                      : t("image.execute", {
+                          count: String(
+                            impositionMode !== "1up"
+                              ? calcSheets(impositionMode, resolvedPageCount || total).length
+                              : resolvedPageCount,
+                          ),
+                        })
+                  : isBatch
+                    ? t("common.no_dir_btn")
+                    : outputMode === "pdf"
+                      ? t("image.execute_pdf")
+                      : t("common.no_dir_btn")}
+              </BtnPrimary>
+            </div>
+          )}
         </div>
 
         {/* プレビューエリア */}
         <div style={previewWrapStyle} ref={previewTopRef}>
-          {isNarrow && previewEnabled && (
-            <div
-              style={{
-                padding: "10px 14px",
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-                background: "var(--c-bg)",
-              }}
-            >
-              <JumpButton
-                targetRef={settingsTopRef}
-                label={t("common.jump_to_settings")}
-                direction="up"
-              />
-            </div>
-          )}
           <PreviewPane
             pageKey="image"
             label={
@@ -1905,38 +1886,43 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
           )}
         </PreviewPane>
-          {isNarrow && previewEnabled && (
-            <div style={actionBarStyle}>
-              <BtnPrimary
-                onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
-                disabled={conflictPaths.length > 0}
-              >
-                {outDir
-                  ? isBatch
-                    ? outputMode === "pdf"
-                      ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
-                      : impositionMode !== "1up"
-                        ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
-                        : t("image.execute_batch", { count: String(batchFiles!.length) })
-                    : outputMode === "pdf"
-                      ? t("image.execute_pdf")
-                      : t("image.execute", {
-                          count: String(
-                            impositionMode !== "1up"
-                              ? calcSheets(impositionMode, resolvedPageCount || total).length
-                              : resolvedPageCount,
-                          ),
-                        })
-                  : isBatch
-                    ? t("common.no_dir_btn")
-                    : outputMode === "pdf"
-                      ? t("image.execute_pdf")
-                      : t("common.no_dir_btn")}
-              </BtnPrimary>
-            </div>
-          )}
         </div>
       </div>
+      {isNarrow && (
+        <FixedMobileNav
+          showingSecondSection={showingPreview}
+          onToggle={toggleSection}
+          toSecondLabel={t("common.jump_to_preview")}
+          toFirstLabel={t("common.jump_to_settings")}
+        >
+          <BtnPrimary
+            onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
+            disabled={conflictPaths.length > 0}
+          >
+            {outDir
+              ? isBatch
+                ? outputMode === "pdf"
+                  ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
+                  : impositionMode !== "1up"
+                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
+                    : t("image.execute_batch", { count: String(batchFiles!.length) })
+                : outputMode === "pdf"
+                  ? t("image.execute_pdf")
+                  : t("image.execute", {
+                      count: String(
+                        impositionMode !== "1up"
+                          ? calcSheets(impositionMode, resolvedPageCount || total).length
+                          : resolvedPageCount,
+                      ),
+                    })
+              : isBatch
+                ? t("common.no_dir_btn")
+                : outputMode === "pdf"
+                  ? t("image.execute_pdf")
+                  : t("common.no_dir_btn")}
+          </BtnPrimary>
+        </FixedMobileNav>
+      )}
       <LiveRegion message={statusMsg} />
     </div>
   );
