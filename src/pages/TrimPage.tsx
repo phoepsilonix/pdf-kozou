@@ -38,6 +38,8 @@ import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { announceMargins } from "../lib/announce";
+import { useViewport } from "../hooks/useViewport";
+import { JumpButton } from "../components/JumpNav";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
@@ -734,6 +736,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [pageImage, setPageImage] = useState("");
   const [savedPath, setSavedPath] = useState("");
   const [errMsg, setErrMsg] = useState("");
+  const { isNarrow } = useViewport();
+  const canvasTopRef = useRef<HTMLDivElement>(null);
+  const settingsTopRef = useRef<HTMLDivElement>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
   const [tmpPageInfo, setTmpPageInfo] = useState<PdfInfo | null>(null);
@@ -1070,48 +1075,124 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       />
     );
 
-  return (
-    <div style={s.root}>
-      <div style={s.sidebar}>
-        <PreviewPane
-          pageKey="trim"
-          label={t("common.pages", { count: String(pdfInfo.page_count) })}
-        >
-          <div style={s.thumbList}>
-            {Array.from({ length: pdfInfo.page_count }, (_, i) => (
-              <button
-                key={i}
-                style={{
-                  ...s.thumb,
-                  ...(previewPage === i ? s.thumbOn : {}),
-                }}
-                onClick={() => setPreviewPage(i)}
-              >
-                {thumbs[i] ? (
-                  <img
-                    src={`data:image/jpeg;base64,${thumbs[i]}`}
-                    style={s.thumbImg}
-                    alt={`Page ${i + 1}`}
-                  />
-                ) : (
-                  <div style={s.thumbPh}>{t("common.page_placeholder", { n: String(i + 1) })}</div>
-                )}
-                <span style={s.thumbN}>{i + 1}</span>
-              </button>
-            ))}
-          </div>
-        </PreviewPane>
-      </div>
+  // 狭い画面ではページ選択サムネイル一覧を隠し、代わりにヘッダーの◀▶で
+  // ページ切り替えする（バッチモードのページ送りと同じ操作感）。
+  // キャンバス・設定パネルは内部で独自のスクロール/固定操作帯を持つ
+  // コンポーネント（canvasWrap の flex:1、TrimControls の height:100%）
+  // なので、縦積み時もそれぞれに vh ベースの確定した高さを与え、
+  // 内部スクロールの仕組みはそのまま活かす。ページ全体は縦スクロールで
+  // キャンバス側⇔設定側を行き来する。
+  const rootStyle: React.CSSProperties = isNarrow
+    ? {
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflowY: "auto",
+        background: "var(--c-bg)",
+        color: "var(--c-text)",
+        fontFamily: F,
+      }
+    : s.root;
+  const mainStyle: React.CSSProperties = isNarrow
+    ? {
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        padding: "16px 20px",
+        gap: 12,
+        flex: "0 0 auto",
+        height: "55vh",
+        minHeight: 340,
+      }
+    : s.main;
+  const panelStyle: React.CSSProperties = isNarrow
+    ? {
+        width: "100%",
+        flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        height: "45vh",
+        minHeight: 280,
+        borderTop: `1px solid var(--c-border)`,
+      }
+    : s.panel;
 
-      <main style={s.main}>
-        <div style={s.mainHead}>
+  return (
+    <div style={rootStyle}>
+      {!isNarrow && (
+        <div style={s.sidebar}>
+          <PreviewPane
+            pageKey="trim"
+            label={t("common.pages", { count: String(pdfInfo.page_count) })}
+          >
+            <div style={s.thumbList}>
+              {Array.from({ length: pdfInfo.page_count }, (_, i) => (
+                <button
+                  key={i}
+                  style={{
+                    ...s.thumb,
+                    ...(previewPage === i ? s.thumbOn : {}),
+                  }}
+                  onClick={() => setPreviewPage(i)}
+                >
+                  {thumbs[i] ? (
+                    <img
+                      src={`data:image/jpeg;base64,${thumbs[i]}`}
+                      style={s.thumbImg}
+                      alt={`Page ${i + 1}`}
+                    />
+                  ) : (
+                    <div style={s.thumbPh}>{t("common.page_placeholder", { n: String(i + 1) })}</div>
+                  )}
+                  <span style={s.thumbN}>{i + 1}</span>
+                </button>
+              ))}
+            </div>
+          </PreviewPane>
+        </div>
+      )}
+
+      <main style={mainStyle} ref={canvasTopRef}>
+        <div style={{ ...s.mainHead, flexWrap: "wrap" }}>
           <span style={s.mainTitle}>{t("trim.settings_title")}</span>
-          <span style={s.pageInd}>
-            {t("common.page_of", {
-              current: String(previewPage + 1),
-              total: String(pdfInfo.page_count),
-            })}
-          </span>
+          {isNarrow ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                style={{ ...s.zBtn, opacity: previewPage === 0 ? 0.35 : 1 }}
+                disabled={previewPage === 0}
+                onClick={() => setPreviewPage((p) => Math.max(0, p - 1))}
+                title={t("common.prev_page")}
+                aria-label={t("common.prev_page")}
+              >
+                ◀
+              </button>
+              <span style={s.pageInd}>
+                {t("common.page_of", {
+                  current: String(previewPage + 1),
+                  total: String(pdfInfo.page_count),
+                })}
+              </span>
+              <button
+                style={{ ...s.zBtn, opacity: previewPage >= pdfInfo.page_count - 1 ? 0.35 : 1 }}
+                disabled={previewPage >= pdfInfo.page_count - 1}
+                onClick={() =>
+                  setPreviewPage((p) => Math.min(pdfInfo.page_count - 1, p + 1))
+                }
+                title={t("common.next_page")}
+                aria-label={t("common.next_page")}
+              >
+                ▶
+              </button>
+            </div>
+          ) : (
+            <span style={s.pageInd}>
+              {t("common.page_of", {
+                current: String(previewPage + 1),
+                total: String(pdfInfo.page_count),
+              })}
+            </span>
+          )}
           {/* ズームコントロール */}
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
             <button
@@ -1134,6 +1215,13 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             </button>
           </div>
         </div>
+        {isNarrow && (
+          <JumpButton
+            targetRef={settingsTopRef}
+            label={t("common.jump_to_trim_settings")}
+            direction="down"
+          />
+        )}
         <div
           style={{ ...s.canvasWrap, overflow: "auto" }}
           ref={canvasWrapRef}
@@ -1165,28 +1253,45 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         </div>
       </main>
 
-      <aside style={s.panel}>
-        <TrimControls
-          margins={trimMargins}
-          pageW={pageW}
-          pageH={pageH}
-          totalPages={pdfInfo.page_count}
-          onMargins={setTrimMargins} // Zustand 更新
-          trimPages={trimPages}
-          onPages={onPages} // Zustand 更新
-          topInputRef={marginTopRef}
-          rangeInputRef={rangeRef}
-          onApply={handleExecute}
-          onReset={() => setTrimMargins(zero())}
-          processing={phase !== "edit"}
-          excludeSpec={excludeSpec}
-          onExclude={onExclude}
-          extractSpec={extractSpec}
-          onExtract={onExtract}
-          cropCleanup={cropCleanup}
-          onCropCleanupChange={setCropCleanup}
-          showImagePageSize={hasImage([filePath])}
-        />
+      <aside style={panelStyle} ref={settingsTopRef}>
+        {isNarrow && (
+          <div style={{ padding: "10px 14px", flexShrink: 0 }}>
+            <JumpButton
+              targetRef={canvasTopRef}
+              label={t("common.jump_to_canvas")}
+              direction="up"
+            />
+          </div>
+        )}
+        <div
+          style={
+            isNarrow
+              ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+              : undefined
+          }
+        >
+          <TrimControls
+            margins={trimMargins}
+            pageW={pageW}
+            pageH={pageH}
+            totalPages={pdfInfo.page_count}
+            onMargins={setTrimMargins} // Zustand 更新
+            trimPages={trimPages}
+            onPages={onPages} // Zustand 更新
+            topInputRef={marginTopRef}
+            rangeInputRef={rangeRef}
+            onApply={handleExecute}
+            onReset={() => setTrimMargins(zero())}
+            processing={phase !== "edit"}
+            excludeSpec={excludeSpec}
+            onExclude={onExclude}
+            extractSpec={extractSpec}
+            onExtract={onExtract}
+            cropCleanup={cropCleanup}
+            onCropCleanupChange={setCropCleanup}
+            showImagePageSize={hasImage([filePath])}
+          />
+        </div>
       </aside>
       <LiveRegion message={statusMsg} />
     </div>

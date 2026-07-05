@@ -206,6 +206,8 @@
     "jump_to_settings": "Back to settings",
     "jump_to_options": "View conversion settings",
     "jump_to_filelist": "Back to file list",
+    "jump_to_trim_settings": "View settings",
+    "jump_to_canvas": "Back to preview",
     "pages_suffix": " pages",
     "files_suffix": " files",
     "need_min_files": "{{min}} or more files required",
