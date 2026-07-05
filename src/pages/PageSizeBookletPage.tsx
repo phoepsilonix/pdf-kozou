@@ -557,11 +557,17 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   // 狭い画面（スマホ / 縦長に狭めたPCウィンドウ）では設定とプレビューを
   // 横並びではなく縦積みにする。設定変更は今まで通り即座にプレビューへ
   // 反映されるため、両方を常にマウントしたままスクロールで行き来する。
+  //
+  // 【重要】leftCol/rightCol は flex-shrink: 0 を明示すること。
+  // 既定値(flex-shrink:1)のままだと、column方向のflexコンテナ(main)の
+  // 可視領域に収まるよう両方が圧縮され、「設定がプレビューに押し潰される」
+  // 「内容が重なって見える」といった崩れ方をする。overflowY:auto で
+  // スクロールさせたいので、各ブロックは常に自然な高さのまま確保する。
   const mainStyle: React.CSSProperties = isNarrow
     ? { flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0 }
     : s.main;
   const leftColStyle: React.CSSProperties = isNarrow
-    ? { display: "flex", flexDirection: "column", minHeight: 0 }
+    ? { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 }
     : s.leftCol;
   const settingsScrollStyle: React.CSSProperties = isNarrow
     ? { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }
@@ -570,7 +576,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     ? { ...s.actionBar, position: "sticky", bottom: 0, flexShrink: 0 }
     : s.actionBar;
   const rightColStyle: React.CSSProperties = isNarrow
-    ? { minWidth: 0, padding: 18, background: "var(--c-bg)" }
+    ? { minWidth: 0, flexShrink: 0, padding: 18, background: "var(--c-bg)" }
     : s.rightCol;
 
   return (

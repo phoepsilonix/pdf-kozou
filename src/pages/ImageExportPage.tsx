@@ -1321,11 +1321,17 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   }
   // ─────────── 設定画面 ───────────
   // 狭い画面（スマホ / 縦長に狭めたPCウィンドウ）では設定とプレビューを縦積みにする。
+  //
+  // 【重要】panel/previewWrap は flex-shrink: 0 を明示すること。
+  // 既定値(flex-shrink:1)のままだと、column方向のflexコンテナ(body)の
+  // 可視領域に収まるよう両方が圧縮され、「設定とプレビューが重なって見える」
+  // 「領域がほとんど確保できない」といった崩れ方をする。overflowY:auto で
+  // スクロールさせたいので、各ブロックは常に自然な高さのまま確保する。
   const bodyStyle: React.CSSProperties = isNarrow
     ? { flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0 }
     : s.body;
   const panelStyle: React.CSSProperties = isNarrow
-    ? { display: "flex", flexDirection: "column", minHeight: 0 }
+    ? { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 }
     : s.panel;
   const panelScrollStyle: React.CSSProperties = isNarrow
     ? { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }
@@ -1334,7 +1340,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     ? { ...s.actionBar, position: "sticky", bottom: 0, flexShrink: 0 }
     : s.actionBar;
   const previewWrapStyle: React.CSSProperties = isNarrow
-    ? {}
+    ? { flexShrink: 0 }
     : { flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" };
 
   return (
@@ -1364,7 +1370,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         {/* 設定パネル */}
         <div style={panelStyle} ref={settingsTopRef}>
           {isNarrow && previewEnabled && (
-            <div style={{ padding: "10px 14px 0" }}>
+            <div
+              style={{
+                padding: "10px 14px",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                background: "var(--c-bg)",
+              }}
+            >
               <JumpButton
                 targetRef={previewTopRef}
                 label={t("common.jump_to_preview")}
@@ -1756,7 +1770,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         {/* プレビューエリア */}
         <div style={previewWrapStyle} ref={previewTopRef}>
           {isNarrow && previewEnabled && (
-            <div style={{ padding: "10px 14px 0" }}>
+            <div
+              style={{
+                padding: "10px 14px",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                background: "var(--c-bg)",
+              }}
+            >
               <JumpButton
                 targetRef={settingsTopRef}
                 label={t("common.jump_to_settings")}
