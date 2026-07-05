@@ -42,6 +42,7 @@ import { FS } from "../lib/typography";
 import { MetadataEditModal } from "../components/MetadataEditModal";
 import { listen } from "@tauri-apps/api/event";
 import { isMupdfExtension } from "../lib/fileTypes";
+import { useViewport } from "../hooks/useViewport";
 
 interface PdfEntry {
   id: number;
@@ -62,6 +63,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const [statusMsg, setStatusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
 
@@ -549,12 +551,18 @@ useEffect(() => {
           <span style={s.title}>{t("merge.preview_title")}</span>
           <span style={s.sub}>{t("merge.preview_sub", { pages: String(totalPages) })}</span>
           <div style={{ flex: 1 }} />
-          <BtnPrimary onClick={() => handleSave(true)} ariaLabel={t("aria.compress_save_btn")}>
-            {t("merge.save_compress")}
-          </BtnPrimary>
-          <BtnPrimary onClick={() => handleSave(false)} ariaLabel={t("aria.save_btn")}>
-            {t("merge.save")}
-          </BtnPrimary>
+          {/* 狭幅ではヘッダーの複製ボタンは出さず、下の previewFooter だけに委ねる
+              (52px 固定高のヘッダーにタイトル・サブ・ボタン2つを詰めると狭幅で潰れるため)。 */}
+          {!isNarrow && (
+            <>
+              <BtnPrimary onClick={() => handleSave(true)} ariaLabel={t("aria.compress_save_btn")}>
+                {t("merge.save_compress")}
+              </BtnPrimary>
+              <BtnPrimary onClick={() => handleSave(false)} ariaLabel={t("aria.save_btn")}>
+                {t("merge.save")}
+              </BtnPrimary>
+            </>
+          )}
         </PageHeader>
 
         {/* 統合プレビュー: 大枠で「1つのPDF」を強調 */}
@@ -658,6 +666,17 @@ useEffect(() => {
     );
   }
 
+  // 狭幅ではサムネイルを1枚だけに絞って縮小し、ファイル名の表示幅を確保する。
+  // 実行ボタン列は横並びだと3つで幅を取りすぎるため縦積みにする。
+  const thumbCount = isNarrow ? 1 : 3;
+  const thumbWidth = isNarrow ? 44 : 68;
+  const execBtnsStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", flexDirection: "column", gap: 9 }
+    : s.execBtns;
+  const summaryRowStyle: React.CSSProperties = isNarrow
+    ? { ...s.summaryRow, flexWrap: "wrap" }
+    : s.summaryRow;
+
   // ── 編集画面 ─────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -745,7 +764,7 @@ useEffect(() => {
                   <span style={s.itemSeq}>{i + 1}</span>
                   <span style={s.handle}>⣿</span>
                   <div style={s.itemThumbs}>
-                    {entry.thumbs.slice(0, 3).map((b64, ti) => {
+                    {entry.thumbs.slice(0, thumbCount).map((b64, ti) => {
                       const pb = entry.pages?.[ti];
                       const aspect = pb ? pb.w / pb.h : undefined;
                       return (
@@ -753,12 +772,22 @@ useEffect(() => {
                           key={ti}
                           b64={b64}
                           pageNum={ti + 1}
-                          width={68}
+                          width={thumbWidth}
                           aspectRatio={aspect}
                         />
                       );
                     })}
-                    {entry.pageCount > 3 && <div style={s.thumbMore}>+{entry.pageCount - 3}</div>}
+                    {entry.pageCount > thumbCount && (
+                      <div
+                        style={{
+                          ...s.thumbMore,
+                          width: thumbWidth,
+                          height: Math.round(thumbWidth * 1.414),
+                        }}
+                      >
+                        +{entry.pageCount - thumbCount}
+                      </div>
+                    )}
                   </div>
                   <div style={s.itemInfo}>
                     <span style={s.itemName} title={entry.path}>
@@ -851,7 +880,7 @@ useEffect(() => {
                   <PageSizeSelector compact />
                 </div>
               )}
-              <div style={s.summaryRow}>
+              <div style={summaryRowStyle}>
                 <span style={s.sumFile}>
                   {t("common.files", { count: String(entries.length) })}
                 </span>
@@ -862,7 +891,7 @@ useEffect(() => {
                 <span style={s.sumArrow}>→</span>
                 <span style={s.sumOut}>{t("common.file_single")}</span>
               </div>
-              <div style={s.execBtns}>
+              <div style={execBtnsStyle}>
                 <button
                   style={{ ...s.btnPreview, ...(entries.length < 2 ? s.btnDis : {}) }}
                   onClick={handlePreview}
