@@ -32,7 +32,7 @@ export function useSectionToggle(
     // container の可視上端に対する sectionB の相対位置
     const relativeTop = bRect.top - containerRect.top;
     // 少しの余裕を持たせる（ヘッダーや padding の影響を吸収）
-    setShowingB(relativeTop <= 240); // 40 → 240 に緩和
+    setShowingB(relativeTop <= 360); // 40 → 360 に緩和
   }, []);
 
   useEffect(() => {
