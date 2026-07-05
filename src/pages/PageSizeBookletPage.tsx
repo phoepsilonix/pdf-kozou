@@ -885,6 +885,18 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               )}
             </div>
           )}
+          {isNarrow && thumbsReady && (
+            <div style={actionBarStyle}>
+              <BtnPrimary
+                onClick={isBatch ? handleBatch : run}
+                disabled={isBatch ? false : totalPages <= 0}
+              >
+                {isBatch
+                  ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
+                  : t("booklet.run")}
+              </BtnPrimary>
+            </div>
+          )}
         </div>
       </div>
     </div>
