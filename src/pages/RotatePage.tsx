@@ -34,6 +34,9 @@ import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { CompressPage } from "./CompressPage";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
+import { useViewport } from "../hooks/useViewport";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 
 interface Props {
   filePath: string;
@@ -59,12 +62,21 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const [statusMsg, setStatusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const { enabled: previewEnabled } = usePreview("rotate");
   // Ctrl+S からプレビュー画面の doSave を呼ぶための ref
   const saveHandlerRef = useRef<(() => void) | null>(null);
   const compressHandlerRef = useRef<(() => void) | null>(null);
+  // 縦積みレイアウト用: 設定パネル⇄ページグリッドの表示切替とジャンプ
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const settingsTopRef = useRef<HTMLDivElement>(null);
+  const previewTopRef = useRef<HTMLDivElement>(null);
+  const { showingB: showingGrid, toggle: toggleSection } = useSectionToggle(
+    bodyScrollRef,
+    previewTopRef,
+  );
 
   useEffect(() => {
     announceScreen("screen.rotate");
@@ -577,6 +589,50 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       </div>
     );
 
+  // 狭い画面では左パネル（設定）とページグリッドを横並びではなく縦積みにする。
+  // 【重要】panel/rightArea は flex-shrink: 0 を明示すること。
+  // 既定値(flex-shrink:1)のままだと column 方向の flex コンテナ(body)の
+  // 可視領域に収めようと両方が圧縮され、内容が重なって見える崩れ方をする。
+  const bodyStyle: React.CSSProperties = isNarrow
+    ? {
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        overflowY: "auto",
+        minHeight: 0,
+        paddingBottom: 56,
+      }
+    : s.body;
+  const panelStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", flexDirection: "column", flexShrink: 0, minHeight: 0 }
+    : s.panel;
+  const settingsScrollStyle: React.CSSProperties = isNarrow
+    ? { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }
+    : s.settingsScroll;
+  const actionBarStyle: React.CSSProperties = isNarrow
+    ? { ...s.actionBar, position: "sticky", bottom: 0, flexShrink: 0 }
+    : s.actionBar;
+  const rightAreaStyle: React.CSSProperties = isNarrow
+    ? { minWidth: 0, flexShrink: 0, background: "var(--c-bg)" }
+    : s.rightArea;
+  const globalBtnsStyle: React.CSSProperties = isNarrow
+    ? { ...s.globalBtns, gridTemplateColumns: "repeat(2, 1fr)" }
+    : s.globalBtns;
+
+  const executeBtn = isBatch ? (
+    <BtnPrimary onClick={handleExecuteBatch} disabled={changedPages.length === 0}>
+      {outDir
+        ? t("rotate.execute_batch", { count: String(batchFiles!.length) })
+        : t("common.no_dir_btn")}
+    </BtnPrimary>
+  ) : (
+    <BtnPrimary onClick={handleExecuteSingle} disabled={changedPages.length === 0}>
+      {changedPages.length === 0
+        ? t("rotate.no_change")
+        : t("rotate.execute", { count: String(changedPages.length) })}
+    </BtnPrimary>
+  );
+
   // ── 設定画面 ──────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
@@ -630,55 +686,46 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
       )}
 
-      <div style={s.body}>
+      <div style={bodyStyle} ref={bodyScrollRef}>
         {/* 左パネル（対象ページ・個別設定・出力など） */}
-        <div style={s.panel}>
-          {(isBatch ? batchFiles!.some((f) => hasImage([f.filename])) : hasImage([filePath])) && (
-            <div style={{ marginBottom: 12 }}>
+        <div style={panelStyle} ref={settingsTopRef}>
+          <div style={settingsScrollStyle}>
+            {(isBatch ? batchFiles!.some((f) => hasImage([f.filename])) : hasImage([filePath])) && (
               <PageSizeSelector compact />
-            </div>
-          )}
-          <div style={s.secLabel}>{t("rotate.target_pages")}</div>
-          <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} type="1" compact />
+            )}
+            <div style={s.secLabel}>{t("rotate.target_pages")}</div>
+            <PageSelector totalPages={n} value={pageSpec} onChange={setPageSpec} type="1" compact />
 
-          <div style={s.secLabel}>{t("rotate.individual_settings")}</div>
-          <p style={s.hint}>{t("rotate.individual_hint")}</p>
-          <button style={s.resetBtn} onClick={resetAll}>
-            {t("rotate.reset_range")}
-          </button>
+            <div style={s.secLabel}>{t("rotate.individual_settings")}</div>
+            <p style={s.hint}>{t("rotate.individual_hint")}</p>
+            <button style={s.resetBtn} onClick={resetAll}>
+              {t("rotate.reset_range")}
+            </button>
 
-          <div style={{ flex: 1 }} />
-
-          {isBatch ? (
-            <>
-              <div style={s.secLabel}>{t("rotate.output_dir")}</div>
-              <div style={s.dirRow}>
-                <div style={s.dirPath} title={outDir}>
-                  {outDir || t("common.select_dir")}
+            {isBatch && (
+              <>
+                <div style={s.secLabel}>{t("rotate.output_dir")}</div>
+                <div style={s.dirRow}>
+                  <div style={s.dirPath} title={outDir}>
+                    {outDir || t("common.select_dir")}
+                  </div>
+                  <button style={s.dirPickBtn} onClick={pickDir}>
+                    {t("common.browse")}
+                  </button>
                 </div>
-                <button style={s.dirPickBtn} onClick={pickDir}>
-                  {t("common.browse")}
-                </button>
-              </div>
-              <BtnPrimary onClick={handleExecuteBatch} disabled={changedPages.length === 0}>
-                {outDir
-                  ? t("rotate.execute_batch", { count: String(batchFiles!.length) })
-                  : t("common.no_dir_btn")}
-              </BtnPrimary>
-            </>
-          ) : (
-            <BtnPrimary onClick={handleExecuteSingle} disabled={changedPages.length === 0}>
-              {changedPages.length === 0
-                ? t("rotate.no_change")
-                : t("rotate.execute", { count: String(changedPages.length) })}
-            </BtnPrimary>
-          )}
+              </>
+            )}
+          </div>
+
+          {/* 実行ボタン欄（横並び時: 左下に常時表示 / 縦積み時: 画面下部の
+              共通固定バー(FixedMobileNav)にのみ表示し、ここには出さない） */}
+          {!isNarrow && <div style={actionBarStyle}>{executeBtn}</div>}
         </div>
 
         {/* 右側プレビューエリア：一括回転とプレビューを兄弟として並べ、
             右ペイン(rightArea)全体をスクロール対象にする。
             一括回転は PreviewPane の外なのでプレビューのオンオフに影響されない。 */}
-        <div style={s.rightArea}>
+        <div style={rightAreaStyle}>
           {/* 一括回転 */}
           <div style={s.globalBtnsWrapper}>
             <div style={s.secLabel}>
@@ -686,7 +733,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 range: pageSpec.trim() === "" ? t("rotate.all_pages") : t("rotate.selected_range"),
               })}
             </div>
-            <div style={s.globalBtns}>
+            <div style={globalBtnsStyle}>
               {([0, 90, 180, 270] as const).map((deg) => (
                 <button
                   key={deg}
@@ -720,7 +767,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             label={t("common.preview_pages", { count: String(n) })}
             fill={false}
           >
-            <div style={s.grid}>
+            <div style={s.grid} ref={previewTopRef}>
               {Array.from({ length: n }, (_, i) => {
                 const rot = rotations[i] ?? 0;
                 const changed = rot !== 0;
@@ -802,6 +849,16 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
       </div>
       <LiveRegion message={statusMsg} />
+      {isNarrow && (
+        <FixedMobileNav
+          showingSecondSection={showingGrid}
+          onToggle={toggleSection}
+          toSecondLabel={t("common.jump_to_preview")}
+          toFirstLabel={t("common.jump_to_settings")}
+        >
+          {executeBtn}
+        </FixedMobileNav>
+      )}
     </div>
   );
 }
@@ -850,12 +907,24 @@ const s: Record<string, React.CSSProperties> = {
   panel: {
     width: 260,
     flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    borderRight: `1px solid var(--c-border)`,
+  },
+  settingsScroll: {
+    flex: 1,
+    overflowY: "auto",
     padding: "16px",
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    borderRight: `1px solid var(--c-border)`,
-    overflowY: "auto",
+  },
+  actionBar: {
+    flexShrink: 0,
+    padding: "12px 16px",
+    borderTop: `1px solid var(--c-border)`,
+    background: "var(--c-bg)",
   },
   secLabel: {
     fontSize: FS.caption,
