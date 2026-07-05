@@ -40,6 +40,9 @@ interface Props {
   rangeInputRef?: React.RefObject<HTMLInputElement | null>;
   /** 画像入力があるとき、画像用ページサイズ指定を表示する */
   showImagePageSize?: boolean;
+  /** true のとき下部の操作帯(リセット/実行ボタン)を描画しない。
+   * 呼び出し側で共通の固定実行ボタンを別途用意する場合に使う。 */
+  hideActionBar?: boolean;
 }
 
 const PT_TO_MM = 1 / 2.8346;
@@ -70,6 +73,7 @@ export function TrimControls({
   topInputRef,
   rangeInputRef,
   showImagePageSize = false,
+  hideActionBar = false,
 }: Props & {
   topInputRef?: React.RefObject<HTMLInputElement | null>;
   rangeInputRef?: React.RefObject<HTMLInputElement | null>;
@@ -273,7 +277,10 @@ export function TrimControls({
 	*/}
       </div>
 
-      {/* 下部固定の操作帯（スクロールしない・常に最下部に表示） */}
+      {/* 下部固定の操作帯（スクロールしない・常に最下部に表示）
+          hideActionBar=true のときは実行ボタンのみ非表示にする
+          （呼び出し側が共通の固定実行ボタンを別途用意している場合）。
+          リセットは他に導線がないため常に表示する。 */}
       <section style={s.actions}>
         <button
           type="button"
@@ -284,14 +291,18 @@ export function TrimControls({
         >
           {t("trim_controls.reset")}
         </button>
-        <button
-          type="button"
-          style={{ ...s.btnApply, ...(processing ? s.btnDisabled : {}) }}
-          onClick={!outDir && onPickDir ? onPickDir : onApply}
-          disabled={processing}
-        >
-          {processing ? t("trim_controls.processing") : (applyLabel ?? t("trim_controls.preview"))}
-        </button>
+        {!hideActionBar && (
+          <button
+            type="button"
+            style={{ ...s.btnApply, ...(processing ? s.btnDisabled : {}) }}
+            onClick={!outDir && onPickDir ? onPickDir : onApply}
+            disabled={processing}
+          >
+            {processing
+              ? t("trim_controls.processing")
+              : (applyLabel ?? t("trim_controls.preview"))}
+          </button>
+        )}
       </section>
     </div>
   );

@@ -15,7 +15,7 @@ import { buildName, stem, opSuffix } from "../lib/filename";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
-import { Spinner } from "../components/common";
+import { Spinner, BtnPrimary } from "../components/common";
 import {
   getTempPath,
   renderPage,
@@ -39,7 +39,8 @@ import { usePreview } from "../hooks/usePreview";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { announceMargins } from "../lib/announce";
 import { useViewport } from "../hooks/useViewport";
-import { JumpButton } from "../components/JumpNav";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 
 interface Props {
@@ -739,6 +740,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const { isNarrow } = useViewport();
   const canvasTopRef = useRef<HTMLDivElement>(null);
   const settingsTopRef = useRef<HTMLDivElement>(null);
+  const rootScrollRef = useRef<HTMLDivElement>(null);
+  const { showingB: showingSettings, toggle: toggleSection } = useSectionToggle(
+    rootScrollRef,
+    settingsTopRef,
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
   const [tmpPageInfo, setTmpPageInfo] = useState<PdfInfo | null>(null);
@@ -1091,6 +1097,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         background: "var(--c-bg)",
         color: "var(--c-text)",
         fontFamily: F,
+        paddingBottom: 56,
       }
     : s.root;
   const mainStyle: React.CSSProperties = isNarrow
@@ -1119,7 +1126,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     : s.panel;
 
   return (
-    <div style={rootStyle}>
+    <div style={rootStyle} ref={rootScrollRef}>
       {!isNarrow && (
         <div style={s.sidebar}>
           <PreviewPane
@@ -1143,7 +1150,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
                       alt={`Page ${i + 1}`}
                     />
                   ) : (
-                    <div style={s.thumbPh}>{t("common.page_placeholder", { n: String(i + 1) })}</div>
+                    <div style={s.thumbPh}>
+                      {t("common.page_placeholder", { n: String(i + 1) })}
+                    </div>
                   )}
                   <span style={s.thumbN}>{i + 1}</span>
                 </button>
@@ -1176,9 +1185,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               <button
                 style={{ ...s.zBtn, opacity: previewPage >= pdfInfo.page_count - 1 ? 0.35 : 1 }}
                 disabled={previewPage >= pdfInfo.page_count - 1}
-                onClick={() =>
-                  setPreviewPage((p) => Math.min(pdfInfo.page_count - 1, p + 1))
-                }
+                onClick={() => setPreviewPage((p) => Math.min(pdfInfo.page_count - 1, p + 1))}
                 title={t("common.next_page")}
                 aria-label={t("common.next_page")}
               >
@@ -1215,13 +1222,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             </button>
           </div>
         </div>
-        {isNarrow && (
-          <JumpButton
-            targetRef={settingsTopRef}
-            label={t("common.jump_to_trim_settings")}
-            direction="down"
-          />
-        )}
         <div
           style={{ ...s.canvasWrap, overflow: "auto" }}
           ref={canvasWrapRef}
@@ -1254,15 +1254,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       </main>
 
       <aside style={panelStyle} ref={settingsTopRef}>
-        {isNarrow && (
-          <div style={{ padding: "10px 14px", flexShrink: 0 }}>
-            <JumpButton
-              targetRef={canvasTopRef}
-              label={t("common.jump_to_canvas")}
-              direction="up"
-            />
-          </div>
-        )}
         <div
           style={
             isNarrow
@@ -1290,10 +1281,23 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             cropCleanup={cropCleanup}
             onCropCleanupChange={setCropCleanup}
             showImagePageSize={hasImage([filePath])}
+            hideActionBar={isNarrow}
           />
         </div>
       </aside>
       <LiveRegion message={statusMsg} />
+      {isNarrow && (
+        <FixedMobileNav
+          showingSecondSection={showingSettings}
+          onToggle={toggleSection}
+          toSecondLabel={t("common.jump_to_trim_settings")}
+          toFirstLabel={t("common.jump_to_canvas")}
+        >
+          <BtnPrimary onClick={handleExecute} disabled={phase !== "edit"}>
+            {phase !== "edit" ? t("trim_controls.processing") : t("trim_controls.preview")}
+          </BtnPrimary>
+        </FixedMobileNav>
+      )}
     </div>
   );
 }

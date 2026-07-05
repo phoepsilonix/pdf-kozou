@@ -539,6 +539,7 @@ export default function App() {
               justifyContent: "flex-end",
               gap: 8,
               alignItems: "center",
+              zIndex: 20,
               flexShrink: 0,
             }}
           >
@@ -583,7 +584,7 @@ export default function App() {
                 position: "relative",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <img
                   src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
                   style={{ width: "48px", height: "48px", lineHeight: 2, gap: 6, borderRadius: 10 }}
@@ -1173,6 +1174,9 @@ function ToolShell({
   const filename = filePath.split(/[/\\]/).pop() ?? "";
   const batchFiles = isBatch ? toolFiles : undefined;
 
+  const { isNarrow, width: viewportWidth } = useViewport();
+  const { layoutModeOverride, setLayoutModeOverride } = usePdfStore();
+
   // ツール画面でのショートカット（切り替え + ホーム）
   useKeyboardShortcuts({
     "Alt+1": () => {
@@ -1253,6 +1257,7 @@ function ToolShell({
             <A11yControls />
             <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
             <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
+            <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
           </div>
         </div>
         <div style={sh.navTabs}>
@@ -1350,7 +1355,7 @@ const s: Record<string, React.CSSProperties> = {
   logo: {
     fontSize: "52px",
     fontWeight: 800,
-    height: "68px",
+    height: "80px",
     lineHeight: "80px",
     color: "var(--c-text)",
     padding: "8pt",

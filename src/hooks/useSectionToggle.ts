@@ -11,7 +11,8 @@
 // 「今どちらを見ているか」を都度スクロールのたびに正確に把握したいのと、
 // 2セクションしかない単純なケースでは閾値調整が不要でわかりやすいため。
 
-import { useEffect, useState, type RefObject } from "react";
+// hooks/useSectionToggle.ts
+import { useEffect, useState, useCallback, type RefObject } from "react";
 
 export function useSectionToggle(
   scrollContainerRef: RefObject<HTMLElement | null>,
@@ -19,34 +20,54 @@ export function useSectionToggle(
 ) {
   const [showingB, setShowingB] = useState(false);
 
-  useEffect(() => {
+  const update = useCallback(() => {
     const container = scrollContainerRef.current;
     const sectionB = sectionBRef.current;
     if (!container || !sectionB) return;
 
-    const update = () => {
-      const containerTop = container.getBoundingClientRect().top;
-      const bTop = sectionB.getBoundingClientRect().top;
-      // 数px の誤差を許容
-      setShowingB(bTop - containerTop <= 8);
-    };
-    update();
-    container.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
+    // より信頼できる相対位置計算（scrollTop + offset）
+    const containerRect = container.getBoundingClientRect();
+    const bRect = sectionB.getBoundingClientRect();
+
+    // container の可視上端に対する sectionB の相対位置
+    const relativeTop = bRect.top - containerRect.top;
+    // 少しの余裕を持たせる（ヘッダーや padding の影響を吸収）
+    setShowingB(relativeTop <= 240); // 40 → 240 に緩和
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    update(); // 初回
+
+    const rafUpdate = () => requestAnimationFrame(update);
+    container.addEventListener("scroll", rafUpdate, { passive: true });
+    window.addEventListener("resize", rafUpdate);
+
+    // コンテンツ高さ変化を捕捉（MutationObserver）
+    const observer = new MutationObserver(rafUpdate);
+    observer.observe(container, { childList: true, subtree: true });
+
     return () => {
-      container.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
+      container.removeEventListener("scroll", rafUpdate);
+      window.removeEventListener("resize", rafUpdate);
+      observer.disconnect();
     };
-  });
+  }, [update]);
 
   const scrollToA = () => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
+
   const scrollToB = () => {
-    sectionBRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    sectionBRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
   const toggle = () => (showingB ? scrollToA() : scrollToB());
 
-  return { showingB, toggle };
+  return { showingB, toggle, forceUpdate: update };
 }

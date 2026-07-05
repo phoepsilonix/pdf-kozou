@@ -1777,115 +1777,116 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 : t("common.preview_pages", { count: String(resolvedPageCount) })
             }
           >
-          {isBatch ? (
-            <div style={s.batchFileList}>
-              {batchFiles!.map((f, i) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  style={{
-                    ...s.batchFileItem,
-                    ...(i === previewIdx ? s.batchFileItemOn : {}),
-                    appearance: "none",
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    width: "100%", // 推奨: リスト項目として横幅を広げる
-                    outline: "none", // フォーカス時の枠を消す（任意）
-                  }}
-                  onClick={(e) => {
-                    setPreviewIdx(i);
-                    (e.currentTarget as HTMLButtonElement).blur();
-                  }}
-                >
-                  {batchThumbs[i] ? (
-                    <img
-                      src={`data:image/jpeg;base64,${batchThumbs[i]}`}
-                      style={s.batchThumb}
-                      alt=""
-                    />
-                  ) : (
-                    <div style={s.batchThumbPh} />
-                  )}
-                  <div style={s.batchFileInfo}>
-                    <span style={s.batchFileName}>{f.filename}</span>
-                    <span style={s.batchFileMeta}>
-                      {t("common.pages", { count: String(f.pageCount) })}
-                    </span>
-                    <span style={s.batchFileMeta}>
-                      {outputMode === "pdf"
-                        ? t("image.result_suffix_pdf", {
-                            pages: String(
-                              resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount,
-                            ),
-                          })
-                        : impositionMode !== "1up"
-                          ? (() => {
-                              const fEff =
-                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
-                                f.pageCount ||
-                                0;
-                              const fSheets = calcSheets(impositionMode, fEff).length;
-                              const mInfo = IMPOSITION_MODES_I18N.find(
-                                (m) => m.id === impositionMode,
-                              )!;
-                              return t("image.imposition_batch_mode_sheets" as any, {
-                                icon: mInfo.icon,
-                                mode: mInfo.label,
-                                sheets: String(fSheets),
-                              });
-                            })()
-                          : t("image.result_suffix", {
+            {isBatch ? (
+              <div style={s.batchFileList}>
+                {batchFiles!.map((f, i) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    style={{
+                      ...s.batchFileItem,
+                      ...(i === previewIdx ? s.batchFileItemOn : {}),
+                      appearance: "none",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      width: "100%", // 推奨: リスト項目として横幅を広げる
+                      outline: "none", // フォーカス時の枠を消す（任意）
+                    }}
+                    onClick={(e) => {
+                      setPreviewIdx(i);
+                      (e.currentTarget as HTMLButtonElement).blur();
+                    }}
+                  >
+                    {batchThumbs[i] ? (
+                      <img
+                        src={`data:image/jpeg;base64,${batchThumbs[i]}`}
+                        style={s.batchThumb}
+                        alt=""
+                      />
+                    ) : (
+                      <div style={s.batchThumbPh} />
+                    )}
+                    <div style={s.batchFileInfo}>
+                      <span style={s.batchFileName}>{f.filename}</span>
+                      <span style={s.batchFileMeta}>
+                        {t("common.pages", { count: String(f.pageCount) })}
+                      </span>
+                      <span style={s.batchFileMeta}>
+                        {outputMode === "pdf"
+                          ? t("image.result_suffix_pdf", {
                               pages: String(
                                 resolvePageSpec(pages || "", f.pageCount || 0).length ||
                                   f.pageCount,
                               ),
-                              format: format === "jpeg" ? "JPG" : format.toUpperCase(),
-                            })}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : processDir === "deimpose" ? (
-            /* 面付け解除プレビュー: 各入力シートを分割線付きで表示 */
-            <DeImpositionPreview
-              def={DE_IMPOSITION_MODE_DEFS[deimpIndex]}
-              total={total}
-              pages={pages}
-              thumbs={thumbs}
-              pdfInfo={pdfInfo}
-            />
-          ) : impositionMode !== "1up" ? (
-            /* 面付けプレビュー: 合成済みサムネイルを表示 */
-            <ImpositionPreview
-              impositionMode={impositionMode}
-              total={total}
-              effectiveTotal={resolvedPageCount || total}
-              thumbs={thumbs}
-              pdfInfo={pdfInfo}
-              pages={pages}
-            />
-          ) : (
-            <div style={s.thumbGrid}>
-              {resolvePageSpec(pages || "", total).map((i) => {
-                const pb = pdfInfo.pages?.[i];
-                const aspect = pb ? pb.w / pb.h : undefined;
-                return (
-                  <ThumbCard
-                    key={i}
-                    b64={thumbs[i]}
-                    pageNum={i + 1}
-                    width={195}
-                    aspectRatio={aspect}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </PreviewPane>
+                            })
+                          : impositionMode !== "1up"
+                            ? (() => {
+                                const fEff =
+                                  resolvePageSpec(pages || "", f.pageCount || 0).length ||
+                                  f.pageCount ||
+                                  0;
+                                const fSheets = calcSheets(impositionMode, fEff).length;
+                                const mInfo = IMPOSITION_MODES_I18N.find(
+                                  (m) => m.id === impositionMode,
+                                )!;
+                                return t("image.imposition_batch_mode_sheets" as any, {
+                                  icon: mInfo.icon,
+                                  mode: mInfo.label,
+                                  sheets: String(fSheets),
+                                });
+                              })()
+                            : t("image.result_suffix", {
+                                pages: String(
+                                  resolvePageSpec(pages || "", f.pageCount || 0).length ||
+                                    f.pageCount,
+                                ),
+                                format: format === "jpeg" ? "JPG" : format.toUpperCase(),
+                              })}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : processDir === "deimpose" ? (
+              /* 面付け解除プレビュー: 各入力シートを分割線付きで表示 */
+              <DeImpositionPreview
+                def={DE_IMPOSITION_MODE_DEFS[deimpIndex]}
+                total={total}
+                pages={pages}
+                thumbs={thumbs}
+                pdfInfo={pdfInfo}
+              />
+            ) : impositionMode !== "1up" ? (
+              /* 面付けプレビュー: 合成済みサムネイルを表示 */
+              <ImpositionPreview
+                impositionMode={impositionMode}
+                total={total}
+                effectiveTotal={resolvedPageCount || total}
+                thumbs={thumbs}
+                pdfInfo={pdfInfo}
+                pages={pages}
+              />
+            ) : (
+              <div style={s.thumbGrid}>
+                {resolvePageSpec(pages || "", total).map((i) => {
+                  const pb = pdfInfo.pages?.[i];
+                  const aspect = pb ? pb.w / pb.h : undefined;
+                  return (
+                    <ThumbCard
+                      key={i}
+                      b64={thumbs[i]}
+                      pageNum={i + 1}
+                      width={195}
+                      aspectRatio={aspect}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </PreviewPane>
         </div>
       </div>
       {isNarrow && (
