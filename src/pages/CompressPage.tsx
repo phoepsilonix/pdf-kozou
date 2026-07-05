@@ -34,6 +34,7 @@ import { buildName, appendName, stem } from "../lib/filename";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { Spinner } from "../components/common";
+import { useViewport } from "../hooks/useViewport";
 
 interface Props {
   filePath: string;
@@ -150,6 +151,7 @@ export function CompressPage({
   const { pickSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const [statusMsg, setStatusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const [savedFilePath, setSavedFilePath] = useState<string | null>(null);
@@ -739,6 +741,42 @@ export function CompressPage({
     const gain = pct > 0;
     const p = result.params_used; // 原本の変数定義
 
+    // 狭幅時は「サムネイル → 統計/保存」の縦積みにし、統計側は列幅ではなく
+    // 画面幅いっぱいまで広げる（保存ボタン群がサムネイル脇の細い列に押し込まれる
+    // のを避けるため）。
+    const resultBodyStyle: React.CSSProperties = isNarrow
+      ? {
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          gap: 20,
+          padding: "18px 20px 24px",
+          overflow: "auto",
+        }
+      : c.resultBody;
+    const prevColStyle: React.CSSProperties = isNarrow
+      ? { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, flexShrink: 0 }
+      : c.prevCol;
+    const statsColStyle: React.CSSProperties = isNarrow
+      ? { display: "flex", flexDirection: "column", gap: 14, minWidth: 0, width: "100%" }
+      : c.statsCol;
+    const prevImgStyle: React.CSSProperties = isNarrow
+      ? { ...c.prevImg, maxWidth: 220, maxHeight: 300 }
+      : c.prevImg;
+
+    // 保存ボタン行: 文書情報の編集（保存後のみ）+ 圧縮せず保存 + 圧縮して保存。
+    // 横幅が十分なら1行、狭ければ「編集ボタン単独の行」+「保存2ボタンの行」の
+    // 2段に分ける。
+    const saveBtnRowStyle: React.CSSProperties = isNarrow
+      ? { display: "flex", flexDirection: "column", gap: 10 }
+      : { display: "flex", gap: 10, alignItems: "stretch" };
+    const saveBtnPairStyle: React.CSSProperties = isNarrow
+      ? { display: "flex", gap: 10 }
+      : { display: "flex", gap: 10, flex: 1 };
+    const metaEditBtnStyle: React.CSSProperties = isNarrow
+      ? { ...c.btnMetaEdit, width: "100%", flex: "0 0 auto" }
+      : { ...c.btnMetaEdit, flex: "0 0 200px" };
+
     return (
       <div style={c.root}>
         <div style={c.header}>
@@ -754,15 +792,15 @@ export function CompressPage({
           </button>
           <span style={c.title}>{t("compress.result_title")}</span>
         </div>
-        <div style={c.resultBody}>
-          <div style={c.prevCol}>
+        <div style={resultBodyStyle}>
+          <div style={prevColStyle}>
             {preview ? (
-              <img src={`data:image/jpeg;base64,${preview}`} style={c.prevImg} alt="preview" />
+              <img src={`data:image/jpeg;base64,${preview}`} style={prevImgStyle} alt="preview" />
             ) : (
               <div style={c.prevPh}>{t("compress.preview_none")}</div>
             )}
           </div>
-          <div style={c.statsCol}>
+          <div style={statsColStyle}>
             <div style={{ ...c.statBig, color: gain ? "var(--c-green)" : "var(--c-err)" }}>
               {gain ? `−${pct}%` : `+${Math.abs(pct)}%`}
             </div>
@@ -866,7 +904,7 @@ export function CompressPage({
             )}
 
             <div style={c.saveChoiceBox}>
-              {savedFilePath ? (
+              {savedFilePath && (
                 <>
                   <div
                     style={{
@@ -899,28 +937,23 @@ export function CompressPage({
                   >
                     {savedFilePath}
                   </div>
-                  <div style={c.saveChoiceBtns}>
-                    <button
-                      style={c.btnMetaEdit}
-                      onClick={() => setMetaEditOpen(true)}
-                      aria-label={t("meta_edit.title")}
-                    >
-                      ✏️ {t("meta_edit.title")}
-                    </button>
-                    <button
-                      style={c.btnBack}
-                      onClick={() => {
-                        setSavedFilePath(null);
-                        setTmpFile("");
-                        setPhase("edit");
-                      }}
-                    >
-                      {t("common.back")}
-                    </button>
-                  </div>
                 </>
-              ) : (
-                <div style={c.saveChoiceBtns}>
+              )}
+              {/* 保存ボタンは保存後も残す（別の場所へ再保存できるように）。
+                  文書情報の編集は、保存が完了して編集対象のパスができてから
+                  その左側に加わる形にし、常時「編集＋保存2種」が並ぶ構成にする。
+                  幅が足りない場合は編集ボタンの行を折り返す。 */}
+              <div style={saveBtnRowStyle}>
+                {savedFilePath && (
+                  <button
+                    style={metaEditBtnStyle}
+                    onClick={() => setMetaEditOpen(true)}
+                    aria-label={t("meta_edit.title")}
+                  >
+                    ✏️ {t("meta_edit.title")}
+                  </button>
+                )}
+                <div style={saveBtnPairStyle}>
                   <button style={c.btnSaveOriginal} onClick={handleSaveOriginal} disabled={saving}>
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
@@ -948,7 +981,7 @@ export function CompressPage({
                     </div>
                   </button>
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
@@ -964,9 +997,19 @@ export function CompressPage({
   }
 
   const fname = inputFile.split(/[/\\]/).pop() ?? "";
+  // 設定画面ヘッダー: 「タイトル/ファイル名」の行と「GS/MuPDF切替・連携解除・
+  // ページ数」の行を分け、狭幅では後者を丸ごと折り返して2段にする。
+  // 広い画面では従来通り1行に収まる（挙動を変えない）。
+  const headerStyle: React.CSSProperties = isNarrow
+    ? { ...c.header, flexWrap: "wrap", rowGap: 8 }
+    : c.header;
+  const headerControlsStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, width: "100%" }
+    : { display: "flex", alignItems: "center", gap: 12, flex: 1 };
+
   return (
     <div style={c.root}>
-      <div style={c.header}>
+      <div style={headerStyle}>
         {onBack && (
           <button style={c.backBtn} onClick={onBack}>
             {t("compress.back_to_source")}
@@ -980,69 +1023,70 @@ export function CompressPage({
           <span style={c.chainBadge}>{t("compress.chain_badge")}</span>
         )}
 
-        {gsAvailable && (
-          <div style={{ display: "flex", gap: 4, marginLeft: 16 }}>
+        <div style={headerControlsStyle}>
+          {gsAvailable && (
+            <div style={{ display: "flex", gap: 4 }}>
+              <button
+                style={{
+                  padding: "2px 10px",
+                  fontSize: FS.caption,
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  border: "1px solid var(--c-borderHi)",
+                  background: !useGs ? "var(--c-accentBg)" : "transparent",
+                  color: !useGs ? "#000" : "var(--c-textSub)",
+                  fontFamily: F,
+                }}
+                aria-pressed={!useGs}
+                onClick={() => setUseGs(false)}
+              >
+                {t("compress.standard_mupdf")}
+              </button>
+              <button
+                style={{
+                  padding: "2px 10px",
+                  fontSize: FS.caption,
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  border: "1px solid var(--c-borderHi)",
+                  background: useGs ? "var(--c-accentBg)" : "transparent",
+                  color: useGs ? "#000" : "var(--c-textSub)",
+                  fontFamily: F,
+                }}
+                aria-pressed={useGs}
+                onClick={() => setUseGs(true)}
+              >
+                {t("compress.pro_gs")}
+              </button>
+            </div>
+          )}
+
+          {/* 圧縮内で再連携(GS↔MuPDF)した場合のみ、その連携を解除するリセットを表示。
+              連携元(trim/rotate 等)へ戻るには上の「戻る」ボタンを使う。 */}
+          {currentSource !== (sourceFile ?? filePath) && (
             <button
               style={{
-                padding: "2px 10px",
+                padding: "4px 10px",
                 fontSize: FS.caption,
                 borderRadius: 4,
+                background: "var(--c-errBg)",
+                color: "var(--c-err)",
+                border: "1px solid var(--c-errBd)",
                 cursor: "pointer",
-                border: "1px solid var(--c-borderHi)",
-                background: !useGs ? "var(--c-accentBg)" : "transparent",
-                color: !useGs ? "#000" : "var(--c-textSub)",
                 fontFamily: F,
               }}
-              aria-pressed={!useGs}
-              onClick={() => setUseGs(false)}
+              onClick={handleResetSource}
             >
-              {t("compress.standard_mupdf")}
+              {t("compress.reset_chain")}
             </button>
-            <button
-              style={{
-                padding: "2px 10px",
-                fontSize: FS.caption,
-                borderRadius: 4,
-                cursor: "pointer",
-                border: "1px solid var(--c-borderHi)",
-                background: useGs ? "var(--c-accentBg)" : "transparent",
-                color: useGs ? "#000" : "var(--c-textSub)",
-                fontFamily: F,
-              }}
-              aria-pressed={useGs}
-              onClick={() => setUseGs(true)}
-            >
-              {t("compress.pro_gs")}
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* 圧縮内で再連携(GS↔MuPDF)した場合のみ、その連携を解除するリセットを表示。
-            連携元(trim/rotate 等)へ戻るには上の「戻る」ボタンを使う。 */}
-        {currentSource !== (sourceFile ?? filePath) && (
-          <button
-            style={{
-              marginLeft: 12,
-              padding: "4px 10px",
-              fontSize: FS.caption,
-              borderRadius: 4,
-              background: "var(--c-errBg)",
-              color: "var(--c-err)",
-              border: "1px solid var(--c-errBd)",
-              cursor: "pointer",
-              fontFamily: F,
-            }}
-            onClick={handleResetSource}
-          >
-            {t("compress.reset_chain")}
-          </button>
-        )}
-
-        <div style={{ flex: 1 }} />
-        <span style={c.fileSub} title={fname}>
-          {fname}
-        </span>
-        <span style={c.pageSub}>{t("common.pages", { count: String(pdfInfo.page_count) })}</span>
+          <div style={{ flex: 1 }} />
+          <span style={c.fileSub} title={fname}>
+            {fname}
+          </span>
+          <span style={c.pageSub}>{t("common.pages", { count: String(pdfInfo.page_count) })}</span>
+        </div>
       </div>
 
       <div style={c.scrollArea}>
@@ -1249,7 +1293,12 @@ const c: Record<string, React.CSSProperties> = {
   scrollArea: { flex: 1, overflowY: "auto", minHeight: 0 },
   presetGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(4,1fr)",
+    // "1fr" だけだとグリッドトラックの既定の最小サイズ(auto = 内容の最小幅)
+    // により、内容(アイコン/ラベル/説明文)の実寸より狭くならず、窓を狭めても
+    // 横スクロールが出てカードが縮まない。minmax(0,1fr) にして 0 まで縮められる
+    // ようにすることで、狭幅では文字が折り返して縦長のカードになり、
+    // 縦積みレイアウトに正しく追従する。
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 14,
     padding: "24px 22px 0",
   },
