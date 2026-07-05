@@ -32,6 +32,7 @@ import { useI18n } from "../lib/i18n";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useViewport } from "../hooks/useViewport";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 const THUMB_DPI = 52;
@@ -653,6 +654,7 @@ function InfoDrawer({
   onMetaSaved?: () => void;
 }) {
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const [allCopied, setAllCopied] = useState(false);
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const meta: PdfMetadata = info?.metadata ?? {};
@@ -708,6 +710,7 @@ function InfoDrawer({
     <div
       style={{
         ...ds.drawer,
+        width: isNarrow ? "88vw" : ds.drawer.width,
         transform: open ? "translateX(0)" : "translateX(100%)",
         pointerEvents: open ? "auto" : "none",
       }}
@@ -1038,6 +1041,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   };
   const { announceScreen, announceKey, announce } = useA11y();
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
 
   // 画面表示時の読み上げ
   useEffect(() => {
@@ -1066,7 +1070,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const [showSearch, setShowSearch] = useState(false);
   const [viewPage, setViewPage] = useState(0);
   const [total, setTotal] = useState(0);
-  const [zoom, setZoom] = useState(1.0);
+  const [zoom, setZoom] = useState(isNarrow ? 0.5 : 1.0);
   // 左ペインで選択中ページが変わったら「何ページ目か」を読み上げる
   usePageAnnouncer(viewPage, total);
 
@@ -1392,7 +1396,52 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
   if (!activeInfo && !mainLoading) return <Spinner label={t("viewer.loading")} />;
   const fname = activePath.split(/[/\\]/).pop() ?? "";
-  const THUMB_W = 104;
+  const THUMB_W = isNarrow ? 72 : 104;
+
+  // 狭い画面では「ファイル選択ペイン → ページ選択ペイン → 表示ペイン」を
+  // 横並びではなく縦に積む。ファイル一覧・サムネイルは件数次第で際限なく
+  // 長くなり得るため、Trim 等の設定フォームと違い外側の共通スクロールには
+  // 委ねず、各ペイン自身に上限の高さを持たせて内部スクロールのままにする
+  // (表示ペインへ辿り着くために毎回ファイル一覧全体を読み飛ばさずに済むように)。
+  const bodyStyle: React.CSSProperties = isNarrow
+    ? { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }
+    : s.body;
+  const filePaneStyle: React.CSSProperties = isNarrow
+    ? {
+        ...s.filePane,
+        width: "100%",
+        flexShrink: 0,
+        maxHeight: 180,
+        borderRight: "none",
+        borderBottom: "1px solid var(--c-border)",
+      }
+    : s.filePane;
+  const thumbPaneStyle: React.CSSProperties = isNarrow
+    ? {
+        flexShrink: 0,
+        maxHeight: 128,
+        borderRight: "none",
+        borderBottom: "1px solid var(--c-border)",
+        overflow: "hidden",
+      }
+    : s.thumbPane;
+  // サムネイル一覧そのものは、狭幅では縦一列ではなく横スクロールの
+  // フィルムストリップにする（ページ選択ペインは横幅いっぱいになるため）。
+  const thumbListStyle: React.CSSProperties | undefined = isNarrow
+    ? { display: "flex", flexDirection: "row", gap: 10, overflowX: "auto", padding: "10px" }
+    : undefined;
+  const thumbItemStyle: React.CSSProperties = isNarrow
+    ? { ...s.thumbItem, marginBottom: 0, flexShrink: 0 }
+    : s.thumbItem;
+  const paneCollapsedBarStyle: React.CSSProperties = isNarrow
+    ? {
+        ...s.paneCollapsedBar,
+        width: "100%",
+        height: 26,
+        borderRight: "none",
+        borderBottom: "1px solid var(--c-border)",
+      }
+    : s.paneCollapsedBar;
 
   // 表示サイズ（zoom を直接サイズに反映して transform: scale を使わない）
   // → Linux WebKitGTK で transform: scale 内のテキスト選択座標がずれる問題を回避
@@ -1424,27 +1473,29 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         >
           ℹ
         </button>
-        <div style={s.zoomRow}>
-          <button
-            style={s.zBtn}
-            onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
-          >
-            −
-          </button>
-          <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
-          <button
-            style={s.zBtn}
-            onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.25).toFixed(2)))}
-          >
-            ＋
-          </button>
-          <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
-            100%
-          </button>
-          <button style={s.zBtnSm} onClick={() => setZoom(1.5)}>
-            150%
-          </button>
-        </div>
+        {isNarrow || (
+          <div style={s.zoomRow}>
+            <button
+              style={s.zBtn}
+              onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
+            >
+              −
+            </button>
+            <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
+            <button
+              style={s.zBtn}
+              onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.25).toFixed(2)))}
+            >
+              ＋
+            </button>
+            <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
+              100%
+            </button>
+            <button style={s.zBtnSm} onClick={() => setZoom(1.5)}>
+              150%
+            </button>
+          </div>
+        )}
       </PageHeader>
 
       {showSearch && (
@@ -1471,20 +1522,20 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         />
       )}
 
-      <div style={s.body}>
+      <div style={bodyStyle}>
         {/* 左ペイン（ファイル一覧） */}
         {isMulti &&
           (filePaneCollapsed ? (
             <button
-              style={s.paneCollapsedBar}
+              style={paneCollapsedBarStyle}
               onClick={toggleFilePane}
               title={t("common.pane_files", { count: String(fileList.length) })}
               aria-label={t("common.pane_files", { count: String(fileList.length) })}
             >
-              ▶
+              {isNarrow ? "▼" : "▶"}
             </button>
           ) : (
-            <div style={s.filePane}>
+            <div style={filePaneStyle}>
               <div style={s.paneHead}>
                 <span style={{ flex: 1 }}>
                   {t("common.pane_files", { count: String(fileList.length) })}
@@ -1495,7 +1546,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                   title={t("common.collapse_pane")}
                   aria-label={t("common.collapse_pane")}
                 >
-                  ◀
+                  {isNarrow ? "▲" : "◀"}
                 </button>
               </div>
               <div style={{ flex: 1, overflowY: "auto" }}>
@@ -1536,72 +1587,73 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           ))}
 
         {/* サムネイルペイン */}
-        {thumbPaneCollapsed ? (
-          <button
-            style={s.paneCollapsedBar}
-            onClick={toggleThumbPane}
-            title={`${viewPage + 1} / ${total}`}
-            aria-label={t("common.expand_pane")}
-          >
-            ▶
-          </button>
-        ) : (
-          <div style={s.thumbPane}>
-            <div style={s.paneHead}>
-              <span style={{ flex: 1 }}>
-                {viewPage + 1} / {total}
-              </span>
-              <button
-                style={s.paneCollapseBtn}
-                onClick={toggleThumbPane}
-                title={t("common.collapse_pane")}
-                aria-label={t("common.collapse_pane")}
-              >
-                ◀
-              </button>
-            </div>
-            <div>
-              {Array.from({ length: total }, (_, i) => {
-                const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
-                return (
-                  <button
-                    key={i}
-                    style={{ ...s.thumbItem, ...(i === viewPage ? s.thumbItemOn : {}) }}
-                    onClick={() => setViewPage(i)}
-                  >
-                    <div
-                      style={{
-                        width: THUMB_W,
-                        height: th,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        overflow: "hidden",
-                        background: "var(--c-bg)",
-                        borderRadius: 2,
-                      }}
+        {isNarrow ||
+          (thumbPaneCollapsed ? (
+            <button
+              style={paneCollapsedBarStyle}
+              onClick={toggleThumbPane}
+              title={`${viewPage + 1} / ${total}`}
+              aria-label={t("common.expand_pane")}
+            >
+              {isNarrow ? "▼" : "▶"}
+            </button>
+          ) : (
+            <div style={thumbPaneStyle}>
+              <div style={s.paneHead}>
+                <span style={{ flex: 1 }}>
+                  {viewPage + 1} / {total}
+                </span>
+                <button
+                  style={s.paneCollapseBtn}
+                  onClick={toggleThumbPane}
+                  title={t("common.collapse_pane")}
+                  aria-label={t("common.collapse_pane")}
+                >
+                  {isNarrow ? "▲" : "◀"}
+                </button>
+              </div>
+              <div style={thumbListStyle}>
+                {Array.from({ length: total }, (_, i) => {
+                  const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
+                  return (
+                    <button
+                      key={i}
+                      style={{ ...thumbItemStyle, ...(i === viewPage ? s.thumbItemOn : {}) }}
+                      onClick={() => setViewPage(i)}
                     >
-                      {thumbs[i] ? (
-                        <img
-                          src={`data:image/jpeg;base64,${thumbs[i]}`}
-                          style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain" }}
-                          alt=""
-                        />
-                      ) : (
-                        <div
-                          style={{ width: THUMB_W, height: th, background: "var(--c-border)" }}
-                        />
-                      )}
-                    </div>
-                    <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>
-                      {i + 1}
-                    </span>
-                  </button>
-                );
-              })}
+                      <div
+                        style={{
+                          width: THUMB_W,
+                          height: th,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          background: "var(--c-bg)",
+                          borderRadius: 2,
+                        }}
+                      >
+                        {thumbs[i] ? (
+                          <img
+                            src={`data:image/jpeg;base64,${thumbs[i]}`}
+                            style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain" }}
+                            alt=""
+                          />
+                        ) : (
+                          <div
+                            style={{ width: THUMB_W, height: th, background: "var(--c-border)" }}
+                          />
+                        )}
+                      </div>
+                      <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>
+                        {i + 1}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          ))}
 
         {/* メインビュー + ドロワー */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
@@ -1685,6 +1737,29 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
             {/* ページナビ */}
             <div style={s.pageNav}>
+              {isNarrow && (
+                <div style={s.zoomRow}>
+                  <button
+                    style={s.zBtn}
+                    onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
+                  >
+                    −
+                  </button>
+                  <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
+                  <button
+                    style={s.zBtn}
+                    onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.25).toFixed(2)))}
+                  >
+                    ＋
+                  </button>
+                  <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
+                    100%
+                  </button>
+                  <button style={s.zBtnSm} onClick={() => setZoom(1.5)}>
+                    150%
+                  </button>
+                </div>
+              )}
               <button
                 style={s.navBtn}
                 onClick={() => setViewPage((p) => Math.max(0, p - 1))}
