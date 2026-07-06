@@ -16,12 +16,12 @@ on:
       skip_android:
         description: 'Androidビルドをスキップ'
         required: false
-        default: 'false'
+        default: 'true'
         type: boolean
       skip_ios:
         description: 'iOSビルドをスキップ'
         required: false
-        default: 'false'
+        default: 'true'
         type: boolean
 
 permissions:
@@ -635,7 +635,7 @@ jobs:
   # Android
   # ===========================================================================
   build-android:
-    if: ${{ github.event.inputs.skip_android != 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_android != 'true' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7.0.0
@@ -745,7 +745,7 @@ jobs:
   # iOS
   # ===========================================================================
   build-ios:
-    if: ${{ github.event.inputs.skip_ios != 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ios != 'true' }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7.0.0
@@ -847,6 +847,7 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
+        continue-on-error: true # アーティファクトが存在しない場合の対策
         with:
           path: ./dist # すべての成果物を dist フォルダに集約
 
