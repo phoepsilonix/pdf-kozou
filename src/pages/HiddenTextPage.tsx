@@ -27,6 +27,7 @@ import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { type FileEntry } from "../store/usePdfStore";
+import { useViewport } from "../hooks/useViewport";
 
 // ── 型定義 ─────────────────────────────────────────────────────────────────
 
@@ -269,6 +270,7 @@ export function HiddenTextPage({
 
 function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey as any) }));
   const [enabled, setEnabled] = useState<Set<DetectType>>(
     new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
@@ -280,6 +282,24 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
   const [skipType3, setSkipType3] = useState(false);
+
+  // 狭い画面では左(設定/進捗/サマリー)と右(ファイル一覧/ログ)を
+  // 横並びではなく縦積みにする。左側は元々自身で overflowY:auto を
+  // 持つ設定フォームなので、狭幅では幅いっぱいにしつつ高さの上限を
+  // 設けて内部スクロールのままにし、残りを右側(flex:1)に譲る。
+  const layoutStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", flex: 1, flexDirection: "column", overflow: "hidden", minHeight: 0 }
+    : s.layout;
+  const leftStyle: React.CSSProperties = isNarrow
+    ? {
+        ...s.left,
+        width: "100%",
+        maxHeight: "42vh",
+        borderRight: "none",
+        borderBottom: "1px solid var(--c-border)",
+      }
+    : s.left;
+  const rightStyle: React.CSSProperties = isNarrow ? { ...s.right, minHeight: 0 } : s.right;
 
   const pickDir = useCallback(async (): Promise<string | null> => {
     try {
@@ -382,9 +402,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <span style={s.title}>{t("hidden.title_batch")}</span>
         </PageHeader>
         <BatchBanner />
-        <div style={s.layout}>
+        <div style={layoutStyle}>
           {/* 左: 進捗情報 */}
-          <div style={s.left}>
+          <div style={leftStyle}>
             <div style={s.sec}>
               <div style={s.secTitle}>{t("hidden.batch_processing")}</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: "var(--c-accent)" }}>
@@ -420,8 +440,17 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             </div>
           </div>
           {/* 右: ログ */}
-          <div style={s.right}>
-            <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+          <div style={rightStyle}>
+            <div
+              style={{
+                padding: 12,
+                overflowY: "auto",
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
               {progress.done.map((d, i) => (
                 <div key={i} style={s.logRow}>
                   <span style={{ color: "var(--c-accent)", flexShrink: 0 }}>✓</span>
@@ -448,20 +477,20 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <span style={s.title}>{t("hidden.title_batch")}</span>
         </PageHeader>
         <BatchBanner />
-        <div style={s.layout}>
+        <div style={layoutStyle}>
           {/* 左: サマリー */}
-          <div style={s.left}>
+          <div style={leftStyle}>
             <div style={s.sec}>
               <div style={s.secTitle}>{t("hidden.batch_done")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: FS.label }}>
-                <div style={{ color: "#10b981" }}>
+                <div style={{ color: "var(--c-accent)" }}>
                   {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
                 </div>
                 <div style={{ color: "var(--c-textDim)" }}>
                   {t("hidden.batch_skipped" as any, { count: String(skipped) })}
                 </div>
                 {progress.errors.length > 0 && (
-                  <div style={{ color: "#ef4444" }}>
+                  <div style={{ color: "var(--c-err)" }}>
                     {t("hidden.batch_errors" as any, { count: String(progress.errors.length) })}
                   </div>
                 )}
@@ -478,17 +507,19 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             </button>
           </div>
           {/* 右: 詳細リスト */}
-          <div style={s.right}>
-            <div style={{ overflowY: "auto", flex: 1 }}>
+          <div style={rightStyle}>
+            <div
+              style={{
+                overflowY: "auto",
+                flex: 1,
+                padding: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
               {progress.done.map((d, i) => (
-                <div
-                  key={i}
-                  style={{
-                    ...s.logRow,
-                    borderBottom: "1px solid var(--c-border)",
-                    padding: "6px 12px",
-                  }}
-                >
+                <div key={i} style={s.logRow}>
                   <span
                     style={{
                       color: d.hits > 0 ? "var(--c-accent)" : "var(--c-textDim)",
@@ -510,14 +541,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   key={`e${i}`}
                   style={{
                     ...s.logRow,
-                    color: "#ef4444",
-                    borderBottom: "1px solid var(--c-border)",
-                    padding: "6px 12px",
+                    borderColor: "var(--c-errBd)",
+                    background: "var(--c-errBg)",
                   }}
                 >
-                  <span style={{ flexShrink: 0 }}>✗</span>
-                  <span style={s.logFile}>{e.file}</span>
-                  <span style={s.logMeta}>{e.msg.slice(0, 60)}</span>
+                  <span style={{ flexShrink: 0, color: "var(--c-err)" }}>✗</span>
+                  <span style={{ ...s.logFile, color: "var(--c-err)" }}>{e.file}</span>
+                  <span style={{ ...s.logMeta, color: "var(--c-err)" }}>{e.msg.slice(0, 60)}</span>
                 </div>
               ))}
             </div>
@@ -534,9 +564,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         <span style={s.title}>{t("hidden.title_batch")}</span>
       </PageHeader>
       <BatchBanner />
-      <div style={s.layout}>
+      <div style={layoutStyle}>
         {/* 左: 設定・実行 */}
-        <div style={s.left}>
+        <div style={leftStyle}>
           {/* 検出タイプ */}
           <div style={s.sec}>
             <div style={s.secTitle}>検出タイプ</div>
@@ -649,7 +679,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         </div>
 
         {/* 右: ファイルリスト */}
-        <div style={s.right}>
+        <div style={rightStyle}>
           <div
             style={{
               padding: "8px 12px",
@@ -712,6 +742,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
 
 function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
   const { t } = useI18n();
+  const { isNarrow } = useViewport();
   const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey as any) }));
   const [pageIndex, setPageIndex] = useState(0);
   const [allPagesMode, setAllPagesMode] = useState(false);
@@ -732,6 +763,25 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const { pickSave } = useSaveDialog();
   const { announceSuccess, announceError, announceKey } = useA11y();
   const [skipType3, setSkipType3] = useState(true);
+
+  // BatchView と同様、狭幅では左(設定)/右(プレビュー+検出結果)を
+  // 縦積みにする。
+  const layoutStyle: React.CSSProperties = isNarrow
+    ? { display: "flex", flex: 1, flexDirection: "column", overflow: "hidden", minHeight: 0 }
+    : s.layout;
+  const leftStyle: React.CSSProperties = isNarrow
+    ? {
+        ...s.left,
+        width: "100%",
+        maxHeight: "42vh",
+        borderRight: "none",
+        borderBottom: "1px solid var(--c-border)",
+      }
+    : s.left;
+  const rightStyle: React.CSSProperties = isNarrow ? { ...s.right, minHeight: 0 } : s.right;
+  const groupListStyle: React.CSSProperties = isNarrow
+    ? { ...s.groupList, height: 160 }
+    : s.groupList;
 
   const pageCount = pdfInfo.page_count;
   const pageInfo = pdfInfo.pages?.[pageIndex];
@@ -962,9 +1012,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         <span style={s.title}>{t("hidden.title_single")}</span>
       </PageHeader>
       <SingleBanner />
-      <div style={s.layout}>
+      <div style={layoutStyle}>
         {/* 左パネル */}
-        <div style={s.left}>
+        <div style={leftStyle}>
           <div style={s.sec}>
             <div style={s.secTitle}>ページ</div>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -1125,7 +1175,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         </div>
 
         {/* 右パネル */}
-        <div style={s.right}>
+        <div style={rightStyle}>
           <div style={s.preview}>
             {imgSrc ? (
               <div style={{ position: "relative", display: "inline-block" }}>
@@ -1185,7 +1235,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             )}
           </div>
           {groups.length > 0 && (
-            <div style={s.groupList}>
+            <div style={groupListStyle}>
               {/* Type3フォント検出時の注記 */}
               {/*
 		      groups.some((g) => g.chars.some((c) => c.isType3)) && (
@@ -1700,16 +1750,30 @@ const s: Record<string, React.CSSProperties> = {
     gap: 4,
     alignSelf: "flex-start" as const,
   },
-  logRow: { display: "flex", alignItems: "center", gap: 8, fontSize: FS.body, padding: "4px 0" },
+  // Rotate/Split/Merge のバッチ結果ログと同じ見た目・色合いに揃える。
+  // 従来は logFile が flex:1 で伸びていたため、ファイル名と保存先の
+  // 間(→の後ろ)が窓幅いっぱいに間延びして見えていた。flex を外し
+  // baseline 揃え+flexWrap にすることで、ファイル名のすぐ後ろに
+  // 保存先が続く自然な並びになる。
+  logRow: {
+    display: "flex",
+    alignItems: "baseline",
+    flexWrap: "wrap" as const,
+    gap: "2px 8px",
+    fontSize: FS.body,
+    padding: "6px 10px",
+    background: "var(--c-bgCard)",
+    borderRadius: 6,
+    border: "1px solid var(--c-border)",
+  },
   logFile: {
     fontSize: FS.caption,
-    color: "var(--c-textSub)",
-    flex: 1,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    color: "var(--c-textDim)",
+    wordBreak: "break-all" as const,
   },
   logMeta: {
-    fontSize: FS.caption,
+    fontSize: FS.small,
+    fontWeight: 700,
     color: "var(--c-text)",
     wordBreak: "break-all" as const,
   },
