@@ -123,6 +123,33 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [zoom, setZoom] = useState(0.75);
   const [canvasWidth, setCanvasWidth] = useState(CANVAS_W_DEFAULT);
   const roRef = useRef<ResizeObserver | null>(null);
+  const { isNarrow } = useViewport();
+  // ファイル切り替えペインは（ビューワーと同じく）手動で閉じられるように
+  // し、狭幅ではページ切り替え(キャンバス)の上側に積む。設定は端末に
+  // 永続化し、次回起動時も維持する。
+  const [filePaneCollapsed, setFilePaneCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("pdf-kozou-trimbatch-filepane-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleFilePane = () => {
+    setFilePaneCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("pdf-kozou-trimbatch-filepane-collapsed", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  };
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const canvasTopRef = useRef<HTMLDivElement>(null);
+  const settingsTopRef = useRef<HTMLDivElement>(null);
+  const { showingB: showingSettings, toggle: toggleSection } = useSectionToggle(
+    bodyScrollRef,
+    settingsTopRef,
+  );
 
   const currentPage = firstPdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
   const pageW = currentPage.w;
@@ -404,17 +431,98 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const curW = curPageInfo?.pages[previewPage]?.w ?? 595;
   const curH = curPageInfo?.pages[previewPage]?.h ?? 842;
 
-  return (
-    <div
-      style={{
+  // 狭い画面では「ファイル切り替え(上)→キャンバス→設定パネル」の縦積みに
+  // する。ファイル切り替えペインは(閉じていなければ)幅いっぱい・高さ上限
+  // (42vh)で自身のスクロールのまま、キャンバス/設定パネルは単体トリムの
+  // 狭幅レイアウトと同じく vh ベースの高さを与える。
+  const rootNarrowStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    overflowY: "auto",
+    background: "var(--c-bg)",
+    color: "var(--c-text)",
+    fontFamily: F,
+    paddingBottom: 56,
+  };
+  const filePaneStyle: React.CSSProperties = isNarrow
+    ? {
+        width: "100%",
+        flexShrink: 0,
+        maxHeight: "42vh",
+        borderRight: "none",
+        borderBottom: "1px solid var(--c-border)",
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        background: "var(--c-bg)",
-        color: "var(--c-text)",
-        fontFamily: F,
         overflow: "hidden",
-      }}
+      }
+    : {
+        width: 172,
+        flexShrink: 0,
+        borderRight: `1px solid var(--c-border)`,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      };
+  const filePaneCollapsedBarStyle: React.CSSProperties = isNarrow
+    ? {
+        width: "100%",
+        height: 26,
+        flexShrink: 0,
+        border: "none",
+        borderBottom: "1px solid var(--c-border)",
+        background: "var(--c-bgCard)",
+        color: "var(--c-textSub)",
+        fontSize: FS.caption,
+        cursor: "pointer",
+      }
+    : {
+        width: 18,
+        flexShrink: 0,
+        border: "none",
+        borderRight: "1px solid var(--c-border)",
+        background: "var(--c-bgCard)",
+        color: "var(--c-textSub)",
+        fontSize: FS.caption,
+        cursor: "pointer",
+      };
+  const mainNarrowStyle: React.CSSProperties = {
+    flex: "0 0 auto",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    padding: "16px 20px",
+    gap: 12,
+    height: "55vh",
+    minHeight: 340,
+  };
+  const panelNarrowStyle: React.CSSProperties = {
+    width: "100%",
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    height: "45vh",
+    minHeight: 280,
+    borderTop: `1px solid var(--c-border)`,
+  };
+
+  return (
+    <div
+      style={
+        isNarrow
+          ? rootNarrowStyle
+          : {
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+              background: "var(--c-bg)",
+              color: "var(--c-text)",
+              fontFamily: F,
+              overflow: "hidden",
+            }
+      }
+      ref={bodyScrollRef}
     >
       {/* ヘッダー */}
       <div
@@ -434,61 +542,84 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       </div>
 
       {/* 本体 */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* 左: ファイル一覧 */}
-        <div
-          style={{
-            width: 172,
-            flexShrink: 0,
-            borderRight: `1px solid var(--c-border)`,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "8px 12px",
-              fontSize: FS.caption,
-              color: "var(--c-textDim)",
-              borderBottom: `1px solid var(--c-border)`,
-              background: "var(--c-bgCard)",
-            }}
+      <div
+        style={
+          isNarrow
+            ? { display: "flex", flexDirection: "column", overflow: "visible" }
+            : { flex: 1, display: "flex", overflow: "hidden" }
+        }
+      >
+        {/* ファイル一覧（ビューワーと同じく手動で閉じられる。狭幅では
+            ページ切り替え(キャンバス)の上側に積む） */}
+        {filePaneCollapsed ? (
+          <button
+            style={filePaneCollapsedBarStyle}
+            onClick={toggleFilePane}
+            title={t("trim.preview_target")}
+            aria-label={t("trim.preview_target")}
           >
-            {t("trim.preview_target")}
-          </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            {files.map((f, i) => (
+            {isNarrow ? "▼" : "▶"}
+          </button>
+        ) : (
+          <div style={filePaneStyle}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                fontSize: FS.caption,
+                color: "var(--c-textDim)",
+                borderBottom: `1px solid var(--c-border)`,
+                background: "var(--c-bgCard)",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ flex: 1 }}>{t("trim.preview_target")}</span>
               <button
-                key={f.id}
                 style={{
-                  ...s.thumb,
-                  ...(previewIdx === i ? s.thumbOn : {}),
+                  background: "none",
+                  border: "none",
+                  color: "var(--c-textSub)",
+                  cursor: "pointer",
+                  fontSize: FS.caption,
+                  padding: "2px 4px",
                 }}
-                onClick={() => setPreviewIdx(i)}
+                onClick={toggleFilePane}
+                title={t("common.collapse_pane")}
+                aria-label={t("common.collapse_pane")}
               >
-                {batchThumbs[i] ? (
-                  <img src={`data:image/jpeg;base64,${batchThumbs[i]}`} style={s.thumbImg} alt="" />
-                ) : (
-                  <div style={s.thumbPh} />
-                )}
-                <span style={s.thumbN}>{f.filename}</span>
+                {isNarrow ? "▲" : "◀"}
               </button>
-            ))}
+            </div>
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {files.map((f, i) => (
+                <button
+                  key={f.id}
+                  style={{
+                    ...s.thumb,
+                    ...(previewIdx === i ? s.thumbOn : {}),
+                  }}
+                  onClick={() => setPreviewIdx(i)}
+                >
+                  {batchThumbs[i] ? (
+                    <img
+                      src={`data:image/jpeg;base64,${batchThumbs[i]}`}
+                      style={s.thumbImg}
+                      alt=""
+                    />
+                  ) : (
+                    <div style={s.thumbPh} />
+                  )}
+                  <span style={s.thumbN}>{f.filename}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 中央: キャンバス */}
-        <main
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            padding: "16px 20px",
-            gap: 12,
-          }}
-        >
+        <main style={isNarrow ? mainNarrowStyle : s.main} ref={canvasTopRef}>
           {/* ズーム + ページナビゲーション */}
           <div
             style={{
@@ -561,9 +692,11 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             >
               ▶
             </button>
-            <span style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginLeft: 4 }}>
-              {t("trim.scroll_hint")}
-            </span>
+            {!isNarrow && (
+              <span style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginLeft: 4 }}>
+                {t("trim.scroll_hint")}
+              </span>
+            )}
           </div>
           <div
             style={{ ...s.canvasWrap, overflow: "auto" }}
@@ -606,33 +739,61 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         </main>
 
         {/* 右: コントロール */}
-        <aside style={s.panel}>
-          <TrimControls
-            margins={trimMargins}
-            pageW={curW}
-            pageH={curH}
-            trimPages={trimPages}
-            onPages={onPages}
-            totalPages={curPages}
-            onMargins={setTrimMargins}
-            onApply={handleExecute}
-            onReset={() => setTrimMargins(zero())}
-            processing={phase !== "edit"}
-            applyLabel={
-              outDir
-                ? t("trim.apply_label", { count: String(files.length) })
-                : t("trim.no_dir_apply")
+        <aside style={isNarrow ? panelNarrowStyle : s.panel} ref={settingsTopRef}>
+          <div
+            style={
+              isNarrow
+                ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+                : undefined
             }
-            outDir={outDir}
-            onPickDir={pickDir}
-            excludeSpec={excludeSpec}
-            onExclude={onExclude}
-            extractSpec={extractSpec}
-            onExtract={onExtract}
-            showImagePageSize={files.some((f) => hasImage([f.filename]))}
-          />
+          >
+            <TrimControls
+              margins={trimMargins}
+              pageW={curW}
+              pageH={curH}
+              trimPages={trimPages}
+              onPages={onPages}
+              totalPages={curPages}
+              onMargins={setTrimMargins}
+              onApply={handleExecute}
+              onReset={() => setTrimMargins(zero())}
+              processing={phase !== "edit"}
+              applyLabel={
+                outDir
+                  ? t("trim.apply_label", { count: String(files.length) })
+                  : t("trim.no_dir_apply")
+              }
+              outDir={outDir}
+              onPickDir={pickDir}
+              excludeSpec={excludeSpec}
+              onExclude={onExclude}
+              extractSpec={extractSpec}
+              onExtract={onExtract}
+              showImagePageSize={files.some((f) => hasImage([f.filename]))}
+              hideActionBar={isNarrow}
+            />
+          </div>
         </aside>
       </div>
+      {isNarrow && (
+        <FixedMobileNav
+          showingSecondSection={showingSettings}
+          onToggle={toggleSection}
+          toSecondLabel={t("common.jump_to_trim_settings")}
+          toFirstLabel={t("common.jump_to_canvas")}
+        >
+          <BtnPrimary
+            onClick={() => (!outDir ? pickDir() : handleExecute())}
+            disabled={phase !== "edit"}
+          >
+            {phase !== "edit"
+              ? t("trim_controls.processing")
+              : outDir
+                ? t("trim.apply_label", { count: String(files.length) })
+                : t("trim.no_dir_apply")}
+          </BtnPrimary>
+        </FixedMobileNav>
+      )}
     </div>
   );
 }
