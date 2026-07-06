@@ -740,13 +740,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
 
         {/* 右: コントロール */}
         <aside style={isNarrow ? panelNarrowStyle : s.panel} ref={settingsTopRef}>
-          <div
-            style={
-              isNarrow
-                ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
-                : undefined
-            }
-          >
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <TrimControls
               margins={trimMargins}
               pageW={curW}
@@ -1415,13 +1409,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       </main>
 
       <aside style={panelStyle} ref={settingsTopRef}>
-        <div
-          style={
-            isNarrow
-              ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
-              : undefined
-          }
-        >
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <TrimControls
             margins={trimMargins}
             pageW={pageW}
@@ -1744,8 +1732,15 @@ const s: Record<string, React.CSSProperties> = {
   },
   panel: {
     display: "flex",
+    flexDirection: "column",
     width: 280,
     flexShrink: 0,
+    // 横並び時も height を明示しておく。row方向のフレックスコンテナ(root)
+    // 直下で align-items のストレッチ任せにすると、WebKitGTK環境では
+    // 子要素(TrimControlsの height:100%)への高さ伝播が不安定になり、
+    // 内部スクロール(overflowY:auto)が働かずスクロールバーが出ないことが
+    // あるため、明示的に 100% を指定して確実に高さを確定させる。
+    height: "100%",
     borderLeft: `1px solid var(--c-border)`,
   },
 
