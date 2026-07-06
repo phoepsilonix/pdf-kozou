@@ -15,6 +15,7 @@ path = "src/main.rs"
 [lib]
 name      = "pdf_kozou_core"
 crate-type = ["rlib", "staticlib"]
+#crate-type = ["staticlib", "cdylib", "rlib"]`
 
 [package.metadata.cross.target.x86_64-pc-windows-gnu]
 # MinGW 専用：DLL エクスポート抑制
