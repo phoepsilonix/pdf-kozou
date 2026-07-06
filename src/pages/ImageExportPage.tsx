@@ -21,6 +21,7 @@ import {
   exportImages,
   exportImagePdf,
   checkPathConflict,
+  getPdfInfo,
   type PdfInfo,
   type ImageFormat,
   joinPath,
@@ -354,6 +355,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [previewIdx, setPreviewIdx] = useState(0);
+  // 選択中バッチファイルの詳細プレビュー(単体と同じ面付け/面付け解除の
+  // 合成プレビューを見せるために必要な、全ページのサムネイルとPdfInfo)。
+  const [batchPreviewInfo, setBatchPreviewInfo] = useState<PdfInfo | null>(null);
+  const [batchPreviewThumbs, setBatchPreviewThumbs] = useState<(string | undefined)[]>([]);
+  // ファイル一覧側の表紙サムネイルは、ファイル数が多いバッチだと生成に
+  // 時間がかかりメモリも食うため、先頭 BATCH_LIST_THUMB_LIMIT 件までに
+  // 限定する（それ以降はプレースホルダーのまま。選択すれば下の詳細
+  // プレビューで全ページを確認できるので実用上困らない）。
+  const BATCH_LIST_THUMB_LIMIT = 40;
 
   // 単体: サムネイル（プレビュー有効時のみ）
   useEffect(() => {
@@ -386,7 +396,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     };
   }, [filePath, isBatch, previewEnabled]);
 
-  // バッチ: 先頭ページサムネイル（プレビュー有効時のみ）
+  // バッチ: ファイル一覧の表紙サムネイル（先頭ページのみ・件数上限あり）
   useEffect(() => {
     if (!isBatch || !batchFiles) return;
     if (!previewEnabled) {
@@ -396,7 +406,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     let cancelled = false;
     setBatchThumbs(new Array(batchFiles.length).fill(undefined));
     (async () => {
-      for (let i = 0; i < batchFiles.length; i++) {
+      const limit = Math.min(batchFiles.length, BATCH_LIST_THUMB_LIMIT);
+      for (let i = 0; i < limit; i++) {
         try {
           const b64 = await renderPage(batchFiles[i].path, 0, THUMB_DPI, {
             layoutW: convertLayoutW,
@@ -416,6 +427,59 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       cancelled = true;
     };
   }, [isBatch, batchFiles, previewEnabled]);
+
+  // バッチ: 選択中ファイルの詳細プレビュー（単体と同じ面付け/面付け解除の
+  // 合成プレビュー用に、選択ファイルの PdfInfo と全ページサムネイルを取得）。
+  // previewIdx の切り替え・レイアウト設定(禁則/文字送り等)の変更に追従する。
+  // 面付け/製本モードそのものの切り替えはクライアント側の合成表示なので
+  // ここでの再取得は不要（単体プレビューと同じ仕組み）。
+  useEffect(() => {
+    if (!isBatch || !batchFiles || !batchFiles[previewIdx]) return;
+    if (!previewEnabled) {
+      setBatchPreviewInfo(null);
+      setBatchPreviewThumbs([]);
+      return;
+    }
+    let cancelled = false;
+    const f = batchFiles[previewIdx];
+    setBatchPreviewInfo(null);
+    setBatchPreviewThumbs([]);
+    (async () => {
+      try {
+        const info = await getPdfInfo(f.path);
+        if (cancelled) return;
+        setBatchPreviewInfo(info);
+        setBatchPreviewThumbs(new Array(info.page_count).fill(undefined));
+        for (let i = 0; i < info.page_count; i++) {
+          if (cancelled) return;
+          try {
+            const b64 = await renderPage(f.path, i, THUMB_DPI, {
+              layoutW: convertLayoutW,
+              layoutH: convertLayoutH,
+              layoutEm: convertLayoutEm,
+            });
+            if (cancelled) return;
+            setBatchPreviewThumbs((p) => {
+              const a = [...p];
+              a[i] = b64;
+              return a;
+            });
+          } catch {}
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isBatch,
+    batchFiles,
+    previewIdx,
+    previewEnabled,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+  ]);
 
   const pickDir = useCallback(async (): Promise<string | null> => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
@@ -1771,84 +1835,128 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             pageKey="image"
             label={
               isBatch
-                ? impositionMode !== "1up"
-                  ? `${batchFiles!.length}件 — ${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}`
-                  : t("image.target_files", { count: String(batchFiles!.length) })
+                ? `${batchFiles![previewIdx]?.filename ?? ""} — ${
+                    impositionMode !== "1up"
+                      ? IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label
+                      : t("common.pages", {
+                          count: String(
+                            batchPreviewInfo?.page_count ?? batchFiles![previewIdx]?.pageCount ?? 0,
+                          ),
+                        })
+                  }`
                 : t("common.preview_pages", { count: String(resolvedPageCount) })
             }
           >
             {isBatch ? (
-              <div style={s.batchFileList}>
-                {batchFiles!.map((f, i) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    style={{
-                      ...s.batchFileItem,
-                      ...(i === previewIdx ? s.batchFileItemOn : {}),
-                      appearance: "none",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      width: "100%", // 推奨: リスト項目として横幅を広げる
-                      outline: "none", // フォーカス時の枠を消す（任意）
-                    }}
-                    onClick={(e) => {
-                      setPreviewIdx(i);
-                      (e.currentTarget as HTMLButtonElement).blur();
-                    }}
-                  >
-                    {batchThumbs[i] ? (
-                      <img
-                        src={`data:image/jpeg;base64,${batchThumbs[i]}`}
-                        style={s.batchThumb}
-                        alt=""
-                      />
-                    ) : (
-                      <div style={s.batchThumbPh} />
-                    )}
-                    <div style={s.batchFileInfo}>
-                      <span style={s.batchFileName}>{f.filename}</span>
-                      <span style={s.batchFileMeta}>
-                        {t("common.pages", { count: String(f.pageCount) })}
-                      </span>
-                      <span style={s.batchFileMeta}>
-                        {outputMode === "pdf"
-                          ? t("image.result_suffix_pdf", {
-                              pages: String(
-                                resolvePageSpec(pages || "", f.pageCount || 0).length ||
-                                  f.pageCount,
-                              ),
-                            })
-                          : impositionMode !== "1up"
-                            ? (() => {
-                                const fEff =
-                                  resolvePageSpec(pages || "", f.pageCount || 0).length ||
-                                  f.pageCount ||
-                                  0;
-                                const fSheets = calcSheets(impositionMode, fEff).length;
-                                const mInfo = IMPOSITION_MODES_I18N.find(
-                                  (m) => m.id === impositionMode,
-                                )!;
-                                return t("image.imposition_batch_mode_sheets" as any, {
-                                  icon: mInfo.icon,
-                                  mode: mInfo.label,
-                                  sheets: String(fSheets),
-                                });
-                              })()
-                            : t("image.result_suffix", {
-                                pages: String(
-                                  resolvePageSpec(pages || "", f.pageCount || 0).length ||
-                                    f.pageCount,
-                                ),
-                                format: format === "jpeg" ? "JPG" : format.toUpperCase(),
-                              })}
-                      </span>
+              <div
+                style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
+              >
+                {/* ファイル選択ストリップ（横スクロール・コンパクトな表紙のみ） */}
+                <div style={s.batchFileStrip}>
+                  {batchFiles!.map((f, i) => {
+                    const fEff =
+                      resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount || 0;
+                    const metaText =
+                      outputMode === "pdf"
+                        ? t("image.result_suffix_pdf", { pages: String(fEff) })
+                        : impositionMode !== "1up"
+                          ? (() => {
+                              const fSheets = calcSheets(impositionMode, fEff).length;
+                              const mInfo = IMPOSITION_MODES_I18N.find(
+                                (m) => m.id === impositionMode,
+                              )!;
+                              return t("image.imposition_batch_mode_sheets" as any, {
+                                icon: mInfo.icon,
+                                mode: mInfo.label,
+                                sheets: String(fSheets),
+                              });
+                            })()
+                          : t("image.result_suffix", {
+                              pages: String(fEff),
+                              format: format === "jpeg" ? "JPG" : format.toUpperCase(),
+                            });
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        style={{
+                          ...s.batchFileChip,
+                          ...(i === previewIdx ? s.batchFileChipOn : {}),
+                          appearance: "none",
+                          cursor: "pointer",
+                        }}
+                        title={`${f.filename} — ${t("common.pages", { count: String(f.pageCount) })} — ${metaText}`}
+                        onClick={(e) => {
+                          setPreviewIdx(i);
+                          (e.currentTarget as HTMLButtonElement).blur();
+                        }}
+                      >
+                        {batchThumbs[i] ? (
+                          <img
+                            src={`data:image/jpeg;base64,${batchThumbs[i]}`}
+                            style={s.batchThumbSmall}
+                            alt=""
+                          />
+                        ) : (
+                          <div style={s.batchThumbSmallPh} />
+                        )}
+                        <span style={s.batchFileChipName}>{f.filename}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 選択中ファイルの詳細プレビュー（単体と同じ合成表示） */}
+                <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex" }}>
+                  {!batchPreviewInfo ? (
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Spinner />
                     </div>
-                  </button>
-                ))}
+                  ) : processDir === "deimpose" ? (
+                    <DeImpositionPreview
+                      def={DE_IMPOSITION_MODE_DEFS[deimpIndex]}
+                      total={batchPreviewInfo.page_count}
+                      pages={pages}
+                      thumbs={batchPreviewThumbs}
+                      pdfInfo={batchPreviewInfo}
+                    />
+                  ) : impositionMode !== "1up" ? (
+                    <ImpositionPreview
+                      impositionMode={impositionMode}
+                      total={batchPreviewInfo.page_count}
+                      effectiveTotal={
+                        resolvePageSpec(pages || "", batchPreviewInfo.page_count).length ||
+                        batchPreviewInfo.page_count
+                      }
+                      thumbs={batchPreviewThumbs}
+                      pdfInfo={batchPreviewInfo}
+                      pages={pages}
+                    />
+                  ) : (
+                    <div style={s.thumbGrid}>
+                      {resolvePageSpec(pages || "", batchPreviewInfo.page_count).map((i) => {
+                        const pb = batchPreviewInfo.pages?.[i];
+                        const aspect = pb ? pb.w / pb.h : undefined;
+                        return (
+                          <ThumbCard
+                            key={i}
+                            b64={batchPreviewThumbs[i]}
+                            pageNum={i + 1}
+                            width={195}
+                            aspectRatio={aspect}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : processDir === "deimpose" ? (
               /* 面付け解除プレビュー: 各入力シートを分割線付きで表示 */
@@ -2688,38 +2796,54 @@ const s: Record<string, React.CSSProperties> = {
     alignContent: "flex-start",
   },
 
-  batchFileList: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" },
-  batchFileItem: {
+  // ファイル選択ストリップ（横スクロール・コンパクトな表紙のみ）。
+  // 単体プレビューと合わせるため、この下に合成プレビュー本体が続く。
+  batchFileStrip: {
     display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "12px 16px",
+    flexDirection: "row",
+    gap: 8,
+    overflowX: "auto",
+    padding: "8px 10px",
     borderBottom: `1px solid var(--c-border)`,
+    flexShrink: 0,
+  },
+  batchFileChip: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    padding: "6px 6px",
+    borderRadius: 6,
+    border: "1px solid transparent",
+    background: "none",
+    appearance: "none" as const,
+    flexShrink: 0,
+    width: 64,
     cursor: "pointer",
-    transition: "background 0.1s",
   },
-  batchFileItemOn: { background: "var(--c-accentBg)", borderLeft: `3px solid var(--c-accent)` },
-  batchThumb: {
-    maxWidth: 72,
-    maxHeight: 108,
+  batchFileChipOn: {
+    background: "var(--c-accentBg)",
+    border: `1px solid var(--c-accentBd)`,
+  },
+  batchThumbSmall: {
+    maxWidth: 44,
+    maxHeight: 62,
     objectFit: "contain" as const,
-    borderRadius: 4,
-    flexShrink: 0,
+    borderRadius: 3,
   },
-  batchThumbPh: {
-    width: 54,
-    height: 76,
+  batchThumbSmallPh: {
+    width: 36,
+    height: 50,
     background: "var(--c-border)",
-    borderRadius: 4,
-    flexShrink: 0,
+    borderRadius: 3,
   },
-  batchFileInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
-  batchFileName: {
-    fontSize: FS.label,
-    color: "var(--c-text)",
+  batchFileChipName: {
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
+    maxWidth: 64,
     overflow: "hidden",
     textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    whiteSpace: "nowrap" as const,
+    textAlign: "center" as const,
   },
-  batchFileMeta: { fontSize: FS.small, color: "var(--c-textSub)" },
 };
