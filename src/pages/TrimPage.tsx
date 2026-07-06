@@ -1742,7 +1742,12 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     gap: 12,
   },
-  panel: { width: 280, flexShrink: 0, borderLeft: `1px solid var(--c-border)`, overflow: "hidden" },
+  panel: {
+    display: "flex",
+    width: 280,
+    flexShrink: 0,
+    borderLeft: `1px solid var(--c-border)`,
+  },
 
   errMsg: {
     fontSize: FS.small,
