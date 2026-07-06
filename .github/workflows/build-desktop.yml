@@ -619,6 +619,201 @@ jobs:
             target
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
+
+
+  # ===========================================================================
+  # Android
+  # ===========================================================================
+  build-android:
+    runs-on: ubuntu-22.04
+    needs: [build-linux]  # 必要に応じて調整（フロントエンドビルドが共有されている場合）
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libssl-dev pkg-config build-essential \
+            curl wget unzip
+
+      - name: Install Rust toolchain (Android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Restore Cache
+        uses: actions/cache/restore@v5.0.5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-v1-
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+
+      - name: Restore npm cache
+        uses: actions/cache/restore@v5.0.5
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Frontend
+        run: npm run build:frontend
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27  # または r26 / r28 など（プロジェクトに合わせる）
+
+      - name: Init Tauri Mobile (初回のみ)
+        run: |
+          npx tauri android init --ci || true
+
+      - name: Build Android (unsigned debug/release APK)
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          #npm run build -- --target android  # または直接
+          # 以下のように直接呼ぶ場合
+          # npx tauri android build --apk --split-per-abi --ci
+          # または package.json のスクリプトを使う
+          npm run tauri:android:build || npm run tauri android build
+
+      - name: Move bundle folder
+        run: |
+          rm -rf ./bundle
+          mkdir -p bundle/android
+          cp -r src-tauri/gen/android/app/build/outputs/apk/* bundle/android/ 2>/dev/null || true
+          find bundle/android -name "*.apk" -exec ls -lh {} \; || true
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-artifacts
+          path: bundle/android/**/*.apk
+          if-no-files-found: warn
+
+      - name: Save Cache
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
+  # ===========================================================================
+  # iOS
+  # ===========================================================================
+  build-ios:
+    runs-on: macos-latest
+    needs: [build-macos]
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Install Rust toolchain (iOS targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Restore Cache
+        uses: actions/cache/restore@v5.0.5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+
+      - name: Restore npm cache
+        uses: actions/cache/restore@v5.0.5
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Frontend
+        run: npm run build:frontend
+      
+      - name: Init Tauri Mobile (初回のみ)
+        run: |
+          npx tauri ios init --ci || true
+
+      - name: Build iOS (unsigned)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""   # 署名無効
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # CODE_SIGNING_ALLOWED: "NO"   # 必要に応じて xcconfig で制御
+        run: |
+          #npm run build -- --target ios  # または
+          # npx tauri ios build --ci --no-sign
+          npm run tauri:ios:build || npm run tauri ios build
+
+      - name: Move bundle folder
+        run: |
+          rm -rf ./bundle
+          mkdir -p bundle/ios
+          # IPA または .app をコピー（Tauri の出力先はプロジェクトによって異なる）
+          cp -r src-tauri/gen/apple/build/* bundle/ios/ 2>/dev/null || true
+          cp -r target/aarch64-apple-ios/release/bundle/ios/* bundle/ios/ 2>/dev/null || true
+          find bundle/ios -name "*.ipa" -o -name "*.app" | head -10 || true
+
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-artifacts
+          path: bundle/ios/
+          if-no-files-found: warn
+
+      - name: Save Cache
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
   publish-release:
     runs-on: ubuntu-latest
     #needs: [build-linux, build-windows] # 両方の完了を待つ

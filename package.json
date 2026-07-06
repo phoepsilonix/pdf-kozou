@@ -10,7 +10,11 @@
     "tauri:dev2": "tauri dev",
     "build:core": "cargo build --release --bin pdf-kozou-core",
     "build:frontend": "tsc && vite build",
-    "build": "npm run build:core && tauri build"
+    "build": "npm run build:core && tauri build",
+    "build:android": "tauri android build --apk --split-per-abi",
+    "build:android:debug": "tauri android build --debug --apk",
+    "tauri:android:build": "tauri android build --apk --split-per-abi --ci",
+    "tauri:ios:build": "tauri ios build --ci"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
