@@ -77,11 +77,6 @@
     "android": {
       "minSdkVersion": 24,
       "versionCode": 1
-    },
-    "ios": {
-      "developmentTeam": "",
-      "minimumSystemVersion": "14.0",
-      "deploymentTarget": "14.0"
     }
   }
 }

@@ -1518,19 +1518,41 @@ function ResultView({
     return () => window.removeEventListener("wheel", handler);
   }, []);
 
+  const { isNarrow } = useViewport();
+
   return (
     <div style={r.root}>
-      <div style={r.header}>
+      <div style={{ ...r.header, flexWrap: "wrap", rowGap: 6 }}>
         <button style={r.btnBack} onClick={onBack}>
           {t("common.back")}
         </button>
-        <span style={r.title}>{t("trim.result_title")}</span>
-        <span style={r.sub}>
-          {t("trim.result_pages", { pages: String(pageCount), shown: String(images.length) })}
-        </span>
-        <div style={{ flex: 1 }} />
-        {/* ズームコントロール */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {/* タイトル/件数は、幅が狭いときに文字が内部で折り返して見出し行
+            自体が縦に伸び、下のギャラリー領域を圧迫していた。
+            min-width:0 + ellipsis で、伸びずに省略される形にする。 */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0, flex: 1 }}>
+          <span style={{ ...r.title, flexShrink: 0 }}>{t("trim.result_title")}</span>
+          <span
+            style={{
+              ...r.sub,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t("trim.result_pages", { pages: String(pageCount), shown: String(images.length) })}
+          </span>
+        </div>
+        {/* ズームコントロール（狭幅では見出し行の下に折り返して専用の行にする） */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            width: isNarrow ? "100%" : undefined,
+            justifyContent: isNarrow ? "flex-end" : undefined,
+          }}
+        >
           <button
             style={r.btnBack}
             onClick={() => setLocalZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
