@@ -21,6 +21,9 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# サイドカー(別プロセス起動)を廃止し、ライブラリとして直接リンクする。
+# Android/iOS は外部プロセスの起動ができないため、これが唯一の構成。
+pdf-kozou-core       = { path = "../pdf-kozou-core" }
 tauri                = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-fs      = "2"
 tauri-plugin-dialog  = "2"

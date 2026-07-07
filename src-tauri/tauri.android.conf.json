@@ -4,9 +4,6 @@
     "android": {
       "minSdkVersion": 24,
       "versionCode": 1
-    },
-    "resources": {
-      "../target/release/pdf-kozou-core": "pdf-kozou-core"
     }
   }
 }

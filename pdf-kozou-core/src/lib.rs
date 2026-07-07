@@ -5,6 +5,7 @@
 // pdf-kozou-core/src/lib.rs
 // Tauri sidecar / 他クレートから呼べる公開 API
 
+pub mod api;
 pub mod compress;
 pub mod convert;
 pub mod crop_cleanup;

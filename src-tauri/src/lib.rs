@@ -5,7 +5,12 @@
 // src-tauri/src/lib.rs
 mod commands;
 mod error;
+// Ghostscript 検出・実行は「システムにインストール済みの外部バイナリを探して
+// spawn する」機能のため、Android/iOS には存在しない（そもそも spawn 自体が
+// 許可されない）。デスクトップ限定でコンパイルする。
+#[cfg(desktop)]
 mod gs;
+#[cfg(desktop)]
 mod gs_detector;
 mod platform;
 pub mod tempdir;
@@ -13,12 +18,7 @@ pub mod tempdir;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
 
-use std::path::PathBuf;
-use std::sync::OnceLock;
 use tauri::Manager;
-
-// パスを保持する静的な入れ物
-static CORE_BIN_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 #[cfg(target_os = "linux")]
 use crate::platform::linux::log_display_environment;
@@ -38,42 +38,6 @@ pub fn setup_platform() {
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn setup_platform() {}
-
-fn get_core_bin_path(app: &tauri::AppHandle) -> std::path::PathBuf {
-    // 1. 環境変数優先
-    if let Ok(p) = std::env::var("PDF_KOZOU_CORE") {
-        return p.into();
-    }
-
-    // 2. Tauri Resolver (Linux パッケージ(deb,rpm) / AppImage 展開後用)
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        let core_name = if cfg!(target_os = "windows") {
-            "pdf-kozou-core.exe"
-        } else {
-            "pdf-kozou-core"
-        };
-        let path = resource_dir.join(core_name);
-        if path.exists() {
-            return path;
-        }
-    }
-
-    // 3. 実行ファイル横 (MSI や 開発時用)
-    if let Ok(exe) = std::env::current_exe() {
-        let sibling = exe.parent().unwrap_or(std::path::Path::new(".")).join(
-            if cfg!(target_os = "windows") {
-                "pdf-kozou-core.exe"
-            } else {
-                "pdf-kozou-core"
-            },
-        );
-        if sibling.exists() {
-            return sibling;
-        }
-    }
-
-    std::path::PathBuf::from("pdf-kozou-core")
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -138,12 +102,19 @@ pub fn run() {
             platform_cmd::pick_save_file,
             platform_cmd::pick_save_file_in,
             platform_cmd::pick_output_dir,
+            #[cfg(desktop)]
             gs_detector::check_ghostscript_installed,
+            #[cfg(desktop)]
             gs_detector::find_gs_executable,
+            #[cfg(desktop)]
             gs_detector::verify_gs_path,
+            #[cfg(desktop)]
             gs_detector::pick_gs_executable,
+            #[cfg(desktop)]
             gs_detector::find_gs_in_dir,
+            #[cfg(desktop)]
             gs_detector::suggest_gs_candidates,
+            #[cfg(desktop)]
             gs::run_gs_optimize,
         ])
         .setup(|app| {
@@ -182,10 +153,6 @@ pub fn run() {
                     })
                     .build()?;
             }
-
-            // pdf-kozou-coreのパス取得＆保存
-            let path = get_core_bin_path(app.handle());
-            let _ = CORE_BIN_PATH.set(path);
 
             // ── 起動時引数からPDFファイルパスを取得してフロントに渡す ──────────
             let pdf_paths: Vec<String> = std::env::args()
@@ -244,7 +211,6 @@ pub fn run() {
     app.run(|app_handle, event| match event {
         tauri::RunEvent::Exit => {
             crate::tempdir::cleanup_kozou_temp();
-            kill_orphan_core_processes();
         }
         tauri::RunEvent::WindowEvent {
             event: tauri::WindowEvent::CloseRequested { .. },
@@ -254,27 +220,4 @@ pub fn run() {
         }
         _ => {}
     });
-}
-
-/// 残存する pdf-kozou-core プロセスを終了させる
-fn kill_orphan_core_processes() {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "pdf-kozou-core.exe"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = std::process::Command::new("pkill")
-            .args(["-f", "pdf-kozou-core"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-    }
 }

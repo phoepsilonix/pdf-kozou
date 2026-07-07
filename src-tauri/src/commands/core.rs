@@ -4,59 +4,51 @@
 
 // src-tauri/src/commands/core.rs
 //
-// pdf-kozou-core sidecar を呼び出す Tauri コマンド群
-// 全処理は pdf-kozou-core に委譲し、JSON レスポンスをそのまま返す
+// pdf-kozou-core を直接リンクして呼び出す Tauri コマンド群。
+//
+// 以前は別プロセス(sidecar)として起動し、stdin/stdout 経由で JSON をやり取り
+// していたが、Android/iOS では外部プロセスの起動ができないため廃止した。
+// 現在は pdf_kozou_core クレートを rlib として直接リンクし、
+// pdf_kozou_core::api::dispatch_json() をそのままインプロセスで呼び出す。
+// JSON のプロトコル(cmd フィールドを持つリクエスト/レスポンス)は
+// sidecar 時代と完全に同じなので、各 #[tauri::command] 関数側の実装は
+// 変更していない。
 
-use crate::CORE_BIN_PATH;
 use crate::error::{Error, Result};
 use serde_json::Value;
 
-/// pdf-kozou-core バイナリを呼び出して JSON レスポンスを返す
-async fn call_core(args: Vec<String>) -> Result<Value> {
-    let core_path = core_bin_path();
+/// JSON モードで core を呼ぶ（旧: stdin 経由 → 現: 直接関数呼び出し）
+///
+/// MuPDF 処理は CPU バウンドで時間がかかりうるため、tokio の非同期ランタイムを
+/// ブロックしないよう spawn_blocking の中で実行する。
+async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
+    payload["cmd"] = serde_json::Value::String(cmd.to_string());
+    let json_line = serde_json::to_string(&payload).map_err(|e| Error::Core(e.to_string()))?;
 
-    let child = tokio::process::Command::new(&core_path)
-        .args(&args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
-
-    // タイムアウト: 120秒（DOCX変換等の重い処理を考慮）
-    // wait_with_output は self を consume するため、timeout 後の kill は
-    // Command::kill_on_drop(true) で対応する
-    let output = tokio::time::timeout(
+    let response = tokio::time::timeout(
         std::time::Duration::from_secs(120),
-        child.wait_with_output(),
+        tokio::task::spawn_blocking(move || pdf_kozou_core::api::dispatch_json(&json_line)),
     )
-    .await;
+    .await
+    .map_err(|_| Error::Core("core call timed out (120s)".into()))?
+    .map_err(|e| Error::Core(format!("core task join error: {e}")))?;
 
-    match output {
-        Err(_) => {
-            // タイムアウト — kill_on_drop により子プロセスは自動終了する
-            Err(Error::Core("core process timed out (120s)".into()))
-        }
-        Ok(Err(e)) => Err(Error::Core(format!("core process error: {e}"))),
-        Ok(Ok(out)) => {
-            if !out.status.success() {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                return Err(Error::Core(format!("core exited with error: {stderr}")));
-            }
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            serde_json::from_str(stdout.trim())
-                .map_err(|e| Error::Core(format!("JSON parse error: {e}\nraw: {stdout}")))
-        }
+    if response.trim().is_empty() {
+        return Err(Error::Core("core returned empty output".into()));
     }
-}
 
-/// pdf-kozou-core バイナリのパスを解決
-fn core_bin_path() -> std::path::PathBuf {
-    // グローバル変数から取り出す。もし未設定ならデフォルトを返す
-    CORE_BIN_PATH
-        .get()
-        .cloned()
-        .unwrap_or_else(|| std::path::PathBuf::from("pdf-kozou-core"))
+    let value: Value = serde_json::from_str(&response)
+        .map_err(|e| Error::Core(format!("JSON parse error: {e}\nraw: {response}")))?;
+
+    if value.get("ok").and_then(|v| v.as_bool()) == Some(false) {
+        let msg = value
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown core error");
+        return Err(Error::Core(msg.to_string()));
+    }
+
+    Ok(value)
 }
 
 // ── Tauri コマンド ────────────────────────────────────────────────────────────
@@ -68,28 +60,20 @@ pub async fn get_pdf_info(
     layout_h: Option<f32>,
     layout_em: Option<f32>,
 ) -> Result<Value> {
-    // 非 PDF は --convert でレイアウト指定付き変換→info
-    // PDF は --convert なしで高速取得
-    // どちらも同じ CLI args 経由で統一
-    let is_pdf = path.to_lowercase().ends_with(".pdf");
-    if is_pdf {
-        call_core(vec!["info".into(), path]).await
-    } else {
-        let mut args = vec!["info".into(), path, "--convert".into()];
-        if let Some(w) = layout_w {
-            args.push("--layout-w".into());
-            args.push(w.to_string());
-        }
-        if let Some(h) = layout_h {
-            args.push("--layout-h".into());
-            args.push(h.to_string());
-        }
-        if let Some(em) = layout_em {
-            args.push("--layout-em".into());
-            args.push(em.to_string());
-        }
-        call_core(args).await
-    }
+    // dispatch_json 側の "info" ハンドラが auto_convert_if_needed を内部で
+    // 呼んでおり、PDF の場合は no-op になるため、PDF/非PDF を区別せず
+    // 常に layout パラメータを渡してよい（sidecar 時代の --convert 分岐は不要）。
+    call_core_json(
+        "info",
+        serde_json::json!({
+            "path": path,
+            "fonts": false,
+            "layout_w": layout_w,
+            "layout_h": layout_h,
+            "layout_em": layout_em,
+        }),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -103,32 +87,54 @@ pub async fn render_page(
     layout_h: Option<f32>,
     layout_em: Option<f32>,
 ) -> Result<Value> {
-    let page_1based = page + 1;
-    let mut args = vec![
-        "render".into(),
-        path,
-        "--page".into(),
-        page_1based.to_string(),
-        "--dpi".into(),
-        dpi.to_string(),
-        "--format".into(),
-        format.unwrap_or_else(|| "jpeg".into()),
-        "--quality".into(),
-        quality.unwrap_or(85).to_string(),
-    ];
-    if let Some(w) = layout_w {
-        args.push("--layout-w".into());
-        args.push(w.to_string());
-    }
-    if let Some(h) = layout_h {
-        args.push("--layout-h".into());
-        args.push(h.to_string());
-    }
-    if let Some(em) = layout_em {
-        args.push("--layout-em".into());
-        args.push(em.to_string());
-    }
-    call_core(args).await
+    // sidecar 時代の CLI 単ページレンダリング処理(main.rs の
+    // Commands::Render 単ページ分岐)と同じ手順を踏襲する:
+    //   SVG のみ事前に PDF へ変換してからレンダリングする
+    //  （MuPDF が SVG を直接開くと luminance マスクを解釈できず
+    //    透過部分が黒くなるため）。
+    let format = format.unwrap_or_else(|| "jpeg".into());
+    let quality = quality.unwrap_or(85);
+
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        tokio::task::spawn_blocking(move || -> std::result::Result<String, String> {
+            let is_svg = pdf_kozou_core::convert::is_svg(&path);
+            let _tmp = if is_svg {
+                pdf_kozou_core::api::auto_convert_if_needed(
+                    &path, layout_w, layout_h, layout_em, None, None, None,
+                )
+                .map_err(|e| e.to_string())?
+            } else {
+                None
+            };
+            let actual_path = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                path
+            };
+
+            let req = pdf_kozou_core::render::RenderRequest {
+                path: actual_path,
+                page_index: page,
+                dpi,
+                format: Some(format),
+                quality: Some(quality),
+                output: None,
+                layout_w,
+                layout_h,
+                layout_em,
+            };
+            let resp = pdf_kozou_core::render::render(&req).map_err(|e| e.to_string())?;
+            serde_json::to_string(&resp).map_err(|e| e.to_string())
+        }),
+    )
+    .await
+    .map_err(|_| Error::Core("render call timed out (120s)".into()))?
+    .map_err(|e| Error::Core(format!("core task join error: {e}")))?
+    .map_err(Error::Core)?;
+
+    serde_json::from_str(&response)
+        .map_err(|e| Error::Core(format!("JSON parse error: {e}\nraw: {response}")))
 }
 
 #[tauri::command]
@@ -478,13 +484,9 @@ pub async fn rotate_pdf(request: Value) -> Result<Value> {
 
 /// 全ページを画像ファイルとして出力する
 ///
-/// render CLI の `--out-dir` に渡すだけで全ページ一括変換される。
-/// `pdf-kozou-core render <path> --out-dir <dir> [--dpi N] [--format jpeg|png]
-///   [--quality N] [--name-prefix PREFIX]`
-///
-/// render --out-dir は処理が終わっても JSON を stdout に出さない (空)。
-/// 代わりにページ数を先に info コマンドで取得し、コアが生成するファイル名
-/// (`{prefix}_{0001..}.{ext}`) を Rust 側で組み立てて返す。
+/// 旧: pdf-kozou-core を `render --out-dir <dir> ...` で sidecar 起動していたが、
+/// 直接リンクした pdf_kozou_core::api::render_to_dir を spawn_blocking 経由で
+/// 呼ぶ形に変更した。
 #[tauri::command]
 pub async fn export_images(
     path: String,
@@ -502,82 +504,55 @@ pub async fn export_images(
 
     let fmt = format.unwrap_or_else(|| "jpeg".into());
     let dpi_val = dpi.unwrap_or(150);
+    let quality_val = quality.unwrap_or(85);
     let prefix = name_prefix.unwrap_or_else(|| "page".into());
+    let ext = match fmt.as_str() {
+        "png" => "png",
+        "svg" => "svg",
+        _ => "jpg",
+    };
 
     std::fs::create_dir_all(&out_dir).map_err(|e| Error::Core(format!("mkdir {out_dir}: {e}")))?;
 
-    let mut args: Vec<String> = vec![
-        "render".into(),
-        path.clone(),
-        "--out-dir".into(),
-        out_dir.clone(),
-        "--dpi".into(),
-        dpi_val.to_string(),
-        "--format".into(),
-        fmt.clone(),
-        "--name-prefix".into(),
-        prefix.clone(),
-    ];
-    if let Some(ref pg) = pages
-        && !pg.is_empty()
-        && pg != "all"
-    {
-        args.push("--page".into());
-        args.push(pg.clone());
-    }
-    if let Some(q) = quality {
-        args.push("--quality".into());
-        args.push(q.to_string());
-    }
-    if let Some(w) = layout_w {
-        args.push("--layout-w".into());
-        args.push(w.to_string());
-    }
-    if let Some(h) = layout_h {
-        args.push("--layout-h".into());
-        args.push(h.to_string());
-    }
-    if let Some(em) = layout_em {
-        args.push("--layout-em".into());
-        args.push(em.to_string());
-    }
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        tokio::task::spawn_blocking(move || -> std::result::Result<Value, String> {
+            // ページ範囲指定が無い(または "all")場合は info から全ページ数を取得
+            let indices: Vec<i32> = match pages.as_deref() {
+                None => {
+                    let info = pdf_kozou_core::info::info(&path).map_err(|e| e.to_string())?;
+                    (0..info.page_count).collect()
+                }
+                Some(p) if p.is_empty() || p == "all" => {
+                    let info = pdf_kozou_core::info::info(&path).map_err(|e| e.to_string())?;
+                    (0..info.page_count).collect()
+                }
+                Some(p) => pdf_kozou_core::api::parse_string_pages(p).map_err(|e| e.to_string())?,
+            };
+            let total = indices.len() as u32;
 
-    let output = tokio::process::Command::new(core_bin_path())
-        .args(&args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| Error::Core(format!("spawn: {e}")))?
-        .wait_with_output()
-        .await
-        .map_err(|e| Error::Core(e.to_string()))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::Core(format!("render: {}", stderr.trim())));
-    }
-
-    /*
-        // ④ 選択フォーマットの拡張子のみフィルタして返す
-        let ext_filter: &[&str] = match fmt.as_str() {
-            "png" => &[".png"],
-            "svg" => &[".svg"],
-            _ => &[".jpg", ".jpeg"],
-        };
-        let mut files: Vec<String> = std::fs::read_dir(&out_dir)
-            .map_err(|e| Error::Core(format!("readdir {out_dir}: {e}")))?
-            .filter_map(|e| e.ok())
-            .map(|e| e.path().display().to_string())
-            .filter(|p| {
-                let pl = p.to_lowercase();
-                ext_filter.iter().any(|ext| pl.ends_with(*ext))
-            })
-            .collect();
-        files.sort();
-    */
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let response: Value = serde_json::from_str(stdout.trim())
-        .map_err(|e| Error::Core(format!("JSON parse: {e}\nraw: {stdout}")))?;
+            pdf_kozou_core::api::render_to_dir(
+                &path,
+                &indices,
+                total,
+                None,
+                Some(&prefix),
+                &out_dir,
+                &fmt,
+                quality_val,
+                dpi_val,
+                ext,
+                layout_w,
+                layout_h,
+                layout_em,
+            )
+            .map_err(|e| e.to_string())
+        }),
+    )
+    .await
+    .map_err(|_| Error::Core("export_images timed out (120s)".into()))?
+    .map_err(|e| Error::Core(format!("core task join error: {e}")))?
+    .map_err(Error::Core)?;
 
     let files: Vec<String> = response["files"]
         .as_array()
@@ -744,75 +719,6 @@ pub async fn get_file_stat(path: String) -> Result<Value> {
     use serde_json::json;
     let meta = std::fs::metadata(&path).map_err(|e| Error::Core(format!("stat {path}: {e}")))?;
     Ok(json!({ "size": meta.len() }))
-}
-
-/// JSON モードで core を呼ぶ (stdin 経由)
-async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
-    payload["cmd"] = serde_json::Value::String(cmd.to_string());
-    let json_line = serde_json::to_string(&payload).map_err(|e| Error::Core(e.to_string()))?;
-
-    let core_path = core_bin_path();
-
-    let mut child = tokio::process::Command::new(&core_path)
-        .arg("json")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| Error::Core(format!("failed to spawn core: {e}")))?;
-
-    use tokio::io::AsyncWriteExt;
-    eprintln!("{:?}", json_line);
-    // stdin に JSON を書き込んだ後、明示的に drop して EOF を送る。
-    // drop しないと run_json_mode の BufRead::lines() が EOF を待ち続けて
-    // フリーズする（特に Windows で顕著）。
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(json_line.as_bytes())
-            .await
-            .map_err(|e| Error::Core(e.to_string()))?;
-        stdin.write_all(b"\n").await.ok();
-        stdin.flush().await.ok();
-        // ここで stdin を drop → パイプの書き込み端が閉じられ EOF が伝わる
-    } // stdin がスコープを抜けて drop される
-
-    let timeout_result = tokio::time::timeout(
-        std::time::Duration::from_secs(120),
-        child.wait_with_output(),
-    )
-    .await;
-
-    let output = match timeout_result {
-        Err(_) => {
-            // タイムアウト — kill_on_drop により子プロセスは自動終了する
-            return Err(Error::Core("core json process timed out (120s)".into()));
-        }
-        Ok(Err(e)) => return Err(Error::Core(e.to_string())),
-        Ok(Ok(out)) => out,
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if !output.status.success() {
-        return Err(Error::Core(format!(
-            "core error (exit {}): {}\n{}",
-            output.status.code().unwrap_or(-1),
-            stderr.trim(),
-            stdout.trim(),
-        )));
-    }
-
-    if stdout.trim().is_empty() {
-        return Err(Error::Core(format!(
-            "core returned empty output. stderr: {}",
-            stderr.trim()
-        )));
-    }
-
-    serde_json::from_str(stdout.trim())
-        .map_err(|e| Error::Core(format!("JSON parse: {e}\nraw: {stdout}")))
 }
 
 /// 一時ファイルパスを返す (pdf-kozou temp dir + name)

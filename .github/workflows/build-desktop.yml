@@ -713,7 +713,7 @@ jobs:
           # npx tauri android build --apk --split-per-abi --ci
           # または package.json のスクリプトを使う
           #npm run tauri:android:build || npm run tauri android build
-          npm run build:core && ./node_modules/.bin/tauri android build --apk --split-per-abi --ci
+          ./node_modules/.bin/tauri android build --apk --split-per-abi --ci
 
       - name: Move bundle folder
         run: |
@@ -804,7 +804,7 @@ jobs:
           #npm run build -- --target ios  # または
           # npx tauri ios build --ci --no-sign
           #npm run tauri:ios:build || npm run tauri ios build
-          npm run build:core && ./node_modules/.bin/tauri ios build --ci --no-sign
+          ./node_modules/.bin/tauri ios build --ci --no-sign
 
       - name: Move bundle folder
         run: |
