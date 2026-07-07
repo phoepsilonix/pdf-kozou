@@ -185,6 +185,18 @@ jobs:
           npm run build
           #cargo tauri build
 
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
       - name: appimagetool install
         run: |
           curl -LO https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
@@ -267,18 +279,6 @@ jobs:
             bundle/7z/*.7z
             #bundle/tbz/*.tar.bz2
             #bundle/zip/*.zip
-
-      - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
   # ===========================================================================
   # Windows x86_64
@@ -451,6 +451,18 @@ jobs:
           npm run build
           #cargo tauri build
 
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Decode PFX Certificate
         shell: pwsh
         env:
@@ -481,18 +493,6 @@ jobs:
             bundle/nsis/*.exe
             bundle/msi/*.msi
             bundle/msi/*.msix
-
-      - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
   # ===========================================================================
   # macOS (Universal: x86_64 + aarch64)
@@ -572,6 +572,18 @@ jobs:
           #npm run build
           npm run build -- --target universal-apple-darwin
 
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+
       - name: 7zip packages
         run: |
           APP_VER=$(jq -r ".version" package.json)
@@ -616,20 +628,6 @@ jobs:
         with:
           name: macos-artifacts
           path: bundle/macos/
-
-      - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-
-
 
   # ===========================================================================
   # Android
@@ -715,6 +713,18 @@ jobs:
           #npm run tauri:android:build || npm run tauri android build
           tauri android build --apk --split-per-abi --ci
 
+      - name: Save Cache
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Move bundle folder
         run: |
           rm -rf ./bundle
@@ -728,18 +738,6 @@ jobs:
           name: android-artifacts
           path: bundle/android/**/*.apk
           if-no-files-found: warn
-
-      - name: Save Cache
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
 
   # ===========================================================================
   # iOS
@@ -806,6 +804,18 @@ jobs:
           #npm run tauri:ios:build || npm run tauri ios build
           tauri ios build --ci --no-sign
 
+      - name: Save Cache
+        uses: actions/cache/save@v5.0.5
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Move bundle folder
         run: |
           rm -rf ./bundle
@@ -821,18 +831,6 @@ jobs:
           name: ios-artifacts
           path: bundle/ios/
           if-no-files-found: warn
-
-      - name: Save Cache
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
 
   publish-release:
     runs-on: ubuntu-latest
