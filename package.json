@@ -6,15 +6,15 @@
   "scripts": {
     "dev:core": "cargo build --bin pdf-kozou-core",
     "dev": "vite",
-    "tauri:dev": "npm build dev:core && tauri dev",
+    "tauri:dev": "tauri dev",
     "tauri:dev2": "tauri dev",
     "build:core": "cargo build --release --bin pdf-kozou-core",
     "build:frontend": "tsc && vite build",
-    "build": "npm run build:core && tauri build",
+    "build": "tauri build",
     "build:android": "tauri android build --apk --split-per-abi",
     "build:android:debug": "tauri android build --debug --apk",
-    "tauri:android:build": "npm run build:core && npx --no-install tauri android build --apk --split-per-abi --ci",
-    "tauri:ios:build": "npm run build:core && npx --no-install tauri ios build --ci --no-sign"
+    "tauri:android:build": "npx --no-install tauri android build --apk --split-per-abi --ci",
+    "tauri:ios:build": "npx --no-install tauri ios build --ci --no-sign"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

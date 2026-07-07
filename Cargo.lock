@@ -3296,6 +3296,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "dirs",
+ "pdf-kozou-core",
  "rfd 0.17.2",
  "serde",
  "serde_json",
