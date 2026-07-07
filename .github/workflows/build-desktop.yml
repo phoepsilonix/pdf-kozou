@@ -465,7 +465,7 @@ jobs:
         env:
           PFX_PASSWORD: ${{ secrets.MSIX_PFX_PASSWORD }}
         run: |
-          ./repackage_msix.ps1 -PfxPassword "${{ env.PFX_PASSWORD }}"
+          ./repackage_msix_2.ps1 -PfxPassword "${{ env.PFX_PASSWORD }}"
 
       - name: move bundle folder
         shell: bash
