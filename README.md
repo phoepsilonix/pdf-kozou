@@ -116,20 +116,35 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 いずれは直したいですが使用しているユーザーの環境によるので、すぐには難しそうです。  
 7zip版のアーカイブのバイナリ(v1.4.8〜)が起動できる場合には、そちらの利用もご検討ください。(`webkit2gtk-4.1`があれば、7-zip版アーカイブのバイナリも動作するかもしれません。Arch系でも動いています。)
 
-| プラットフォーム      | ファイル                                                                       |
-| --------------------- | ------------------------------------------------------------------------------ |
-| Windows (x64)         | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`      |
-| Linux (x64)           | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb`           |
-|                       | `PDF-Kozou_${version}_amd64.AppImage` `PDF-Kozou_${version}_amd64-linux.7z`    |
-| macOS (Apple Silicon) | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
+| プラットフォーム | ファイル                                                                       |
+| ---------------- | ------------------------------------------------------------------------------ |
+| Windows (x64)    | `PDF-Kozou_${version}_x64-setup.exe` `PDF-Kozou_${version}_x64_en-US.msi`      |
+| Linux (x64)      | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb`           |
+|                  | `PDF-Kozou_${version}_amd64.AppImage` `PDF-Kozou_${version}_amd64-linux.7z`    |
+| Android          | `PDF-Kozou_${version}_.apk` `PDF-Kozou_${version}.aab`                         |
+| macOS            | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
+| iOS              | `PDF-Kozou_${version}_.ipa` `PDF-Kozou_${version}.app`                         |
 
 ### Microsoft Store(Windows)
 
 [PDF-Kozou(PDF小僧)](https://apps.microsoft.com/detail/9P2HDLPTT5WR?hl=ja-jp&gl=JP&ocid=pdpshare)
 
+### Android
+
+試験的にパッケージビルドのみ行っています。  
+Android版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。  
+またGhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
+
 ### MacOS
 
+試験的にパッケージビルドのみ行っています。  
 macOS版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。
+
+### iOS
+
+試験的にパッケージビルドのみ行っています。  
+iOS(iphone,ipad)版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。
+またGhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
 
 ### ソースからビルド
 
