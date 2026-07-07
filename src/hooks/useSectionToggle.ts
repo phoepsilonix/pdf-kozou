@@ -31,8 +31,15 @@ export function useSectionToggle(
 
     // container の可視上端に対する sectionB の相対位置
     const relativeTop = bRect.top - containerRect.top;
+    // スクロール量がほぼゼロ（先頭）のときは、ウィンドウ高さなどの条件で
+    // relativeTop がしきい値を下回ってしまうケースがあっても、必ず
+    // 「先頭のセクション(プレビュー)を表示中」と確定させる。
+    // これをしないと、ウィンドウが少し低い環境などで初回表示時から
+    // 「設定を表示中」と誤判定され、ボタンが最初から
+    // 「プレビューに戻る」表示のまま実質何も起きない、という状態になる。
+    const atTop = container.scrollTop <= 4;
     // 少しの余裕を持たせる（ヘッダーや padding の影響を吸収）
-    setShowingB(relativeTop <= 360); // 40 → 360 に緩和
+    setShowingB(!atTop && relativeTop <= 360); // 40 → 360 に緩和
   }, []);
 
   useEffect(() => {
