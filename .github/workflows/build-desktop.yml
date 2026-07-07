@@ -841,13 +841,13 @@ jobs:
       - build-linux
       - build-windows
       - build-macos
-      - build-android    # 条件次第で実行されない場合もある
-      - build-ios
+      #- build-android    # 条件次第で実行されない場合もある
+      #- build-ios
     if: startsWith(github.ref, 'refs/tags/') # タグ時のみ
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
-        continue-on-error: true # アーティファクトが存在しない場合の対策
+        #continue-on-error: true # アーティファクトが存在しない場合の対策
         with:
           path: ./dist # すべての成果物を dist フォルダに集約
 
