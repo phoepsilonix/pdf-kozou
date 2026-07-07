@@ -232,7 +232,7 @@ jobs:
           PKG_FOLDER="PDF-Kozou"
           mkdir -p ${PKG_FOLDER}
           cp -a target/release/pdf-kozou ${PKG_FOLDER}
-          cp -a target/release/pdf-kozou-core ${PKG_FOLDER}||true
+          #cp -a target/release/pdf-kozou-core ${PKG_FOLDER}||true
 
           # tar.bz2
           # tar cf ${PKG_NAME}.tar ${PKG_FOLDER}/
