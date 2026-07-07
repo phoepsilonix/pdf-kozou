@@ -737,17 +737,18 @@ jobs:
           # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
           # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
           #
-          cp -r src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ 2>/dev/null || true
-          cp -r src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ 2>/dev/null || true
+          find src-tauri/gen/android/app/build/outputs/ -name "*.apk" -o -name "*.aab" -exec ls -lh {} \; || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ 2>/dev/null || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ 2>/dev/null || true
+          cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ || true
+          cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ || true
           find bundle/android -name "*.apk" -o -name "*.aab" -exec ls -lh {} \; || true
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v7
         with:
           name: android-artifacts
-          path: |
-            - bundle/android/**/*.apk
-            - bundle/android/**/*.aab
+          path: bundle/android
           if-no-files-found: warn
 
   # ===========================================================================
@@ -800,6 +801,11 @@ jobs:
         run: |
           npx tauri ios init --ci || true
 
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+
       - name: Build iOS (unsigned)
         env:
           CODE_SIGNING_ALLOWED: "NO"
@@ -813,9 +819,10 @@ jobs:
           #npm run build -- --target ios  # または
           # npx tauri ios build --ci --no-sign
           #npm run tauri:ios:build || npm run tauri ios build
-          tauri ios build --ci --no-sign
+          #tauri ios build --ci --no-sign
           #npm run tauri ios build -- --ci --no-sign
-          #npm run tauri ios build -- --export-method app-store-connect --ci --no-sign
+          export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
+          npm run tauri ios build -- --export-method app-store-connect --ci --no-sign
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
