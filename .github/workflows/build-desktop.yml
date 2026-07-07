@@ -571,6 +571,10 @@ jobs:
           #npm run build -- --target universal-apple-darwin --no-bundle
           #npm run build
           npm run build -- --target universal-apple-darwin
+          #npm run tauri build -- --no-bundle
+          #npm run tauri bundle -- --bundles app --target universal-apple-darwin
+
+
 
       - name: Save Cache (条件付きで保存のみ実行)
         uses: actions/cache/save@v5.0.5
@@ -711,7 +715,8 @@ jobs:
           # npx tauri android build --apk --split-per-abi --ci
           # または package.json のスクリプトを使う
           #npm run tauri:android:build || npm run tauri android build
-          tauri android build --apk --split-per-abi --ci
+          #tauri android build --apk --split-per-abi --ci
+          npm run tauri android build -- --apk --aab --ci || tauri android build --apk --ci
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
@@ -730,13 +735,15 @@ jobs:
           rm -rf ./bundle
           mkdir -p bundle/android
           cp -r src-tauri/gen/android/app/build/outputs/apk/* bundle/android/ 2>/dev/null || true
-          find bundle/android -name "*.apk" -exec ls -lh {} \; || true
+          find bundle/android -name "*.apk" -o -name "*.aab" -exec ls -lh {} \; || true
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v7
         with:
           name: android-artifacts
-          path: bundle/android/**/*.apk
+          path: |
+            - bundle/android/**/*.apk
+            - bundle/android/**/*.aab
           if-no-files-found: warn
 
   # ===========================================================================
@@ -802,7 +809,8 @@ jobs:
           #npm run build -- --target ios  # または
           # npx tauri ios build --ci --no-sign
           #npm run tauri:ios:build || npm run tauri ios build
-          tauri ios build --ci --no-sign
+          #tauri ios build --ci --no-sign
+          npm run tauri ios build -- --export-method app-store-connect --ci --no-sign
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
@@ -863,6 +871,7 @@ jobs:
             ./dist/macos-artifacts/**/*.dmg
             ./dist/macos-artifacts/**/*.7z
             ./dist/android-artifacts/**/*.apk
+            ./dist/android-artifacts/**/*.aab
             ./dist/ios-artifacts/**/*.ipa
             ./dist/ios-artifacts/**/*.app
           draft: false

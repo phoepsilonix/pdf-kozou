@@ -12,9 +12,9 @@
     "build:core": "cargo build --release --bin pdf-kozou-core",
     "build:frontend": "tsc && vite build",
     "build": "tauri build",
-    "build:android": "tauri android build --apk --split-per-abi",
+    "build:android": "tauri android build --apk",
     "build:android:debug": "tauri android build --debug --apk",
-    "tauri:android:build": "npx --no-install tauri android build --apk --split-per-abi --ci",
+    "tauri:android:build": "npx --no-install tauri android build --apk --aab --ci",
     "tauri:ios:build": "npx --no-install tauri ios build --ci --no-sign"
   },
   "dependencies": {
