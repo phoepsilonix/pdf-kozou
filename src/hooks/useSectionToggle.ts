@@ -57,10 +57,17 @@ export function useSectionToggle(
   }, [update]);
 
   const scrollToA = () => {
+    // scrollTo({behavior:"smooth"}) は WebKitGTK 環境ではアニメーション中に
+    // 'scroll' イベントが安定して発火せず、update() による再判定が走らずに
+    // ボタンの表示("プレビューに戻る"/"設定にジャンプ")が切り替わらないまま
+    // になることがある。クリック時点でユーザーの意図は明確なので、
+    // 実際のスクロール位置の検出を待たずに即座に状態を反映させる。
+    setShowingB(false);
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const scrollToB = () => {
+    setShowingB(true);
     sectionBRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "start",
