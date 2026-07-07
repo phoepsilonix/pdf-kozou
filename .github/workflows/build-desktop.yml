@@ -160,7 +160,7 @@ jobs:
 
       - name: Save npm cache
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -333,7 +333,7 @@ jobs:
 #            ${{ runner.os }}-rust-v1-
 #            ${{ runner.os }}-rust-
 #            v0-rust-pdf-kozou-v1-${{ runner.os }}
-#          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+#          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
 
 #      - name: Rust cache
 #        uses: Swatinem/rust-cache@v2
@@ -341,7 +341,7 @@ jobs:
 #          add-job-id-key: false
 #          shared-key: pdf-kozou-v1
 #          prefix-key: v0-rust
-#          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+#          save-if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
 
       - name: Locate MSVC and Set Safe Path
         shell: pwsh
@@ -713,7 +713,7 @@ jobs:
           # npx tauri android build --apk --split-per-abi --ci
           # または package.json のスクリプトを使う
           #npm run tauri:android:build || npm run tauri android build
-          ./node_modules/.bin/tauri android build --apk --split-per-abi --ci
+          tauri android build --apk --split-per-abi --ci
 
       - name: Move bundle folder
         run: |
@@ -804,7 +804,7 @@ jobs:
           #npm run build -- --target ios  # または
           # npx tauri ios build --ci --no-sign
           #npm run tauri:ios:build || npm run tauri ios build
-          ./node_modules/.bin/tauri ios build --ci --no-sign
+          tauri ios build --ci --no-sign
 
       - name: Move bundle folder
         run: |
