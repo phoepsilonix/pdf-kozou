@@ -2,7 +2,6 @@
   "bundle": {
     "targets": "all",
     "iOS": {
-      "developmentTeam": "",
       "minimumSystemVersion": "14.0"
     }
   }
