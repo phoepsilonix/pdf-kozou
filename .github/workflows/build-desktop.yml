@@ -737,12 +737,12 @@ jobs:
           # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
           # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
           #
-          find src-tauri/gen/android/app/build/outputs/ -name "*.apk" -o -name "*.aab" -exec ls -lh {} \; || true
+          find src-tauri/gen/android/app/build/outputs/ \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
           #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ 2>/dev/null || true
           #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ 2>/dev/null || true
           cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ || true
           cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ || true
-          find bundle/android -name "*.apk" -o -name "*.aab" -exec ls -lh {} \; || true
+          find bundle/android \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v7
@@ -843,7 +843,7 @@ jobs:
           # IPA または .app をコピー（Tauri の出力先はプロジェクトによって異なる）
           cp -r src-tauri/gen/apple/build/* bundle/ios/ 2>/dev/null || true
           cp -r target/aarch64-apple-ios/release/bundle/ios/* bundle/ios/ 2>/dev/null || true
-          find bundle/ios -name "*.ipa" -o -name "*.app" | head -10 || true
+          find \( bundle/ios -name "*.ipa" -o -name "*.app" \) | head -10 || true
 
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v7
