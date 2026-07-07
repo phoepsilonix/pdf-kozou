@@ -804,7 +804,7 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.4'
+          xcode-version: '26.6.0'
 
       - name: Build iOS (unsigned)
         env:
