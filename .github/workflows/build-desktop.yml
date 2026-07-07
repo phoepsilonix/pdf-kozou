@@ -716,7 +716,8 @@ jobs:
           # または package.json のスクリプトを使う
           #npm run tauri:android:build || npm run tauri android build
           #tauri android build --apk --split-per-abi --ci
-          npm run tauri android build -- --apk --aab --ci || tauri android build --apk --ci
+          npm run tauri android build -- --apk --aab --debug --ci || tauri android build --apk --debug --ci
+          npm run tauri android build -- --apk --split-per-abi --debug --ci || tauri android build --apk --split-per-abi --debug --ci
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
