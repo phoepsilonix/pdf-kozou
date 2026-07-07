@@ -795,8 +795,8 @@ jobs:
         env:
           CODE_SIGNING_ALLOWED: "NO"
           CODE_SIGNING_REQUIRED: "NO"
-          DEVELOPMENT_TEAM: ""
-          APPLE_DEVELOPMENT_TEAM: ""
+          #DEVELOPMENT_TEAM: ""
+          #APPLE_DEVELOPMENT_TEAM: ""
           TAURI_SIGNING_PRIVATE_KEY: ""   # 署名無効
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
           # CODE_SIGNING_ALLOWED: "NO"   # 必要に応じて xcconfig で制御
