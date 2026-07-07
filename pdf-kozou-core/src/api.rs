@@ -146,9 +146,7 @@ pub fn dispatch_json(line: &str) -> String {
             }
             "render" => {
                 let req: crate::render::RenderRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(&crate::render::render(
-                    &req,
-                )?)?)
+                Ok(serde_json::to_string(&crate::render::render(&req)?)?)
             }
             "trim" => {
                 let mut req: crate::trim::TrimRequest = serde_json::from_str(line)?;
@@ -228,12 +226,7 @@ pub fn dispatch_json(line: &str) -> String {
                             rasterize_quality: r.rasterize_quality,
                         }
                     };
-                    crate::compress::rewrite(
-                        &r.inner.input,
-                        &r.inner.output,
-                        opts,
-                        &fallback,
-                    )?
+                    crate::compress::rewrite(&r.inner.input, &r.inner.output, opts, &fallback)?
                 } else {
                     crate::compress::compress(&r.inner)?
                 };
@@ -278,9 +271,7 @@ pub fn dispatch_json(line: &str) -> String {
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
-                Ok(serde_json::to_string(&crate::rotate::rotate(
-                    &req,
-                )?)?)
+                Ok(serde_json::to_string(&crate::rotate::rotate(&req)?)?)
             }
             "sanitize_hidden" => {
                 let req: crate::stext::SanitizeRequest = serde_json::from_str(line)?;
@@ -295,37 +286,34 @@ pub fn dispatch_json(line: &str) -> String {
             }
 
             "render_imposition" => {
-                let req: crate::stext::RenderImpositionRequest =
-                    serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &crate::stext::render_imposition(&req)?,
-                )?)
+                let req: crate::stext::RenderImpositionRequest = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(&crate::stext::render_imposition(
+                    &req,
+                )?)?)
             }
 
             "rasterize_imposition" => {
-                let mut req: crate::stext::RasterizeImpositionRequest =
-                    serde_json::from_str(line)?;
+                let mut req: crate::stext::RasterizeImpositionRequest = serde_json::from_str(line)?;
                 let _tmp =
                     auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
-                Ok(serde_json::to_string(
-                    &crate::stext::rasterize_imposition(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::stext::rasterize_imposition(
+                    &req,
+                )?)?)
             }
 
             "split_imposition_pdf" => {
-                let mut req: crate::stext::SplitImpositionPdfRequest =
-                    serde_json::from_str(line)?;
+                let mut req: crate::stext::SplitImpositionPdfRequest = serde_json::from_str(line)?;
                 let _tmp =
                     auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
-                Ok(serde_json::to_string(
-                    &crate::stext::split_imposition_pdf(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::stext::split_imposition_pdf(
+                    &req,
+                )?)?)
             }
 
             "compose_imposition_pdf" => {
@@ -342,51 +330,47 @@ pub fn dispatch_json(line: &str) -> String {
             }
 
             "split_cell_render" => {
-                let mut req: crate::stext::SplitCellRenderRequest =
-                    serde_json::from_str(line)?;
+                let mut req: crate::stext::SplitCellRenderRequest = serde_json::from_str(line)?;
                 let _tmp =
                     auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
-                Ok(serde_json::to_string(
-                    &crate::stext::split_cell_render(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::stext::split_cell_render(
+                    &req,
+                )?)?)
             }
 
             "detect_control_chars" => {
-                let req: crate::stext::DetectControlCharsRequest =
-                    serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &crate::stext::detect_control_chars(&req)?,
-                )?)
+                let req: crate::stext::DetectControlCharsRequest = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(&crate::stext::detect_control_chars(
+                    &req,
+                )?)?)
             }
 
             "detect_buried" => {
                 let req: crate::stext::DetectBuriedRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &crate::stext::detect_buried_text(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::stext::detect_buried_text(
+                    &req,
+                )?)?)
             }
 
             "detect_tiny" => {
                 let req: crate::stext::DetectTinyRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &crate::stext::detect_tiny_text(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::stext::detect_tiny_text(
+                    &req,
+                )?)?)
             }
 
             "detect_low_contrast" => {
-                let req: crate::stext::DetectLowContrastRequest =
-                    serde_json::from_str(line)?;
+                let req: crate::stext::DetectLowContrastRequest = serde_json::from_str(line)?;
                 Ok(serde_json::to_string(
                     &crate::stext::detect_low_contrast_text(&req)?,
                 )?)
             }
 
             "detect_transparent" => {
-                let req: crate::stext::DetectTransparentRequest =
-                    serde_json::from_str(line)?;
+                let req: crate::stext::DetectTransparentRequest = serde_json::from_str(line)?;
                 Ok(serde_json::to_string(
                     &crate::stext::detect_transparent_text(&req)?,
                 )?)
@@ -394,27 +378,21 @@ pub fn dispatch_json(line: &str) -> String {
 
             "page_text" => {
                 let req: crate::stext::PageTextRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &crate::stext::get_page_text(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::stext::get_page_text(&req)?)?)
             }
             "search" => {
                 let req: crate::stext::SearchRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(&crate::stext::search_page(
-                    &req,
-                )?)?)
+                Ok(serde_json::to_string(&crate::stext::search_page(&req)?)?)
             }
             "page_links" => {
                 let req: crate::stext::PageLinksRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &crate::stext::get_page_links(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::stext::get_page_links(&req)?)?)
             }
             "convert" => {
                 let req: crate::convert::ConvertRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(
-                    &crate::convert::convert_to_pdf(&req)?,
-                )?)
+                Ok(serde_json::to_string(&crate::convert::convert_to_pdf(
+                    &req,
+                )?)?)
             }
             "rasterize" => {
                 #[derive(serde::Deserialize)]

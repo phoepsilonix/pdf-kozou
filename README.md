@@ -122,6 +122,7 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 | Linux (x64)      | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb`           |
 |                  | `PDF-Kozou_${version}_amd64.AppImage` `PDF-Kozou_${version}_amd64-linux.7z`    |
 | Android          | `PDF-Kozou_${version}_.apk` `PDF-Kozou_${version}.aab`                         |
+|                  | `app-universal-release-unsigned.apk` `app-universal-release.aab`               |
 | macOS            | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
 | iOS              | `PDF-Kozou_${version}_.ipa` `PDF-Kozou_${version}.app`                         |
 
@@ -132,7 +133,7 @@ Downloadsフォルダの下に展開してインストールした例。user_nam
 ### Android
 
 試験的にパッケージビルドのみ行っています。  
-Android版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。  
+Android版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、警告がでると思います。  
 またGhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
 
 ### MacOS
