@@ -1,7 +1,3 @@
 {
-  "bundle": {
-    "resources": {
-      "../target/release/pdf-kozou-core": "pdf-kozou-core"
-    }
-  }
+  "bundle": {}
 }

@@ -73,10 +73,6 @@
       "appimage": {
         "bundleMediaFramework": false
       }
-    },
-    "android": {
-      "minSdkVersion": 24,
-      "versionCode": 1
     }
   }
 }

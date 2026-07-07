@@ -1,8 +1,5 @@
 {
   "bundle": {
-    "targets": "all",
-    "resources": {
-      "../target/release/pdf-kozou-core": "pdf-kozou-core"
-    }
+    "targets": "all"
   }
 }
