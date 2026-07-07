@@ -4,6 +4,7 @@
   "version": "1.8.0",
   "type": "module",
   "scripts": {
+    "tauri": "tauri",
     "dev:core": "cargo build --bin pdf-kozou-core",
     "dev": "vite",
     "tauri:dev": "tauri dev",
