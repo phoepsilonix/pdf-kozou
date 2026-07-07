@@ -809,8 +809,8 @@ jobs:
           #npm run build -- --target ios  # または
           # npx tauri ios build --ci --no-sign
           #npm run tauri:ios:build || npm run tauri ios build
-          #tauri ios build --ci --no-sign
-          npm run tauri ios build -- --export-method app-store-connect --ci --no-sign
+          npm run tauri ios build -- --ci --no-sign
+          #npm run tauri ios build -- --export-method app-store-connect --ci --no-sign
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
