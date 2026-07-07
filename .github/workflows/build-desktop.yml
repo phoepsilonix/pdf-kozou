@@ -232,7 +232,7 @@ jobs:
           PKG_FOLDER="PDF-Kozou"
           mkdir -p ${PKG_FOLDER}
           cp -a target/release/pdf-kozou ${PKG_FOLDER}
-          cp -a target/release/pdf-kozou-core ${PKG_FOLDER}
+          cp -a target/release/pdf-kozou-core ${PKG_FOLDER}||true
 
           # tar.bz2
           # tar cf ${PKG_NAME}.tar ${PKG_FOLDER}/
@@ -270,7 +270,7 @@ jobs:
 
       - name: Save Cache (条件付きで保存のみ実行)
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
             ~/.cargo/bin/
@@ -401,7 +401,7 @@ jobs:
 
       - name: Save npm cache
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -484,7 +484,7 @@ jobs:
 
       - name: Save Cache (条件付きで保存のみ実行)
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
             ~/.cargo/bin/
@@ -546,7 +546,7 @@ jobs:
 
       - name: Save npm cache
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
@@ -619,7 +619,7 @@ jobs:
 
       - name: Save Cache (条件付きで保存のみ実行)
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
             ~/.cargo/bin/
@@ -731,7 +731,7 @@ jobs:
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
             ~/.cargo/bin/
@@ -824,7 +824,7 @@ jobs:
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
             ~/.cargo/bin/
