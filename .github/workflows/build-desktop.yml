@@ -843,7 +843,7 @@ jobs:
           # IPA または .app をコピー（Tauri の出力先はプロジェクトによって異なる）
           cp -r src-tauri/gen/apple/build/* bundle/ios/ 2>/dev/null || true
           cp -r target/aarch64-apple-ios/release/bundle/ios/* bundle/ios/ 2>/dev/null || true
-          find \( bundle/ios -name "*.ipa" -o -name "*.app" \) | head -10 || true
+          find bundle/ios \( -name "*.ipa" -o -name "*.app" \) | head -10 || true
 
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v7
