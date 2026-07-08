@@ -1,3 +1,22 @@
 {
-  "bundle": {}
+  "bundle": {
+    "targets": ["deb", "appimage", "rpm"],
+    "linux": {
+      "deb": {
+        "depends": [
+          "libgtk-3-0",
+          "libwebkit2gtk-4.1-0",
+          "libglib2.0-0",
+          "libcairo2",
+          "libpango-1.0-0"
+        ]
+      },
+      "rpm": {
+        "depends": ["gtk3", "webkit2gtk4.1", "glib2", "cairo", "pango"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
 }
