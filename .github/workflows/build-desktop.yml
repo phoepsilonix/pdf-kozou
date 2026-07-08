@@ -803,6 +803,15 @@ jobs:
         run: |
           npx tauri ios init --ci || true
 
+      - name: ios gen
+        run: |
+          ls src-tauri/gen/
+          tar cf ios-gen.tar src-tauri/gen/apple
+          bzip2 -9 ios-gen.tar
+          rm -rf ./bundle
+          mkdir -p bundle/ios
+          cp -a ios-gen.tar.bz2 bundle/ios/
+
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -840,8 +849,6 @@ jobs:
 
       - name: Move bundle folder
         run: |
-          rm -rf ./bundle
-          mkdir -p bundle/ios
           # IPA または .app をコピー（Tauri の出力先はプロジェクトによって異なる）
           cp -r src-tauri/gen/apple/build/* bundle/ios/ 2>/dev/null || true
           cp -r target/aarch64-apple-ios/release/bundle/ios/* bundle/ios/ 2>/dev/null || true
@@ -888,5 +895,6 @@ jobs:
             ./dist/android-artifacts/**/*.aab
             ./dist/ios-artifacts/**/*.ipa
             ./dist/ios-artifacts/**/*.app
+            ./dist/ios-artifacts/**/*.tar.bz2
           draft: false
           prerelease: ${{ contains(github.ref_name, 'pre') }}
