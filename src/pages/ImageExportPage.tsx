@@ -136,7 +136,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
-  const { pickSave } = useSaveDialog();
+  const { pickSave, commitSave } = useSaveDialog();
   const [statusMsg, setStatusMsg] = useState("");
   const DPI_PRESETS = useMemo(
     () => DPI_PRESET_KEYS.map((p) => ({ ...p, desc: t(p.descKey) })),
@@ -569,6 +569,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             layoutH: convertLayoutH,
             layoutEm: convertLayoutEm,
           });
+          await commitSave(outPath);
           setPdfOutPath(outPath);
           setPdfPageCount(cells.length);
           setPdfName("");
@@ -829,6 +830,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             layoutH: convertLayoutH,
             layoutEm: convertLayoutEm,
           });
+          await commitSave(outPath);
           setPdfOutPath(outPath);
           setPdfPageCount(sheets.length);
           setPdfName("");
@@ -849,6 +851,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           pages || undefined,
           { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
         );
+        await commitSave(outPath);
         setPdfOutPath(outPath);
         setPdfPageCount(resolvedPageCount);
         setPdfName("");
@@ -896,6 +899,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     imageName,
     imagePrefix,
     pickSave,
+    commitSave,
     pickDir,
     setError,
     announceSuccess,

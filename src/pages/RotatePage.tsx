@@ -14,6 +14,7 @@ import {
   getPdfInfo,
   moveFile,
   getTempPath,
+  commitSavedFile,
   type PdfInfo,
   joinPath,
 } from "../lib/tauri";
@@ -443,6 +444,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           pageOrientation === "auto" && pageSizeId !== "image",
         );
       });
+      await commitSavedFile(sp);
       setSavedPath(sp);
       announceSuccess("done.save", {
         name: formatFilenameForSpeech(sp.split(/[/\\]/).pop() ?? sp),

@@ -910,7 +910,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
   const [cropCleanup, setCropCleanup] = useState(false);
-  const { pickSave } = useSaveDialog();
+  const { pickSave, commitSave } = useSaveDialog();
   const [outTmp, setOutTmp] = useState<string>("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
 
@@ -1113,6 +1113,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       // 保存は終端処理。保存後は「保存完了」画面へ遷移し、そこに「圧縮して保存」は
       // 出さないため、moveFile で一時ファイルを消費して問題ない（後始末も兼ねる）。
       await moveFile(outTmp, sp);
+      await commitSave(sp);
       setSavedPath(sp);
       setPhase("saved");
       announceSuccess("done.save", {

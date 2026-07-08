@@ -98,10 +98,12 @@ pub fn run() {
             core::is_pdf_file,
             core::check_path_conflict,
             platform_cmd::get_screen_info,
+            platform_cmd::is_mobile,
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
             platform_cmd::pick_save_file,
             platform_cmd::pick_save_file_in,
+            platform_cmd::commit_saved_file,
             platform_cmd::pick_output_dir,
             #[cfg(desktop)]
             gs_detector::check_ghostscript_installed,
@@ -127,6 +129,7 @@ pub fn run() {
                 if let Ok(cache_dir) = app.path().app_cache_dir() {
                     let _ = crate::tempdir::MOBILE_CACHE_DIR.set(cache_dir);
                 }
+                app.manage(crate::platform::PendingSaves::default());
             }
 
             // ── メインウィンドウを生成(入口 index.html だけ Cache-Control: no-store)──

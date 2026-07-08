@@ -50,6 +50,19 @@ pub async fn get_screen_info(window: Window) -> Result<ScreenInfo, String> {
     })
 }
 
+/// フロントエンドがモバイル(Android/iOS)かどうかを判定するためのコマンド。
+///
+/// モバイルでは tauri-plugin-dialog にフォルダ選択 API が無く、
+/// `pick_output_dir` はダイアログを出さずアプリ専用一時ディレクトリを返す
+/// (SAFのツリーURI取得・書き込みは未対応のため)。そのため各ページは、
+/// モバイルでは「フォルダを選んで複数ファイルを書き出す」フローではなく、
+/// `pick_save_file` + `commit_saved_file` によるファイル単位の保存フローを
+/// 使う必要がある。
+#[tauri::command]
+pub fn is_mobile() -> bool {
+    cfg!(mobile)
+}
+
 /// PDF を開くダイアログ (単一ファイル)
 /// デスクトップ: xdg-desktop-portal 不使用、GTK3 直接 (Linux) / rfd (macOS, Windows)
 /// モバイル: tauri-plugin-dialog のネイティブピッカーを使用
@@ -109,6 +122,25 @@ pub async fn pick_save_file(
         platform::save_pdf_dialog(&default_name).await
     };
     Ok(path.map(|p| p.display().to_string()))
+}
+
+/// `pick_save_file` / `pick_save_file_in` が返した一時パスへ core が書き込みを
+/// 終えた後に呼ぶ。モバイルでユーザーが選んだ実際の保存先(content:// URI 等)
+/// が登録されていれば、その中身をコピーしてから一時ファイルを削除する。
+///
+/// デスクトップでは何もしない(pick_save_file が返すのは既に実際の保存先の
+/// パスそのものであり、core が直接そこへ書き込んでいるため)。
+#[tauri::command]
+pub async fn commit_saved_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    #[cfg(mobile)]
+    {
+        return platform::finalize_pending_save(&app, &path);
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = (&app, &path);
+        Ok(())
+    }
 }
 
 /// 出力ディレクトリ選択ダイアログ

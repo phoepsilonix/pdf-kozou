@@ -110,7 +110,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     },
     F1: () => announceKey("shortcut.tool"),
   });
-  const { pickSave } = useSaveDialog();
+  const { pickSave, commitSave } = useSaveDialog();
 
   const [phase, setPhase] = useState<Phase>("edit");
   const [entries, setEntries] = useState<PdfEntry[]>([]);
@@ -364,6 +364,7 @@ useEffect(() => {
         psize?.h,
         pageOrientation === "auto" && pageSizeId !== "image",
       );
+      await commitSave(sp);
       setResult(res);
       announceSuccess("done.merge", { count: String(entries.length) });
       setPhase("result");
@@ -376,6 +377,7 @@ useEffect(() => {
   }, [
     entries,
     pickSave,
+    commitSave,
     setError,
     announceSuccess,
     announceError,

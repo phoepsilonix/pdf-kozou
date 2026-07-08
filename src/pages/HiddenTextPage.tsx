@@ -760,7 +760,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [imgSrc, setImgSrc] = useState("");
   const [imgNatW, setImgNatW] = useState(1);
   const [imgNatH, setImgNatH] = useState(1);
-  const { pickSave } = useSaveDialog();
+  const { pickSave, commitSave } = useSaveDialog();
   const { announceSuccess, announceError, announceKey } = useA11y();
   const [skipType3, setSkipType3] = useState(true);
 
@@ -918,6 +918,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         if (res.removed > 0) type3Msg = ` +Type3(${res.removed})`;
       }
       */
+      await commitSave(outPath);
       const doneName = outPath.split(/[/\\]/).pop() ?? "";
       //setStatus(t("hidden.sanitize_done", { name: doneName }) + type3Msg);
       setStatus(t("hidden.sanitize_done", { name: doneName }));
@@ -936,7 +937,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     } finally {
       setSanitizing(false);
     }
-  }, [filePath, groups, selectedIds, pickSave, t, skipType3]);
+  }, [filePath, groups, selectedIds, pickSave, commitSave, t, skipType3]);
 
   /*
   const runType3Sanitize = useCallback(async () => {

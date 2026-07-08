@@ -267,22 +267,109 @@ pub async fn open_pdfs_dialog(app: &tauri::AppHandle) -> Result<Vec<std::path::P
     Ok(out)
 }
 
-/// モバイルでは「保存先フォルダを自由に選ぶ」SAF書き込みには未対応。
-/// アプリ専用の書き込み可能ディレクトリに自動的に保存する(暫定対応)。
-/// 端末の他の場所へ持ち出す場合は、共有(share)機能を別途使う想定。
+/// モバイル(Android/iOS)で「このアプリの一時パス → ユーザーが選んだ保存先」の
+/// 対応を覚えておくための状態。
+///
+/// モバイルでは MuPDF/pdf-kozou-core が `output` に書き込む際、実ファイルパス
+/// (fopen できるパス) が必要で、SAF (Storage Access Framework) が返す
+/// `content://` URI へは直接書き込めない。そのため:
+///   1. `save_pdf_dialog` でネイティブの保存ダイアログを表示し、ユーザーが
+///      選んだ保存先 (content:// URI であることが多い) を取得する。
+///   2. core への `output` にはアプリ専用一時ディレクトリの実パスを渡す。
+///   3. 処理が終わったら `finalize_pending_save` で、一時ファイルの中身を
+///      ユーザーが選んだ保存先へコピーする (tauri-plugin-fs 経由。
+///      content:// でも ContentResolver 経由の書き込みに対応している)。
 #[cfg(mobile)]
-pub async fn save_pdf_dialog(
-    _app: &tauri::AppHandle,
+#[derive(Default)]
+pub struct PendingSaves(pub std::sync::Mutex<std::collections::HashMap<String, tauri_plugin_fs::FilePath>>);
+
+/// 保存ダイアログを表示し、ユーザーが選んだ保存先を覚えておいた上で、
+/// core が実際に書き込む先(アプリ専用一時ディレクトリの実パス)を返す。
+/// ユーザーがキャンセルした場合は None を返す(デスクトップ版と同じ挙動)。
+#[cfg(mobile)]
+async fn mobile_save_dialog_impl(
+    app: &tauri::AppHandle,
     default_name: &str,
 ) -> Option<std::path::PathBuf> {
-    Some(crate::tempdir::kozou_temp_path(default_name))
+    use tauri::Manager;
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(default_name)
+        .add_filter("PDF", &["pdf"])
+        .save_file(move |result| {
+            let _ = tx.send(result);
+        });
+
+    // ユーザーがキャンセルした場合は Ok(None) が来る。チャンネルが閉じた
+    // (何らかの異常)場合も、キャンセル扱いにして呼び出し元へ None を返す。
+    let dest = rx.await.ok().flatten()?;
+
+    let temp_path = crate::tempdir::kozou_temp_path(default_name);
+    let key = temp_path.display().to_string();
+
+    if let Some(state) = app.try_state::<PendingSaves>() {
+        state.0.lock().unwrap().insert(key, dest);
+    }
+
+    Some(temp_path)
+}
+
+#[cfg(mobile)]
+pub async fn save_pdf_dialog(
+    app: &tauri::AppHandle,
+    default_name: &str,
+) -> Option<std::path::PathBuf> {
+    mobile_save_dialog_impl(app, default_name).await
 }
 #[cfg(mobile)]
 pub async fn save_pdf_dialog_in(
-    _app: &tauri::AppHandle,
+    app: &tauri::AppHandle,
     default_name: &str,
 ) -> Option<std::path::PathBuf> {
-    Some(crate::tempdir::kozou_temp_path(default_name))
+    // Android の ACTION_CREATE_DOCUMENT は初期ディレクトリの指定に対応しない
+    // ため、_initial_dir 相当の引数は無い(呼び出し元の pick_save_file_in も
+    // モバイルでは初期ディレクトリを無視する)。
+    mobile_save_dialog_impl(app, default_name).await
+}
+
+/// `output_path` がユーザーが選んだ保存先に紐づく一時ファイルであれば、
+/// その中身を実際の保存先へコピーして一時ファイルを削除する。
+/// 紐づきが無い場合(デスクトップ相当のパスや、保存を伴わない処理)は何もしない。
+#[cfg(mobile)]
+pub fn finalize_pending_save(app: &tauri::AppHandle, output_path: &str) -> Result<(), String> {
+    use tauri::Manager;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+
+    let Some(state) = app.try_state::<PendingSaves>() else {
+        return Ok(());
+    };
+
+    let dest = { state.0.lock().unwrap().remove(output_path) };
+    let Some(dest) = dest else {
+        return Ok(());
+    };
+
+    let bytes = std::fs::read(output_path)
+        .map_err(|e| format!("一時ファイルの読み込みに失敗しました: {e}"))?;
+
+    let mut opts = OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+
+    let mut file = app
+        .fs()
+        .open(dest, opts)
+        .map_err(|e| format!("保存先への書き込みに失敗しました: {e}"))?;
+
+    use std::io::Write;
+    file.write_all(&bytes)
+        .map_err(|e| format!("保存先への書き込みに失敗しました: {e}"))?;
+
+    let _ = std::fs::remove_file(output_path);
+
+    Ok(())
 }
 #[cfg(mobile)]
 pub async fn pick_output_dir(_app: &tauri::AppHandle) -> Option<std::path::PathBuf> {

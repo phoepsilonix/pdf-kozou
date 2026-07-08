@@ -765,8 +765,37 @@ export async function pickOpenFile(): Promise<string | null> {
   return invoke<string | null>("pick_open_file");
 }
 
+let _isMobileCache: boolean | null = null;
+
+/**
+ * 実行環境が Android/iOS かどうか。
+ * モバイルではフォルダ選択ダイアログが無いため、pickOutputDir() を使った
+ * 「フォルダへの一括書き出し」フローではなく、pickSaveFile() +
+ * commitSavedFile() によるファイル単位の保存フローに分岐させるために使う。
+ */
+export async function isMobile(): Promise<boolean> {
+  if (_isMobileCache === null) {
+    _isMobileCache = await invoke<boolean>("is_mobile");
+  }
+  return _isMobileCache;
+}
+
 export async function pickSaveFile(defaultName: string): Promise<string | null> {
   return invoke<string | null>("pick_save_file", { defaultName });
+}
+
+/**
+ * pickSaveFile() が返したパスへの書き込みが終わった後に必ず呼ぶこと。
+ *
+ * モバイルでは pickSaveFile() はユーザーが選んだ実際の保存先(SAFのcontent:// URI等)
+ * ではなく、アプリ専用の一時パスを返す。この関数を呼ぶことで、一時ファイルの中身が
+ * 実際にユーザーが選んだ保存先へコピーされる。デスクトップでは何もしない(no-op)。
+ *
+ * 呼び忘れると、モバイルでは処理結果がアプリ専用領域に残ったままになり、
+ * ユーザーから見えるファイルとして保存されない。
+ */
+export async function commitSavedFile(path: string): Promise<void> {
+  await invoke("commit_saved_file", { path });
 }
 
 export async function pickOutputDir(): Promise<string | null> {

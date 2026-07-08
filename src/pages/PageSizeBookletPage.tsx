@@ -56,7 +56,7 @@ interface BatchProgress {
 
 export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
-  const { pickSave } = useSaveDialog();
+  const { pickSave, commitSave } = useSaveDialog();
   const { t } = useI18n();
   const { announceSuccess, announceError, announceScreen, announceKey } = useA11y();
   const isBatch = (batchFiles?.length ?? 0) > 1;
@@ -301,6 +301,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         layoutH: convertLayoutH,
         layoutEm: convertLayoutEm,
       });
+      await commitSave(sp);
       setOutBytes(res.output_bytes);
       announceSuccess("done.compose", { sheets: String(ns) });
       setPhase("result");
@@ -314,6 +315,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     filePath,
     totalPages,
     pickSave,
+    commitSave,
     composePdfName,
     srcStem,
     keepOriginalName,

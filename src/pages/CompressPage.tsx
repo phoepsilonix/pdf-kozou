@@ -148,7 +148,7 @@ export function CompressPage({
     convertLayoutH,
     convertLayoutEm,
   } = usePdfStore();
-  const { pickSave } = useSaveDialog();
+  const { pickSave, commitSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const { isNarrow } = useViewport();
@@ -466,6 +466,7 @@ export function CompressPage({
           });
         }
       }
+      await commitSave(sp);
       setSavedFilePath(sp);
       announceSuccess("done.save", {
         name: formatFilenameForSpeech(sp.split(/[/\\]/).pop() ?? sp),
@@ -489,6 +490,7 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     pickSave,
+    commitSave,
     setError,
     outputBaseName,
   ]);
@@ -499,6 +501,7 @@ export function CompressPage({
     setSaving(true);
     try {
       await invoke("copy_file", { src: inputFile, dst: sp });
+      await commitSave(sp);
       setSavedFilePath(sp);
       announceSuccess("done.save", {
         name: formatFilenameForSpeech(sp.split(/[/\\]/).pop() ?? sp),
@@ -510,7 +513,7 @@ export function CompressPage({
     } finally {
       setSaving(false);
     }
-  }, [inputFile, filePath, pickSave, setError, outputBaseName]);
+  }, [inputFile, filePath, pickSave, commitSave, setError, outputBaseName]);
 
   const handleBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());

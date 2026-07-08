@@ -4,7 +4,7 @@
 import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { usePdfStore } from "../store/usePdfStore";
-import { getDefaultSaveDir } from "../lib/tauri";
+import { getDefaultSaveDir, commitSavedFile } from "../lib/tauri";
 
 export function useSaveDialog() {
   const { lastSaveDir, setLastSaveDir } = usePdfStore();
@@ -36,5 +36,17 @@ export function useSaveDialog() {
     [lastSaveDir, setLastSaveDir],
   );
 
-  return { pickSave };
+  /**
+   * pickSave() で得たパスへの書き込みが終わった直後に必ず呼ぶこと。
+   *
+   * モバイルでは pickSave() が返すのはアプリ専用の一時パスであり、
+   * ユーザーが実際に選んだ保存先(SAF の content:// URI 等)へはまだ
+   * コピーされていない。commitSave() を呼んで初めて、ユーザーから見える
+   * 場所にファイルが保存される。デスクトップでは no-op。
+   */
+  const commitSave = useCallback(async (path: string): Promise<void> => {
+    await commitSavedFile(path);
+  }, []);
+
+  return { pickSave, commitSave };
 }
