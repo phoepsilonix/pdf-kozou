@@ -567,8 +567,8 @@ jobs:
           tar cf macos-gen.tar src-tauri/gen/apple
           bzip2 -9 macos-gen.tar
           rm -rf ./bundle
-          mkdir -p bundle/ios
-          cp -a macos-gen.tar.bz2 bundle/ios/
+          mkdir -p bundle/macos
+          cp -a macos-gen.tar.bz2 bundle/macos/
 
       - name: Build (release) - 署名なし
         env:
