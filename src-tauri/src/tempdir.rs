@@ -17,6 +17,8 @@
 // macOS:   $TMPDIR/pdf-kozou/
 
 use std::path::PathBuf;
+
+#[cfg(mobile)]
 use std::sync::OnceLock;
 
 /// モバイル(Android/iOS)でのみ使用する、アプリ専用の書き込み可能ディレクトリ。

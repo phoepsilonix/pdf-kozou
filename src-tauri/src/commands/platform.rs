@@ -83,14 +83,14 @@ pub async fn pick_open_files(app: tauri::AppHandle) -> Result<Vec<String>, Strin
 pub async fn pick_save_file_in(
     app: tauri::AppHandle,
     default_name: String,
-    initial_dir: Option<String>,
+    _initial_dir: Option<String>,
 ) -> Result<Option<String>, String> {
     #[cfg(mobile)]
     let path = platform::save_pdf_dialog_in(&app, &default_name).await;
     #[cfg(not(mobile))]
     let path = {
         let _ = &app;
-        platform::save_pdf_dialog_in(&default_name, initial_dir.as_deref()).await
+        platform::save_pdf_dialog_in(&default_name, _initial_dir.as_deref()).await
     };
     Ok(path.map(|p| p.display().to_string()))
 }

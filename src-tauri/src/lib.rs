@@ -18,6 +18,7 @@ pub mod tempdir;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
 
+#[cfg(mobile)]
 use tauri::Manager;
 
 #[cfg(target_os = "linux")]
