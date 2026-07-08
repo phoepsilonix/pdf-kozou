@@ -560,6 +560,16 @@ jobs:
       #    cargo binstall tauri-cli -y --force
       #    echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+      - name: macos gen
+        run: |
+          npm run tauri init --ci
+          ls src-tauri/gen/
+          tar cf macos-gen.tar src-tauri/gen/apple
+          bzip2 -9 macos-gen.tar
+          rm -rf ./bundle
+          mkdir -p bundle/ios
+          cp -a macos-gen.tar.bz2 bundle/ios/
+
       - name: Build (release) - 署名なし
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""   # 空で署名をスキップ
@@ -590,6 +600,8 @@ jobs:
 
       - name: 7zip packages
         run: |
+          #rm -rf ./bundle
+          #mkdir -p bundle/macos
           APP_VER=$(jq -r ".version" package.json)
           PKG_NAME="PDF-Kozou_${APP_VER}_universal-macos"
           PKG_FOLDER="PDF-Kozou.app"
@@ -610,8 +622,6 @@ jobs:
           # mv ${PKG_NAME}.zip target/release/bundle/zip/
 
           # 7zip
-          rm -rf ./bundle
-          mkdir -p bundle/macos
           7z a -mx=9 -m0=lzma:fb273:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
           #7z a -mx=9 -m0=lzma:fb230:mc369:lc2:pb2 ${PKG_NAME}.7z ${PKG_FOLDER}/
           mv ${PKG_NAME}.7z bundle/macos/
@@ -803,14 +813,14 @@ jobs:
         run: |
           npx tauri ios init --ci || true
 
-      - name: ios gen
-        run: |
-          ls src-tauri/gen/
-          tar cf ios-gen.tar src-tauri/gen/apple
-          bzip2 -9 ios-gen.tar
-          rm -rf ./bundle
-          mkdir -p bundle/ios
-          cp -a ios-gen.tar.bz2 bundle/ios/
+      #- name: ios gen
+      #  run: |
+      #    ls src-tauri/gen/
+      #    tar cf ios-gen.tar src-tauri/gen/apple
+      #    bzip2 -9 ios-gen.tar
+      #    rm -rf ./bundle
+      #    mkdir -p bundle/ios
+      #    cp -a ios-gen.tar.bz2 bundle/ios/
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -849,6 +859,8 @@ jobs:
 
       - name: Move bundle folder
         run: |
+          rm -rf ./bundle
+          mkdir -p bundle/ios
           # IPA または .app をコピー（Tauri の出力先はプロジェクトによって異なる）
           cp -r src-tauri/gen/apple/build/* bundle/ios/ 2>/dev/null || true
           cp -r target/aarch64-apple-ios/release/bundle/ios/* bundle/ios/ 2>/dev/null || true
@@ -891,6 +903,7 @@ jobs:
             ./dist/windows-artifacts/**/*.msix
             ./dist/macos-artifacts/**/*.dmg
             ./dist/macos-artifacts/**/*.7z
+            ./dist/macos-artifacts/**/*.tar.bz2
             ./dist/android-artifacts/**/*.apk
             ./dist/android-artifacts/**/*.aab
             ./dist/ios-artifacts/**/*.ipa
