@@ -79,13 +79,13 @@ pub async fn save_pdf_dialog(default_name: &str) -> Option<std::path::PathBuf> {
 #[cfg(all(desktop, not(target_os = "linux")))]
 pub async fn save_pdf_dialog_in(
     default_name: &str,
-    initial_dir: Option<&str>,
+    _initial_dir: Option<&str>,
 ) -> Option<std::path::PathBuf> {
     use rfd::AsyncFileDialog;
     let mut dlg = AsyncFileDialog::new()
         .set_file_name(default_name)
         .add_filter("PDF", &["pdf"]);
-    if let Some(d) = initial_dir {
+    if let Some(d) = _initial_dir {
         dlg = dlg.set_directory(d);
     }
     dlg.save_file().await.map(|f| f.path().to_path_buf())
