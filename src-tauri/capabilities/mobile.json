@@ -1,0 +1,28 @@
+{
+  "identifier": "mobile",
+  "description": "PDF小僧のモバイル(Android/iOS)向け権限。default.json は platforms が windows/linux/macOS 限定のため、モバイルではここで別途許可する必要がある。",
+  "windows": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-set-webview-zoom",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "fs:default",
+    "fs:allow-read",
+    "fs:allow-write",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-mkdir",
+    "fs:allow-exists",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-copy-file",
+    "fs:allow-stat",
+    "fs:read-files",
+    "fs:read-dirs"
+  ]
+}
