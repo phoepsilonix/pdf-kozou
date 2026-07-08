@@ -221,15 +221,14 @@ pub async fn open_pdf_dialog(app: &tauri::AppHandle) -> Result<Option<std::path:
             let _ = tx.send(result);
         });
 
-    let Some(picked) = rx
+    let picked = match rx
         .await
         .map_err(|e| format!("picker channel closed: {e}"))?
-        .into()
-        .flatten()
-    else {
-        // ユーザーがキャンセルした場合。エラーではない。
-        return Ok(None);
+    {
+        Some(p) => p,
+        None => return Ok(None), // ユーザーがキャンセルした場合。エラーではない。
     };
+
     filepath_to_local(app, picked).await.map(Some)
 }
 
@@ -245,14 +244,12 @@ pub async fn open_pdfs_dialog(app: &tauri::AppHandle) -> Result<Vec<std::path::P
             let _ = tx.send(result);
         });
 
-    let Some(picked) = rx
+    let result = rx
         .await
-        .map_err(|e| format!("picker channel closed: {e}"))?
-        .into()
-        .flatten()
-    else {
-        // ユーザーがキャンセルした場合。エラーではない。
-        return Ok(vec![]);
+        .map_err(|e| format!("picker channel closed: {e}"))?;
+    let picked = match result {
+        Some(files) => files,
+        None => return Ok(vec![]), // ユーザーがキャンセルした場合。エラーではない。空配列を返す。
     };
 
     let mut out = Vec::with_capacity(picked.len());
