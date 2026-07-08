@@ -180,6 +180,9 @@ async fn filepath_to_local(
         return Ok(p.to_path_buf());
     }
 
+    // 名前(拡張子込み)を復元しておく
+    let guess_name = guess_file_name(&file_path);
+
     // 2. モバイル環境: 一度全バイト読み込む
     // app.fs() は非同期環境で呼ぶ必要があるため spawn_blocking を使用
     let bytes = app
@@ -195,7 +198,8 @@ async fn filepath_to_local(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis(),
-        "imported"
+        guess_name
+        //"imported"
     );
     let dest = crate::tempdir::kozou_temp_path(&name);
 
