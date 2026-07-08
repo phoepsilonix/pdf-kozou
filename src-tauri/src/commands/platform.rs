@@ -56,7 +56,7 @@ pub async fn get_screen_info(window: Window) -> Result<ScreenInfo, String> {
 #[tauri::command]
 pub async fn pick_open_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
     #[cfg(mobile)]
-    let path = platform::open_pdf_dialog(&app).await;
+    let path = platform::open_pdf_dialog(&app).await?;
     #[cfg(not(mobile))]
     let path = {
         let _ = &app;
@@ -69,7 +69,7 @@ pub async fn pick_open_file(app: tauri::AppHandle) -> Result<Option<String>, Str
 #[tauri::command]
 pub async fn pick_open_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     #[cfg(mobile)]
-    let paths = platform::open_pdfs_dialog(&app).await;
+    let paths = platform::open_pdfs_dialog(&app).await?;
     #[cfg(not(mobile))]
     let paths = {
         let _ = &app;

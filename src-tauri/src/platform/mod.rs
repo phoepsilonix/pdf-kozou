@@ -112,34 +112,76 @@ pub fn log_display_environment() {}
 // (ContentResolver 経由で content:// も読める) でバイト列を取得し、
 // アプリの一時ディレクトリにコピーしてから、そのローカルパスを返す。
 
+/// content:// / file:// の URL 末尾セグメントから元のファイル名(拡張子込み)を
+/// 復元する。
+///
+/// Android の SAF (Storage Access Framework) が返す content:// URI は
+/// 末尾セグメントが percent-encode された「ドキュメントID」になっている。
+/// 例: `content://.../document/primary%3ADownload%2Fscan.pdf`
+///     → decode → `primary:Download/scan.pdf` → basename → `scan.pdf`
+///
+/// これを percent-decode せずに使うと、コピー先の一時ファイル名に
+/// 拡張子が付かず (`%2F` や `%3A` を含んだ不正なファイル名になり)、
+/// フロントエンドの拡張子判定 (`isMupdfExtension`) に弾かれて
+/// 「ファイルを選んでも何も追加されない」という症状になる。
+#[cfg(mobile)]
+fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
+    use percent_encoding::percent_decode_str;
+
+    let raw_last_segment = match file_path {
+        tauri_plugin_fs::FilePath::Url(url) => {
+            url.path_segments().and_then(|mut s| s.next_back()).map(str::to_string)
+        }
+        _ => None,
+    };
+
+    let Some(raw) = raw_last_segment else {
+        return "picked_file".to_string();
+    };
+
+    // percent-decode してから、プロバイダ固有の区切り (`/`, `:`) の
+    // 最後の要素だけを取り出す。
+    let decoded = percent_decode_str(&raw).decode_utf8_lossy().into_owned();
+    let base = decoded
+        .rsplit(['/', ':'])
+        .next()
+        .unwrap_or(decoded.as_str())
+        .trim();
+
+    // ファイルシステムに書き込めない文字を除去しておく
+    let sanitized: String = base
+        .chars()
+        .map(|c| if matches!(c, '\\' | '"' | '<' | '>' | '|' | '?' | '*') { '_' } else { c })
+        .collect();
+
+    if sanitized.is_empty() {
+        "picked_file".to_string()
+    } else {
+        sanitized
+    }
+}
+
 #[cfg(mobile)]
 async fn filepath_to_local(
     app: &tauri::AppHandle,
     file_path: tauri_plugin_fs::FilePath,
-) -> Option<std::path::PathBuf> {
+) -> Result<std::path::PathBuf, String> {
     use tauri_plugin_fs::FsExt;
 
     // すでに実ファイルパスならそのまま使う
     if let Some(p) = file_path.as_path() {
-        return Some(p.to_path_buf());
+        return Ok(p.to_path_buf());
     }
 
-    // 名前(拡張子)を推測しておく
-    let name = match &file_path {
-        tauri_plugin_fs::FilePath::Url(url) => url
-            .path_segments()
-            .and_then(|mut s| s.next_back())
-            .unwrap_or("picked_file")
-            .to_string(),
-        _ => "picked_file".to_string(),
-    };
+    // 名前(拡張子込み)を復元しておく
+    let name = guess_file_name(&file_path);
 
-    let app = app.clone();
+    let app_clone = app.clone();
     let fp = file_path.clone();
-    let bytes = tauri::async_runtime::spawn_blocking(move || app.fs().read(fp))
+    let bytes = tauri::async_runtime::spawn_blocking(move || app_clone.fs().read(fp))
         .await
-        .ok()?
-        .ok()?;
+        .map_err(|e| format!("failed to join read task: {e}"))?
+        .map_err(|e| format!("failed to read picked file ({file_path:?}): {e}"))?;
 
     let dest = crate::tempdir::kozou_temp_path(&format!(
         "{}_{}",
@@ -149,8 +191,9 @@ async fn filepath_to_local(
             .unwrap_or(0),
         name
     ));
-    std::fs::write(&dest, bytes).ok()?;
-    Some(dest)
+    std::fs::write(&dest, bytes)
+        .map_err(|e| format!("failed to write temp file {}: {e}", dest.display()))?;
+    Ok(dest)
 }
 
 #[cfg(mobile)]
@@ -160,7 +203,7 @@ const PDF_PICKER_EXTENSIONS: &[&str] = &[
 ];
 
 #[cfg(mobile)]
-pub async fn open_pdf_dialog(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+pub async fn open_pdf_dialog(app: &tauri::AppHandle) -> Result<Option<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -171,12 +214,17 @@ pub async fn open_pdf_dialog(app: &tauri::AppHandle) -> Option<std::path::PathBu
             let _ = tx.send(result);
         });
 
-    let picked = rx.await.ok().flatten()?;
-    filepath_to_local(app, picked).await
+    let Some(picked) = rx.await.map_err(|e| format!("picker channel closed: {e}"))?.flatten() else {
+        // ユーザーがキャンセルした場合。エラーではない。
+        return Ok(None);
+    };
+    filepath_to_local(app, picked).await.map(Some)
 }
 
 #[cfg(mobile)]
-pub async fn open_pdfs_dialog(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
+pub async fn open_pdfs_dialog(
+    app: &tauri::AppHandle,
+) -> Result<Vec<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -187,17 +235,19 @@ pub async fn open_pdfs_dialog(app: &tauri::AppHandle) -> Vec<std::path::PathBuf>
             let _ = tx.send(result);
         });
 
-    let Some(picked) = rx.await.ok().flatten() else {
-        return vec![];
+    let Some(picked) = rx.await.map_err(|e| format!("picker channel closed: {e}"))?.flatten()
+    else {
+        // ユーザーがキャンセルした場合。エラーではない。
+        return Ok(vec![]);
     };
 
     let mut out = Vec::with_capacity(picked.len());
+    // 1件でも読み込みに失敗したら、無視して黙って続けるのではなく
+    // まとめてエラーを返す (原因がフロントエンドで見えるように)。
     for fp in picked {
-        if let Some(p) = filepath_to_local(app, fp).await {
-            out.push(p);
-        }
+        out.push(filepath_to_local(app, fp).await?);
     }
-    out
+    Ok(out)
 }
 
 /// モバイルでは「保存先フォルダを自由に選ぶ」SAF書き込みには未対応。

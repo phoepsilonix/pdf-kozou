@@ -44,6 +44,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "6"
 which = "8"
 
+# モバイルのファイルピッカーが返す content:// / file:// URL から
+# 元のファイル名(拡張子込み)を復元するために使用 (percent-decode)。
+percent-encoding = "2"
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56.0"
 
