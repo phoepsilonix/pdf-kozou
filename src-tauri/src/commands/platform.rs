@@ -51,40 +51,75 @@ pub async fn get_screen_info(window: Window) -> Result<ScreenInfo, String> {
 }
 
 /// PDF を開くダイアログ (単一ファイル)
-/// xdg-desktop-portal 不使用、GTK3 直接
+/// デスクトップ: xdg-desktop-portal 不使用、GTK3 直接 (Linux) / rfd (macOS, Windows)
+/// モバイル: tauri-plugin-dialog のネイティブピッカーを使用
 #[tauri::command]
-pub async fn pick_open_file() -> Result<Option<String>, String> {
-    let path = platform::open_pdf_dialog().await;
+pub async fn pick_open_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    #[cfg(mobile)]
+    let path = platform::open_pdf_dialog(&app).await;
+    #[cfg(not(mobile))]
+    let path = {
+        let _ = &app;
+        platform::open_pdf_dialog().await
+    };
     Ok(path.map(|p| p.display().to_string()))
 }
 
 /// PDF を開くダイアログ (複数ファイル)
 #[tauri::command]
-pub async fn pick_open_files() -> Result<Vec<String>, String> {
-    let paths = platform::open_pdfs_dialog().await;
+pub async fn pick_open_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    #[cfg(mobile)]
+    let paths = platform::open_pdfs_dialog(&app).await;
+    #[cfg(not(mobile))]
+    let paths = {
+        let _ = &app;
+        platform::open_pdfs_dialog().await
+    };
     Ok(paths.iter().map(|p| p.display().to_string()).collect())
 }
 
 /// 保存先ダイアログ (初期ディレクトリ指定付き)
 #[tauri::command]
 pub async fn pick_save_file_in(
+    app: tauri::AppHandle,
     default_name: String,
     initial_dir: Option<String>,
 ) -> Result<Option<String>, String> {
-    let path = platform::save_pdf_dialog_in(&default_name, initial_dir.as_deref()).await;
+    #[cfg(mobile)]
+    let path = platform::save_pdf_dialog_in(&app, &default_name).await;
+    #[cfg(not(mobile))]
+    let path = {
+        let _ = &app;
+        platform::save_pdf_dialog_in(&default_name, initial_dir.as_deref()).await
+    };
     Ok(path.map(|p| p.display().to_string()))
 }
 
 /// 保存先ダイアログ
 #[tauri::command]
-pub async fn pick_save_file(default_name: String) -> Result<Option<String>, String> {
-    let path = platform::save_pdf_dialog(&default_name).await;
+pub async fn pick_save_file(
+    app: tauri::AppHandle,
+    default_name: String,
+) -> Result<Option<String>, String> {
+    #[cfg(mobile)]
+    let path = platform::save_pdf_dialog(&app, &default_name).await;
+    #[cfg(not(mobile))]
+    let path = {
+        let _ = &app;
+        platform::save_pdf_dialog(&default_name).await
+    };
     Ok(path.map(|p| p.display().to_string()))
 }
 
 /// 出力ディレクトリ選択ダイアログ
 #[tauri::command]
-pub async fn pick_output_dir() -> Result<Option<String>, String> {
-    let path = platform::pick_output_dir().await;
+pub async fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    #[cfg(mobile)]
+    let path = platform::pick_output_dir(&app).await;
+    #[cfg(not(mobile))]
+    let path = {
+        let _ = &app;
+        platform::pick_output_dir().await
+    };
     Ok(path.map(|p| p.display().to_string()))
 }
