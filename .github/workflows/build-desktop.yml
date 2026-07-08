@@ -768,19 +768,19 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-ios-sim
 
-      - name: Restore Cache
-        uses: actions/cache/restore@v5.0.5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mobile-rust-v1-
-            ${{ runner.os }}-mobile-rust-
+      #- name: Restore Cache
+      #  uses: actions/cache/restore@v5.0.5
+      #  with:
+      #    path: |
+      #      ~/.cargo/bin/
+      #      ~/.cargo/registry/index/
+      #      ~/.cargo/registry/cache/
+      #      ~/.cargo/git/db/
+      #      target
+      #    key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
+      #    restore-keys: |
+      #      ${{ runner.os }}-mobile-rust-v1-
+      #      ${{ runner.os }}-mobile-rust-
 
       - name: Install Node.js
         uses: actions/setup-node@v6
@@ -826,17 +826,17 @@ jobs:
           export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
           npm run tauri ios build -- --export-method app-store-connect --ci --no-sign
 
-      - name: Save Cache
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
+      #- name: Save Cache
+      #  uses: actions/cache/save@v5.0.5
+      #  if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+      #  with:
+      #    path: |
+      #      ~/.cargo/bin/
+      #      ~/.cargo/registry/index/
+      #      ~/.cargo/registry/cache/
+      #      ~/.cargo/git/db/
+      #      target
+      #    key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Move bundle folder
         run: |
