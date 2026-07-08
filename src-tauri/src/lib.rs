@@ -203,25 +203,6 @@ pub fn run() {
                 })
                 .collect();
 
-            #[cfg(mobile)]
-            {
-                let mut pdf_paths2 = Vec::with_capacity(pdf_paths.len());
-                // 1件でも読み込みに失敗したら、無視して黙って続けるのではなく
-                // まとめてエラーを返す (原因がフロントエンドで見えるように)。
-                for fp in pdf_paths {
-                    pdf_paths2.push(filepath_to_local(app, fp).await?);
-                }
-                if !pdf_paths2.is_empty() {
-                    let handle = app.handle().clone();
-                    let paths = pdf_paths.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                        let _ = handle.emit("open-pdf-files", paths);
-                    });
-                }
-            }
-
-            #[cfg(not(mobile))]
             if !pdf_paths.is_empty() {
                 let handle = app.handle().clone();
                 let paths = pdf_paths.clone();

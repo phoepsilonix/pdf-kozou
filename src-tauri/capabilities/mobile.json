@@ -15,7 +15,17 @@
     "fs:read-files",
     "fs:read-dirs",
     "fs:write-files",
-    "fs:allow-read-app-cache-dir",
-    "fs:allow-write-app-cache-dir"
+    "fs:allow-appcache-meta",
+    "fs:allow-appcache-meta-recursive",
+    "fs:allow-appcache-read",
+    "fs:allow-appcache-read-recursive",
+    "fs:allow-appcache-write",
+    "fs:allow-appcache-write-recursive",
+    "fs:allow-cache-meta",
+    "fs:allow-cache-meta-recursive",
+    "fs:allow-cache-read",
+    "fs:allow-cache-read-recursive",
+    "fs:allow-cache-write",
+    "fs:allow-cache-write-recursive"
   ]
 }
