@@ -560,15 +560,15 @@ jobs:
       #    cargo binstall tauri-cli -y --force
       #    echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: macos gen
-        run: |
-          npm run tauri init --ci
-          ls src-tauri/gen/
-          tar cf macos-gen.tar src-tauri/gen/apple
-          bzip2 -9 macos-gen.tar
-          rm -rf ./bundle
-          mkdir -p bundle/macos
-          cp -a macos-gen.tar.bz2 bundle/macos/
+      #- name: macos gen
+      #  run: |
+      #    npm run tauri init --ci
+      #    ls src-tauri/gen/
+      #    tar cf macos-gen.tar src-tauri/gen/apple
+      #    bzip2 -9 macos-gen.tar
+      #    rm -rf ./bundle
+      #    mkdir -p bundle/macos
+      #    cp -a macos-gen.tar.bz2 bundle/macos/
 
       - name: Build (release) - 署名なし
         env:
@@ -600,8 +600,8 @@ jobs:
 
       - name: 7zip packages
         run: |
-          #rm -rf ./bundle
-          #mkdir -p bundle/macos
+          rm -rf ./bundle
+          mkdir -p bundle/macos
           APP_VER=$(jq -r ".version" package.json)
           PKG_NAME="PDF-Kozou_${APP_VER}_universal-macos"
           PKG_FOLDER="PDF-Kozou.app"
@@ -712,9 +712,9 @@ jobs:
         with:
           ndk-version: r27  # または r26 / r28 など（プロジェクトに合わせる）
 
-      - name: Init Tauri Mobile (初回のみ)
-        run: |
-          npx tauri android init --ci || true
+      #- name: Init Tauri Mobile (初回のみ)
+      #  run: |
+      #    npx tauri android init --ci || true
 
       - name: Build Android (unsigned debug/release APK)
         env:
@@ -809,9 +809,9 @@ jobs:
       - name: Build Frontend
         run: npm run build:frontend
       
-      - name: Init Tauri Mobile (初回のみ)
-        run: |
-          npx tauri ios init --ci || true
+      #- name: Init Tauri Mobile (初回のみ)
+      #  run: |
+      #    npx tauri ios init --ci || true
 
       #- name: ios gen
       #  run: |
