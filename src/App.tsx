@@ -272,9 +272,16 @@ export default function App() {
   }, [handleAddPaths]);
 
   const handlePickFiles = useCallback(async () => {
-    const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
+    let paths: string[];
+    try {
+      paths = await invoke<string[]>("pick_open_files");
+    } catch (e) {
+      announceError(String(e));
+      setError(String(e));
+      return;
+    }
     if (paths.length) await handleAddPaths(paths);
-  }, [handleAddPaths]);
+  }, [handleAddPaths, setError]);
 
   /*
   const handleDrop = useCallback(
