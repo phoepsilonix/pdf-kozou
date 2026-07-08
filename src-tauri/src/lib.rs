@@ -18,7 +18,7 @@ pub mod tempdir;
 use commands::{core, platform as platform_cmd};
 use tauri::Emitter;
 
-//use tauri::Manager;
+use tauri::Manager;
 
 #[cfg(target_os = "linux")]
 use crate::platform::linux::log_display_environment;
