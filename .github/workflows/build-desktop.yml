@@ -716,8 +716,8 @@ jobs:
           # または package.json のスクリプトを使う
           #npm run tauri:android:build || npm run tauri android build
           #tauri android build --apk --split-per-abi --ci
-          npm run tauri android build -- --apk --aab --debug --ci || tauri android build --apk --debug --ci
-          npm run tauri android build -- --apk --split-per-abi --debug --ci || tauri android build --apk --split-per-abi --debug --ci
+          tauri android build --apk --split-per-abi --debug --ci || npm run tauri android build -- --apk --split-per-abi --debug --ci
+          tauri android build --apk --aab --debug --ci || npm run tauri android build -- --apk --aab --debug --ci
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
@@ -739,10 +739,11 @@ jobs:
           # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
           #
           find src-tauri/gen/android/app/build/outputs/ \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
+          find src-tauri/gen/android/app/build/outputs/ \( -name "*.apk" -o -name "*.aab" \) -exec cp {} bundle/android \; || true
           #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ 2>/dev/null || true
           #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ 2>/dev/null || true
-          cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ || true
-          cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ || true
           find bundle/android \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
 
       - name: Upload Android artifacts
