@@ -131,7 +131,7 @@ export const usePdfStore = create<PdfStore>()(
       // GS初期化
       gsAvailable: false,
       setGsAvailable: (v) => set({ gsAvailable: v }),
-      useGsPreference: false,
+      useGsPreference: true,
       setUseGsPreference: (v) => set({ useGsPreference: v }),
       activeCompressMode: "mupdf",
       setActiveCompressMode: (mode) => set({ activeCompressMode: mode }),
