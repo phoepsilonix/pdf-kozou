@@ -1,0 +1,496 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		086B9C4820EB5F108FBD395F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F07E4D3DF2F07737F75CA7E /* Metal.framework */; };
+		4361A843C9BDCE8282B036D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C41B582707A37D240A6EC596 /* Assets.xcassets */; };
+		4E1BC4DA8820A5452154C4D9 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 303AC55174FE25458B6F66BE /* WebKit.framework */; };
+		59DCD97832C279A4D5352C38 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4449CE687E152E5D56BAE52D /* CoreGraphics.framework */; };
+		81E7CC1A0F22AC68E560B3CB /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30E0A972409DCE2C4B3C1B14 /* QuartzCore.framework */; };
+		9A61A2EFF9C93AD5874D5BF3 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71A872922A5D4153A894B8F9 /* main.mm */; };
+		9D02FDA1D6AC203C18C93DCF /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 1B4E9D2364D8A5930EF34F23 /* assets */; };
+		B81E1ABB3BC82C7866A7EC30 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 587D9441C81E25C8BFADA4C1 /* Security.framework */; };
+		C3540C87FDA49A9CA8C6DF19 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CABF59F6CFB97713F5ED0475 /* UIKit.framework */; };
+		C43D3DC6062E0C74270DE649 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2808873810A3D381204D4A3D /* libapp.a */; };
+		EC47BA7766703A5D46125ABC /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 086EDFE86F84934D23C84683 /* LaunchScreen.storyboard */; };
+		F577E4FA627D6661C083AF4F /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7D74B67B26D6CEDADFF20701 /* MetalKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		086EDFE86F84934D23C84683 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		193562A31A1921205D54B69B /* mod.rs */ = {isa = PBXFileReference; path = mod.rs; sourceTree = "<group>"; };
+		1B4E9D2364D8A5930EF34F23 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		2808873810A3D381204D4A3D /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		303AC55174FE25458B6F66BE /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		30E0A972409DCE2C4B3C1B14 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		3D5BF67E014E2A238B0C6F6E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		4449CE687E152E5D56BAE52D /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		5494A104FB7DCF4C0E63AB4C /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		587D9441C81E25C8BFADA4C1 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		5C0B483D1936B7D81D73DB15 /* pdf-kozou_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "pdf-kozou_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5EF80124DDAFA1C173C9D173 /* gs_detector.rs */ = {isa = PBXFileReference; path = gs_detector.rs; sourceTree = "<group>"; };
+		6B7ACCCBA578BFE746E3BEF1 /* gs.rs */ = {isa = PBXFileReference; path = gs.rs; sourceTree = "<group>"; };
+		70C9DE83BCD97B90C6121298 /* tempdir.rs */ = {isa = PBXFileReference; path = tempdir.rs; sourceTree = "<group>"; };
+		71A872922A5D4153A894B8F9 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		7D74B67B26D6CEDADFF20701 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		8F07E4D3DF2F07737F75CA7E /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		961E0491AF9FEA422027AD82 /* pdf-kozou_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "pdf-kozou_iOS.entitlements"; sourceTree = "<group>"; };
+		9CB2230575226F2B1ABBE17C /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		A0A47A027D362A2D52566433 /* linux.rs */ = {isa = PBXFileReference; path = linux.rs; sourceTree = "<group>"; };
+		AD26456DDA75F2235A1D2D16 /* error.rs */ = {isa = PBXFileReference; path = error.rs; sourceTree = "<group>"; };
+		B06E341A9619D158CF5C5C35 /* mod.rs */ = {isa = PBXFileReference; path = mod.rs; sourceTree = "<group>"; };
+		C41B582707A37D240A6EC596 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CABF59F6CFB97713F5ED0475 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		DDA4A161B2EC0B867EE2E26E /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		E63305411A2B3370DDC36292 /* platform.rs */ = {isa = PBXFileReference; path = platform.rs; sourceTree = "<group>"; };
+		F01EF7CE74BFD7766ADA3855 /* screen_info.rs */ = {isa = PBXFileReference; path = screen_info.rs; sourceTree = "<group>"; };
+		FC2AFEB5CCA953A7A4AA1C2E /* core.rs */ = {isa = PBXFileReference; path = core.rs; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		199C2E04C777C55864FD1556 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C43D3DC6062E0C74270DE649 /* libapp.a in Frameworks */,
+				59DCD97832C279A4D5352C38 /* CoreGraphics.framework in Frameworks */,
+				086B9C4820EB5F108FBD395F /* Metal.framework in Frameworks */,
+				F577E4FA627D6661C083AF4F /* MetalKit.framework in Frameworks */,
+				81E7CC1A0F22AC68E560B3CB /* QuartzCore.framework in Frameworks */,
+				B81E1ABB3BC82C7866A7EC30 /* Security.framework in Frameworks */,
+				C3540C87FDA49A9CA8C6DF19 /* UIKit.framework in Frameworks */,
+				4E1BC4DA8820A5452154C4D9 /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		036C1705914A6512BE477C01 /* pdf-kozou */ = {
+			isa = PBXGroup;
+			children = (
+				71A872922A5D4153A894B8F9 /* main.mm */,
+				6F5F6A27D11E7B101FDDFE0B /* bindings */,
+			);
+			path = "pdf-kozou";
+			sourceTree = "<group>";
+		};
+		053B964E01454AF67FF5FB7F /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				036C1705914A6512BE477C01 /* pdf-kozou */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		16E5F941DC7AC541ADCFCEF3 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		3075D7A51185D1A80A7229C3 /* pdf-kozou_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3D5BF67E014E2A238B0C6F6E /* Info.plist */,
+				961E0491AF9FEA422027AD82 /* pdf-kozou_iOS.entitlements */,
+			);
+			path = "pdf-kozou_iOS";
+			sourceTree = "<group>";
+		};
+		35A5371D120CAD602BDD2612 = {
+			isa = PBXGroup;
+			children = (
+				1B4E9D2364D8A5930EF34F23 /* assets */,
+				C41B582707A37D240A6EC596 /* Assets.xcassets */,
+				086EDFE86F84934D23C84683 /* LaunchScreen.storyboard */,
+				16E5F941DC7AC541ADCFCEF3 /* Externals */,
+				3075D7A51185D1A80A7229C3 /* pdf-kozou_iOS */,
+				053B964E01454AF67FF5FB7F /* Sources */,
+				AD2695ED419266C54C065B02 /* src */,
+				C2C857A41E8159E1FB05DF50 /* Frameworks */,
+				82DB618B376DFFEE6E62B295 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6F5F6A27D11E7B101FDDFE0B /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				5494A104FB7DCF4C0E63AB4C /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		82DB618B376DFFEE6E62B295 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5C0B483D1936B7D81D73DB15 /* pdf-kozou_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AD2695ED419266C54C065B02 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				AD26456DDA75F2235A1D2D16 /* error.rs */,
+				5EF80124DDAFA1C173C9D173 /* gs_detector.rs */,
+				6B7ACCCBA578BFE746E3BEF1 /* gs.rs */,
+				9CB2230575226F2B1ABBE17C /* lib.rs */,
+				DDA4A161B2EC0B867EE2E26E /* main.rs */,
+				70C9DE83BCD97B90C6121298 /* tempdir.rs */,
+				ED0265813D7A9B2E9797B526 /* commands */,
+				CA5E07186311781124532C6A /* platform */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		C2C857A41E8159E1FB05DF50 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4449CE687E152E5D56BAE52D /* CoreGraphics.framework */,
+				2808873810A3D381204D4A3D /* libapp.a */,
+				8F07E4D3DF2F07737F75CA7E /* Metal.framework */,
+				7D74B67B26D6CEDADFF20701 /* MetalKit.framework */,
+				30E0A972409DCE2C4B3C1B14 /* QuartzCore.framework */,
+				587D9441C81E25C8BFADA4C1 /* Security.framework */,
+				CABF59F6CFB97713F5ED0475 /* UIKit.framework */,
+				303AC55174FE25458B6F66BE /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		CA5E07186311781124532C6A /* platform */ = {
+			isa = PBXGroup;
+			children = (
+				A0A47A027D362A2D52566433 /* linux.rs */,
+				193562A31A1921205D54B69B /* mod.rs */,
+				F01EF7CE74BFD7766ADA3855 /* screen_info.rs */,
+			);
+			path = platform;
+			sourceTree = "<group>";
+		};
+		ED0265813D7A9B2E9797B526 /* commands */ = {
+			isa = PBXGroup;
+			children = (
+				FC2AFEB5CCA953A7A4AA1C2E /* core.rs */,
+				B06E341A9619D158CF5C5C35 /* mod.rs */,
+				E63305411A2B3370DDC36292 /* platform.rs */,
+			);
+			path = commands;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C3647387BB002F3DB44BBB9F /* pdf-kozou_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 648E60238625EA957BD0DFD5 /* Build configuration list for PBXNativeTarget "pdf-kozou_iOS" */;
+			buildPhases = (
+				81CA1E19A68DDE0E3845A2ED /* Build Rust Code */,
+				CA15A042EB802097227AF686 /* Sources */,
+				29462C3849F9B7AD67532003 /* Resources */,
+				199C2E04C777C55864FD1556 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "pdf-kozou_iOS";
+			packageProductDependencies = (
+			);
+			productName = "pdf-kozou_iOS";
+			productReference = 5C0B483D1936B7D81D73DB15 /* pdf-kozou_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7F01C7835524700733389BE2 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = FF2C3D513B01E39A9207A228 /* Build configuration list for PBXProject "pdf-kozou" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 35A5371D120CAD602BDD2612;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 82DB618B376DFFEE6E62B295 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C3647387BB002F3DB44BBB9F /* pdf-kozou_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		29462C3849F9B7AD67532003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4361A843C9BDCE8282B036D9 /* Assets.xcassets in Resources */,
+				EC47BA7766703A5D46125ABC /* LaunchScreen.storyboard in Resources */,
+				9D02FDA1D6AC203C18C93DCF /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		81CA1E19A68DDE0E3845A2ED /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CA15A042EB802097227AF686 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9A61A2EFF9C93AD5874D5BF3 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2C033C5282040632D03DFBB8 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+		4436B7ABD3712622CD4C3FBD /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		640287B12D39C46798756F51 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "pdf-kozou_iOS/pdf-kozou_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "pdf-kozou_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "phoepsilonix.PDF-Kozou";
+				PRODUCT_NAME = "PDF-Kozou";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		AC44C8B18FC36A4F1CA7D278 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "pdf-kozou_iOS/pdf-kozou_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "pdf-kozou_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "phoepsilonix.PDF-Kozou";
+				PRODUCT_NAME = "PDF-Kozou";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		648E60238625EA957BD0DFD5 /* Build configuration list for PBXNativeTarget "pdf-kozou_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC44C8B18FC36A4F1CA7D278 /* debug */,
+				640287B12D39C46798756F51 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		FF2C3D513B01E39A9207A228 /* Build configuration list for PBXProject "pdf-kozou" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2C033C5282040632D03DFBB8 /* debug */,
+				4436B7ABD3712622CD4C3FBD /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 7F01C7835524700733389BE2 /* Project object */;
+}
