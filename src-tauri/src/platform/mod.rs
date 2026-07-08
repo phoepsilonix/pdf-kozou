@@ -129,9 +129,10 @@ fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
     use percent_encoding::percent_decode_str;
 
     let raw_last_segment = match file_path {
-        tauri_plugin_fs::FilePath::Url(url) => {
-            url.path_segments().and_then(|mut s| s.next_back()).map(str::to_string)
-        }
+        tauri_plugin_fs::FilePath::Url(url) => url
+            .path_segments()
+            .and_then(|mut s| s.next_back())
+            .map(str::to_string),
         _ => None,
     };
 
@@ -151,7 +152,13 @@ fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
     // ファイルシステムに書き込めない文字を除去しておく
     let sanitized: String = base
         .chars()
-        .map(|c| if matches!(c, '\\' | '"' | '<' | '>' | '|' | '?' | '*') { '_' } else { c })
+        .map(|c| {
+            if matches!(c, '\\' | '"' | '<' | '>' | '|' | '?' | '*') {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
 
     if sanitized.is_empty() {
@@ -214,7 +221,12 @@ pub async fn open_pdf_dialog(app: &tauri::AppHandle) -> Result<Option<std::path:
             let _ = tx.send(result);
         });
 
-    let Some(picked) = rx.await.map_err(|e| format!("picker channel closed: {e}"))?.flatten() else {
+    let Some(picked) = rx
+        .await
+        .map_err(|e| format!("picker channel closed: {e}"))?
+        .into_iter()
+        .flatten()
+    else {
         // ユーザーがキャンセルした場合。エラーではない。
         return Ok(None);
     };
@@ -222,9 +234,7 @@ pub async fn open_pdf_dialog(app: &tauri::AppHandle) -> Result<Option<std::path:
 }
 
 #[cfg(mobile)]
-pub async fn open_pdfs_dialog(
-    app: &tauri::AppHandle,
-) -> Result<Vec<std::path::PathBuf>, String> {
+pub async fn open_pdfs_dialog(app: &tauri::AppHandle) -> Result<Vec<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -235,7 +245,11 @@ pub async fn open_pdfs_dialog(
             let _ = tx.send(result);
         });
 
-    let Some(picked) = rx.await.map_err(|e| format!("picker channel closed: {e}"))?.flatten()
+    let Some(picked) = rx
+        .await
+        .map_err(|e| format!("picker channel closed: {e}"))?
+        .into_iter()
+        .flatten()
     else {
         // ユーザーがキャンセルした場合。エラーではない。
         return Ok(vec![]);
