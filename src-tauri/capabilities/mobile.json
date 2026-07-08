@@ -14,6 +14,8 @@
     "fs:allow-mkdir",
     "fs:read-files",
     "fs:read-dirs",
-    "fs:write-files"
+    "fs:write-files",
+    "fs:allow-read-app-cache-dir",
+    "fs:allow-write-app-cache-dir"
   ]
 }

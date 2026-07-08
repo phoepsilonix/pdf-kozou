@@ -175,31 +175,33 @@ async fn filepath_to_local(
 ) -> Result<std::path::PathBuf, String> {
     use tauri_plugin_fs::FsExt;
 
-    // すでに実ファイルパスならそのまま使う
+    // 1. すでに実パスならそのまま返す (デスクトップ等)
     if let Some(p) = file_path.as_path() {
         return Ok(p.to_path_buf());
     }
 
-    // 名前(拡張子込み)を復元しておく
-    let name = guess_file_name(&file_path);
+    // 2. モバイル環境: 一度全バイト読み込む
+    // app.fs() は非同期環境で呼ぶ必要があるため spawn_blocking を使用
+    let bytes = app
+        .fs()
+        .read(file_path.clone())
+        .map_err(|e| format!("Read error: {e}"))?;
 
-    let app_clone = app.clone();
-    let fp = file_path.clone();
-    let bytes = tauri::async_runtime::spawn_blocking(move || app_clone.fs().read(fp))
-        .await
-        .map_err(|e| format!("failed to join read task: {e}"))?
-        .map_err(|e| format!("failed to read picked file ({file_path:?}): {e}"))?;
-
-    let dest = crate::tempdir::kozou_temp_path(&format!(
-        "{}_{}",
+    // 3. 一時ディレクトリへのパス生成 (既存の kozou_temp_path を利用)
+    // 競合を避けるために一意な名前を生成
+    let name = format!(
+        "{}_{}.pdf",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0),
-        name
-    ));
-    std::fs::write(&dest, bytes)
-        .map_err(|e| format!("failed to write temp file {}: {e}", dest.display()))?;
+            .unwrap()
+            .as_millis(),
+        "imported"
+    );
+    let dest = crate::tempdir::kozou_temp_path(&name);
+
+    // 4. 実ファイルとして保存
+    std::fs::write(&dest, bytes).map_err(|e| format!("Write error: {e}"))?;
+
     Ok(dest)
 }
 
