@@ -224,7 +224,7 @@ pub async fn open_pdf_dialog(app: &tauri::AppHandle) -> Result<Option<std::path:
     let Some(picked) = rx
         .await
         .map_err(|e| format!("picker channel closed: {e}"))?
-        .into_iter()
+        .into()
         .flatten()
     else {
         // ユーザーがキャンセルした場合。エラーではない。
@@ -248,7 +248,7 @@ pub async fn open_pdfs_dialog(app: &tauri::AppHandle) -> Result<Vec<std::path::P
     let Some(picked) = rx
         .await
         .map_err(|e| format!("picker channel closed: {e}"))?
-        .into_iter()
+        .into()
         .flatten()
     else {
         // ユーザーがキャンセルした場合。エラーではない。
