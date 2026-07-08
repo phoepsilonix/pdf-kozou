@@ -11,18 +11,10 @@
     "dialog:allow-save",
     "dialog:allow-message",
     "fs:default",
-    "fs:allow-read",
-    "fs:allow-write",
-    "fs:allow-read-file",
-    "fs:allow-write-file",
-    "fs:allow-read-dir",
     "fs:allow-mkdir",
-    "fs:allow-exists",
-    "fs:allow-remove",
-    "fs:allow-rename",
-    "fs:allow-copy-file",
-    "fs:allow-stat",
     "fs:read-files",
-    "fs:read-dirs"
+    "fs:read-dirs",
+    "fs:write-files"
   ]
 }
+
