@@ -190,18 +190,41 @@ async fn filepath_to_local(
         .read(file_path.clone())
         .map_err(|e| format!("Read error: {e}"))?;
 
-    // 3. 一時ディレクトリへのパス生成 (既存の kozou_temp_path を利用)
-    // 競合を避けるために一意な名前を生成
-    let name = format!(
-        "{}_{}.pdf",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis(),
+    // 3. 一時ディレクトリへのパス生成
+    //
+    // 以前はファイル名の先頭にミリ秒タイムスタンプを付与し、さらに
+    // 拡張子の有無に関わらず無条件で ".pdf" を付け足していた
+    // (例: "scan.pdf" → "1720000000000_scan.pdf.pdf",
+    //      "photo.jpg" → "1720000000000_photo.jpg.pdf")。
+    // これだと:
+    //   - ホーム画面のファイル一覧が数字だらけの名前になり、
+    //     自分が追加したファイルなのか分からず混乱を招く
+    //     (複数ファイル追加時・バッチモードで特に顕著)。
+    //   - 非PDFファイル(jpg/epub/docx等)にまで ".pdf" 拡張子が付き、
+    //     拡張子ベースの判定と実データが食い違う。
+    //
+    // 一意性が必要なのはコピー先のパスであってファイル名そのものではない
+    // ため、タイムスタンプ+連番はファイル名ではなく専用の一時サブ
+    // ディレクトリ名に付け、ファイル名は(拡張子が既にあれば)元のまま
+    // 保持する。
+    static IMPORT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = IMPORT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let file_name = if std::path::Path::new(&guess_name).extension().is_some() {
         guess_name
-        //"imported"
-    );
-    let dest = crate::tempdir::kozou_temp_path(&name);
+    } else {
+        // 拡張子を復元できなかった場合のみ、フロントエンドの拡張子判定
+        // (isMupdfExtension 等)に弾かれないよう ".pdf" を補う。
+        format!("{guess_name}.pdf")
+    };
+
+    let import_dir = crate::tempdir::kozou_temp_dir().join(format!("import_{millis}_{seq}"));
+    std::fs::create_dir_all(&import_dir).map_err(|e| format!("mkdir error: {e}"))?;
+    let dest = import_dir.join(&file_name);
 
     // 4. 実ファイルとして保存
     std::fs::write(&dest, bytes).map_err(|e| format!("Write error: {e}"))?;
