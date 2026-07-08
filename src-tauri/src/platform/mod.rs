@@ -149,6 +149,12 @@ fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
         .unwrap_or(decoded.as_str())
         .trim();
 
+    if base.is_empty() {
+        "picked_file".to_string()
+    } else {
+        base.to_string()
+    }
+    /*
     // ファイルシステムに書き込めない文字を除去しておく
     let sanitized: String = base
         .chars()
@@ -166,6 +172,7 @@ fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
     } else {
         sanitized
     }
+    */
 }
 
 #[cfg(mobile)]
