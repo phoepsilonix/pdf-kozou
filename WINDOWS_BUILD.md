@@ -24,7 +24,7 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc
 
 ```sh
 rustup default x86_64-pc-windows-gnu
-OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 npm run build:core
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 pnpm run build:core
 ```
 
 # Tauri アプリのビルド
@@ -37,7 +37,7 @@ OS="mingw" USE_MAKE=1 HAVE_OBJCOPY="no" cargo tauri build --target x86_64-pc-win
 
 ```sh
 rustup default x86_64-pc-windows-gnu
-OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 npm run build
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 pnpm run build
 ```
 
 未調整
@@ -75,11 +75,11 @@ OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo tauri build --target x86_64-pc-win
 cd pdf-kozou
 rustup default x86_64-pc-windows-gnu
 #USE_MAKE=1 OS=mingw XCFLAGS="-UHAVE_OBJCOPY"
-OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 npm run build:core
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 pnpm run build:core
 
 # Tauri アプリのビルド
 #PDF_KOZOU_CORE=./target/x86_64-pc-windows-gnu/release/pdf-kozou-core.exe ./target/debug/pdf-kozou
-OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 npm run build
+OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 pnpm run build
 ```
 
 # NSISインストーラー
@@ -113,7 +113,7 @@ git clone <repo>
 cd pdf-kozou
 
 # 依存インストール
-npm install
+pnpm install
 
 # コアをビルド
 OS="mingw" HAVE_OBJCOPY="no" USE_MAKE=1 cargo build --release --target x86_64-pc-windows-gnu -p pdf-kozou-core

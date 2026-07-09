@@ -86,13 +86,13 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
 
 ```bash
 # フロントエンド依存のインストール
-npm install
+pnpm install
 
 # 開発モード起動
-npm run tauri:dev
+pnpm run tauri:dev
 
 # リリースビルド
-npm run build
+pnpm run build
 ```
 
 ---

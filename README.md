@@ -178,7 +178,7 @@ cargo tauri build
 または
 
 ```sh
-npm run build
+pnpm run build
 ```
 
 ビルド済みバイナリは `target/release/pdf-kozou-core` `target/release/pdf-kozou` に生成されます。  

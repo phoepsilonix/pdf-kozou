@@ -108,14 +108,14 @@ DISPLAY=:0
 ### 開発サーバー起動
 
 ```bash
-npm install
-npm run tauri dev
+pnpm install
+pnpm run tauri dev
 ```
 
 ### リリースビルド
 
 ```bash
-npm run tauri build
+pnpm run tauri build
 ```
 
 ---
