@@ -155,3 +155,55 @@ pub async fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, St
     };
     Ok(path.map(|p| p.display().to_string()))
 }
+
+/// バッチ出力の1ファイル分の保存結果 (Android のみ有効)。
+#[derive(serde::Serialize)]
+pub struct SavedFileInfo {
+    pub uri: String,
+    pub display_name: String,
+    pub relative_path: String,
+    pub source_relative: String,
+}
+
+/// バッチ出力(複数ファイル書き出し)の後処理。
+///
+/// `temp_dir` (通常は `pick_output_dir` が返した一時ディレクトリ) 以下に
+/// core が書き出したファイル群を、Android では
+/// `ダウンロード/{relative_dir}/` 配下へ実際にコピーする。
+/// Android にはモバイル向けのフォルダ選択ピッカーが無いため、
+/// `relative_dir` はフロントエンド側で決め打ち生成した名前
+/// (`buildMobileOutputSubfolder`) を渡す想定。
+///
+/// デスクトップおよび iOS (未対応) では何もせず空配列を返す
+/// (デスクトップは `temp_dir` = 実際にユーザーが選んだ保存先そのもの
+/// であり、追加の移動は不要)。
+#[tauri::command]
+pub async fn commit_saved_batch(
+    app: tauri::AppHandle,
+    temp_dir: String,
+    relative_dir: String,
+) -> Result<Vec<SavedFileInfo>, String> {
+    #[cfg(target_os = "android")]
+    {
+        let results = platform::android_media_store::finalize_batch_to_downloads(
+            &app,
+            std::path::Path::new(&temp_dir),
+            &relative_dir,
+        )
+        .await?;
+        Ok(results
+            .into_iter()
+            .map(|r| SavedFileInfo {
+                uri: r.uri,
+                display_name: r.display_name,
+                relative_path: r.relative_path,
+                source_relative: r.source_relative,
+            })
+            .collect())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (&app, &temp_dir, &relative_dir);
+        Ok(vec![])
+    }
+}

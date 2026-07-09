@@ -65,6 +65,7 @@ pub fn run() {
     #[cfg(target_os = "android")]
     {
         builder = builder.plugin(crate::platform::android_fs_info::kozou_fs_info_plugin());
+        builder = builder.plugin(crate::platform::android_media_store::kozou_media_store_plugin());
     }
 
     let app = builder
@@ -116,6 +117,7 @@ pub fn run() {
             platform_cmd::pick_save_file_in,
             platform_cmd::commit_saved_file,
             platform_cmd::pick_output_dir,
+            platform_cmd::commit_saved_batch,
             #[cfg(desktop)]
             gs_detector::check_ghostscript_installed,
             #[cfg(desktop)]

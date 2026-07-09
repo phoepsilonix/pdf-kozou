@@ -914,5 +914,13 @@
       "deimposed": "面付け解除",
       "split": "分割"
     }
+  },
+  "mobile": {
+    "save_preview": "保存先: {{path}}",
+    "save_preview_pending": "保存先はダウンロードフォルダ内に自動生成されます",
+    "save_done_summary": "{{count}}件のファイルをダウンロードフォルダに保存しました",
+    "save_location": "保存先: {{path}}",
+    "save_unsupported": "お使いのAndroidのバージョンでは、共有フォルダへの直接保存に対応していません。アプリ内の一時領域に保存されています。",
+    "save_partial_error": "{{count}}件のファイルの保存に失敗しました。"
   }
 }

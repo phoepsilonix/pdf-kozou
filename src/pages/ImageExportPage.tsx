@@ -52,12 +52,19 @@ import {
   rasterizeImposition,
   splitImpositionPdf,
   splitCellRender,
+  isMobile,
 } from "../lib/tauri";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { useViewport } from "../hooks/useViewport";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { FixedMobileNav } from "../components/FixedMobileNav";
+import {
+  buildMobileOutputSubfolder,
+  mobileOutputPreviewLabel,
+  commitSavedBatch,
+  type MobileSavedFileInfo,
+} from "../lib/mobileOutput";
 
 interface Props {
   filePath: string;
@@ -212,6 +219,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [outputMode, setOutputMode] = useState<OutputMode>("images");
   const [pdfName, setPdfName] = useState("");
   const [outDir, setOutDir] = useState("");
+
   const [pages, setPages] = useState(""); // "" = 全ページ
   // pages 指定を正確に展開したページ数（odd/even/末尾省略も対応）
   const resolvedPageCount = useMemo(
@@ -232,6 +240,31 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         ?.replace(/\.[^/.]+$/, "") || "output",
     [filePath],
   );
+
+  // ── モバイル (Android) 向けバッチ出力: フォルダピッカーが無いため、
+  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
+  const mobileRelativeDir = useMemo(() => {
+    const label =
+      batchFiles && batchFiles.length > 0
+        ? batchFiles.length === 1
+          ? batchFiles[0].filename.replace(/\.[^/.]+$/, "")
+          : `${batchFiles.length}件`
+        : srcStem;
+    return buildMobileOutputSubfolder(label);
+    // batchFiles/srcStem の参照が変わるたびに再生成すると保存のたびに違う
+    // フォルダ名になってしまうため、識別に必要な情報のみを依存にする。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchFiles?.length, batchFiles?.[0]?.filename, srcStem]);
+  const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+
 
   // 現在のモードに対応するファイル名トークンのキー
   const opTokenKey = useMemo(() => {
@@ -487,6 +520,22 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     return dir;
   }, []);
 
+  // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
+  // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
+  // 名前を使うことで、実行前後の表示を一致させる。
+  const finalizeMobileOutput = useCallback(
+    async (dir: string) => {
+      if (!mobile) return;
+      try {
+        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    },
+    [mobile, mobileRelativeDir],
+  );
+
   // サイズ概算（目安）。入力1ページの基準サイズ（A4 595×842pt）を基に、
   // 面付け（N-up/booklet）なら合成後シート、面付け解除なら1セルのサイズを表示する。
   const scale = dpi / 72;
@@ -515,6 +564,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // 単体実行（面付け対応版）
   const handleExecuteSingle = useCallback(async () => {
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
     // ── 面付け解除（split / de-imposition）: A3見開きなどを分割 ──
     if (processDir === "deimpose") {
       const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
@@ -629,6 +680,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         setImages(savedFiles);
         setOutDir(resolvedDir);
         setStatusMsg("");
+        await finalizeMobileOutput(resolvedDir);
         announceSuccess("done.image");
         setPhase("result");
       } catch (e) {
@@ -749,6 +801,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           savedFiles.push(outPath);
         }
         setImages(savedFiles);
+        await finalizeMobileOutput(resolvedDir);
         setPhase("result");
         setStatusMsg(
           t("image.imposition_done" as any, { count: String(totalSheets), dir: resolvedDir }),
@@ -871,6 +924,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
         console.log("res", res);
         setImages(res.files);
+        await finalizeMobileOutput(effectiveOutDir);
         announceSuccess("done.image");
         setPhase("result");
       }
@@ -918,6 +972,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     const batchDir = outDir || (await pickDir());
     if (!batchDir) return; // キャンセル
     if (conflictPaths.length > 0) return;
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
 
     const files = batchFiles!;
     setPhase("processing");
@@ -1149,6 +1205,18 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       setBatchProgress({ ...progress });
     }
 
+    // Android: 一時ディレクトリに書き出した結果を、ユーザーから見える
+    // 「ダウンロード」フォルダ配下へコピーする。ピッカーを使っていない
+    // ため、実行前プレビューと同じ mobileRelativeDir をそのまま使う。
+    if (mobile) {
+      try {
+        const saved = await commitSavedBatch(batchDir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    }
+
     announceSuccess("done.image");
     setPhase("result");
   }, [
@@ -1276,7 +1344,32 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               ? t("image.error_count", { count: String(batchProgress.errors.length) })
               : ""}
           </div>
-          <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
+          {mobile ? (
+            <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
+              {mobileSaveError ? (
+                <span style={{ color: "var(--c-err)" }}>
+                  {t("mobile.save_unsupported" as any)}
+                </span>
+              ) : mobileSavedFiles ? (
+                <>
+                  <div>
+                    {t("mobile.save_done_summary" as any, {
+                      count: String(mobileSavedFiles.length),
+                    })}
+                  </div>
+                  <div>
+                    {t("mobile.save_location" as any, {
+                      path: mobileOutputPreviewLabel(mobileRelativeDir),
+                    })}
+                  </div>
+                </>
+              ) : (
+                t("mobile.save_preview_pending" as any)
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
+          )}
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpRow}>
@@ -1366,7 +1459,32 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div style={s.bpTitle}>
                 {t("image.output_count", { count: String(images.length) })}
               </div>
-              <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
+              {mobile ? (
+                <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
+                  {mobileSaveError ? (
+                    <span style={{ color: "var(--c-err)" }}>
+                      {t("mobile.save_unsupported" as any)}
+                    </span>
+                  ) : mobileSavedFiles ? (
+                    <>
+                      <div>
+                        {t("mobile.save_done_summary" as any, {
+                          count: String(mobileSavedFiles.length),
+                        })}
+                      </div>
+                      <div>
+                        {t("mobile.save_location" as any, {
+                          path: mobileOutputPreviewLabel(mobileRelativeDir),
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    t("mobile.save_preview_pending" as any)
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
+              )}
               <div style={s.bpLog}>
                 {images.slice(0, 20).map((f, i) => (
                   <div key={i} style={s.bpRow}>
@@ -1785,18 +1903,28 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             {(isBatch || outputMode === "images") && (
               <>
                 <div style={s.secLabel}>{t("image.output_dir")}</div>
-                <div style={s.dirRow}>
-                  <div style={s.dirPath} title={outDir}>
-                    {outDir || t("common.select_dir")}
+                {mobile ? (
+                  <div style={s.dirRow}>
+                    <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir)}>
+                      {t("mobile.save_preview" as any, {
+                        path: mobileOutputPreviewLabel(mobileRelativeDir),
+                      })}
+                    </div>
                   </div>
-                  <button
-                    style={s.dirPickBtn}
-                    onClick={pickDir}
-                    aria-label={t("aria.output_dir_btn")}
-                  >
-                    {t("common.browse")}
-                  </button>
-                </div>
+                ) : (
+                  <div style={s.dirRow}>
+                    <div style={s.dirPath} title={outDir}>
+                      {outDir || t("common.select_dir")}
+                    </div>
+                    <button
+                      style={s.dirPickBtn}
+                      onClick={pickDir}
+                      aria-label={t("aria.output_dir_btn")}
+                    >
+                      {t("common.browse")}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
