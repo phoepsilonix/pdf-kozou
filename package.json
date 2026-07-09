@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.8.0",
   "type": "module",
+  "packageManager": "pnpm@11.3.0",
   "scripts": {
     "tauri": "tauri",
     "dev:core": "cargo build --bin pdf-kozou-core",
@@ -14,8 +15,8 @@
     "build": "tauri build",
     "build:android": "tauri android build --apk",
     "build:android:debug": "tauri android build --debug --apk",
-    "tauri:android:build": "npx --no-install tauri android build --apk --aab --ci",
-    "tauri:ios:build": "npx --no-install tauri ios build --ci --no-sign"
+    "tauri:android:build": "pnpm exec --no-install tauri android build --apk --aab --ci",
+    "tauri:ios:build": "pnpm exec --no-install tauri ios build --ci --no-sign"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
@@ -32,8 +33,9 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
-    "prettier": "^3.8.5",
+    "pnpm": "^11.9.0",
+    "prettier": "^3.9.4",
     "typescript": "^6.0.3",
-    "vite": "^8.1.0"
+    "vite": "^8.1.3"
   }
 }

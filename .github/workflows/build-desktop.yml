@@ -138,35 +138,23 @@ jobs:
       #  with:
       #    bun-version-file: ".bun-version"
 
+      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
-
-      - name: Restore npm cache
-        id: npm-cache
-        uses: actions/cache/restore@v5.0.5
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: npm audit
-        run: npm audit --audit-level=moderate
-
-      - name: Save npm cache
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+      - name: pnpm audit
+        run: pnpm audit --audit-level=moderate
 
       - name: Build Frontend check
-        run: npm run build:frontend
+        run: pnpm run build:frontend
 
       #- name: Install tauri-cli via binstall
       #  run: |
@@ -182,7 +170,7 @@ jobs:
           LINUXDEPLOY_EXCLUDE_LIBS: "libglib-2.0.so.0:libgobject-2.0.so.0:libgio-2.0.so.0:libgmodule-2.0.so.0:libdbus-1.so.3:libibus-1.0.so.5:libfcitx*.so:libwayland-client.so.0:libwayland-cursor.so.0:libwayland-server.so.0:libwayland-egl.so.1:libEGL.so.1:libGL.so.1:libGLX.so.0:libepoxy.so.0:libpcre2-8.so.0:libmount.so.1:libblkid.so.1"
         run: |
           . $HOME/.cargo/env
-          npm run build
+          pnpm run build
           #cargo tauri build
 
       - name: Save Cache (条件付きで保存のみ実行)
@@ -370,44 +358,23 @@ jobs:
           #export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
           #cpan -i Pod::Usage
 
+      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
-
-      - name: Get npm cache dir
-        id: npm-cache-dir
-        run: echo "dir=$(npm config get cache)" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-
-      - name: Restore npm cache
-        id: npm-cache
-        uses: actions/cache/restore@v5.0.5
-        with:
-          path: ${{ steps.npm-cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      #- uses: oven-sh/setup-bun@v2
-      #  with:
-      #    bun-version-file: ".bun-version"
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: npm audit
-        run: npm audit --audit-level=moderate
-
-      - name: Save npm cache
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: ${{ steps.npm-cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+      - name: pnpm audit
+        run: pnpm audit --audit-level=moderate
 
       - name: Build Frontend check
-        run: npm run build:frontend
+        run: pnpm run build:frontend
 
       #- name: Install tauri-cli via binstall
       #  run: |
@@ -448,7 +415,7 @@ jobs:
           #which perl
           #which clang
           #USE_MAKE=1 CC="gcc" CXX="g++" HAVE_OBJCOPY="no" OS="mingw" cargo tauri build
-          npm run build
+          pnpm run build
           #cargo tauri build
 
       - name: Save Cache (条件付きで保存のみ実行)
@@ -524,35 +491,23 @@ jobs:
             ${{ runner.os }}-rust-
             v0-rust-pdf-kozou-v1-${{ runner.os }}
 
+      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
-
-      - name: Restore npm cache
-        id: npm-cache
-        uses: actions/cache/restore@v5.0.5
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: npm audit
-        run: npm audit --audit-level=moderate
-
-      - name: Save npm cache
-        uses: actions/cache/save@v5.0.5
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+      - name: pnpm audit
+        run: pnpm audit --audit-level=moderate
 
       - name: Build Frontend check
-        run: npm run build:frontend
+        run: pnpm run build:frontend
 
       #- name: Install tauri-cli via binstall
       #  run: |
@@ -562,7 +517,7 @@ jobs:
 
       #- name: macos gen
       #  run: |
-      #    npm run tauri init --ci
+      #    pnpm run tauri init --ci
       #    ls src-tauri/gen/
       #    tar cf macos-gen.tar src-tauri/gen/apple
       #    bzip2 -9 macos-gen.tar
@@ -576,15 +531,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
           . $HOME/.cargo/env
-          #npm run build -- --no-bundle   # まずバイナリだけビルド
+          #pnpm run build -- --no-bundle   # まずバイナリだけビルド
           # または署名を明示的に無効化
-          #npm run build -- --target universal-apple-darwin --no-bundle
-          #npm run build
-          npm run build -- --target universal-apple-darwin
-          #npm run tauri build -- --no-bundle
-          #npm run tauri bundle -- --bundles app --target universal-apple-darwin
-
-
+          #pnpm run build -- --target universal-apple-darwin --no-bundle
+          #pnpm run build
+          pnpm run build --target universal-apple-darwin
+          #pnpm run tauri build -- --no-bundle
+          #pnpm run tauri bundle -- --bundles app --target universal-apple-darwin
 
       - name: Save Cache (条件付きで保存のみ実行)
         uses: actions/cache/save@v5.0.5
@@ -680,22 +633,23 @@ jobs:
             ${{ runner.os }}-mobile-rust-v1-
             ${{ runner.os }}-mobile-rust-
 
+      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
-
-      - name: Restore npm cache
-        uses: actions/cache/restore@v5.0.5
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Build Frontend
-        run: npm run build:frontend
+      - name: pnpm audit
+        run: pnpm audit --audit-level=moderate
+
+      - name: Build Frontend check
+        run: pnpm run build:frontend
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -714,20 +668,22 @@ jobs:
 
       #- name: Init Tauri Mobile (初回のみ)
       #  run: |
-      #    npx tauri android init --ci || true
+      #    pnpm exec tauri android init --ci || true
 
       - name: Build Android (unsigned debug/release APK)
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          #npm run build -- --target android  # または直接
+          #pnpm run build -- --target android  # または直接
           # 以下のように直接呼ぶ場合
-          # npx tauri android build --apk --split-per-abi --ci
+          # pnpm exec tauri android build --apk --split-per-abi --ci
           # または package.json のスクリプトを使う
-          #npm run tauri:android:build || npm run tauri android build
+          #pnpm run tauri:android:build || pnpm run tauri android build
           #tauri android build --apk --split-per-abi --ci
-          tauri android build --apk --split-per-abi --debug --ci || npm run tauri android build -- --apk --split-per-abi --debug --ci
-          tauri android build --apk --aab --debug --ci || npm run tauri android build -- --apk --aab --debug --ci
+          #tauri android build --apk --split-per-abi --debug --ci || pnpm run tauri android build --apk --split-per-abi --debug --ci
+          #tauri android build --apk --aab --debug --ci || pnpm run tauri android build --apk --aab --debug --ci
+          pnpm run tauri android build --apk --split-per-abi --debug --ci
+          pnpm run tauri android build --apk --aab --debug --ci
 
       - name: Save Cache
         uses: actions/cache/save@v5.0.5
@@ -792,26 +748,27 @@ jobs:
       #      ${{ runner.os }}-mobile-rust-v1-
       #      ${{ runner.os }}-mobile-rust-
 
+      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
-
-      - name: Restore npm cache
-        uses: actions/cache/restore@v5.0.5
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Build Frontend
-        run: npm run build:frontend
-      
+      - name: pnpm audit
+        run: pnpm audit --audit-level=moderate
+
+      - name: Build Frontend check
+        run: pnpm run build:frontend
+
       #- name: Init Tauri Mobile (初回のみ)
       #  run: |
-      #    npx tauri ios init --ci || true
+      #    pnpm exec tauri ios init --ci || true
 
       #- name: ios gen
       #  run: |
@@ -837,13 +794,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
           # CODE_SIGNING_ALLOWED: "NO"   # 必要に応じて xcconfig で制御
         run: |
-          #npm run build -- --target ios  # または
-          # npx tauri ios build --ci --no-sign
-          #npm run tauri:ios:build || npm run tauri ios build
+          #pnpm run build -- --target ios  # または
+          # pnpm exec tauri ios build --ci --no-sign
+          #pnpm run tauri:ios:build || pnpm run tauri ios build
           #tauri ios build --ci --no-sign
-          #npm run tauri ios build -- --ci --no-sign
+          #pnpm run tauri ios build -- --ci --no-sign
           export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-          npm run tauri ios build -- --export-method app-store-connect --ci --no-sign
+          pnpm run tauri ios build --export-method app-store-connect --ci --no-sign
 
       #- name: Save Cache
       #  uses: actions/cache/save@v5.0.5
