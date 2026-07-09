@@ -87,7 +87,7 @@ jobs:
           #target/release/deps
           #target/release/incremental
       - name: Restore Cache (復元のみ)
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         id: cache-restore
         with:
           path: |
@@ -174,7 +174,7 @@ jobs:
           #cargo tauri build
 
       - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
@@ -290,7 +290,7 @@ jobs:
           #targets: x86_64-pc-windows-msvc
 
       - name: Restore Cache (復元のみ)
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         id: cache-restore
         with:
           path: |
@@ -419,7 +419,7 @@ jobs:
           #cargo tauri build
 
       - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
@@ -476,7 +476,7 @@ jobs:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
       - name: Restore Cache (復元のみ)
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         id: cache-restore
         with:
           path: |
@@ -540,7 +540,7 @@ jobs:
           #pnpm run tauri bundle -- --bundles app --target universal-apple-darwin
 
       - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
@@ -620,7 +620,7 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Restore Cache
-        uses: actions/cache/restore@v5.0.5
+        uses: actions/cache/restore@v6.1.0
         with:
           path: |
             ~/.cargo/bin/
@@ -686,7 +686,7 @@ jobs:
           pnpm run tauri android build --apk --aab --debug --ci
 
       - name: Save Cache
-        uses: actions/cache/save@v5.0.5
+        uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
@@ -735,7 +735,7 @@ jobs:
           targets: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-ios-sim
 
       #- name: Restore Cache
-      #  uses: actions/cache/restore@v5.0.5
+      #  uses: actions/cache/restore@v6.1.0
       #  with:
       #    path: |
       #      ~/.cargo/bin/
@@ -803,7 +803,7 @@ jobs:
           pnpm run tauri ios build --export-method app-store-connect --ci --no-sign
 
       #- name: Save Cache
-      #  uses: actions/cache/save@v5.0.5
+      #  uses: actions/cache/save@v6.1.0
       #  if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
       #  with:
       #    path: |
