@@ -128,38 +128,39 @@ pub fn log_display_environment() {}
 fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
     use percent_encoding::percent_decode_str;
 
-    let raw_last_segment = match file_path {
-        tauri_plugin_fs::FilePath::Url(url) => url
-            .path_segments()
-            .and_then(|mut s| s.next_back())
-            .map(str::to_string),
+    let raw_name = match file_path {
+        tauri_plugin_fs::FilePath::Url(url) => {
+            // URLのパス部分からファイル名相当を抽出
+            url.path_segments()
+                .and_then(|segments| segments.last())
+                .map(|s| s.to_string())
+        }
         _ => None,
     };
 
-    let Some(raw) = raw_last_segment else {
-        return "picked_file".to_string();
+    let raw = match raw_name {
+        Some(name) => name,
+        None => return "picked_file".to_string(),
     };
 
-    // percent-decode してから、プロバイダ固有の区切り (`/`, `:`) の
-    // 最後の要素だけを取り出す。
-    let decoded = percent_decode_str(&raw).decode_utf8_lossy().into_owned();
-    let base = decoded
-        .rsplit(['/', ':'])
-        .next()
-        .unwrap_or(decoded.as_str())
-        .trim();
+    // 1. デコード
+    let decoded = percent_decode_str(&raw).decode_utf8_lossy();
 
-    if base.is_empty() {
-        "picked_file".to_string()
-    } else {
-        base.to_string()
-    }
-    /*
-    // ファイルシステムに書き込めない文字を除去しておく
-    let sanitized: String = base
+    // 2. パス区切り文字での分割（OSの制限を考慮して一般的なものを網羅）
+    // Windows/Unix系のパス区切りを考慮して、最後の要素だけを取り出す
+    let file_name = decoded
+        .split(|c| c == '/' || c == '\\' || c == ':')
+        .last()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("picked_file");
+
+    // 3. ファイル名として使えない文字を置換（最小限）
+    let sanitized: String = file_name
         .chars()
         .map(|c| {
-            if matches!(c, '\\' | '"' | '<' | '>' | '|' | '?' | '*') {
+            // ファイルシステムで禁止されている文字を置換
+            if matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
                 '_'
             } else {
                 c
@@ -172,7 +173,6 @@ fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
     } else {
         sanitized
     }
-    */
 }
 
 #[cfg(mobile)]
