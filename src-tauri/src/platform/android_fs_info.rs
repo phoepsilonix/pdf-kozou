@@ -28,8 +28,8 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    plugin::{Builder, PluginHandle, TauriPlugin},
     Manager,
+    plugin::{Builder, PluginHandle, TauriPlugin},
 };
 
 #[derive(Serialize)]
@@ -51,10 +51,10 @@ impl KozouFsInfo {
     /// 取得できない場合 (プロバイダ非対応・クエリ失敗・空文字列等) は None。
     /// この場合、呼び出し元は従来の URI ベースの推測にフォールバックする。
     pub fn get_display_name(&self, uri: &str) -> Option<String> {
-        match self
-            .0
-            .run_mobile_plugin::<GetDisplayNameResponse>("getDisplayName", GetDisplayNameArgs { uri })
-        {
+        match self.0.run_mobile_plugin::<GetDisplayNameResponse>(
+            "getDisplayName",
+            GetDisplayNameArgs { uri },
+        ) {
             Ok(resp) => resp.name.filter(|s| !s.trim().is_empty()),
             Err(_e) => {
                 // プロバイダによっては DISPLAY_NAME を提供しない場合もある。

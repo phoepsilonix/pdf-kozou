@@ -4,6 +4,9 @@
 
 // src-tauri/src/platform/mod.rs
 
+#[cfg(mobile)]
+use tauri::Manager;
+
 pub mod screen_info;
 pub use screen_info::{DisplayServer, ScreenInfo};
 
@@ -348,7 +351,9 @@ pub async fn open_pdfs_dialog(app: &tauri::AppHandle) -> Result<Vec<std::path::P
 ///      content:// でも ContentResolver 経由の書き込みに対応している)。
 #[cfg(mobile)]
 #[derive(Default)]
-pub struct PendingSaves(pub std::sync::Mutex<std::collections::HashMap<String, tauri_plugin_fs::FilePath>>);
+pub struct PendingSaves(
+    pub std::sync::Mutex<std::collections::HashMap<String, tauri_plugin_fs::FilePath>>,
+);
 
 /// 保存ダイアログを表示し、ユーザーが選んだ保存先を覚えておいた上で、
 /// core が実際に書き込む先(アプリ専用一時ディレクトリの実パス)を返す。
@@ -441,5 +446,9 @@ pub fn finalize_pending_save(app: &tauri::AppHandle, output_path: &str) -> Resul
 
 #[cfg(mobile)]
 pub async fn pick_output_dir(_app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    Some(crate::tempdir::kozou_temp_dir())
+    let output_dir = _app
+        .path()
+        .document_dir()
+        .expect("Failed to get document dir");
+    Some(output_dir)
 }
