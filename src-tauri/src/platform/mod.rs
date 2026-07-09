@@ -126,53 +126,29 @@ pub fn log_display_environment() {}
 /// 「ファイルを選んでも何も追加されない」という症状になる。
 #[cfg(mobile)]
 fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
-    use percent_encoding::percent_decode_str;
-
-    let raw_name = match file_path {
-        tauri_plugin_fs::FilePath::Url(url) => {
-            // URLのパス部分からファイル名相当を抽出
-            url.path_segments()
-                .and_then(|segments| segments.last())
-                .map(|s| s.to_string())
-        }
-        _ => None,
+    use std::path::Path;
+    
+    // 1. まず、ファイルパス自体からファイル名が取れるか試す
+    // PathBuf に変換して file_name() を使うのが最も確実です
+    let path_str = match file_path {
+        tauri_plugin_fs::FilePath::Path(p) => Some(p.to_string_lossy().to_string()),
+        tauri_plugin_fs::FilePath::Url(url) => Some(url.path().to_string()),
     };
 
-    let raw = match raw_name {
-        Some(name) => name,
-        None => return "picked_file".to_string(),
-    };
-
-    // 1. デコード
-    let decoded = percent_decode_str(&raw).decode_utf8_lossy();
-
-    // 2. パス区切り文字での分割（OSの制限を考慮して一般的なものを網羅）
-    // Windows/Unix系のパス区切りを考慮して、最後の要素だけを取り出す
-    let file_name = decoded
-        .split(|c| c == '/' || c == '\\' || c == ':')
-        .last()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("picked_file");
-
-    // 3. ファイル名として使えない文字を置換（最小限）
-    let sanitized: String = file_name
-        .chars()
-        .map(|c| {
-            // ファイルシステムで禁止されている文字を置換
-            if matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
-                '_'
-            } else {
-                c
+    if let Some(p) = path_str {
+        let path = Path::new(&p);
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            // ここで中身を確認し、数字の羅列でなければそれを返す
+            if !name.chars().all(|c| c.is_ascii_digit()) {
+                return name.to_string();
             }
-        })
-        .collect();
-
-    if sanitized.is_empty() {
-        "picked_file".to_string()
-    } else {
-        sanitized
+        }
     }
+
+    // 2. それでもダメなら、メタデータから名前を取得する (非同期が必要な場合があります)
+    // 注意: モバイルの content:// URI の場合、ここが本来のファイル名を持っていることが多いです
+    
+    "picked_file".to_string()
 }
 
 #[cfg(mobile)]
