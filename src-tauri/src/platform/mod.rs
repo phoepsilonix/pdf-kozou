@@ -7,6 +7,9 @@
 pub mod screen_info;
 pub use screen_info::{DisplayServer, ScreenInfo};
 
+#[cfg(target_os = "android")]
+pub mod android_fs_info;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 
@@ -113,42 +116,80 @@ pub fn log_display_environment() {}
 // アプリの一時ディレクトリにコピーしてから、そのローカルパスを返す。
 
 /// content:// / file:// の URL 末尾セグメントから元のファイル名(拡張子込み)を
-/// 復元する。
+/// 復元する、最後の手段のフォールバック。
 ///
-/// Android の SAF (Storage Access Framework) が返す content:// URI は
-/// 末尾セグメントが percent-encode された「ドキュメントID」になっている。
-/// 例: `content://.../document/primary%3ADownload%2Fscan.pdf`
-///     → decode → `primary:Download/scan.pdf` → basename → `scan.pdf`
+/// ⚠ これは常に正しいファイル名を復元できるわけではない。
+/// Android の SAF (Storage Access Framework) が返す content:// URI の
+/// 末尾セグメント(ドキュメントID)は、プロバイダによってフォーマットが
+/// 異なる:
+///   - ExternalStorageProvider 等、実パスに基づく ID を返すプロバイダの例:
+///     `content://.../document/primary%3ADownload%2Fscan.pdf`
+///       → decode → `primary:Download/scan.pdf` → basename → `scan.pdf`
+///   - MediaStore 由来のドキュメントプロバイダ等、完全に不透明な ID を
+///     返すプロバイダの例:
+///     `content://.../document/msf%3A1000000123`
+///       → decode しても `msf:1000000123` にしかならず、元のファイル名は
+///         どこにも含まれていない。
 ///
-/// これを percent-decode せずに使うと、コピー先の一時ファイル名に
-/// 拡張子が付かず (`%2F` や `%3A` を含んだ不正なファイル名になり)、
+/// 後者のケースでは URI をいくら percent-decode してもファイル名は
+/// 復元できないため、Android では本関数を呼ぶ前に
+/// `android_fs_info::KozouFsInfo::get_display_name` で
+/// ContentResolver 経由の `OpenableColumns.DISPLAY_NAME` を問い合わせる
+/// (これなら日本語等の Unicode ファイル名も含め、プロバイダに依らず
+/// 正しい名前が取れる)。本関数はそれが失敗した場合のフォールバックとして
+/// のみ使う。
+///
+/// なお、decode 前の生の URI パスをそのまま使うと、コピー先の一時ファイル名
+/// に拡張子が付かず (`%2F` や `%3A` を含んだ不正なファイル名になり)、
 /// フロントエンドの拡張子判定 (`isMupdfExtension`) に弾かれて
-/// 「ファイルを選んでも何も追加されない」という症状になる。
+/// 「ファイルを選んでも何も追加されない」という症状になるため、必ず
+/// percent-decode してから使う。
 #[cfg(mobile)]
 fn guess_file_name(file_path: &tauri_plugin_fs::FilePath) -> String {
     use std::path::Path;
-    
-    // 1. まず、ファイルパス自体からファイル名が取れるか試す
-    // PathBuf に変換して file_name() を使うのが最も確実です
+
+    // 1. まず、ファイルパス自体からファイル名が取れるか試す。
+    //    content:// URI の場合は生のパス文字列が percent-encode されて
+    //    いるため、basename を取り出す前に必ず decode する
+    //    (decode しないと拡張子付きの判定に失敗する)。
     let path_str = match file_path {
         tauri_plugin_fs::FilePath::Path(p) => Some(p.to_string_lossy().to_string()),
-        tauri_plugin_fs::FilePath::Url(url) => Some(url.path().to_string()),
+        tauri_plugin_fs::FilePath::Url(url) => {
+            percent_decode(url.path()).or_else(|| Some(url.path().to_string()))
+        }
     };
 
     if let Some(p) = path_str {
         let path = Path::new(&p);
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             // ここで中身を確認し、数字の羅列でなければそれを返す
-            if !name.chars().all(|c| c.is_ascii_digit()) {
+            if !name.is_empty() && !name.chars().all(|c| c.is_ascii_digit()) {
                 return name.to_string();
             }
         }
     }
 
-    // 2. それでもダメなら、メタデータから名前を取得する (非同期が必要な場合があります)
-    // 注意: モバイルの content:// URI の場合、ここが本来のファイル名を持っていることが多いです
-    
     "picked_file".to_string()
+}
+
+/// 簡易 percent-decode (UTF-8 前提)。`url` クレートの `Url::path()` は
+/// percent-encode されたままの文字列を返す (decode は行わない) ため、
+/// ここで明示的に decode する。不正なバイト列だった場合は None を返す。
+#[cfg(mobile)]
+fn percent_decode(s: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(s.len());
+    let mut chars = s.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let hi = chars.next()?;
+            let lo = chars.next()?;
+            let byte = u8::from_str_radix(&format!("{}{}", hi as char, lo as char), 16).ok()?;
+            bytes.push(byte);
+        } else {
+            bytes.push(b);
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 #[cfg(mobile)]
@@ -163,7 +204,27 @@ async fn filepath_to_local(
         return Ok(p.to_path_buf());
     }
 
-    // 名前(拡張子込み)を復元しておく
+    // 名前(拡張子込み)を復元しておく。
+    //
+    // Android: URI から推測する前に、まず ContentResolver 経由で正式な
+    // ファイル名 (OpenableColumns.DISPLAY_NAME) を問い合わせる。
+    // これはプロバイダが URI に実ファイル名を含めない場合
+    // (例: `content://.../document/msf%3A1000000123` のような不透明な
+    // ドキュメントID)でも、日本語等の Unicode ファイル名を含め正しく
+    // 取得できる。取得できなかった場合のみ、従来の URI ベースの推測
+    // (`guess_file_name`) にフォールバックする。
+    #[cfg(target_os = "android")]
+    let guess_name = {
+        use tauri::Manager;
+        let from_resolver = match &file_path {
+            tauri_plugin_fs::FilePath::Url(url) => app
+                .try_state::<crate::platform::android_fs_info::KozouFsInfo>()
+                .and_then(|state| state.get_display_name(url.as_str())),
+            tauri_plugin_fs::FilePath::Path(_) => None,
+        };
+        from_resolver.unwrap_or_else(|| guess_file_name(&file_path))
+    };
+    #[cfg(not(target_os = "android"))]
     let guess_name = guess_file_name(&file_path);
 
     // 2. モバイル環境: 一度全バイト読み込む

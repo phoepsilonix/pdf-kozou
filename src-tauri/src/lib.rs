@@ -52,11 +52,22 @@ pub fn run() {
             .try_init();
     }
 
-    let app = tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_process::init());
+
+    // Android: content:// URI から元のファイル名 (Unicode/日本語含む) を
+    // ContentResolver 経由で取得するためのネイティブブリッジを登録する。
+    // (詳細は src/platform/android_fs_info.rs を参照)
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.plugin(crate::platform::android_fs_info::kozou_fs_info_plugin());
+    }
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             core::get_pdf_info,
             core::render_page,
