@@ -409,8 +409,8 @@ pub async fn pick_output_dir(app: &tauri::AppHandle) -> Option<std::path::PathBu
     let result = app
         .dialog()
         .file()
-        .set_directory_path(crate::tempdir::kozou_temp_dir()) // 初期ディレクトリの設定
-        .blocking_pick_folder(); // または async の場合は .pick_folder().await
+        .set_directory(crate::tempdir::kozou_temp_dir()) // 初期ディレクトリの設定
+        .pick_folder().await; // または async の場合は .pick_folder().await
 
     // ユーザーが選択したフォルダパスを PathBuf として返す
     result.map(|path| path.path)
