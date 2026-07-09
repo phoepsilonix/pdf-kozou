@@ -401,17 +401,8 @@ pub fn finalize_pending_save(app: &tauri::AppHandle, output_path: &str) -> Resul
 
     Ok(())
 }
+
 #[cfg(mobile)]
-pub async fn pick_output_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    use tauri_plugin_dialog::DialogExt;
-
-    // モバイル用：フォルダ選択ダイアログを表示
-    let result = app
-        .dialog()
-        .file()
-        .set_directory(crate::tempdir::kozou_temp_dir()) // 初期ディレクトリの設定
-        .pick_file(); // または async の場合は .pick_folder().await
-
-    // ユーザーが選択したフォルダパスを PathBuf として返す
-    result.map(|path| path.path)
+pub async fn pick_output_dir(_app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    Some(crate::tempdir::kozou_temp_dir())
 }
