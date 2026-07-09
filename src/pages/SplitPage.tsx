@@ -24,7 +24,14 @@ import {
   type SplitResponse,
   type PdfInfo,
   type OverrideMeta,
+  isMobile,
 } from "../lib/tauri";
+import {
+  buildMobileOutputSubfolder,
+  mobileOutputPreviewLabel,
+  commitSavedBatch,
+  type MobileSavedFileInfo,
+} from "../lib/mobileOutput";
 import { MetadataEditModal } from "../components/MetadataEditModal";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
@@ -158,6 +165,26 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     [splitPrefix, srcStem, isBatch, keepOriginalName],
   );
 
+  // ── モバイル (Android) 向け出力: フォルダピッカーが無いため、
+  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする。
+  // 分割はバッチでなくても常に複数ファイル出力になるため、単体/バッチ
+  // 両方でこの仕組みを使う。
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
+  const mobileRelativeDir = useMemo(() => {
+    const label =
+      isBatch && batchFiles && batchFiles.length > 0 ? `${batchFiles.length}件` : srcStem;
+    return buildMobileOutputSubfolder(label);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBatch, batchFiles?.length, srcStem]);
+  const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+
   // ── サムネイル取得（プレビュー対象ファイル） ─────────────────────────────
   useEffect(() => {
     if (!previewEnabled) {
@@ -237,6 +264,22 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     return dir;
   }, []);
 
+  // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
+  // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
+  // 名前を使うことで、実行前後の表示を一致させる。
+  const finalizeMobileOutput = useCallback(
+    async (dir: string) => {
+      if (!mobile) return;
+      try {
+        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    },
+    [mobile, mobileRelativeDir],
+  );
+
   // 画面表示時の読み上げ
   useEffect(() => {
     announceScreen("screen.split");
@@ -275,6 +318,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const handleExecuteSingle = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -299,6 +344,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       setSavedDir(resolvedDir);
       const msg = t("common.files_split_done", { count: String(res.files.length) });
       setStatusMsg(msg);
+      await finalizeMobileOutput(resolvedDir);
       announceSuccess("done.split", { count: String(res.files.length) });
       setPhase("result");
     } catch (e) {
@@ -321,6 +367,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     setError,
     announceSuccess,
     announceError,
+    finalizeMobileOutput,
   ]);
 
   // ── 実行（バッチ）──────────────────────────────────────────────────────────
@@ -328,6 +375,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
     const files = batchFiles!;
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -382,6 +431,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       }
       setBatchProgress({ ...progress });
     }
+    await finalizeMobileOutput(resolvedDir);
     announceSuccess("done.split", { count: String(files.length) });
     setPhase("result");
   }, [
@@ -394,6 +444,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     pickDir,
     overrideMetadata,
     announceSuccess,
+    finalizeMobileOutput,
   ]);
 
   // ── グループプレビュー計算 ────────────────────────────────────────────────
@@ -490,6 +541,30 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             {batchProgress.errors.length > 0 &&
               t("split.error_count", { count: String(batchProgress.errors.length) })}
           </div>
+          {mobile && (
+            <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
+              {mobileSaveError ? (
+                <span style={{ color: "var(--c-err)" }}>
+                  {t("mobile.save_unsupported" as any)}
+                </span>
+              ) : mobileSavedFiles ? (
+                <>
+                  <div>
+                    {t("mobile.save_done_summary" as any, {
+                      count: String(mobileSavedFiles.length),
+                    })}
+                  </div>
+                  <div>
+                    {t("mobile.save_location" as any, {
+                      path: mobileOutputPreviewLabel(mobileRelativeDir),
+                    })}
+                  </div>
+                </>
+              ) : (
+                t("mobile.save_preview_pending" as any)
+              )}
+            </div>
+          )}
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
@@ -524,7 +599,32 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         </PageHeader>
         <div style={s.resultBody}>
           <div style={s.resultIcon}>✓</div>
-          <div style={s.resultDir}>{savedDir}</div>
+          {mobile ? (
+            <div style={s.resultDir}>
+              {mobileSaveError ? (
+                <span style={{ color: "var(--c-err)" }}>
+                  {t("mobile.save_unsupported" as any)}
+                </span>
+              ) : mobileSavedFiles ? (
+                <>
+                  <div>
+                    {t("mobile.save_done_summary" as any, {
+                      count: String(mobileSavedFiles.length),
+                    })}
+                  </div>
+                  <div>
+                    {t("mobile.save_location" as any, {
+                      path: mobileOutputPreviewLabel(mobileRelativeDir),
+                    })}
+                  </div>
+                </>
+              ) : (
+                t("mobile.save_preview_pending" as any)
+              )}
+            </div>
+          ) : (
+            <div style={s.resultDir}>{savedDir}</div>
+          )}
           <div style={s.fileList}>
             {result.files.slice(0, 20).map((f, i) => (
               <div key={i} style={s.fileRow}>
@@ -921,16 +1021,26 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
 
             <div style={s.secLabel}>{t("split.output_dir")}</div>
-            <div style={s.dirRow}>
-              <div style={s.dirPath} title={outDir}>
-                <span aria-label={t("aria.output_dir_btn")}>
-                  {outDir || t("common.select_dir")}
-                </span>
+            {mobile ? (
+              <div style={s.dirRow}>
+                <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir)}>
+                  {t("mobile.save_preview" as any, {
+                    path: mobileOutputPreviewLabel(mobileRelativeDir),
+                  })}
+                </div>
               </div>
-              <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
-                {t("common.browse")}
-              </button>
-            </div>
+            ) : (
+              <div style={s.dirRow}>
+                <div style={s.dirPath} title={outDir}>
+                  <span aria-label={t("aria.output_dir_btn")}>
+                    {outDir || t("common.select_dir")}
+                  </span>
+                </div>
+                <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
+                  {t("common.browse")}
+                </button>
+              </div>
+            )}
 
             {/* メタデータを分割前に編集（任意）*/}
             <div style={s.metaEditRow}>
