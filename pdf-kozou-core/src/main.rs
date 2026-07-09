@@ -20,6 +20,8 @@
 
 use clap::{Parser, Subcommand};
 use pdf_kozou_core::error::ErrorResponse;
+use pdf_kozou_core::api::auto_convert_if_needed;
+use pdf_kozou_core::api::parse_page_list;
 
 #[derive(Parser)]
 #[command(

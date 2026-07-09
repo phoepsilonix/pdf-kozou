@@ -182,7 +182,9 @@ pnpm run build
 ```
 
 ビルド済みバイナリは `target/release/pdf-kozou-core` `target/release/pdf-kozou` に生成されます。  
-Windowsは`WebView2Loader.dll`も同じフォルダに必要です。WebView2Loader.dllも`target/release`にあると思います。
+Windowsは`WebView2Loader.dll`も同じフォルダに必要です。WebView2Loader.dllも`target/release`にあると思います。  
+v1.8.0以降は、pdf-kozou-coreを組み込む形に変えていますので、パッケージとしてはpdf-kozou-coreを含みません。  
+CLIとして用いたい方は`cargo build --release --bin pdf-kozou-core`でビルドしてください。
 
 > **注意:** ビルドには C/C++ ツールチェーン (cmake, clang, TypeScript など) が必要です。  
 > 詳細は [BUILDING.md](BUILDING.md)、[WINDOWS_BUILD.md](WINDOWS_BUILD.md) を参照してください。
