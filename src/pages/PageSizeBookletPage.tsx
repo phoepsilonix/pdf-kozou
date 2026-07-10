@@ -15,7 +15,20 @@ import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { tts } from "../lib/tts";
-import { composeImpositionPdf, renderPage, getPdfInfo, joinPath, type PdfInfo } from "../lib/tauri";
+import {
+  composeImpositionPdf,
+  renderPage,
+  getPdfInfo,
+  joinPath,
+  type PdfInfo,
+  isMobile,
+} from "../lib/tauri";
+import {
+  buildMobileOutputSubfolder,
+  mobileOutputPreviewLabel,
+  commitSavedBatch,
+  type MobileSavedFileInfo,
+} from "../lib/mobileOutput";
 import type { FileEntry } from "../store/usePdfStore";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
@@ -60,6 +73,23 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const { t } = useI18n();
   const { announceSuccess, announceError, announceScreen, announceKey } = useA11y();
   const isBatch = (batchFiles?.length ?? 0) > 1;
+
+  // ── モバイル (Android) 向けバッチ出力: フォルダピッカーが無いため、
+  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
+  const mobileRelativeDir = useMemo(
+    () => buildMobileOutputSubfolder(`${batchFiles?.length ?? 0}件`),
+    [batchFiles?.length],
+  );
+  const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+
   const { isNarrow } = useViewport();
   const settingsTopRef = useRef<HTMLDivElement>(null);
   const previewTopRef = useRef<HTMLDivElement>(null);
@@ -275,6 +305,23 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     return dir;
   }, []);
 
+  // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
+  // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
+  // 名前を使うことで、実行前後の表示を一致させる。
+  const finalizeMobileOutput = useCallback(
+    async (dir: string) => {
+      if (!mobile) return;
+      try {
+        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    },
+    [mobile, mobileRelativeDir],
+  );
+
+
   const run = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
     const sp = await pickSave(composePdfName(srcStem, keepOriginalName));
@@ -337,6 +384,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     const dir = outDir || (await pickDir());
     if (!dir) return;
     const files = batchFiles!;
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -386,6 +435,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       }
       setBatchProgress({ ...progress });
     }
+    await finalizeMobileOutput(dir);
     announceSuccess("done.image");
     setPhase("result");
   }, [
@@ -402,6 +452,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     convertLayoutH,
     convertLayoutEm,
     announceSuccess,
+    finalizeMobileOutput,
   ]);
 
   // ── バッチ進捗・結果（単体フローより先に分岐）──
@@ -476,7 +527,32 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             {batchProgress.errors.length > 0 &&
               t("split.error_count", { count: String(batchProgress.errors.length) })}
           </div>
-          <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
+          <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
+            {mobile ? (
+              mobileSaveError ? (
+                <span style={{ color: "var(--c-err)" }}>
+                  {t("mobile.save_unsupported" as any)}
+                </span>
+              ) : mobileSavedFiles ? (
+                <>
+                  <div>
+                    {t("mobile.save_done_summary" as any, {
+                      count: String(mobileSavedFiles.length),
+                    })}
+                  </div>
+                  <div>
+                    {t("mobile.save_location" as any, {
+                      path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                    })}
+                  </div>
+                </>
+              ) : (
+                t("mobile.save_preview_pending" as any)
+              )
+            ) : (
+              outDir
+            )}
+          </div>
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
@@ -734,14 +810,24 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             {isBatch && (
               <section style={s.section}>
                 <div style={s.label}>{t("split.output_dir")}</div>
-                <div style={s.dirRow}>
-                  <div style={s.dirPath} title={outDir}>
-                    {outDir || t("common.select_dir")}
+                {mobile ? (
+                  <div style={s.dirRow}>
+                    <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any))}>
+                      {t("mobile.save_preview" as any, {
+                        path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                      })}
+                    </div>
                   </div>
-                  <button style={s.dirPickBtn} onClick={pickDir}>
-                    {t("common.browse")}
-                  </button>
-                </div>
+                ) : (
+                  <div style={s.dirRow}>
+                    <div style={s.dirPath} title={outDir}>
+                      {outDir || t("common.select_dir")}
+                    </div>
+                    <button style={s.dirPickBtn} onClick={pickDir}>
+                      {t("common.browse")}
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 

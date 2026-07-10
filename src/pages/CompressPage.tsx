@@ -21,7 +21,14 @@ import {
   type CompressResponse,
   type PdfInfo,
   joinPath,
+  isMobile,
 } from "../lib/tauri";
+import {
+  buildMobileOutputSubfolder,
+  mobileOutputPreviewLabel,
+  commitSavedBatch,
+  type MobileSavedFileInfo,
+} from "../lib/mobileOutput";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
@@ -231,6 +238,23 @@ export function CompressPage({
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const inputFile = currentSource;
 
+  // ── モバイル (Android) 向けバッチ出力: フォルダピッカーが無いため、
+  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
+  const mobileRelativeDir = useMemo(
+    () => buildMobileOutputSubfolder(`${batchFiles?.length ?? 0}件`),
+    [batchFiles?.length],
+  );
+  const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+
+
   const [phase, setPhase] = useState<Phase>("edit");
   // 結果画面では自動フォーカスを与えない（縦幅の短い画面で上部の結果表示が
   // スクロールで隠れるのを避けるため）。保存は Ctrl+S（圧縮して保存）で行える。
@@ -286,6 +310,23 @@ export function CompressPage({
     if (d) setOutDir(d);
     return d;
   }, []);
+
+  // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
+  // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
+  // 名前を使うことで、実行前後の表示を一致させる。
+  const finalizeMobileOutput = useCallback(
+    async (dir: string) => {
+      if (!mobile) return;
+      try {
+        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    },
+    [mobile, mobileRelativeDir],
+  );
+
 
   const handlePreview = useCallback(async () => {
     if (useGs && !gsPath) {
@@ -522,6 +563,8 @@ export function CompressPage({
       setError(t("compress.err_gs_path_not_found"));
       return;
     }
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
 
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -593,6 +636,7 @@ export function CompressPage({
       }
       setBatchProg({ ...prog });
     }
+    await finalizeMobileOutput(resolvedDir);
     setPhase("batchResult");
   }, [
     batchFiles,
@@ -605,6 +649,7 @@ export function CompressPage({
     outDir,
     pickDir,
     setError,
+    finalizeMobileOutput,
   ]);
 
   // 圧縮・保存が長引くときは音声で「処理中です」と知らせる（独自スピナー使用のため個別に計測）。
@@ -702,6 +747,28 @@ export function CompressPage({
         <div style={c.bpTitle}>
           {t("compress.batch_done_title", { count: String(batchProg.done.length) })}
         </div>
+        {mobile && (
+          <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
+            {mobileSaveError ? (
+              <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+            ) : mobileSavedFiles ? (
+              <>
+                <div>
+                  {t("mobile.save_done_summary" as any, {
+                    count: String(mobileSavedFiles.length),
+                  })}
+                </div>
+                <div>
+                  {t("mobile.save_location" as any, {
+                    path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                  })}
+                </div>
+              </>
+            ) : (
+              t("mobile.save_preview_pending" as any)
+            )}
+          </div>
+        )}
         <div style={{ height: 10 }} />
         <div style={c.bpLog}>
           {batchProg.done.map((d, i) => (
@@ -1191,12 +1258,22 @@ export function CompressPage({
       <div style={c.execArea}>
         {isBatch ? (
           <div style={c.batchExecBox}>
-            <div style={c.dirRow}>
-              <div style={c.dirPath}>{outDir || t("compress.no_dir_placeholder")}</div>
-              <button style={c.dirPickBtn} onClick={pickDir}>
-                {t("compress.select_folder")}
-              </button>
-            </div>
+            {mobile ? (
+              <div style={c.dirRow}>
+                <div style={c.dirPath}>
+                  {t("mobile.save_preview" as any, {
+                    path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div style={c.dirRow}>
+                <div style={c.dirPath}>{outDir || t("compress.no_dir_placeholder")}</div>
+                <button style={c.dirPickBtn} onClick={pickDir}>
+                  {t("compress.select_folder")}
+                </button>
+              </div>
+            )}
             <button
               style={c.btnExec}
               onClick={handleBatch}

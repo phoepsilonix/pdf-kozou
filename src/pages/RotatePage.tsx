@@ -4,7 +4,7 @@
 
 // src/pages/RotatePage.tsx — 単体 & バッチ対応
 export default RotatePage;
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Spinner, ErrorView, PageHeader, BtnBack, BtnPrimary } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
@@ -17,7 +17,14 @@ import {
   commitSavedFile,
   type PdfInfo,
   joinPath,
+  isMobile,
 } from "../lib/tauri";
+import {
+  buildMobileOutputSubfolder,
+  mobileOutputPreviewLabel,
+  commitSavedBatch,
+  type MobileSavedFileInfo,
+} from "../lib/mobileOutput";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { PageSizeSelector } from "../components/PageSizeSelector";
 import { hasImage } from "../lib/fileTypes";
@@ -61,6 +68,23 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { setError, convertLayoutW, convertLayoutH, convertLayoutEm, pageSizeId, pageOrientation } =
     usePdfStore();
   const isBatch = (batchFiles?.length ?? 0) > 1;
+
+  // ── モバイル (Android) 向けバッチ出力: フォルダピッカーが無いため、
+  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
+  const mobileRelativeDir = useMemo(
+    () => buildMobileOutputSubfolder(`${batchFiles?.length ?? 0}件`),
+    [batchFiles?.length],
+  );
+  const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const { isNarrow } = useViewport();
@@ -267,6 +291,23 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     return dir;
   }, []);
 
+  // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
+  // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
+  // 名前を使うことで、実行前後の表示を一致させる。
+  const finalizeMobileOutput = useCallback(
+    async (dir: string) => {
+      if (!mobile) return;
+      try {
+        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    },
+    [mobile, mobileRelativeDir],
+  );
+
+
   const handleExecuteSingle = useCallback(async () => {
     if (changedPages.length === 0) return;
     const base =
@@ -310,6 +351,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
     const files = batchFiles!;
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -359,9 +402,19 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       }
       setBatchProgress({ ...prog });
     }
+    await finalizeMobileOutput(resolvedDir);
     announceSuccess("done.rotate", { count: String(changedPages.length) });
     setPhase("result");
-  }, [batchFiles, rotations, outDir, pickDir, announceSuccess, pageSizeId, pageOrientation]);
+  }, [
+    batchFiles,
+    rotations,
+    outDir,
+    pickDir,
+    announceSuccess,
+    pageSizeId,
+    pageOrientation,
+    finalizeMobileOutput,
+  ]);
 
   // ── フェーズ ──────────────────────────────────────────────────────────────
   if (phase === "processing" && !isBatch) return <Spinner label={t("rotate.processing")} />;
@@ -538,7 +591,32 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                   ? t("rotate.error_count", { count: String(batchProgress.errors.length) })
                   : ""}
               </div>
-              <div style={s.resultDir}>{outDir}</div>
+              <div style={s.resultDir}>
+                {mobile ? (
+                  mobileSaveError ? (
+                    <span style={{ color: "var(--c-err)" }}>
+                      {t("mobile.save_unsupported" as any)}
+                    </span>
+                  ) : mobileSavedFiles ? (
+                    <>
+                      <div>
+                        {t("mobile.save_done_summary" as any, {
+                          count: String(mobileSavedFiles.length),
+                        })}
+                      </div>
+                      <div>
+                        {t("mobile.save_location" as any, {
+                          path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    t("mobile.save_preview_pending" as any)
+                  )
+                ) : (
+                  outDir
+                )}
+              </div>
               <div style={s.bpLog}>
                 {batchProgress.done.map((d, i) => (
                   <div key={i} style={s.bpRow}>
@@ -707,14 +785,24 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             {isBatch && (
               <>
                 <div style={s.secLabel}>{t("rotate.output_dir")}</div>
-                <div style={s.dirRow}>
-                  <div style={s.dirPath} title={outDir}>
-                    {outDir || t("common.select_dir")}
+                {mobile ? (
+                  <div style={s.dirRow}>
+                    <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any))}>
+                      {t("mobile.save_preview" as any, {
+                        path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                      })}
+                    </div>
                   </div>
-                  <button style={s.dirPickBtn} onClick={pickDir}>
-                    {t("common.browse")}
-                  </button>
-                </div>
+                ) : (
+                  <div style={s.dirRow}>
+                    <div style={s.dirPath} title={outDir}>
+                      {outDir || t("common.select_dir")}
+                    </div>
+                    <button style={s.dirPickBtn} onClick={pickDir}>
+                      {t("common.browse")}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
