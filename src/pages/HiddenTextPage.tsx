@@ -4,6 +4,7 @@
 export default HiddenTextPage;
 
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   renderPage,
   detectTransparentText,
@@ -16,7 +17,14 @@ import {
   type PdfInfo,
   type SanitizeOrigin,
   joinPath,
+  isMobile,
 } from "../lib/tauri";
+import {
+  buildMobileOutputSubfolder,
+  mobileOutputPreviewLabel,
+  commitSavedBatch,
+  type MobileSavedFileInfo,
+} from "../lib/mobileOutput";
 import { Spinner, PageHeader } from "../components/common";
 import { useI18n } from "../lib/i18n";
 import { buildName } from "../lib/filename";
@@ -278,6 +286,23 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [thr, setThr] = useState<Thr>(() => loadLastThr() ?? DEFAULT_THR);
   const [showThr, setShowThr] = useState(false);
   const [outDir, setOutDir] = useState("");
+
+  // ── モバイル (Android) 向け出力: フォルダピッカーが無いため、
+  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
+  const mobileRelativeDir = useMemo(
+    () => buildMobileOutputSubfolder(`${batchFiles.length}件`),
+    [batchFiles.length],
+  );
+  const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
@@ -302,6 +327,16 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const rightStyle: React.CSSProperties = isNarrow ? { ...s.right, minHeight: 0 } : s.right;
 
   const pickDir = useCallback(async (): Promise<string | null> => {
+    // Android/iOS: tauri-plugin-dialog の open({ directory: true }) は
+    // モバイル向けのフォルダ選択ダイアログを実装していない
+    // (ファイル選択・保存ダイアログのみ)。モバイルではこの分岐を
+    // 使わず、pick_output_dir 経由でアプリの一時ディレクトリを取得し、
+    // 実行後に commitSavedBatch でダウンロードフォルダへ移す。
+    if (mobile) {
+      const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+      if (dir) setOutDir(dir);
+      return dir;
+    }
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const dir = await open({ directory: true, title: t("hidden.output_dir_dialog" as any) });
@@ -312,11 +347,29 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       console.error(e);
       return null;
     }
-  }, [t]);
+  }, [t, mobile]);
+
+  // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
+  // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
+  // 名前を使うことで、実行前後の表示を一致させる。
+  const finalizeMobileOutput = useCallback(
+    async (dir: string) => {
+      if (!mobile) return;
+      try {
+        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    },
+    [mobile, mobileRelativeDir],
+  );
 
   const runBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return; // キャンセル
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
     setRunning(true);
     saveLastThr(thr); // 閾値を履歴保存
     setPhase("processing");
@@ -373,9 +426,10 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       }
       setProgress({ ...prog });
     }
+    await finalizeMobileOutput(resolvedDir);
     setRunning(false);
     setPhase("result");
-  }, [batchFiles, outDir, enabled, thr, pickDir, skipType3]);
+  }, [batchFiles, outDir, enabled, thr, pickDir, skipType3, finalizeMobileOutput]);
 
   const { announceKey } = useA11y();
   useKeyboardShortcuts({
@@ -492,6 +546,33 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 {progress.errors.length > 0 && (
                   <div style={{ color: "var(--c-err)" }}>
                     {t("hidden.batch_errors" as any, { count: String(progress.errors.length) })}
+                  </div>
+                )}
+                {mobile && (
+                  <div style={{ color: "var(--c-textDim)" }}>
+                    {mobileSaveError ? (
+                      <span style={{ color: "var(--c-err)" }}>
+                        {t("mobile.save_unsupported" as any)}
+                      </span>
+                    ) : mobileSavedFiles ? (
+                      <>
+                        <div>
+                          {t("mobile.save_done_summary" as any, {
+                            count: String(mobileSavedFiles.length),
+                          })}
+                        </div>
+                        <div>
+                          {t("mobile.save_location" as any, {
+                            path: mobileOutputPreviewLabel(
+                              mobileRelativeDir,
+                              t("mobile.downloads_root" as any),
+                            ),
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      t("mobile.save_preview_pending" as any)
+                    )}
                   </div>
                 )}
               </div>
@@ -626,24 +707,49 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           {/* 出力先フォルダ */}
           <div style={s.sec}>
             <div style={s.secTitle}>出力先フォルダ</div>
-            <div
-              style={{
-                fontSize: FS.small,
-                color: outDir ? "var(--c-text)" : "var(--c-textDim)",
-                background: "var(--c-bgCard)",
-                border: "1px solid var(--c-border)",
-                borderRadius: 5,
-                padding: "4px 7px",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap" as const,
-              }}
-            >
-              {outDir || t("hidden.output_dir_empty")}
-            </div>
-            <button style={s.navBtn} onClick={pickDir}>
-              {t("hidden.output_dir_pick" as any)}
-            </button>
+            {mobile ? (
+              <div
+                style={{
+                  fontSize: FS.small,
+                  color: "var(--c-text)",
+                  background: "var(--c-bgCard)",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: 5,
+                  padding: "4px 7px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap" as const,
+                }}
+              >
+                {t("mobile.save_preview" as any, {
+                  path: mobileOutputPreviewLabel(
+                    mobileRelativeDir,
+                    t("mobile.downloads_root" as any),
+                  ),
+                })}
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    fontSize: FS.small,
+                    color: outDir ? "var(--c-text)" : "var(--c-textDim)",
+                    background: "var(--c-bgCard)",
+                    border: "1px solid var(--c-border)",
+                    borderRadius: 5,
+                    padding: "4px 7px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap" as const,
+                  }}
+                >
+                  {outDir || t("hidden.output_dir_empty")}
+                </div>
+                <button style={s.navBtn} onClick={pickDir}>
+                  {t("hidden.output_dir_pick" as any)}
+                </button>
+              </>
+            )}
             <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", lineHeight: 1.4 }}>
               {t("hidden.output_dir_note")}
             </div>
