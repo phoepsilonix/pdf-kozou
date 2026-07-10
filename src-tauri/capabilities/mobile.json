@@ -5,6 +5,7 @@
   "platforms": ["android", "iOS"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-size",
     "core:webview:allow-set-webview-zoom",
     "dialog:default",
     "dialog:allow-open",
