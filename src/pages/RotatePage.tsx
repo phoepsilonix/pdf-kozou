@@ -687,7 +687,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         flexDirection: "column",
         overflowY: "auto",
         minHeight: 0,
-        paddingBottom: 56,
+        paddingBottom: 12,
       }
     : s.body;
   const panelStyle: React.CSSProperties = isNarrow
@@ -956,6 +956,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       </div>
       <LiveRegion message={statusMsg} />
       {isNarrow && (
+        <div style={{ paddingBottom: "calc(var(--safe-bottom) + 24px" }}>
         <FixedMobileNav
           showingSecondSection={showingGrid}
           onToggle={toggleSection}
@@ -964,6 +965,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         >
           {executeBtn}
         </FixedMobileNav>
+	</div>
       )}
     </div>
   );
@@ -1031,6 +1033,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "12px 16px",
     borderTop: `1px solid var(--c-border)`,
     background: "var(--c-bg)",
+    paddingBottom: "calc(var(--safe-bottom) + 8px)",
   },
   secLabel: {
     fontSize: FS.caption,

@@ -1515,6 +1515,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       </aside>
       <LiveRegion message={statusMsg} />
       {isNarrow && (
+        <div style={{ paddingBottom: "calc(var(--safe-bottom) + 24px" }}>
         <FixedMobileNav
           showingSecondSection={showingSettings}
           onToggle={toggleSection}
@@ -1525,6 +1526,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             {phase !== "edit" ? t("trim_controls.processing") : t("trim_controls.preview")}
           </BtnPrimary>
         </FixedMobileNav>
+	</div>
       )}
     </div>
   );
@@ -1955,6 +1957,7 @@ const r: Record<string, React.CSSProperties> = {
     padding: "12px 20px",
     borderTop: `1px solid var(--c-border)`,
     flexShrink: 0,
+    paddingBottom: "calc(var(--safe-bottom) + 8px)",
   },
 };
 

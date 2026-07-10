@@ -28,3 +28,7 @@
 .FixedMobileNav {
   padding-bottom: calc(var(--safe-bottom) + 8px) !important;
 }
+
+.actionBar {
+  padding-bottom: calc(var(--safe-bottom) + 8px) !important;
+}

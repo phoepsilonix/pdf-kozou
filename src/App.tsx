@@ -987,6 +987,7 @@ export default function App() {
                     padding: "8px 12px",
                     width: "100%",
                     boxSizing: "border-box",
+                    paddingBottom: 8,
                   }}
                 >
                   <PageSizeSelector />

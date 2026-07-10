@@ -1131,6 +1131,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     padding: "10px 18px",
     borderTop: `1px solid var(--c-border)`,
+    paddingBottom: "calc(var(--safe-bottom)) + 8px",
   },
 
   resultBody: {

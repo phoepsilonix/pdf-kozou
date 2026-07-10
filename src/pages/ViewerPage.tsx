@@ -1449,7 +1449,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const displayH = Math.round(imgNaturalH * zoom);
 
   return (
-    <div style={s.root}>
+    <div style={{...s.root, paddingBottom: "calc(var(--safe-bottom))"}}>
       <PageHeader>
         <span style={s.title}>{t("viewer.title_single")}</span>
         <span style={s.fileSub} title={activePath}>
@@ -2043,8 +2043,8 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
-    padding: "8px",
+    gap: 8,
+    padding: "4px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bgSub)",
   },

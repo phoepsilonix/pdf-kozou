@@ -680,7 +680,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         flexDirection: "column",
         overflowY: "auto",
         minHeight: 0,
-        paddingBottom: 56,
+        paddingBottom: 12,
       }
     : s.body;
   const panelStyle: React.CSSProperties = isNarrow
@@ -1209,6 +1209,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       </div>
       <LiveRegion message={statusMsg} />
       {isNarrow && (
+        <div style={{ paddingBottom: "calc(var(--safe-bottom) + 24px" }}>
         <FixedMobileNav
           showingSecondSection={showingPreview}
           onToggle={toggleSection}
@@ -1217,6 +1218,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         >
           {executeBtn}
         </FixedMobileNav>
+	</div>
       )}
     </div>
   );
@@ -1646,6 +1648,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
+    paddingBottom: "calc(var(--safe-bottom) + 8px)",
   },
 
   // 結果
