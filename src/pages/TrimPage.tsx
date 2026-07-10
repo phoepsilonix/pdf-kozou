@@ -4,7 +4,7 @@
 
 // src/pages/TrimPage.tsx
 export default TrimPage;
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TrimCanvas } from "../components/trim/TrimCanvas";
 import { TrimControls } from "../components/trim/TrimControls";
@@ -26,7 +26,14 @@ import {
   type TrimMargins,
   type PdfInfo,
   joinPath,
+  isMobile,
 } from "../lib/tauri";
+import {
+  buildMobileOutputSubfolder,
+  mobileOutputPreviewLabel,
+  commitSavedBatch,
+  type MobileSavedFileInfo,
+} from "../lib/mobileOutput";
 import { C, F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { tts } from "../lib/tts";
@@ -104,6 +111,23 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const { t } = useI18n();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [outDir, setOutDir] = useState("");
+
+  // ── モバイル (Android) 向け出力: フォルダピッカーが無いため、
+  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
+  const mobileRelativeDir = useMemo(
+    () => buildMobileOutputSubfolder(`${files.length}件`),
+    [files.length],
+  );
+  const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
   const [progress, setProgress] = useState<{
     current: number;
@@ -252,17 +276,30 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     };
   }, [files, previewIdx, previewPage]);
 
-  const pickDir = useCallback(async () => {
+  const pickDir = useCallback(async (): Promise<string | null> => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
     if (dir) {
       setOutDir(dir);
       usePdfStore.getState().setLastSaveDir(dir);
-      // フォルダ選択完了後、そのまま実行する。
-      // useCallback で束縛した handleExecute はこの時点でまだ outDir="" の
-      // クロージャを持つため、取得した dir を直接 executeWithDir() に渡す。
-      executeWithDir(dir);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return dir;
+  }, []);
+
+  // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
+  // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
+  // 名前を使うことで、実行前後の表示を一致させる。
+  const finalizeMobileOutput = useCallback(
+    async (dir: string) => {
+      if (!mobile) return;
+      try {
+        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        setMobileSavedFiles(saved);
+      } catch (e) {
+        setMobileSaveError(String(e));
+      }
+    },
+    [mobile, mobileRelativeDir],
+  );
 
   const executeWithDir = useCallback(
     async (resolvedDir: string) => {
@@ -324,6 +361,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         setProgress({ ...prog });
       }
 
+      await finalizeMobileOutput(resolvedDir);
       announceSuccess("done.trim");
       setPhase("result");
     },
@@ -339,13 +377,17 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
       convertLayoutH,
       convertLayoutEm,
       cropCleanup,
+      finalizeMobileOutput,
     ],
   );
 
   const handleExecute = useCallback(async () => {
-    if (!outDir) return;
-    executeWithDir(outDir);
-  }, [outDir, executeWithDir]);
+    const resolvedDir = outDir || (await pickDir());
+    if (!resolvedDir) return;
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
+    await executeWithDir(resolvedDir);
+  }, [outDir, pickDir, executeWithDir]);
 
   // 処理中画面
   if (phase === "processing") {
@@ -388,7 +430,31 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           {t("trim.batch_done_title", { count: String(progress.done.length) })}
         </div>
         <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
-          {usePdfStore.getState().lastSaveDir}
+          {mobile ? (
+            mobileSaveError ? (
+              <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+            ) : mobileSavedFiles ? (
+              <>
+                <div>
+                  {t("mobile.save_done_summary" as any, {
+                    count: String(mobileSavedFiles.length),
+                  })}
+                </div>
+                <div>
+                  {t("mobile.save_location" as any, {
+                    path: mobileOutputPreviewLabel(
+                      mobileRelativeDir,
+                      t("mobile.downloads_root" as any),
+                    ),
+                  })}
+                </div>
+              </>
+            ) : (
+              t("mobile.save_preview_pending" as any)
+            )
+          ) : (
+            usePdfStore.getState().lastSaveDir
+          )}
         </div>
         <div style={b.log}>
           {progress.done.map((d, i) => (
@@ -753,12 +819,12 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               onReset={() => setTrimMargins(zero())}
               processing={phase !== "edit"}
               applyLabel={
-                outDir
+                outDir || mobile
                   ? t("trim.apply_label", { count: String(files.length) })
                   : t("trim.no_dir_apply")
               }
-              outDir={outDir}
-              onPickDir={pickDir}
+              outDir={mobile ? undefined : outDir}
+              onPickDir={mobile ? undefined : pickDir}
               excludeSpec={excludeSpec}
               onExclude={onExclude}
               extractSpec={extractSpec}
@@ -766,6 +832,16 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               showImagePageSize={files.some((f) => hasImage([f.filename]))}
               hideActionBar={isNarrow}
             />
+            {mobile && (
+              <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", padding: "0 4px" }}>
+                {t("mobile.save_preview" as any, {
+                  path: mobileOutputPreviewLabel(
+                    mobileRelativeDir,
+                    t("mobile.downloads_root" as any),
+                  ),
+                })}
+              </div>
+            )}
           </div>
         </aside>
       </div>
@@ -776,13 +852,10 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           toSecondLabel={t("common.jump_to_trim_settings")}
           toFirstLabel={t("common.jump_to_canvas")}
         >
-          <BtnPrimary
-            onClick={() => (!outDir ? pickDir() : handleExecute())}
-            disabled={phase !== "edit"}
-          >
+          <BtnPrimary onClick={handleExecute} disabled={phase !== "edit"}>
             {phase !== "edit"
               ? t("trim_controls.processing")
-              : outDir
+              : outDir || mobile
                 ? t("trim.apply_label", { count: String(files.length) })
                 : t("trim.no_dir_apply")}
           </BtnPrimary>
