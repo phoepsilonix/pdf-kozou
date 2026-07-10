@@ -314,11 +314,14 @@ export function CompressPage({
   // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
   // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
   // 名前を使うことで、実行前後の表示を一致させる。
+  // ⚠ dir (一時ディレクトリ) は共有の使い回しキャッシュなので、必ず
+  // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
+  // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string) => {
+    async (dir: string, filePaths: string[]) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(String(e));
@@ -577,6 +580,7 @@ export function CompressPage({
       errors: [] as any[],
     };
     setBatchProg({ ...prog });
+    const producedPaths: string[] = [];
 
     for (let i = 0; i < batchFiles!.length; i++) {
       const f = batchFiles![i];
@@ -615,12 +619,14 @@ export function CompressPage({
           pct: +((1 - ratio) * 100).toFixed(1),
           saved: out.split(/[/\\]/).pop() ?? "",
         });
+        producedPaths.push(out);
       } catch (e) {
         prog.errors.push({ file: f.filename, msg: String(e) });
         console.warn(`圧縮失敗: ${f.filename}. 元ファイルをコピーします。`);
         try {
           // 圧縮に失敗しても、出力フォルダにファイルがない状態を避けるためにコピー
           await invoke("copy_file", { src: f.path, dst: out });
+          producedPaths.push(out);
 
           prog.errors.push({
             file: f.filename,
@@ -636,7 +642,7 @@ export function CompressPage({
       }
       setBatchProg({ ...prog });
     }
-    await finalizeMobileOutput(resolvedDir);
+    await finalizeMobileOutput(resolvedDir, producedPaths);
     setPhase("batchResult");
   }, [
     batchFiles,

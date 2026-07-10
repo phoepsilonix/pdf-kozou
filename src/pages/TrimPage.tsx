@@ -288,11 +288,14 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
   // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
   // 名前を使うことで、実行前後の表示を一致させる。
+  // ⚠ dir (一時ディレクトリ) は共有の使い回しキャッシュなので、必ず
+  // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
+  // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string) => {
+    async (dir: string, filePaths: string[]) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(String(e));
@@ -312,6 +315,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         errors: [] as { f: string; msg: string }[],
       };
       setProgress({ ...prog });
+      const producedPaths: string[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
@@ -355,13 +359,14 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           }
           console.log("[DEBUG] trim_pdf 結果:", res);
           prog.done.push({ f: f.filename, saved: out.split(/[/\\]/).pop() ?? "" });
+          producedPaths.push(out);
         } catch (e) {
           prog.errors.push({ f: f.filename, msg: String(e) });
         }
         setProgress({ ...prog });
       }
 
-      await finalizeMobileOutput(resolvedDir);
+      await finalizeMobileOutput(resolvedDir, producedPaths);
       announceSuccess("done.trim");
       setPhase("result");
     },

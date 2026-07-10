@@ -308,11 +308,14 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
   // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
   // 名前を使うことで、実行前後の表示を一致させる。
+  // ⚠ dir (一時ディレクトリ) は共有の使い回しキャッシュなので、必ず
+  // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
+  // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string) => {
+    async (dir: string, filePaths: string[]) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(String(e));
@@ -435,7 +438,10 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       }
       setBatchProgress({ ...progress });
     }
-    await finalizeMobileOutput(dir);
+    await finalizeMobileOutput(
+      dir,
+      progress.done.flatMap((d) => (d.pdfPath ? [d.pdfPath] : [])),
+    );
     announceSuccess("done.image");
     setPhase("result");
   }, [

@@ -267,11 +267,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
   // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
   // 名前を使うことで、実行前後の表示を一致させる。
+  // ⚠ dir (一時ディレクトリ) は共有の使い回しキャッシュなので、必ず
+  // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
+  // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string) => {
+    async (dir: string, filePaths: string[]) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(String(e));
@@ -344,7 +347,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       setSavedDir(resolvedDir);
       const msg = t("common.files_split_done", { count: String(res.files.length) });
       setStatusMsg(msg);
-      await finalizeMobileOutput(resolvedDir);
+      await finalizeMobileOutput(resolvedDir, res.files);
       announceSuccess("done.split", { count: String(res.files.length) });
       setPhase("result");
     } catch (e) {
@@ -388,6 +391,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       errors: [],
     };
     setBatchProgress({ ...progress });
+    const producedPaths: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -426,12 +430,13 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           overrideMetadata,
         );
         progress.done.push({ file: f.filename, count: res.files.length });
+        producedPaths.push(...res.files);
       } catch (e) {
         progress.errors.push({ file: f.filename, msg: String(e) });
       }
       setBatchProgress({ ...progress });
     }
-    await finalizeMobileOutput(resolvedDir);
+    await finalizeMobileOutput(resolvedDir, producedPaths);
     announceSuccess("done.split", { count: String(files.length) });
     setPhase("result");
   }, [

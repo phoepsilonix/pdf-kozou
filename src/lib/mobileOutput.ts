@@ -72,8 +72,15 @@ export function mobileOutputPreviewLabel(relativeDir: string, downloadsLabel: st
 }
 
 /**
- * `tempDir` 以下に core が書き出したファイル群を、Android では
+ * `filePaths` に列挙されたファイルだけを、Android では
  * `ダウンロード/{relativeDir}/` 配下へコピーする。
+ *
+ * ⚠ `tempDir` (`pick_output_dir` が返す場所) はアプリ起動中ずっと
+ * 使い回される共有のキャッシュフォルダで、その回の処理専用ではない。
+ * そのため必ず、その回の処理で実際に書き出したファイルの絶対パスを
+ * `filePaths` として明示すること。ここを省略して「tempDir 以下を
+ * まるごとコピー」のような実装にすると、過去の別処理が残した無関係な
+ * ファイルまで一緒に保存先へコピーされてしまう。
  *
  * デスクトップ / iOS (未対応) では常に空配列が返る
  * (呼び出し側は isMobile() 等で事前に分岐し、Android のみで呼ぶ想定)。
@@ -81,9 +88,11 @@ export function mobileOutputPreviewLabel(relativeDir: string, downloadsLabel: st
 export async function commitSavedBatch(
   tempDir: string,
   relativeDir: string,
+  filePaths: string[],
 ): Promise<MobileSavedFileInfo[]> {
   return invoke<MobileSavedFileInfo[]>("commit_saved_batch", {
     tempDir,
     relativeDir,
+    filePaths,
   });
 }

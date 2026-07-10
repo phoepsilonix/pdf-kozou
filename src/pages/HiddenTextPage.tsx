@@ -352,11 +352,14 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
   // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
   // 名前を使うことで、実行前後の表示を一致させる。
+  // ⚠ dir (一時ディレクトリ) は共有の使い回しキャッシュなので、必ず
+  // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
+  // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string) => {
+    async (dir: string, filePaths: string[]) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(String(e));
@@ -384,6 +387,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     };
     setProgress({ ...prog });
 
+    const producedPaths: string[] = [];
     for (let i = 0; i < batchFiles.length; i++) {
       const f = batchFiles[i];
       prog.current = i + 1;
@@ -420,13 +424,14 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             hits: targets.length,
             saved: outPath.split(/[/\\]/).pop(),
           });
+          producedPaths.push(outPath);
         }
       } catch (e) {
         prog.errors.push({ file: f.filename, msg: String(e) });
       }
       setProgress({ ...prog });
     }
-    await finalizeMobileOutput(resolvedDir);
+    await finalizeMobileOutput(resolvedDir, producedPaths);
     setRunning(false);
     setPhase("result");
   }, [batchFiles, outDir, enabled, thr, pickDir, skipType3, finalizeMobileOutput]);

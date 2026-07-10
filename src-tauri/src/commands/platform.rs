@@ -172,12 +172,19 @@ pub struct SavedFileInfo {
 
 /// バッチ出力(複数ファイル書き出し)の後処理。
 ///
-/// `temp_dir` (通常は `pick_output_dir` が返した一時ディレクトリ) 以下に
-/// core が書き出したファイル群を、Android では
+/// `file_paths` に列挙されたファイルだけを、Android では
 /// `ダウンロード/{relative_dir}/` 配下へ実際にコピーする。
 /// Android にはモバイル向けのフォルダ選択ピッカーが無いため、
 /// `relative_dir` はフロントエンド側で決め打ち生成した名前
 /// (`buildMobileOutputSubfolder`) を渡す想定。
+///
+/// ⚠ `temp_dir` (通常は `pick_output_dir` が返した一時ディレクトリ) は
+/// アプリ起動中ずっと使い回される共有キャッシュフォルダであり、その回の
+/// 処理専用の場所ではない。そのため `temp_dir` 以下を丸ごと列挙して
+/// コピーするのではなく、必ず `file_paths` で対象を明示すること
+/// (そうしないと、過去の別処理が残した無関係なファイルまで
+/// 一緒に保存されてしまう)。`file_paths` の各要素は `temp_dir` 配下の
+/// 絶対パスであること。
 ///
 /// デスクトップおよび iOS (未対応) では何もせず空配列を返す
 /// (デスクトップは `temp_dir` = 実際にユーザーが選んだ保存先そのもの
@@ -187,13 +194,15 @@ pub async fn commit_saved_batch(
     app: tauri::AppHandle,
     temp_dir: String,
     relative_dir: String,
+    file_paths: Vec<String>,
 ) -> Result<Vec<SavedFileInfo>, String> {
     #[cfg(target_os = "android")]
     {
-        let results = platform::android_media_store::finalize_batch_to_downloads(
+        let results = platform::android_media_store::finalize_files_to_downloads(
             &app,
             std::path::Path::new(&temp_dir),
             &relative_dir,
+            &file_paths,
         )
         .await?;
         Ok(results
@@ -208,7 +217,7 @@ pub async fn commit_saved_batch(
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (&app, &temp_dir, &relative_dir);
+        let _ = (&app, &temp_dir, &relative_dir, &file_paths);
         Ok(vec![])
     }
 }

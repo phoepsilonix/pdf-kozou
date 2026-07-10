@@ -15,9 +15,11 @@
 //     サブフォルダ名を使い、ピッカー無しで「ダウンロード」フォルダ
 //     配下へ直接保存する。
 //   - core (Rust) は今まで通り一時ディレクトリ (`pick_output_dir` が
-//     返す場所) にバッチ出力を書き込む。本モジュールは、その一時
-//     ディレクトリの中身を後から MediaStore.Downloads へ移す
-//     「仕上げ」の役割のみを持つ。
+//     返す場所) にバッチ出力を書き込む。ただしこの一時ディレクトリは
+//     アプリ起動中ずっと使い回される共有キャッシュであり、その回の
+//     処理専用ではないため、本モジュールはディレクトリを丸ごと
+//     列挙するのではなく、呼び出し側が指定した特定のファイルだけを
+//     MediaStore.Downloads へコピーする「仕上げ」の役割を持つ。
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -118,29 +120,41 @@ fn guess_mime(file_name: &str) -> Option<&'static str> {
     })
 }
 
-/// `temp_dir` 以下のファイルを再帰的に列挙し、それぞれ
-/// `relative_dir` (Download/ より下のパス) の同じサブディレクトリ構造の
-/// 下へコピーする。
+/// `file_paths` に列挙された各ファイルだけを MediaStore.Downloads へ
+/// コピーする。
 ///
-/// 例えば `temp_dir/請求書/page01.png` は
+/// ⚠ `temp_dir` (= `pick_output_dir` が返す一時ディレクトリ) はアプリ
+/// 起動中ずっと使い回される共有のキャッシュフォルダであり、その回の
+/// 処理専用の場所ではない。そのため、以前の実装のように `temp_dir` 以下を
+/// 再帰的に列挙して「見つかったものを全部コピーする」方式だと、過去に
+/// 別の機能(分割・画像変換など)が書き出して残っていたファイルまで
+/// 一緒に保存されてしまい、使うたびに保存先に無関係なファイルが
+/// 増え続けるという不具合になっていた。
+///
+/// 呼び出し側 (フロントエンド) は、その回の処理で実際に書き出した
+/// ファイルの絶対パスを既に把握しているため、その一覧をそのまま
+/// `file_paths` として渡してもらい、それだけをコピー対象にする。
+///
+/// 各ファイルの `temp_dir` からの相対パス(サブディレクトリ構造)は
+/// `relative_dir` の下にそのまま保持する。例えば
+/// `temp_dir/請求書/page01.png` (file_paths に含まれるファイル) は
 /// `Download/{relative_dir}/請求書/page01.png` として保存される。
-pub async fn finalize_batch_to_downloads(
+pub async fn finalize_files_to_downloads(
     app: &tauri::AppHandle,
     temp_dir: &std::path::Path,
     relative_dir: &str,
+    file_paths: &[String],
 ) -> Result<Vec<SavedFileInfo>, String> {
     let state = app
         .try_state::<KozouMediaStore>()
         .ok_or_else(|| "MediaStore plugin is not registered".to_string())?;
 
-    let mut relatives = Vec::new();
-    collect_files(temp_dir, temp_dir, &mut relatives)?;
-    relatives.sort();
-
     let mut results = Vec::new();
-    for rel in relatives {
-        let abs = temp_dir.join(&rel);
-        let source_path = abs.display().to_string();
+    for source_path in file_paths {
+        let abs = std::path::Path::new(source_path);
+        let rel = abs.strip_prefix(temp_dir).map_err(|_| {
+            format!("{source_path} is not located under the expected temp directory")
+        })?;
         let file_name = rel
             .file_name()
             .and_then(|n| n.to_str())
@@ -157,7 +171,7 @@ pub async fn finalize_batch_to_downloads(
         };
         let mime = guess_mime(&file_name);
 
-        let saved = state.save_file(&source_path, &file_name, &target_relative_dir, mime)?;
+        let saved = state.save_file(source_path, &file_name, &target_relative_dir, mime)?;
         results.push(SavedFileInfo {
             uri: saved.uri,
             display_name: saved.display_name,
@@ -167,25 +181,4 @@ pub async fn finalize_batch_to_downloads(
     }
 
     Ok(results)
-}
-
-/// `dir` 以下のファイルを再帰的に集め、`root` からの相対パスを `out` に積む。
-fn collect_files(
-    root: &std::path::Path,
-    dir: &std::path::Path,
-    out: &mut Vec<std::path::PathBuf>,
-) -> Result<(), String> {
-    let read_dir = std::fs::read_dir(dir).map_err(|e| format!("read_dir error: {e}"))?;
-    for entry in read_dir {
-        let entry = entry.map_err(|e| format!("read_dir entry error: {e}"))?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_files(root, &path, out)?;
-        } else if path.is_file() {
-            if let Ok(rel) = path.strip_prefix(root) {
-                out.push(rel.to_path_buf());
-            }
-        }
-    }
-    Ok(())
 }

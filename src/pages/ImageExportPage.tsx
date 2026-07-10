@@ -523,11 +523,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // Android: 一時ディレクトリに書き出した結果を「ダウンロード」フォルダ
   // 配下へコピーする。プレビュー表示に使った mobileRelativeDir と同じ
   // 名前を使うことで、実行前後の表示を一致させる。
+  // ⚠ dir (一時ディレクトリ) は共有の使い回しキャッシュなので、必ず
+  // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
+  // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string) => {
+    async (dir: string, filePaths: string[]) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir);
+        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(String(e));
@@ -680,7 +683,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         setImages(savedFiles);
         setOutDir(resolvedDir);
         setStatusMsg("");
-        await finalizeMobileOutput(resolvedDir);
+        await finalizeMobileOutput(resolvedDir, savedFiles);
         announceSuccess("done.image");
         setPhase("result");
       } catch (e) {
@@ -801,7 +804,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           savedFiles.push(outPath);
         }
         setImages(savedFiles);
-        await finalizeMobileOutput(resolvedDir);
+        await finalizeMobileOutput(resolvedDir, savedFiles);
         setPhase("result");
         setStatusMsg(
           t("image.imposition_done" as any, { count: String(totalSheets), dir: resolvedDir }),
@@ -924,7 +927,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
         console.log("res", res);
         setImages(res.files);
-        await finalizeMobileOutput(effectiveOutDir);
+        await finalizeMobileOutput(effectiveOutDir, res.files);
         announceSuccess("done.image");
         setPhase("result");
       }
@@ -1208,9 +1211,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     // Android: 一時ディレクトリに書き出した結果を、ユーザーから見える
     // 「ダウンロード」フォルダ配下へコピーする。ピッカーを使っていない
     // ため、実行前プレビューと同じ mobileRelativeDir をそのまま使う。
+    // ⚠ batchDir は共有の一時ディレクトリ (使い回し) なので、丸ごと
+    // コピーせず、この回で実際に書き出したファイル (progress.done の
+    // pdfPath / savedFiles) だけを対象にする。
     if (mobile) {
+      const producedPaths = progress.done.flatMap((d) =>
+        d.pdfPath ? [d.pdfPath] : (d.savedFiles ?? []),
+      );
       try {
-        const saved = await commitSavedBatch(batchDir, mobileRelativeDir);
+        const saved = await commitSavedBatch(batchDir, mobileRelativeDir, producedPaths);
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(String(e));
