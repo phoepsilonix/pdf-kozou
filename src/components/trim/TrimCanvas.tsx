@@ -248,7 +248,7 @@ export function TrimCanvas({
   };
 
   // ── マウスイベント ────────────────────────────────────────────────────────
-  const getPos = (e: React.MouseEvent) => {
+  const getPos = (e: React.PointerEvent) => {
     const r = canvasRef.current!.getBoundingClientRect();
     // #root の zoom 下では rect / clientX とも視覚座標になるため、
     // zoom 倍率で割って canvas 内部座標（ズーム前 px）へ戻す。
@@ -256,8 +256,9 @@ export function TrimCanvas({
     return { x: (e.clientX - r.left) / z, y: (e.clientY - r.top) / z };
   };
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
       const { x, y } = getPos(e);
       const target = hitTest(x, y, margins);
       dragging.current = target;
@@ -266,8 +267,8 @@ export function TrimCanvas({
     [margins, hitTest],
   );
 
-  const onMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
       const { x, y } = getPos(e);
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -319,7 +320,7 @@ export function TrimCanvas({
     [margins, scale, pageWidthPt, pageHeightPt, hitTest, draw, onChange],
   );
 
-  const onMouseUp = useCallback(() => {
+  const onPointerUp = useCallback(() => {
     // マウスアップ時にスナップ適用
     const wasDragging = dragging.current;
     if (wasDragging) {
@@ -356,10 +357,11 @@ export function TrimCanvas({
       width={displayWidth}
       height={displayHeight}
       style={{ display: "block", touchAction: "none", userSelect: "none" }}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp} // 重要：指が離れたりキャンセルされたとき
+      onMouseUp={onPointerUp} // ← 残すならこれ
     />
   );
 }

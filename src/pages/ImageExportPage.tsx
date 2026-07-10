@@ -265,7 +265,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
 
-
   // 現在のモードに対応するファイル名トークンのキー
   const opTokenKey = useMemo(() => {
     if (processDir === "deimpose") return "deimposed";
@@ -1356,9 +1355,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           {mobile ? (
             <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
               {mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>
-                  {t("mobile.save_unsupported" as any)}
-                </span>
+                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
@@ -1368,7 +1365,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                      path: mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      ),
                     })}
                   </div>
                 </>
@@ -1483,7 +1483,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       </div>
                       <div>
                         {t("mobile.save_location" as any, {
-                          path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                          path: mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
                         })}
                       </div>
                     </>
@@ -1914,9 +1917,18 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.secLabel}>{t("image.output_dir")}</div>
                 {mobile ? (
                   <div style={s.dirRow}>
-                    <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any))}>
+                    <div
+                      style={s.dirPath}
+                      title={mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      )}
+                    >
                       {t("mobile.save_preview" as any, {
-                        path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                        path: mobileOutputPreviewLabel(
+                          mobileRelativeDir,
+                          t("mobile.downloads_root" as any),
+                        ),
                       })}
                     </div>
                   </div>

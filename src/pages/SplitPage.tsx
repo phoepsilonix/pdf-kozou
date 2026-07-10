@@ -549,9 +549,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {mobile && (
             <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
               {mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>
-                  {t("mobile.save_unsupported" as any)}
-                </span>
+                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
@@ -561,7 +559,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                      path: mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      ),
                     })}
                   </div>
                 </>
@@ -607,9 +608,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {mobile ? (
             <div style={s.resultDir}>
               {mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>
-                  {t("mobile.save_unsupported" as any)}
-                </span>
+                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
@@ -619,7 +618,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                      path: mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      ),
                     })}
                   </div>
                 </>
@@ -1028,9 +1030,18 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.secLabel}>{t("split.output_dir")}</div>
             {mobile ? (
               <div style={s.dirRow}>
-                <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any))}>
+                <div
+                  style={s.dirPath}
+                  title={mobileOutputPreviewLabel(
+                    mobileRelativeDir,
+                    t("mobile.downloads_root" as any),
+                  )}
+                >
                   {t("mobile.save_preview" as any, {
-                    path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                    path: mobileOutputPreviewLabel(
+                      mobileRelativeDir,
+                      t("mobile.downloads_root" as any),
+                    ),
                   })}
                 </div>
               </div>
@@ -1041,7 +1052,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     {outDir || t("common.select_dir")}
                   </span>
                 </div>
-                <button style={s.dirPickBtn} onClick={pickDir} aria-label={t("aria.output_dir_btn")}>
+                <button
+                  style={s.dirPickBtn}
+                  onClick={pickDir}
+                  aria-label={t("aria.output_dir_btn")}
+                >
                   {t("common.browse")}
                 </button>
               </div>

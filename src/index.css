@@ -20,7 +20,8 @@
 
 /* ヘッダーや固定ナビも安全領域を考慮 */
 .PageHeader,
-.sh_nav {  /* sh.nav のクラス名に合わせて調整 */
+.sh_nav {
+  /* sh.nav のクラス名に合わせて調整 */
   padding-top: calc(var(--safe-top) + 8px) !important;
 }
 

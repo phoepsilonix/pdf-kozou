@@ -254,7 +254,6 @@ export function CompressPage({
   const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
 
-
   const [phase, setPhase] = useState<Phase>("edit");
   // 結果画面では自動フォーカスを与えない（縦幅の短い画面で上部の結果表示が
   // スクロールで隠れるのを避けるため）。保存は Ctrl+S（圧縮して保存）で行える。
@@ -329,7 +328,6 @@ export function CompressPage({
     },
     [mobile, mobileRelativeDir],
   );
-
 
   const handlePreview = useCallback(async () => {
     if (useGs && !gsPath) {
@@ -766,7 +764,10 @@ export function CompressPage({
                 </div>
                 <div>
                   {t("mobile.save_location" as any, {
-                    path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                    path: mobileOutputPreviewLabel(
+                      mobileRelativeDir,
+                      t("mobile.downloads_root" as any),
+                    ),
                   })}
                 </div>
               </>
@@ -1268,7 +1269,10 @@ export function CompressPage({
               <div style={c.dirRow}>
                 <div style={c.dirPath}>
                   {t("mobile.save_preview" as any, {
-                    path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                    path: mobileOutputPreviewLabel(
+                      mobileRelativeDir,
+                      t("mobile.downloads_root" as any),
+                    ),
                   })}
                 </div>
               </div>

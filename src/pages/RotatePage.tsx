@@ -310,7 +310,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     [mobile, mobileRelativeDir],
   );
 
-
   const handleExecuteSingle = useCallback(async () => {
     if (changedPages.length === 0) return;
     const base =
@@ -611,7 +610,10 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                       </div>
                       <div>
                         {t("mobile.save_location" as any, {
-                          path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                          path: mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
                         })}
                       </div>
                     </>
@@ -792,9 +794,18 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.secLabel}>{t("rotate.output_dir")}</div>
                 {mobile ? (
                   <div style={s.dirRow}>
-                    <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any))}>
+                    <div
+                      style={s.dirPath}
+                      title={mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      )}
+                    >
                       {t("mobile.save_preview" as any, {
-                        path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                        path: mobileOutputPreviewLabel(
+                          mobileRelativeDir,
+                          t("mobile.downloads_root" as any),
+                        ),
                       })}
                     </div>
                   </div>

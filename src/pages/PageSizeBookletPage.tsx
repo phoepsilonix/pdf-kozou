@@ -324,7 +324,6 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     [mobile, mobileRelativeDir],
   );
 
-
   const run = useCallback(async () => {
     if (!filePath || totalPages <= 0) return;
     const sp = await pickSave(composePdfName(srcStem, keepOriginalName));
@@ -536,9 +535,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
           <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
             {mobile ? (
               mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>
-                  {t("mobile.save_unsupported" as any)}
-                </span>
+                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
@@ -548,7 +545,10 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                      path: mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      ),
                     })}
                   </div>
                 </>
@@ -818,9 +818,18 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 <div style={s.label}>{t("split.output_dir")}</div>
                 {mobile ? (
                   <div style={s.dirRow}>
-                    <div style={s.dirPath} title={mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any))}>
+                    <div
+                      style={s.dirPath}
+                      title={mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      )}
+                    >
                       {t("mobile.save_preview" as any, {
-                        path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root" as any)),
+                        path: mobileOutputPreviewLabel(
+                          mobileRelativeDir,
+                          t("mobile.downloads_root" as any),
+                        ),
                       })}
                     </div>
                   </div>
