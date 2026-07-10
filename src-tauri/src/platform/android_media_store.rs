@@ -25,7 +25,17 @@ use tauri::{
     Manager,
 };
 
+// ⚠ 重要: Kotlin 側 (@InvokeArg / invoke.resolve の JSObject) は
+// キーをキャメルケース (sourcePath, displayName 等) で送受信するのに対し、
+// Rust の serde はデフォルトで構造体のフィールド名をそのまま
+// (スネークケース) JSON キーとして扱う。#[serde(rename_all = "camelCase")]
+// を付け忘れると、Kotlin 側が引数を正しく受け取れず(またはレスポンスの
+// 対応するキーが見つからず)実行時に静かに失敗し、実際には
+// 1件もファイルが保存されないまま「保存に失敗しました」というエラーだけ
+// 返ってくる、という分かりにくい不具合になる。
+// (tauri-plugin-fs 本体の models.rs でも同じ理由でこの属性が使われている)
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SaveFileArgs<'a> {
     source_path: &'a str,
     file_name: &'a str,
@@ -34,6 +44,7 @@ struct SaveFileArgs<'a> {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SaveFileResponse {
     uri: String,
     display_name: String,

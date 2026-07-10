@@ -157,7 +157,12 @@ pub async fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, St
 }
 
 /// バッチ出力の1ファイル分の保存結果 (Android のみ有効)。
+///
+/// フロントエンド (TypeScript) はキーをキャメルケースで期待するため、
+/// `#[serde(rename_all = "camelCase")]` が必須(付け忘れると
+/// `displayName`/`relativePath`/`sourceRelative` が undefined になる)。
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedFileInfo {
     pub uri: String,
     pub display_name: String,

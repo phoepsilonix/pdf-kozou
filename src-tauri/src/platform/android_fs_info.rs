@@ -33,11 +33,13 @@ use tauri::{
 };
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct GetDisplayNameArgs<'a> {
     uri: &'a str,
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GetDisplayNameResponse {
     name: Option<String>,
 }

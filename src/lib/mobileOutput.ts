@@ -59,9 +59,16 @@ export function buildMobileOutputSubfolder(sourceLabel: string): string {
   return `pdf-kozou/${timestampLabel()}_${sanitizeForPath(sourceLabel)}`;
 }
 
-/** UIに出す「保存先プレビュー」の表示用パス (先頭に "ダウンロード/" を付ける) */
-export function mobileOutputPreviewLabel(relativeDir: string): string {
-  return `ダウンロード/${relativeDir}/`;
+/**
+ * UIに出す「保存先プレビュー」の表示用パス。
+ *
+ * ⚠ このモジュールは React/i18n から独立させているため、「ダウンロード」
+ * の文言をここに決め打ちしてはいけない(UIが英語表示のときも日本語の
+ * まま表示されてしまうバグになる)。呼び出し側で `t("mobile.downloads_root")`
+ * 等を使って翻訳済みラベルを作り、`downloadsLabel` として渡すこと。
+ */
+export function mobileOutputPreviewLabel(relativeDir: string, downloadsLabel: string): string {
+  return `${downloadsLabel}/${relativeDir}/`;
 }
 
 /**

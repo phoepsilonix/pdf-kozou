@@ -916,6 +916,7 @@
     }
   },
   "mobile": {
+    "downloads_root": "ダウンロード",
     "save_preview": "保存先: {{path}}",
     "save_preview_pending": "保存先はダウンロードフォルダ内に自動生成されます",
     "save_done_summary": "{{count}}件のファイルをダウンロードフォルダに保存しました",

@@ -916,6 +916,7 @@
     }
   },
   "mobile": {
+    "downloads_root": "Downloads",
     "save_preview": "Save location: {{path}}",
     "save_preview_pending": "Files will be saved automatically under your Downloads folder",
     "save_done_summary": "Saved {{count}} file(s) to your Downloads folder",
