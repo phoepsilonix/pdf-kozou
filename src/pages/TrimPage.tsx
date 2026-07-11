@@ -514,7 +514,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     background: "var(--c-bg)",
     color: "var(--c-text)",
     fontFamily: F,
-    paddingBottom: 56,
+    paddingBottom: 0,
   };
   const filePaneStyle: React.CSSProperties = isNarrow
     ? {
@@ -1334,7 +1334,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         background: "var(--c-bg)",
         color: "var(--c-text)",
         fontFamily: F,
-        paddingBottom: 56,
+        paddingBottom: 0,
       }
     : s.root;
   const mainStyle: React.CSSProperties = isNarrow
@@ -1937,7 +1937,7 @@ const r: Record<string, React.CSSProperties> = {
     padding: "12px 20px",
     borderTop: `1px solid var(--c-border)`,
     flexShrink: 0,
-    paddingBottom: "calc(var(--safe-bottom) + 8px)",
+    paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
   },
 };
 

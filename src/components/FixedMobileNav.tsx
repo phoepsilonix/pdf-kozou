@@ -15,6 +15,7 @@ interface FixedMobileNavProps {
   children?: ReactNode; // 実行ボタンなどを渡す
 }
 
+
 export function FixedMobileNav({
   showingSecondSection,
   onToggle,
@@ -34,10 +35,12 @@ export function FixedMobileNav({
         alignItems: "center",
         gap: 8,
         padding: "8px 10px",
-        paddingBottom: "calc(8px + var(--safe-bottom))",
+        // safe-area を env() で直接指定（--safe-bottom 変数より信頼性が高い）
+        paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
         borderTop: "1px solid var(--c-border)",
         background: "var(--c-bg)",
         boxShadow: "0 -2px 8px rgba(0,0,0,0.08)",
+        // zoom 影響を最小化（transform ではなく直接 viewport 固定）
       }}
     >
       <button

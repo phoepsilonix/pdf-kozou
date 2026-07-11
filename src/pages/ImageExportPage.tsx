@@ -1538,7 +1538,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         flexDirection: "column",
         overflowY: "auto",
         minHeight: 0,
-        paddingBottom: 12,
+        paddingBottom: 0,
       }
     : s.body;
   const panelStyle: React.CSSProperties = isNarrow
@@ -2787,7 +2787,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
-    paddingBottom: "calc(var(--safe-bottom) + 24px)",
+    paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
   },
 
   prefixRow: { display: "flex", alignItems: "center", gap: 6 },
