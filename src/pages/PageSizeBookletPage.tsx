@@ -670,7 +670,13 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     ? { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }
     : s.settingsScroll;
   const actionBarStyle: React.CSSProperties = isNarrow
-    ? { ...s.actionBar, position: "sticky", bottom: 0, flexShrink: 0 }
+    ? {
+        ...s.actionBar,
+        position: "sticky",
+        bottom: 0,
+        flexShrink: 0,
+        paddingBottom: "calc(var(--safe-bottom) + 24px)",
+      }
     : s.actionBar;
   const rightColStyle: React.CSSProperties = isNarrow
     ? { minWidth: 0, flexShrink: 0, padding: 18, background: "var(--c-bg)" }
@@ -1037,7 +1043,6 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
-    paddingBottom: "calc(var(--safe-bottom) + 24px)",
   },
   rightCol: {
     flex: 1,

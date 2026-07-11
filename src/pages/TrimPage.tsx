@@ -1315,7 +1315,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         }}
         onCompress={() => setPhase("compress")}
         isSaving={isSaving}
-        savedPath={savedPath}
       />
     );
 
@@ -1542,7 +1541,6 @@ function ResultView({
   onBack,
   onCompress,
   isSaving,
-  savedPath,
 }: {
   images: string[];
   pageCount: number;
@@ -1550,7 +1548,6 @@ function ResultView({
   onBack: () => void;
   onCompress: () => void;
   isSaving: boolean;
-  savedPath?: string;
 }) {
   const [localZoom, setLocalZoom] = useState(0.5);
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -1575,7 +1572,6 @@ function ResultView({
     return () => ro.disconnect();
   }, []);
   const { t } = useI18n();
-  const [metaEditOpen, setMetaEditOpen] = useState(false);
 
   // Ctrl+ホイールでズーム
   useEffect(() => {
@@ -1676,25 +1672,7 @@ function ResultView({
         <button ref={saveBtnRef} style={r.btnCompress} onClick={onCompress}>
           {t("common.compress_then_save")}
         </button>
-        {savedPath && (
-          <button
-            style={r.btnMeta}
-            onClick={() => setMetaEditOpen(true)}
-            title={t("meta_edit.title")}
-            aria-label={t("meta_edit.title")}
-          >
-            ✏️ {t("meta_edit.title")}
-          </button>
-        )}
       </div>
-
-      {metaEditOpen && savedPath && (
-        <MetadataEditModal
-          filePath={savedPath}
-          onClose={() => setMetaEditOpen(false)}
-          isOutputFile
-        />
-      )}
     </div>
   );
 }
