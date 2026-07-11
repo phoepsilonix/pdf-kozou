@@ -155,7 +155,7 @@ export function CompressPage({
     convertLayoutH,
     convertLayoutEm,
   } = usePdfStore();
-  const { pickSave, commitSave } = useSaveDialog();
+  const { pickSave, commitSave, discardSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const { isNarrow } = useViewport();
@@ -226,6 +226,8 @@ export function CompressPage({
     },
     Escape: () => {
       if (phase === "result") {
+        if (savedFilePath) discardSave(savedFilePath);
+        setSavedFilePath(null);
         setTmpFile("");
         setPhase("edit");
         tts.speak(t("shortcut.back_to_edit"));
@@ -860,6 +862,7 @@ export function CompressPage({
           <button
             style={c.btnBack}
             onClick={() => {
+              if (savedFilePath) discardSave(savedFilePath);
               setSavedFilePath(null);
               setTmpFile("");
               setPhase("edit");
@@ -1066,6 +1069,9 @@ export function CompressPage({
           <MetadataEditModal
             filePath={savedFilePath}
             onClose={() => setMetaEditOpen(false)}
+            onSaved={() => {
+              commitSave(savedFilePath);
+            }}
             isOutputFile
           />
         )}

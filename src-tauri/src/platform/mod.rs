@@ -411,7 +411,9 @@ pub async fn save_pdf_dialog_in(
 }
 
 /// `output_path` がユーザーが選んだ保存先に紐づく一時ファイルであれば、
-/// その中身を実際の保存先へコピーして一時ファイルを削除する。
+/// その中身を実際の保存先へコピーする。紐付けと一時ファイルはここでは
+/// 破棄しない(結果画面滞在中にメタデータ編集→再コミットで同じ保存先に
+/// 上書きできるようにするため)。破棄は `discard_pending_save` が担う。
 /// 紐づきが無い場合(デスクトップ相当のパスや、保存を伴わない処理)は何もしない。
 #[cfg(mobile)]
 pub fn finalize_pending_save(app: &tauri::AppHandle, output_path: &str) -> Result<(), String> {
@@ -422,7 +424,7 @@ pub fn finalize_pending_save(app: &tauri::AppHandle, output_path: &str) -> Resul
         return Ok(());
     };
 
-    let dest = { state.0.lock().unwrap().remove(output_path) };
+    let dest = { state.0.lock().unwrap().get(output_path).cloned() };
     let Some(dest) = dest else {
         return Ok(());
     };
@@ -442,8 +444,20 @@ pub fn finalize_pending_save(app: &tauri::AppHandle, output_path: &str) -> Resul
     file.write_all(&bytes)
         .map_err(|e| format!("保存先への書き込みに失敗しました: {e}"))?;
 
-    let _ = std::fs::remove_file(output_path);
+    Ok(())
+}
 
+/// 結果画面を離れる際などに呼び、`finalize_pending_save` が維持していた
+/// 紐付けと一時ファイルを破棄する。以後その `output_path` に対して
+/// `commit_saved_file` を呼んでも no-op になる。
+#[cfg(mobile)]
+pub fn discard_pending_save(app: &tauri::AppHandle, output_path: &str) -> Result<(), String> {
+    use tauri::Manager;
+
+    if let Some(state) = app.try_state::<PendingSaves>() {
+        state.0.lock().unwrap().remove(output_path);
+    }
+    let _ = std::fs::remove_file(output_path);
     Ok(())
 }
 

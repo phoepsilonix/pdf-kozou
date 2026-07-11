@@ -798,6 +798,19 @@ export async function commitSavedFile(path: string): Promise<void> {
   await invoke("commit_saved_file", { path });
 }
 
+/**
+ * 結果画面を離れる際などに呼ぶ。commitSavedFile() が維持していた
+ * 一時ファイルと保存先の紐付けを破棄する(モバイルのみ意味を持つ。
+ * デスクトップでは no-op)。
+ *
+ * 呼んだ後に同じ path で commitSavedFile() を呼んでも何も起きなくなる。
+ * 結果画面でメタデータ編集→再保存を繰り返す間は呼ばず、画面を離れる/
+ * 新しい操作を始めるタイミングで一度だけ呼ぶこと。
+ */
+export async function discardPendingSave(path: string): Promise<void> {
+  await invoke("discard_pending_save", { path });
+}
+
 export async function pickOutputDir(): Promise<string | null> {
   return invoke<string | null>("pick_output_dir");
 }

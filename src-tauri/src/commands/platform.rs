@@ -143,6 +143,24 @@ pub async fn commit_saved_file(app: tauri::AppHandle, path: String) -> Result<()
     }
 }
 
+/// 結果画面を離れる際などに呼ぶ。`pick_save_file`/`pick_save_file_in` が
+/// 返した一時パスと、対応するSAF保存先の紐付け、および一時ファイルを破棄する。
+/// (モバイルでのみ意味を持つ。デスクトップでは no-op)
+/// これを呼んだ後は、同じ `path` に対して `commit_saved_file` を呼んでも
+/// 何も起きない。
+#[tauri::command]
+pub async fn discard_pending_save(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    #[cfg(mobile)]
+    {
+        return platform::discard_pending_save(&app, &path);
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = (&app, &path);
+        Ok(())
+    }
+}
+
 /// 出力ディレクトリ選択ダイアログ
 #[tauri::command]
 pub async fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {

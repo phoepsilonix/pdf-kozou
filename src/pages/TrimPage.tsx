@@ -988,7 +988,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
   const [cropCleanup, setCropCleanup] = useState(false);
-  const { pickSave, commitSave } = useSaveDialog();
+  const { pickSave, commitSave, discardSave } = useSaveDialog();
   const [outTmp, setOutTmp] = useState<string>("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
 
@@ -1279,6 +1279,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           <button
             style={s.errBtn}
             onClick={() => {
+              if (savedPath) discardSave(savedPath);
               setPhase("edit");
               setResultImgs([]);
               setSavedPath("");
@@ -1292,6 +1293,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           <MetadataEditModal
             filePath={savedPath}
             onClose={() => setMetaEditOpen(false)}
+            onSaved={() => {
+              commitSave(savedPath);
+            }}
             isOutputFile
           />
         )}

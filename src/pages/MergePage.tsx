@@ -110,7 +110,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     },
     F1: () => announceKey("shortcut.tool"),
   });
-  const { pickSave, commitSave } = useSaveDialog();
+  const { pickSave, commitSave, discardSave } = useSaveDialog();
 
   const [phase, setPhase] = useState<Phase>("edit");
   const [entries, setEntries] = useState<PdfEntry[]>([]);
@@ -487,6 +487,7 @@ useEffect(() => {
         <PageHeader>
           <BtnBack
             onClick={() => {
+              discardSave(savePath);
               setPhase("edit");
               setResult(null);
             }}
@@ -514,6 +515,9 @@ useEffect(() => {
           <MetadataEditModal
             filePath={savePath}
             onClose={() => setMetaEditOpen(false)}
+            onSaved={() => {
+              commitSave(savePath);
+            }}
             isOutputFile
           />
         )}

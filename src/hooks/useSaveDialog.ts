@@ -4,7 +4,7 @@
 import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { usePdfStore } from "../store/usePdfStore";
-import { getDefaultSaveDir, commitSavedFile } from "../lib/tauri";
+import { getDefaultSaveDir, commitSavedFile, discardPendingSave } from "../lib/tauri";
 
 export function useSaveDialog() {
   const { lastSaveDir, setLastSaveDir } = usePdfStore();
@@ -48,5 +48,14 @@ export function useSaveDialog() {
     await commitSavedFile(path);
   }, []);
 
-  return { pickSave, commitSave };
+  /**
+   * 結果画面を離れる/新しい操作を始める際に呼ぶ。commitSave() が維持していた
+   * 一時ファイルと保存先の紐付けを破棄する。呼び忘れても次回起動時などに
+   * 一時領域が肥大化する程度で実害は無いが、明示的に呼ぶのが望ましい。
+   */
+  const discardSave = useCallback(async (path: string): Promise<void> => {
+    await discardPendingSave(path);
+  }, []);
+
+  return { pickSave, commitSave, discardSave };
 }

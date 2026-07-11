@@ -116,6 +116,7 @@ pub fn run() {
             platform_cmd::pick_save_file,
             platform_cmd::pick_save_file_in,
             platform_cmd::commit_saved_file,
+            platform_cmd::discard_pending_save,
             platform_cmd::pick_output_dir,
             platform_cmd::commit_saved_batch,
             #[cfg(desktop)]
