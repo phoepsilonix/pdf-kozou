@@ -34,6 +34,7 @@ export function FixedMobileNav({
         alignItems: "center",
         gap: 8,
         padding: "8px 10px",
+        paddingBottom: "calc(8px + var(--safe-bottom))",
         borderTop: "1px solid var(--c-border)",
         background: "var(--c-bg)",
         boxShadow: "0 -2px 8px rgba(0,0,0,0.08)",

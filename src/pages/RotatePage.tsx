@@ -956,7 +956,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       </div>
       <LiveRegion message={statusMsg} />
       {isNarrow && (
-        <div style={{ paddingBottom: "calc(var(--safe-bottom) + 24px" }}>
         <FixedMobileNav
           showingSecondSection={showingGrid}
           onToggle={toggleSection}
@@ -965,7 +964,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         >
           {executeBtn}
         </FixedMobileNav>
-	</div>
       )}
     </div>
   );

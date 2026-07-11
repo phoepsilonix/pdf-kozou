@@ -1209,7 +1209,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       </div>
       <LiveRegion message={statusMsg} />
       {isNarrow && (
-        <div style={{ paddingBottom: "calc(var(--safe-bottom) + 24px" }}>
         <FixedMobileNav
           showingSecondSection={showingPreview}
           onToggle={toggleSection}
@@ -1218,7 +1217,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         >
           {executeBtn}
         </FixedMobileNav>
-	</div>
       )}
     </div>
   );

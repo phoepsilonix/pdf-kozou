@@ -1037,7 +1037,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
-    paddingBottom: "calc(var(--safe-bottom) + 24px",
+    paddingBottom: "calc(var(--safe-bottom) + 24px)",
   },
   rightCol: {
     flex: 1,
