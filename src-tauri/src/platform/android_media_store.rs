@@ -23,8 +23,8 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    plugin::{Builder, PluginHandle, TauriPlugin},
     Manager,
+    plugin::{Builder, PluginHandle, TauriPlugin},
 };
 
 // ⚠ 重要: Kotlin 側 (@InvokeArg / invoke.resolve の JSObject) は
@@ -96,7 +96,8 @@ impl KozouMediaStore {
 pub fn kozou_media_store_plugin() -> TauriPlugin<tauri::Wry> {
     Builder::new("kozou-media-store")
         .setup(|app, api| {
-            let handle = api.register_android_plugin("phoepsilonix.pdfkozou", "MediaStorePlugin")?;
+            let handle =
+                api.register_android_plugin("phoepsilonix.pdfkozou", "MediaStorePlugin")?;
             app.manage(KozouMediaStore(handle));
             Ok(())
         })

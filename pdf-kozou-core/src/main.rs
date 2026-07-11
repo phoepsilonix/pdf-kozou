@@ -19,9 +19,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use clap::{Parser, Subcommand};
-use pdf_kozou_core::error::ErrorResponse;
 use pdf_kozou_core::api::auto_convert_if_needed;
 use pdf_kozou_core::api::parse_page_list;
+use pdf_kozou_core::error::ErrorResponse;
 
 #[derive(Parser)]
 #[command(
