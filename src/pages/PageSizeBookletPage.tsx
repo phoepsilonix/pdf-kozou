@@ -675,7 +675,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         position: "sticky",
         bottom: 0,
         flexShrink: 0,
-	paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
+        paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
       }
     : s.actionBar;
   const rightColStyle: React.CSSProperties = isNarrow

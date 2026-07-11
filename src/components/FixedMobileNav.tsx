@@ -15,7 +15,6 @@ interface FixedMobileNavProps {
   children?: ReactNode; // 実行ボタンなどを渡す
 }
 
-
 export function FixedMobileNav({
   showingSecondSection,
   onToggle,
