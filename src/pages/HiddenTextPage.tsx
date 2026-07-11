@@ -1,7 +1,6 @@
 // Copyright (C) 2026 Masato TOYOSHIMA <phoepsilonix at gmail dot com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
-export default HiddenTextPage;
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -175,6 +174,13 @@ function codepointOf(ch: string | undefined): number {
   return cp === undefined ? -1 : cp;
 }
 
+function buildLabel(type: DetectType, reason: string, chars: AnyHit[]): string {
+  if (type === "control_chars") return `${chars[0].char} (${chars[0].extra}) × ${chars.length}`;
+  const text = chars.map((c) => (c.char === " " ? "·" : c.char)).join("");
+  if (text.length <= 60) return `"${text}"`;
+  return `"${text.slice(0, 57)}…"`;
+}
+
 function groupHits(hits: AnyHit[]): HitGroup[] {
   const groups: HitGroup[] = [];
   let gid = 0;
@@ -211,15 +217,6 @@ function groupHits(hits: AnyHit[]): HitGroup[] {
     return a.y - b.y;
   });
   return groups;
-}
-
-function buildLabel(type: DetectType, reason: string, chars: AnyHit[]): string {
-  if (type === "control_chars") {
-    return `${chars[0].char} (${chars[0].extra}) × ${chars.length}`;
-  }
-  const text = chars.map((c) => (c.char === " " ? "·" : c.char)).join("");
-  if (text.length <= 60) return `"${text}"`;
-  return `"${text.slice(0, 57)}…"`;
 }
 
 // 全ページの全ヒットを取得（バッチ用）
@@ -283,7 +280,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [enabled, setEnabled] = useState<Set<DetectType>>(
     new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
   );
-  const [thr, setThr] = useState<Thr>(() => loadLastThr() ?? DEFAULT_THR);
+  const [thr, setThr] = useState(() => loadLastThr() ?? DEFAULT_THR);
   const [showThr, setShowThr] = useState(false);
   const [outDir, setOutDir] = useState("");
 
@@ -313,7 +310,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   // 持つ設定フォームなので、狭幅では幅いっぱいにしつつ高さの上限を
   // 設けて内部スクロールのままにし、残りを右側(flex:1)に譲る。
   const layoutStyle: React.CSSProperties = isNarrow
-    ? { display: "flex", flex: 1, flexDirection: "column", overflow: "hidden", minHeight: 0 }
+    ? { display: "flex", flex: 2, flexDirection: "column", overflow: "auto", minHeight: 0 }
     : s.layout;
   const leftStyle: React.CSSProperties = isNarrow
     ? {
@@ -324,7 +321,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         borderBottom: "1px solid var(--c-border)",
       }
     : s.left;
-  const rightStyle: React.CSSProperties = isNarrow ? { ...s.right, minHeight: 0 } : s.right;
+  const rightStyle: React.CSSProperties = isNarrow
+    ? { ...s.right, minHeight: 0, flex: 4, display: "flex" }
+    : s.right;
 
   const pickDir = useCallback(async (): Promise<string | null> => {
     // Android/iOS: tauri-plugin-dialog の open({ directory: true }) は
@@ -333,9 +332,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     // 使わず、pick_output_dir 経由でアプリの一時ディレクトリを取得し、
     // 実行後に commitSavedBatch でダウンロードフォルダへ移す。
     if (mobile) {
-      const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
-      if (dir) setOutDir(dir);
-      return dir;
+      const dir = await invoke("pick_output_dir").catch(() => null);
+      if (dir) setOutDir(String(dir));
+      return dir ? String(dir) : null;
     }
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -413,7 +412,6 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             codepoint: codepointOf(h.char),
             size: h.size ?? 0,
           }));
-
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
@@ -463,62 +461,24 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         <BatchBanner />
         <div style={layoutStyle}>
           {/* 左: 進捗情報 */}
-          <div style={leftStyle}>
-            <div style={s.sec}>
-              <div style={s.secTitle}>{t("hidden.batch_processing")}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--c-accent)" }}>
-                {progress.current} / {progress.total}
-              </div>
-              <div
-                style={{
-                  background: "var(--c-bgCard)",
-                  borderRadius: 6,
-                  overflow: "hidden",
-                  height: 6,
-                }}
-              >
-                <div
-                  style={{
-                    background: "var(--c-accent)",
-                    height: "100%",
-                    width: `${(progress.current / progress.total) * 100}%`,
-                    transition: "width 0.3s",
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  fontSize: FS.small,
-                  color: "var(--c-textSub)",
-                  wordBreak: "break-all" as const,
-                }}
-              >
-                {progress.currentFile}
-              </div>
-              <Spinner />
+          <div style={s.left}>
+            <div style={s.secTitle}>{t("hidden.batch_processing")}</div>
+            <div style={s.statusBox}>
+              {progress.current} / {progress.total}
             </div>
+            <div style={s.statusBox}>{progress.currentFile}</div>
           </div>
           {/* 右: ログ */}
           <div style={rightStyle}>
-            <div
-              style={{
-                padding: 12,
-                overflowY: "auto",
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}
-            >
-              {progress.done.map((d, i) => (
-                <div key={i} style={s.logRow}>
-                  <span style={{ color: "var(--c-accent)", flexShrink: 0 }}>✓</span>
-                  <span style={s.logFile}>{d.file} → </span>
-                  <span style={s.logMeta}>
+            <div style={s.preview}>
+              <div style={s.sec}>
+                {progress.done.map((d) => (
+                  <div key={d.file} style={s.statusBox}>
+                    {d.file} →{" "}
                     {d.hits === 0 ? t("hidden.batch_no_detection") : `${d.hits}字 → ${d.saved}`}
-                  </span>
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -537,53 +497,43 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         </PageHeader>
         <BatchBanner />
         <div style={layoutStyle}>
-          {/* 左: サマリー */}
-          <div style={leftStyle}>
-            <div style={s.sec}>
-              <div style={s.secTitle}>{t("hidden.batch_done")}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: FS.label }}>
-                <div style={{ color: "var(--c-accent)" }}>
-                  {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
-                </div>
-                <div style={{ color: "var(--c-textDim)" }}>
-                  {t("hidden.batch_skipped" as any, { count: String(skipped) })}
-                </div>
-                {progress.errors.length > 0 && (
-                  <div style={{ color: "var(--c-err)" }}>
-                    {t("hidden.batch_errors" as any, { count: String(progress.errors.length) })}
-                  </div>
-                )}
-                {mobile && (
-                  <div style={{ color: "var(--c-textDim)" }}>
-                    {mobileSaveError ? (
-                      <span style={{ color: "var(--c-err)" }}>
-                        {t("mobile.save_unsupported" as any)}
-                      </span>
-                    ) : mobileSavedFiles ? (
-                      <>
-                        <div>
-                          {t("mobile.save_done_summary" as any, {
-                            count: String(mobileSavedFiles.length),
-                          })}
-                        </div>
-                        <div>
-                          {t("mobile.save_location" as any, {
-                            path: mobileOutputPreviewLabel(
-                              mobileRelativeDir,
-                              t("mobile.downloads_root" as any),
-                            ),
-                          })}
-                        </div>
-                      </>
-                    ) : (
-                      t("mobile.save_preview_pending" as any)
-                    )}
-                  </div>
-                )}
-              </div>
+          <div style={s.left}>
+            <div style={s.statusBox}>{t("hidden.batch_done")}</div>
+            <div style={s.statusBox}>
+              {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
             </div>
+            <div style={s.statusBox}>
+              {t("hidden.batch_skipped" as any, { count: String(skipped) })}
+            </div>
+            {progress.errors.length > 0 && (
+              <div style={s.statusBox}>
+                {t("hidden.batch_errors" as any, { count: String(progress.errors.length) })}
+              </div>
+            )}
+            {mobile &&
+              (mobileSaveError ? (
+                <div style={s.statusBox}>{t("mobile.save_unsupported" as any)}</div>
+              ) : mobileSavedFiles ? (
+                <>
+                  <div style={s.statusBox}>
+                    {t("mobile.save_done_summary" as any, {
+                      count: String(mobileSavedFiles.length),
+                    })}
+                  </div>
+                  <div style={s.statusBox}>
+                    {t("mobile.save_location" as any, {
+                      path: mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      ),
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div style={s.statusBox}>{t("mobile.save_preview_pending" as any)}</div>
+              ))}
             <button
-              style={{ ...s.detectBtn, marginTop: 8 }}
+              style={s.detectBtn}
               onClick={() => {
                 setPhase("edit");
                 setProgress(null);
@@ -592,50 +542,28 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               {t("hidden.batch_back")}
             </button>
           </div>
-          {/* 右: 詳細リスト */}
           <div style={rightStyle}>
-            <div
-              style={{
-                overflowY: "auto",
-                flex: 1,
-                padding: 12,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}
-            >
-              {progress.done.map((d, i) => (
-                <div key={i} style={s.logRow}>
-                  <span
-                    style={{
-                      color: d.hits > 0 ? "var(--c-accent)" : "var(--c-textDim)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {d.hits > 0 ? "✓" : "–"}
-                  </span>
-                  <span style={s.logFile}>{d.file} → </span>
-                  <span style={s.logMeta}>
-                    {d.hits === 0
-                      ? t("hidden.batch_no_detection")
-                      : `${d.hits}字無害化 → ${d.saved}`}
-                  </span>
-                </div>
-              ))}
-              {progress.errors.map((e, i) => (
-                <div
-                  key={`e${i}`}
-                  style={{
-                    ...s.logRow,
-                    borderColor: "var(--c-errBd)",
-                    background: "var(--c-errBg)",
-                  }}
-                >
-                  <span style={{ flexShrink: 0, color: "var(--c-err)" }}>✗</span>
-                  <span style={{ ...s.logFile, color: "var(--c-err)" }}>{e.file}</span>
-                  <span style={{ ...s.logMeta, color: "var(--c-err)" }}>{e.msg.slice(0, 60)}</span>
-                </div>
-              ))}
+            <div style={s.preview}>
+              <div style={s.sec}>
+                {progress.done.map((d) => (
+                  <div key={d.file} style={s.logRow}>
+                    <span style={s.logFile}>{d.file}</span>
+                    <span style={s.logMeta}>→</span>
+                    <span style={s.logMeta}>
+                      {d.hits === 0
+                        ? t("hidden.batch_no_detection")
+                        : `${d.hits}字無害化 → ${d.saved}`}
+                    </span>
+                  </div>
+                ))}
+                {progress.errors.map((e) => (
+                  <div key={e.file} style={s.logRow}>
+                    <span style={s.logFile}>{e.file}</span>
+                    <span style={s.logMeta}>→</span>
+                    <span style={s.logMeta}>{e.msg.slice(0, 60)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -651,7 +579,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       </PageHeader>
       <BatchBanner />
       <div style={layoutStyle}>
-        {/* 左: 設定・実行 */}
+        {/* 左: 設定 */}
         <div style={leftStyle}>
           {/* 検出タイプ */}
           <div style={s.sec}>
@@ -672,60 +600,30 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               </label>
             ))}
           </div>
-
           {/* 閾値 */}
-          <div style={s.sec}>
-            <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
-              ⚙ 閾値設定 {showThr ? "▲" : "▼"}
-            </button>
-            {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
-          </div>
-
+          <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
+            ⚙ 閾値設定 {showThr ? "▲" : "▼"}
+          </button>
+          {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           {/* Type3フォントの扱い */}
           {/*
           <div style={s.sec}>
-            <label style={{ ...s.chkRow, alignItems: "flex-start" as const }}>
+            <div style={s.secTitle}>Type3</div>
+            <label style={s.chkRow}>
               <input
                 type="checkbox"
                 checked={skipType3}
                 onChange={(e) => setSkipType3(e.target.checked)}
-                style={{ marginTop: 2, flexShrink: 0 }}
               />
-              <span>
-                <span style={{ fontSize: FS.body }}>{t("hidden.skip_type3" as any)}</span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: FS.caption,
-                    color: "var(--c-textDim)",
-                    lineHeight: 1.4,
-                    marginTop: 2,
-                  }}
-                >
-                  {t("hidden.type3_warning_body" as any)}
-                </span>
-              </span>
+              {t("hidden.skip_type3" as any)}
             </label>
           </div>
 	  */}
-
           {/* 出力先フォルダ */}
           <div style={s.sec}>
             <div style={s.secTitle}>出力先フォルダ</div>
             {mobile ? (
-              <div
-                style={{
-                  fontSize: FS.small,
-                  color: "var(--c-text)",
-                  background: "var(--c-bgCard)",
-                  border: "1px solid var(--c-border)",
-                  borderRadius: 5,
-                  padding: "4px 7px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap" as const,
-                }}
-              >
+              <div style={s.statusBox}>
                 {t("mobile.save_preview" as any, {
                   path: mobileOutputPreviewLabel(
                     mobileRelativeDir,
@@ -735,113 +633,47 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               </div>
             ) : (
               <>
-                <div
-                  style={{
-                    fontSize: FS.small,
-                    color: outDir ? "var(--c-text)" : "var(--c-textDim)",
-                    background: "var(--c-bgCard)",
-                    border: "1px solid var(--c-border)",
-                    borderRadius: 5,
-                    padding: "4px 7px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap" as const,
-                  }}
-                >
-                  {outDir || t("hidden.output_dir_empty")}
-                </div>
+                <div style={s.statusBox}>{outDir || t("hidden.output_dir_empty")}</div>
                 <button style={s.navBtn} onClick={pickDir}>
                   {t("hidden.output_dir_pick" as any)}
                 </button>
               </>
             )}
-            <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", lineHeight: 1.4 }}>
-              {t("hidden.output_dir_note")}
-            </div>
+            <div style={s.statusBox}>{t("hidden.output_dir_note")}</div>
           </div>
-
-          {/* 実行ボタン */}
-          <button
-            style={{ ...s.sanBtn, ...(running ? s.btnDis : {}) }}
-            onClick={runBatch}
-            disabled={running}
-          >
-            {running ? (
-              <Spinner />
-            ) : (
-              t("hidden.batch_run_btn" as any, { count: String(batchFiles.length) })
-            )}
-          </button>
-
-          {/* 注意書き */}
-          <div
-            style={{
-              fontSize: FS.caption,
-              color: "#f59e0b",
-              background: "#f59e0b18",
-              border: "1px solid #f59e0b44",
-              borderRadius: 5,
-              padding: "6px 8px",
-              lineHeight: 1.5,
-            }}
-          >
-            {t("hidden.batch_warning")}
+          <div style={s.sec}>
+            <div style={s.secTitle}>実行</div>
           </div>
         </div>
-
-        {/* 右: ファイルリスト */}
         <div style={rightStyle}>
-          <div
-            style={{
-              padding: "8px 12px",
-              fontSize: FS.small,
-              color: "var(--c-textDim)",
-              borderBottom: "1px solid var(--c-border)",
-              flexShrink: 0,
-            }}
-          >
-            {t("hidden.batch_files_label" as any, { count: String(batchFiles.length) })}
-          </div>
-          <div style={{ overflowY: "auto", flex: 1 }}>
-            {batchFiles.map((f, i) => (
-              <div
-                key={f.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "7px 12px",
-                  borderBottom: "1px solid var(--c-border)",
-                  fontSize: FS.body,
-                }}
-              >
-                <span
-                  style={{
-                    color: "var(--c-textDim)",
-                    minWidth: 28,
-                    textAlign: "right" as const,
-                    flexShrink: 0,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {i + 1}.
-                </span>
-                <span
-                  style={{
-                    flex: 1,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap" as const,
-                    color: "var(--c-text)",
-                  }}
-                >
-                  {f.filename}
-                </span>
-                <span style={{ color: "var(--c-textDim)", flexShrink: 0, fontSize: FS.small }}>
-                  {f.pageCount}p
-                </span>
+          <div style={s.preview}>
+            <div style={s.sec}>
+              <div style={s.secTitle}>
+                {t("hidden.batch_files_label" as any, { count: String(batchFiles.length) })}
               </div>
-            ))}
+              {batchFiles.map((f, i) => (
+                <div key={f.path} style={s.statusBox}>
+                  {i + 1}. {f.filename} {f.pageCount}p
+                </div>
+              ))}
+              {/* 実行ボタン */}
+              <button
+                style={s.detectBtn}
+                onClick={() => {
+                  const r = runBatch();
+                  void r;
+                }}
+                disabled={running}
+              >
+                {running ? (
+                  <Spinner />
+                ) : (
+                  t("hidden.batch_run_btn" as any, { count: String(batchFiles.length) })
+                )}
+              </button>
+              {/* 注意書き */}
+              {batchFiles.length > 0 && <div style={s.statusBox}>{t("hidden.batch_warning")}</div>}
+            </div>
           </div>
         </div>
       </div>
@@ -860,7 +692,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [enabled, setEnabled] = useState<Set<DetectType>>(
     new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
   );
-  const [thr, setThr] = useState<Thr>(() => loadLastThr() ?? DEFAULT_THR);
+  const [thr, setThr] = useState(() => loadLastThr() ?? DEFAULT_THR);
   const [showThr, setShowThr] = useState(false);
   const [running, setRunning] = useState(false);
   const [groups, setGroups] = useState<HitGroup[]>([]);
@@ -875,8 +707,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const { announceSuccess, announceError, announceKey } = useA11y();
   const [skipType3, setSkipType3] = useState(true);
 
-  // BatchView と同様、狭幅では左(設定)/右(プレビュー+検出結果)を
-  // 縦積みにする。
   const layoutStyle: React.CSSProperties = isNarrow
     ? { display: "flex", flex: 1, flexDirection: "column", overflow: "hidden", minHeight: 0 }
     : s.layout;
@@ -910,8 +740,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     renderCurrent();
   }, [renderCurrent]);
 
-  // 全ページモード時は現在ページのみ表示（useMemo で確実に再計算）
-  // 常に現在ページの文字のみ表示（全ページ検出時も同様）
   const displayGroups = useMemo(
     () => groups.filter((g) => g.chars.length > 0 && g.chars[0].page === pageIndex),
     [groups, pageIndex],
@@ -926,7 +754,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       setGroups([]);
       setSelectedIds(new Set());
       setStatus("検出中...");
-      saveLastThr(thr); // 閾値を履歴保存
+      saveLastThr(thr);
       try {
         const all: AnyHit[] = [];
         const pages = effectiveAllPages
@@ -960,7 +788,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               ...toAnyHits("control_chars", (await detectControlChars(filePath, p)).hits, p),
             );
         }
-
         const grps = groupHits(all);
         setGroups(grps);
         const autoSel = new Set(grps.filter((g) => !g.isWs).map((g) => g.id));
@@ -978,7 +805,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         setRunning(false);
       }
     },
-    [filePath, pageIndex, pageCount, enabled, thr, allPagesMode],
+    [filePath, pageIndex, pageCount, enabled, thr, allPagesMode, t],
   );
 
   const runSanitize = useCallback(async () => {
@@ -1000,7 +827,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             oy: c.origin[1],
             is_buried: g.type === "buried" ? 1 : 0,
             render_invisible: renderInvisibleOf(c.reason),
-            // 文字 identity(取り違え防止): 検出グリフの Unicode とサイズ
             codepoint: codepointOf(c.char),
             size: c.size ?? 0,
           })),
@@ -1009,73 +835,35 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       setStatus(t("hidden.no_targets" as any));
       return;
     }
-    /*
-    const hasType3 =
-      !skipType3 && groups.some((g) => selectedIds.has(g.id) && g.chars.some((c) => c.isType3));
-    */
+
     const outPath = await pickSave(buildName(filePath, ["sanitized"]));
     if (!outPath) return;
     setSanitizing(true);
     setStatus(t("hidden.sanitize_btn", { chars: String(targets.length) }));
     try {
-      // ① 通常の隠しテキスト無害化
       await sanitizeHiddenText({ input: filePath, output: outPath, targets, tolerance: 1.5 });
-      // ② Type3フォントがあれば続けて Type3 無害化（出力ファイルを上書き）
-      let type3Msg = "";
-      /*
-      if (hasType3) {
-        setStatus(t("hidden.type3_sanitize_running" as any));
-        const res = await sanitizeType3Text(outPath, outPath);
-        if (res.removed > 0) type3Msg = ` +Type3(${res.removed})`;
-      }
-      */
       await commitSave(outPath);
       const doneName = outPath.split(/[/\\]/).pop() ?? "";
-      //setStatus(t("hidden.sanitize_done", { name: doneName }) + type3Msg);
       setStatus(t("hidden.sanitize_done", { name: doneName }));
       announceSuccess("hidden.sanitize_done", { name: doneName });
     } catch (e) {
-      const msg =
-        typeof e === "string"
-          ? e
-          : e instanceof Error
-            ? e.message
-            : typeof e === "object" && e !== null && "message" in e
-              ? String((e as any).message)
-              : JSON.stringify(e);
+      const msg = typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
       setStatus(t("hidden.sanitize_error", { msg }));
       announceError(msg);
     } finally {
       setSanitizing(false);
     }
-  }, [filePath, groups, selectedIds, pickSave, commitSave, t, skipType3]);
-
-  /*
-  const runType3Sanitize = useCallback(async () => {
-    const outPath = await pickSave(buildName(filePath, ["type3sanitized"]));
-    if (!outPath) return;
-    setType3Sanitizing(true);
-    setStatus(t("hidden.type3_sanitize_running" as any));
-    try {
-      const res = await sanitizeType3Text(filePath, outPath);
-      const name = outPath.split(/[/\\]/).pop() ?? "";
-      if (res.removed === 0) {
-        setStatus(t("hidden.type3_sanitize_none" as any));
-      } else {
-        setStatus(
-          t("hidden.type3_sanitize_done" as any, {
-            removed: String(res.removed),
-            name,
-          }),
-        );
-      }
-    } catch (e) {
-      setStatus(t("hidden.type3_sanitize_error" as any, { msg: String(e) }));
-    } finally {
-      setType3Sanitizing(false);
-    }
-  }, [filePath, pickSave, t]);
-  */
+  }, [
+    filePath,
+    groups,
+    selectedIds,
+    pickSave,
+    commitSave,
+    t,
+    skipType3,
+    announceSuccess,
+    announceError,
+  ]);
 
   const toggleGroup = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -1088,7 +876,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, expanded: !g.expanded } : g)));
   }, []);
 
-  // 検出: Ctrl+Enter / 無害化: Ctrl+Shift+Enter（画面読み上げの案内と一致）
   useKeyboardShortcuts({
     "Ctrl+Enter": () => {
       if (!running) {
@@ -1125,169 +912,102 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       </PageHeader>
       <SingleBanner />
       <div style={layoutStyle}>
-        {/* 左パネル */}
-        <div style={leftStyle}>
-          <div style={s.sec}>
-            <div style={s.secTitle}>ページ</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <button
-                style={s.navBtn}
-                onClick={() => {
-                  setPageIndex((p) => Math.max(0, p - 1));
-                  if (!allPagesMode) {
-                    setGroups([]);
-                    setSelectedIds(new Set());
-                    setStatus("");
-                  }
-                }}
-                disabled={pageIndex === 0}
-              >
-                ◀
-              </button>
-              <span style={s.pageLbl}>
-                {pageIndex + 1} / {pageCount}
-              </span>
-              <button
-                style={s.navBtn}
-                onClick={() => {
-                  setPageIndex((p) => Math.min(pageCount - 1, p + 1));
-                  if (!allPagesMode) {
-                    setGroups([]);
-                    setSelectedIds(new Set());
-                    setStatus("");
-                  }
-                }}
-                disabled={pageIndex >= pageCount - 1}
-              >
-                ▶
-              </button>
-            </div>
-          </div>
-          <div style={s.sec}>
-            <div style={s.secTitle}>検出タイプ</div>
-            {DETECT_TYPES.map((dt) => (
-              <label key={dt.id} style={s.chkRow}>
-                <input
-                  type="checkbox"
-                  checked={enabled.has(dt.id)}
-                  onChange={(e) => {
-                    const n = new Set(enabled);
-                    e.target.checked ? n.add(dt.id) : n.delete(dt.id);
-                    setEnabled(n);
+        <div
+          style={
+            isNarrow
+              ? { flex: 1, flexDirection: "column", display: "flex", overflow: "auto" }
+              : { flex: 1, flexDirection: "row", display: "flex", overflow: "auto" }
+          }
+        >
+          <div style={leftStyle}>
+            <div style={s.sec}>
+              <div style={s.secTitle}>ページ</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  style={s.navBtn}
+                  onClick={() => {
+                    setPageIndex((p) => Math.max(0, p - 1));
+                    if (!allPagesMode) {
+                      setGroups([]);
+                      setSelectedIds(new Set());
+                      setStatus("");
+                    }
                   }}
-                />
-                <span style={{ color: dt.color }}>{dt.icon}</span>
-                <span style={{ fontSize: FS.body }}>{dt.label}</span>
-              </label>
-            ))}
-          </div>
-          <div style={s.sec}>
+                  disabled={pageIndex === 0}
+                >
+                  ◀
+                </button>
+                <div style={s.pageLbl}>
+                  {pageIndex + 1} / {pageCount}
+                </div>
+                <button
+                  style={s.navBtn}
+                  onClick={() => {
+                    setPageIndex((p) => Math.min(pageCount - 1, p + 1));
+                    if (!allPagesMode) {
+                      setGroups([]);
+                      setSelectedIds(new Set());
+                      setStatus("");
+                    }
+                  }}
+                  disabled={pageIndex >= pageCount - 1}
+                >
+                  ▶
+                </button>
+              </div>
+            </div>
+            <div>
+              <div>検出タイプ</div>
+              <div
+                style={
+                  isNarrow
+                    ? { flex: 5, flexDirection: "row", display: "flex", overflow: "auto" }
+                    : { flex: 1, flexDirection: "column", display: "flex", overflow: "auto" }
+                }
+              >
+                {DETECT_TYPES.map((dt) => (
+                  <label key={dt.id} style={s.chkRow}>
+                    <input
+                      type="checkbox"
+                      checked={enabled.has(dt.id)}
+                      onChange={(e) => {
+                        const n = new Set(enabled);
+                        e.target.checked ? n.add(dt.id) : n.delete(dt.id);
+                        setEnabled(n);
+                      }}
+                    />
+                    <span>{dt.icon}</span>
+                    <span>{dt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
               ⚙ 閾値設定 {showThr ? "▲" : "▼"}
             </button>
             {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
-          </div>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button
-              style={{
-                ...s.detectBtn,
-                flex: "0 0 auto",
-                width: "auto",
-                ...(running ? s.btnDis : {}),
-              }}
-              onClick={() => {
-                setAllPagesMode(false);
-                runDetect(false);
-              }}
-              disabled={running}
-              aria-label={`${pageIndex + 1}ページのみ隠しテキスト検出`}
-            >
-              {running && !allPagesMode ? <Spinner /> : `🔍 ${pageIndex + 1}P`}
-            </button>
-            {pageCount > 1 && (
-              <button
-                style={{ ...s.detectBtn, flex: 1, ...(running ? s.btnDis : {}) }}
-                onClick={() => {
-                  setAllPagesMode(true);
-                  runDetect(true);
-                }}
-                disabled={running}
-                aria-label={t("aria.hidden_detect_all_btn" as any)}
-              >
-                {running && allPagesMode ? <Spinner /> : t("hidden.detect_all_pages" as any)}
-              </button>
-            )}
-          </div>
-          {groups.length > 0 && (
-            <div style={s.sec}>
-              <div style={s.secTitle}>検出結果</div>
-              {typeSummary.map((dt) => (
-                <div
-                  key={dt.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: FS.small,
-                    padding: "1px 0",
-                  }}
-                >
-                  <span style={{ color: dt.color }}>
-                    {dt.icon} {dt.label}
-                  </span>
-                  <span style={s.badge}>
-                    {dt.gc}行/{dt.cc}字
-                  </span>
-                </div>
-              ))}
-              {(() => {
-                const wc = groups.filter((g) => g.isWs).reduce((s, g) => s + g.chars.length, 0);
-                return wc > 0 ? (
-                  <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginTop: 2 }}>
-                    {t("hidden.whitespace_note", { count: String(wc) })}
-                  </div>
-                ) : null;
-              })()}
-              <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-                <button
-                  style={s.smBtn}
-                  onClick={() =>
-                    setSelectedIds(new Set(groups.filter((g) => !g.isWs).map((g) => g.id)))
-                  }
-                >
-                  全選択
-                </button>
-                <button style={s.smBtn} onClick={() => setSelectedIds(new Set())}>
-                  全解除
-                </button>
-                <span
-                  style={{
-                    fontSize: FS.caption,
-                    color: "var(--c-textDim)",
-                    flex: 1,
-                    textAlign: "right",
-                  }}
-                >
-                  {selectedIds.size}行/{selCharCount}字
-                </span>
-              </div>
-            </div>
-          )}
-          {groups.length > 0 && (
-            <button
-              style={{ ...s.sanBtn, ...(sanitizing || !selectedIds.size ? s.btnDis : {}) }}
-              onClick={runSanitize}
-              disabled={sanitizing || !selectedIds.size}
-              aria-label={t("aria.hidden_sanitize_btn" as any, { count: String(selCharCount) })}
-            >
-              {sanitizing ? <Spinner /> : `🧹 無害化 (${selCharCount}字)`}
-            </button>
-          )}
-          {status && <div style={s.statusBox}>{status}</div>}
-        </div>
 
-        {/* 右パネル */}
-        <div style={rightStyle}>
+            {/*
+          <div style={s.sec}>
+            <div style={s.secTitle}>Type3</div>
+            <label style={s.chkRow}>
+              <input
+                type="checkbox"
+                checked={skipType3}
+                onChange={(e) => setSkipType3(e.target.checked)}
+              />
+              {t("hidden.skip_type3" as any)}
+            </label>
+          </div>
+	  */}
+
+            <div style={s.sec}>
+              <div style={s.secTitle}>実行</div>
+              {status && <div style={s.statusBox}>{status}</div>}
+            </div>
+          </div>
+
           <div style={s.preview}>
             {imgSrc ? (
               <div style={{ position: "relative", display: "inline-block" }}>
@@ -1297,26 +1017,23 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                     setImgNatW(e.currentTarget.naturalWidth);
                     setImgNatH(e.currentTarget.naturalHeight);
                   }}
-                  style={{ display: "block", maxWidth: "100%", maxHeight: "calc(100vh - 260px)" }}
+                  style={{ display: "block", maxWidth: "100%", maxHeight: "calc(100dvh - 240px)" }}
                   alt={`p${pageIndex + 1}`}
                 />
                 {groups.length > 0 && imgNatW > 1 && (
                   <svg
                     style={{
                       position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
+                      inset: 0,
                       pointerEvents: "none",
+                      overflow: "visible",
                     }}
+                    width="100%"
+                    height="100%"
                     viewBox={`0 0 ${imgNatW} ${imgNatH}`}
-                    preserveAspectRatio="none"
                   >
-                    {displayGroups.map((g) => {
-                      const sel = selectedIds.has(g.id);
-                      const color = typeColor(g.type);
-                      return g.chars.map((c, ci) => {
+                    {displayGroups.map((g) =>
+                      g.chars.map((c, ci) => {
                         const q = c.quad;
                         const pts = [
                           `${q[0] * scaleX},${q[1] * scaleY}`,
@@ -1328,60 +1045,43 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                           <polygon
                             key={`${g.id}-${ci}`}
                             points={pts}
-                            fill={sel ? color + "44" : "transparent"}
-                            stroke={g.isWs ? "#aaa" : color}
-                            strokeWidth={sel ? 1.5 : 0.8}
-                            strokeDasharray={g.isWs ? "3,2" : undefined}
-                            opacity={0.9}
+                            fill="none"
+                            stroke={selectedIds.has(g.id) ? "#22c55e" : typeColor(g.type)}
+                            strokeWidth={selectedIds.has(g.id) ? 3 : 2}
                           />
                         );
-                      });
-                    })}
+                      }),
+                    )}
                   </svg>
                 )}
               </div>
-            ) : (
-              <div style={{ padding: 40 }}>
-                <Spinner />
-              </div>
-            )}
+            ) : null}
           </div>
-          {groups.length > 0 && (
-            <div style={groupListStyle}>
-              {/* Type3フォント検出時の注記 */}
-              {/*
-		      groups.some((g) => g.chars.some((c) => c.isType3)) && (
-                <div style={s.type3Note}>
-                  <div>{t("hidden.type3_note" as any)}</div>
-                  <label
-                    style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={skipType3}
-                      onChange={(e) => setSkipType3(e.target.checked)}
-                    />
-                    {t("hidden.skip_type3" as any)}
-                  </label>
+
+          <div style={groupListStyle}>
+            {groups.length > 0 && (
+              <>
+                <div style={s.statusBox}>
+                  {typeSummary.map((dt) => (
+                    <span key={dt.id} style={{ marginRight: 8 }}>
+                      {dt.icon} {dt.label} {dt.gc}行/{dt.cc}字
+                    </span>
+                  ))}
                 </div>
-              )
-		      */}
-              {groups.map((g) => {
-                const sel = selectedIds.has(g.id);
-                const color = typeColor(g.type);
-                const icon = DETECT_TYPES.find((d) => d.id === g.type)?.icon ?? "";
-                return (
-                  <div key={g.id} style={{ borderBottom: "1px solid var(--c-border)" }}>
+                {groups.map((g) => {
+                  const sel = selectedIds.has(g.id);
+                  const color = typeColor(g.type);
+                  const icon = DETECT_TYPES.find((d) => d.id === g.type)?.icon ?? "";
+                  return (
                     <div
+                      key={g.id}
                       style={{
                         ...s.groupRow,
-                        ...(sel
-                          ? { background: color + "1a", borderLeft: `3px solid ${color}` }
-                          : { borderLeft: "3px solid transparent" }),
-                        ...(g.isWs ? { opacity: 0.5 } : {}),
+                        borderBottom: "1px solid var(--c-border)",
+                        background: sel ? "var(--c-accentBg)" : undefined,
                       }}
                       role={g.isWs ? undefined : "button"}
-                      tabIndex={g.isWs ? undefined : 0}
+                      tabIndex={g.isWs ? -1 : 0}
                       onClick={() => !g.isWs && toggleGroup(g.id)}
                       onKeyDown={(e) => {
                         if (!g.isWs && (e.key === "Enter" || e.key === " ")) {
@@ -1405,9 +1105,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                           style={{ flexShrink: 0 }}
                         />
                       ) : (
-                        <span style={{ width: 13, flexShrink: 0 }} />
+                        <span style={{ width: 16, flexShrink: 0 }} />
                       )}
-                      <span style={{ color, fontSize: FS.label, flexShrink: 0 }}>{icon}</span>
+                      <span>{icon}</span>
                       <span style={s.groupLabel}>{g.label}</span>
                       <span style={s.groupReason}>
                         {t((REASON_KEY[g.reason] ?? "hidden.reason_whitespace") as any)}
@@ -1424,43 +1124,65 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                       >
                         {g.expanded ? "▲" : "▼"}
                       </button>
-                    </div>
-                    {g.expanded && (
-                      <div style={s.charList}>
-                        {g.chars.map((c, ci) => (
-                          <div key={ci} style={s.charRow}>
-                            <span style={s.charCell}>{c.char === " " ? "·" : c.char || "?"}</span>
-                            <span
-                              style={{
-                                fontSize: FS.caption,
-                                color: "var(--c-textDim)",
-                                fontFamily: "monospace",
-                              }}
-                            >
-                              U+
-                              {(c.char.codePointAt(0) ?? 0)
-                                .toString(16)
-                                .toUpperCase()
-                                .padStart(4, "0")}
-                            </span>
-                            <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
-                              ({c.origin[0].toFixed(1)},{c.origin[1].toFixed(1)})
-                            </span>
-                            {c.extra && (
-                              <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
-                                {c.extra}
+                      {g.expanded && (
+                        <div style={s.charList}>
+                          {g.chars.map((c, ci) => (
+                            <div key={ci} style={s.charRow}>
+                              <span style={s.charCell}>{c.char === " " ? "·" : c.char || "?"}</span>
+                              <span>
+                                U+
+                                {(c.char.codePointAt(0) ?? 0)
+                                  .toString(16)
+                                  .toUpperCase()
+                                  .padStart(4, "0")}
                               </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                              <span>
+                                ({c.origin[0].toFixed(1)},{c.origin[1].toFixed(1)})
+                              </span>
+                              {c.extra && <span>{c.extra}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
         </div>
+      </div>
+
+      <div style={s.runBar}>
+        <button
+          style={s.detectBtn}
+          onClick={() => {
+            setAllPagesMode(false);
+            runDetect(false);
+          }}
+          disabled={running}
+          aria-label={`${pageIndex + 1}ページのみ隠しテキスト検出`}
+        >
+          {running && !allPagesMode ? <Spinner /> : `🔍 ${pageIndex + 1}P`}
+        </button>
+        {pageCount > 1 && (
+          <button
+            style={s.detectBtn}
+            onClick={() => {
+              setAllPagesMode(true);
+              runDetect(true);
+            }}
+            disabled={running}
+            aria-label={t("aria.hidden_detect_all_btn" as any)}
+          >
+            {running && allPagesMode ? <Spinner /> : t("hidden.detect_all_pages" as any)}
+          </button>
+        )}
+        {groups.length > 0 && (
+          <button style={s.sanBtn} onClick={runSanitize} disabled={sanitizing}>
+            {sanitizing ? <Spinner /> : `🧹 無害化 (${selCharCount}字)`}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1472,7 +1194,7 @@ function SingleBanner() {
   const { t } = useI18n();
   return (
     <div style={s.expBanner}>
-      <span style={{ fontSize: 20, flexShrink: 0 }}>⚠️</span>
+      <div>⚠️</div>
       <div>
         <div style={s.expTitle}>{t("hidden.experimental_title")}</div>
         <div style={s.expBody}>{t("hidden.experimental_body")}</div>
@@ -1484,12 +1206,10 @@ function SingleBanner() {
 function BatchBanner() {
   const { t } = useI18n();
   return (
-    <div style={{ ...s.expBanner, background: "#f59e0b18", borderColor: "#f59e0b55" }}>
-      <span style={{ fontSize: 20, flexShrink: 0 }}>⚠️</span>
+    <div style={s.expBanner}>
+      <div>⚠️</div>
       <div>
-        <div style={{ ...s.expTitle, color: "#fbbf24" }}>
-          {t("hidden.experimental_batch_title")}
-        </div>
+        <div style={s.expTitle}>{t("hidden.experimental_batch_title")}</div>
         <div style={s.expBody}>{t("hidden.experimental_batch_body")}</div>
       </div>
     </div>
@@ -1517,85 +1237,47 @@ function ThrPanel({
 
   return (
     <div style={s.thrPanel}>
-      {/* プリセットボタン */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" as const }}>
-        <span
-          style={{
-            fontSize: FS.caption,
-            color: "var(--c-textDim)",
-            alignSelf: "center",
-            flexShrink: 0,
-          }}
-        >
-          {t("hidden.preset_label")}:
-        </span>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {t("hidden.preset_label")}:{" "}
         {PRESETS.map((p) => {
           const active = JSON.stringify(thr) === JSON.stringify(p.thr);
           return (
             <button
               key={p.id}
-              aria-label={t(p.labelKey as any)}
-              aria-pressed={active}
-              style={{
-                padding: "2px 8px",
-                borderRadius: 4,
-                fontSize: FS.caption,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                background: active ? "var(--c-accent)" : "var(--c-bgCard)",
-                color: active ? "#fff" : "var(--c-textSub)",
-                border: active ? "1px solid var(--c-accent)" : "1px solid var(--c-border)",
-                fontWeight: active ? 700 : 400,
-              }}
+              style={{ ...s.smBtn, fontWeight: active ? 700 : 400 }}
               onClick={() => setThr(() => p.thr)}
             >
               {t(p.labelKey as any)}
             </button>
           );
         })}
-        {/* 前回の値 */}
         {lastThr && (
-          <button
-            style={{
-              padding: "2px 8px",
-              borderRadius: 4,
-              fontSize: FS.caption,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              background: "var(--c-bgCard)",
-              color: "var(--c-textSub)",
-              border: "1px dashed var(--c-border)",
-            }}
-            title={`α=${lastThr.alpha} cr=${lastThr.contrast} sz=${lastThr.size} cv=${lastThr.cover}`}
-            onClick={() => setThr(() => lastThr)}
-          >
+          <button style={s.smBtn} onClick={() => setThr(() => lastThr)}>
             ↩ {t("hidden.preset_last")}
           </button>
         )}
       </div>
 
-      {/* スライダー */}
       {sliders.map(({ key, label, min, max, step }) => (
-        <div key={key} style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: FS.caption, color: "var(--c-textSub)" }}>{label}</span>
-            <span style={{ fontSize: FS.caption, fontWeight: 600 }}>
+        <label key={key} style={s.sec}>
+          <div style={s.secTitle}>{label}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={(thr as any)[key]}
+              onChange={(e) => setThr((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
+              style={{ width: "100%" }}
+            />
+            <span style={s.badge}>
               {key === "alpha"
                 ? Math.round((thr as any)[key])
                 : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
             </span>
           </div>
-          <input
-            type="range"
-            min={min}
-            max={max}
-            step={step}
-            value={(thr as any)[key]}
-            aria-label={label}
-            onChange={(e) => setThr((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
-            style={{ width: "100%" }}
-          />
-        </div>
+        </label>
       ))}
       <button style={s.resetBtn} onClick={() => setThr(() => DEFAULT_THR)}>
         {t("hidden.threshold_reset")}
@@ -1615,6 +1297,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     color: "var(--c-text)",
     background: "var(--c-bg)",
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
   },
   expBanner: {
     display: "flex",
@@ -1630,7 +1313,7 @@ const s: Record<string, React.CSSProperties> = {
   expTitle: { fontSize: FS.small, fontWeight: 700, color: "#a78bfa", marginBottom: 1 },
   expBody: { fontSize: FS.caption, color: "#c4b5fd", lineHeight: 1.5 },
   title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
-  layout: { display: "flex", flex: 1, overflow: "hidden" },
+  layout: { display: "flex", flex: 2, overflow: "hidden" },
   left: {
     width: 230,
     flexShrink: 0,
@@ -1641,19 +1324,19 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 8,
   },
-  right: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  right: { flex: 1, display: "flex", flexDirection: "column", overflow: "auto" },
   preview: {
-    flex: 1,
+    flex: 2,
     overflow: "auto",
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "center",
     padding: 10,
     background: "var(--c-bgSub)",
-    minHeight: 0,
+    minHeight: "calc(100dvh - 240px)",
   },
   groupList: {
-    height: 220,
+    minHeight: 0,
     overflowY: "auto",
     borderTop: "1px solid var(--c-border)",
     flexShrink: 0,
@@ -1664,7 +1347,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 6,
     padding: "5px 8px",
     cursor: "pointer",
-    userSelect: "none" as const,
+    userSelect: "none",
     fontSize: FS.body,
   },
   groupLabel: {
@@ -1673,21 +1356,21 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: FS.body,
     overflow: "hidden",
     textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const,
+    whiteSpace: "nowrap",
     color: "var(--c-text)",
   },
   groupReason: {
     fontSize: FS.caption,
     color: "var(--c-textSub)",
     flexShrink: 0,
-    whiteSpace: "nowrap" as const,
+    whiteSpace: "nowrap",
   },
   groupCount: {
     fontSize: FS.caption,
     color: "var(--c-textDim)",
     flexShrink: 0,
     minWidth: 28,
-    textAlign: "right" as const,
+    textAlign: "right",
   },
   expandBtn: {
     background: "transparent",
@@ -1713,14 +1396,14 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 2,
     padding: "0 4px",
     minWidth: 20,
-    textAlign: "center" as const,
+    textAlign: "center",
   },
   sec: { display: "flex", flexDirection: "column", gap: 4 },
   secTitle: {
     fontSize: FS.caption,
     fontWeight: 700,
     color: "var(--c-textDim)",
-    textTransform: "uppercase" as const,
+    textTransform: "uppercase",
     letterSpacing: "0.08em",
   },
   navBtn: {
@@ -1735,7 +1418,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   pageLbl: {
     flex: 1,
-    textAlign: "center" as const,
+    textAlign: "center",
     fontSize: FS.body,
     fontVariantNumeric: "tabular-nums",
   },
@@ -1756,7 +1439,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-textSub)",
     fontSize: FS.small,
     fontFamily: F,
-    textAlign: "left" as const,
+    textAlign: "left",
   },
   thrPanel: {
     background: "var(--c-bgCard)",
@@ -1789,8 +1472,8 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: 4,
     width: "100%",
-    whiteSpace: "nowrap" as const,
-    boxSizing: "border-box" as const,
+    whiteSpace: "nowrap",
+    boxSizing: "border-box",
   },
   sanBtn: {
     padding: "7px 8px",
@@ -1807,7 +1490,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: 4,
     width: "100%",
-    boxSizing: "border-box" as const,
+    boxSizing: "border-box",
   },
   btnDis: { opacity: 0.4, cursor: "not-allowed" },
   badge: {
@@ -1834,7 +1517,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "5px 7px",
     background: "var(--c-bgCard)",
     borderRadius: 4,
-    wordBreak: "break-all" as const,
+    wordBreak: "break-all",
   },
   type3Note: {
     fontSize: FS.small,
@@ -1844,7 +1527,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "6px 10px",
     lineHeight: 1.8,
     display: "flex",
-    flexDirection: "column" as const,
+    flexDirection: "column",
     gap: 4,
   },
   type3Btn: {
@@ -1860,17 +1543,12 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 4,
-    alignSelf: "flex-start" as const,
+    alignSelf: "flex-start",
   },
-  // Rotate/Split/Merge のバッチ結果ログと同じ見た目・色合いに揃える。
-  // 従来は logFile が flex:1 で伸びていたため、ファイル名と保存先の
-  // 間(→の後ろ)が窓幅いっぱいに間延びして見えていた。flex を外し
-  // baseline 揃え+flexWrap にすることで、ファイル名のすぐ後ろに
-  // 保存先が続く自然な並びになる。
   logRow: {
     display: "flex",
     alignItems: "baseline",
-    flexWrap: "wrap" as const,
+    flexWrap: "wrap",
     gap: "2px 8px",
     fontSize: FS.body,
     padding: "6px 10px",
@@ -1881,12 +1559,22 @@ const s: Record<string, React.CSSProperties> = {
   logFile: {
     fontSize: FS.caption,
     color: "var(--c-textDim)",
-    wordBreak: "break-all" as const,
+    wordBreak: "break-all",
   },
   logMeta: {
     fontSize: FS.small,
     fontWeight: 700,
     color: "var(--c-text)",
-    wordBreak: "break-all" as const,
+    wordBreak: "break-all",
+  },
+  runBar: {
+    display: "flex",
+    gap: 8,
+    padding: 8,
+    borderTop: "1px solid var(--c-border)",
+    background: "var(--c-bg)",
+    paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
   },
 };
+
+export default HiddenTextPage;

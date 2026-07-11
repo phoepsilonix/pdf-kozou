@@ -2058,7 +2058,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     fontSize: FS.label,
   },
-  pageInfo: { fontSize: FS.small, color: "var(--c-text)", minWidth: 80, textAlign: "center" },
+  pageInfo: { fontSize: FS.small, color: "var(--c-text)", minWidth: 40, textAlign: "center" },
   title: { fontWeight: 700, fontSize: FS.title, fontFamily: F },
   fileSub: {
     fontSize: FS.caption,
