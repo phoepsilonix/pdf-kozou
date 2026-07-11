@@ -780,6 +780,20 @@ export async function isMobile(): Promise<boolean> {
   return _isMobileCache;
 }
 
+let _isAndroidCache: boolean | null = null;
+
+/**
+ * 実行環境が Android かどうか。単一ファイル保存のフォルダ選択方式
+ * (ACTION_OPEN_DOCUMENT_TREE, pickSaveFolder()/beginFolderSave() 等)は
+ * 現状 Android にのみ実装されているため、iOS/デスクトップとの分岐に使う。
+ */
+export async function isAndroid(): Promise<boolean> {
+  if (_isAndroidCache === null) {
+    _isAndroidCache = await invoke<boolean>("is_android");
+  }
+  return _isAndroidCache;
+}
+
 export async function pickSaveFile(defaultName: string): Promise<string | null> {
   return invoke<string | null>("pick_save_file", { defaultName });
 }
@@ -809,6 +823,36 @@ export async function commitSavedFile(path: string): Promise<void> {
  */
 export async function discardPendingSave(path: string): Promise<void> {
   await invoke("discard_pending_save", { path });
+}
+
+/**
+ * 単一ファイル保存(モバイルのみ)向け: `ACTION_OPEN_DOCUMENT_TREE` で
+ * 保存先フォルダを選ばせる。ユーザーがキャンセルした場合は null。
+ */
+export interface PickedFolder {
+  treeUri: string;
+  folderName: string;
+}
+export async function pickSaveFolder(): Promise<PickedFolder | null> {
+  return await invoke<PickedFolder | null>("pick_save_folder");
+}
+
+/** 指定フォルダ内に同名ファイルが既に存在するかどうか(モバイルのみ)。 */
+export async function checkSaveNameExists(treeUri: string, fileName: string): Promise<boolean> {
+  return await invoke<boolean>("check_save_name_exists", { treeUri, fileName });
+}
+
+/**
+ * 選択済みフォルダ内へ保存を開始し、core が書き込むための一時パスを返す
+ * (モバイルのみ)。この後は通常通り commitSave() を呼べばよい。
+ */
+export async function beginFolderSave(
+  treeUri: string,
+  fileName: string,
+  mimeType: string | null,
+  overwrite: boolean,
+): Promise<string> {
+  return await invoke<string>("begin_folder_save", { treeUri, fileName, mimeType, overwrite });
 }
 
 export async function pickOutputDir(): Promise<string | null> {

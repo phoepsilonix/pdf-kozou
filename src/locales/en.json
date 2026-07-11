@@ -923,5 +923,16 @@
     "save_location": "Saved to: {{path}}",
     "save_unsupported": "Direct saving to a shared folder isn't supported on this version of Android. Files were saved to the app's temporary storage instead.",
     "save_partial_error": "Failed to save {{count}} file(s)."
+  },
+  "save_conflict": {
+    "title": "File name already exists",
+    "message": "A file named \"{{name}}\" already exists in \"{{folder}}\".",
+    "overwrite": "Overwrite",
+    "auto_rename": "Save with an automatic number",
+    "rename": "Save with a different name",
+    "rename_input_label": "New file name",
+    "rename_confirm": "Save with this name",
+    "rename_back": "Back to options",
+    "cancel": "Cancel"
   }
 }

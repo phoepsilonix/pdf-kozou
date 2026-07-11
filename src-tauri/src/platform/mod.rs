@@ -16,6 +16,9 @@ pub mod android_fs_info;
 #[cfg(target_os = "android")]
 pub mod android_media_store;
 
+#[cfg(target_os = "android")]
+pub mod android_saf_folder;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 

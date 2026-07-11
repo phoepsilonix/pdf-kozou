@@ -923,5 +923,16 @@
     "save_location": "保存先: {{path}}",
     "save_unsupported": "お使いのAndroidのバージョンでは、共有フォルダへの直接保存に対応していません。アプリ内の一時領域に保存されています。",
     "save_partial_error": "{{count}}件のファイルの保存に失敗しました。"
+  },
+  "save_conflict": {
+    "title": "ファイル名の重複",
+    "message": "「{{folder}}」フォルダに「{{name}}」という名前のファイルが既にあります。",
+    "overwrite": "上書きする",
+    "auto_rename": "自動的に連番をつけて保存",
+    "rename": "別の名前で保存",
+    "rename_input_label": "新しいファイル名",
+    "rename_confirm": "この名前で保存",
+    "rename_back": "選択肢に戻る",
+    "cancel": "キャンセル"
   }
 }

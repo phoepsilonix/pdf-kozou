@@ -1,15 +1,33 @@
 // src/hooks/useSaveDialog.ts
 // 保存ダイアログ。前回の保存先ディレクトリを記憶し、初回はDocuments/Downloadsを初期値にする。
+//
+// モバイル(Android)の単一ファイル保存は、従来の ACTION_CREATE_DOCUMENT
+// (pick_save_file, いわゆるA方式)ではなく、ACTION_OPEN_DOCUMENT_TREE で
+// フォルダそのものへのアクセス権を得るB方式を使う。理由:
+// A方式は「同名ファイルがある場合にどう振る舞うか」がプロバイダ実装に
+// 委ねられており、上書き確認の有無も自動リネームの方式(拡張子の前/後ろ)
+// もアプリ側から検知・制御できない。B方式ならフォルダの中身を自前で
+// 確認できるため、上書き/自動リネーム/別名保存のいずれもアプリが確実に
+// 制御できる。衝突解決ロジックは src/lib/saveConflict.ts に共通化してあり、
+// useSaveDialog を経由しない RotatePage の直接呼び出しからも使われている。
 
 import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { usePdfStore } from "../store/usePdfStore";
-import { getDefaultSaveDir, commitSavedFile, discardPendingSave } from "../lib/tauri";
+import {
+  getDefaultSaveDir,
+  commitSavedFile,
+  discardPendingSave,
+  isAndroid,
+  pickSaveFolder,
+  beginFolderSave,
+} from "../lib/tauri";
+import { resolveSaveConflict } from "../lib/saveConflict";
 
 export function useSaveDialog() {
   const { lastSaveDir, setLastSaveDir } = usePdfStore();
 
-  // 初回起動時にDocuments/Downloadsを取得
+  // 初回起動時にDocuments/Downloadsを取得(デスクトップのみ意味を持つ)
   useEffect(() => {
     if (!lastSaveDir) {
       getDefaultSaveDir()
@@ -20,6 +38,24 @@ export function useSaveDialog() {
 
   const pickSave = useCallback(
     async (defaultName: string): Promise<string | null> => {
+      if (await isAndroid()) {
+        // ── Android: フォルダを選ばせ、名前の衝突を自前で解決する ──
+        const folder = await pickSaveFolder();
+        if (!folder) return null; // フォルダ選択をキャンセル
+
+        const resolved = await resolveSaveConflict(folder.treeUri, defaultName, folder.folderName);
+        if (!resolved) return null; // 衝突確認モーダルでキャンセル
+
+        return await beginFolderSave(
+          folder.treeUri,
+          resolved.fileName,
+          "application/pdf",
+          resolved.overwrite,
+        );
+      }
+
+      // ── デスクトップ・iOS: 従来通りネイティブの保存ダイアログを使う ──
+      // (B方式は現状Android専用。iOSは引き続きACTION_CREATE_DOCUMENT相当を使う)
       // pick_save_file_in が使えればinitialDirを渡す、なければ通常版にfallback
       const path = await invoke<string | null>("pick_save_file_in", {
         defaultName,
@@ -40,9 +76,9 @@ export function useSaveDialog() {
    * pickSave() で得たパスへの書き込みが終わった直後に必ず呼ぶこと。
    *
    * モバイルでは pickSave() が返すのはアプリ専用の一時パスであり、
-   * ユーザーが実際に選んだ保存先(SAF の content:// URI 等)へはまだ
-   * コピーされていない。commitSave() を呼んで初めて、ユーザーから見える
-   * 場所にファイルが保存される。デスクトップでは no-op。
+   * ユーザーが実際に選んだ保存先へはまだコピーされていない。commitSave()
+   * を呼んで初めて、ユーザーから見える場所にファイルが保存される。
+   * デスクトップでは no-op。
    */
   const commitSave = useCallback(async (path: string): Promise<void> => {
     await commitSavedFile(path);

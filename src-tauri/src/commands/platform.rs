@@ -63,6 +63,16 @@ pub fn is_mobile() -> bool {
     cfg!(mobile)
 }
 
+/// 単一ファイル保存のB方式(`ACTION_OPEN_DOCUMENT_TREE` によるフォルダ単位
+/// アクセス、`pick_save_folder`/`check_save_name_exists`/`begin_folder_save`)
+/// は現状 Android にのみ実装されている。iOS では引き続き従来の
+/// `pick_save_file`(A方式)を使うため、フロントエンドはこのコマンドで
+/// Android かどうかを判定してから分岐する。
+#[tauri::command]
+pub fn is_android() -> bool {
+    cfg!(target_os = "android")
+}
+
 /// PDF を開くダイアログ (単一ファイル)
 /// デスクトップ: xdg-desktop-portal 不使用、GTK3 直接 (Linux) / rfd (macOS, Windows)
 /// モバイル: tauri-plugin-dialog のネイティブピッカーを使用
@@ -158,6 +168,115 @@ pub async fn discard_pending_save(app: tauri::AppHandle, path: String) -> Result
     {
         let _ = (&app, &path);
         Ok(())
+    }
+}
+
+/// 単一ファイル保存(モバイルのみ)向け: `ACTION_OPEN_DOCUMENT_TREE` で
+/// 保存先フォルダを選ばせる。デスクトップでは呼ばれない想定
+/// (デスクトップは `pick_save_file` のネイティブ保存ダイアログのみ使う)。
+///
+/// ユーザーがキャンセルした場合は `Ok(None)`。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedFolderDto {
+    pub tree_uri: String,
+    pub folder_name: String,
+}
+
+#[tauri::command]
+pub async fn pick_save_folder(app: tauri::AppHandle) -> Result<Option<PickedFolderDto>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let state = app
+            .try_state::<platform::android_saf_folder::KozouSafFolder>()
+            .ok_or("SafFolderPlugin is not registered")?;
+        let picked = state.pick_folder()?;
+        Ok(picked.map(|p| PickedFolderDto {
+            tree_uri: p.tree_uri,
+            folder_name: p.folder_name,
+        }))
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = &app;
+        Err("pick_save_folder is only available on Android".to_string())
+    }
+}
+
+/// 指定フォルダ内に `file_name` と同名のファイルが既に存在するかどうか。
+#[tauri::command]
+pub async fn check_save_name_exists(
+    app: tauri::AppHandle,
+    tree_uri: String,
+    file_name: String,
+) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let state = app
+            .try_state::<platform::android_saf_folder::KozouSafFolder>()
+            .ok_or("SafFolderPlugin is not registered")?;
+        Ok(state.find_file(&tree_uri, &file_name)?.is_some())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (&app, &tree_uri, &file_name);
+        Err("check_save_name_exists is only available on Android".to_string())
+    }
+}
+
+/// 選択済みフォルダ内へ保存を開始する。`overwrite = true` なら既存の
+/// 同名ファイルを、`false` なら(呼び出し側が一意であると確認済みの)
+/// 新しい名前でファイルを用意し、その実体(content:// URI)と
+/// 一時パスの紐付けを `PendingSaves` に登録して一時パスを返す。
+///
+/// 戻り値の一時パスに core が処理結果を書き込んだ後、通常通り
+/// `commit_saved_file` を呼べば実体へコピーされる(`discard_pending_save`
+/// / メタデータ編集後の再コミットも既存の仕組みがそのまま使える)。
+#[tauri::command]
+pub async fn begin_folder_save(
+    app: tauri::AppHandle,
+    tree_uri: String,
+    file_name: String,
+    mime_type: Option<String>,
+    overwrite: bool,
+) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let state = app
+            .try_state::<platform::android_saf_folder::KozouSafFolder>()
+            .ok_or("SafFolderPlugin is not registered")?;
+
+        let uri = if overwrite {
+            state
+                .find_file(&tree_uri, &file_name)?
+                .ok_or_else(|| format!("上書き対象のファイルが見つかりません: {file_name}"))?
+        } else {
+            state
+                .create_file(&tree_uri, &file_name, mime_type.as_deref())?
+                .uri
+        };
+
+        let dest = url::Url::parse(&uri)
+            .map(tauri_plugin_fs::FilePath::Url)
+            .map_err(|e| format!("保存先URIの解析に失敗しました: {e}"))?;
+
+        let temp_path = crate::tempdir::kozou_temp_path(&file_name);
+        if let Some(pending) = app.try_state::<platform::PendingSaves>() {
+            pending
+                .0
+                .lock()
+                .unwrap()
+                .insert(temp_path.display().to_string(), dest);
+        }
+        Ok(temp_path.display().to_string())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (&app, &tree_uri, &file_name, &mime_type, overwrite);
+        Err("begin_folder_save is only available on Android".to_string())
     }
 }
 

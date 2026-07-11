@@ -29,6 +29,9 @@ tauri-plugin-fs      = "2"
 tauri-plugin-dialog  = "2"
 tauri-plugin-process = "2"
 tauri-plugin-shell   = "2"
+# フォルダ単位保存 (Android SAF, ACTION_OPEN_DOCUMENT_TREE) で得た
+# content:// URI 文字列を tauri_plugin_fs::FilePath::Url へ組み立てるために使う。
+url                  = "2"
 
 # workspace 共通
 base64     = { workspace = true }

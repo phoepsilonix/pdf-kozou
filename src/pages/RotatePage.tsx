@@ -18,7 +18,11 @@ import {
   type PdfInfo,
   joinPath,
   isMobile,
+  isAndroid,
+  pickSaveFolder,
+  beginFolderSave,
 } from "../lib/tauri";
+import { resolveSaveConflict } from "../lib/saveConflict";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
@@ -482,10 +486,28 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
 
   if (phase === "preview" && savedPath) {
     const doSave = async () => {
-      const sp = await invoke<string | null>("pick_save_file", {
-        defaultName: buildName(filePath, ["rotated"]),
-        initialDir: outDir || undefined,
-      }).catch(() => null);
+      let sp: string | null;
+      if (await isAndroid()) {
+        const folder = await pickSaveFolder();
+        if (!folder) return;
+        const resolved = await resolveSaveConflict(
+          folder.treeUri,
+          buildName(filePath, ["rotated"]),
+          folder.folderName,
+        );
+        if (!resolved) return;
+        sp = await beginFolderSave(
+          folder.treeUri,
+          resolved.fileName,
+          "application/pdf",
+          resolved.overwrite,
+        );
+      } else {
+        sp = await invoke<string | null>("pick_save_file", {
+          defaultName: buildName(filePath, ["rotated"]),
+          initialDir: outDir || undefined,
+        }).catch(() => null);
+      }
       if (!sp) return;
       await moveFile(savedPath, sp).catch(async () => {
         const psize = resolvePageSizePt(pageSizeId, pageOrientation);

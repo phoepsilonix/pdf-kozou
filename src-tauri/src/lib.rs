@@ -66,6 +66,7 @@ pub fn run() {
     {
         builder = builder.plugin(crate::platform::android_fs_info::kozou_fs_info_plugin());
         builder = builder.plugin(crate::platform::android_media_store::kozou_media_store_plugin());
+        builder = builder.plugin(crate::platform::android_saf_folder::kozou_saf_folder_plugin());
     }
 
     let app = builder
@@ -111,12 +112,16 @@ pub fn run() {
             core::check_path_conflict,
             platform_cmd::get_screen_info,
             platform_cmd::is_mobile,
+            platform_cmd::is_android,
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
             platform_cmd::pick_save_file,
             platform_cmd::pick_save_file_in,
             platform_cmd::commit_saved_file,
             platform_cmd::discard_pending_save,
+            platform_cmd::pick_save_folder,
+            platform_cmd::check_save_name_exists,
+            platform_cmd::begin_folder_save,
             platform_cmd::pick_output_dir,
             platform_cmd::commit_saved_batch,
             #[cfg(desktop)]
