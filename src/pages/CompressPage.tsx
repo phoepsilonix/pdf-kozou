@@ -20,15 +20,16 @@ import {
   type CompressPreset,
   type CompressResponse,
   type PdfInfo,
+  type PickedFolder,
   joinPath,
-  isMobile,
+  isAndroid,
 } from "../lib/tauri";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
-  commitSavedBatch,
   type MobileSavedFileInfo,
 } from "../lib/mobileOutput";
+import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useA11y } from "../hooks/useA11y";
@@ -240,15 +241,17 @@ export function CompressPage({
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const inputFile = currentSource;
 
-  // ── モバイル (Android) 向けバッチ出力: フォルダピッカーが無いため、
-  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
-  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    isMobile()
-      .then(setMobile)
-      .catch(() => setMobile(false));
-  }, []);
+  // ── モバイル (Android) 向けバッチ出力: SAFフォルダ選択(useMobileBatchOutput)。
+  // iOS は従来通り決め打ちのサブフォルダ名を「保存先プレビュー」として
+  // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const {
+    mobile,
+    androidUI,
+    androidFolder,
+    pickAndroidFolder,
+    ensureAndroidFolder,
+    commitMobileOutput,
+  } = useMobileBatchOutput();
   const mobileRelativeDir = useMemo(
     () => buildMobileOutputSubfolder(`${batchFiles?.length ?? 0}件`),
     [batchFiles?.length],
@@ -319,16 +322,24 @@ export function CompressPage({
   // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
   // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string, filePaths: string[]) => {
+    async (dir: string, filePaths: string[], folderOverride?: PickedFolder | null) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
+        const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
+        if (saved === null) {
+          setMobileSaveError(t("mobile.save_cancelled" as any));
+          return;
+        }
         setMobileSavedFiles(saved);
       } catch (e) {
-        setMobileSaveError(String(e));
+        setMobileSaveError(
+          e instanceof Error && e.message === ANDROID_FOLDER_MISSING
+            ? t("mobile.save_unsupported" as any)
+            : String(e),
+        );
       }
     },
-    [mobile, mobileRelativeDir],
+    [mobile, mobileRelativeDir, commitMobileOutput, t],
   );
 
   const handlePreview = useCallback(async () => {
@@ -566,6 +577,11 @@ export function CompressPage({
       setError(t("compress.err_gs_path_not_found"));
       return;
     }
+    let androidFolderForRun: PickedFolder | null = null;
+    if (await isAndroid()) {
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
+    }
     setMobileSavedFiles(null);
     setMobileSaveError(null);
 
@@ -642,7 +658,7 @@ export function CompressPage({
       }
       setBatchProg({ ...prog });
     }
-    await finalizeMobileOutput(resolvedDir, producedPaths);
+    await finalizeMobileOutput(resolvedDir, producedPaths, androidFolderForRun);
     setPhase("batchResult");
   }, [
     batchFiles,
@@ -654,6 +670,7 @@ export function CompressPage({
     objectStream,
     outDir,
     pickDir,
+    ensureAndroidFolder,
     setError,
     finalizeMobileOutput,
   ]);
@@ -756,20 +773,22 @@ export function CompressPage({
         {mobile && (
           <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
             {mobileSaveError ? (
-              <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+              <span style={{ color: "var(--c-err)" }}>{mobileSaveError}</span>
             ) : mobileSavedFiles ? (
               <>
                 <div>
-                  {t("mobile.save_done_summary" as any, {
+                  {t("mobile.save_done_summary_folder" as any, {
                     count: String(mobileSavedFiles.length),
                   })}
                 </div>
                 <div>
                   {t("mobile.save_location" as any, {
-                    path: mobileOutputPreviewLabel(
-                      mobileRelativeDir,
-                      t("mobile.downloads_root" as any),
-                    ),
+                    path: androidUI
+                      ? (androidFolder?.folderName ?? "")
+                      : mobileOutputPreviewLabel(
+                          mobileRelativeDir,
+                          t("mobile.downloads_root" as any),
+                        ),
                   })}
                 </div>
               </>
@@ -1272,16 +1291,27 @@ export function CompressPage({
         {isBatch ? (
           <div style={c.batchExecBox}>
             {mobile ? (
-              <div style={c.dirRow}>
-                <div style={c.dirPath}>
-                  {t("mobile.save_preview" as any, {
-                    path: mobileOutputPreviewLabel(
-                      mobileRelativeDir,
-                      t("mobile.downloads_root" as any),
-                    ),
-                  })}
+              androidUI ? (
+                <div style={c.dirRow}>
+                  <div style={c.dirPath}>
+                    {androidFolder?.folderName || t("common.select_dir")}
+                  </div>
+                  <button style={c.dirPickBtn} onClick={() => pickAndroidFolder()}>
+                    {t("compress.select_folder")}
+                  </button>
                 </div>
-              </div>
+              ) : (
+                <div style={c.dirRow}>
+                  <div style={c.dirPath}>
+                    {t("mobile.save_preview" as any, {
+                      path: mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      ),
+                    })}
+                  </div>
+                </div>
+              )
             ) : (
               <div style={c.dirRow}>
                 <div style={c.dirPath}>{outDir || t("compress.no_dir_placeholder")}</div>
