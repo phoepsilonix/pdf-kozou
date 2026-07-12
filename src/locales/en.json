@@ -922,7 +922,16 @@
     "save_done_summary": "Saved {{count}} file(s) to your Downloads folder",
     "save_location": "Saved to: {{path}}",
     "save_unsupported": "Direct saving to a shared folder isn't supported on this version of Android. Files were saved to the app's temporary storage instead.",
-    "save_partial_error": "Failed to save {{count}} file(s)."
+    "save_partial_error": "Failed to save {{count}} file(s).",
+    "save_done_summary_folder": "Saved {{count}} file(s)",
+    "save_cancelled": "Save was cancelled. The processed results were not saved."
+  },
+  "batch_save_conflict": {
+    "title": "Some file names already exist",
+    "message": "{{count}} file(s) with the same name already exist in \"{{folder}}\".",
+    "overwrite": "Overwrite all",
+    "auto_rename": "Auto-number the conflicting files",
+    "cancel": "Cancel"
   },
   "save_conflict": {
     "title": "File name already exists",

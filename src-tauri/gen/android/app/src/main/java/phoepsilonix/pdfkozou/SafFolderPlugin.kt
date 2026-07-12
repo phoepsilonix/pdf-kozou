@@ -41,6 +41,7 @@ import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import java.io.IOException
@@ -56,6 +57,11 @@ class CreateFileArgs {
   lateinit var treeUri: String
   lateinit var fileName: String
   var mimeType: String? = null
+}
+
+@InvokeArg
+class ListFolderNamesArgs {
+  lateinit var treeUri: String
 }
 
 @TauriPlugin
@@ -131,6 +137,25 @@ class SafFolderPlugin(private val activity: Activity) : Plugin(activity) {
       invoke.resolve(r)
     } catch (ex: Exception) {
       invoke.reject(ex.message ?: "failed to create file")
+    }
+  }
+
+  // バッチ出力向け。findFile() を出力ファイル数だけ繰り返すと
+  // (DocumentFile.findFile() は内部で毎回 listFiles() 相当を行うため)
+  // O(件数 × フォルダ内ファイル数) になってしまう。事前に一度だけ
+  // フォルダの中身を列挙し、フロント側でまとめて突き合わせる。
+  @Command
+  fun listFolderNames(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(ListFolderNamesArgs::class.java)
+      val tree = DocumentFile.fromTreeUri(activity, Uri.parse(args.treeUri))
+        ?: throw IOException("invalid tree uri")
+      val names = tree.listFiles().mapNotNull { it.name }
+      val r = JSObject()
+      r.put("names", JSArray(names))
+      invoke.resolve(r)
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "failed to list folder contents")
     }
   }
 }

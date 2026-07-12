@@ -226,6 +226,27 @@ pub async fn check_save_name_exists(
     }
 }
 
+/// 指定フォルダ直下のファイル名一覧を返す(バッチ出力の事前衝突判定用)。
+/// 出力ファイル数だけ `check_save_name_exists` を呼ぶと
+/// `O(出力件数 × フォルダ内ファイル数)` になってしまうため、一度だけ
+/// 列挙してフロント側でまとめて突き合わせる。
+#[tauri::command]
+pub async fn list_folder_names(app: tauri::AppHandle, tree_uri: String) -> Result<Vec<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let state = app
+            .try_state::<platform::android_saf_folder::KozouSafFolder>()
+            .ok_or("SafFolderPlugin is not registered")?;
+        state.list_folder_names(&tree_uri)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (&app, &tree_uri);
+        Err("list_folder_names is only available on Android".to_string())
+    }
+}
+
 /// 選択済みフォルダ内へ保存を開始する。`overwrite = true` なら既存の
 /// 同名ファイルを、`false` なら(呼び出し側が一意であると確認済みの)
 /// 新しい名前でファイルを用意し、その実体(content:// URI)と
@@ -355,6 +376,97 @@ pub async fn commit_saved_batch(
     #[cfg(not(target_os = "android"))]
     {
         let _ = (&app, &temp_dir, &relative_dir, &file_paths);
+        Ok(vec![])
+    }
+}
+
+/// `commit_batch_to_folder` 1件分の書き込み指示。
+///
+/// `target_name`/`overwrite` はフロントエンド側で
+/// (`list_folder_names` の結果を使った)事前の衝突解決が済んでいる前提
+/// ―― つまり `overwrite == false` の場合、`target_name` は選択フォルダ内で
+/// 一意であることをフロント側が保証していること。
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchFolderEntry {
+    /// core が実際に書き出したローカルの一時ファイルパス
+    pub source_path: String,
+    /// 選択フォルダ内での最終的なファイル名(衝突解決済み)
+    pub target_name: String,
+    /// true: 同名の既存ファイルを上書き / false: 新規作成
+    pub overwrite: bool,
+    pub mime_type: Option<String>,
+}
+
+/// ユーザーが `pick_save_folder` で選んだフォルダへ、複数ファイルを
+/// まとめて書き込む(画像ファイル出力・バッチ画像PDF出力向け)。
+///
+/// 単一ファイル保存の `begin_folder_save` と同じ技法
+/// (`find_file`/`create_file` で `content://` URI を取得し、
+/// `tauri_plugin_fs` 経由で直接書き込む)をループで適用するだけで、
+/// Kotlin側の追加実装は不要。`PendingSaves` には登録しない
+/// (バッチ出力の個々のファイルは、単一ファイル保存のようにその場で
+/// メタデータ編集→再コミットする対象ではないため)。
+#[tauri::command]
+pub async fn commit_batch_to_folder(
+    app: tauri::AppHandle,
+    tree_uri: String,
+    entries: Vec<BatchFolderEntry>,
+) -> Result<Vec<SavedFileInfo>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        use tauri_plugin_fs::{FsExt, OpenOptions};
+
+        let state = app
+            .try_state::<platform::android_saf_folder::KozouSafFolder>()
+            .ok_or("SafFolderPlugin is not registered")?;
+
+        let mut results = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let uri = if entry.overwrite {
+                state
+                    .find_file(&tree_uri, &entry.target_name)?
+                    .ok_or_else(|| format!("上書き対象のファイルが見つかりません: {}", entry.target_name))?
+            } else {
+                state
+                    .create_file(&tree_uri, &entry.target_name, entry.mime_type.as_deref())?
+                    .uri
+            };
+
+            let dest = url::Url::parse(&uri)
+                .map(tauri_plugin_fs::FilePath::Url)
+                .map_err(|e| format!("保存先URIの解析に失敗しました: {e}"))?;
+
+            let bytes = std::fs::read(&entry.source_path).map_err(|e| {
+                format!(
+                    "一時ファイルの読み込みに失敗しました ({}): {e}",
+                    entry.source_path
+                )
+            })?;
+
+            let mut opts = OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            let mut file = app
+                .fs()
+                .open(dest, opts)
+                .map_err(|e| format!("保存先への書き込みに失敗しました: {e}"))?;
+            use std::io::Write;
+            file.write_all(&bytes)
+                .map_err(|e| format!("保存先への書き込みに失敗しました: {e}"))?;
+
+            results.push(SavedFileInfo {
+                uri,
+                display_name: entry.target_name.clone(),
+                relative_path: String::new(),
+                source_relative: entry.source_path.clone(),
+            });
+        }
+        Ok(results)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (&app, &tree_uri, &entries);
         Ok(vec![])
     }
 }

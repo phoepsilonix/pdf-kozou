@@ -124,6 +124,8 @@ pub fn run() {
             platform_cmd::begin_folder_save,
             platform_cmd::pick_output_dir,
             platform_cmd::commit_saved_batch,
+            platform_cmd::list_folder_names,
+            platform_cmd::commit_batch_to_folder,
             #[cfg(desktop)]
             gs_detector::check_ghostscript_installed,
             #[cfg(desktop)]

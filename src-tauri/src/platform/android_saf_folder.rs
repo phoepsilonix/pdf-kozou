@@ -77,6 +77,18 @@ struct CreateFileResponse {
     display_name: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListFolderNamesArgs<'a> {
+    tree_uri: &'a str,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListFolderNamesResponse {
+    names: Vec<String>,
+}
+
 /// ユーザーが選んだ保存先フォルダ。`tree_uri` は次回以降の存在確認・
 /// 保存呼び出しにそのまま使い回せる(`takePersistableUriPermission` 済み)。
 #[derive(Clone, Serialize)]
@@ -154,6 +166,21 @@ impl KozouSafFolder {
             uri: resp.uri,
             display_name: resp.display_name,
         })
+    }
+
+    /// 指定フォルダ直下のファイル名一覧を返す(バッチ出力の事前衝突判定
+    /// 用)。出力ファイル数だけ `find_file` を繰り返すと
+    /// `O(出力件数 × フォルダ内ファイル数)` になってしまうため、一度だけ
+    /// 列挙してフロント側でまとめて突き合わせる。
+    pub fn list_folder_names(&self, tree_uri: &str) -> Result<Vec<String>, String> {
+        let resp = self
+            .0
+            .run_mobile_plugin::<ListFolderNamesResponse>(
+                "listFolderNames",
+                ListFolderNamesArgs { tree_uri },
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(resp.names)
     }
 }
 

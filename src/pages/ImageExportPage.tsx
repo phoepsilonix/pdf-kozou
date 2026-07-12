@@ -53,7 +53,10 @@ import {
   splitImpositionPdf,
   splitCellRender,
   isMobile,
+  isAndroid,
 } from "../lib/tauri";
+import { useBatchSaveFolder } from "../hooks/useBatchSaveFolder";
+import { guessMimeTypeFromPath } from "../lib/mimeType";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { useViewport } from "../hooks/useViewport";
@@ -250,6 +253,22 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       .then(setMobile)
       .catch(() => setMobile(false));
   }, []);
+  // Android かどうか(JSXの分岐は同期的な値が要るため、isAndroid() の結果を
+  // ここでstate化しておく。実処理側は毎回 isAndroid() を直接awaitして使う)
+  const [androidUI, setAndroidUI] = useState(false);
+  useEffect(() => {
+    isAndroid()
+      .then(setAndroidUI)
+      .catch(() => setAndroidUI(false));
+  }, []);
+  // Android: SAFフォルダ選択によるバッチ出力(iOS/デスクトップでは folder は
+  // 常に null のまま; finalizeMobileOutput 側で isAndroid() を見て分岐する)
+  const {
+    folder: androidFolder,
+    pickFolder: pickAndroidFolder,
+    ensureFolder: ensureAndroidFolder,
+    commitBatch: commitAndroidBatch,
+  } = useBatchSaveFolder();
   const mobileRelativeDir = useMemo(() => {
     const label =
       batchFiles && batchFiles.length > 0
@@ -529,13 +548,35 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     async (dir: string, filePaths: string[]) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
-        setMobileSavedFiles(saved);
+        if (await isAndroid()) {
+          if (!androidFolder) {
+            // 実行前に ensureAndroidFolder() 済みのはずだが、保険。
+            setMobileSaveError(t("mobile.save_unsupported" as any));
+            return;
+          }
+          const saved = await commitAndroidBatch(filePaths, guessMimeTypeFromPath);
+          if (saved === null) {
+            // 衝突確認モーダルでキャンセル: 処理結果は一時領域に残るが保存はしない
+            setMobileSaveError(t("mobile.save_cancelled" as any));
+            return;
+          }
+          setMobileSavedFiles(
+            saved.map((s) => ({
+              uri: s.uri,
+              displayName: s.displayName,
+              relativePath: s.relativePath,
+              sourceRelative: s.sourceRelative,
+            })),
+          );
+        } else {
+          const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
+          setMobileSavedFiles(saved);
+        }
       } catch (e) {
         setMobileSaveError(String(e));
       }
     },
-    [mobile, mobileRelativeDir],
+    [mobile, mobileRelativeDir, androidFolder, commitAndroidBatch],
   );
 
   // サイズ概算（目安）。入力1ページの基準サイズ（A4 595×842pt）を基に、
@@ -641,6 +682,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       // 個別画像出力（JPEG/PNG/SVG）
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return;
+      if (await isAndroid()) {
+        if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
+      }
       setPhase("processing");
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -705,6 +749,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (outputMode === "images" && impositionMode !== "1up" && !isBatch) {
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return; // キャンセル
+      if (await isAndroid()) {
+        if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
+      }
       setPhase("processing");
       setStatusMsg(t("image.imposition_rendering_init" as any));
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -820,6 +867,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const d = await pickDir();
       if (!d) return; // キャンセル
       effectiveOutDir = d;
+    }
+    if (outputMode === "images" && (await isAndroid())) {
+      if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
     setPhase("processing");
@@ -957,6 +1007,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     pickSave,
     commitSave,
     pickDir,
+    ensureAndroidFolder,
+    finalizeMobileOutput,
     setError,
     announceSuccess,
     announceError,
@@ -973,6 +1025,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const handleExecuteBatch = useCallback(async () => {
     const batchDir = outDir || (await pickDir());
     if (!batchDir) return; // キャンセル
+    if (await isAndroid()) {
+      if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
+    }
     if (conflictPaths.length > 0) return;
     setMobileSavedFiles(null);
     setMobileSaveError(null);
@@ -1207,9 +1262,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       setBatchProgress({ ...progress });
     }
 
-    // Android: 一時ディレクトリに書き出した結果を、ユーザーから見える
-    // 「ダウンロード」フォルダ配下へコピーする。ピッカーを使っていない
-    // ため、実行前プレビューと同じ mobileRelativeDir をそのまま使う。
+    // Android: SAFで選択したフォルダへ、iOS: 従来通りDownloads配下へ。
     // ⚠ batchDir は共有の一時ディレクトリ (使い回し) なので、丸ごと
     // コピーせず、この回で実際に書き出したファイル (progress.done の
     // pdfPath / savedFiles) だけを対象にする。
@@ -1217,12 +1270,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const producedPaths = progress.done.flatMap((d) =>
         d.pdfPath ? [d.pdfPath] : (d.savedFiles ?? []),
       );
-      try {
-        const saved = await commitSavedBatch(batchDir, mobileRelativeDir, producedPaths);
-        setMobileSavedFiles(saved);
-      } catch (e) {
-        setMobileSaveError(String(e));
-      }
+      await finalizeMobileOutput(batchDir, producedPaths);
     }
 
     announceSuccess("done.image");
@@ -1243,6 +1291,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     imageName,
     imagePrefix,
     pickDir,
+    ensureAndroidFolder,
+    finalizeMobileOutput,
     announceSuccess,
     t,
     convertLayoutW,
@@ -1355,20 +1405,22 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           {mobile ? (
             <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
               {mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+                <span style={{ color: "var(--c-err)" }}>{mobileSaveError}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary" as any, {
+                    {t("mobile.save_done_summary_folder" as any, {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      ),
+                      path: androidUI
+                        ? (androidFolder?.folderName ?? "")
+                        : mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
                     })}
                   </div>
                 </>
@@ -1471,22 +1523,22 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               {mobile ? (
                 <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
                   {mobileSaveError ? (
-                    <span style={{ color: "var(--c-err)" }}>
-                      {t("mobile.save_unsupported" as any)}
-                    </span>
+                    <span style={{ color: "var(--c-err)" }}>{mobileSaveError}</span>
                   ) : mobileSavedFiles ? (
                     <>
                       <div>
-                        {t("mobile.save_done_summary" as any, {
+                        {t("mobile.save_done_summary_folder" as any, {
                           count: String(mobileSavedFiles.length),
                         })}
                       </div>
                       <div>
                         {t("mobile.save_location" as any, {
-                          path: mobileOutputPreviewLabel(
-                            mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
-                          ),
+                          path: androidUI
+                            ? (androidFolder?.folderName ?? "")
+                            : mobileOutputPreviewLabel(
+                                mobileRelativeDir,
+                                t("mobile.downloads_root" as any),
+                              ),
                         })}
                       </div>
                     </>
@@ -1916,22 +1968,37 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <>
                 <div style={s.secLabel}>{t("image.output_dir")}</div>
                 {mobile ? (
-                  <div style={s.dirRow}>
-                    <div
-                      style={s.dirPath}
-                      title={mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      )}
-                    >
-                      {t("mobile.save_preview" as any, {
-                        path: mobileOutputPreviewLabel(
+                  androidUI ? (
+                    <div style={s.dirRow}>
+                      <div style={s.dirPath} title={androidFolder?.folderName ?? ""}>
+                        {androidFolder?.folderName || t("common.select_dir")}
+                      </div>
+                      <button
+                        style={s.dirPickBtn}
+                        onClick={() => pickAndroidFolder()}
+                        aria-label={t("aria.output_dir_btn")}
+                      >
+                        {t("common.browse")}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={s.dirRow}>
+                      <div
+                        style={s.dirPath}
+                        title={mobileOutputPreviewLabel(
                           mobileRelativeDir,
                           t("mobile.downloads_root" as any),
-                        ),
-                      })}
+                        )}
+                      >
+                        {t("mobile.save_preview" as any, {
+                          path: mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <div style={s.dirRow}>
                     <div style={s.dirPath} title={outDir}>

@@ -922,7 +922,16 @@
     "save_done_summary": "{{count}}件のファイルをダウンロードフォルダに保存しました",
     "save_location": "保存先: {{path}}",
     "save_unsupported": "お使いのAndroidのバージョンでは、共有フォルダへの直接保存に対応していません。アプリ内の一時領域に保存されています。",
-    "save_partial_error": "{{count}}件のファイルの保存に失敗しました。"
+    "save_partial_error": "{{count}}件のファイルの保存に失敗しました。",
+    "save_done_summary_folder": "{{count}}件のファイルを保存しました",
+    "save_cancelled": "保存はキャンセルされました。処理結果は保存されていません。"
+  },
+  "batch_save_conflict": {
+    "title": "ファイル名の重複",
+    "message": "「{{folder}}」フォルダに、同名のファイルが{{count}}件あります。",
+    "overwrite": "すべて上書きする",
+    "auto_rename": "重複分だけ自動的に連番をつけて保存",
+    "cancel": "キャンセル"
   },
   "save_conflict": {
     "title": "ファイル名の重複",

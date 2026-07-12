@@ -859,6 +859,45 @@ export async function pickOutputDir(): Promise<string | null> {
   return invoke<string | null>("pick_output_dir");
 }
 
+/**
+ * 選択済みフォルダ直下のファイル名一覧(モバイルのみ)。バッチ出力の
+ * 事前衝突判定に使う。出力ファイル数だけ checkSaveNameExists() を
+ * 呼ぶと件数 × フォルダ内ファイル数のコストがかかるため、一度だけ
+ * 列挙してフロント側でまとめて突き合わせること。
+ */
+export async function listFolderNames(treeUri: string): Promise<string[]> {
+  return await invoke<string[]>("list_folder_names", { treeUri });
+}
+
+/** commitBatchToFolder() に渡す1ファイル分の書き込み指示。 */
+export interface BatchFolderEntry {
+  sourcePath: string;
+  /** 選択フォルダ内での最終的なファイル名(事前の衝突解決済みであること) */
+  targetName: string;
+  overwrite: boolean;
+  mimeType?: string | null;
+}
+
+export interface BatchSavedFileInfo {
+  uri: string;
+  displayName: string;
+  relativePath: string;
+  sourceRelative: string;
+}
+
+/**
+ * ユーザーが pickSaveFolder() で選んだフォルダへ、複数ファイルをまとめて
+ * 書き込む(モバイルのみ。画像ファイル出力・バッチ画像PDF出力向け)。
+ * 呼び出し前に listFolderNames() 等で衝突解決を済ませ、entries の
+ * targetName/overwrite を確定させておくこと。
+ */
+export async function commitBatchToFolder(
+  treeUri: string,
+  entries: BatchFolderEntry[],
+): Promise<BatchSavedFileInfo[]> {
+  return await invoke<BatchSavedFileInfo[]>("commit_batch_to_folder", { treeUri, entries });
+}
+
 // ── PDF 情報取得 ──────────────────────────────────────────────────────────────
 
 export async function getPdfInfo(path: string, options?: ConvertOptions): Promise<PdfInfo> {
