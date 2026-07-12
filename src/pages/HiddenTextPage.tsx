@@ -333,7 +333,8 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     // モバイル向けのフォルダ選択ダイアログを実装していない
     // (ファイル選択・保存ダイアログのみ)。モバイルではこの分岐を
     // 使わず、pick_output_dir 経由でアプリの一時ディレクトリを取得し、
-    // 実行後に commitSavedBatch でダウンロードフォルダへ移す。
+    // 実行後に finalizeMobileOutput で保存先(Android: SAFで選択した
+    // フォルダ / iOS: ダウンロードフォルダ)へ移す。
     if (mobile) {
       const dir = await invoke("pick_output_dir").catch(() => null);
       if (dir) setOutDir(String(dir));
