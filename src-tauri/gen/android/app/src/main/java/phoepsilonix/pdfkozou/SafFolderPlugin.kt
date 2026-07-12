@@ -64,6 +64,12 @@ class ListFolderNamesArgs {
   lateinit var treeUri: String
 }
 
+@InvokeArg
+class GetOrCreateSubfolderArgs {
+  lateinit var treeUri: String
+  lateinit var name: String
+}
+
 @TauriPlugin
 class SafFolderPlugin(private val activity: Activity) : Plugin(activity) {
 
@@ -156,6 +162,37 @@ class SafFolderPlugin(private val activity: Activity) : Plugin(activity) {
       invoke.resolve(r)
     } catch (ex: Exception) {
       invoke.reject(ex.message ?: "failed to list folder contents")
+    }
+  }
+
+  // デスクトップ版は、バッチの画像出力で入力PDFごとにサブフォルダを
+  // 作る(例: "invoice1/page_001.jpg")。SAF側でも同じ構成を再現しないと
+  // 複数PDFの page_001.jpg 等が選択フォルダ直下で衝突してしまうため、
+  // 既存の子ディレクトリを探すか、無ければ作成して返す。
+  //
+  // 返す URI は findFile/createFile/listFolderNames にそのまま
+  // treeUri として渡せる(DocumentFile.fromTreeUri は、渡された URI が
+  // 既に "document" 形式であれば isDocumentUri() 判定でその
+  // ドキュメントIDをそのまま使うため、ツリーのルートへ戻ってしまう
+  // ことはない)。
+  @Command
+  fun getOrCreateSubfolder(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(GetOrCreateSubfolderArgs::class.java)
+      val tree = DocumentFile.fromTreeUri(activity, Uri.parse(args.treeUri))
+        ?: throw IOException("invalid tree uri")
+      val existing = tree.findFile(args.name)
+      val sub = if (existing != null && existing.isDirectory) {
+        existing
+      } else {
+        tree.createDirectory(args.name)
+          ?: throw IOException("failed to create subfolder: ${args.name}")
+      }
+      val r = JSObject()
+      r.put("uri", sub.uri.toString())
+      invoke.resolve(r)
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "failed to get or create subfolder")
     }
   }
 }

@@ -250,6 +250,29 @@ pub async fn list_folder_names(
     }
 }
 
+/// デスクトップ版のバッチ画像出力(入力PDFごとのサブフォルダ)を
+/// SAF側でも再現するための、子ディレクトリの取得(無ければ作成)コマンド。
+#[tauri::command]
+pub async fn get_or_create_subfolder(
+    app: tauri::AppHandle,
+    tree_uri: String,
+    name: String,
+) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let state = app
+            .try_state::<platform::android_saf_folder::KozouSafFolder>()
+            .ok_or("SafFolderPlugin is not registered")?;
+        state.get_or_create_subfolder(&tree_uri, &name)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (&app, &tree_uri, &name);
+        Err("get_or_create_subfolder is only available on Android".to_string())
+    }
+}
+
 /// 選択済みフォルダ内へ保存を開始する。`overwrite = true` なら既存の
 /// 同名ファイルを、`false` なら(呼び出し側が一意であると確認済みの)
 /// 新しい名前でファイルを用意し、その実体(content:// URI)と

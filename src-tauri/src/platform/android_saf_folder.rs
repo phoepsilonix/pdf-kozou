@@ -89,6 +89,19 @@ struct ListFolderNamesResponse {
     names: Vec<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GetOrCreateSubfolderArgs<'a> {
+    tree_uri: &'a str,
+    name: &'a str,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetOrCreateSubfolderResponse {
+    uri: String,
+}
+
 /// ユーザーが選んだ保存先フォルダ。`tree_uri` は次回以降の存在確認・
 /// 保存呼び出しにそのまま使い回せる(`takePersistableUriPermission` 済み)。
 #[derive(Clone, Serialize)]
@@ -181,6 +194,21 @@ impl KozouSafFolder {
             )
             .map_err(|e| e.to_string())?;
         Ok(resp.names)
+    }
+
+    /// デスクトップ版のバッチ画像出力(入力PDFごとのサブフォルダ)を
+    /// SAF側でも再現するための、子ディレクトリの取得(無ければ作成)。
+    /// 戻り値の URI は findFile/create_file/list_folder_names に
+    /// そのまま tree_uri として渡せる。
+    pub fn get_or_create_subfolder(&self, tree_uri: &str, name: &str) -> Result<String, String> {
+        let resp = self
+            .0
+            .run_mobile_plugin::<GetOrCreateSubfolderResponse>(
+                "getOrCreateSubfolder",
+                GetOrCreateSubfolderArgs { tree_uri, name },
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(resp.uri)
     }
 }
 

@@ -54,6 +54,7 @@ import {
   splitCellRender,
   isMobile,
   isAndroid,
+  type PickedFolder,
 } from "../lib/tauri";
 import { useBatchSaveFolder } from "../hooks/useBatchSaveFolder";
 import { guessMimeTypeFromPath } from "../lib/mimeType";
@@ -267,7 +268,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     folder: androidFolder,
     pickFolder: pickAndroidFolder,
     ensureFolder: ensureAndroidFolder,
-    commitBatch: commitAndroidBatch,
+    commitGrouped: commitAndroidBatchGrouped,
   } = useBatchSaveFolder();
   const mobileRelativeDir = useMemo(() => {
     const label =
@@ -282,6 +283,19 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchFiles?.length, batchFiles?.[0]?.filename, srcStem]);
   const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
+  // 自動連番等で実際の保存名がローカルの一時ファイル名と異なる場合があるため、
+  // 結果画面のファイル一覧はこちらを優先して表示する
+  // (キー: ローカル一時ファイルパス = MobileSavedFileInfo.sourceRelative)。
+  const savedNameByPath = useMemo(() => {
+    if (!mobileSavedFiles) return null;
+    const m = new Map<string, string>();
+    for (const s of mobileSavedFiles) m.set(s.sourceRelative, s.displayName);
+    return m;
+  }, [mobileSavedFiles]);
+  const displayNameFor = useCallback(
+    (path: string): string => savedNameByPath?.get(path) ?? path.split(/[\\/]/).pop() ?? path,
+    [savedNameByPath],
+  );
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
 
   // 現在のモードに対応するファイル名トークンのキー
@@ -545,16 +559,26 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
   // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string, filePaths: string[]) => {
+    async (dir: string, filePaths: string[], folderOverride?: PickedFolder | null) => {
       if (!mobile) return;
       try {
         if (await isAndroid()) {
-          if (!androidFolder) {
+          // ⚠ androidFolder (フック state) は setFolder 直後の再レンダー前だと
+          // 古い値(null)のことがあるため、実行前に ensureAndroidFolder()/
+          // pickAndroidFolder() が返した値をそのまま folderOverride として
+          // 受け取り、そちらを優先する。
+          const folder = folderOverride ?? androidFolder;
+          if (!folder) {
             // 実行前に ensureAndroidFolder() 済みのはずだが、保険。
             setMobileSaveError(t("mobile.save_unsupported" as any));
             return;
           }
-          const saved = await commitAndroidBatch(filePaths, guessMimeTypeFromPath);
+          const saved = await commitAndroidBatchGrouped(
+            folder,
+            dir,
+            filePaths,
+            guessMimeTypeFromPath,
+          );
           if (saved === null) {
             // 衝突確認モーダルでキャンセル: 処理結果は一時領域に残るが保存はしない
             setMobileSaveError(t("mobile.save_cancelled" as any));
@@ -576,7 +600,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         setMobileSaveError(String(e));
       }
     },
-    [mobile, mobileRelativeDir, androidFolder, commitAndroidBatch],
+    [mobile, mobileRelativeDir, androidFolder, commitAndroidBatchGrouped],
   );
 
   // サイズ概算（目安）。入力1ページの基準サイズ（A4 595×842pt）を基に、
@@ -682,8 +706,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       // 個別画像出力（JPEG/PNG/SVG）
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return;
+      let androidFolderForRun: PickedFolder | null = null;
       if (await isAndroid()) {
-        if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
+        androidFolderForRun = await ensureAndroidFolder();
+        if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
       setPhase("processing");
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -726,7 +752,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         setImages(savedFiles);
         setOutDir(resolvedDir);
         setStatusMsg("");
-        await finalizeMobileOutput(resolvedDir, savedFiles);
+        await finalizeMobileOutput(resolvedDir, savedFiles, androidFolderForRun);
         announceSuccess("done.image");
         setPhase("result");
       } catch (e) {
@@ -749,8 +775,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (outputMode === "images" && impositionMode !== "1up" && !isBatch) {
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return; // キャンセル
+      let androidFolderForRun: PickedFolder | null = null;
       if (await isAndroid()) {
-        if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
+        androidFolderForRun = await ensureAndroidFolder();
+        if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
       setPhase("processing");
       setStatusMsg(t("image.imposition_rendering_init" as any));
@@ -850,7 +878,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           savedFiles.push(outPath);
         }
         setImages(savedFiles);
-        await finalizeMobileOutput(resolvedDir, savedFiles);
+        await finalizeMobileOutput(resolvedDir, savedFiles, androidFolderForRun);
         setPhase("result");
         setStatusMsg(
           t("image.imposition_done" as any, { count: String(totalSheets), dir: resolvedDir }),
@@ -868,8 +896,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (!d) return; // キャンセル
       effectiveOutDir = d;
     }
+    let androidFolderForRun: PickedFolder | null = null;
     if (outputMode === "images" && (await isAndroid())) {
-      if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
     setPhase("processing");
@@ -976,7 +1006,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
         console.log("res", res);
         setImages(res.files);
-        await finalizeMobileOutput(effectiveOutDir, res.files);
+        await finalizeMobileOutput(effectiveOutDir, res.files, androidFolderForRun);
         announceSuccess("done.image");
         setPhase("result");
       }
@@ -1025,8 +1055,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const handleExecuteBatch = useCallback(async () => {
     const batchDir = outDir || (await pickDir());
     if (!batchDir) return; // キャンセル
+    let androidFolderForRun: PickedFolder | null = null;
     if (await isAndroid()) {
-      if (!(await ensureAndroidFolder())) return; // フォルダ選択をキャンセル
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return;
     setMobileSavedFiles(null);
@@ -1270,7 +1302,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const producedPaths = progress.done.flatMap((d) =>
         d.pdfPath ? [d.pdfPath] : (d.savedFiles ?? []),
       );
-      await finalizeMobileOutput(batchDir, producedPaths);
+      await finalizeMobileOutput(batchDir, producedPaths, androidFolderForRun);
     }
 
     announceSuccess("done.image");
@@ -1438,14 +1470,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.bpFile}>{d.file} → </span>
                 {d.pdfPath ? (
                   <>
-                    <span style={s.bpMeta}>{d.pdfPath.split(/[\/\\]/).pop() ?? ""}</span>
+                    <span style={s.bpMeta}>{displayNameFor(d.pdfPath)}</span>
                     <span style={s.bpCount}>
                       {t("image.pages_count", { count: String(d.count) })}
                     </span>
                   </>
                 ) : d.savedFiles && d.savedFiles.length > 0 ? (
                   <>
-                    <span style={s.bpMeta}>{d.savedFiles[0].split(/[\/\\]/).pop() ?? ""}</span>
+                    <span style={s.bpMeta}>{displayNameFor(d.savedFiles[0])}</span>
                     <span style={s.bpCount}>
                       {t("image.images_total", { count: String(d.savedFiles.length) })}
                     </span>
@@ -1553,7 +1585,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 {images.slice(0, 20).map((f, i) => (
                   <div key={i} style={s.bpRow}>
                     <span>🖼</span>
-                    <span style={s.bpFile}>{f.split(/[/\\]/).pop()}</span>
+                    <span style={s.bpFile}>{displayNameFor(f)}</span>
                   </div>
                 ))}
                 {images.length > 20 && (

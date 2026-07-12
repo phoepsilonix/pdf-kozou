@@ -869,6 +869,15 @@ export async function listFolderNames(treeUri: string): Promise<string[]> {
   return await invoke<string[]>("list_folder_names", { treeUri });
 }
 
+/**
+ * デスクトップ版のバッチ画像出力(入力PDFごとのサブフォルダ)を
+ * SAF側でも再現するための、子ディレクトリの取得(無ければ作成)。
+ * 戻り値の treeUri は listFolderNames/commitBatchToFolder にそのまま渡せる。
+ */
+export async function getOrCreateSubfolder(treeUri: string, name: string): Promise<string> {
+  return await invoke<string>("get_or_create_subfolder", { treeUri, name });
+}
+
 /** commitBatchToFolder() に渡す1ファイル分の書き込み指示。 */
 export interface BatchFolderEntry {
   sourcePath: string;

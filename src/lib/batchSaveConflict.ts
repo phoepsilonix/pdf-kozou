@@ -7,9 +7,15 @@
 // バッチでは出力ファイルが数十件になり得るため、同じやり方だと
 // (a) 確認ダイアログが件数分出て煩雑、(b) 存在確認のIPCも件数分発生し遅い。
 //
-// そこで listFolderNames() で選択フォルダの中身を一度だけ列挙し、
+// そこで listFolderNames() で対象フォルダの中身を一度だけ列挙し、
 // 衝突の有無をローカルで判定した上で、衝突があれば
 // 「すべて上書き / 重複分だけ自動連番 / キャンセル」を1回だけ確認する。
+//
+// デスクトップ版のバッチ画像出力は入力PDFごとにサブフォルダを作るため、
+// 保存先も「ルート」と「PDFごとのサブフォルダ」の複数フォルダにまたがる
+// ことがある。フォルダごとに確認を出すと、後のフォルダでキャンセルした
+// 場合に前のフォルダ分だけ保存されてしまう(中途半端な状態)。そのため
+// 全フォルダ分をまとめて事前スキャンしてから、確認は1回だけ行う。
 
 import { listFolderNames } from "./tauri";
 import { useBatchSaveConflictStore } from "../store/useBatchSaveConflictStore";
@@ -42,47 +48,75 @@ export interface ResolvedBatchEntry {
   overwrite: boolean;
 }
 
+/** 事前スキャン対象の1フォルダ分。 */
+export interface PlannedGroup {
+  /** そのフォルダの content:// tree URI (ルートまたはサブフォルダ) */
+  treeUri: string;
+  /** そのフォルダへ書き出す予定のファイル名一覧(グループ内で一意なこと) */
+  plannedNames: string[];
+}
+
 /**
- * `plannedNames`(これから書き出す予定のファイル名一覧。呼び出し側で
- * あらかじめ一意であることを保証しておくこと)を選択フォルダの中身と
- * 突き合わせ、衝突を解決する。
- *
- * 戻り値は `plannedNames` の各要素をキーとした解決結果マップ。
- * ユーザーがキャンセルした場合は null。
+ * 複数フォルダ分をまとめて事前スキャンし、衝突があれば1回だけ確認する。
+ * 戻り値は `treeUri` → (`plannedName` → 解決結果) のマップ。
+ * ユーザーがキャンセルした場合は null(どのフォルダにも書き込まないこと)。
  */
+export async function resolveGroupsSaveConflict(
+  groups: PlannedGroup[],
+  folderLabel: string,
+): Promise<Map<string, Map<string, ResolvedBatchEntry>> | null> {
+  const existingByGroup = new Map<string, Set<string>>();
+  let conflictCount = 0;
+  for (const g of groups) {
+    const existing = new Set(await listFolderNames(g.treeUri));
+    existingByGroup.set(g.treeUri, existing);
+    conflictCount += g.plannedNames.filter((n) => existing.has(n)).length;
+  }
+
+  const result = new Map<string, Map<string, ResolvedBatchEntry>>();
+
+  if (conflictCount === 0) {
+    for (const g of groups) {
+      const m = new Map<string, ResolvedBatchEntry>();
+      for (const n of g.plannedNames) m.set(n, { finalName: n, overwrite: false });
+      result.set(g.treeUri, m);
+    }
+    return result;
+  }
+
+  const choice = await useBatchSaveConflictStore.getState().ask(conflictCount, folderLabel);
+  if (choice.action === "cancel") return null;
+
+  for (const g of groups) {
+    const existing = existingByGroup.get(g.treeUri)!;
+    const m = new Map<string, ResolvedBatchEntry>();
+
+    if (choice.action === "overwrite") {
+      for (const n of g.plannedNames) m.set(n, { finalName: n, overwrite: existing.has(n) });
+    } else {
+      // choice.action === "auto"
+      // 既存ファイル名に加えて、今まさに割り当てた新しい名前も逐次
+      // reserved に加えることで、同一フォルダ内の出力ファイル同士の
+      // 衝突も防ぐ(フォルダが分かれていれば同名でも問題ないため、
+      // reserved はグループごとに独立させる)。
+      const reserved = new Set(existing);
+      for (const n of g.plannedNames) {
+        const finalName = findAutoRenamedNameLocal(reserved, n);
+        reserved.add(finalName);
+        m.set(n, { finalName, overwrite: false });
+      }
+    }
+    result.set(g.treeUri, m);
+  }
+  return result;
+}
+
+/** 単一フォルダのみの場合の簡易版(resolveGroupsSaveConflict の薄いラッパー)。 */
 export async function resolveBatchSaveConflict(
   treeUri: string,
   plannedNames: string[],
   folderName: string,
 ): Promise<Map<string, ResolvedBatchEntry> | null> {
-  const existingNames = new Set(await listFolderNames(treeUri));
-  const conflictCount = plannedNames.filter((n) => existingNames.has(n)).length;
-
-  const result = new Map<string, ResolvedBatchEntry>();
-
-  if (conflictCount === 0) {
-    for (const n of plannedNames) result.set(n, { finalName: n, overwrite: false });
-    return result;
-  }
-
-  const choice = await useBatchSaveConflictStore.getState().ask(conflictCount, folderName);
-  if (choice.action === "cancel") return null;
-
-  if (choice.action === "overwrite") {
-    for (const n of plannedNames) {
-      result.set(n, { finalName: n, overwrite: existingNames.has(n) });
-    }
-    return result;
-  }
-
-  // choice.action === "auto"
-  // 既存ファイル名に加えて、バッチ内で今まさに割り当てた新しい名前も
-  // 逐次 reserved に加えることで、出力ファイル同士の衝突も防ぐ。
-  const reserved = new Set(existingNames);
-  for (const n of plannedNames) {
-    const finalName = findAutoRenamedNameLocal(reserved, n);
-    reserved.add(finalName);
-    result.set(n, { finalName, overwrite: false });
-  }
-  return result;
+  const result = await resolveGroupsSaveConflict([{ treeUri, plannedNames }], folderName);
+  return result?.get(treeUri) ?? null;
 }
