@@ -24,14 +24,15 @@ import {
   type SplitResponse,
   type PdfInfo,
   type OverrideMeta,
-  isMobile,
+  type PickedFolder,
+  isAndroid,
 } from "../lib/tauri";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
-  commitSavedBatch,
   type MobileSavedFileInfo,
 } from "../lib/mobileOutput";
+import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
 import { MetadataEditModal } from "../components/MetadataEditModal";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
@@ -165,17 +166,19 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     [splitPrefix, srcStem, isBatch, keepOriginalName],
   );
 
-  // ── モバイル (Android) 向け出力: フォルダピッカーが無いため、
-  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
-  // 実行後に同じ名前で MediaStore の Downloads へコピーする。
+  // ── モバイル (Android) 向け出力: SAFフォルダ選択(useMobileBatchOutput)。
+  // iOS は従来通り決め打ちのサブフォルダ名を「保存先プレビュー」として
+  // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする。
   // 分割はバッチでなくても常に複数ファイル出力になるため、単体/バッチ
   // 両方でこの仕組みを使う。
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    isMobile()
-      .then(setMobile)
-      .catch(() => setMobile(false));
-  }, []);
+  const {
+    mobile,
+    androidUI,
+    androidFolder,
+    pickAndroidFolder,
+    ensureAndroidFolder,
+    commitMobileOutput,
+  } = useMobileBatchOutput();
   const mobileRelativeDir = useMemo(() => {
     const label =
       isBatch && batchFiles && batchFiles.length > 0 ? `${batchFiles.length}件` : srcStem;
@@ -184,6 +187,19 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   }, [isBatch, batchFiles?.length, srcStem]);
   const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
+  // 自動連番等で実際の保存名がローカルの一時ファイル名と異なる場合があるため、
+  // 結果画面のファイル一覧はこちらを優先して表示する
+  // (キー: ローカル一時ファイルパス = MobileSavedFileInfo.sourceRelative)。
+  const savedNameByPath = useMemo(() => {
+    if (!mobileSavedFiles) return null;
+    const m = new Map<string, string>();
+    for (const s of mobileSavedFiles) m.set(s.sourceRelative, s.displayName);
+    return m;
+  }, [mobileSavedFiles]);
+  const displayNameFor = useCallback(
+    (path: string): string => savedNameByPath?.get(path) ?? path.split(/[\\/]/).pop() ?? path,
+    [savedNameByPath],
+  );
 
   // ── サムネイル取得（プレビュー対象ファイル） ─────────────────────────────
   useEffect(() => {
@@ -271,16 +287,24 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
   // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string, filePaths: string[]) => {
+    async (dir: string, filePaths: string[], folderOverride?: PickedFolder | null) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
+        const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
+        if (saved === null) {
+          setMobileSaveError(t("mobile.save_cancelled" as any));
+          return;
+        }
         setMobileSavedFiles(saved);
       } catch (e) {
-        setMobileSaveError(String(e));
+        setMobileSaveError(
+          e instanceof Error && e.message === ANDROID_FOLDER_MISSING
+            ? t("mobile.save_unsupported" as any)
+            : String(e),
+        );
       }
     },
-    [mobile, mobileRelativeDir],
+    [mobile, mobileRelativeDir, commitMobileOutput, t],
   );
 
   // 画面表示時の読み上げ
@@ -321,6 +345,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const handleExecuteSingle = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
+    let androidFolderForRun: PickedFolder | null = null;
+    if (await isAndroid()) {
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
+    }
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     setPhase("processing");
@@ -347,7 +376,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       setSavedDir(resolvedDir);
       const msg = t("common.files_split_done", { count: String(res.files.length) });
       setStatusMsg(msg);
-      await finalizeMobileOutput(resolvedDir, res.files);
+      await finalizeMobileOutput(resolvedDir, res.files, androidFolderForRun);
       announceSuccess("done.split", { count: String(res.files.length) });
       setPhase("result");
     } catch (e) {
@@ -366,6 +395,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     srcStem,
     keepOriginalName,
     pickDir,
+    ensureAndroidFolder,
     overrideMetadata,
     setError,
     announceSuccess,
@@ -377,6 +407,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const handleExecuteBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
+    let androidFolderForRun: PickedFolder | null = null;
+    if (await isAndroid()) {
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
+    }
     const files = batchFiles!;
     setMobileSavedFiles(null);
     setMobileSaveError(null);
@@ -436,7 +471,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       }
       setBatchProgress({ ...progress });
     }
-    await finalizeMobileOutput(resolvedDir, producedPaths);
+    await finalizeMobileOutput(resolvedDir, producedPaths, androidFolderForRun);
     announceSuccess("done.split", { count: String(files.length) });
     setPhase("result");
   }, [
@@ -447,6 +482,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     ranges,
     splitPrefix,
     pickDir,
+    ensureAndroidFolder,
     overrideMetadata,
     announceSuccess,
     finalizeMobileOutput,
@@ -549,20 +585,22 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {mobile && (
             <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
               {mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+                <span style={{ color: "var(--c-err)" }}>{mobileSaveError}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary" as any, {
+                    {t("mobile.save_done_summary_folder" as any, {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      ),
+                      path: androidUI
+                        ? (androidFolder?.folderName ?? "")
+                        : mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
                     })}
                   </div>
                 </>
@@ -609,20 +647,22 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {mobile ? (
             <div style={s.resultDir}>
               {mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+                <span style={{ color: "var(--c-err)" }}>{mobileSaveError}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary" as any, {
+                    {t("mobile.save_done_summary_folder" as any, {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      ),
+                      path: androidUI
+                        ? (androidFolder?.folderName ?? "")
+                        : mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
                     })}
                   </div>
                 </>
@@ -637,7 +677,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             {result.files.slice(0, 20).map((f, i) => (
               <div key={i} style={s.fileRow}>
                 <span>📄</span>
-                <span style={s.fileName}>{f.split(/[/\\]/).pop()}</span>
+                <span style={s.fileName}>{displayNameFor(f)}</span>
               </div>
             ))}
             {result.files.length > 20 && (
@@ -1031,22 +1071,39 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
             <div style={s.secLabel}>{t("split.output_dir")}</div>
             {mobile ? (
-              <div style={s.dirRow}>
-                <div
-                  style={s.dirPath}
-                  title={mobileOutputPreviewLabel(
-                    mobileRelativeDir,
-                    t("mobile.downloads_root" as any),
-                  )}
-                >
-                  {t("mobile.save_preview" as any, {
-                    path: mobileOutputPreviewLabel(
+              androidUI ? (
+                <div style={s.dirRow}>
+                  <div style={s.dirPath} title={androidFolder?.folderName ?? ""}>
+                    <span aria-label={t("aria.output_dir_btn")}>
+                      {androidFolder?.folderName || t("common.select_dir")}
+                    </span>
+                  </div>
+                  <button
+                    style={s.dirPickBtn}
+                    onClick={() => pickAndroidFolder()}
+                    aria-label={t("aria.output_dir_btn")}
+                  >
+                    {t("common.browse")}
+                  </button>
+                </div>
+              ) : (
+                <div style={s.dirRow}>
+                  <div
+                    style={s.dirPath}
+                    title={mobileOutputPreviewLabel(
                       mobileRelativeDir,
                       t("mobile.downloads_root" as any),
-                    ),
-                  })}
+                    )}
+                  >
+                    {t("mobile.save_preview" as any, {
+                      path: mobileOutputPreviewLabel(
+                        mobileRelativeDir,
+                        t("mobile.downloads_root" as any),
+                      ),
+                    })}
+                  </div>
                 </div>
-              </div>
+              )
             ) : (
               <div style={s.dirRow}>
                 <div style={s.dirPath} title={outDir}>
