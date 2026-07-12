@@ -676,9 +676,7 @@ useEffect(() => {
   // 実行ボタン列は横並びだと3つで幅を取りすぎるため縦積みにする。
   const thumbCount = isNarrow ? 1 : 3;
   const thumbWidth = isNarrow ? 44 : 68;
-  const execBtnsStyle: React.CSSProperties = isNarrow
-    ? s.execBtns
-    : s.execBtns;
+  const execBtnsStyle: React.CSSProperties = isNarrow ? s.execBtns : s.execBtns;
   const summaryRowStyle: React.CSSProperties = isNarrow
     ? { ...s.summaryRow, flexWrap: "wrap" }
     : s.summaryRow;

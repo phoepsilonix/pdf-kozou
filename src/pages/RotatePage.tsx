@@ -895,7 +895,22 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             label={t("common.preview_pages", { count: String(n) })}
             fill={false}
           >
-            <div style={s.grid} ref={previewTopRef}>
+            <div
+              style={
+                isNarrow
+                  ? {
+                      overflow: "visible",
+                      padding: 14,
+                      display: "flex",
+                      flexWrap: "wrap" as const,
+                      gap: 10,
+                      alignContent: "flex-start",
+                      paddingBottom: "calc(12px + 64px + env(safe-area-inset-bottom))",
+                    }
+                  : s.grid
+              }
+              ref={previewTopRef}
+            >
               {Array.from({ length: n }, (_, i) => {
                 const rot = rotations[i] ?? 0;
                 const changed = rot !== 0;

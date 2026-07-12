@@ -231,7 +231,10 @@ pub async fn check_save_name_exists(
 /// `O(出力件数 × フォルダ内ファイル数)` になってしまうため、一度だけ
 /// 列挙してフロント側でまとめて突き合わせる。
 #[tauri::command]
-pub async fn list_folder_names(app: tauri::AppHandle, tree_uri: String) -> Result<Vec<String>, String> {
+pub async fn list_folder_names(
+    app: tauri::AppHandle,
+    tree_uri: String,
+) -> Result<Vec<String>, String> {
     #[cfg(target_os = "android")]
     {
         use tauri::Manager;
@@ -427,7 +430,12 @@ pub async fn commit_batch_to_folder(
             let uri = if entry.overwrite {
                 state
                     .find_file(&tree_uri, &entry.target_name)?
-                    .ok_or_else(|| format!("上書き対象のファイルが見つかりません: {}", entry.target_name))?
+                    .ok_or_else(|| {
+                        format!(
+                            "上書き対象のファイルが見つかりません: {}",
+                            entry.target_name
+                        )
+                    })?
             } else {
                 state
                     .create_file(&tree_uri, &entry.target_name, entry.mime_type.as_deref())?

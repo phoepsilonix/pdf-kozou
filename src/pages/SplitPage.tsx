@@ -701,7 +701,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
+        overflow: "auto",
       };
 
   const executeBtn = (
@@ -1556,7 +1556,14 @@ const s: Record<string, React.CSSProperties> = {
   },
 
   // バッチファイルリスト
-  batchFileList: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 0 },
+  batchFileList: {
+    flex: 1,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    paddingBottom: "calc(12px + 48px + env(safe-area-inset-bottom))",
+  },
   batchFileItem: {
     display: "flex",
     alignItems: "center",
@@ -1601,6 +1608,7 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 8,
     minHeight: 0, // flex child がスクロール可能になる必須設定
+    paddingBottom: "calc(12px + 48px + env(safe-area-inset-bottom))",
   },
   group: {
     background: "var(--c-bgCard)",

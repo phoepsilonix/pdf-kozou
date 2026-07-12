@@ -660,7 +660,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         flexDirection: "column",
         overflowY: "auto",
         minHeight: 0,
-        paddingBottom: 0,
+        paddingBottom: "calc(12px + 36px + env(safe-area-inset-bottom))",
       }
     : s.main;
   const leftColStyle: React.CSSProperties = isNarrow
@@ -684,7 +684,6 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         flexShrink: 0,
         padding: 18,
         background: "var(--c-bg)",
-        paddingBottom: "calc(12px + 36px + env(safe-area-inset-bottom))",
       }
     : s.rightCol;
 
@@ -1024,7 +1023,13 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 18,
   },
-  main: { flex: 1, display: "flex", minHeight: 0, overflow: "hidden" },
+  main: {
+    flex: 1,
+    display: "flex",
+    minHeight: 0,
+    overflow: "hidden",
+    paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+  },
   leftCol: {
     width: 360,
     flexShrink: 0,
@@ -1058,7 +1063,6 @@ const s: Record<string, React.CSSProperties> = {
     overflowY: "auto",
     padding: 18,
     background: "var(--c-bg)",
-    paddingBottom: "calc(12px + 36px + env(safe-area-inset-bottom))",
   },
   previewBtn: {
     padding: "9px 18px",
