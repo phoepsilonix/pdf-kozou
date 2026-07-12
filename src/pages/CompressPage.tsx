@@ -1293,9 +1293,7 @@ export function CompressPage({
             {mobile ? (
               androidUI ? (
                 <div style={c.dirRow}>
-                  <div style={c.dirPath}>
-                    {androidFolder?.folderName || t("common.select_dir")}
-                  </div>
+                  <div style={c.dirPath}>{androidFolder?.folderName || t("common.select_dir")}</div>
                   <button style={c.dirPickBtn} onClick={() => pickAndroidFolder()}>
                     {t("compress.select_folder")}
                   </button>

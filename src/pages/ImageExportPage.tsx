@@ -554,9 +554,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         }
         setMobileSavedFiles(saved);
       } catch (e) {
-        setMobileSaveError(e instanceof Error && e.message === ANDROID_FOLDER_MISSING
-          ? t("mobile.save_unsupported" as any)
-          : String(e));
+        setMobileSaveError(
+          e instanceof Error && e.message === ANDROID_FOLDER_MISSING
+            ? t("mobile.save_unsupported" as any)
+            : String(e),
+        );
       }
     },
     [mobile, mobileRelativeDir, commitMobileOutput],
