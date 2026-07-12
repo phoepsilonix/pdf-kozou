@@ -802,17 +802,17 @@ jobs:
           export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
           pnpm run tauri ios build --export-method app-store-connect --ci --no-sign
 
-      #- name: Save Cache
-      #  uses: actions/cache/save@v6.1.0
-      #  if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-      #  with:
-      #    path: |
-      #      ~/.cargo/bin/
-      #      ~/.cargo/registry/index/
-      #      ~/.cargo/registry/cache/
-      #      ~/.cargo/git/db/
-      #      target
-      #    key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
+      - name: Save Cache
+        uses: actions/cache/save@v6.1.0
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Move bundle folder
         run: |
