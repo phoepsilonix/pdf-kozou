@@ -677,7 +677,7 @@ useEffect(() => {
   const thumbCount = isNarrow ? 1 : 3;
   const thumbWidth = isNarrow ? 44 : 68;
   const execBtnsStyle: React.CSSProperties = isNarrow
-    ? { display: "flex", flexDirection: "row", gap: 9 }
+    ? s.execBtns
     : s.execBtns;
   const summaryRowStyle: React.CSSProperties = isNarrow
     ? { ...s.summaryRow, flexWrap: "wrap" }
