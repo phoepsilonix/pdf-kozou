@@ -58,7 +58,7 @@ interface Props {
 
 const PREVIEW_DPI = 72;
 const RESULT_DPI = 96;
-const THUMB_DPI = 40;
+const THUMB_DPI = 60;
 const CANVAS_W_DEFAULT = 520;
 
 type Phase = "edit" | "processing" | "result" | "error" | "compress" | "saved" | "batchResult";
