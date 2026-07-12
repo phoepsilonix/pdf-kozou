@@ -9,7 +9,6 @@
 
 .app-root,
 #root {
-  height: 100dvh !important;
   padding-top: var(--safe-top) !important;
   padding-bottom: var(--safe-bottom) !important;
   padding-left: var(--safe-left) !important;
