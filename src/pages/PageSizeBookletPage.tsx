@@ -21,14 +21,15 @@ import {
   getPdfInfo,
   joinPath,
   type PdfInfo,
-  isMobile,
+  type PickedFolder,
+  isAndroid,
 } from "../lib/tauri";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
-  commitSavedBatch,
   type MobileSavedFileInfo,
 } from "../lib/mobileOutput";
+import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
 import type { FileEntry } from "../store/usePdfStore";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
@@ -74,15 +75,17 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const { announceSuccess, announceError, announceScreen, announceKey } = useA11y();
   const isBatch = (batchFiles?.length ?? 0) > 1;
 
-  // ── モバイル (Android) 向けバッチ出力: フォルダピッカーが無いため、
-  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
-  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    isMobile()
-      .then(setMobile)
-      .catch(() => setMobile(false));
-  }, []);
+  // ── モバイル (Android) 向けバッチ出力: SAFフォルダ選択(useMobileBatchOutput)。
+  // iOS は従来通り決め打ちのサブフォルダ名を「保存先プレビュー」として
+  // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const {
+    mobile,
+    androidUI,
+    androidFolder,
+    pickAndroidFolder,
+    ensureAndroidFolder,
+    commitMobileOutput,
+  } = useMobileBatchOutput();
   const mobileRelativeDir = useMemo(
     () => buildMobileOutputSubfolder(`${batchFiles?.length ?? 0}件`),
     [batchFiles?.length],
@@ -312,16 +315,24 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
   // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string, filePaths: string[]) => {
+    async (dir: string, filePaths: string[], folderOverride?: PickedFolder | null) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
+        const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
+        if (saved === null) {
+          setMobileSaveError(t("mobile.save_cancelled" as any));
+          return;
+        }
         setMobileSavedFiles(saved);
       } catch (e) {
-        setMobileSaveError(String(e));
+        setMobileSaveError(
+          e instanceof Error && e.message === ANDROID_FOLDER_MISSING
+            ? t("mobile.save_unsupported" as any)
+            : String(e),
+        );
       }
     },
-    [mobile, mobileRelativeDir],
+    [mobile, mobileRelativeDir, commitMobileOutput, t],
   );
 
   const run = useCallback(async () => {
@@ -385,6 +396,11 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const handleBatch = useCallback(async () => {
     const dir = outDir || (await pickDir());
     if (!dir) return;
+    let androidFolderForRun: PickedFolder | null = null;
+    if (await isAndroid()) {
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
+    }
     const files = batchFiles!;
     setMobileSavedFiles(null);
     setMobileSaveError(null);
@@ -440,6 +456,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     await finalizeMobileOutput(
       dir,
       progress.done.flatMap((d) => (d.pdfPath ? [d.pdfPath] : [])),
+      androidFolderForRun,
     );
     announceSuccess("done.image");
     setPhase("result");
@@ -447,6 +464,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     batchFiles,
     outDir,
     pickDir,
+    ensureAndroidFolder,
     mode,
     composePdfName,
     targetPt,
@@ -535,20 +553,22 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
           <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
             {mobile ? (
               mobileSaveError ? (
-                <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+                <span style={{ color: "var(--c-err)" }}>{mobileSaveError}</span>
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary" as any, {
+                    {t("mobile.save_done_summary_folder" as any, {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      ),
+                      path: androidUI
+                        ? (androidFolder?.folderName ?? "")
+                        : mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
                     })}
                   </div>
                 </>
@@ -828,22 +848,33 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               <section style={s.section}>
                 <div style={s.label}>{t("split.output_dir")}</div>
                 {mobile ? (
-                  <div style={s.dirRow}>
-                    <div
-                      style={s.dirPath}
-                      title={mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      )}
-                    >
-                      {t("mobile.save_preview" as any, {
-                        path: mobileOutputPreviewLabel(
+                  androidUI ? (
+                    <div style={s.dirRow}>
+                      <div style={s.dirPath} title={androidFolder?.folderName ?? ""}>
+                        {androidFolder?.folderName || t("common.select_dir")}
+                      </div>
+                      <button style={s.dirPickBtn} onClick={() => pickAndroidFolder()}>
+                        {t("common.browse")}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={s.dirRow}>
+                      <div
+                        style={s.dirPath}
+                        title={mobileOutputPreviewLabel(
                           mobileRelativeDir,
                           t("mobile.downloads_root" as any),
-                        ),
-                      })}
+                        )}
+                      >
+                        {t("mobile.save_preview" as any, {
+                          path: mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <div style={s.dirRow}>
                     <div style={s.dirPath} title={outDir}>
