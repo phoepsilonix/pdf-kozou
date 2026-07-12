@@ -15,15 +15,16 @@ import {
   sanitizeType3Text,
   type PdfInfo,
   type SanitizeOrigin,
+  type PickedFolder,
   joinPath,
-  isMobile,
+  isAndroid,
 } from "../lib/tauri";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
-  commitSavedBatch,
   type MobileSavedFileInfo,
 } from "../lib/mobileOutput";
+import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
 import { Spinner, PageHeader } from "../components/common";
 import { useI18n } from "../lib/i18n";
 import { buildName } from "../lib/filename";
@@ -284,15 +285,17 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [showThr, setShowThr] = useState(false);
   const [outDir, setOutDir] = useState("");
 
-  // ── モバイル (Android) 向け出力: フォルダピッカーが無いため、
-  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
-  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    isMobile()
-      .then(setMobile)
-      .catch(() => setMobile(false));
-  }, []);
+  // ── モバイル (Android) 向け出力: SAFフォルダ選択(useMobileBatchOutput)。
+  // iOS は従来通り決め打ちのサブフォルダ名を「保存先プレビュー」として
+  // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const {
+    mobile,
+    androidUI,
+    androidFolder,
+    pickAndroidFolder,
+    ensureAndroidFolder,
+    commitMobileOutput,
+  } = useMobileBatchOutput();
   const mobileRelativeDir = useMemo(
     () => buildMobileOutputSubfolder(`${batchFiles.length}件`),
     [batchFiles.length],
@@ -355,21 +358,34 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
   // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string, filePaths: string[]) => {
+    async (dir: string, filePaths: string[], folderOverride?: PickedFolder | null) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
+        const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
+        if (saved === null) {
+          setMobileSaveError(t("mobile.save_cancelled" as any));
+          return;
+        }
         setMobileSavedFiles(saved);
       } catch (e) {
-        setMobileSaveError(String(e));
+        setMobileSaveError(
+          e instanceof Error && e.message === ANDROID_FOLDER_MISSING
+            ? t("mobile.save_unsupported" as any)
+            : String(e),
+        );
       }
     },
-    [mobile, mobileRelativeDir],
+    [mobile, mobileRelativeDir, commitMobileOutput, t],
   );
 
   const runBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return; // キャンセル
+    let androidFolderForRun: PickedFolder | null = null;
+    if (await isAndroid()) {
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
+    }
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     setRunning(true);
@@ -429,10 +445,19 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       }
       setProgress({ ...prog });
     }
-    await finalizeMobileOutput(resolvedDir, producedPaths);
+    await finalizeMobileOutput(resolvedDir, producedPaths, androidFolderForRun);
     setRunning(false);
     setPhase("result");
-  }, [batchFiles, outDir, enabled, thr, pickDir, skipType3, finalizeMobileOutput]);
+  }, [
+    batchFiles,
+    outDir,
+    enabled,
+    thr,
+    pickDir,
+    ensureAndroidFolder,
+    skipType3,
+    finalizeMobileOutput,
+  ]);
 
   const { announceKey } = useA11y();
   useKeyboardShortcuts({
@@ -512,20 +537,22 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             )}
             {mobile &&
               (mobileSaveError ? (
-                <div style={s.statusBox}>{t("mobile.save_unsupported" as any)}</div>
+                <div style={s.statusBox}>{mobileSaveError}</div>
               ) : mobileSavedFiles ? (
                 <>
                   <div style={s.statusBox}>
-                    {t("mobile.save_done_summary" as any, {
+                    {t("mobile.save_done_summary_folder" as any, {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div style={s.statusBox}>
                     {t("mobile.save_location" as any, {
-                      path: mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      ),
+                      path: androidUI
+                        ? (androidFolder?.folderName ?? "")
+                        : mobileOutputPreviewLabel(
+                            mobileRelativeDir,
+                            t("mobile.downloads_root" as any),
+                          ),
                     })}
                   </div>
                 </>
@@ -623,14 +650,25 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <div style={s.sec}>
             <div style={s.secTitle}>出力先フォルダ</div>
             {mobile ? (
-              <div style={s.statusBox}>
-                {t("mobile.save_preview" as any, {
-                  path: mobileOutputPreviewLabel(
-                    mobileRelativeDir,
-                    t("mobile.downloads_root" as any),
-                  ),
-                })}
-              </div>
+              androidUI ? (
+                <>
+                  <div style={s.statusBox}>
+                    {androidFolder?.folderName || t("hidden.output_dir_empty")}
+                  </div>
+                  <button style={s.navBtn} onClick={() => pickAndroidFolder()}>
+                    {t("hidden.output_dir_pick" as any)}
+                  </button>
+                </>
+              ) : (
+                <div style={s.statusBox}>
+                  {t("mobile.save_preview" as any, {
+                    path: mobileOutputPreviewLabel(
+                      mobileRelativeDir,
+                      t("mobile.downloads_root" as any),
+                    ),
+                  })}
+                </div>
+              )
             ) : (
               <>
                 <div style={s.statusBox}>{outDir || t("hidden.output_dir_empty")}</div>
