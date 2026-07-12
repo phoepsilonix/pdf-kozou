@@ -52,12 +52,10 @@ import {
   rasterizeImposition,
   splitImpositionPdf,
   splitCellRender,
-  isMobile,
   isAndroid,
   type PickedFolder,
 } from "../lib/tauri";
-import { useBatchSaveFolder } from "../hooks/useBatchSaveFolder";
-import { guessMimeTypeFromPath } from "../lib/mimeType";
+import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { useViewport } from "../hooks/useViewport";
@@ -66,7 +64,6 @@ import { FixedMobileNav } from "../components/FixedMobileNav";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
-  commitSavedBatch,
   type MobileSavedFileInfo,
 } from "../lib/mobileOutput";
 
@@ -247,29 +244,16 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // ── モバイル (Android) 向けバッチ出力: フォルダピッカーが無いため、
   // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
-  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    isMobile()
-      .then(setMobile)
-      .catch(() => setMobile(false));
-  }, []);
-  // Android かどうか(JSXの分岐は同期的な値が要るため、isAndroid() の結果を
-  // ここでstate化しておく。実処理側は毎回 isAndroid() を直接awaitして使う)
-  const [androidUI, setAndroidUI] = useState(false);
-  useEffect(() => {
-    isAndroid()
-      .then(setAndroidUI)
-      .catch(() => setAndroidUI(false));
-  }, []);
-  // Android: SAFフォルダ選択によるバッチ出力(iOS/デスクトップでは folder は
-  // 常に null のまま; finalizeMobileOutput 側で isAndroid() を見て分岐する)
+  // 実行後に同じ名前で MediaStore の Downloads へコピーする(iOS) /
+  // Android は SAF フォルダ選択によるバッチ出力 ──
   const {
-    folder: androidFolder,
-    pickFolder: pickAndroidFolder,
-    ensureFolder: ensureAndroidFolder,
-    commitGrouped: commitAndroidBatchGrouped,
-  } = useBatchSaveFolder();
+    mobile,
+    androidUI,
+    androidFolder,
+    pickAndroidFolder,
+    ensureAndroidFolder,
+    commitMobileOutput,
+  } = useMobileBatchOutput();
   const mobileRelativeDir = useMemo(() => {
     const label =
       batchFiles && batchFiles.length > 0
@@ -562,40 +546,20 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     async (dir: string, filePaths: string[], folderOverride?: PickedFolder | null) => {
       if (!mobile) return;
       try {
-        if (await isAndroid()) {
-          // ⚠ androidFolder (フック state) は setFolder 直後の再レンダー前だと
-          // 古い値(null)のことがあるため、実行前に ensureAndroidFolder()/
-          // pickAndroidFolder() が返した値をそのまま folderOverride として
-          // 受け取り、そちらを優先する。
-          const folder = folderOverride ?? androidFolder;
-          if (!folder) {
-            // 実行前に ensureAndroidFolder() 済みのはずだが、保険。
-            setMobileSaveError(t("mobile.save_unsupported" as any));
-            return;
-          }
-          const saved = await commitAndroidBatchGrouped(folder, dir, filePaths, guessMimeTypeFromPath);
-          if (saved === null) {
-            // 衝突確認モーダルでキャンセル: 処理結果は一時領域に残るが保存はしない
-            setMobileSaveError(t("mobile.save_cancelled" as any));
-            return;
-          }
-          setMobileSavedFiles(
-            saved.map((s) => ({
-              uri: s.uri,
-              displayName: s.displayName,
-              relativePath: s.relativePath,
-              sourceRelative: s.sourceRelative,
-            })),
-          );
-        } else {
-          const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
-          setMobileSavedFiles(saved);
+        const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
+        if (saved === null) {
+          // 衝突確認モーダルでキャンセル: 処理結果は一時領域に残るが保存はしない
+          setMobileSaveError(t("mobile.save_cancelled" as any));
+          return;
         }
+        setMobileSavedFiles(saved);
       } catch (e) {
-        setMobileSaveError(String(e));
+        setMobileSaveError(e instanceof Error && e.message === ANDROID_FOLDER_MISSING
+          ? t("mobile.save_unsupported" as any)
+          : String(e));
       }
     },
-    [mobile, mobileRelativeDir, androidFolder, commitAndroidBatchGrouped],
+    [mobile, mobileRelativeDir, commitMobileOutput],
   );
 
   // サイズ概算（目安）。入力1ページの基準サイズ（A4 595×842pt）を基に、

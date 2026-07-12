@@ -52,6 +52,14 @@ interface PdfStore {
   setPreviewPage: (n: number) => void;
   lastSaveDir: string | null;
   setLastSaveDir: (dir: string) => void;
+
+  /// Android: SAF (ACTION_OPEN_DOCUMENT_TREE) で選んだ保存先フォルダを
+  /// アプリ再起動後も記憶し、毎回のフォルダ選択を省くための永続化。
+  /// takePersistableUriPermission 済みのURIなので、権限自体は
+  /// OS側で維持されるが、どのフォルダを選んだかはこちらで覚えておく
+  /// 必要がある。
+  androidSaveFolder: { treeUri: string; folderName: string } | null;
+  setAndroidSaveFolder: (folder: { treeUri: string; folderName: string } | null) => void;
   isProcessing: boolean;
   setProcessing: (v: boolean) => void;
   lastError: string | null;
@@ -148,6 +156,9 @@ export const usePdfStore = create<PdfStore>()(
       setPreviewPage: (n) => set({ previewPage: n }),
       lastSaveDir: null,
       setLastSaveDir: (dir) => set({ lastSaveDir: dir }),
+
+      androidSaveFolder: null,
+      setAndroidSaveFolder: (folder) => set({ androidSaveFolder: folder }),
       isProcessing: false,
       setProcessing: (v) => set({ isProcessing: v }),
       lastError: null,
@@ -210,6 +221,7 @@ export const usePdfStore = create<PdfStore>()(
         useGsPreference: state.useGsPreference,
         customGsPath: state.customGsPath,
         lastSaveDir: state.lastSaveDir,
+        androidSaveFolder: state.androidSaveFolder,
         convertLayoutW: state.convertLayoutW,
         convertLayoutH: state.convertLayoutH,
         convertLayoutEm: state.convertLayoutEm,

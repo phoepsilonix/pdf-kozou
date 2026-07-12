@@ -23,6 +23,7 @@ import {
   beginFolderSave,
 } from "../lib/tauri";
 import { resolveSaveConflict } from "../lib/saveConflict";
+import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
@@ -488,8 +489,12 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     const doSave = async () => {
       let sp: string | null;
       if (await isAndroid()) {
-        const folder = await pickSaveFolder();
-        if (!folder) return;
+        let folder = await getValidPersistedAndroidFolder();
+        if (!folder) {
+          folder = await pickSaveFolder();
+          if (!folder) return;
+          persistAndroidSaveFolder(folder);
+        }
         const resolved = await resolveSaveConflict(
           folder.treeUri,
           buildName(filePath, ["rotated"]),

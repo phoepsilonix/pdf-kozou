@@ -17,6 +17,12 @@
 // に ensureFolder() で済ませておくこと(デスクトップの「参照」ボタンで
 // 未選択のまま実行した場合にダイアログを挟む挙動に合わせるため)。
 //
+// アプリ再起動をまたいだ永続化(androidSaveFolder.ts)にも対応している。
+// ensureFolder() はセッション内で未選択の場合、まず永続化された前回の
+// フォルダを検証の上で再利用を試み、無効(権限失効・削除等)だった場合
+// のみ通常のピッカーを開く。これにより、毎回のフォルダ選択を求められる
+// ことなく、初回だけの選択で以後は自動的に同じ場所へ保存できる。
+//
 // ⚠ ensureFolder()/pickFolder() が返す値をそのまま呼び出し側で保持し、
 // commitGrouped() の引数として明示的に渡すこと。フック内部の `folder`
 // state は非同期更新のため、同一の実行フロー内で setFolder 直後に
@@ -32,6 +38,7 @@ import {
   type BatchSavedFileInfo,
 } from "../lib/tauri";
 import { resolveGroupsSaveConflict, type PlannedGroup } from "../lib/batchSaveConflict";
+import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
 
 function baseName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -44,19 +51,36 @@ function dirName(path: string): string {
 
 export function useBatchSaveFolder() {
   const [folder, setFolder] = useState<PickedFolder | null>(null);
+  // このセッションで既に永続化フォルダの検証を試みたか(1回で十分なので、
+  // 無効だった場合に毎回 listFolderNames() を呼び直さないためのガード)
+  const [triedPersisted, setTriedPersisted] = useState(false);
 
   /** 「参照」ボタン用。選択済みでも常にダイアログを開き直す。 */
   const pickFolder = useCallback(async (): Promise<PickedFolder | null> => {
     const picked = await pickSaveFolder();
-    if (picked) setFolder(picked);
+    if (picked) {
+      setFolder(picked);
+      persistAndroidSaveFolder(picked);
+    }
     return picked;
   }, []);
 
-  /** 未選択なら pickSaveFolder() でフォルダ選択ダイアログを出す。選択済みならそれを返す。 */
+  /**
+   * 未選択なら、まず永続化された前回のフォルダを検証の上で再利用を試み、
+   * 無効/未永続化ならピッカーを開く。選択済みならそれを返す。
+   */
   const ensureFolder = useCallback(async (): Promise<PickedFolder | null> => {
     if (folder) return folder;
+    if (!triedPersisted) {
+      setTriedPersisted(true);
+      const persisted = await getValidPersistedAndroidFolder();
+      if (persisted) {
+        setFolder(persisted);
+        return persisted;
+      }
+    }
     return await pickFolder();
-  }, [folder, pickFolder]);
+  }, [folder, triedPersisted, pickFolder]);
 
   /**
    * 実際に書き出したローカル一時ファイルのパス一覧を、選択済みフォルダへ

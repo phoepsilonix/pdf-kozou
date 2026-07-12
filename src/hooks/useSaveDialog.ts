@@ -23,6 +23,7 @@ import {
   beginFolderSave,
 } from "../lib/tauri";
 import { resolveSaveConflict } from "../lib/saveConflict";
+import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
 
 export function useSaveDialog() {
   const { lastSaveDir, setLastSaveDir } = usePdfStore();
@@ -39,9 +40,15 @@ export function useSaveDialog() {
   const pickSave = useCallback(
     async (defaultName: string): Promise<string | null> => {
       if (await isAndroid()) {
-        // ── Android: フォルダを選ばせ、名前の衝突を自前で解決する ──
-        const folder = await pickSaveFolder();
-        if (!folder) return null; // フォルダ選択をキャンセル
+        // ── Android: 前回選んだフォルダが有効ならそれを再利用し、毎回の
+        // フォルダ選択ダイアログを省く。無効(権限失効・削除等)や初回は
+        // 通常通りピッカーを開く ──
+        let folder = await getValidPersistedAndroidFolder();
+        if (!folder) {
+          folder = await pickSaveFolder();
+          if (!folder) return null; // フォルダ選択をキャンセル
+          persistAndroidSaveFolder(folder);
+        }
 
         const resolved = await resolveSaveConflict(folder.treeUri, defaultName, folder.folderName);
         if (!resolved) return null; // 衝突確認モーダルでキャンセル
