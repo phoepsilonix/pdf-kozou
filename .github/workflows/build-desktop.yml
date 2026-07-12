@@ -173,18 +173,6 @@ jobs:
           pnpm run build
           #cargo tauri build
 
-      - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v6.1.0
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-
       - name: appimagetool install
         run: |
           curl -LO https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
@@ -255,6 +243,18 @@ jobs:
         run: |
           rm -rf ./bundle
           mv target/release/bundle ./bundle/
+
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v6.1.0
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -418,18 +418,6 @@ jobs:
           pnpm run build
           #cargo tauri build
 
-      - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v6.1.0
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Decode PFX Certificate
         shell: pwsh
         env:
@@ -451,6 +439,18 @@ jobs:
         run: |
           rm -rf ./bundle
           mv target/release/bundle ./bundle/
+
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v6.1.0
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -539,18 +539,6 @@ jobs:
           #pnpm run tauri build -- --no-bundle
           #pnpm run tauri bundle -- --bundles app --target universal-apple-darwin
 
-      - name: Save Cache (条件付きで保存のみ実行)
-        uses: actions/cache/save@v6.1.0
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-
       - name: 7zip packages
         run: |
           rm -rf ./bundle
@@ -589,6 +577,18 @@ jobs:
           mv target/universal-apple-darwin/release/bundle/dmg/*.dmg bundle/macos/ 2>/dev/null || true
           #mv target/universal-apple-darwin/release/bundle/macos/*.app bundle/macos/ 2>/dev/null || true
           find ./bundle/macos -ls
+
+      - name: Save Cache (条件付きで保存のみ実行)
+        uses: actions/cache/save@v6.1.0
+        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -685,6 +685,21 @@ jobs:
           pnpm run tauri android build --apk --split-per-abi --debug --ci
           pnpm run tauri android build --apk --aab --debug --ci
 
+      - name: Move bundle folder
+        run: |
+          rm -rf ./bundle
+          mkdir -p bundle/android
+          # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
+          # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
+          #
+          find src-tauri/gen/android/app/build/outputs/ \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
+          find src-tauri/gen/android/app/build/outputs/ \( -name "*.apk" -o -name "*.aab" \) -exec mv {} bundle/android \; || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ 2>/dev/null || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ 2>/dev/null || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ || true
+          #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ || true
+          find bundle/android \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
+
       - name: Save Cache
         uses: actions/cache/save@v6.1.0
         if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
@@ -696,21 +711,6 @@ jobs:
             ~/.cargo/git/db/
             target
           key: ${{ runner.os }}-mobile-rust-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Move bundle folder
-        run: |
-          rm -rf ./bundle
-          mkdir -p bundle/android
-          # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk
-          # /home/runner/work/pdf-kozou/pdf-kozou/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
-          #
-          find src-tauri/gen/android/app/build/outputs/ \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
-          find src-tauri/gen/android/app/build/outputs/ \( -name "*.apk" -o -name "*.aab" \) -exec cp {} bundle/android \; || true
-          #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ 2>/dev/null || true
-          #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ 2>/dev/null || true
-          #cp -vr src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk bundle/android/ || true
-          #cp -vr src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab bundle/android/ || true
-          find bundle/android \( -name "*.apk" -o -name "*.aab" \) -exec ls -lh {} \; || true
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v7
