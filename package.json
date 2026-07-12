@@ -33,9 +33,9 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
-    "pnpm": "^11.9.0",
+    "pnpm": "^11.10.0",
     "prettier": "^3.9.4",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.1.3"
   }
 }
