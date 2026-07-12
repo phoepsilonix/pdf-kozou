@@ -25,15 +25,16 @@ import {
   composeImpositionPdf,
   type TrimMargins,
   type PdfInfo,
+  type PickedFolder,
   joinPath,
-  isMobile,
+  isAndroid,
 } from "../lib/tauri";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
-  commitSavedBatch,
   type MobileSavedFileInfo,
 } from "../lib/mobileOutput";
+import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
 import { C, F } from "../lib/theme";
 import { useA11y } from "../hooks/useA11y";
 import { tts } from "../lib/tts";
@@ -112,15 +113,17 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [outDir, setOutDir] = useState("");
 
-  // ── モバイル (Android) 向け出力: フォルダピッカーが無いため、
-  // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
-  // 実行後に同じ名前で MediaStore の Downloads へコピーする ──
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    isMobile()
-      .then(setMobile)
-      .catch(() => setMobile(false));
-  }, []);
+  // ── モバイル (Android) 向け出力: SAFフォルダ選択(useMobileBatchOutput)。
+  // iOS は従来通り決め打ちのサブフォルダ名を「保存先プレビュー」として
+  // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする ──
+  const {
+    mobile,
+    androidUI,
+    androidFolder,
+    pickAndroidFolder,
+    ensureAndroidFolder,
+    commitMobileOutput,
+  } = useMobileBatchOutput();
   const mobileRelativeDir = useMemo(
     () => buildMobileOutputSubfolder(`${files.length}件`),
     [files.length],
@@ -292,20 +295,28 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   // この回で実際に書き出したファイルの絶対パス一覧を filePaths として
   // 渡すこと(丸ごとコピーすると、過去の別処理の残骸まで保存されてしまう)。
   const finalizeMobileOutput = useCallback(
-    async (dir: string, filePaths: string[]) => {
+    async (dir: string, filePaths: string[], folderOverride?: PickedFolder | null) => {
       if (!mobile) return;
       try {
-        const saved = await commitSavedBatch(dir, mobileRelativeDir, filePaths);
+        const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
+        if (saved === null) {
+          setMobileSaveError(t("mobile.save_cancelled" as any));
+          return;
+        }
         setMobileSavedFiles(saved);
       } catch (e) {
-        setMobileSaveError(String(e));
+        setMobileSaveError(
+          e instanceof Error && e.message === ANDROID_FOLDER_MISSING
+            ? t("mobile.save_unsupported" as any)
+            : String(e),
+        );
       }
     },
-    [mobile, mobileRelativeDir],
+    [mobile, mobileRelativeDir, commitMobileOutput, t],
   );
 
   const executeWithDir = useCallback(
-    async (resolvedDir: string) => {
+    async (resolvedDir: string, androidFolderForRun?: PickedFolder | null) => {
       setPhase("processing");
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -366,7 +377,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         setProgress({ ...prog });
       }
 
-      await finalizeMobileOutput(resolvedDir, producedPaths);
+      await finalizeMobileOutput(resolvedDir, producedPaths, androidFolderForRun);
       announceSuccess("done.trim");
       setPhase("result");
     },
@@ -389,10 +400,15 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const handleExecute = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
+    let androidFolderForRun: PickedFolder | null = null;
+    if (await isAndroid()) {
+      androidFolderForRun = await ensureAndroidFolder();
+      if (!androidFolderForRun) return; // フォルダ選択をキャンセル
+    }
     setMobileSavedFiles(null);
     setMobileSaveError(null);
-    await executeWithDir(resolvedDir);
-  }, [outDir, pickDir, executeWithDir]);
+    await executeWithDir(resolvedDir, androidFolderForRun);
+  }, [outDir, pickDir, ensureAndroidFolder, executeWithDir]);
 
   // 処理中画面
   if (phase === "processing") {
@@ -437,20 +453,22 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
         <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
           {mobile ? (
             mobileSaveError ? (
-              <span style={{ color: "var(--c-err)" }}>{t("mobile.save_unsupported" as any)}</span>
+              <span style={{ color: "var(--c-err)" }}>{mobileSaveError}</span>
             ) : mobileSavedFiles ? (
               <>
                 <div>
-                  {t("mobile.save_done_summary" as any, {
+                  {t("mobile.save_done_summary_folder" as any, {
                     count: String(mobileSavedFiles.length),
                   })}
                 </div>
                 <div>
                   {t("mobile.save_location" as any, {
-                    path: mobileOutputPreviewLabel(
-                      mobileRelativeDir,
-                      t("mobile.downloads_root" as any),
-                    ),
+                    path: androidUI
+                      ? (androidFolder?.folderName ?? "")
+                      : mobileOutputPreviewLabel(
+                          mobileRelativeDir,
+                          t("mobile.downloads_root" as any),
+                        ),
                   })}
                 </div>
               </>
@@ -828,8 +846,16 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
                   ? t("trim.apply_label", { count: String(files.length) })
                   : t("trim.no_dir_apply")
               }
-              outDir={mobile ? undefined : outDir}
-              onPickDir={mobile ? undefined : pickDir}
+              outDir={androidUI ? androidFolder?.folderName : mobile ? undefined : outDir}
+              onPickDir={
+                androidUI
+                  ? () => {
+                      pickAndroidFolder();
+                    }
+                  : mobile
+                    ? undefined
+                    : pickDir
+              }
               excludeSpec={excludeSpec}
               onExclude={onExclude}
               extractSpec={extractSpec}
@@ -837,7 +863,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               showImagePageSize={files.some((f) => hasImage([f.filename]))}
               hideActionBar={isNarrow}
             />
-            {mobile && (
+            {mobile && !androidUI && (
               <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", padding: "0 4px" }}>
                 {t("mobile.save_preview" as any, {
                   path: mobileOutputPreviewLabel(
