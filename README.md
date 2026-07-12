@@ -26,6 +26,8 @@ GhostScriptがセットアップされているシステムの場合、パスな
 自動認識よりも、ユーザーが指定したものが優先して使用されます。  
 優先順位はユーザー指定、環境変数、自動検出の順番になります。
 
+モバイル環境は未対応です。将来的にも対応できません。（外部プログラムの呼び出しができないため。）
+
 ### Windows
 
 Windowsの方は、[GhostScript for Windows版](https://ghostscript.com/releases/gsdnld.html)のセットアップをご検討ください。  
