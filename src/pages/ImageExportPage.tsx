@@ -2856,7 +2856,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
-    paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
+    paddingBottom: "12px",
   },
 
   prefixRow: { display: "flex", alignItems: "center", gap: 6 },
@@ -3001,7 +3001,13 @@ const s: Record<string, React.CSSProperties> = {
     wordBreak: "break-all" as const,
   },
 
-  preview: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  preview: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    paddingBottom: "calc(12px + 36px + env(safe-area-inset-bottom))",
+  },
   previewHead: {
     padding: "11px 18px",
     fontSize: FS.body,
