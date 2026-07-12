@@ -573,12 +573,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             setMobileSaveError(t("mobile.save_unsupported" as any));
             return;
           }
-          const saved = await commitAndroidBatchGrouped(
-            folder,
-            dir,
-            filePaths,
-            guessMimeTypeFromPath,
-          );
+          const saved = await commitAndroidBatchGrouped(folder, dir, filePaths, guessMimeTypeFromPath);
           if (saved === null) {
             // 衝突確認モーダルでキャンセル: 処理結果は一時領域に残るが保存はしない
             setMobileSaveError(t("mobile.save_cancelled" as any));
