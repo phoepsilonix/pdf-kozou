@@ -13,14 +13,15 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
-    // TS側と合わせてES2022以降をターゲットに
-    target: ["es2022"],
+    // TS側と合わせてES2024以降をターゲットに
+    target: ["es2024"],
     sourcemap: !!process.env.TAURI_DEBUG,
 
     // Oxc(またはRolldown内蔵高速ミニファイア)による圧縮を明示
-    minify: "oxc",
+    //minify: "oxc",
+    minify: true,
     cssMinify: true,
-    chunkSizeWarningLimit: 400,
+    chunkSizeWarningLimit: 500,
 
     // Vite 8/Rolldown環境のコード分割設定
     rolldownOptions: {

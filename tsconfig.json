@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2022", // Viteのビルドターゲットと同期
+    "target": "ES2024", // Viteのビルドターゲットと同期
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"], // ターゲットに合わせて更新
+    "lib": ["ES2024", "DOM", "DOM.Iterable"], // ターゲットに合わせて更新
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
