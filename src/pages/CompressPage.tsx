@@ -829,7 +829,7 @@ export function CompressPage({
           display: "flex",
           flexDirection: "column",
           gap: 20,
-          padding: "18px 20px 24px",
+          padding: "18px 20px 0px",
           overflow: "auto",
         }
       : c.resultBody;
@@ -1315,6 +1315,7 @@ export function CompressPage({
         )}
       </div>
       <LiveRegion message={statusMsg} />
+      <div style={c.footer} />
     </div>
   );
 }
@@ -1439,6 +1440,7 @@ const c: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     background: "var(--c-bg)",
     flexShrink: 0,
+    paddingBottom: 12,
   },
   singleExecBox: { width: "100%", maxWidth: 400 },
   btnExec: {
@@ -1718,4 +1720,10 @@ const c: Record<string, React.CSSProperties> = {
     fontFamily: F,
   },
   bpErrMsg: { fontSize: FS.caption, color: "var(--c-err)" },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
+  },
 };

@@ -710,7 +710,7 @@ function InfoDrawer({
     <div
       style={{
         ...ds.drawer,
-        width: isNarrow ? "88vw" : ds.drawer.width,
+        width: isNarrow ? "88dvw" : "60dvw",
         transform: open ? "translateX(0)" : "translateX(100%)",
         pointerEvents: open ? "auto" : "none",
       }}
@@ -1779,6 +1779,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
               </button>
             </div>
           </div>
+          <div style={s.footer} />
 
           <InfoDrawer
             open={infoOpen}
@@ -1863,7 +1864,7 @@ const ds: Record<string, React.CSSProperties> = {
     top: 0,
     right: 0,
     bottom: 0,
-    width: 300,
+    width: "60dvw",
     background: "var(--c-bgCard)",
     borderLeft: "1px solid var(--c-border)",
     display: "flex",
@@ -2047,6 +2048,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "4px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bgSub)",
+    paddingBottom: "8px",
   },
   navBtn: {
     width: 32,
@@ -2139,4 +2141,10 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
   },
   zVal: { fontSize: FS.small, minWidth: 40, textAlign: "center" },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
+  },
 };

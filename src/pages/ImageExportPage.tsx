@@ -1978,6 +1978,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       ? t("image.execute_pdf")
                       : t("common.no_dir_btn")}
               </BtnPrimary>
+              <div style={s.footer} />
             </div>
           )}
         </div>
@@ -2186,6 +2187,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         </FixedMobileNav>
       )}
       <LiveRegion message={statusMsg} />
+      <div style={s.footer} />
     </div>
   );
 }
@@ -2999,5 +3001,11 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
     textAlign: "center" as const,
+  },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
   },
 };

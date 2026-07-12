@@ -1933,11 +1933,8 @@ const r: Record<string, React.CSSProperties> = {
   footer: {
     display: "flex",
     justifyContent: "flex-end",
-    gap: 10,
-    padding: "12px 20px",
-    borderTop: `1px solid var(--c-border)`,
     flexShrink: 0,
-    paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
   },
 };
 

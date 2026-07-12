@@ -38,8 +38,8 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    plugin::{Builder, PluginHandle, TauriPlugin},
     Manager,
+    plugin::{Builder, PluginHandle, TauriPlugin},
 };
 
 #[derive(Deserialize)]
@@ -106,9 +106,10 @@ impl KozouSafFolder {
             .run_mobile_plugin::<PickFolderResponse>("pickFolder", ())
             .map_err(|e| e.to_string())?;
         match (resp.tree_uri, resp.folder_name) {
-            (Some(tree_uri), Some(folder_name)) => {
-                Ok(Some(PickedFolder { tree_uri, folder_name }))
-            }
+            (Some(tree_uri), Some(folder_name)) => Ok(Some(PickedFolder {
+                tree_uri,
+                folder_name,
+            })),
             _ => Ok(None),
         }
     }
@@ -120,7 +121,10 @@ impl KozouSafFolder {
             .0
             .run_mobile_plugin::<FindFileResponse>(
                 "findFile",
-                FindFileArgs { tree_uri, file_name },
+                FindFileArgs {
+                    tree_uri,
+                    file_name,
+                },
             )
             .map_err(|e| e.to_string())?;
         Ok(resp.uri)

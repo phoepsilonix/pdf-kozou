@@ -590,6 +590,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
+        <div style={s.footer} />
       </div>
     );
 
@@ -663,6 +664,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             {t("split.result_hint")}
           </div>
         </div>
+        <div style={s.footer} />
       </div>
     );
 
@@ -1123,7 +1125,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         </div>
 
         {/* ── 右: プレビューエリア ── */}
-        {/* ── 右: プレビューエリア ── */}
         <div style={previewWrapStyle} ref={previewTopRef}>
           <PreviewPane
             pageKey="split"
@@ -1218,6 +1219,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           {executeBtn}
         </FixedMobileNav>
       )}
+      <div style={s.footer} />
     </div>
   );
 }
@@ -1646,7 +1648,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
-    paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
+    paddingBottom: "12px",
   },
 
   // 結果
@@ -1673,4 +1675,10 @@ const s: Record<string, React.CSSProperties> = {
     border: `1px solid var(--c-border)`,
   },
   fileName: { fontSize: FS.small, color: "var(--c-text)" },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
+  },
 };

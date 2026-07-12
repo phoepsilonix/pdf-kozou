@@ -1184,6 +1184,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           </button>
         )}
       </div>
+      <div style={s.footer} />
     </div>
   );
 }
@@ -1573,7 +1574,13 @@ const s: Record<string, React.CSSProperties> = {
     padding: 8,
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
-    paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
+    paddingBottom: "12px",
+  },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
   },
 };
 

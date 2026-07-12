@@ -677,7 +677,7 @@ useEffect(() => {
   const thumbCount = isNarrow ? 1 : 3;
   const thumbWidth = isNarrow ? 44 : 68;
   const execBtnsStyle: React.CSSProperties = isNarrow
-    ? { display: "flex", flexDirection: "column", gap: 9 }
+    ? { display: "flex", flexDirection: "row", gap: 9 }
     : s.execBtns;
   const summaryRowStyle: React.CSSProperties = isNarrow
     ? { ...s.summaryRow, flexWrap: "wrap" }
@@ -918,6 +918,7 @@ useEffect(() => {
         )}
       </div>
       <LiveRegion message={statusMsg} />
+      <div style={s.footer} />
     </div>
   );
 }
@@ -1098,6 +1099,7 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 9,
     borderTop: `1px solid var(--c-border)`,
+    paddingBottom: 0,
   },
   summaryRow: { display: "flex", alignItems: "center", gap: 9, justifyContent: "center" },
   sumFile: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
@@ -1105,7 +1107,7 @@ const s: Record<string, React.CSSProperties> = {
   sumPages: { fontSize: FS.label, color: "var(--c-textSub)" },
   sumArrow: { fontSize: FS.subtitle, color: "var(--c-textDim)" },
   sumOut: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-accent)" },
-  execBtns: { display: "flex", gap: 9, justifyContent: "center" },
+  execBtns: { display: "flex", gap: 9, justifyContent: "center", flexDirection: "row" },
   btnPreview: {
     padding: "12px 26px",
     background: "var(--c-bgCard)",
@@ -1171,5 +1173,14 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: FS.body,
     fontFamily: "inherit",
+  },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    padding: "12px 20px",
+    borderTop: `1px solid var(--c-border)`,
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
   },
 };

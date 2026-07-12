@@ -987,6 +987,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           {executeBtn}
         </FixedMobileNav>
       )}
+      <div style={s.footer} />
     </div>
   );
 }
@@ -1053,7 +1054,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "12px 16px",
     borderTop: `1px solid var(--c-border)`,
     background: "var(--c-bg)",
-    paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
+    paddingBottom: "12px",
   },
   secLabel: {
     fontSize: FS.caption,
@@ -1398,5 +1399,11 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
+  },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
   },
 };

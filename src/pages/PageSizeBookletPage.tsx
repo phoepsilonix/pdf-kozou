@@ -675,7 +675,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         position: "sticky",
         bottom: 0,
         flexShrink: 0,
-        paddingBottom: "calc(8px + env(safe-area-inset-bottom))",
+        paddingBottom: "12px",
       }
     : s.actionBar;
   const rightColStyle: React.CSSProperties = isNarrow
@@ -995,6 +995,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
           </BtnPrimary>
         </FixedMobileNav>
       )}
+      <div style={s.footer} />
     </div>
   );
 }
@@ -1043,6 +1044,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bg)",
+    paddingBottom: 12,
   },
   rightCol: {
     flex: 1,
@@ -1258,4 +1260,10 @@ const s: Record<string, React.CSSProperties> = {
   },
   cellImg: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" },
   sheetLabel: { fontSize: FS.small, color: "var(--c-textSub)" },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    paddingBottom: "calc(env(safe-area-inset-bottom))",
+  },
 };
