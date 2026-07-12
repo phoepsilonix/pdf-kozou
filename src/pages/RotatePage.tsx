@@ -24,6 +24,7 @@ import {
 } from "../lib/tauri";
 import { resolveSaveConflict } from "../lib/saveConflict";
 import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
+import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
 import {
   buildMobileOutputSubfolder,
   mobileOutputPreviewLabel,
@@ -511,11 +512,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           if (!folder) return;
           persistAndroidSaveFolder(folder);
         }
-        const resolved = await resolveSaveConflict(
-          folder.treeUri,
-          buildName(filePath, ["rotated"]),
-          folder.folderName,
-        );
+        const confirmedName = await useSaveNamePromptStore
+          .getState()
+          .ask(buildName(filePath, ["rotated"]), folder.folderName);
+        if (!confirmedName) return; // 名前確認プロンプトでキャンセル
+        const resolved = await resolveSaveConflict(folder.treeUri, confirmedName, folder.folderName);
         if (!resolved) return;
         sp = await beginFolderSave(
           folder.treeUri,

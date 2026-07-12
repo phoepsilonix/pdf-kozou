@@ -933,6 +933,13 @@
     "auto_rename": "重複分だけ自動的に連番をつけて保存",
     "cancel": "キャンセル"
   },
+  "save_name_prompt": {
+    "title": "名前を付けて保存",
+    "message": "「{{folder}}」フォルダへ保存します。",
+    "input_label": "ファイル名",
+    "save": "保存",
+    "cancel": "キャンセル"
+  },
   "save_conflict": {
     "title": "ファイル名の重複",
     "message": "「{{folder}}」フォルダに「{{name}}」という名前のファイルが既にあります。",

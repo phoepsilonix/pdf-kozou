@@ -10,6 +10,12 @@
 // 確認できるため、上書き/自動リネーム/別名保存のいずれもアプリが確実に
 // 制御できる。衝突解決ロジックは src/lib/saveConflict.ts に共通化してあり、
 // useSaveDialog を経由しない RotatePage の直接呼び出しからも使われている。
+//
+// フォルダの選択自体はアプリ再起動をまたいで永続化される
+// (androidSaveFolder.ts)。これにより保存の大半が無人で走るようになった
+// ため、実際の保存直前に一度だけファイル名を確認・編集できるプロンプト
+// (useSaveNamePromptStore / SaveNamePromptModal)を挟み、デスクトップの
+// 「名前を付けて保存」ダイアログに相当する最後の確認機会を用意している。
 
 import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -24,6 +30,7 @@ import {
 } from "../lib/tauri";
 import { resolveSaveConflict } from "../lib/saveConflict";
 import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
+import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
 
 export function useSaveDialog() {
   const { lastSaveDir, setLastSaveDir } = usePdfStore();
@@ -50,7 +57,19 @@ export function useSaveDialog() {
           persistAndroidSaveFolder(folder);
         }
 
-        const resolved = await resolveSaveConflict(folder.treeUri, defaultName, folder.folderName);
+        // フォルダ選択の永続化により保存が完全に無人で走るようになったため、
+        // デスクトップの「名前を付けて保存」ダイアログに相当する、ファイル名
+        // を確認・編集する最後の機会をここで挟む。
+        const confirmedName = await useSaveNamePromptStore
+          .getState()
+          .ask(defaultName, folder.folderName);
+        if (!confirmedName) return null; // 名前確認プロンプトでキャンセル
+
+        const resolved = await resolveSaveConflict(
+          folder.treeUri,
+          confirmedName,
+          folder.folderName,
+        );
         if (!resolved) return null; // 衝突確認モーダルでキャンセル
 
         return await beginFolderSave(

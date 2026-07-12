@@ -933,6 +933,13 @@
     "auto_rename": "Auto-number the conflicting files",
     "cancel": "Cancel"
   },
+  "save_name_prompt": {
+    "title": "Save As",
+    "message": "Saving to \"{{folder}}\".",
+    "input_label": "File name",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
   "save_conflict": {
     "title": "File name already exists",
     "message": "A file named \"{{name}}\" already exists in \"{{folder}}\".",

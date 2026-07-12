@@ -38,6 +38,7 @@ import type { ConvertOptions } from "./lib/tauri";
 import pkg from "../package.json";
 import { A11yControls, LiveRegion } from "./components/A11yControls";
 import { SaveConflictModal } from "./components/SaveConflictModal";
+import { SaveNamePromptModal } from "./components/SaveNamePromptModal";
 import { BatchSaveConflictModal } from "./components/BatchSaveConflictModal";
 import { useA11y } from "./hooks/useA11y";
 import { useFocusAnnouncer } from "./hooks/useFocusAnnouncer";
@@ -1332,6 +1333,7 @@ function ToolShell({
         </LazyBoundary>
       </div>
       <SaveConflictModal />
+      <SaveNamePromptModal />
       <BatchSaveConflictModal />
     </div>
   );
