@@ -519,16 +519,46 @@ pub fn redact_outside_cropbox(input: &str, output: &str) -> Result<RedactStats, 
         }
 
         // MediaBox 内で CropBox の外側を囲む上下左右 4 本の帯
+        // PDFの座標系とは異なるので注意。apply_redactionsに指定するRectの座標指定はCropboxの座標を基準に指定するようだ。
+        // 指定はCropbox自体がページサイズでもあり、かつCropboxの上がy座標の起点で0になり、下にいくほど大きくなる。
+        // つまりCropBoxの上部を削除するには、y0にCropBoxの上側座標cy0とページ高さmy1の差にマイナスをつけて指定し、y1には0.0を指定する。
+        // 下部は、cy1からmy1まで。
+        // 下半分のCropの場合: CropBox [0.0,405.8,595.5,834.4] (MediaBox [0.0,7.8,595.5,850.1])
+        // 左の始点もCropboxが起点になる。-cx0。右終点もmx1-cx0
+        // [162.0,47.3,394.9,405.4]
+        // ギリギリの部品が消えにくいように余裕を持たせる。
+        let space: f32 = 100.0;
         let bands = [
-            (mx0, cy1, mx1, my1), // 上
-            (mx0, my0, mx1, cy0), // 下
-            (mx0, cy0, cx0, cy1), // 左
-            (cx1, cy0, mx1, cy1), // 右
+            (
+                -cx0 - space,
+                -((my1 - cy0).abs()),
+                mx1 - cx0 + space,
+                0.0 - space,
+            ), //上。念の為、絶対値で必ずマイナスになるように。
+            (
+                -cx0 - space,
+                cy1 + space,
+                mx1 - cx0 + space,
+                my1 - cy0 + space,
+            ), // 下
+            (
+                -((cx0 - mx0 - space).abs()),
+                -space,
+                -space,
+                cy1 - cy0 + space,
+            ), // 左
+            (
+                cx1 - cx0 + space,
+                -space,
+                (mx1 - cx0 + space),
+                cy1 - cy0 + space,
+            ), // 右
         ];
 
         let mut added = 0usize;
-        for (x0, y0, x1, y1) in bands {
-            if x1 - x0 <= CROPBOX_EPS || y1 - y0 <= CROPBOX_EPS {
+        for band in bands {
+            let (x0, y0, x1, y1) = band;
+            if (x1 - x0).abs() <= CROPBOX_EPS || (y1 - y0).abs() <= CROPBOX_EPS {
                 continue; // 帯の面積が実質ゼロ → スキップ
             }
             match page.add_redact_annotation(Rect::new(x0, y0, x1, y1)) {
