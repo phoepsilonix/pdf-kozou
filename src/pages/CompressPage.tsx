@@ -1245,20 +1245,6 @@ export function CompressPage({
               <label style={c.optLabel}>
                 <input
                   type="checkbox"
-                  checked={mergeFonts}
-                  onChange={(e) => setMergeFonts(e.target.checked)}
-                  style={{ marginRight: 6 }}
-                />
-                {t("compress.merge_fonts_label")}
-              </label>
-              <span style={c.optHint}>
-                {mergeFonts ? t("compress.merge_fonts_on") : t("compress.merge_fonts_off")}
-              </span>
-            </div>
-            <div style={c.optRow}>
-              <label style={c.optLabel}>
-                <input
-                  type="checkbox"
                   checked={redactOutsideCrop}
                   onChange={(e) => setRedactOutsideCrop(e.target.checked)}
                   style={{ marginRight: 6 }}
@@ -1269,6 +1255,20 @@ export function CompressPage({
                 {redactOutsideCrop
                   ? t("compress.redact_outside_crop_on")
                   : t("compress.redact_outside_crop_off")}
+              </span>
+            </div>
+            <div style={c.optRow}>
+              <label style={c.optLabel}>
+                <input
+                  type="checkbox"
+                  checked={mergeFonts}
+                  onChange={(e) => setMergeFonts(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                {t("compress.merge_fonts_label")}
+              </label>
+              <span style={c.optHint}>
+                {mergeFonts ? t("compress.merge_fonts_on") : t("compress.merge_fonts_off")}
               </span>
             </div>
           </>

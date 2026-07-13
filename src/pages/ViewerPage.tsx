@@ -1388,7 +1388,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       if (!e.ctrlKey) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom((z) => +Math.min(4.0, Math.max(0.5, z + delta)).toFixed(2));
+      setZoom((z) => +Math.min(4.0, Math.max(0.25, z + delta)).toFixed(2));
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
@@ -1477,14 +1477,14 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           <div style={s.zoomRow}>
             <button
               style={s.zBtn}
-              onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.5).toFixed(2)))}
+              onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.05).toFixed(2)))}
             >
               −
             </button>
             <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
             <button
               style={s.zBtn}
-              onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.5).toFixed(2)))}
+              onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.05).toFixed(2)))}
             >
               ＋
             </button>
@@ -1666,10 +1666,10 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                 if (!e.ctrlKey) return;
                 if (e.key === "+" || e.key === "=") {
                   e.preventDefault();
-                  setZoom((z) => +Math.min(4.0, z + 0.5).toFixed(2));
+                  setZoom((z) => +Math.min(4.0, z + 0.05).toFixed(2));
                 } else if (e.key === "-") {
                   e.preventDefault();
-                  setZoom((z) => +Math.max(0.5, z - 0.5).toFixed(2));
+                  setZoom((z) => +Math.max(0.25, z - 0.05).toFixed(2));
                 } else if (e.key === "0") {
                   e.preventDefault();
                   setZoom(1.0);
@@ -1741,14 +1741,14 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                 <div style={s.zoomRow}>
                   <button
                     style={s.zBtn}
-                    onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.5).toFixed(2)))}
+                    onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.05).toFixed(2)))}
                   >
                     −
                   </button>
                   <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
                   <button
                     style={s.zBtn}
-                    onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.5).toFixed(2)))}
+                    onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.05).toFixed(2)))}
                   >
                     ＋
                   </button>
