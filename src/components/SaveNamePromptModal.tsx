@@ -1,10 +1,17 @@
 // src/components/SaveNamePromptModal.tsx
-// Android の単一ファイル保存の直前に、ファイル名を確認・編集させる
-// モーダル。デスクトップのネイティブ「名前を付けて保存」ダイアログに
-// 相当する、ファイル名を変更する最後の機会。
+// Android の単一ファイル保存の直前に、保存先フォルダとファイル名を
+// 確認・編集させるモーダル。デスクトップのネイティブ「名前を付けて
+// 保存」ダイアログに相当する、保存先を変更する最後の機会。
+//
+// 「変更」ボタンはシステムのフォルダピッカー(ACTION_OPEN_DOCUMENT_TREE)
+// をその場で開き直す。システムのピッカーはフォルダ内でのサブフォルダ
+// 新規作成にも対応しているため、「サブフォルダを作って保存したい」場合も
+// ここから行える。
 
 import { useEffect, useState } from "react";
 import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
+import { pickSaveFolder, type PickedFolder } from "../lib/tauri";
+import { persistAndroidSaveFolder } from "../lib/androidSaveFolder";
 import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
 import { F } from "../lib/theme";
@@ -13,16 +20,29 @@ export function SaveNamePromptModal() {
   const { request, resolve } = useSaveNamePromptStore();
   const { t } = useI18n();
   const [nameInput, setNameInput] = useState("");
+  const [folder, setFolder] = useState<PickedFolder | null>(null);
 
   useEffect(() => {
-    if (request) setNameInput(request.suggestedName);
+    if (request) {
+      setNameInput(request.suggestedName);
+      setFolder(request.folder);
+    }
   }, [request]);
 
   if (!request) return null;
 
   const confirm = () => {
     const name = nameInput.trim();
-    if (name) resolve(name);
+    if (name && folder) resolve({ name, folder });
+  };
+
+  const changeFolder = async () => {
+    const picked = await pickSaveFolder();
+    if (picked) {
+      setFolder(picked);
+      // ここで明示的に選び直した場合は、以後の既定値としても更新する。
+      persistAndroidSaveFolder(picked);
+    }
   };
 
   return (
@@ -39,9 +59,17 @@ export function SaveNamePromptModal() {
         </div>
 
         <div style={s.body}>
-          <p style={s.message}>
-            {t("save_name_prompt.message" as any, { folder: request.folderName })}
-          </p>
+          <div style={s.form}>
+            <label style={s.label}>{t("save_name_prompt.folder_label" as any)}</label>
+            <div style={s.folderRow}>
+              <div style={s.folderPath} title={folder?.folderName ?? ""}>
+                {folder?.folderName ?? ""}
+              </div>
+              <button style={s.changeBtn} onClick={changeFolder}>
+                {t("save_name_prompt.change_folder" as any)}
+              </button>
+            </div>
+          </div>
           <div style={s.form}>
             <label style={s.label} htmlFor="save-name-prompt-input">
               {t("save_name_prompt.input_label" as any)}
@@ -116,13 +144,6 @@ const s: Record<string, React.CSSProperties> = {
     gap: 14,
     overflowY: "auto",
   },
-  message: {
-    margin: 0,
-    fontSize: FS.body,
-    color: "var(--c-text)",
-    lineHeight: 1.5,
-    wordBreak: "break-all",
-  },
   form: {
     display: "flex",
     flexDirection: "column",
@@ -131,6 +152,35 @@ const s: Record<string, React.CSSProperties> = {
   label: {
     fontSize: FS.caption,
     color: "var(--c-textSub)",
+  },
+  folderRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  folderPath: {
+    flex: 1,
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bg)",
+    color: "var(--c-text)",
+    fontSize: FS.body,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
+  changeBtn: {
+    flexShrink: 0,
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--c-borderHi)",
+    background: "var(--c-bg)",
+    color: "var(--c-text)",
+    fontSize: FS.body,
+    fontFamily: F,
+    cursor: "pointer",
   },
   input: {
     padding: "10px 12px",

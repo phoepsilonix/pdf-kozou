@@ -512,14 +512,18 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           if (!folder) return;
           persistAndroidSaveFolder(folder);
         }
-        const confirmedName = await useSaveNamePromptStore
+        const confirmed = await useSaveNamePromptStore
           .getState()
-          .ask(buildName(filePath, ["rotated"]), folder.folderName);
-        if (!confirmedName) return; // 名前確認プロンプトでキャンセル
-        const resolved = await resolveSaveConflict(folder.treeUri, confirmedName, folder.folderName);
+          .ask(buildName(filePath, ["rotated"]), folder);
+        if (!confirmed) return; // プロンプトでキャンセル
+        const resolved = await resolveSaveConflict(
+          confirmed.folder.treeUri,
+          confirmed.name,
+          confirmed.folder.folderName,
+        );
         if (!resolved) return;
         sp = await beginFolderSave(
-          folder.treeUri,
+          confirmed.folder.treeUri,
           resolved.fileName,
           "application/pdf",
           resolved.overwrite,

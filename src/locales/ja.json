@@ -935,7 +935,8 @@
   },
   "save_name_prompt": {
     "title": "名前を付けて保存",
-    "message": "「{{folder}}」フォルダへ保存します。",
+    "folder_label": "保存先フォルダ",
+    "change_folder": "変更",
     "input_label": "ファイル名",
     "save": "保存",
     "cancel": "キャンセル"

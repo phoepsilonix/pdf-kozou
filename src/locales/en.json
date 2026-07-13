@@ -935,7 +935,8 @@
   },
   "save_name_prompt": {
     "title": "Save As",
-    "message": "Saving to \"{{folder}}\".",
+    "folder_label": "Save to folder",
+    "change_folder": "Change",
     "input_label": "File name",
     "save": "Save",
     "cancel": "Cancel"

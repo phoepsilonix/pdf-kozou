@@ -18,21 +18,24 @@
 // 未選択のまま実行した場合にダイアログを挟む挙動に合わせるため)。
 //
 // アプリ再起動をまたいだ永続化(androidSaveFolder.ts)にも対応している。
-// ensureFolder() はセッション内で未選択の場合、まず永続化された前回の
-// フォルダを検証の上で再利用を試み、無効(権限失効・削除等)だった場合
-// のみ通常のピッカーを開く。これにより、毎回のフォルダ選択を求められる
-// ことなく、初回だけの選択で以後は自動的に同じ場所へ保存できる。
+// マウント時に永続化された前回のフォルダを検証の上で読み込むため、
+// 「参照」ボタンや実行ボタンを押す前から `folder` に値が入っている。
+// これにより、画面上の表示(空欄=未選択)と実際の挙動(黙って前回の
+// フォルダへ保存する)が食い違わないようにしている。無効(権限失効・
+// 削除等)や初回起動時は folder は null のままで、ensureFolder() が
+// 通常のピッカーを開く。
 //
 // ⚠ ensureFolder()/pickFolder() が返す値をそのまま呼び出し側で保持し、
 // commitGrouped() の引数として明示的に渡すこと。フック内部の `folder`
 // state は非同期更新のため、同一の実行フロー内で setFolder 直後に
 // 参照すると再レンダー前の古い値(null)を掴むことがある。
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   pickSaveFolder,
   getOrCreateSubfolder,
   commitBatchToFolder,
+  isAndroid,
   type PickedFolder,
   type BatchFolderEntry,
   type BatchSavedFileInfo,
@@ -51,9 +54,24 @@ function dirName(path: string): string {
 
 export function useBatchSaveFolder() {
   const [folder, setFolder] = useState<PickedFolder | null>(null);
-  // このセッションで既に永続化フォルダの検証を試みたか(1回で十分なので、
-  // 無効だった場合に毎回 listFolderNames() を呼び直さないためのガード)
-  const [triedPersisted, setTriedPersisted] = useState(false);
+  // 永続化フォルダの読み込みは重複させず1回だけ行う(マウント時の
+  // useEffect と、実行前の ensureFolder() 両方から呼ばれ得るため)。
+  const loadPromiseRef = useRef<Promise<PickedFolder | null> | null>(null);
+  const loadPersisted = useCallback((): Promise<PickedFolder | null> => {
+    if (!loadPromiseRef.current) {
+      loadPromiseRef.current = (async () => {
+        if (!(await isAndroid())) return null;
+        const persisted = await getValidPersistedAndroidFolder();
+        if (persisted) setFolder(persisted);
+        return persisted;
+      })();
+    }
+    return loadPromiseRef.current;
+  }, []);
+
+  useEffect(() => {
+    loadPersisted();
+  }, [loadPersisted]);
 
   /** 「参照」ボタン用。選択済みでも常にダイアログを開き直す。 */
   const pickFolder = useCallback(async (): Promise<PickedFolder | null> => {
@@ -71,16 +89,10 @@ export function useBatchSaveFolder() {
    */
   const ensureFolder = useCallback(async (): Promise<PickedFolder | null> => {
     if (folder) return folder;
-    if (!triedPersisted) {
-      setTriedPersisted(true);
-      const persisted = await getValidPersistedAndroidFolder();
-      if (persisted) {
-        setFolder(persisted);
-        return persisted;
-      }
-    }
+    const persisted = await loadPersisted();
+    if (persisted) return persisted;
     return await pickFolder();
-  }, [folder, triedPersisted, pickFolder]);
+  }, [folder, loadPersisted, pickFolder]);
 
   /**
    * 実際に書き出したローカル一時ファイルのパス一覧を、選択済みフォルダへ

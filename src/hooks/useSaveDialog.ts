@@ -58,22 +58,20 @@ export function useSaveDialog() {
         }
 
         // フォルダ選択の永続化により保存が完全に無人で走るようになったため、
-        // デスクトップの「名前を付けて保存」ダイアログに相当する、ファイル名
-        // を確認・編集する最後の機会をここで挟む。
-        const confirmedName = await useSaveNamePromptStore
-          .getState()
-          .ask(defaultName, folder.folderName);
-        if (!confirmedName) return null; // 名前確認プロンプトでキャンセル
+        // デスクトップの「名前を付けて保存」ダイアログに相当する、保存先
+        // フォルダとファイル名を確認・変更する最後の機会をここで挟む。
+        const confirmed = await useSaveNamePromptStore.getState().ask(defaultName, folder);
+        if (!confirmed) return null; // プロンプトでキャンセル
 
         const resolved = await resolveSaveConflict(
-          folder.treeUri,
-          confirmedName,
-          folder.folderName,
+          confirmed.folder.treeUri,
+          confirmed.name,
+          confirmed.folder.folderName,
         );
         if (!resolved) return null; // 衝突確認モーダルでキャンセル
 
         return await beginFolderSave(
-          folder.treeUri,
+          confirmed.folder.treeUri,
           resolved.fileName,
           "application/pdf",
           resolved.overwrite,
