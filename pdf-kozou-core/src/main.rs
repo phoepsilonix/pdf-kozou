@@ -186,6 +186,10 @@ enum Commands {
         object_stream: bool,
         #[arg(long)]
         merge_fonts: bool,
+        /// CropBox 外を apply_redactions で物理的に削除しない
+        /// (デフォルトでは CropBox が設定されたページの外側を自動的に消去する)
+        #[arg(long)]
+        no_redact_outside_crop: bool,
         /// Type3 フォント検出時のラスタライズ DPI（--rewrite 時のみ有効、デフォルト 150）
         #[arg(long)]
         rasterize_dpi: Option<f32>,
@@ -548,6 +552,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             font_subset,
             object_stream,
             merge_fonts,
+            no_redact_outside_crop,
             rasterize_dpi,
             rasterize_quality,
         } => {
@@ -617,6 +622,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     font_subset: if font_subset { Some(true) } else { None },
                     object_stream: Some(object_stream),
                     merge_fonts: Some(merge_fonts),
+                    redact_outside_crop: Some(!no_redact_outside_crop),
                 };
                 pdf_kozou_core::compress::compress(&req)?
             };

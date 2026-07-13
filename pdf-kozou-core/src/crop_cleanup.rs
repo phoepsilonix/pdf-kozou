@@ -431,6 +431,149 @@ fn remove_last_nonempty_line(s: &mut String) {
     }
 }
 
+// ── redact_outside_cropbox(): CropBox 外を apply_redactions で物理消去 ──────
+//
+// crop_cleanup::remove_out_of_crop_resources() は「CropBox と全く重ならない
+// XObject」単位でしか削除できず、CropBox の境界をまたぐ（一部だけ外に
+// はみ出す）テキスト・画像・パスは残ってしまう。
+//
+// こちらは MuPDF の redaction 機構（pdf_add_redact_annot + pdf_redact_page）
+// を使い、CropBox の外側を上下左右 4 本の帯として塗りつぶし領域に登録し、
+// apply_redactions() でピクセル単位・パスの部分クリップまで含めて完全に
+// 消去する。境界をまたぐオブジェクトも CropBox の境界で物理的に切り取られる。
+
+/// 1ページ分の redaction 結果
+#[derive(Debug, Default)]
+pub struct RedactStats {
+    pub pages_total: usize,
+    pub pages_redacted: usize,
+}
+
+/// CropBox が MediaBox と実質的に同じとみなす許容誤差 (pt)
+const CROPBOX_EPS: f32 = 0.01;
+
+/// 全ページの CropBox 外側を redaction で物理的に消去する。
+///
+/// - CropBox が存在しない、または MediaBox と一致する（＝実質トリムなし）
+///   ページはスキップする。
+/// - 消去対象のページが1つもなければ `input` を `output` にコピーするだけで終える。
+pub fn redact_outside_cropbox(input: &str, output: &str) -> Result<RedactStats, String> {
+    use mupdf::Rect;
+    use mupdf::pdf::{PdfDocument, PdfWriteOptions};
+
+    let doc = PdfDocument::open(input).map_err(|e| format!("open: {e}"))?;
+    let page_count = doc.page_count().map_err(|e| format!("page_count: {e}"))?;
+
+    let mut stats = RedactStats {
+        pages_total: page_count.max(0) as usize,
+        pages_redacted: 0,
+    };
+
+    for idx in 0..page_count {
+        let mut page = match doc.load_pdf_page(idx) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[redact_crop] page {idx}: load_pdf_page failed: {e}");
+                continue;
+            }
+        };
+
+        // media_box() / crop_box() はどちらも Rotate 適用前の同一座標系で
+        // 返るため、視覚上の回転を考慮した変換は不要（CropBox 未指定時は
+        // MuPDF が内部で MediaBox と同じ値を返すため、その場合は below の
+        // is_uncropped 判定で自動的にスキップされる）。
+        let media = match page.media_box() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[redact_crop] page {idx}: media_box failed: {e}");
+                continue;
+            }
+        };
+        let crop = match page.crop_box() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[redact_crop] page {idx}: crop_box failed: {e}");
+                continue;
+            }
+        };
+
+        let (mx0, my0, mx1, my1) = (media.x0, media.y0, media.x1, media.y1);
+        // CropBox は必ず MediaBox の内側に収める（不正な CropBox 対策）
+        let (cx0, cy0, cx1, cy1) = (
+            crop.x0.max(mx0),
+            crop.y0.max(my0),
+            crop.x1.min(mx1),
+            crop.y1.min(my1),
+        );
+
+        if cx1 <= cx0 || cy1 <= cy0 {
+            continue; // 不正な CropBox → スキップ
+        }
+
+        let is_uncropped = (cx0 - mx0).abs() < CROPBOX_EPS
+            && (cy0 - my0).abs() < CROPBOX_EPS
+            && (cx1 - mx1).abs() < CROPBOX_EPS
+            && (cy1 - my1).abs() < CROPBOX_EPS;
+        if is_uncropped {
+            continue; // CropBox 無し（＝ MediaBox と同一）→ スキップ
+        }
+
+        // MediaBox 内で CropBox の外側を囲む上下左右 4 本の帯
+        let bands = [
+            (mx0, cy1, mx1, my1), // 上
+            (mx0, my0, mx1, cy0), // 下
+            (mx0, cy0, cx0, cy1), // 左
+            (cx1, cy0, mx1, cy1), // 右
+        ];
+
+        let mut added = 0usize;
+        for (x0, y0, x1, y1) in bands {
+            if x1 - x0 <= CROPBOX_EPS || y1 - y0 <= CROPBOX_EPS {
+                continue; // 帯の面積が実質ゼロ → スキップ
+            }
+            match page.add_redact_annotation(Rect::new(x0, y0, x1, y1)) {
+                Ok(_) => added += 1,
+                Err(e) => {
+                    eprintln!("[redact_crop] page {idx}: add_redact_annotation failed: {e}")
+                }
+            }
+        }
+
+        if added == 0 {
+            continue;
+        }
+
+        match page.apply_redactions() {
+            Ok(_) => {
+                stats.pages_redacted += 1;
+                eprintln!(
+                    "[redact_crop] page {idx}: redacted {added} band(s) outside CropBox \
+                     [{cx0:.1},{cy0:.1},{cx1:.1},{cy1:.1}] (MediaBox [{mx0:.1},{my0:.1},{mx1:.1},{my1:.1}])"
+                );
+            }
+            Err(e) => eprintln!("[redact_crop] page {idx}: apply_redactions failed: {e}"),
+        }
+    }
+
+    if stats.pages_redacted == 0 {
+        if input != output {
+            std::fs::copy(input, output).map_err(|e| format!("copy: {e}"))?;
+        }
+        return Ok(stats);
+    }
+
+    let mut opts = PdfWriteOptions::default();
+    opts.set_incremental(false)
+        .set_compress(true)
+        .set_garbage_level(1)
+        .set_clean(false);
+
+    doc.save_with_options(output, opts)
+        .map_err(|e| format!("save: {e}"))?;
+
+    Ok(stats)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

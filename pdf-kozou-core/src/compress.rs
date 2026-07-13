@@ -399,6 +399,12 @@ pub struct CompressRequest {
 
     #[serde(default)]
     pub object_stream: Option<bool>,
+
+    /// CropBox 外を apply_redactions で物理的に削除するか (default: true)
+    /// CropBox が無い（＝ MediaBox と同一）ページは自動的にスキップされる。
+    /// トリム外領域を保持したい場合は false を指定する。
+    #[serde(default)]
+    pub redact_outside_crop: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -422,6 +428,9 @@ pub struct CompressParamsUsed {
     pub sanitize: bool,
     pub merge_fonts: bool,
     pub object_stream: bool,
+    /// CropBox 外を apply_redactions で物理的に削除したか
+    /// (CropBox が無い/全ページ対象外だった場合は false)
+    pub redact_outside_crop: bool,
     /// 未参照フォントの除去を実行したか
     /// pdf_subset_fonts() を実行したか
     pub font_subset: bool,
@@ -458,9 +467,46 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let do_subset = req.font_subset.unwrap_or(preset_subset);
     //let do_purge = req.purge_fonts.unwrap_or(false);
     // 処理の対象となる入力を保持する変数
-    let current_input = req.input.clone();
+    let mut current_input = req.input.clone();
     // 一時ファイルのパス（パージ用）
     //let temp_purge_path = format!("{}.purge.tmp", req.output);
+
+    // 0. (デフォルト有効) CropBox 外を redaction で物理的に削除
+    //    早期 return (?) を含むどの経路でも一時ファイルを掃除できるよう、
+    //    Drop で削除する簡易ガードを使う。
+    struct TempFileGuard(Option<String>);
+    impl Drop for TempFileGuard {
+        fn drop(&mut self) {
+            if let Some(p) = self.0.take() {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+    let mut redact_applied = false;
+    let _redact_guard: TempFileGuard = {
+        let redact_outside_crop = req.redact_outside_crop.unwrap_or(true);
+        if redact_outside_crop {
+            let redact_tmp = format!("{}.redact.tmp.pdf", req.output);
+            match crate::crop_cleanup::redact_outside_cropbox(&current_input, &redact_tmp) {
+                Ok(stats) if stats.pages_redacted > 0 => {
+                    eprintln!(
+                        "[compress] redact_outside_crop: {}/{} pages redacted",
+                        stats.pages_redacted, stats.pages_total
+                    );
+                    current_input = redact_tmp.clone();
+                    redact_applied = true;
+                    TempFileGuard(Some(redact_tmp))
+                }
+                Ok(_) => TempFileGuard(None), // CropBox が無い/全ページ対象外 → スキップ
+                Err(e) => {
+                    eprintln!("[compress] redact_outside_crop warning (skipped): {e}");
+                    TempFileGuard(None)
+                }
+            }
+        } else {
+            TempFileGuard(None)
+        }
+    };
 
     // 1. (オプション) 未参照リソースのパージ
     //if do_purge {
@@ -510,6 +556,7 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 font_subset: result.subset_applied,
                 merge_fonts,
                 object_stream,
+                redact_outside_crop: redact_applied,
                 subset_skipped: false,
                 //subset_skipped: result.fell_back || !result.subset_applied,
             },
@@ -521,7 +568,7 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         })
     } else {
         // サブセット化なし: PdfWriteOptions のみで圧縮
-        safe_compress_only(
+        let mut resp = safe_compress_only(
             &current_input,
             &req.output,
             compress_images,
@@ -531,7 +578,11 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
             sanitize,
             merge_fonts,
             object_stream,
-        )
+        );
+        if let Ok(ref mut r) = resp {
+            r.params_used.redact_outside_crop = redact_applied;
+        }
+        resp
     };
 
     //if do_purge && std::path::Path::new(&temp_purge_path).exists() {
@@ -766,6 +817,7 @@ fn safe_compress_only(
             sanitize,
             merge_fonts,
             object_stream,
+            redact_outside_crop: false,
             font_subset: false,
             subset_skipped: false,
         },
@@ -865,6 +917,7 @@ pub fn rewrite(
                     subset_skipped: false,
                     merge_fonts,
                     object_stream,
+                    redact_outside_crop: false,
                 },
                 warning: size_increased_warning(ib, ob),
             })
@@ -910,6 +963,7 @@ pub fn rewrite(
                     subset_skipped: result.fell_back,
                     merge_fonts,
                     object_stream,
+                    redact_outside_crop: false,
                 },
                 warning: Some(warns.join(" ")),
             })
@@ -1077,6 +1131,7 @@ pub fn rasterize_with_quality(
             subset_skipped: false,
             merge_fonts: false,
             object_stream: false,
+            redact_outside_crop: false,
         },
         warning: Some(format!(
             "ラスタライズ: {dpi}dpi 画像化PDFに変換。テキスト選択・検索・コピー不可。"
@@ -1154,6 +1209,7 @@ pub fn compress_preserving_type3(
             subset_skipped: false,
             merge_fonts: false,
             object_stream: false,
+            redact_outside_crop: false,
         },
         warning: size_increased_warning(ib, ob),
     })

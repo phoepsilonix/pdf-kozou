@@ -265,6 +265,7 @@ export function CompressPage({
   const [preset, setPreset] = useState<CompressPreset>("standard");
   const [objectStream, setObjectStream] = useState(false);
   const [mergeFonts, setMergeFonts] = useState(false);
+  const [redactOutsideCrop, setRedactOutsideCrop] = useState(true);
 
   const [result, setResult] = useState<CompressResponse | null>(null);
   const [tmpFile, setTmpFile] = useState("");
@@ -394,6 +395,7 @@ export function CompressPage({
           preset,
           merge_fonts: mergeFonts || undefined,
           object_stream: objectStream || undefined,
+          redact_outside_crop: redactOutsideCrop,
           layout_w: convertLayoutW,
           layout_h: convertLayoutH,
           layout_em: convertLayoutEm,
@@ -433,6 +435,7 @@ export function CompressPage({
     preset,
     mergeFonts,
     objectStream,
+    redactOutsideCrop,
     pdfInfo,
     setError,
   ]);
@@ -515,6 +518,7 @@ export function CompressPage({
             preset,
             merge_fonts: mergeFonts || undefined,
             object_stream: objectStream || undefined,
+            redact_outside_crop: redactOutsideCrop,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -544,6 +548,7 @@ export function CompressPage({
     preset,
     mergeFonts,
     objectStream,
+    redactOutsideCrop,
     pickSave,
     commitSave,
     setError,
@@ -624,6 +629,7 @@ export function CompressPage({
             preset,
             merge_fonts: mergeFonts || undefined,
             object_stream: objectStream || undefined,
+            redact_outside_crop: redactOutsideCrop,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -668,6 +674,7 @@ export function CompressPage({
     preset,
     mergeFonts,
     objectStream,
+    redactOutsideCrop,
     outDir,
     pickDir,
     ensureAndroidFolder,
@@ -968,6 +975,10 @@ export function CompressPage({
                     label={t("compress.object_stream")}
                     val={p.object_stream ? t("common.yes") : t("common.no")}
                   />
+                  <PRow
+                    label={t("compress.redact_outside_crop")}
+                    val={p.redact_outside_crop ? t("common.yes") : t("common.no")}
+                  />
                 </>
               )}
             </div>
@@ -1241,6 +1252,22 @@ export function CompressPage({
               </label>
               <span style={c.optHint}>
                 {mergeFonts ? t("compress.merge_fonts_on") : t("compress.merge_fonts_off")}
+              </span>
+            </div>
+            <div style={c.optRow}>
+              <label style={c.optLabel}>
+                <input
+                  type="checkbox"
+                  checked={redactOutsideCrop}
+                  onChange={(e) => setRedactOutsideCrop(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                {t("compress.redact_outside_crop_label")}
+              </label>
+              <span style={c.optHint}>
+                {redactOutsideCrop
+                  ? t("compress.redact_outside_crop_on")
+                  : t("compress.redact_outside_crop_off")}
               </span>
             </div>
           </>

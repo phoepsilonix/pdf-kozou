@@ -1063,6 +1063,8 @@ export interface CompressRequest {
   sanitize?: boolean;
   object_stream?: boolean;
   merge_fonts?: boolean;
+  /** CropBox 外を apply_redactions で物理的に削除するか (default: true) */
+  redact_outside_crop?: boolean;
   /** リフロー文書変換レイアウト幅 (pt) */
   layout_w?: number;
   /** リフロー文書変換レイアウト高さ (pt) */
@@ -1084,6 +1086,7 @@ export interface CompressResponse {
     sanitize: boolean;
     object_stream: boolean;
     merge_fonts: boolean;
+    redact_outside_crop: boolean;
     rewrite_fallback?: boolean;
   };
   warning?: string;
