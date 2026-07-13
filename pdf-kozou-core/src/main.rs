@@ -223,6 +223,32 @@ enum Commands {
         png: bool,
     },
 
+    /// [Stage 1 検証用] テキスト(Type3含む)を除外した背景画像のみを生成する。
+    ///
+    /// 画像PDF化(フォント保持版)機能の開発中コマンド。
+    /// Rasterize と違い、出力にはテキストが一切含まれない
+    /// (元のテキストとの合成はまだ実装されていない)。
+    /// 非テキスト要素だけが正しく1枚の画像に焼き込まれているかの
+    /// 目視確認に使う。
+    RasterizeNoText {
+        /// 入力 PDF
+        input: String,
+        /// 出力 PDF
+        output: String,
+        /// 解像度 DPI (デフォルト: 150)
+        #[arg(long, default_value = "150")]
+        dpi: f32,
+        /// JPEG 品質 0-100 (デフォルト: 85)
+        #[arg(long, default_value = "85")]
+        quality: i32,
+        /// ページ指定 "1-3,5" 形式 (1ベース)。省略時は全ページ。
+        #[arg(long)]
+        page: Option<String>,
+        /// PNG 埋め込みで画像 PDF を生成（可逆・無劣化）
+        #[arg(long, default_value = "false")]
+        png: bool,
+    },
+
     /// PDF を分割
     Split {
         /// 入力 PDF
@@ -645,6 +671,32 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             let pages = page.as_deref().map(parse_page_list).transpose()?;
             let resp = pdf_kozou_core::compress::rasterize_with_quality(
+                &input,
+                &output,
+                dpi,
+                quality,
+                png,
+                pages.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+
+        Commands::RasterizeNoText {
+            input,
+            output,
+            dpi,
+            quality,
+            page,
+            png,
+        } => {
+            let _tmp = auto_convert_if_needed(&input, None, None, None, None, None, None)?;
+            let input = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                input
+            };
+            let pages = page.as_deref().map(parse_page_list).transpose()?;
+            let resp = pdf_kozou_core::compress::rasterize_no_text_with_quality(
                 &input,
                 &output,
                 dpi,

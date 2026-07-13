@@ -1438,6 +1438,219 @@ void kozou_rasterize(
 }
 
 /* ------------------------------------------------------------------ */
+/* kozou_rasterize_no_text                                             */
+/*                                                                     */
+/* kozou_rasterize と同じ手順だが、draw device の作成直後に            */
+/* テキスト系コールバック (fill_text/stroke_text/clip_text/            */
+/* clip_stroke_text/ignore_text) を NULL にしてから fz_run_page する。 */
+/* fz_device のディスパッチ関数 (fz_fill_text 等) はコールバックが     */
+/* NULL の場合そのオペレータを単に無視する設計になっている            */
+/* (全デバイスが全メソッドを実装するわけではないための標準動作)。     */
+/* これにより「テキスト(Type3グリフ含む)を一切描画しない背景画像」    */
+/* を作れる。Type3 グリフの描画も内部的には fill_text 経由で           */
+/* ディスパッチされるため、通常フォントと同様に除外される。            */
+/*                                                                     */
+/* 画像PDF化機能 (フォントを残す版) の Stage 1: 背景画像生成のみ。      */
+/* ページのコンテンツストリーム側 (非テキスト演算子の除去 + 背景画像   */
+/* の合成) は Stage 2 で別途実装する。                                 */
+/* ------------------------------------------------------------------ */
+void kozou_rasterize_no_text(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    float        dpi,
+    int          quality,
+    int          use_png,
+    const char  *tmp_dir,
+    const int   *page_indices,
+    int          page_indices_len,
+    FfiResult   *result)
+{
+    fz_document  *doc    = NULL;
+    pdf_document *pdfout = NULL;
+
+    fz_var(doc);
+    fz_var(pdfout);
+
+    fz_try(ctx) {
+        fz_register_document_handlers(ctx);
+
+        doc = fz_open_document(ctx, input);
+
+        if (fz_is_document_reflowable(ctx, doc)) {
+            fz_layout_document(ctx, doc, 450.0f, 600.0f, 12.0f);
+        }
+
+        int page_count = fz_count_pages(ctx, doc);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+
+        if (dpi <= 0.0f) dpi = 150.0f;
+        float scale = dpi / 72.0f;
+
+        int  *pages_to_render     = NULL;
+        int   pages_to_render_len = 0;
+        int   allocated           = 0;
+
+        if (page_indices != NULL && page_indices_len > 0) {
+            pages_to_render     = (int *)malloc(sizeof(int) * page_indices_len);
+            pages_to_render_len = 0;
+            allocated           = 1;
+            for (int k = 0; k < page_indices_len; k++) {
+                int idx = page_indices[k];
+                if (idx >= 0 && idx < page_count) {
+                    pages_to_render[pages_to_render_len++] = idx;
+                }
+            }
+            if (pages_to_render_len == 0)
+                fz_throw(ctx, FZ_ERROR_ARGUMENT,
+                         "page_indices: no valid pages in range");
+        } else {
+            pages_to_render     = (int *)malloc(sizeof(int) * page_count);
+            pages_to_render_len = page_count;
+            allocated           = 1;
+            for (int k = 0; k < page_count; k++)
+                pages_to_render[k] = k;
+        }
+
+        const char *base_tmp = (tmp_dir && tmp_dir[0]) ? tmp_dir : output;
+        const char *ext      = use_png ? "png" : "jpg";
+
+        pdfout = pdf_create_document(ctx);
+
+        for (int ii = 0; ii < pages_to_render_len; ii++) {
+            int i = pages_to_render[ii];
+            fz_page    *page      = NULL;
+            fz_pixmap  *pixmap    = NULL;
+            fz_image   *image     = NULL;
+            pdf_obj    *imgref    = NULL;
+            fz_buffer  *contents  = NULL;
+            pdf_obj    *resources = NULL;
+            pdf_obj    *xobj_dict = NULL;
+            pdf_obj    *page_obj  = NULL;
+
+            char tmp_img[1024];
+            tmp_img[0] = '\0';
+
+            fz_var(page);
+            fz_var(pixmap);
+            fz_var(image);
+            fz_var(imgref);
+            fz_var(contents);
+            fz_var(resources);
+            fz_var(xobj_dict);
+            fz_var(page_obj);
+
+            fz_try(ctx) {
+                page = fz_load_page(ctx, doc, i);
+                fz_rect bounds = fz_bound_page(ctx, page);
+
+                float pw_pt = bounds.x1 - bounds.x0;
+                float ph_pt = bounds.y1 - bounds.y0;
+
+                fz_matrix ctm = fz_scale(scale, scale);
+                fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
+                fz_colorspace *rgb = fz_device_rgb(ctx);
+                pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
+                fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
+
+                {
+                    fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
+                    /* テキストを一切描画しない: コールバックを NULL にして
+                     * fz_run_page からのテキスト系オペレータを無視させる。
+                     * Type3 グリフもこの fill_text 経由でしか描画されない
+                     * ため、通常フォントと同様に除外される。 */
+                    draw_dev->fill_text        = NULL;
+                    draw_dev->stroke_text      = NULL;
+                    draw_dev->clip_text        = NULL;
+                    draw_dev->clip_stroke_text = NULL;
+                    draw_dev->ignore_text      = NULL;
+                    fz_try(ctx) {
+                        fz_run_page(ctx, page, draw_dev, fz_identity, NULL);
+                        fz_close_device(ctx, draw_dev);
+                    }
+                    fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                }
+
+                snprintf(tmp_img, sizeof(tmp_img),
+                         "%s" KOZOU_PATH_SEP "kozou_rasterize_notext_%d_%d.%s",
+                         base_tmp, (int)getpid(), i, ext);
+
+                if (use_png) {
+                    fz_output *fout = fz_new_output_with_path(ctx, tmp_img, 0);
+                    fz_try(ctx) {
+                        fz_write_pixmap_as_png(ctx, fout, pixmap);
+                        fz_close_output(ctx, fout);
+                    }
+                    fz_always(ctx) { fz_drop_output(ctx, fout); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                } else {
+                    int jpeg_quality = (quality > 0 && quality <= 100) ? quality : 85;
+                    fz_save_pixmap_as_jpeg(ctx, pixmap, tmp_img, jpeg_quality);
+                }
+
+                image   = fz_new_image_from_file(ctx, tmp_img);
+                imgref  = pdf_add_image(ctx, pdfout, image);
+
+                resources = pdf_new_dict(ctx, pdfout, 1);
+                xobj_dict = pdf_new_dict(ctx, pdfout, 1);
+                {
+                    pdf_obj *im0_name = pdf_new_name(ctx, "Im0");
+                    pdf_dict_put(ctx, xobj_dict, im0_name, imgref);
+                    pdf_drop_obj(ctx, im0_name);
+                }
+                pdf_dict_put(ctx, resources, PDF_NAME(XObject), xobj_dict);
+
+                char cs_buf[256];
+                int cs_len = snprintf(cs_buf, sizeof(cs_buf),
+                    "q\n%.4f 0 0 %.4f 0 0 cm\n/Im0 Do\nQ\n",
+                    pw_pt, ph_pt);
+                contents = fz_new_buffer_from_copied_data(ctx,
+                    (const unsigned char *)cs_buf, (size_t)cs_len);
+
+                fz_rect mediabox = { 0, 0, pw_pt, ph_pt };
+                page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
+                pdf_insert_page(ctx, pdfout, -1, page_obj);
+            }
+            fz_always(ctx) {
+                if (tmp_img[0] != '\0') {
+                    remove(tmp_img);
+                    tmp_img[0] = '\0';
+                }
+                pdf_drop_obj(ctx, page_obj);
+                pdf_drop_obj(ctx, xobj_dict);
+                pdf_drop_obj(ctx, resources);
+                fz_drop_buffer(ctx, contents);
+                fz_drop_image(ctx, image);
+                fz_drop_pixmap(ctx, pixmap);
+                fz_drop_page(ctx, page);
+            }
+            fz_catch(ctx) {
+                fz_rethrow(ctx);
+            }
+        }
+
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_compress        = 1;
+        opts.do_compress_images = use_png ? 0 : 1;
+        opts.do_garbage         = 0;
+        opts.do_clean           = 0;
+        pdf_save_document(ctx, pdfout, output, &opts);
+
+        if (allocated) free(pages_to_render);
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (pdfout) pdf_drop_document(ctx, pdfout);
+        if (doc)    fz_drop_document(ctx, doc);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* kozou_compress_preserving_type3                                     */
 /*                                                                     */
 /* Type3 フォントを含む PDF を圧縮する。                               */

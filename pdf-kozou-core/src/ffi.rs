@@ -400,4 +400,23 @@ unsafe extern "C" {
         page_indices_len: c_int,
         result: *mut FfiResult,
     );
+
+    /// kozou_rasterize と同じ入出力だが、テキスト(Type3含む)を一切描画
+    /// しない背景画像を生成する。画像PDF化(フォント保持版)の Stage 1
+    /// 検証用: 「非テキスト要素だけが正しく1枚の画像に焼き込まれ、
+    /// テキストが除外されているか」を確認するための関数。
+    /// ページのテキストはこの出力には含まれない(Stage 2 で元の
+    /// コンテンツストリームと合成する前段階のため)。
+    pub fn kozou_rasterize_no_text(
+        ctx: *mut mupdf_sys::fz_context,
+        input: *const c_char,
+        output: *const c_char,
+        dpi: f32,
+        quality: i32,
+        use_png: c_int,
+        tmp_dir: *const c_char,
+        page_indices: *const c_int,
+        page_indices_len: c_int,
+        result: *mut FfiResult,
+    );
 }

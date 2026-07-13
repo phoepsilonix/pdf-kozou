@@ -427,6 +427,41 @@ pub fn dispatch_json(line: &str) -> String {
                     )?,
                 )?)
             }
+            "rasterize_no_text" => {
+                // 画像PDF化(フォント保持版) Stage 1 検証用コマンド。
+                // rasterize と同じ入出力形式で、テキスト(Type3含む)を
+                // 除外した背景画像のみを生成する。まだ元のテキストとの
+                // 合成(Stage 2)は行わないため、出力PDFにテキストは無い。
+                #[derive(serde::Deserialize)]
+                struct Req {
+                    input: String,
+                    output: String,
+                    #[serde(default)]
+                    dpi: Option<f32>,
+                    #[serde(default)]
+                    quality: Option<i32>,
+                    #[serde(default)]
+                    use_png: Option<bool>,
+                    #[serde(default)]
+                    pages: Option<String>,
+                }
+                let mut r: Req = serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None, None)?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    r.input = tmp_path.clone();
+                }
+                let pages = r.pages.as_deref().map(parse_page_list).transpose()?;
+                Ok(serde_json::to_string(
+                    &crate::compress::rasterize_no_text_with_quality(
+                        &r.input,
+                        &r.output,
+                        r.dpi.unwrap_or(150.0),
+                        r.quality.unwrap_or(85),
+                        r.use_png.unwrap_or(false),
+                        pages.as_deref(),
+                    )?,
+                )?)
+            }
             "is_pdf" => {
                 #[derive(serde::Deserialize)]
                 struct Req {

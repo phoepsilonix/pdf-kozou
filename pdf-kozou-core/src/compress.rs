@@ -1152,6 +1152,104 @@ pub fn rasterize_with_quality(
     })
 }
 
+/// 画像PDF化(フォント保持版)の Stage 1 検証用。
+///
+/// `rasterize_with_quality` と同じ入出力形式だが、テキスト(Type3含む)を
+/// 一切描画しない背景画像を生成する。まだページのテキストとの合成は
+/// 行わない(Stage 2で実装予定) — 現時点では「非テキスト要素だけが
+/// 正しく1枚の画像に焼き込まれているか」を目視確認するための出力。
+///
+/// pages: 1ベースのページ番号リスト。None の場合は全ページ。
+pub fn rasterize_no_text_with_quality(
+    input: &str,
+    output: &str,
+    dpi: f32,
+    quality: i32,
+    use_png: bool,
+    pages: Option<&[i32]>,
+) -> Result<CompressResponse> {
+    use crate::ffi::{FfiResult, kozou_new_context, kozou_rasterize_no_text as ffi_rasterize};
+    use std::ffi::CString;
+    use std::os::raw::c_int;
+
+    let metadata = collect_metadata(input);
+
+    let c_input =
+        CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output =
+        CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    let tmp_dir = {
+        let base = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&base);
+        base
+    };
+    let c_tmp_dir = CString::new(tmp_dir.to_string_lossy().as_ref())
+        .map_err(|_| CoreError::InvalidArg("invalid tmp_dir path".into()))?;
+
+    let page_indices_0based: Vec<c_int> = pages
+        .map(|ps| ps.iter().map(|&p| (p - 1) as c_int).collect())
+        .unwrap_or_default();
+    let (indices_ptr, indices_len) = if page_indices_0based.is_empty() {
+        (std::ptr::null(), 0)
+    } else {
+        (
+            page_indices_0based.as_ptr(),
+            page_indices_0based.len() as c_int,
+        )
+    };
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        ffi_rasterize(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            dpi,
+            quality,
+            if use_png { 1 } else { 0 },
+            c_tmp_dir.as_ptr(),
+            indices_ptr,
+            indices_len,
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    copy_metadata_after_write(output, &metadata);
+
+    let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
+    let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    Ok(CompressResponse {
+        ok: true,
+        input_bytes: ib,
+        output_bytes: ob,
+        ratio: safe_ratio(ib, ob),
+        params_used: CompressParamsUsed {
+            compress_images: true,
+            compress_fonts: false,
+            garbage_level: 0,
+            clean: false,
+            sanitize: false,
+            font_subset: false,
+            subset_skipped: false,
+            merge_fonts: false,
+            object_stream: false,
+            redact_outside_crop: false,
+        },
+        warning: Some(format!(
+            "Stage 1 検証用: {dpi}dpi 背景画像のみ(テキスト除外)。まだ元のテキストとの合成は行っていません。"
+        )),
+    })
+}
+
 /// Type3 フォントを保持しながら PDF を圧縮する。
 ///
 /// pdf_graft_mapped_object で全オブジェクト（Type3 CharProcs を含む）を
