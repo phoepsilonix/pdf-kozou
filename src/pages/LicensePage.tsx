@@ -9,6 +9,7 @@ import {
   findGsExecutable,
   findGsInDir,
   suggestGsCandidates,
+  isMobile,
 } from "../lib/tauri";
 import { open } from "@tauri-apps/plugin-shell";
 import React, { useEffect, useState } from "react";
@@ -119,6 +120,13 @@ const LicensePage: React.FC = () => {
   const [gsVerifyMsg, setGsVerifyMsg] = useState<{ ok: boolean; msg: string } | null>(null);
   const [gsVerifying, setGsVerifying] = useState(false);
   const [gsCandidates, setGsCandidates] = useState<string[]>([]);
+
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    isMobile()
+      .then(setMobile)
+      .catch(() => setMobile(false));
+  }, []);
 
   const openUrl = async (url: string) => {
     await open(url);
@@ -277,203 +285,209 @@ const LicensePage: React.FC = () => {
       </section>
 
       {/* GS モードの解説セクション */}
-      <section style={s.section}>
-        <h2 style={s.h2}>{t("license.gs_heading")}</h2>
-        <div style={s.card}>
-          <p>{t("license.gs_intro")}</p>
-          <div style={s.featureGrid}>
-            <div style={s.featureItem}>
-              <div style={s.icon}>✂️</div>
-              <div>
-                <strong>{t("license.gs_feature1_title")}</strong>
-                <p style={s.small}>{t("license.gs_feature1_desc")}</p>
+      {!mobile && (
+        <section style={s.section}>
+          <h2 style={s.h2}>{t("license.gs_heading")}</h2>
+          <div style={s.card}>
+            <p>{t("license.gs_intro")}</p>
+            <div style={s.featureGrid}>
+              <div style={s.featureItem}>
+                <div style={s.icon}>✂️</div>
+                <div>
+                  <strong>{t("license.gs_feature1_title")}</strong>
+                  <p style={s.small}>{t("license.gs_feature1_desc")}</p>
+                </div>
+              </div>
+              <div style={s.featureItem}>
+                <div style={s.icon}>🖼️</div>
+                <div>
+                  <strong>{t("license.gs_feature2_title")}</strong>
+                  <p style={s.small}>{t("license.gs_feature2_desc")}</p>
+                </div>
               </div>
             </div>
-            <div style={s.featureItem}>
-              <div style={s.icon}>🖼️</div>
-              <div>
-                <strong>{t("license.gs_feature2_title")}</strong>
-                <p style={s.small}>{t("license.gs_feature2_desc")}</p>
-              </div>
+            <div style={s.tip}>
+              <strong>{t("license.gs_flow_title")}</strong>
+              <br />
+              1. {t("license.gs_flow_1")}
+              <br />
+              2. {t("license.gs_flow_2")}
+              <br />
+              3. {t("license.gs_flow_3")}
             </div>
           </div>
-          <div style={s.tip}>
-            <strong>{t("license.gs_flow_title")}</strong>
-            <br />
-            1. {t("license.gs_flow_1")}
-            <br />
-            2. {t("license.gs_flow_2")}
-            <br />
-            3. {t("license.gs_flow_3")}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* システム診断セクション */}
-      <section style={s.section}>
-        <h2 style={s.h2}>{t("license.diag_heading")}</h2>
-        <div
-          style={{
-            ...s.card,
-            border: gsStatus === "missing" ? "1px solid var(--c-err)" : s.card.border,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <strong>{t("license.diag_gs_label")}</strong>
-              <span
-                style={{
-                  marginLeft: 8,
-                  color:
-                    gsVerifying || gsStatus === "checking"
-                      ? "var(--c-textDim)"
-                      : gsStatus === "found"
-                        ? "var(--c-ok)"
-                        : "var(--c-err)",
-                }}
-              >
-                {(gsVerifying || gsStatus === "checking") && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <span className="kozou-spinner" style={{ display: "inline-block" }}>
-                      ⏳
-                    </span>
-                    {t("license.diag_checking")}
-                  </span>
-                )}
-                {!gsVerifying &&
-                  gsStatus === "found" &&
-                  t("license.diag_found", { version: gsVersion })}
-                {!gsVerifying && gsStatus === "missing" && t("license.diag_missing")}
-              </span>
-            </div>
-            <button
-              onClick={() => checkGs()}
-              style={{
-                ...s.btnSmall,
-                ...(gsVerifying || gsStatus === "checking" ? s.btnDisabled : {}),
-              }}
-              disabled={gsVerifying || gsStatus === "checking"}
-            >
-              {gsStatus === "checking" ? t("license.diag_checking") : t("license.diag_recheck")}
-            </button>
-          </div>
-
-          {gsStatus === "missing" && (
-            <div style={s.downloadBox}>
-              <p style={{ fontSize: "13px", marginBottom: "10px", lineHeight: "1.6" }}>
-                <strong>{t("license.diag_mupdf_title")}</strong>
-                <br />
-                {t("license.diag_mupdf_body")}
-                <br />
-                <br />
-                {t("license.diag_gs_hint")}
-              </p>
-              <button onClick={openGitHub} style={s.btnSmall}>
-                {t("license.diag_github_btn")}
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* GS パス手動指定セクション（常時表示） */}
-      <section style={s.section}>
-        <h2 style={s.h2}>{t("license.gs_path_heading")}</h2>
-        <div style={s.settingsCard}>
-          <div style={s.settingText}>
-            <div style={s.settingTitle}>{t("license.gs_path_title")}</div>
-            <div style={s.settingDesc}>{t("license.gs_path_desc")}</div>
-          </div>
+      {!mobile && (
+        <section style={s.section}>
+          <h2 style={s.h2}>{t("license.diag_heading")}</h2>
           <div
             style={{
-              display: "flex",
-              gap: 6,
-              marginTop: 8,
-              alignItems: "center",
-              flexWrap: "wrap" as const,
+              ...s.card,
+              border: gsStatus === "missing" ? "1px solid var(--c-err)" : s.card.border,
             }}
           >
-            <input
-              type="text"
-              value={gsPathInput}
-              onChange={(e) => {
-                setGsPathInput(e.target.value);
-                setGsVerifyMsg(null);
-              }}
-              placeholder={t("license.gs_path_placeholder")}
-              style={s.pathInput}
-              spellCheck={false}
-            />
-            <button
-              style={s.btnSmall}
-              onClick={handlePickGsFolder}
-              title={t("license.gs_browse_folder_hint")}
-            >
-              📁 {t("license.gs_browse_folder")}
-            </button>
-            <button
-              style={{ ...s.btnSmall, ...s.btnSecondary }}
-              onClick={handlePickGs}
-              title={t("license.gs_path_browse")}
-            >
-              🔍
-            </button>
-            <button
-              style={{ ...s.btnSmall, ...(gsVerifying ? s.btnDisabled : {}) }}
-              onClick={handleVerify}
-              disabled={gsVerifying || !gsPathInput.trim()}
-            >
-              ✔ {gsVerifying ? t("license.gs_path_verifying") : t("license.gs_path_verify")}
-            </button>
-            {customGsPath && (
-              <button style={{ ...s.btnSmall, ...s.btnClear }} onClick={handleClearCustomGs}>
-                ✕ {t("license.gs_path_clear")}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <strong>{t("license.diag_gs_label")}</strong>
+                <span
+                  style={{
+                    marginLeft: 8,
+                    color:
+                      gsVerifying || gsStatus === "checking"
+                        ? "var(--c-textDim)"
+                        : gsStatus === "found"
+                          ? "var(--c-ok)"
+                          : "var(--c-err)",
+                  }}
+                >
+                  {(gsVerifying || gsStatus === "checking") && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span className="kozou-spinner" style={{ display: "inline-block" }}>
+                        ⏳
+                      </span>
+                      {t("license.diag_checking")}
+                    </span>
+                  )}
+                  {!gsVerifying &&
+                    gsStatus === "found" &&
+                    t("license.diag_found", { version: gsVersion })}
+                  {!gsVerifying && gsStatus === "missing" && t("license.diag_missing")}
+                </span>
+              </div>
+              <button
+                onClick={() => checkGs()}
+                style={{
+                  ...s.btnSmall,
+                  ...(gsVerifying || gsStatus === "checking" ? s.btnDisabled : {}),
+                }}
+                disabled={gsVerifying || gsStatus === "checking"}
+              >
+                {gsStatus === "checking" ? t("license.diag_checking") : t("license.diag_recheck")}
               </button>
+            </div>
+
+            {gsStatus === "missing" && (
+              <div style={s.downloadBox}>
+                <p style={{ fontSize: "13px", marginBottom: "10px", lineHeight: "1.6" }}>
+                  <strong>{t("license.diag_mupdf_title")}</strong>
+                  <br />
+                  {t("license.diag_mupdf_body")}
+                  <br />
+                  <br />
+                  {t("license.diag_gs_hint")}
+                </p>
+                <button onClick={openGitHub} style={s.btnSmall}>
+                  {t("license.diag_github_btn")}
+                </button>
+              </div>
             )}
           </div>
-          {/* 候補パス */}
-          {gsCandidates.length > 0 && (
-            <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap" as const, gap: 4 }}>
-              <span
-                style={{ fontSize: FS.caption, color: "var(--c-textDim)", alignSelf: "center" }}
-              >
-                {t("license.gs_candidates")}:
-              </span>
-              {gsCandidates.map((c) => (
-                <button
-                  key={c}
-                  style={s.candidateBtn}
-                  onClick={() => {
-                    setGsPathInput(c);
-                    setGsVerifyMsg(null);
-                  }}
-                  title={c}
-                >
-                  {c.split(/[/\\]/).pop()}
-                </button>
-              ))}
+        </section>
+      )}
+
+      {/* GS パス手動指定セクション（常時表示） */}
+      {!mobile && (
+        <section style={s.section}>
+          <h2 style={s.h2}>{t("license.gs_path_heading")}</h2>
+          <div style={s.settingsCard}>
+            <div style={s.settingText}>
+              <div style={s.settingTitle}>{t("license.gs_path_title")}</div>
+              <div style={s.settingDesc}>{t("license.gs_path_desc")}</div>
             </div>
-          )}
-          {gsVerifyMsg && (
             <div
               style={{
-                ...s.verifyMsg,
-                color: gsVerifyMsg.ok ? "var(--c-ok, #4caf50)" : "var(--c-err, #e55)",
+                display: "flex",
+                gap: 6,
+                marginTop: 8,
+                alignItems: "center",
+                flexWrap: "wrap" as const,
               }}
             >
-              {gsVerifyMsg.msg}
+              <input
+                type="text"
+                value={gsPathInput}
+                onChange={(e) => {
+                  setGsPathInput(e.target.value);
+                  setGsVerifyMsg(null);
+                }}
+                placeholder={t("license.gs_path_placeholder")}
+                style={s.pathInput}
+                spellCheck={false}
+              />
+              <button
+                style={s.btnSmall}
+                onClick={handlePickGsFolder}
+                title={t("license.gs_browse_folder_hint")}
+              >
+                📁 {t("license.gs_browse_folder")}
+              </button>
+              <button
+                style={{ ...s.btnSmall, ...s.btnSecondary }}
+                onClick={handlePickGs}
+                title={t("license.gs_path_browse")}
+              >
+                🔍
+              </button>
+              <button
+                style={{ ...s.btnSmall, ...(gsVerifying ? s.btnDisabled : {}) }}
+                onClick={handleVerify}
+                disabled={gsVerifying || !gsPathInput.trim()}
+              >
+                ✔ {gsVerifying ? t("license.gs_path_verifying") : t("license.gs_path_verify")}
+              </button>
+              {customGsPath && (
+                <button style={{ ...s.btnSmall, ...s.btnClear }} onClick={handleClearCustomGs}>
+                  ✕ {t("license.gs_path_clear")}
+                </button>
+              )}
             </div>
-          )}
-          {customGsPath && (
-            <div style={s.currentPath}>
-              {t("license.gs_path_current")}: <code>{customGsPath}</code>
-            </div>
-          )}
-        </div>
-      </section>
+            {/* 候補パス */}
+            {gsCandidates.length > 0 && (
+              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap" as const, gap: 4 }}>
+                <span
+                  style={{ fontSize: FS.caption, color: "var(--c-textDim)", alignSelf: "center" }}
+                >
+                  {t("license.gs_candidates")}:
+                </span>
+                {gsCandidates.map((c) => (
+                  <button
+                    key={c}
+                    style={s.candidateBtn}
+                    onClick={() => {
+                      setGsPathInput(c);
+                      setGsVerifyMsg(null);
+                    }}
+                    title={c}
+                  >
+                    {c.split(/[/\\]/).pop()}
+                  </button>
+                ))}
+              </div>
+            )}
+            {gsVerifyMsg && (
+              <div
+                style={{
+                  ...s.verifyMsg,
+                  color: gsVerifyMsg.ok ? "var(--c-ok, #4caf50)" : "var(--c-err, #e55)",
+                }}
+              >
+                {gsVerifyMsg.msg}
+              </div>
+            )}
+            {customGsPath && (
+              <div style={s.currentPath}>
+                {t("license.gs_path_current")}: <code>{customGsPath}</code>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* 動作設定セクション（GS 検出時のみ） */}
-      {gsStatus === "found" && (
+      {!mobile && gsStatus === "found" && (
         <section style={s.section}>
           <h2 style={s.h2}>{t("license.settings_heading")}</h2>
           <div style={s.settingsCard}>
@@ -493,7 +507,9 @@ const LicensePage: React.FC = () => {
         </section>
       )}
 
-      {gsStatus === "missing" && <p style={s.hintSmall}>{t("license.settings_gs_hint")}</p>}
+      {!mobile && gsStatus === "missing" && (
+        <p style={s.hintSmall}>{t("license.settings_gs_hint")}</p>
+      )}
 
       {/* ライセンステーブル */}
       <section style={s.section}>
@@ -512,11 +528,13 @@ const LicensePage: React.FC = () => {
               <td style={s.td}>AGPL v3</td>
               <td style={s.td}>{t("license.license_usage_mupdf")}</td>
             </tr>
-            <tr>
-              <td style={s.td}>Ghostscript</td>
-              <td style={s.td}>AGPL v3</td>
-              <td style={s.td}>{t("license.license_usage_gs")}</td>
-            </tr>
+            {mobile || (
+              <tr>
+                <td style={s.td}>Ghostscript</td>
+                <td style={s.td}>AGPL v3</td>
+                <td style={s.td}>{t("license.license_usage_gs")}</td>
+              </tr>
+            )}
             <tr>
               <td style={s.td}>Tauri</td>
               <td style={s.td}>MIT / Apache</td>
