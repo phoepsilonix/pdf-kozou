@@ -589,7 +589,20 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     // let _ = std::fs::remove_file(&temp_purge_path);
     //}
 
-    result_res
+    // redact_outside_crop の前処理を挟むと current_input が一時ファイルに
+    // 差し替わり、各圧縮パスが input_bytes をその一時ファイルのサイズで
+    // 計算してしまう。結果画面に表示する「元のファイルサイズ」は常に
+    // req.input（本来の入力ファイル）基準に補正する。
+    result_res.map(|mut r| {
+        if let Ok(meta) = std::fs::metadata(&req.input) {
+            let true_input_bytes = meta.len();
+            if r.input_bytes != true_input_bytes {
+                r.input_bytes = true_input_bytes;
+                r.ratio = safe_ratio(r.input_bytes, r.output_bytes);
+            }
+        }
+        r
+    })
 }
 
 // compress.rs
