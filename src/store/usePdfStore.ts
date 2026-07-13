@@ -33,6 +33,8 @@ interface PdfStore {
   pdfInfo: PdfInfo | null;
   setFile: (path: string, info: PdfInfo) => void;
   clearFile: () => void;
+  redactOutsideCrop: boolean;
+  setRedactOutsideCrop: (v: boolean) => void;
 
   // --- GS管理 ---
   gsAvailable: boolean;
@@ -135,6 +137,10 @@ export const usePdfStore = create<PdfStore>()(
       pdfInfo: null,
       setFile: (path, info) => set({ filePath: path, pdfInfo: info }),
       clearFile: () => set({ filePath: null, pdfInfo: null }),
+
+      // crop領域外圧縮
+      redactOutsideCrop: true,
+      setRedactOutsideCrop: (v) => set({ redactOutsideCrop: v }),
 
       // GS初期化
       gsAvailable: false,

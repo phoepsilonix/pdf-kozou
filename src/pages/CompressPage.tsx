@@ -155,6 +155,8 @@ export function CompressPage({
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
+    redactOutsideCrop,
+    setRedactOutsideCrop,
   } = usePdfStore();
   const { pickSave, commitSave, discardSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
@@ -265,7 +267,6 @@ export function CompressPage({
   const [preset, setPreset] = useState<CompressPreset>("standard");
   const [objectStream, setObjectStream] = useState(false);
   const [mergeFonts, setMergeFonts] = useState(false);
-  const [redactOutsideCrop, setRedactOutsideCrop] = useState(true);
 
   const [result, setResult] = useState<CompressResponse | null>(null);
   const [tmpFile, setTmpFile] = useState("");
