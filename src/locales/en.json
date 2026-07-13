@@ -511,7 +511,7 @@
     "merge_fonts_on": "Enabled (high risk: reuses fonts to reduce size, best for single pages)",
     "merge_fonts_off": "Disabled",
     "redact_outside_crop": "redact_outside_crop",
-    "redact_outside_crop_label": "Fully erase area outside crop (redact)",
+    "redact_outside_crop_label": "Erase area outside crop (redact)",
     "redact_outside_crop_on": "Enabled (physically erases text, images, and paths outside the CropBox)",
     "redact_outside_crop_off": "Disabled (keeps data outside the CropBox as-is)",
     "gs_info_title": "About Ghostscript Pro Mode",
