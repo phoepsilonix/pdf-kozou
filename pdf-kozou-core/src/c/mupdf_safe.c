@@ -1709,11 +1709,26 @@ static int kozou_trimmed_last_token_is(const char *s, size_t len, const char *op
     return memcmp(s + b, op, op_len) == 0;
 }
 
+/* 定義は本ファイル後方 (kozou_process_form_xobjects_keep_text の近く)。
+ * "/Name Do" 行の Name が指す XObject が Form かどうかを判定する。 */
+static int kozou_do_line_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
+                                       const char *line, size_t trimmed_len);
+
+/* 定義は本ファイル後方。Resources/XObject 配下の Form XObject を
+ * 再帰的に処理し、非テキスト演算子を除去してテキストだけを残す。 */
+static void kozou_process_form_xobjects_keep_text(
+    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth);
+
 /* BT 外にある「非テキストの描画命令」を行単位で除去する。
  * 対象 (ページに実際にピクセルを描く演算子のみ):
  *   f F f* S s B B* b b*  (パスの塗り/線)
- *   Do                    (画像 / フォーム XObject の描画)
  *   sh                    (シェーディング)
+ *   Do                    ただし Image XObject を指す場合のみ除去する。
+ *     Form XObject を指す場合は残す — kozou_process_form_xobjects_keep_text
+ *     によってその Form 自身の中身も既にテキストだけに絞られている
+ *     前提のため、Do 呼び出し自体を消すとテキストごと失われてしまう。
+ *     xobj_dict が NULL(呼び出し元がXObject解決手段を持たない)場合は
+ *     安全側に倒して除去する。
  * 対象外 (温存する):
  *   パス構築 (m l c v y h re) : 単独では何も描かないため無害。
  *     後続の W n によるクリップに使われている場合があるため、
@@ -1722,11 +1737,10 @@ static int kozou_trimmed_last_token_is(const char *s, size_t len, const char *op
  *   q Q cm gs 色設定系      : テキストの位置・色にも影響するため必須。
  * BT ～ ET の内側は無条件でそのまま温存する。
  *
- * 制限: トップレベルのページコンテンツストリームのみを対象とする。
- * ネストした Form XObject 内部の描画命令はこの関数では扱わない
- * (Do 自体を除去するので、Form XObject の中身が何であれ、その
- *  XObject の描画自体はまるごと無くなる)。 */
-static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_buf)
+ * xobj_dict: このコンテンツストリームが参照する Resources/XObject
+ * (Do の名前解決に使う)。 */
+static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_buf,
+                                                 pdf_obj *xobj_dict)
 {
     unsigned char *src_data = NULL;
     size_t src_len = fz_buffer_storage(ctx, in_buf, &src_data);
@@ -1765,9 +1779,10 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
                 kozou_trimmed_last_token_is(src + ts, trimmed_len, "B*") ||
                 kozou_trimmed_last_token_is(src + ts, trimmed_len, "b")  ||
                 kozou_trimmed_last_token_is(src + ts, trimmed_len, "b*") ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "Do") ||
                 kozou_trimmed_last_token_is(src + ts, trimmed_len, "sh")) {
                 drop = 1;
+            } else if (kozou_trimmed_last_token_is(src + ts, trimmed_len, "Do")) {
+                drop = !kozou_do_line_targets_form(ctx, xobj_dict, src + ts, trimmed_len);
             }
         }
 
@@ -2066,11 +2081,9 @@ void kozou_compose_image_pdf_keep_text(
                         }
                     }
 
-                    no_inline = kozou_strip_inline_images(ctx, orig_buf);
-                    stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline);
-
-                    /* 背景画像の Resources 登録: 既存の Resources/XObject を
-                     * 保持したまま KzBgImg エントリだけ追加する。
+                    /* 背景画像の Resources 登録に先立って、既存の
+                     * Resources/XObject を取得しておく(Do の名前解決と
+                     * ネストした Form XObject の再帰処理に必要なため)。
                      * Resources 自体がページに直接無い(継承のみ)場合は
                      * 新規に作成してページへ直接持たせる。 */
                     pdf_obj *res = pdf_dict_get(ctx, page_obj, PDF_NAME(Resources));
@@ -2093,6 +2106,16 @@ void kozou_compose_image_pdf_keep_text(
                         xobj = pdf_new_dict(ctx, dst, 1);
                         pdf_dict_put(ctx, res, PDF_NAME(XObject), xobj);
                     }
+
+                    /* ページが参照する Form XObject を先に再帰処理して
+                     * 中身をテキストのみに絞ってから、トップレベルの
+                     * コンテンツストリームを処理する
+                     * (Do 呼び出しの Form/Image 判定に xobj が必要)。 */
+                    kozou_process_form_xobjects_keep_text(ctx, dst, xobj, 0);
+
+                    no_inline = kozou_strip_inline_images(ctx, orig_buf);
+                    stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline, xobj);
+
                     {
                         pdf_obj *bgname = pdf_new_name(ctx, "KzBgImg");
                         pdf_dict_put(ctx, xobj, bgname, imgref);
@@ -2148,6 +2171,86 @@ void kozou_compose_image_pdf_keep_text(
     }
     fz_catch(ctx) {
         set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* "/Name Do" 行から /Name を取り出し、xobj_dict 内でその名前が指す
+ * XObject の Subtype が /Form かどうかを判定する。
+ * Form XObject は再帰的にテキストだけを残す処理
+ * (kozou_process_form_xobjects_keep_text) 済みである前提で、
+ * その Do 呼び出し自体は残す(中身がテキストのみになっているため)。
+ * Image XObject や名前解決できない場合は 0 を返し、呼び出し側で
+ * Do 行を除去する(=背景画像側に既に焼き込まれている)。 */
+static int kozou_do_line_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
+                                       const char *line, size_t trimmed_len)
+{
+    if (!xobj_dict) return 0;
+
+    /* 末尾トークン("Do")の直前のトークン("/Name")を取り出す */
+    size_t p = trimmed_len;
+    while (p > 0 && line[p-1] != ' ' && line[p-1] != '\t') p--; /* "Do" の先頭へ */
+    while (p > 0 && (line[p-1] == ' ' || line[p-1] == '\t')) p--; /* 空白をスキップ */
+    size_t name_end = p;
+    while (p > 0 && line[p-1] != ' ' && line[p-1] != '\t') p--; /* 名前トークンの先頭へ */
+    size_t name_start = p;
+
+    if (name_end <= name_start || line[name_start] != '/') return 0;
+    size_t name_len = name_end - name_start - 1;
+    if (name_len == 0 || name_len > 127) return 0;
+
+    char namebuf[128];
+    memcpy(namebuf, line + name_start + 1, name_len);
+    namebuf[name_len] = '\0';
+
+    pdf_obj *xo = pdf_dict_gets(ctx, xobj_dict, namebuf);
+    if (!xo) return 0;
+    pdf_obj *resolved = pdf_resolve_indirect(ctx, xo);
+    pdf_obj *subtype = resolved ? pdf_dict_get(ctx, resolved, PDF_NAME(Subtype)) : NULL;
+    return subtype && pdf_name_eq(ctx, subtype, PDF_NAME(Form));
+}
+
+/* Resources/XObject 配下の Form XObject を再帰的に処理し、各 Form の
+ * コンテンツストリームから非テキスト演算子だけを除去する
+ * (トップレベルページと同じ考え方)。これにより、テキストが
+ * Form XObject の中に置かれているページでも、その Do 呼び出しを
+ * 残すだけでテキストがベクターのまま保持できるようになる。
+ * 深さ制限で循環参照を防ぐ。 */
+static void kozou_process_form_xobjects_keep_text(
+    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth)
+{
+    if (!xobj_dict || depth > 12) return;
+
+    int n = pdf_dict_len(ctx, xobj_dict);
+    for (int k = 0; k < n; k++) {
+        pdf_obj *entry = pdf_resolve_indirect(ctx, pdf_dict_get_val(ctx, xobj_dict, k));
+        if (!entry || !pdf_is_dict(ctx, entry)) continue;
+
+        pdf_obj *subtype = pdf_dict_get(ctx, entry, PDF_NAME(Subtype));
+        if (!subtype || !pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
+
+        pdf_obj *own_res  = pdf_dict_get(ctx, entry, PDF_NAME(Resources));
+        pdf_obj *own_xobj = own_res ? pdf_dict_get(ctx, own_res, PDF_NAME(XObject)) : NULL;
+
+        /* 自分自身より先にネストした Form XObject を処理する
+         * (内側から外側へ、テキスト保持の依存関係を満たすため)。 */
+        if (own_xobj) {
+            kozou_process_form_xobjects_keep_text(ctx, dst, own_xobj, depth + 1);
+        }
+
+        fz_buffer *orig_x = NULL, *ni_x = NULL, *st_x = NULL;
+        fz_var(orig_x); fz_var(ni_x); fz_var(st_x);
+        fz_try(ctx) {
+            orig_x = pdf_load_stream(ctx, entry);
+            ni_x   = kozou_strip_inline_images(ctx, orig_x);
+            st_x   = kozou_strip_nontext_paint_ops(ctx, ni_x, own_xobj);
+            pdf_update_stream(ctx, dst, entry, st_x, 0);
+        }
+        fz_always(ctx) {
+            fz_drop_buffer(ctx, st_x);
+            fz_drop_buffer(ctx, ni_x);
+            fz_drop_buffer(ctx, orig_x);
+        }
+        fz_catch(ctx) { fz_rethrow(ctx); }
     }
 }
 
