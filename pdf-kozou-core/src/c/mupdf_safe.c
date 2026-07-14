@@ -2069,12 +2069,23 @@ void kozou_compose_image_pdf_keep_text(
                         if (pdf_is_array(ctx, contents)) {
                             int nc = pdf_array_len(ctx, contents);
                             for (int ci = 0; ci < nc; ci++) {
-                                fz_buffer *b = pdf_load_stream(ctx, pdf_array_get(ctx, contents, ci));
-                                fz_append_buffer(ctx, orig_buf, b);
-                                fz_append_byte(ctx, orig_buf, '\n');
-                                fz_drop_buffer(ctx, b);
+                                pdf_obj *part = pdf_array_get(ctx, contents, ci);
+                                if (!pdf_is_stream(ctx, part)) continue;
+                                fz_buffer *b = NULL;
+                                fz_var(b);
+                                fz_try(ctx) {
+                                    b = pdf_load_stream(ctx, part);
+                                    fz_append_buffer(ctx, orig_buf, b);
+                                    fz_append_byte(ctx, orig_buf, '\n');
+                                }
+                                fz_always(ctx) { fz_drop_buffer(ctx, b); }
+                                fz_catch(ctx) {
+                                    fz_warn(ctx, "compose_image_pdf_keep_text: "
+                                                 "skipping unreadable content stream: %s",
+                                            fz_caught_message(ctx));
+                                }
                             }
-                        } else {
+                        } else if (pdf_is_stream(ctx, contents)) {
                             fz_buffer *b = pdf_load_stream(ctx, contents);
                             fz_append_buffer(ctx, orig_buf, b);
                             fz_drop_buffer(ctx, b);
@@ -2228,6 +2239,14 @@ static void kozou_process_form_xobjects_keep_text(
         pdf_obj *subtype = pdf_dict_get(ctx, entry, PDF_NAME(Subtype));
         if (!subtype || !pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
 
+        /* Subtype が /Form でも、何らかの理由で実体が stream でない
+         * (壊れた/中間更新で切り離された等の) 場合があるため、
+         * pdf_load_stream を呼ぶ前に必ず確認する。stream でなければ
+         * このXObjectは処理をスキップし、Do 呼び出し側では
+         * "Form扱いのため保持" の判定に不整合が出るが、そもそも
+         * 実体が無い/壊れているオブジェクトなので実害はない。 */
+        if (!pdf_is_stream(ctx, entry)) continue;
+
         pdf_obj *own_res  = pdf_dict_get(ctx, entry, PDF_NAME(Resources));
         pdf_obj *own_xobj = own_res ? pdf_dict_get(ctx, own_res, PDF_NAME(XObject)) : NULL;
 
@@ -2250,7 +2269,15 @@ static void kozou_process_form_xobjects_keep_text(
             fz_drop_buffer(ctx, ni_x);
             fz_drop_buffer(ctx, orig_x);
         }
-        fz_catch(ctx) { fz_rethrow(ctx); }
+        fz_catch(ctx) {
+            /* この Form XObject 1つの処理失敗でドキュメント全体を
+             * 失敗させない。元のストリームには手を付けていない
+             * 状態で次に進む(最悪でもDoの中身が非テキストごと
+             * 残るだけで、背景画像とのある程度の二重描画に
+             * とどまる)。 */
+            fz_warn(ctx, "kozou_process_form_xobjects_keep_text: "
+                         "skipping one XObject: %s", fz_caught_message(ctx));
+        }
     }
 }
 
