@@ -1694,41 +1694,100 @@ static fz_buffer *kozou_strip_inline_images(fz_context *ctx, fz_buffer *in_buf)
     return out;
 }
 
-/* 末尾トークン(最後の空白区切り単語)を取り出して比較するためのヘルパー */
-static int kozou_trimmed_last_token_is(const char *s, size_t len, const char *op)
+/* PDF コンテンツストリームの簡易字句解析用トークン。
+ * 行区切りに依存せず、1行に複数演算子が書かれていても正しく
+ * 演算子単位で処理できるようにするため導入。
+ * 括弧文字列 "(...)" はエスケープ考慮のバランス走査で1トークンとして
+ * 扱い、内部にある f/Do/sh 等の文字列を誤って演算子と解釈しない。 */
+typedef struct { size_t start, end; } kozou_tok;
+
+static size_t kozou_next_token(const char *s, size_t len, size_t pos, kozou_tok *out)
 {
-    if (len == 0) return 0;
-    size_t e = len;
-    while (e > 0 && (s[e-1] == ' ' || s[e-1] == '\t' || s[e-1] == '\r')) e--;
-    if (e == 0) return 0;
-    size_t b = e;
-    while (b > 0 && s[b-1] != ' ' && s[b-1] != '\t') b--;
-    size_t tok_len = e - b;
-    size_t op_len = strlen(op);
-    if (tok_len != op_len) return 0;
-    return memcmp(s + b, op, op_len) == 0;
+    while (pos < len && (s[pos]==' '||s[pos]=='\t'||s[pos]=='\r'||s[pos]=='\n')) pos++;
+    if (pos >= len) { out->start = out->end = pos; return pos; }
+
+    char c0 = s[pos];
+
+    if (c0 == '(') {
+        size_t start = pos; int depth = 1; pos++;
+        while (pos < len && depth > 0) {
+            if (s[pos] == '\\' && pos + 1 < len) { pos += 2; continue; }
+            if (s[pos] == '(') depth++;
+            else if (s[pos] == ')') depth--;
+            pos++;
+        }
+        out->start = start; out->end = pos; return pos;
+    }
+    if (c0 == '<' && pos + 1 < len && s[pos+1] == '<') {
+        size_t start = pos; int depth = 1; pos += 2;
+        while (pos < len && depth > 0) {
+            if (s[pos]=='<' && pos+1<len && s[pos+1]=='<') { depth++; pos+=2; continue; }
+            if (s[pos]=='>' && pos+1<len && s[pos+1]=='>') { depth--; pos+=2; continue; }
+            pos++;
+        }
+        out->start = start; out->end = pos; return pos;
+    }
+    if (c0 == '<') {
+        size_t start = pos; pos++;
+        while (pos < len && s[pos] != '>') pos++;
+        if (pos < len) pos++;
+        out->start = start; out->end = pos; return pos;
+    }
+    if (c0=='['||c0==']'||c0=='{'||c0=='}'||c0=='>') {
+        out->start = pos; out->end = pos + 1; return pos + 1;
+    }
+    /* 名前("/xxx")・数値・演算子キーワードいずれもこの汎用パスで
+     * 正しく1トークンとして切り出せる(先頭が '/' でもそれ以外でも、
+     * 次のデリミタまで読み進めるだけでよい)。 */
+    size_t start = pos;
+    pos++;
+    while (pos < len) {
+        char c = s[pos];
+        if (c==' '||c=='\t'||c=='\r'||c=='\n'||c=='('||c==')'||c=='<'||c=='>'||c=='['||c==']'||c=='{'||c=='}'||c=='/') break;
+        pos++;
+    }
+    out->start = start; out->end = pos; return pos;
 }
 
-/* 定義は本ファイル後方 (kozou_process_form_xobjects_keep_text の近く)。
- * "/Name Do" 行の Name が指す XObject が Form かどうかを判定する。 */
-static int kozou_do_line_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
-                                       const char *line, size_t trimmed_len);
+/* "/Name" トークン(先頭に '/' を含む)が指す XObject の Subtype が
+ * /Form かどうかを判定する。Form XObject を指す Do は
+ * kozou_process_form_xobjects_keep_text で中身が既にテキストだけに
+ * 絞られている前提のため、Do 呼び出し自体は保持してよい。
+ * Image XObject や名前解決できない場合は 0 を返す
+ * (呼び出し側で Do を除去する = 背景画像側に既に焼き込まれている)。*/
+static int kozou_do_name_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
+                                       const char *name_tok, size_t name_tok_len)
+{
+    if (!xobj_dict || name_tok_len < 2 || name_tok[0] != '/') return 0;
+    size_t name_len = name_tok_len - 1;
+    if (name_len == 0 || name_len > 127) return 0;
+
+    char namebuf[128];
+    memcpy(namebuf, name_tok + 1, name_len);
+    namebuf[name_len] = '\0';
+
+    pdf_obj *xo = pdf_dict_gets(ctx, xobj_dict, namebuf);
+    if (!xo) return 0;
+    pdf_obj *resolved = pdf_resolve_indirect(ctx, xo);
+    pdf_obj *subtype = resolved ? pdf_dict_get(ctx, resolved, PDF_NAME(Subtype)) : NULL;
+    return subtype && pdf_name_eq(ctx, subtype, PDF_NAME(Form));
+}
 
 /* 定義は本ファイル後方。Resources/XObject 配下の Form XObject を
  * 再帰的に処理し、非テキスト演算子を除去してテキストだけを残す。 */
 static void kozou_process_form_xobjects_keep_text(
     fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth);
 
-/* BT 外にある「非テキストの描画命令」を行単位で除去する。
- * 対象 (ページに実際にピクセルを描く演算子のみ):
+/* BT 外にある「非テキストの描画命令」を演算子単位で除去する
+ * (トークン解析ベース。1行に複数演算子が書かれていても、対象の
+ *  演算子とその演算子自身のオペランドだけを正確に取り除き、
+ *  同じ行にある q/Q や他の演算子は一切変更しない)。
+ * 対象 (ページに実際にピクセルを描く演算子のみ、オペランドは0個):
  *   f F f* S s B B* b b*  (パスの塗り/線)
+ * 対象 (オペランド1個: 直前の名前トークンも一緒に除去):
  *   sh                    (シェーディング)
  *   Do                    ただし Image XObject を指す場合のみ除去する。
- *     Form XObject を指す場合は残す — kozou_process_form_xobjects_keep_text
- *     によってその Form 自身の中身も既にテキストだけに絞られている
- *     前提のため、Do 呼び出し自体を消すとテキストごと失われてしまう。
- *     xobj_dict が NULL(呼び出し元がXObject解決手段を持たない)場合は
- *     安全側に倒して除去する。
+ *     Form XObject を指す場合は演算子・オペランドとも残す。
  * 対象外 (温存する):
  *   パス構築 (m l c v y h re) : 単独では何も描かないため無害。
  *     後続の W n によるクリップに使われている場合があるため、
@@ -1746,50 +1805,79 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
     size_t src_len = fz_buffer_storage(ctx, in_buf, &src_data);
     fz_buffer *out = fz_new_buffer(ctx, src_len + 16);
     if (!src_data || src_len == 0) return out;
-
     const char *src = (const char *)src_data;
-    size_t pos = 0;
-    int in_bt = 0;
 
-    while (pos < src_len) {
-        size_t line_start = pos;
-        while (pos < src_len && src[pos] != '\n') pos++;
-        size_t line_len_incl_nl = (pos < src_len) ? (pos - line_start + 1) : (pos - line_start);
-        size_t line_len = pos - line_start;
-        if (pos < src_len) pos++;
+    size_t cap = 256, ntok = 0;
+    kozou_tok *toks = (kozou_tok *)malloc(sizeof(kozou_tok) * cap);
 
-        size_t ts = line_start;
-        while (ts < line_start + line_len && (src[ts] == ' ' || src[ts] == '\t')) ts++;
-        size_t te = line_start + line_len;
-        size_t trimmed_len = te - ts;
-
-        int drop = 0;
-
-        if (trimmed_len == 2 && src[ts] == 'B' && src[ts+1] == 'T') {
-            in_bt = 1;
-        } else if (trimmed_len == 2 && src[ts] == 'E' && src[ts+1] == 'T') {
-            in_bt = 0;
-        } else if (!in_bt) {
-            if (kozou_trimmed_last_token_is(src + ts, trimmed_len, "f")  ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "F")  ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "f*") ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "S")  ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "s")  ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "B")  ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "B*") ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "b")  ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "b*") ||
-                kozou_trimmed_last_token_is(src + ts, trimmed_len, "sh")) {
-                drop = 1;
-            } else if (kozou_trimmed_last_token_is(src + ts, trimmed_len, "Do")) {
-                drop = !kozou_do_line_targets_form(ctx, xobj_dict, src + ts, trimmed_len);
-            }
-        }
-
-        if (!drop) {
-            fz_append_data(ctx, out, src + line_start, line_len_incl_nl);
+    {
+        size_t pos = 0;
+        while (pos < src_len) {
+            kozou_tok t;
+            size_t next = kozou_next_token(src, src_len, pos, &t);
+            if (t.start == t.end) break; /* 残りは空白のみ */
+            if (ntok == cap) { cap *= 2; toks = (kozou_tok *)realloc(toks, sizeof(kozou_tok) * cap); }
+            toks[ntok++] = t;
+            pos = next;
         }
     }
+
+    char *drop = (char *)calloc(ntok ? ntok : 1, 1);
+    int in_bt = 0;
+
+    for (size_t i = 0; i < ntok; i++) {
+        size_t tlen = toks[i].end - toks[i].start;
+        const char *tp = src + toks[i].start;
+
+        if (tlen == 2 && tp[0] == 'B' && tp[1] == 'T') { in_bt = 1; continue; }
+        if (tlen == 2 && tp[0] == 'E' && tp[1] == 'T') { in_bt = 0; continue; }
+        if (in_bt) continue;
+
+        int is_paint0 =
+            (tlen == 1 && (tp[0]=='f'||tp[0]=='F'||tp[0]=='S'||tp[0]=='s'||tp[0]=='B'||tp[0]=='b')) ||
+            (tlen == 2 && tp[0]=='f' && tp[1]=='*') ||
+            (tlen == 2 && tp[0]=='B' && tp[1]=='*') ||
+            (tlen == 2 && tp[0]=='b' && tp[1]=='*');
+        int is_sh = (tlen == 2 && tp[0]=='s' && tp[1]=='h');
+        int is_do = (tlen == 2 && tp[0]=='D' && tp[1]=='o');
+
+        if (is_paint0) {
+            drop[i] = 1;
+        } else if (is_sh) {
+            drop[i] = 1;
+            if (i > 0) drop[i-1] = 1; /* シェーディング名オペランド */
+        } else if (is_do) {
+            int keep_for_form = 0;
+            if (i > 0) {
+                size_t nlen = toks[i-1].end - toks[i-1].start;
+                const char *np = src + toks[i-1].start;
+                keep_for_form = kozou_do_name_targets_form(ctx, xobj_dict, np, nlen);
+            }
+            if (!keep_for_form) {
+                drop[i] = 1;
+                if (i > 0) drop[i-1] = 1; /* XObject名オペランド */
+            }
+        }
+    }
+
+    /* 連続する drop トークン列をまとめて、その範囲のバイトだけを
+     * 出力からスキップする(それ以外は元のバイト列をそのままコピー
+     * するので、間の空白・改行やq/Q等は一切変更されない)。 */
+    size_t cur = 0, i = 0;
+    while (i < ntok) {
+        if (!drop[i]) { i++; continue; }
+        size_t j = i;
+        while (j < ntok && drop[j]) j++;
+        size_t del_start = toks[i].start;
+        size_t del_end   = toks[j-1].end;
+        if (del_start > cur) fz_append_data(ctx, out, src + cur, del_start - cur);
+        cur = del_end;
+        i = j;
+    }
+    if (cur < src_len) fz_append_data(ctx, out, src + cur, src_len - cur);
+
+    free(drop);
+    free(toks);
     return out;
 }
 
@@ -2183,41 +2271,6 @@ void kozou_compose_image_pdf_keep_text(
     fz_catch(ctx) {
         set_err(result, fz_caught_message(ctx));
     }
-}
-
-/* "/Name Do" 行から /Name を取り出し、xobj_dict 内でその名前が指す
- * XObject の Subtype が /Form かどうかを判定する。
- * Form XObject は再帰的にテキストだけを残す処理
- * (kozou_process_form_xobjects_keep_text) 済みである前提で、
- * その Do 呼び出し自体は残す(中身がテキストのみになっているため)。
- * Image XObject や名前解決できない場合は 0 を返し、呼び出し側で
- * Do 行を除去する(=背景画像側に既に焼き込まれている)。 */
-static int kozou_do_line_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
-                                       const char *line, size_t trimmed_len)
-{
-    if (!xobj_dict) return 0;
-
-    /* 末尾トークン("Do")の直前のトークン("/Name")を取り出す */
-    size_t p = trimmed_len;
-    while (p > 0 && line[p-1] != ' ' && line[p-1] != '\t') p--; /* "Do" の先頭へ */
-    while (p > 0 && (line[p-1] == ' ' || line[p-1] == '\t')) p--; /* 空白をスキップ */
-    size_t name_end = p;
-    while (p > 0 && line[p-1] != ' ' && line[p-1] != '\t') p--; /* 名前トークンの先頭へ */
-    size_t name_start = p;
-
-    if (name_end <= name_start || line[name_start] != '/') return 0;
-    size_t name_len = name_end - name_start - 1;
-    if (name_len == 0 || name_len > 127) return 0;
-
-    char namebuf[128];
-    memcpy(namebuf, line + name_start + 1, name_len);
-    namebuf[name_len] = '\0';
-
-    pdf_obj *xo = pdf_dict_gets(ctx, xobj_dict, namebuf);
-    if (!xo) return 0;
-    pdf_obj *resolved = pdf_resolve_indirect(ctx, xo);
-    pdf_obj *subtype = resolved ? pdf_dict_get(ctx, resolved, PDF_NAME(Subtype)) : NULL;
-    return subtype && pdf_name_eq(ctx, subtype, PDF_NAME(Form));
 }
 
 /* Resources/XObject 配下の Form XObject を再帰的に処理し、各 Form の
