@@ -1881,6 +1881,37 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
     return out;
 }
 
+/* デバッグ用: 環境変数 KOZOU_COMPOSE_DEBUG=1 が設定されている場合のみ、
+ * 指定バッファの内容を <output>.p<page>.<tag>.txt として書き出す。
+ * 実機での位置ずれ/サイズ問題の切り分け用(該当ページの実際の
+ * コンテンツストリームを目視確認できるようにする)。通常運用では
+ * 環境変数が未設定なので何もしない。 */
+static void kozou_debug_dump_buffer(fz_context *ctx, const char *output,
+                                     int page_index, const char *tag,
+                                     fz_buffer *buf)
+{
+    if (!buf) return;
+    const char *dbg = getenv("KOZOU_COMPOSE_DEBUG");
+    if (!dbg || dbg[0] == '\0' || dbg[0] == '0') return;
+
+    char path[1200];
+    snprintf(path, sizeof(path), "%s.p%d.%s.txt", output, page_index, tag);
+
+    fz_try(ctx) {
+        fz_output *fo = fz_new_output_with_path(ctx, path, 0);
+        fz_try(ctx) {
+            fz_write_buffer(ctx, fo, buf);
+            fz_close_output(ctx, fo);
+        }
+        fz_always(ctx) { fz_drop_output(ctx, fo); }
+        fz_catch(ctx) { fz_rethrow(ctx); }
+    }
+    fz_catch(ctx) {
+        fz_warn(ctx, "kozou_debug_dump_buffer: failed to write %s: %s",
+                path, fz_caught_message(ctx));
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* kozou_compose_image_pdf_keep_text                                   */
 /*                                                                     */
@@ -2215,6 +2246,9 @@ void kozou_compose_image_pdf_keep_text(
                     no_inline = kozou_strip_inline_images(ctx, orig_buf);
                     stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline, xobj);
 
+                    kozou_debug_dump_buffer(ctx, output, i, "orig", orig_buf);
+                    kozou_debug_dump_buffer(ctx, output, i, "stripped", stripped);
+
                     {
                         pdf_obj *bgname = pdf_new_name(ctx, "KzBgImg");
                         pdf_dict_put(ctx, xobj, bgname, imgref);
@@ -2230,6 +2264,8 @@ void kozou_compose_image_pdf_keep_text(
                         (size_t)cs_prefix_len + fz_buffer_storage(ctx, stripped, NULL) + 8);
                     fz_append_data(ctx, final_buf, cs_prefix, (size_t)cs_prefix_len);
                     fz_append_buffer(ctx, final_buf, stripped);
+
+                    kozou_debug_dump_buffer(ctx, output, i, "final", final_buf);
 
                     pdf_obj *new_stm = pdf_add_stream(ctx, dst, final_buf, NULL, 0);
                     pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), new_stm);
@@ -2256,7 +2292,11 @@ void kozou_compose_image_pdf_keep_text(
         pdf_write_options opts = pdf_default_write_options;
         opts.do_compress        = 1;
         opts.do_compress_images = use_png ? 0 : 1;
-        opts.do_garbage         = 1;
+        /* do_garbage=4: 到達不能オブジェクトの削除に加えて重複
+         * オブジェクト/重複画像の統合も行う。実機でファイルサイズが
+         * 想定より大きい(元ファイルより大きくなる)報告があったため、
+         * 従来の 1 (到達不能オブジェクトの削除のみ) から強化した。 */
+        opts.do_garbage         = 4;
         opts.do_clean           = 0;
         pdf_save_document(ctx, dst, output, &opts);
 
