@@ -1651,6 +1651,507 @@ void kozou_rasterize_no_text(
 }
 
 /* ------------------------------------------------------------------ */
+/* kozou_compose_image_pdf_keep_text 用ヘルパー                        */
+/* ------------------------------------------------------------------ */
+
+/* バッファ中の BI ... ID ... EI (インライン画像) を丸ごと除去する。
+ * インライン画像の ID~EI 間は任意のバイナリデータであり、'\n' を
+ * 含みうるため、行単位ではなくバイト単位で走査する必要がある。
+ * EI は前後を空白/デリミタで区切られたトークンとして探す
+ * (バイナリデータの中に偶然 "EI" という2バイトが現れても、
+ *  前がホワイトスペースであることを要求することで多くの誤検出を防ぐ)。*/
+static fz_buffer *kozou_strip_inline_images(fz_context *ctx, fz_buffer *in_buf)
+{
+    unsigned char *d = NULL;
+    size_t n = fz_buffer_storage(ctx, in_buf, &d);
+    fz_buffer *out = fz_new_buffer(ctx, n + 16);
+    if (!d || n == 0) return out;
+
+    size_t i = 0;
+    while (i < n) {
+        /* "BI" をトークン境界付きで探す */
+        if (d[i] == 'B' && i + 1 < n && d[i+1] == 'I' &&
+            (i == 0 || d[i-1] == ' ' || d[i-1] == '\n' || d[i-1] == '\r' || d[i-1] == '\t') &&
+            (i + 2 >= n || d[i+2] == ' ' || d[i+2] == '\n' || d[i+2] == '\r' || d[i+2] == '\t')) {
+            /* BI から EI までスキップして出力しない */
+            size_t j = i + 2;
+            size_t ei_pos = n; /* 見つからなければ末尾まで */
+            while (j + 1 < n) {
+                if (d[j] == 'E' && d[j+1] == 'I' &&
+                    (d[j-1] == ' ' || d[j-1] == '\n' || d[j-1] == '\r' || d[j-1] == '\t') &&
+                    (j + 2 >= n || d[j+2] == ' ' || d[j+2] == '\n' || d[j+2] == '\r' || d[j+2] == '\t')) {
+                    ei_pos = j + 2;
+                    break;
+                }
+                j++;
+            }
+            i = ei_pos;
+            continue;
+        }
+        fz_append_byte(ctx, out, d[i]);
+        i++;
+    }
+    return out;
+}
+
+/* 末尾トークン(最後の空白区切り単語)を取り出して比較するためのヘルパー */
+static int kozou_trimmed_last_token_is(const char *s, size_t len, const char *op)
+{
+    if (len == 0) return 0;
+    size_t e = len;
+    while (e > 0 && (s[e-1] == ' ' || s[e-1] == '\t' || s[e-1] == '\r')) e--;
+    if (e == 0) return 0;
+    size_t b = e;
+    while (b > 0 && s[b-1] != ' ' && s[b-1] != '\t') b--;
+    size_t tok_len = e - b;
+    size_t op_len = strlen(op);
+    if (tok_len != op_len) return 0;
+    return memcmp(s + b, op, op_len) == 0;
+}
+
+/* BT 外にある「非テキストの描画命令」を行単位で除去する。
+ * 対象 (ページに実際にピクセルを描く演算子のみ):
+ *   f F f* S s B B* b b*  (パスの塗り/線)
+ *   Do                    (画像 / フォーム XObject の描画)
+ *   sh                    (シェーディング)
+ * 対象外 (温存する):
+ *   パス構築 (m l c v y h re) : 単独では何も描かないため無害。
+ *     後続の W n によるクリップに使われている場合があるため、
+ *     パスそのものは残し、実際に「塗る/描く」演算子だけを除去する。
+ *   W W* n                : クリップの確定は描画を伴わないため無害。
+ *   q Q cm gs 色設定系      : テキストの位置・色にも影響するため必須。
+ * BT ～ ET の内側は無条件でそのまま温存する。
+ *
+ * 制限: トップレベルのページコンテンツストリームのみを対象とする。
+ * ネストした Form XObject 内部の描画命令はこの関数では扱わない
+ * (Do 自体を除去するので、Form XObject の中身が何であれ、その
+ *  XObject の描画自体はまるごと無くなる)。 */
+static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_buf)
+{
+    unsigned char *src_data = NULL;
+    size_t src_len = fz_buffer_storage(ctx, in_buf, &src_data);
+    fz_buffer *out = fz_new_buffer(ctx, src_len + 16);
+    if (!src_data || src_len == 0) return out;
+
+    const char *src = (const char *)src_data;
+    size_t pos = 0;
+    int in_bt = 0;
+
+    while (pos < src_len) {
+        size_t line_start = pos;
+        while (pos < src_len && src[pos] != '\n') pos++;
+        size_t line_len_incl_nl = (pos < src_len) ? (pos - line_start + 1) : (pos - line_start);
+        size_t line_len = pos - line_start;
+        if (pos < src_len) pos++;
+
+        size_t ts = line_start;
+        while (ts < line_start + line_len && (src[ts] == ' ' || src[ts] == '\t')) ts++;
+        size_t te = line_start + line_len;
+        size_t trimmed_len = te - ts;
+
+        int drop = 0;
+
+        if (trimmed_len == 2 && src[ts] == 'B' && src[ts+1] == 'T') {
+            in_bt = 1;
+        } else if (trimmed_len == 2 && src[ts] == 'E' && src[ts+1] == 'T') {
+            in_bt = 0;
+        } else if (!in_bt) {
+            if (kozou_trimmed_last_token_is(src + ts, trimmed_len, "f")  ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "F")  ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "f*") ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "S")  ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "s")  ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "B")  ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "B*") ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "b")  ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "b*") ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "Do") ||
+                kozou_trimmed_last_token_is(src + ts, trimmed_len, "sh")) {
+                drop = 1;
+            }
+        }
+
+        if (!drop) {
+            fz_append_data(ctx, out, src + line_start, line_len_incl_nl);
+        }
+    }
+    return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* kozou_compose_image_pdf_keep_text                                   */
+/*                                                                     */
+/* 画像PDF化(フォント保持版) Stage 2。                                  */
+/* 各ページを以下の手順で合成する:                                      */
+/*   1. 元ページをテキスト(Type3含む)除外でラスタライズし背景画像化    */
+/*      (Stage 1 の kozou_rasterize_no_text と同じ手法:                */
+/*       draw device のテキスト系コールバックを NULL にする)。          */
+/*   2. pdf_graft_mapped_object で元ページをそのまま新規PDFへ複製      */
+/*      (Resources/Font/Type3 CharProcs は完全に無変更のまま持ち込む   */
+/*       — フォントの再埋め込みは一切発生しない)。                     */
+/*   3. 複製後のページのコンテンツストリームから、非テキストの         */
+/*      描画命令(パスの塗り/線, sh, Do, インライン画像)だけを除去し、   */
+/*      先頭に背景画像の描画命令を挿入する。BT/ET・Tf/Tj 等のテキスト  */
+/*      演算子とq/Q/cm/gs/色設定等の状態管理演算子はそのまま残す。     */
+/*                                                                     */
+/* 既知の制限:                                                         */
+/*  - トップレベルのページコンテンツストリームのみ対象。Form XObject   */
+/*    内部の描画命令(そこに含まれるテキストも含む)は Do ごと除去       */
+/*    されるため、そのXObjectの中身は失われる(見た目上は背景画像に     */
+/*    既に焼き込まれているため視覚的な欠落はない)。                    */
+/*  - /Rotate が 0 以外のページは今回未対応。安全のため、そのページ    */
+/*    だけ kozou_rasterize_no_text 相当(テキストも含めた通常の         */
+/*    全面ラスタライズ)にフォールバックする。                          */
+/* ------------------------------------------------------------------ */
+void kozou_compose_image_pdf_keep_text(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    float        dpi,
+    int          quality,
+    int          use_png,
+    const char  *tmp_dir,
+    const int   *page_indices,
+    int          page_indices_len,
+    FfiResult   *result)
+{
+    pdf_document  *src   = NULL;
+    pdf_document  *dst   = NULL;
+    pdf_graft_map *gmap  = NULL;
+
+    fz_var(src);
+    fz_var(dst);
+    fz_var(gmap);
+
+    fz_try(ctx) {
+        src = pdf_open_document(ctx, input);
+        dst = pdf_create_document(ctx);
+
+        if (fz_is_document_reflowable(ctx, (fz_document *)src)) {
+            fz_layout_document(ctx, (fz_document *)src, 450.0f, 600.0f, 12.0f);
+        }
+
+        int page_count = pdf_count_pages(ctx, src);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+
+        if (dpi <= 0.0f) dpi = 150.0f;
+        float scale = dpi / 72.0f;
+
+        int  *pages_to_do     = NULL;
+        int   pages_to_do_len = 0;
+        int   allocated       = 0;
+
+        if (page_indices != NULL && page_indices_len > 0) {
+            pages_to_do     = (int *)malloc(sizeof(int) * page_indices_len);
+            pages_to_do_len = 0;
+            allocated       = 1;
+            for (int k = 0; k < page_indices_len; k++) {
+                int idx = page_indices[k];
+                if (idx >= 0 && idx < page_count)
+                    pages_to_do[pages_to_do_len++] = idx;
+            }
+            if (pages_to_do_len == 0)
+                fz_throw(ctx, FZ_ERROR_ARGUMENT,
+                         "page_indices: no valid pages in range");
+        } else {
+            pages_to_do     = (int *)malloc(sizeof(int) * page_count);
+            pages_to_do_len = page_count;
+            allocated       = 1;
+            for (int k = 0; k < page_count; k++)
+                pages_to_do[k] = k;
+        }
+
+        const char *base_tmp = (tmp_dir && tmp_dir[0]) ? tmp_dir : output;
+        const char *ext      = use_png ? "png" : "jpg";
+
+        gmap = pdf_new_graft_map(ctx, dst);
+
+        for (int ii = 0; ii < pages_to_do_len; ii++) {
+            int i = pages_to_do[ii];
+
+            fz_page   *render_page = NULL;
+            fz_pixmap *pixmap      = NULL;
+            fz_image  *image       = NULL;
+            pdf_obj   *imgref      = NULL;
+            pdf_obj   *src_page    = NULL;
+            pdf_obj   *dst_page    = NULL;
+            pdf_page  *dst_pg      = NULL;
+            fz_buffer *orig_buf    = NULL;
+            fz_buffer *no_inline   = NULL;
+            fz_buffer *stripped    = NULL;
+            fz_buffer *final_buf   = NULL;
+
+            char tmp_img[1024];
+            tmp_img[0] = '\0';
+
+            fz_var(render_page);
+            fz_var(pixmap);
+            fz_var(image);
+            fz_var(imgref);
+            fz_var(src_page);
+            fz_var(dst_page);
+            fz_var(dst_pg);
+            fz_var(orig_buf);
+            fz_var(no_inline);
+            fz_var(stripped);
+            fz_var(final_buf);
+
+            fz_try(ctx) {
+                src_page = pdf_lookup_page_obj(ctx, src, i);
+                int rotate = pdf_to_int(ctx,
+                    pdf_dict_get_inheritable(ctx, src_page, PDF_NAME(Rotate)));
+
+                /* --- 1. 背景画像を生成 (テキスト除外) --- */
+                render_page = fz_load_page(ctx, (fz_document *)src, i);
+                fz_rect bounds = fz_bound_page(ctx, render_page);
+                float pw_pt = bounds.x1 - bounds.x0;
+                float ph_pt = bounds.y1 - bounds.y0;
+
+                fz_matrix ctm = fz_scale(scale, scale);
+                fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
+                fz_colorspace *rgb = fz_device_rgb(ctx);
+                pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
+                fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
+
+                {
+                    fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
+                    draw_dev->fill_text        = NULL;
+                    draw_dev->stroke_text      = NULL;
+                    draw_dev->clip_text        = NULL;
+                    draw_dev->clip_stroke_text = NULL;
+                    draw_dev->ignore_text      = NULL;
+                    fz_try(ctx) {
+                        fz_run_page(ctx, render_page, draw_dev, fz_identity, NULL);
+                        fz_close_device(ctx, draw_dev);
+                    }
+                    fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                }
+
+                snprintf(tmp_img, sizeof(tmp_img),
+                         "%s" KOZOU_PATH_SEP "kozou_composeimg_%d_%d.%s",
+                         base_tmp, (int)getpid(), i, ext);
+
+                if (use_png) {
+                    fz_output *fout = fz_new_output_with_path(ctx, tmp_img, 0);
+                    fz_try(ctx) {
+                        fz_write_pixmap_as_png(ctx, fout, pixmap);
+                        fz_close_output(ctx, fout);
+                    }
+                    fz_always(ctx) { fz_drop_output(ctx, fout); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                } else {
+                    int jpeg_quality = (quality > 0 && quality <= 100) ? quality : 85;
+                    fz_save_pixmap_as_jpeg(ctx, pixmap, tmp_img, jpeg_quality);
+                }
+
+                image  = fz_new_image_from_file(ctx, tmp_img);
+                imgref = pdf_add_image(ctx, dst, image);
+
+                /* --- 2. ページを丸ごと複製 (フォント/Type3 は無変更) --- */
+                dst_page = pdf_graft_mapped_object(ctx, gmap, src_page);
+                pdf_insert_page(ctx, dst, -1, dst_page);
+
+                if (rotate != 0) {
+                    /* Stage 2 未対応: /Rotate!=0 のページは合成せず、
+                     * 通常の全面ラスタライズ(テキスト含む)にフォールバック
+                     * して安全側に倒す。 */
+                    dst_pg = pdf_load_page(ctx, dst, i);
+                    pdf_obj *page_obj = dst_pg->obj;
+
+                    fz_pixmap *full_pm = NULL;
+                    fz_var(full_pm);
+                    fz_try(ctx) {
+                        full_pm = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
+                        fz_clear_pixmap_with_value(ctx, full_pm, 0xff);
+                        fz_device *full_dev = fz_new_draw_device(ctx, ctm, full_pm);
+                        fz_try(ctx) {
+                            fz_run_page(ctx, render_page, full_dev, fz_identity, NULL);
+                            fz_close_device(ctx, full_dev);
+                        }
+                        fz_always(ctx) { fz_drop_device(ctx, full_dev); }
+                        fz_catch(ctx) { fz_rethrow(ctx); }
+
+                        char tmp_img2[1024];
+                        snprintf(tmp_img2, sizeof(tmp_img2),
+                                 "%s" KOZOU_PATH_SEP "kozou_composeimg_full_%d_%d.%s",
+                                 base_tmp, (int)getpid(), i, ext);
+                        if (use_png) {
+                            fz_output *fout2 = fz_new_output_with_path(ctx, tmp_img2, 0);
+                            fz_try(ctx) {
+                                fz_write_pixmap_as_png(ctx, fout2, full_pm);
+                                fz_close_output(ctx, fout2);
+                            }
+                            fz_always(ctx) { fz_drop_output(ctx, fout2); }
+                            fz_catch(ctx) { fz_rethrow(ctx); }
+                        } else {
+                            int jq = (quality > 0 && quality <= 100) ? quality : 85;
+                            fz_save_pixmap_as_jpeg(ctx, full_pm, tmp_img2, jq);
+                        }
+                        fz_image *full_img  = fz_new_image_from_file(ctx, tmp_img2);
+                        pdf_obj  *full_ref  = pdf_add_image(ctx, dst, full_img);
+                        fz_drop_image(ctx, full_img);
+                        remove(tmp_img2);
+
+                        pdf_obj *res2 = pdf_new_dict(ctx, dst, 1);
+                        pdf_obj *xd2  = pdf_new_dict(ctx, dst, 1);
+                        pdf_obj *nm2  = pdf_new_name(ctx, "KzFullImg");
+                        pdf_dict_put(ctx, xd2, nm2, full_ref);
+                        pdf_drop_obj(ctx, nm2);
+                        pdf_dict_put(ctx, res2, PDF_NAME(XObject), xd2);
+                        pdf_drop_obj(ctx, xd2);
+
+                        char cs2[256];
+                        int cs2_len = snprintf(cs2, sizeof(cs2),
+                            "q\n%.4f 0 0 %.4f 0 0 cm\n/KzFullImg Do\nQ\n",
+                            pw_pt, ph_pt);
+                        fz_buffer *cbuf2 = fz_new_buffer_from_copied_data(
+                            ctx, (const unsigned char *)cs2, (size_t)cs2_len);
+                        pdf_obj *stm2 = pdf_add_stream(ctx, dst, cbuf2, NULL, 0);
+                        fz_drop_buffer(ctx, cbuf2);
+                        pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), stm2);
+                        pdf_drop_obj(ctx, stm2);
+                        pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), res2);
+                        pdf_drop_obj(ctx, res2);
+                        /* 合成をやめて全面ラスタライズにしたので、この
+                         * 画像には回転後の見た目がそのまま焼き込まれて
+                         * いる(kozou_rasterize と同じ考え方)。
+                         * そのため /Rotate は 0 にリセットし、代わりに
+                         * /MediaBox を回転後の pw_pt×ph_pt に合わせて
+                         * 更新する(そのままだと元の MediaBox と縦横が
+                         * 食い違ってページ表示がずれる)。
+                         * /CropBox が別途設定されている場合はここでは
+                         * 未対応(既知の制限、/Rotate!=0 のフォールバック
+                         * 経路のみに影響)。 */
+                        pdf_dict_put_drop(ctx, page_obj, PDF_NAME(Rotate), pdf_new_int(ctx, 0));
+                        {
+                            pdf_obj *mb = pdf_new_array(ctx, dst, 4);
+                            pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, 0));
+                            pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, 0));
+                            pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, pw_pt));
+                            pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, ph_pt));
+                            pdf_dict_put_drop(ctx, page_obj, PDF_NAME(MediaBox), mb);
+                            pdf_dict_del(ctx, page_obj, PDF_NAME(CropBox));
+                        }
+                        fz_warn(ctx,
+                            "compose_image_pdf_keep_text: page %d has /Rotate=%d, "
+                            "falling back to full rasterize (text not preserved for this page)",
+                            i, rotate);
+                    }
+                    fz_always(ctx) {
+                        fz_drop_pixmap(ctx, full_pm);
+                    }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                } else {
+                    /* --- 3. コンテンツストリームを合成 --- */
+                    dst_pg = pdf_load_page(ctx, dst, i);
+                    pdf_obj *page_obj = dst_pg->obj;
+
+                    pdf_obj *contents = pdf_dict_get(ctx, page_obj, PDF_NAME(Contents));
+                    orig_buf = fz_new_buffer(ctx, 65536);
+                    if (contents) {
+                        if (pdf_is_array(ctx, contents)) {
+                            int nc = pdf_array_len(ctx, contents);
+                            for (int ci = 0; ci < nc; ci++) {
+                                fz_buffer *b = pdf_load_stream(ctx, pdf_array_get(ctx, contents, ci));
+                                fz_append_buffer(ctx, orig_buf, b);
+                                fz_append_byte(ctx, orig_buf, '\n');
+                                fz_drop_buffer(ctx, b);
+                            }
+                        } else {
+                            fz_buffer *b = pdf_load_stream(ctx, contents);
+                            fz_append_buffer(ctx, orig_buf, b);
+                            fz_drop_buffer(ctx, b);
+                        }
+                    }
+
+                    no_inline = kozou_strip_inline_images(ctx, orig_buf);
+                    stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline);
+
+                    /* 背景画像の Resources 登録: 既存の Resources/XObject を
+                     * 保持したまま KzBgImg エントリだけ追加する。
+                     * Resources 自体がページに直接無い(継承のみ)場合は
+                     * 新規に作成してページへ直接持たせる。 */
+                    pdf_obj *res = pdf_dict_get(ctx, page_obj, PDF_NAME(Resources));
+                    if (!res) {
+                        pdf_obj *inherited = pdf_dict_get_inheritable(
+                            ctx, page_obj, PDF_NAME(Resources));
+                        res = pdf_new_dict(ctx, dst, 4);
+                        if (inherited) {
+                            int nk = pdf_dict_len(ctx, inherited);
+                            for (int k = 0; k < nk; k++) {
+                                pdf_obj *key = pdf_dict_get_key(ctx, inherited, k);
+                                pdf_obj *val = pdf_dict_get_val(ctx, inherited, k);
+                                pdf_dict_put(ctx, res, key, val);
+                            }
+                        }
+                        pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), res);
+                    }
+                    pdf_obj *xobj = pdf_dict_get(ctx, res, PDF_NAME(XObject));
+                    if (!xobj) {
+                        xobj = pdf_new_dict(ctx, dst, 1);
+                        pdf_dict_put(ctx, res, PDF_NAME(XObject), xobj);
+                    }
+                    {
+                        pdf_obj *bgname = pdf_new_name(ctx, "KzBgImg");
+                        pdf_dict_put(ctx, xobj, bgname, imgref);
+                        pdf_drop_obj(ctx, bgname);
+                    }
+
+                    char cs_prefix[256];
+                    int  cs_prefix_len = snprintf(cs_prefix, sizeof(cs_prefix),
+                        "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/KzBgImg Do\nQ\n",
+                        pw_pt, ph_pt, bounds.x0, bounds.y0);
+
+                    final_buf = fz_new_buffer(ctx,
+                        (size_t)cs_prefix_len + fz_buffer_storage(ctx, stripped, NULL) + 8);
+                    fz_append_data(ctx, final_buf, cs_prefix, (size_t)cs_prefix_len);
+                    fz_append_buffer(ctx, final_buf, stripped);
+
+                    pdf_obj *new_stm = pdf_add_stream(ctx, dst, final_buf, NULL, 0);
+                    pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), new_stm);
+                    pdf_drop_obj(ctx, new_stm);
+                }
+            }
+            fz_always(ctx) {
+                if (tmp_img[0] != '\0') { remove(tmp_img); tmp_img[0] = '\0'; }
+                if (dst_pg) fz_drop_page(ctx, (fz_page *)dst_pg);
+                fz_drop_buffer(ctx, final_buf);
+                fz_drop_buffer(ctx, stripped);
+                fz_drop_buffer(ctx, no_inline);
+                fz_drop_buffer(ctx, orig_buf);
+                pdf_drop_obj(ctx, dst_page);
+                fz_drop_image(ctx, image);
+                fz_drop_pixmap(ctx, pixmap);
+                fz_drop_page(ctx, render_page);
+            }
+            fz_catch(ctx) {
+                fz_rethrow(ctx);
+            }
+        }
+
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_compress        = 1;
+        opts.do_compress_images = use_png ? 0 : 1;
+        opts.do_garbage         = 1;
+        opts.do_clean           = 0;
+        pdf_save_document(ctx, dst, output, &opts);
+
+        if (allocated) free(pages_to_do);
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (gmap) pdf_drop_graft_map(ctx, gmap);
+        if (dst)  pdf_drop_document(ctx, dst);
+        if (src)  pdf_drop_document(ctx, src);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* kozou_compress_preserving_type3                                     */
 /*                                                                     */
 /* Type3 フォントを含む PDF を圧縮する。                               */

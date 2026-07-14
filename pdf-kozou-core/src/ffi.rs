@@ -419,4 +419,22 @@ unsafe extern "C" {
         page_indices_len: c_int,
         result: *mut FfiResult,
     );
+
+    /// 画像PDF化(フォント保持版) Stage 2。
+    /// 非テキスト要素を1枚の背景画像に焼き込みつつ、ページの
+    /// テキスト(Type3含む)はベクターのまま(元のフォントオブジェクトを
+    /// 無変更で)残す。/Rotate!=0 のページは通常の全面ラスタライズに
+    /// 自動フォールバックする(テキストは保持されない)。
+    pub fn kozou_compose_image_pdf_keep_text(
+        ctx: *mut mupdf_sys::fz_context,
+        input: *const c_char,
+        output: *const c_char,
+        dpi: f32,
+        quality: i32,
+        use_png: c_int,
+        tmp_dir: *const c_char,
+        page_indices: *const c_int,
+        page_indices_len: c_int,
+        result: *mut FfiResult,
+    );
 }

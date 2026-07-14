@@ -249,6 +249,34 @@ enum Commands {
         png: bool,
     },
 
+    /// [Stage 2] 画像PDF化(フォント保持版)。
+    ///
+    /// 非テキスト要素(画像・イラスト・ベクター図形)を1枚の背景画像に
+    /// 焼き込みつつ、前面に見えているテキスト(Type3含む)は元の
+    /// フォントオブジェクトを無変更のままベクターで残す。
+    ///
+    /// 既知の制限: Form XObject内部の描画命令(テキスト含む)は
+    /// 対象外。/Rotate!=0のページは通常の全面ラスタライズに
+    /// 自動フォールバックする。
+    ComposeImagePdfKeepText {
+        /// 入力 PDF
+        input: String,
+        /// 出力 PDF
+        output: String,
+        /// 解像度 DPI (デフォルト: 150)
+        #[arg(long, default_value = "150")]
+        dpi: f32,
+        /// JPEG 品質 0-100 (デフォルト: 85)
+        #[arg(long, default_value = "85")]
+        quality: i32,
+        /// ページ指定 "1-3,5" 形式 (1ベース)。省略時は全ページ。
+        #[arg(long)]
+        page: Option<String>,
+        /// PNG 埋め込みで背景画像を生成（可逆・無劣化）
+        #[arg(long, default_value = "false")]
+        png: bool,
+    },
+
     /// PDF を分割
     Split {
         /// 入力 PDF
@@ -697,6 +725,32 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             };
             let pages = page.as_deref().map(parse_page_list).transpose()?;
             let resp = pdf_kozou_core::compress::rasterize_no_text_with_quality(
+                &input,
+                &output,
+                dpi,
+                quality,
+                png,
+                pages.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+
+        Commands::ComposeImagePdfKeepText {
+            input,
+            output,
+            dpi,
+            quality,
+            page,
+            png,
+        } => {
+            let _tmp = auto_convert_if_needed(&input, None, None, None, None, None, None)?;
+            let input = if let Some((_, ref p)) = _tmp {
+                p.clone()
+            } else {
+                input
+            };
+            let pages = page.as_deref().map(parse_page_list).transpose()?;
+            let resp = pdf_kozou_core::compress::compose_image_pdf_keep_text_with_quality(
                 &input,
                 &output,
                 dpi,

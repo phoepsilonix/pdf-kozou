@@ -1250,6 +1250,113 @@ pub fn rasterize_no_text_with_quality(
     })
 }
 
+/// 画像PDF化(フォント保持版) Stage 2。
+///
+/// 非テキスト要素(画像・イラスト・ベクター図形)を1枚の背景画像に
+/// 焼き込みつつ、ページのテキスト(Type3含む)は元のフォント
+/// オブジェクトを無変更のままベクターで残す。
+///
+/// 既知の制限:
+/// - トップレベルのページコンテンツストリームのみ対象。Form XObject
+///   内部の描画命令(そこに含まれるテキストも含む)は失われる
+///   (視覚的には既に背景画像に焼き込まれているため欠落しない)。
+/// - `/Rotate` が0以外のページは、そのページだけ通常の全面
+///   ラスタライズ(テキスト含む)に自動フォールバックする。
+///
+/// pages: 1ベースのページ番号リスト。None の場合は全ページ。
+pub fn compose_image_pdf_keep_text_with_quality(
+    input: &str,
+    output: &str,
+    dpi: f32,
+    quality: i32,
+    use_png: bool,
+    pages: Option<&[i32]>,
+) -> Result<CompressResponse> {
+    use crate::ffi::{
+        FfiResult, kozou_compose_image_pdf_keep_text as ffi_compose, kozou_new_context,
+    };
+    use std::ffi::CString;
+    use std::os::raw::c_int;
+
+    let metadata = collect_metadata(input);
+
+    let c_input =
+        CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output =
+        CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    let tmp_dir = {
+        let base = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&base);
+        base
+    };
+    let c_tmp_dir = CString::new(tmp_dir.to_string_lossy().as_ref())
+        .map_err(|_| CoreError::InvalidArg("invalid tmp_dir path".into()))?;
+
+    let page_indices_0based: Vec<c_int> = pages
+        .map(|ps| ps.iter().map(|&p| (p - 1) as c_int).collect())
+        .unwrap_or_default();
+    let (indices_ptr, indices_len) = if page_indices_0based.is_empty() {
+        (std::ptr::null(), 0)
+    } else {
+        (
+            page_indices_0based.as_ptr(),
+            page_indices_0based.len() as c_int,
+        )
+    };
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        ffi_compose(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            dpi,
+            quality,
+            if use_png { 1 } else { 0 },
+            c_tmp_dir.as_ptr(),
+            indices_ptr,
+            indices_len,
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    copy_metadata_after_write(output, &metadata);
+
+    let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
+    let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    Ok(CompressResponse {
+        ok: true,
+        input_bytes: ib,
+        output_bytes: ob,
+        ratio: safe_ratio(ib, ob),
+        params_used: CompressParamsUsed {
+            compress_images: true,
+            compress_fonts: false,
+            garbage_level: 1,
+            clean: false,
+            sanitize: false,
+            font_subset: false,
+            subset_skipped: false,
+            merge_fonts: false,
+            object_stream: false,
+            redact_outside_crop: false,
+        },
+        warning: Some(format!(
+            "画像PDF化(フォント保持版) Stage 2: {dpi}dpi 背景画像＋前面テキスト(Type3含む)を保持。\
+             Form XObject内部の描画命令は未対応、/Rotate!=0のページは全面ラスタライズにフォールバックしています。"
+        )),
+    })
+}
+
 /// Type3 フォントを保持しながら PDF を圧縮する。
 ///
 /// pdf_graft_mapped_object で全オブジェクト（Type3 CharProcs を含む）を

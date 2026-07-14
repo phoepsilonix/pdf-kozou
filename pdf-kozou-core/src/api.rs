@@ -462,6 +462,40 @@ pub fn dispatch_json(line: &str) -> String {
                     )?,
                 )?)
             }
+            "compose_image_pdf_keep_text" => {
+                // 画像PDF化(フォント保持版) Stage 2。
+                // 非テキスト要素を背景画像に焼き込み、前面テキスト
+                // (Type3含む)はベクターのまま保持する。
+                #[derive(serde::Deserialize)]
+                struct Req {
+                    input: String,
+                    output: String,
+                    #[serde(default)]
+                    dpi: Option<f32>,
+                    #[serde(default)]
+                    quality: Option<i32>,
+                    #[serde(default)]
+                    use_png: Option<bool>,
+                    #[serde(default)]
+                    pages: Option<String>,
+                }
+                let mut r: Req = serde_json::from_str(line)?;
+                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None, None)?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    r.input = tmp_path.clone();
+                }
+                let pages = r.pages.as_deref().map(parse_page_list).transpose()?;
+                Ok(serde_json::to_string(
+                    &crate::compress::compose_image_pdf_keep_text_with_quality(
+                        &r.input,
+                        &r.output,
+                        r.dpi.unwrap_or(150.0),
+                        r.quality.unwrap_or(85),
+                        r.use_png.unwrap_or(false),
+                        pages.as_deref(),
+                    )?,
+                )?)
+            }
             "is_pdf" => {
                 #[derive(serde::Deserialize)]
                 struct Req {
