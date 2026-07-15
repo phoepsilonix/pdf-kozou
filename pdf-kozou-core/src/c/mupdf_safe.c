@@ -2249,6 +2249,30 @@ void kozou_compose_image_pdf_keep_text(
                         pdf_dict_put(ctx, res, PDF_NAME(XObject), xobj);
                     }
 
+                    /* 追加診断: page_obj/res/xobj 自体、および xobj_dict
+                     * 内の各値が「解決前(生の値)の時点で」indirect
+                     * reference になっているかどうかを確認する。
+                     * page 0 で direct Resources present=1 だったにも
+                     * 関わらず、Form XObject が pdf_to_num=0 になる
+                     * 理由を特定するため。 */
+                    fz_warn(ctx, "compose_image_pdf_keep_text: page %d "
+                                 "pdf_to_num(page_obj)=%d pdf_to_num(res)=%d pdf_to_num(xobj)=%d",
+                            i, pdf_to_num(ctx, page_obj), pdf_to_num(ctx, res),
+                            pdf_to_num(ctx, xobj));
+                    {
+                        int nx = pdf_dict_len(ctx, xobj);
+                        for (int xk = 0; xk < nx; xk++) {
+                            pdf_obj *raw_val = pdf_dict_get_val(ctx, xobj, xk);
+                            pdf_obj *key = pdf_dict_get_key(ctx, xobj, xk);
+                            const char *keystr = pdf_to_name(ctx, key);
+                            fz_warn(ctx, "compose_image_pdf_keep_text: page %d "
+                                         "xobj[%s] raw pdf_is_indirect=%d raw pdf_to_num=%d",
+                                    i, keystr ? keystr : "?",
+                                    pdf_is_indirect(ctx, raw_val),
+                                    pdf_to_num(ctx, raw_val));
+                        }
+                    }
+
                     /* ページが参照する Form XObject を先に再帰処理して
                      * 中身をテキストのみに絞ってから、トップレベルの
                      * コンテンツストリームを処理する
