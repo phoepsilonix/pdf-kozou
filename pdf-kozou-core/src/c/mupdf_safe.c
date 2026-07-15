@@ -2037,7 +2037,21 @@ void kozou_compose_image_pdf_keep_text(
                 int rotate = pdf_to_int(ctx,
                     pdf_dict_get_inheritable(ctx, src_page, PDF_NAME(Rotate)));
 
-                /* --- 1. 背景画像を生成 (テキスト除外) --- */
+                /* --- 1. ページを丸ごと複製 (フォント/Type3 は無変更) ---
+                 * 背景画像のレンダリング(fz_run_page)より必ず先に行う。
+                 * 既存の動作実績がある kozou_compress_preserving_type3 は
+                 * グラフトの前に src 側で fz_run_page を一切行わない。
+                 * 実機で「グラフト後のForm XObjectがstreamとして
+                 * 認識されない(pdf_is_stream=偽)」問題が再現し、
+                 * 同じPDFで compress_preserving_type3 (レンダリング無し)
+                 * は問題なく動作したことから、fz_run_page が src の
+                 * ストリーム読み込み状態に何らかの副作用を残し、
+                 * その直後のグラフトを壊している可能性が高いと判断し、
+                 * 順序を入れ替えた。 */
+                dst_page = pdf_graft_mapped_object(ctx, gmap, src_page);
+                pdf_insert_page(ctx, dst, -1, dst_page);
+
+                /* --- 2. 背景画像を生成 (テキスト除外) --- */
                 render_page = fz_load_page(ctx, (fz_document *)src, i);
                 fz_rect bounds = fz_bound_page(ctx, render_page);
                 float pw_pt = bounds.x1 - bounds.x0;
@@ -2083,10 +2097,6 @@ void kozou_compose_image_pdf_keep_text(
 
                 image  = fz_new_image_from_file(ctx, tmp_img);
                 imgref = pdf_add_image(ctx, dst, image);
-
-                /* --- 2. ページを丸ごと複製 (フォント/Type3 は無変更) --- */
-                dst_page = pdf_graft_mapped_object(ctx, gmap, src_page);
-                pdf_insert_page(ctx, dst, -1, dst_page);
 
                 if (rotate != 0) {
                     /* Stage 2 未対応: /Rotate!=0 のページは合成せず、
