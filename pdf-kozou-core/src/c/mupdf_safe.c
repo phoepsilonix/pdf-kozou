@@ -2216,19 +2216,30 @@ void kozou_compose_image_pdf_keep_text(
                      * Resources/XObject を取得しておく(Do の名前解決と
                      * ネストした Form XObject の再帰処理に必要なため)。
                      * Resources 自体がページに直接無い(継承のみ)場合は
-                     * 新規に作成してページへ直接持たせる。 */
+                     * 新規に作成してページへ直接持たせる。
+                     *
+                     * 重要: 継承元の Resources (inherited) はまだ
+                     * dst にグラフトされていない可能性があるため、
+                     * 値をそのまま pdf_dict_put するのではなく、
+                     * 必ず pdf_graft_mapped_object で dst 側に
+                     * グラフトしてから使う。以前はここで生の値を
+                     * 直接コピーしており、それが「Form XObjectの
+                     * オブジェクト番号が常に0、pdf_is_streamも常に
+                     * 偽になる」不具合の原因だった可能性が高い
+                     * (src文書側の参照がdst所有のdictにそのまま
+                     * 紛れ込んでいたため)。 */
                     pdf_obj *res = pdf_dict_get(ctx, page_obj, PDF_NAME(Resources));
+                    fz_warn(ctx, "compose_image_pdf_keep_text: page %d "
+                                 "direct Resources present = %d", i, res != NULL);
                     if (!res) {
                         pdf_obj *inherited = pdf_dict_get_inheritable(
                             ctx, page_obj, PDF_NAME(Resources));
-                        res = pdf_new_dict(ctx, dst, 4);
+                        fz_warn(ctx, "compose_image_pdf_keep_text: page %d "
+                                     "inherited Resources found = %d", i, inherited != NULL);
                         if (inherited) {
-                            int nk = pdf_dict_len(ctx, inherited);
-                            for (int k = 0; k < nk; k++) {
-                                pdf_obj *key = pdf_dict_get_key(ctx, inherited, k);
-                                pdf_obj *val = pdf_dict_get_val(ctx, inherited, k);
-                                pdf_dict_put(ctx, res, key, val);
-                            }
+                            res = pdf_graft_mapped_object(ctx, gmap, inherited);
+                        } else {
+                            res = pdf_new_dict(ctx, dst, 4);
                         }
                         pdf_dict_put(ctx, page_obj, PDF_NAME(Resources), res);
                     }
