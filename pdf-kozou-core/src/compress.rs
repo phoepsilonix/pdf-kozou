@@ -1341,7 +1341,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         params_used: CompressParamsUsed {
             compress_images: true,
             compress_fonts: false,
-            garbage_level: 1,
+            garbage_level: 4,
             clean: false,
             sanitize: false,
             font_subset: false,
@@ -1352,7 +1352,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         },
         warning: Some(format!(
             "画像PDF化(フォント保持版) Stage 2: {dpi}dpi 背景画像＋前面テキスト(Type3含む)を保持。\
-             Form XObject内部の描画命令は未対応、/Rotate!=0のページは全面ラスタライズにフォールバックしています。"
+             Form XObject内部のテキストも再帰的に保持対応済み。/Rotate!=0のページは全面ラスタライズにフォールバックしています。"
         )),
     })
 }

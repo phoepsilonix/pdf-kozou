@@ -1776,7 +1776,8 @@ static int kozou_do_name_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
 /* 定義は本ファイル後方。Resources/XObject 配下の Form XObject を
  * 再帰的に処理し、非テキスト演算子を除去してテキストだけを残す。 */
 static void kozou_process_form_xobjects_keep_text(
-    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth);
+    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth,
+    const char *debug_output, int debug_page);
 
 /* BT 外にある「非テキストの描画命令」を演算子単位で除去する
  * (トークン解析ベース。1行に複数演算子が書かれていても、対象の
@@ -2241,7 +2242,7 @@ void kozou_compose_image_pdf_keep_text(
                      * 中身をテキストのみに絞ってから、トップレベルの
                      * コンテンツストリームを処理する
                      * (Do 呼び出しの Form/Image 判定に xobj が必要)。 */
-                    kozou_process_form_xobjects_keep_text(ctx, dst, xobj, 0);
+                    kozou_process_form_xobjects_keep_text(ctx, dst, xobj, 0, output, i);
 
                     no_inline = kozou_strip_inline_images(ctx, orig_buf);
                     stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline, xobj);
@@ -2320,7 +2321,8 @@ void kozou_compose_image_pdf_keep_text(
  * 残すだけでテキストがベクターのまま保持できるようになる。
  * 深さ制限で循環参照を防ぐ。 */
 static void kozou_process_form_xobjects_keep_text(
-    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth)
+    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth,
+    const char *debug_output, int debug_page)
 {
     if (!xobj_dict || depth > 12) return;
 
@@ -2346,8 +2348,11 @@ static void kozou_process_form_xobjects_keep_text(
         /* 自分自身より先にネストした Form XObject を処理する
          * (内側から外側へ、テキスト保持の依存関係を満たすため)。 */
         if (own_xobj) {
-            kozou_process_form_xobjects_keep_text(ctx, dst, own_xobj, depth + 1);
+            kozou_process_form_xobjects_keep_text(ctx, dst, own_xobj, depth + 1,
+                                                   debug_output, debug_page);
         }
+
+        int objnum = pdf_to_num(ctx, entry);
 
         fz_buffer *orig_x = NULL, *ni_x = NULL, *st_x = NULL;
         fz_var(orig_x); fz_var(ni_x); fz_var(st_x);
@@ -2355,6 +2360,15 @@ static void kozou_process_form_xobjects_keep_text(
             orig_x = pdf_load_stream(ctx, entry);
             ni_x   = kozou_strip_inline_images(ctx, orig_x);
             st_x   = kozou_strip_nontext_paint_ops(ctx, ni_x, own_xobj);
+
+            if (debug_output) {
+                char tag_o[64], tag_s[64];
+                snprintf(tag_o, sizeof(tag_o), "form%d_d%d_orig", objnum, depth);
+                snprintf(tag_s, sizeof(tag_s), "form%d_d%d_stripped", objnum, depth);
+                kozou_debug_dump_buffer(ctx, debug_output, debug_page, tag_o, orig_x);
+                kozou_debug_dump_buffer(ctx, debug_output, debug_page, tag_s, st_x);
+            }
+
             pdf_update_stream(ctx, dst, entry, st_x, 0);
         }
         fz_always(ctx) {
