@@ -2334,13 +2334,15 @@ static void kozou_process_form_xobjects_keep_text(
         pdf_obj *subtype = pdf_dict_get(ctx, entry, PDF_NAME(Subtype));
         if (!subtype || !pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
 
-        /* Subtype が /Form でも、何らかの理由で実体が stream でない
-         * (壊れた/中間更新で切り離された等の) 場合があるため、
-         * pdf_load_stream を呼ぶ前に必ず確認する。stream でなければ
-         * このXObjectは処理をスキップし、Do 呼び出し側では
-         * "Form扱いのため保持" の判定に不整合が出るが、そもそも
-         * 実体が無い/壊れているオブジェクトなので実害はない。 */
-        if (!pdf_is_stream(ctx, entry)) continue;
+        int objnum = pdf_to_num(ctx, entry);
+
+        /* 診断用: pdf_is_stream の判定結果をまず記録する。
+         * (実機で pdf_is_stream==0 のため以降がスキップされ、
+         *  デバッグダンプが一切出ない問題が報告されたため、
+         *  実際に pdf_load_stream を試みて何が起きるか確認する)。 */
+        int looks_like_stream = pdf_is_stream(ctx, entry);
+        fz_warn(ctx, "kozou_process_form_xobjects_keep_text: "
+                     "obj %d depth %d pdf_is_stream=%d", objnum, depth, looks_like_stream);
 
         pdf_obj *own_res  = pdf_dict_get(ctx, entry, PDF_NAME(Resources));
         pdf_obj *own_xobj = own_res ? pdf_dict_get(ctx, own_res, PDF_NAME(XObject)) : NULL;
@@ -2351,8 +2353,6 @@ static void kozou_process_form_xobjects_keep_text(
             kozou_process_form_xobjects_keep_text(ctx, dst, own_xobj, depth + 1,
                                                    debug_output, debug_page);
         }
-
-        int objnum = pdf_to_num(ctx, entry);
 
         fz_buffer *orig_x = NULL, *ni_x = NULL, *st_x = NULL;
         fz_var(orig_x); fz_var(ni_x); fz_var(st_x);
@@ -2383,7 +2383,7 @@ static void kozou_process_form_xobjects_keep_text(
              * 残るだけで、背景画像とのある程度の二重描画に
              * とどまる)。 */
             fz_warn(ctx, "kozou_process_form_xobjects_keep_text: "
-                         "skipping one XObject: %s", fz_caught_message(ctx));
+                         "skipping obj %d: %s", objnum, fz_caught_message(ctx));
         }
     }
 }
