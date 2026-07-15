@@ -2363,7 +2363,28 @@ static void kozou_process_form_xobjects_keep_text(
 
     int n = pdf_dict_len(ctx, xobj_dict);
     for (int k = 0; k < n; k++) {
-        pdf_obj *entry = pdf_resolve_indirect(ctx, pdf_dict_get_val(ctx, xobj_dict, k));
+        /* 重要な修正: pdf_resolve_indirect(ctx, raw) は raw 参照
+         * オブジェクト自身が持つ文書紐付けを使って解決するが、実機で
+         * それが正しく機能しない(常に pdf_to_num=0 になる)ことが
+         * 判明した。raw 参照自体の pdf_to_num は正しい番号を返す
+         * ("raw pdf_to_num=9" 等)ため、その番号を使って dst から
+         * 明示的に pdf_load_object するほうが確実。 */
+        pdf_obj *raw_val = pdf_dict_get_val(ctx, xobj_dict, k);
+        int raw_num = pdf_to_num(ctx, raw_val);
+        pdf_obj *entry = NULL;
+        if (raw_num > 0) {
+            fz_try(ctx) {
+                entry = pdf_load_object(ctx, dst, raw_num);
+            }
+            fz_catch(ctx) {
+                fz_warn(ctx, "kozou_process_form_xobjects_keep_text: "
+                             "pdf_load_object(dst, %d) failed: %s",
+                        raw_num, fz_caught_message(ctx));
+                entry = NULL;
+            }
+        } else {
+            entry = pdf_resolve_indirect(ctx, raw_val);
+        }
         if (!entry || !pdf_is_dict(ctx, entry)) continue;
 
         pdf_obj *subtype = pdf_dict_get(ctx, entry, PDF_NAME(Subtype));
