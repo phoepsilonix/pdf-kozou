@@ -1341,7 +1341,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         params_used: CompressParamsUsed {
             compress_images: true,
             compress_fonts: false,
-            garbage_level: 4,
+            garbage_level: 2,
             clean: false,
             sanitize: false,
             font_subset: false,

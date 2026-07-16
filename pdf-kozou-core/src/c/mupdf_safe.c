@@ -2338,11 +2338,17 @@ void kozou_compose_image_pdf_keep_text(
         pdf_write_options opts = pdf_default_write_options;
         opts.do_compress        = 1;
         opts.do_compress_images = use_png ? 0 : 1;
-        /* do_garbage=4: 到達不能オブジェクトの削除に加えて重複
-         * オブジェクト/重複画像の統合も行う。実機でファイルサイズが
-         * 想定より大きい(元ファイルより大きくなる)報告があったため、
-         * 従来の 1 (到達不能オブジェクトの削除のみ) から強化した。 */
-        opts.do_garbage         = 4;
+        /* do_garbage は 2 を上限にする。
+         * kozou_compress_preserving_type3 の既存コメントにある通り、
+         * 「3以上はフォント統合で Type3 破壊リスク」があるとこの
+         * コードベースで既に判明している。ファイルサイズ対策として
+         * 一時的に 4 に引き上げていたが、実機でグラフト後の
+         * Form XObjectが保存後に壊れる(mupdf自身が「content stream
+         * is not a stream」と警告する)問題が再現し、既存の
+         * compress_preserving_type3(gcを0-2に制限)では同じPDFで
+         * 問題が起きないことから、この do_garbage=4 が原因である
+         * 可能性が高いと判断し、安全な範囲に戻した。 */
+        opts.do_garbage         = 2;
         opts.do_clean           = 0;
         pdf_save_document(ctx, dst, output, &opts);
 
@@ -2373,28 +2379,20 @@ static void kozou_process_form_xobjects_keep_text(
 
     int n = pdf_dict_len(ctx, xobj_dict);
     for (int k = 0; k < n; k++) {
-        /* 重要な修正: pdf_resolve_indirect(ctx, raw) は raw 参照
-         * オブジェクト自身が持つ文書紐付けを使って解決するが、実機で
-         * それが正しく機能しない(常に pdf_to_num=0 になる)ことが
-         * 判明した。raw 参照自体の pdf_to_num は正しい番号を返す
-         * ("raw pdf_to_num=9" 等)ため、その番号を使って dst から
-         * 明示的に pdf_load_object するほうが確実。 */
-        pdf_obj *raw_val = pdf_dict_get_val(ctx, xobj_dict, k);
-        int raw_num = pdf_to_num(ctx, raw_val);
-        pdf_obj *entry = NULL;
-        if (raw_num > 0) {
-            fz_try(ctx) {
-                entry = pdf_load_object(ctx, dst, raw_num);
-            }
-            fz_catch(ctx) {
-                fz_warn(ctx, "kozou_process_form_xobjects_keep_text: "
-                             "pdf_load_object(dst, %d) failed: %s",
-                        raw_num, fz_caught_message(ctx));
-                entry = NULL;
-            }
-        } else {
-            entry = pdf_resolve_indirect(ctx, raw_val);
-        }
+        /* 重要な修正: pdf_dict_get_val(索引指定)で取得した生の参照を
+         * pdf_resolve_indirect や pdf_load_object で解決すると、実機で
+         * 常に pdf_to_num=0 / pdf_is_stream=偽 になり、保存後のPDFも
+         * 実際に壊れている(mupdf viewer自身が warning を出す)ことが
+         * 判明した。一方、pdf_dict_gets(名前指定)+ pdf_resolve_indirect
+         * は同じ実機ログで一貫して正しく解決できていた
+         * (トップレベルの kozou_do_name_targets_form が /X30 Do を
+         * 正しく Form と判定できていたのがその証拠)。
+         * そのため、索引はキー名を取り出すためだけに使い、値自体は
+         * 必ず名前指定(pdf_dict_gets)で取得し直す。 */
+        pdf_obj *key = pdf_dict_get_key(ctx, xobj_dict, k);
+        const char *keystr = pdf_to_name(ctx, key);
+        if (!keystr || !keystr[0]) continue;
+        pdf_obj *entry = pdf_resolve_indirect(ctx, pdf_dict_gets(ctx, xobj_dict, keystr));
         if (!entry || !pdf_is_dict(ctx, entry)) continue;
 
         pdf_obj *subtype = pdf_dict_get(ctx, entry, PDF_NAME(Subtype));
