@@ -2283,11 +2283,14 @@ void kozou_compose_image_pdf_keep_text(
                         }
                     }
 
-                    /* ページが参照する Form XObject を先に再帰処理して
-                     * 中身をテキストのみに絞ってから、トップレベルの
-                     * コンテンツストリームを処理する
-                     * (Do 呼び出しの Form/Image 判定に xobj が必要)。 */
-                    kozou_process_form_xobjects_keep_text(ctx, dst, xobj, 0, output, i);
+                    /* Form XObject の非テキスト演算子除去はここでは
+                     * 行わない。実機検証で、グラフト直後(保存前)は
+                     * Form XObjectのストリームが安定して読み込めない
+                     * (pdf_load_stream が "object is not a stream" で
+                     * 失敗する)ことが判明したため、いったんここでは
+                     * 素通しし、ページ全体をグラフトし終えて一度
+                     * 保存し、その保存済みファイルを読み直した後で
+                     * (Pass 2) Form XObject を処理する2段階方式にした。 */
 
                     no_inline = kozou_strip_inline_images(ctx, orig_buf);
                     stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline, xobj);
@@ -2350,7 +2353,45 @@ void kozou_compose_image_pdf_keep_text(
          * 可能性が高いと判断し、安全な範囲に戻した。 */
         opts.do_garbage         = 2;
         opts.do_clean           = 0;
-        pdf_save_document(ctx, dst, output, &opts);
+
+        /* --- Pass 1 の結果を中間ファイルに保存 --- */
+        char tmp_pass1[1200];
+        snprintf(tmp_pass1, sizeof(tmp_pass1),
+                 "%s" KOZOU_PATH_SEP "kozou_composeimg_pass1_%d.pdf",
+                 base_tmp, (int)getpid());
+        pdf_save_document(ctx, dst, tmp_pass1, &opts);
+
+        /* Pass 1 用の dst はもう不要なので早めに閉じる。
+         * (Pass 2 では改めて中間ファイルを開き直す。グラフト直後の
+         * in-memory な pdf_document は Form XObject のストリームが
+         * 安定して読み込めないことが実機検証で判明したため、一度
+         * 正規のファイルとして保存・読み込みし直すことで、通常の
+         * ファイル読み込みと同じ経路でストリームを読めるようにする。) */
+        if (gmap) { pdf_drop_graft_map(ctx, gmap); gmap = NULL; }
+        if (dst)  { pdf_drop_document(ctx, dst);   dst  = NULL; }
+
+        /* --- Pass 2: 中間ファイルを読み直して Form XObject を処理 --- */
+        pdf_document *dst2 = NULL;
+        fz_var(dst2);
+        fz_try(ctx) {
+            dst2 = pdf_open_document(ctx, tmp_pass1);
+            int dst2_pages = pdf_count_pages(ctx, dst2);
+            for (int pi = 0; pi < dst2_pages; pi++) {
+                pdf_obj *p2_page = pdf_lookup_page_obj(ctx, dst2, pi);
+                if (!p2_page) continue;
+                pdf_obj *p2_res = pdf_dict_get(ctx, p2_page, PDF_NAME(Resources));
+                if (!p2_res) continue;
+                pdf_obj *p2_xobj = pdf_dict_get(ctx, p2_res, PDF_NAME(XObject));
+                if (!p2_xobj) continue;
+                kozou_process_form_xobjects_keep_text(ctx, dst2, p2_xobj, 0, output, pi);
+            }
+            pdf_save_document(ctx, dst2, output, &opts);
+        }
+        fz_always(ctx) {
+            if (dst2) pdf_drop_document(ctx, dst2);
+            remove(tmp_pass1);
+        }
+        fz_catch(ctx) { fz_rethrow(ctx); }
 
         if (allocated) free(pages_to_do);
         set_ok(result);
