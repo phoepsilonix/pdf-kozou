@@ -1351,8 +1351,8 @@ pub fn compose_image_pdf_keep_text_with_quality(
             redact_outside_crop: false,
         },
         warning: Some(format!(
-            "画像PDF化(フォント保持版) Stage 2: {dpi}dpi 背景画像＋前面テキスト(Type3含む)を保持。\
-             Form XObject内部のテキストも再帰的に保持対応済み。/Rotate!=0のページは全面ラスタライズにフォールバックしています。"
+            "画像PDF化(フォント保持版) Stage 2: {dpi}dpi 背景画像＋前面テキスト(Type3含む、ネストしたForm XObject内も含む)を保持。\
+             画像の陰に隠れていたテキストは前面に単独で現れる場合があります。/Rotate!=0のページは全面ラスタライズにフォールバックしています。"
         )),
     })
 }

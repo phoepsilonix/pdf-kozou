@@ -1750,10 +1750,10 @@ static size_t kozou_next_token(const char *s, size_t len, size_t pos, kozou_tok 
 }
 
 /* "/Name" トークン(先頭に '/' を含む)が指す XObject の Subtype が
- * /Form かどうかを判定する。Form XObject を指す Do は
- * kozou_process_form_xobjects_keep_text で中身が既にテキストだけに
- * 絞られている前提のため、Do 呼び出し自体は保持してよい。
- * Image XObject や名前解決できない場合は 0 を返す
+ * /Form かどうかを判定する。Form XObject を指す Do は、その名前の
+ * エントリが kozou_build_text_only_form で作った新規テキストのみ
+ * Formに既に差し替えられている前提のため、Do 呼び出し自体は
+ * 保持してよい。Image XObject や名前解決できない場合は 0 を返す
  * (呼び出し側で Do を除去する = 背景画像側に既に焼き込まれている)。*/
 static int kozou_do_name_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
                                        const char *name_tok, size_t name_tok_len)
@@ -1773,11 +1773,12 @@ static int kozou_do_name_targets_form(fz_context *ctx, pdf_obj *xobj_dict,
     return subtype && pdf_name_eq(ctx, subtype, PDF_NAME(Form));
 }
 
-/* 定義は本ファイル後方。Resources/XObject 配下の Form XObject を
- * 再帰的に処理し、非テキスト演算子を除去してテキストだけを残す。 */
-static void kozou_process_form_xobjects_keep_text(
-    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth,
-    const char *debug_output, int debug_page);
+/* 定義は本ファイル後方。src 側の Form XObject (常に確実に読める) から
+ * テキストだけを残した新規 Form XObject を dst に作成して返す。
+ * ネストした Form XObject も再帰的に同じ方法で新規作成する。 */
+static pdf_obj *kozou_build_text_only_form(
+    fz_context *ctx, pdf_document *dst, pdf_graft_map *gmap,
+    pdf_obj *src_xobj, int depth);
 
 /* BT 外にある「非テキストの描画命令」を演算子単位で除去する
  * (トークン解析ベース。1行に複数演算子が書かれていても、対象の
@@ -1928,12 +1929,20 @@ static void kozou_debug_dump_buffer(fz_context *ctx, const char *output,
 /*      描画命令(パスの塗り/線, sh, Do, インライン画像)だけを除去し、   */
 /*      先頭に背景画像の描画命令を挿入する。BT/ET・Tf/Tj 等のテキスト  */
 /*      演算子とq/Q/cm/gs/色設定等の状態管理演算子はそのまま残す。     */
+/*   4. ページが参照する Form XObject(Do で描画される部品)のうち       */
+/*      テキストを含むものは、グラフト済みの複製を直接書き換えるの     */
+/*      ではなく、常に src (無変更・確実に読める) 側から               */
+/*      kozou_build_text_only_form で「テキストだけを残した新規        */
+/*      Form XObject」を作り、xobj 辞書のエントリをそれに差し替える。  */
+/*      (グラフト済みFormを pdf_update_stream で直接書き換える旧方式   */
+/*       は、実機検証でこの手のPDF構造に対して信頼できないことが       */
+/*       判明したため撤廃した。) 画像を指す Do は除去する               */
+/*      (既に背景画像に焼き込まれている)。                             */
 /*                                                                     */
 /* 既知の制限:                                                         */
-/*  - トップレベルのページコンテンツストリームのみ対象。Form XObject   */
-/*    内部の描画命令(そこに含まれるテキストも含む)は Do ごと除去       */
-/*    されるため、そのXObjectの中身は失われる(見た目上は背景画像に     */
-/*    既に焼き込まれているため視覚的な欠落はない)。                    */
+/*  - 画像の陰に隠れて見えないテキストがあった場合、そのテキストは      */
+/*    (隠していた画像はプライバシー保護のため背景に焼き込まれ消える     */
+/*     ため)前面に単独で現れる可能性がある。検出・回避はしていない。   */
 /*  - /Rotate が 0 以外のページは今回未対応。安全のため、そのページ    */
 /*    だけ kozou_rasterize_no_text 相当(テキストも含めた通常の         */
 /*    全面ラスタライズ)にフォールバックする。                          */
@@ -2259,38 +2268,44 @@ void kozou_compose_image_pdf_keep_text(
                         pdf_dict_put(ctx, res, PDF_NAME(XObject), xobj);
                     }
 
-                    /* 追加診断: page_obj/res/xobj 自体、および xobj_dict
-                     * 内の各値が「解決前(生の値)の時点で」indirect
-                     * reference になっているかどうかを確認する。
-                     * page 0 で direct Resources present=1 だったにも
-                     * 関わらず、Form XObject が pdf_to_num=0 になる
-                     * 理由を特定するため。 */
-                    fz_warn(ctx, "compose_image_pdf_keep_text: page %d "
-                                 "pdf_to_num(page_obj)=%d pdf_to_num(res)=%d pdf_to_num(xobj)=%d",
-                            i, pdf_to_num(ctx, page_obj), pdf_to_num(ctx, res),
-                            pdf_to_num(ctx, xobj));
-                    {
-                        int nx = pdf_dict_len(ctx, xobj);
-                        for (int xk = 0; xk < nx; xk++) {
-                            pdf_obj *raw_val = pdf_dict_get_val(ctx, xobj, xk);
-                            pdf_obj *key = pdf_dict_get_key(ctx, xobj, xk);
-                            const char *keystr = pdf_to_name(ctx, key);
-                            fz_warn(ctx, "compose_image_pdf_keep_text: page %d "
-                                         "xobj[%s] raw pdf_is_indirect=%d raw pdf_to_num=%d",
-                                    i, keystr ? keystr : "?",
-                                    pdf_is_indirect(ctx, raw_val),
-                                    pdf_to_num(ctx, raw_val));
+                    /* src 側(グラフトしていない、常に確実に読める)の
+                     * Resources/XObject を見て、Form XObject を指す
+                     * 名前だけを新規に作った「テキストのみ版」に
+                     * 差し替える。既存のグラフト済みオブジェクトを
+                     * 書き換える(pdf_update_stream)操作は実機検証で
+                     * 信頼できないことが判明したため、代わりに
+                     * 常に新規オブジェクトを作成し、xobj 辞書の
+                     * 該当エントリを差し替えるだけにする(これは
+                     * 既に確実に動いている KzBgImg 追加と同じ操作)。 */
+                    pdf_obj *src_res_x  = pdf_dict_get(ctx, src_page, PDF_NAME(Resources));
+                    pdf_obj *src_xobj_d = src_res_x ? pdf_dict_get(ctx, src_res_x, PDF_NAME(XObject)) : NULL;
+                    if (src_xobj_d) {
+                        int nsx = pdf_dict_len(ctx, src_xobj_d);
+                        for (int sk = 0; sk < nsx; sk++) {
+                            pdf_obj *skey = pdf_dict_get_key(ctx, src_xobj_d, sk);
+                            const char *skeystr = pdf_to_name(ctx, skey);
+                            if (!skeystr || !skeystr[0]) continue;
+                            pdf_obj *child_src = pdf_dict_gets(ctx, src_xobj_d, skeystr);
+                            pdf_obj *child_subtype = child_src ? pdf_dict_get(ctx, child_src, PDF_NAME(Subtype)) : NULL;
+                            if (!child_subtype || !pdf_name_eq(ctx, child_subtype, PDF_NAME(Form))) continue;
+
+                            pdf_obj *new_form = kozou_build_text_only_form(ctx, dst, gmap, child_src, 0);
+                            if (new_form) {
+                                pdf_dict_puts(ctx, xobj, skeystr, new_form);
+                            } else {
+                                /* 作成に失敗した場合は安全側に倒す:
+                                 * エントリ自体を削除し、対応する Do は
+                                 * 名前解決できず除去されるようにする
+                                 * (=既に背景画像に焼き込まれている)。 */
+                                pdf_obj *delname = pdf_new_name(ctx, skeystr);
+                                pdf_dict_del(ctx, xobj, delname);
+                                pdf_drop_obj(ctx, delname);
+                                fz_warn(ctx, "compose_image_pdf_keep_text: "
+                                             "page %d: failed to build text-only form for /%s, "
+                                             "dropping (image-only fallback)", i, skeystr);
+                            }
                         }
                     }
-
-                    /* Form XObject の非テキスト演算子除去はここでは
-                     * 行わない。実機検証で、グラフト直後(保存前)は
-                     * Form XObjectのストリームが安定して読み込めない
-                     * (pdf_load_stream が "object is not a stream" で
-                     * 失敗する)ことが判明したため、いったんここでは
-                     * 素通しし、ページ全体をグラフトし終えて一度
-                     * 保存し、その保存済みファイルを読み直した後で
-                     * (Pass 2) Form XObject を処理する2段階方式にした。 */
 
                     no_inline = kozou_strip_inline_images(ctx, orig_buf);
                     stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline, xobj);
@@ -2353,45 +2368,7 @@ void kozou_compose_image_pdf_keep_text(
          * 可能性が高いと判断し、安全な範囲に戻した。 */
         opts.do_garbage         = 2;
         opts.do_clean           = 0;
-
-        /* --- Pass 1 の結果を中間ファイルに保存 --- */
-        char tmp_pass1[1200];
-        snprintf(tmp_pass1, sizeof(tmp_pass1),
-                 "%s" KOZOU_PATH_SEP "kozou_composeimg_pass1_%d.pdf",
-                 base_tmp, (int)getpid());
-        pdf_save_document(ctx, dst, tmp_pass1, &opts);
-
-        /* Pass 1 用の dst はもう不要なので早めに閉じる。
-         * (Pass 2 では改めて中間ファイルを開き直す。グラフト直後の
-         * in-memory な pdf_document は Form XObject のストリームが
-         * 安定して読み込めないことが実機検証で判明したため、一度
-         * 正規のファイルとして保存・読み込みし直すことで、通常の
-         * ファイル読み込みと同じ経路でストリームを読めるようにする。) */
-        if (gmap) { pdf_drop_graft_map(ctx, gmap); gmap = NULL; }
-        if (dst)  { pdf_drop_document(ctx, dst);   dst  = NULL; }
-
-        /* --- Pass 2: 中間ファイルを読み直して Form XObject を処理 --- */
-        pdf_document *dst2 = NULL;
-        fz_var(dst2);
-        fz_try(ctx) {
-            dst2 = pdf_open_document(ctx, tmp_pass1);
-            int dst2_pages = pdf_count_pages(ctx, dst2);
-            for (int pi = 0; pi < dst2_pages; pi++) {
-                pdf_obj *p2_page = pdf_lookup_page_obj(ctx, dst2, pi);
-                if (!p2_page) continue;
-                pdf_obj *p2_res = pdf_dict_get(ctx, p2_page, PDF_NAME(Resources));
-                if (!p2_res) continue;
-                pdf_obj *p2_xobj = pdf_dict_get(ctx, p2_res, PDF_NAME(XObject));
-                if (!p2_xobj) continue;
-                kozou_process_form_xobjects_keep_text(ctx, dst2, p2_xobj, 0, output, pi);
-            }
-            pdf_save_document(ctx, dst2, output, &opts);
-        }
-        fz_always(ctx) {
-            if (dst2) pdf_drop_document(ctx, dst2);
-            remove(tmp_pass1);
-        }
-        fz_catch(ctx) { fz_rethrow(ctx); }
+        pdf_save_document(ctx, dst, output, &opts);
 
         if (allocated) free(pages_to_do);
         set_ok(result);
@@ -2406,91 +2383,110 @@ void kozou_compose_image_pdf_keep_text(
     }
 }
 
-/* Resources/XObject 配下の Form XObject を再帰的に処理し、各 Form の
- * コンテンツストリームから非テキスト演算子だけを除去する
- * (トップレベルページと同じ考え方)。これにより、テキストが
- * Form XObject の中に置かれているページでも、その Do 呼び出しを
- * 残すだけでテキストがベクターのまま保持できるようになる。
- * 深さ制限で循環参照を防ぐ。 */
-static void kozou_process_form_xobjects_keep_text(
-    fz_context *ctx, pdf_document *dst, pdf_obj *xobj_dict, int depth,
-    const char *debug_output, int debug_page)
+/* src 側の Form XObject (グラフトしていない、常に確実に読める) から、
+ * テキストだけを残した新規 Form XObject を dst に新規作成して返す。
+ * 既存のグラフト済みオブジェクトを書き換えるのではなく、常に新規に
+ * ストリームを作成するアプローチ — 実機検証で「グラフト済みFormを
+ * pdf_update_stream で書き換える」操作がこのPDF構造に対して信頼
+ * できないことが判明したため。
+ *
+ * ネストした Form XObject を Do で参照している場合は、対応する src
+ * 側の Form XObject を再帰的に同じ方法で新規作成し、この Form 専用の
+ * 新しい /Resources/XObject 辞書で元の名前に差し替える。
+ * Image XObject への Do は除去する(背景画像に既に焼き込み済み)。
+ * 深さ制限で循環参照を防ぐ。失敗した場合は NULL を返す
+ * (呼び出し側で、対応する Do を安全側に倒して除去する)。 */
+static pdf_obj *kozou_build_text_only_form(
+    fz_context *ctx, pdf_document *dst, pdf_graft_map *gmap,
+    pdf_obj *src_xobj, int depth)
 {
-    if (!xobj_dict || depth > 12) return;
+    if (!src_xobj || depth > 12) return NULL;
+    if (!pdf_is_stream(ctx, src_xobj)) return NULL;
 
-    int n = pdf_dict_len(ctx, xobj_dict);
-    for (int k = 0; k < n; k++) {
-        /* 重要な修正: pdf_dict_get_val(索引指定)で取得した生の参照を
-         * pdf_resolve_indirect や pdf_load_object で解決すると、実機で
-         * 常に pdf_to_num=0 / pdf_is_stream=偽 になり、保存後のPDFも
-         * 実際に壊れている(mupdf viewer自身が warning を出す)ことが
-         * 判明した。一方、pdf_dict_gets(名前指定)+ pdf_resolve_indirect
-         * は同じ実機ログで一貫して正しく解決できていた
-         * (トップレベルの kozou_do_name_targets_form が /X30 Do を
-         * 正しく Form と判定できていたのがその証拠)。
-         * そのため、索引はキー名を取り出すためだけに使い、値自体は
-         * 必ず名前指定(pdf_dict_gets)で取得し直す。 */
-        pdf_obj *key = pdf_dict_get_key(ctx, xobj_dict, k);
-        const char *keystr = pdf_to_name(ctx, key);
-        if (!keystr || !keystr[0]) continue;
-        pdf_obj *entry = pdf_resolve_indirect(ctx, pdf_dict_gets(ctx, xobj_dict, keystr));
-        if (!entry || !pdf_is_dict(ctx, entry)) continue;
+    pdf_obj *new_form = NULL;
+    fz_buffer *orig = NULL, *ni = NULL, *stripped = NULL;
+    pdf_obj *new_xobj_dict = NULL;
+    fz_var(new_form); fz_var(orig); fz_var(ni); fz_var(stripped); fz_var(new_xobj_dict);
 
-        pdf_obj *subtype = pdf_dict_get(ctx, entry, PDF_NAME(Subtype));
-        if (!subtype || !pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
+    fz_try(ctx) {
+        pdf_obj *src_res      = pdf_dict_get(ctx, src_xobj, PDF_NAME(Resources));
+        pdf_obj *src_own_xobj = src_res ? pdf_dict_get(ctx, src_res, PDF_NAME(XObject)) : NULL;
 
-        int objnum = pdf_to_num(ctx, entry);
+        /* ネストした Form XObject を先に再帰的に新規作成し、
+         * 名前→新規Formの対応表を作る(Image はここに含めない
+         * = 対応するDoは名前解決できず除去される)。 */
+        if (src_own_xobj) {
+            int n = pdf_dict_len(ctx, src_own_xobj);
+            for (int k = 0; k < n; k++) {
+                pdf_obj *key = pdf_dict_get_key(ctx, src_own_xobj, k);
+                const char *keystr = pdf_to_name(ctx, key);
+                if (!keystr || !keystr[0]) continue;
+                pdf_obj *child_src = pdf_dict_gets(ctx, src_own_xobj, keystr);
+                pdf_obj *child_subtype = child_src ? pdf_dict_get(ctx, child_src, PDF_NAME(Subtype)) : NULL;
+                if (!child_subtype || !pdf_name_eq(ctx, child_subtype, PDF_NAME(Form))) continue;
 
-        /* 診断用: pdf_is_stream の判定結果をまず記録する。
-         * (実機で pdf_is_stream==0 のため以降がスキップされ、
-         *  デバッグダンプが一切出ない問題が報告されたため、
-         *  実際に pdf_load_stream を試みて何が起きるか確認する)。 */
-        int looks_like_stream = pdf_is_stream(ctx, entry);
-        fz_warn(ctx, "kozou_process_form_xobjects_keep_text: "
-                     "obj %d depth %d pdf_is_stream=%d", objnum, depth, looks_like_stream);
-
-        pdf_obj *own_res  = pdf_dict_get(ctx, entry, PDF_NAME(Resources));
-        pdf_obj *own_xobj = own_res ? pdf_dict_get(ctx, own_res, PDF_NAME(XObject)) : NULL;
-
-        /* 自分自身より先にネストした Form XObject を処理する
-         * (内側から外側へ、テキスト保持の依存関係を満たすため)。 */
-        if (own_xobj) {
-            kozou_process_form_xobjects_keep_text(ctx, dst, own_xobj, depth + 1,
-                                                   debug_output, debug_page);
-        }
-
-        fz_buffer *orig_x = NULL, *ni_x = NULL, *st_x = NULL;
-        fz_var(orig_x); fz_var(ni_x); fz_var(st_x);
-        fz_try(ctx) {
-            orig_x = pdf_load_stream(ctx, entry);
-            ni_x   = kozou_strip_inline_images(ctx, orig_x);
-            st_x   = kozou_strip_nontext_paint_ops(ctx, ni_x, own_xobj);
-
-            if (debug_output) {
-                char tag_o[64], tag_s[64];
-                snprintf(tag_o, sizeof(tag_o), "form%d_d%d_orig", objnum, depth);
-                snprintf(tag_s, sizeof(tag_s), "form%d_d%d_stripped", objnum, depth);
-                kozou_debug_dump_buffer(ctx, debug_output, debug_page, tag_o, orig_x);
-                kozou_debug_dump_buffer(ctx, debug_output, debug_page, tag_s, st_x);
+                pdf_obj *child_new = kozou_build_text_only_form(ctx, dst, gmap, child_src, depth + 1);
+                if (child_new) {
+                    if (!new_xobj_dict) new_xobj_dict = pdf_new_dict(ctx, dst, 4);
+                    pdf_dict_puts(ctx, new_xobj_dict, keystr, child_new);
+                }
             }
+        }
 
-            pdf_update_stream(ctx, dst, entry, st_x, 0);
+        orig     = pdf_load_stream(ctx, src_xobj);
+        ni       = kozou_strip_inline_images(ctx, orig);
+        stripped = kozou_strip_nontext_paint_ops(ctx, ni, new_xobj_dict);
+
+        /* この Form 専用の新しい /Resources を作る:
+         * テキスト描画に必要な Font と ExtGState だけをグラフトする。
+         * (画像・パターン等は一切持ち込まない = 焼き込み済みの
+         *  背景画像との重複や、プライバシー保護対象の再露出を防ぐ)。 */
+        pdf_obj *new_res = pdf_new_dict(ctx, dst, 2);
+        if (src_res) {
+            pdf_obj *src_font = pdf_dict_get(ctx, src_res, PDF_NAME(Font));
+            if (src_font) {
+                pdf_dict_put(ctx, new_res, PDF_NAME(Font),
+                             pdf_graft_mapped_object(ctx, gmap, src_font));
+            }
+            pdf_obj *src_gs = pdf_dict_get(ctx, src_res, PDF_NAME(ExtGState));
+            if (src_gs) {
+                pdf_dict_put(ctx, new_res, PDF_NAME(ExtGState),
+                             pdf_graft_mapped_object(ctx, gmap, src_gs));
+            }
         }
-        fz_always(ctx) {
-            fz_drop_buffer(ctx, st_x);
-            fz_drop_buffer(ctx, ni_x);
-            fz_drop_buffer(ctx, orig_x);
+        if (new_xobj_dict) {
+            pdf_dict_put(ctx, new_res, PDF_NAME(XObject), new_xobj_dict);
         }
-        fz_catch(ctx) {
-            /* この Form XObject 1つの処理失敗でドキュメント全体を
-             * 失敗させない。元のストリームには手を付けていない
-             * 状態で次に進む(最悪でもDoの中身が非テキストごと
-             * 残るだけで、背景画像とのある程度の二重描画に
-             * とどまる)。 */
-            fz_warn(ctx, "kozou_process_form_xobjects_keep_text: "
-                         "skipping obj %d: %s", objnum, fz_caught_message(ctx));
+
+        pdf_obj *form_dict = pdf_new_dict(ctx, dst, 6);
+        pdf_dict_put(ctx, form_dict, PDF_NAME(Type), PDF_NAME(XObject));
+        pdf_dict_put(ctx, form_dict, PDF_NAME(Subtype), PDF_NAME(Form));
+        pdf_obj *src_bbox = pdf_dict_get(ctx, src_xobj, PDF_NAME(BBox));
+        if (src_bbox) {
+            pdf_dict_put(ctx, form_dict, PDF_NAME(BBox),
+                         pdf_graft_mapped_object(ctx, gmap, src_bbox));
         }
+        pdf_obj *src_matrix = pdf_dict_get(ctx, src_xobj, PDF_NAME(Matrix));
+        if (src_matrix) {
+            pdf_dict_put(ctx, form_dict, PDF_NAME(Matrix),
+                         pdf_graft_mapped_object(ctx, gmap, src_matrix));
+        }
+        pdf_dict_put(ctx, form_dict, PDF_NAME(Resources), new_res);
+
+        new_form = pdf_add_stream(ctx, dst, stripped, form_dict, 0);
     }
+    fz_always(ctx) {
+        fz_drop_buffer(ctx, stripped);
+        fz_drop_buffer(ctx, ni);
+        fz_drop_buffer(ctx, orig);
+    }
+    fz_catch(ctx) {
+        fz_warn(ctx, "kozou_build_text_only_form: failed at depth %d: %s",
+                depth, fz_caught_message(ctx));
+        new_form = NULL;
+    }
+
+    return new_form;
 }
 
 /* ------------------------------------------------------------------ */
