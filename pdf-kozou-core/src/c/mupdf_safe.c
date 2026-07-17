@@ -2438,9 +2438,15 @@ static pdf_obj *kozou_build_text_only_form(
         stripped = kozou_strip_nontext_paint_ops(ctx, ni, new_xobj_dict);
 
         /* この Form 専用の新しい /Resources を作る:
-         * テキスト描画に必要な Font と ExtGState だけをグラフトする。
-         * (画像・パターン等は一切持ち込まない = 焼き込み済みの
-         *  背景画像との重複や、プライバシー保護対象の再露出を防ぐ)。 */
+         * テキスト描画に必要なリソースをグラフトする。
+         * Font/ExtGState に加え、Pattern(グラデーション等の塗りに
+         * テキストが Pattern を参照するケースがあるため必須。
+         * 実機で "cannot find Pattern resource" エラーが発生し
+         * 判明した)、Shading、Pattern が使う ColorSpace、マーク付き
+         * コンテンツ(BDC等)が参照する Properties も持ち込む。
+         * 通常の画像・写真等(/XObject 配下の Image)は一切持ち込まない
+         * (焼き込み済みの背景画像との重複や、プライバシー保護対象の
+         *  再露出を防ぐ)。 */
         pdf_obj *new_res = pdf_new_dict(ctx, dst, 2);
         if (src_res) {
             pdf_obj *src_font = pdf_dict_get(ctx, src_res, PDF_NAME(Font));
@@ -2452,6 +2458,26 @@ static pdf_obj *kozou_build_text_only_form(
             if (src_gs) {
                 pdf_dict_put(ctx, new_res, PDF_NAME(ExtGState),
                              pdf_graft_mapped_object(ctx, gmap, src_gs));
+            }
+            pdf_obj *src_pattern = pdf_dict_get(ctx, src_res, PDF_NAME(Pattern));
+            if (src_pattern) {
+                pdf_dict_put(ctx, new_res, PDF_NAME(Pattern),
+                             pdf_graft_mapped_object(ctx, gmap, src_pattern));
+            }
+            pdf_obj *src_shading = pdf_dict_get(ctx, src_res, PDF_NAME(Shading));
+            if (src_shading) {
+                pdf_dict_put(ctx, new_res, PDF_NAME(Shading),
+                             pdf_graft_mapped_object(ctx, gmap, src_shading));
+            }
+            pdf_obj *src_cs = pdf_dict_get(ctx, src_res, PDF_NAME(ColorSpace));
+            if (src_cs) {
+                pdf_dict_put(ctx, new_res, PDF_NAME(ColorSpace),
+                             pdf_graft_mapped_object(ctx, gmap, src_cs));
+            }
+            pdf_obj *src_props = pdf_dict_get(ctx, src_res, PDF_NAME(Properties));
+            if (src_props) {
+                pdf_dict_put(ctx, new_res, PDF_NAME(Properties),
+                             pdf_graft_mapped_object(ctx, gmap, src_props));
             }
         }
         if (new_xobj_dict) {
