@@ -142,7 +142,7 @@ jobs:
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.4.0
         with:
           node-version: 'lts/*'
           cache: 'pnpm'
@@ -362,7 +362,7 @@ jobs:
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.4.0
         with:
           node-version: 'lts/*'
           cache: 'pnpm'
@@ -495,7 +495,7 @@ jobs:
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.4.0
         with:
           node-version: 'lts/*'
           cache: 'pnpm'
@@ -637,7 +637,7 @@ jobs:
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.4.0
         with:
           node-version: 'lts/*'
           cache: 'pnpm'
@@ -652,7 +652,7 @@ jobs:
         run: pnpm run build:frontend
 
       - name: Setup Java
-        uses: actions/setup-java@v5.4.0
+        uses: actions/setup-java@v5.5.0
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -752,7 +752,7 @@ jobs:
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.4.0
         with:
           node-version: 'lts/*'
           cache: 'pnpm'
@@ -848,7 +848,7 @@ jobs:
           path: ./dist # すべての成果物を dist フォルダに集約
 
       - name: Release to GitHub
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.1
         with:
           files: |
             ./dist/linux-artifacts/**/*.AppImage
