@@ -2066,6 +2066,24 @@ void kozou_compose_image_pdf_keep_text(
                 float pw_pt = bounds.x1 - bounds.x0;
                 float ph_pt = bounds.y1 - bounds.y0;
 
+                /* 重要: fz_bound_page が返す bounds は (0,0) 起点に
+                 * 正規化されている場合があり、ページの実際の /MediaBox
+                 * 原点(0以外のことがある — 実機で [0, 7.82998, 595.5,
+                 * 850.08] のようなケースが確認された)とは一致しない。
+                 * 元ページのコンテンツストリームは実際の /MediaBox の
+                 * 座標系に合わせて作られているため、背景画像の配置には
+                 * bounds.x0/y0 ではなく実際の /MediaBox 原点を使う
+                 * 必要がある(使わないと背景画像だけが数ポイント
+                 * ズレて、前面のテキストと噛み合わなくなる)。 */
+                float mb_x0 = bounds.x0, mb_y0 = bounds.y0;
+                {
+                    pdf_obj *mb = pdf_dict_get_inheritable(ctx, src_page, PDF_NAME(MediaBox));
+                    if (mb && pdf_is_array(ctx, mb) && pdf_array_len(ctx, mb) == 4) {
+                        mb_x0 = pdf_to_real(ctx, pdf_array_get(ctx, mb, 0));
+                        mb_y0 = pdf_to_real(ctx, pdf_array_get(ctx, mb, 1));
+                    }
+                }
+
                 fz_matrix ctm = fz_scale(scale, scale);
                 fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
                 fz_colorspace *rgb = fz_device_rgb(ctx);
@@ -2322,7 +2340,7 @@ void kozou_compose_image_pdf_keep_text(
                     char cs_prefix[256];
                     int  cs_prefix_len = snprintf(cs_prefix, sizeof(cs_prefix),
                         "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/KzBgImg Do\nQ\n",
-                        pw_pt, ph_pt, bounds.x0, bounds.y0);
+                        pw_pt, ph_pt, mb_x0, mb_y0);
 
                     final_buf = fz_new_buffer(ctx,
                         (size_t)cs_prefix_len + fz_buffer_storage(ctx, stripped, NULL) + 8);
