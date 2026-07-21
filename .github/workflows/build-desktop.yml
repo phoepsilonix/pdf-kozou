@@ -670,7 +670,15 @@ jobs:
       #  run: |
       #    pnpm exec tauri android init --ci || true
 
-      - name: Build Android (unsigned debug/release APK)
+      - name: setup Android signing
+        run: |
+          cd src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+          base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+
+      - name: Build Android (signed release APK)
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
@@ -682,8 +690,10 @@ jobs:
           #tauri android build --apk --split-per-abi --ci
           #tauri android build --apk --split-per-abi --debug --ci || pnpm run tauri android build --apk --split-per-abi --debug --ci
           #tauri android build --apk --aab --debug --ci || pnpm run tauri android build --apk --aab --debug --ci
-          pnpm run tauri android build --apk --split-per-abi --debug --ci
-          pnpm run tauri android build --apk --aab --debug --ci
+          #pnpm run tauri android build --apk --split-per-abi --debug --ci
+          #pnpm run tauri android build --apk --aab --debug --ci
+          pnpm run tauri android build --apk --split-per-abi --ci
+          pnpm run tauri android build --apk --aab --ci
 
       - name: Move bundle folder
         run: |
