@@ -35,6 +35,15 @@ interface PdfStore {
   clearFile: () => void;
   redactOutsideCrop: boolean;
   setRedactOutsideCrop: (v: boolean) => void;
+  /** redactOutsideCrop 有効時、CropBox 外側に持たせる余白 (pt、上下左右共通) */
+  redactMarginPt: number;
+  setRedactMarginPt: (v: number) => void;
+  /** 埋め込み画像の再圧縮先 DPI (0 = 無効/従来通り) */
+  imageDpi: number;
+  setImageDpi: (v: number) => void;
+  /** image_dpi 有効時の JPEG 品質 (1-100) */
+  imageJpegQuality: number;
+  setImageJpegQuality: (v: number) => void;
 
   // --- GS管理 ---
   gsAvailable: boolean;
@@ -141,6 +150,13 @@ export const usePdfStore = create<PdfStore>()(
       // crop領域外圧縮
       redactOutsideCrop: true,
       setRedactOutsideCrop: (v) => set({ redactOutsideCrop: v }),
+      redactMarginPt: 100,
+      setRedactMarginPt: (v) => set({ redactMarginPt: v }),
+      // 画像DPI/JPEG品質 (0 = 無効)
+      imageDpi: 0,
+      setImageDpi: (v) => set({ imageDpi: v }),
+      imageJpegQuality: 85,
+      setImageJpegQuality: (v) => set({ imageJpegQuality: v }),
 
       // GS初期化
       gsAvailable: false,
@@ -236,6 +252,9 @@ export const usePdfStore = create<PdfStore>()(
         impositionMode: state.impositionMode,
         previewEnabled: state.previewEnabled,
         layoutModeOverride: state.layoutModeOverride,
+        redactMarginPt: state.redactMarginPt,
+        imageDpi: state.imageDpi,
+        imageJpegQuality: state.imageJpegQuality,
       }),
     },
   ),

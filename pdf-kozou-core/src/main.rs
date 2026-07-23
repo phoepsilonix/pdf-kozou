@@ -190,6 +190,16 @@ enum Commands {
         /// (デフォルトでは CropBox が設定されたページの外側を自動的に消去する)
         #[arg(long)]
         no_redact_outside_crop: bool,
+        /// CropBox 外側に持たせる余白 (pt、上下左右共通。デフォルト 100)
+        #[arg(long)]
+        redact_margin_pt: Option<f32>,
+        /// 埋め込み画像を指定 DPI にダウンサンプルして再圧縮する
+        /// (compress_images 有効時のみ適用。未指定ならダウンサンプルしない)
+        #[arg(long)]
+        image_dpi: Option<f32>,
+        /// image_dpi 指定時の JPEG 品質 (1-100、デフォルト 85)
+        #[arg(long)]
+        image_jpeg_quality: Option<u8>,
         /// Type3 フォント検出時のラスタライズ DPI（--rewrite 時のみ有効、デフォルト 150）
         #[arg(long)]
         rasterize_dpi: Option<f32>,
@@ -607,6 +617,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             object_stream,
             merge_fonts,
             no_redact_outside_crop,
+            redact_margin_pt,
+            image_dpi,
+            image_jpeg_quality,
             rasterize_dpi,
             rasterize_quality,
         } => {
@@ -677,6 +690,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     object_stream: Some(object_stream),
                     merge_fonts: Some(merge_fonts),
                     redact_outside_crop: Some(!no_redact_outside_crop),
+                    redact_margin_pt,
+                    image_dpi,
+                    image_jpeg_quality,
                 };
                 pdf_kozou_core::compress::compress(&req)?
             };

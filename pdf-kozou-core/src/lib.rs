@@ -12,6 +12,7 @@ pub mod crop_cleanup;
 pub mod error;
 pub mod ffi;
 pub mod font_subset;
+pub mod image_recompress;
 pub mod info;
 pub mod merge;
 pub mod pixmap;

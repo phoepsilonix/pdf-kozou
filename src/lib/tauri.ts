@@ -1065,6 +1065,12 @@ export interface CompressRequest {
   merge_fonts?: boolean;
   /** CropBox 外を apply_redactions で物理的に削除するか (default: true) */
   redact_outside_crop?: boolean;
+  /** redact_outside_crop 有効時、CropBox 外側に持たせる余白 (pt、上下左右共通。デフォルト 100) */
+  redact_margin_pt?: number;
+  /** 埋め込み画像を指定 DPI にダウンサンプルして再圧縮する (compress_images 有効時のみ適用) */
+  image_dpi?: number;
+  /** image_dpi 指定時の JPEG 品質 (1-100、デフォルト 85) */
+  image_jpeg_quality?: number;
   /** リフロー文書変換レイアウト幅 (pt) */
   layout_w?: number;
   /** リフロー文書変換レイアウト高さ (pt) */
@@ -1087,6 +1093,8 @@ export interface CompressResponse {
     object_stream: boolean;
     merge_fonts: boolean;
     redact_outside_crop: boolean;
+    redact_margin_pt: number;
+    images_recompressed?: number;
     rewrite_fallback?: boolean;
   };
   warning?: string;

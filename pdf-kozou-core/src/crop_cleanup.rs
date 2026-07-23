@@ -452,12 +452,23 @@ pub struct RedactStats {
 /// CropBox が MediaBox と実質的に同じとみなす許容誤差 (pt)
 const CROPBOX_EPS: f32 = 0.01;
 
+/// CropBox 外側の余白（上下左右、pt 単位）のデフォルト値。
+/// ギリギリの部品が消えにくいように余裕を持たせるための値で、
+/// ユーザーが `redact_margin_pt` で上書きできる。
+pub const DEFAULT_REDACT_MARGIN_PT: f32 = 100.0;
+
 /// 全ページの CropBox 外側を redaction で物理的に消去する。
 ///
 /// - CropBox が存在しない、または MediaBox と一致する（＝実質トリムなし）
 ///   ページはスキップする。
 /// - 消去対象のページが1つもなければ `input` を `output` にコピーするだけで終える。
-pub fn redact_outside_cropbox(input: &str, output: &str) -> Result<RedactStats, String> {
+/// - `margin_pt`: 上下左右に持たせる余裕 (pt)。`None` の場合は
+///   `DEFAULT_REDACT_MARGIN_PT` (100pt) を使う。0 以上の値のみ有効。
+pub fn redact_outside_cropbox(
+    input: &str,
+    output: &str,
+    margin_pt: Option<f32>,
+) -> Result<RedactStats, String> {
     use mupdf::Rect;
     use mupdf::pdf::{PdfDocument, PdfWriteOptions};
 
@@ -527,7 +538,8 @@ pub fn redact_outside_cropbox(input: &str, output: &str) -> Result<RedactStats, 
         // 左の始点もCropboxが起点になる。-cx0。右終点もmx1-cx0
         // [162.0,47.3,394.9,405.4]
         // ギリギリの部品が消えにくいように余裕を持たせる。
-        let space: f32 = 100.0;
+        // ユーザー指定値 (margin_pt) があればそれを使う。負値は 0 に丸める。
+        let space: f32 = margin_pt.unwrap_or(DEFAULT_REDACT_MARGIN_PT).max(0.0);
         let bands = [
             (
                 -cx0 - space,

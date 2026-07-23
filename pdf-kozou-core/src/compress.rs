@@ -405,6 +405,24 @@ pub struct CompressRequest {
     /// トリム外領域を保持したい場合は false を指定する。
     #[serde(default)]
     pub redact_outside_crop: Option<bool>,
+
+    /// redact_outside_crop 有効時、CropBox 外側に持たせる余白 (pt、上下左右共通)。
+    /// 未指定時は `crop_cleanup::DEFAULT_REDACT_MARGIN_PT` (100pt) を使う。
+    #[serde(default)]
+    pub redact_margin_pt: Option<f32>,
+
+    /// 埋め込み画像を再圧縮する際の目標解像度 (DPI)。
+    /// `compress_images` が有効な場合のみ適用され、ページ上での実表示サイズから
+    /// 逆算した必要ピクセル数を上回る画像のみダウンサンプルする。
+    /// 現状 DCTDecode(JPEG) 由来の画像のみ対応（他フィルタはスキップ）。
+    /// 未指定時はダウンサンプルを行わない（従来通りの挙動）。
+    #[serde(default)]
+    pub image_dpi: Option<f32>,
+
+    /// 埋め込み画像を再圧縮する際の JPEG 品質 (1-100)。
+    /// `image_dpi` 指定時のみ意味を持つ。未指定時は 85。
+    #[serde(default)]
+    pub image_jpeg_quality: Option<u8>,
 }
 
 #[derive(Serialize)]
@@ -431,12 +449,17 @@ pub struct CompressParamsUsed {
     /// CropBox 外を apply_redactions で物理的に削除したか
     /// (CropBox が無い/全ページ対象外だった場合は false)
     pub redact_outside_crop: bool,
+    /// redact_outside_crop 実行時に使われた余白 (pt)
+    pub redact_margin_pt: f32,
     /// 未参照フォントの除去を実行したか
     /// pdf_subset_fonts() を実行したか
     pub font_subset: bool,
     /// Type3 等でサブセット化をスキップ/制限したか
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub subset_skipped: bool,
+    /// 画像 DPI/JPEG品質指定によりダウンサンプル再圧縮された画像枚数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images_recompressed: Option<usize>,
 }
 
 // ── compress(): メイン圧縮関数 ───────────────────────────────────────────────
@@ -482,15 +505,24 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
             }
         }
     }
+    let redact_margin_pt = req
+        .redact_margin_pt
+        .unwrap_or(crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT)
+        .max(0.0);
+
     let mut redact_applied = false;
     let _redact_guard: TempFileGuard = {
         let redact_outside_crop = req.redact_outside_crop.unwrap_or(true);
         if redact_outside_crop {
             let redact_tmp = format!("{}.redact.tmp.pdf", req.output);
-            match crate::crop_cleanup::redact_outside_cropbox(&current_input, &redact_tmp) {
+            match crate::crop_cleanup::redact_outside_cropbox(
+                &current_input,
+                &redact_tmp,
+                Some(redact_margin_pt),
+            ) {
                 Ok(stats) if stats.pages_redacted > 0 => {
                     eprintln!(
-                        "[compress] redact_outside_crop: {}/{} pages redacted",
+                        "[compress] redact_outside_crop: {}/{} pages redacted (margin={redact_margin_pt}pt)",
                         stats.pages_redacted, stats.pages_total
                     );
                     current_input = redact_tmp.clone();
@@ -502,6 +534,43 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                     eprintln!("[compress] redact_outside_crop warning (skipped): {e}");
                     TempFileGuard(None)
                 }
+            }
+        } else {
+            TempFileGuard(None)
+        }
+    };
+
+    // 0.5 (オプション) 画像の DPI/JPEG品質を指定してダウンサンプル再圧縮
+    //     compress_images が有効かつ image_dpi が指定された場合のみ実行。
+    let mut images_recompressed: usize = 0;
+    let _image_recompress_guard: TempFileGuard = {
+        if compress_images {
+            if let Some(target_dpi) = req.image_dpi {
+                let quality = req.image_jpeg_quality.unwrap_or(85).clamp(1, 100);
+                let recompress_tmp = format!("{}.imgdpi.tmp.pdf", req.output);
+                match crate::image_recompress::recompress_images(
+                    &current_input,
+                    &recompress_tmp,
+                    target_dpi,
+                    quality,
+                ) {
+                    Ok(stats) if stats.images_recompressed > 0 => {
+                        eprintln!(
+                            "[compress] image_dpi: {} image(s) downsampled to {target_dpi}dpi/q{quality}",
+                            stats.images_recompressed
+                        );
+                        current_input = recompress_tmp.clone();
+                        images_recompressed = stats.images_recompressed;
+                        TempFileGuard(Some(recompress_tmp))
+                    }
+                    Ok(_) => TempFileGuard(None), // 対象画像なし
+                    Err(e) => {
+                        eprintln!("[compress] image_dpi warning (skipped): {e}");
+                        TempFileGuard(None)
+                    }
+                }
+            } else {
+                TempFileGuard(None)
             }
         } else {
             TempFileGuard(None)
@@ -557,8 +626,14 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 merge_fonts,
                 object_stream,
                 redact_outside_crop: redact_applied,
+                redact_margin_pt,
                 subset_skipped: false,
                 //subset_skipped: result.fell_back || !result.subset_applied,
+                images_recompressed: if images_recompressed > 0 {
+                    Some(images_recompressed)
+                } else {
+                    None
+                },
             },
             warning: if warnings.is_empty() {
                 None
@@ -581,6 +656,12 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         );
         if let Ok(ref mut r) = resp {
             r.params_used.redact_outside_crop = redact_applied;
+            r.params_used.redact_margin_pt = redact_margin_pt;
+            r.params_used.images_recompressed = if images_recompressed > 0 {
+                Some(images_recompressed)
+            } else {
+                None
+            };
         }
         resp
     };
@@ -831,8 +912,10 @@ fn safe_compress_only(
             merge_fonts,
             object_stream,
             redact_outside_crop: false,
+            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
             font_subset: false,
             subset_skipped: false,
+            images_recompressed: None,
         },
         warning: size_increased_warning(ib, ob),
     })
@@ -931,6 +1014,8 @@ pub fn rewrite(
                     merge_fonts,
                     object_stream,
                     redact_outside_crop: false,
+                    redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    images_recompressed: None,
                 },
                 warning: size_increased_warning(ib, ob),
             })
@@ -977,6 +1062,8 @@ pub fn rewrite(
                     merge_fonts,
                     object_stream,
                     redact_outside_crop: false,
+                    redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    images_recompressed: None,
                 },
                 warning: Some(warns.join(" ")),
             })
@@ -1145,6 +1232,8 @@ pub fn rasterize_with_quality(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
+            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            images_recompressed: None,
         },
         warning: Some(format!(
             "ラスタライズ: {dpi}dpi 画像化PDFに変換。テキスト選択・検索・コピー不可。"
@@ -1243,6 +1332,8 @@ pub fn rasterize_no_text_with_quality(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
+            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            images_recompressed: None,
         },
         warning: Some(format!(
             "Stage 1 検証用: {dpi}dpi 背景画像のみ(テキスト除外)。まだ元のテキストとの合成は行っていません。"
@@ -1349,6 +1440,8 @@ pub fn compose_image_pdf_keep_text_with_quality(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
+            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            images_recompressed: None,
         },
         warning: Some(format!(
             "画像PDF化(フォント保持版) Stage 2: {dpi}dpi 背景画像＋前面テキスト(Type3含む、ネストしたForm XObject内も含む)を保持。\
@@ -1428,6 +1521,8 @@ pub fn compress_preserving_type3(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
+            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            images_recompressed: None,
         },
         warning: size_increased_warning(ib, ob),
     })

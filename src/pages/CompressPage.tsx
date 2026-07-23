@@ -157,6 +157,12 @@ export function CompressPage({
     convertLayoutEm,
     redactOutsideCrop,
     setRedactOutsideCrop,
+    redactMarginPt,
+    setRedactMarginPt,
+    imageDpi,
+    setImageDpi,
+    imageJpegQuality,
+    setImageJpegQuality,
   } = usePdfStore();
   const { pickSave, commitSave, discardSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
@@ -397,6 +403,9 @@ export function CompressPage({
           merge_fonts: mergeFonts || undefined,
           object_stream: objectStream || undefined,
           redact_outside_crop: redactOutsideCrop,
+          redact_margin_pt: redactMarginPt,
+          image_dpi: imageDpi > 0 ? imageDpi : undefined,
+          image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
           layout_w: convertLayoutW,
           layout_h: convertLayoutH,
           layout_em: convertLayoutEm,
@@ -437,6 +446,9 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     redactOutsideCrop,
+    redactMarginPt,
+    imageDpi,
+    imageJpegQuality,
     pdfInfo,
     setError,
   ]);
@@ -520,6 +532,9 @@ export function CompressPage({
             merge_fonts: mergeFonts || undefined,
             object_stream: objectStream || undefined,
             redact_outside_crop: redactOutsideCrop,
+            redact_margin_pt: redactMarginPt,
+            image_dpi: imageDpi > 0 ? imageDpi : undefined,
+            image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -550,6 +565,9 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     redactOutsideCrop,
+    redactMarginPt,
+    imageDpi,
+    imageJpegQuality,
     pickSave,
     commitSave,
     setError,
@@ -631,6 +649,9 @@ export function CompressPage({
             merge_fonts: mergeFonts || undefined,
             object_stream: objectStream || undefined,
             redact_outside_crop: redactOutsideCrop,
+            redact_margin_pt: redactMarginPt,
+            image_dpi: imageDpi > 0 ? imageDpi : undefined,
+            image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -676,6 +697,9 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     redactOutsideCrop,
+    redactMarginPt,
+    imageDpi,
+    imageJpegQuality,
     outDir,
     pickDir,
     ensureAndroidFolder,
@@ -978,8 +1002,18 @@ export function CompressPage({
                   />
                   <PRow
                     label={t("compress.redact_outside_crop")}
-                    val={p.redact_outside_crop ? t("common.yes") : t("common.no")}
+                    val={
+                      p.redact_outside_crop
+                        ? `${t("common.yes")} (${p.redact_margin_pt ?? 100}pt)`
+                        : t("common.no")
+                    }
                   />
+                  {typeof p.images_recompressed === "number" && p.images_recompressed > 0 && (
+                    <PRow
+                      label={t("compress.images_recompressed")}
+                      val={String(p.images_recompressed)}
+                    />
+                  )}
                 </>
               )}
             </div>
@@ -1257,6 +1291,76 @@ export function CompressPage({
                   : t("compress.redact_outside_crop_off")}
               </span>
             </div>
+            {redactOutsideCrop && (
+              <div style={c.optRow}>
+                <label style={c.optLabel}>
+                  {t("compress.redact_margin_label")}
+                  <input
+                    type="number"
+                    min={0}
+                    step={10}
+                    value={redactMarginPt}
+                    onChange={(e) => {
+                      const v = Math.max(0, Number(e.target.value) || 0);
+                      setRedactMarginPt(v);
+                    }}
+                    style={{ marginLeft: 8, width: 80 }}
+                  />
+                  <span style={{ marginLeft: 4 }}>pt</span>
+                </label>
+              </div>
+            )}
+            <div style={c.optRow}>
+              <label style={c.optLabel}>
+                <input
+                  type="checkbox"
+                  checked={imageDpi > 0}
+                  onChange={(e) => setImageDpi(e.target.checked ? 150 : 0)}
+                  style={{ marginRight: 6 }}
+                />
+                {t("compress.image_dpi_label")}
+              </label>
+              <span style={c.optHint}>
+                {imageDpi > 0
+                  ? t("compress.image_dpi_on")
+                  : t("compress.image_dpi_off")}
+              </span>
+            </div>
+            {imageDpi > 0 && (
+              <div style={c.optRow}>
+                <label style={c.optLabel}>
+                  {t("compress.image_dpi_value_label")}
+                  <input
+                    type="number"
+                    min={30}
+                    max={1200}
+                    step={10}
+                    value={imageDpi}
+                    onChange={(e) => {
+                      const v = Math.min(1200, Math.max(30, Number(e.target.value) || 150));
+                      setImageDpi(v);
+                    }}
+                    style={{ marginLeft: 8, width: 80 }}
+                  />
+                  <span style={{ marginLeft: 4 }}>dpi</span>
+                </label>
+                <label style={{ ...c.optLabel, marginLeft: 16 }}>
+                  {t("compress.image_jpeg_quality_label")}
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    step={5}
+                    value={imageJpegQuality}
+                    onChange={(e) => {
+                      const v = Math.min(100, Math.max(1, Number(e.target.value) || 85));
+                      setImageJpegQuality(v);
+                    }}
+                    style={{ marginLeft: 8, width: 70 }}
+                  />
+                </label>
+              </div>
+            )}
             <div style={c.optRow}>
               <label style={c.optLabel}>
                 <input
