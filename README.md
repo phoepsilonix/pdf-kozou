@@ -138,13 +138,13 @@ pdf-kozou-coreコマンドラインはv1.7.20以前のパッケージから取�
 
 ### Android
 
-早期アクセス版(v1.8.3〜)　　
+早期アクセス版(v1.8.3〜)  
 https://play.google.com/store/apps/details?id=phoepsilonix.pdfkozou
 
 GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。  
-トリミング（Crop）後の圧縮は別アプリの使用を推奨します。(〜v1.8.1まで)
+トリミング（Crop）後の圧縮は別アプリの使用を推奨します。(〜v1.8.1まで)  
 v1.8.2より、apply_redactionsの活用により、Cropbox領域外のファイルサイズの削減率をアップしました。  
-GhostScripts呼び出しは無理なので、PDFの構造によっては、圧縮が見込めない場合もあります。　　
+GhostScript呼び出しは無理なので、PDFの構造によっては、圧縮が見込めない場合もあります。  
 現在、画面調整や保存機能の調整中。
 
 ### MacOS
