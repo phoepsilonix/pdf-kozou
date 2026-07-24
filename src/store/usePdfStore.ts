@@ -38,6 +38,17 @@ interface PdfStore {
   /** redactOutsideCrop 有効時、CropBox 外側に持たせる余白 (pt、上下左右共通) */
   redactMarginPt: number;
   setRedactMarginPt: (v: number) => void;
+  /** true = 上下左右を個別に指定するモード（false = redactMarginPt を共通で使用） */
+  redactMarginLinked: boolean;
+  setRedactMarginLinked: (v: boolean) => void;
+  redactMarginTop: number;
+  setRedactMarginTop: (v: number) => void;
+  redactMarginBottom: number;
+  setRedactMarginBottom: (v: number) => void;
+  redactMarginLeft: number;
+  setRedactMarginLeft: (v: number) => void;
+  redactMarginRight: number;
+  setRedactMarginRight: (v: number) => void;
   /** 埋め込み画像の再圧縮先 DPI (0 = 無効/従来通り) */
   imageDpi: number;
   setImageDpi: (v: number) => void;
@@ -152,6 +163,16 @@ export const usePdfStore = create<PdfStore>()(
       setRedactOutsideCrop: (v) => set({ redactOutsideCrop: v }),
       redactMarginPt: 100,
       setRedactMarginPt: (v) => set({ redactMarginPt: v }),
+      redactMarginLinked: true,
+      setRedactMarginLinked: (v) => set({ redactMarginLinked: v }),
+      redactMarginTop: 100,
+      setRedactMarginTop: (v) => set({ redactMarginTop: v }),
+      redactMarginBottom: 100,
+      setRedactMarginBottom: (v) => set({ redactMarginBottom: v }),
+      redactMarginLeft: 100,
+      setRedactMarginLeft: (v) => set({ redactMarginLeft: v }),
+      redactMarginRight: 100,
+      setRedactMarginRight: (v) => set({ redactMarginRight: v }),
       // 画像DPI/JPEG品質 (0 = 無効)
       imageDpi: 0,
       setImageDpi: (v) => set({ imageDpi: v }),
@@ -253,6 +274,11 @@ export const usePdfStore = create<PdfStore>()(
         previewEnabled: state.previewEnabled,
         layoutModeOverride: state.layoutModeOverride,
         redactMarginPt: state.redactMarginPt,
+        redactMarginLinked: state.redactMarginLinked,
+        redactMarginTop: state.redactMarginTop,
+        redactMarginBottom: state.redactMarginBottom,
+        redactMarginLeft: state.redactMarginLeft,
+        redactMarginRight: state.redactMarginRight,
         imageDpi: state.imageDpi,
         imageJpegQuality: state.imageJpegQuality,
       }),

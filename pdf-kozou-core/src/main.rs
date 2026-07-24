@@ -193,6 +193,18 @@ enum Commands {
         /// CropBox 外側に持たせる余白 (pt、上下左右共通。デフォルト 100)
         #[arg(long)]
         redact_margin_pt: Option<f32>,
+        /// 上方向の余白 (pt) を個別指定する場合 (未指定時は --redact-margin-pt を使用)
+        #[arg(long)]
+        redact_margin_top: Option<f32>,
+        /// 下方向の余白 (pt) を個別指定する場合 (未指定時は --redact-margin-pt を使用)
+        #[arg(long)]
+        redact_margin_bottom: Option<f32>,
+        /// 左方向の余白 (pt) を個別指定する場合 (未指定時は --redact-margin-pt を使用)
+        #[arg(long)]
+        redact_margin_left: Option<f32>,
+        /// 右方向の余白 (pt) を個別指定する場合 (未指定時は --redact-margin-pt を使用)
+        #[arg(long)]
+        redact_margin_right: Option<f32>,
         /// 埋め込み画像を指定 DPI にダウンサンプルして再圧縮する
         /// (compress_images 有効時のみ適用。未指定ならダウンサンプルしない)
         #[arg(long)]
@@ -618,6 +630,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             merge_fonts,
             no_redact_outside_crop,
             redact_margin_pt,
+            redact_margin_top,
+            redact_margin_bottom,
+            redact_margin_left,
+            redact_margin_right,
             image_dpi,
             image_jpeg_quality,
             rasterize_dpi,
@@ -691,6 +707,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     merge_fonts: Some(merge_fonts),
                     redact_outside_crop: Some(!no_redact_outside_crop),
                     redact_margin_pt,
+                    redact_margin_top,
+                    redact_margin_bottom,
+                    redact_margin_left,
+                    redact_margin_right,
                     image_dpi,
                     image_jpeg_quality,
                 };

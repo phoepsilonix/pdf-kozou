@@ -454,20 +454,60 @@ const CROPBOX_EPS: f32 = 0.01;
 
 /// CropBox 外側の余白（上下左右、pt 単位）のデフォルト値。
 /// ギリギリの部品が消えにくいように余裕を持たせるための値で、
-/// ユーザーが `redact_margin_pt` で上書きできる。
+/// ユーザーが `RedactMargins` で上書きできる。
 pub const DEFAULT_REDACT_MARGIN_PT: f32 = 100.0;
+
+/// CropBox 外側に持たせる余白を上下左右individuallyに指定するための値。
+/// 各帯（上/下/左/右）はそれぞれ「自分の方向」への食い込み量として
+/// この値を使う。4隅で帯同士に隙間ができないよう、帯の直交方向への
+/// はみ出し量には常に `max()`（4値の最大値）を使う。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RedactMargins {
+    pub top: f32,
+    pub bottom: f32,
+    pub left: f32,
+    pub right: f32,
+}
+
+impl RedactMargins {
+    /// 上下左右すべて同じ値にする（負値は 0 に丸める）
+    pub fn uniform(v: f32) -> Self {
+        let v = v.max(0.0);
+        RedactMargins {
+            top: v,
+            bottom: v,
+            left: v,
+            right: v,
+        }
+    }
+
+    fn clamped(self) -> Self {
+        RedactMargins {
+            top: self.top.max(0.0),
+            bottom: self.bottom.max(0.0),
+            left: self.left.max(0.0),
+            right: self.right.max(0.0),
+        }
+    }
+
+    /// 4隅の帯どうしの重なりを保証するための、直交方向はみ出し量
+    /// (4値のうち最大のもの。これより小さいと隅に三角形の隙間が残りうる)
+    fn corner_reach(&self) -> f32 {
+        self.top.max(self.bottom).max(self.left).max(self.right)
+    }
+}
 
 /// 全ページの CropBox 外側を redaction で物理的に消去する。
 ///
 /// - CropBox が存在しない、または MediaBox と一致する（＝実質トリムなし）
 ///   ページはスキップする。
 /// - 消去対象のページが1つもなければ `input` を `output` にコピーするだけで終える。
-/// - `margin_pt`: 上下左右に持たせる余裕 (pt)。`None` の場合は
-///   `DEFAULT_REDACT_MARGIN_PT` (100pt) を使う。0 以上の値のみ有効。
+/// - `margins`: 上下左右に持たせる余裕 (pt)。`None` の場合は
+///   `DEFAULT_REDACT_MARGIN_PT` (100pt) を上下左右均等に使う。
 pub fn redact_outside_cropbox(
     input: &str,
     output: &str,
-    margin_pt: Option<f32>,
+    margins: Option<RedactMargins>,
 ) -> Result<RedactStats, String> {
     use mupdf::Rect;
     use mupdf::pdf::{PdfDocument, PdfWriteOptions};
@@ -538,32 +578,37 @@ pub fn redact_outside_cropbox(
         // 左の始点もCropboxが起点になる。-cx0。右終点もmx1-cx0
         // [162.0,47.3,394.9,405.4]
         // ギリギリの部品が消えにくいように余裕を持たせる。
-        // ユーザー指定値 (margin_pt) があればそれを使う。負値は 0 に丸める。
-        let space: f32 = margin_pt.unwrap_or(DEFAULT_REDACT_MARGIN_PT).max(0.0);
+        // ユーザー指定値 (margins) があればそれを使う。負値は 0 に丸める。
+        // 各帯の「自分の方向」への食い込みはその方向専用の値を、
+        // 直交方向のはみ出し（4隅での重なり保証）は corner_reach() を使う。
+        let m = margins
+            .unwrap_or(RedactMargins::uniform(DEFAULT_REDACT_MARGIN_PT))
+            .clamped();
+        let reach = m.corner_reach();
         let bands = [
             (
-                -cx0 - space,
+                -cx0 - reach,
                 -((my1 - cy0).abs()),
-                mx1 - cx0 + space,
-                0.0 - space,
+                mx1 - cx0 + reach,
+                0.0 - m.top,
             ), //上。念の為、絶対値で必ずマイナスになるように。
             (
-                -cx0 - space,
-                cy1 + space,
-                mx1 - cx0 + space,
-                my1 - cy0 + space,
+                -cx0 - reach,
+                cy1 + m.bottom,
+                mx1 - cx0 + reach,
+                my1 - cy0 + reach,
             ), // 下
             (
-                -((cx0 - mx0 - space).abs()),
-                -space,
-                -space,
-                cy1 - cy0 + space,
+                -((cx0 - mx0 - reach).abs()),
+                -reach,
+                -m.left,
+                cy1 - cy0 + reach,
             ), // 左
             (
-                cx1 - cx0 + space,
-                -space,
-                (mx1 - cx0 + space),
-                cy1 - cy0 + space,
+                cx1 - cx0 + m.right,
+                -reach,
+                (mx1 - cx0 + reach),
+                cy1 - cy0 + reach,
             ), // 右
         ];
 

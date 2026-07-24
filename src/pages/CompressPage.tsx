@@ -159,11 +159,65 @@ export function CompressPage({
     setRedactOutsideCrop,
     redactMarginPt,
     setRedactMarginPt,
+    redactMarginLinked,
+    setRedactMarginLinked,
+    redactMarginTop,
+    setRedactMarginTop,
+    redactMarginBottom,
+    setRedactMarginBottom,
+    redactMarginLeft,
+    setRedactMarginLeft,
+    redactMarginRight,
+    setRedactMarginRight,
     imageDpi,
     setImageDpi,
     imageJpegQuality,
     setImageJpegQuality,
   } = usePdfStore();
+  const redactMarginOpts = useMemo(
+    () =>
+      redactMarginLinked
+        ? { redact_margin_pt: redactMarginPt }
+        : {
+            redact_margin_pt: redactMarginPt,
+            redact_margin_top: redactMarginTop,
+            redact_margin_bottom: redactMarginBottom,
+            redact_margin_left: redactMarginLeft,
+            redact_margin_right: redactMarginRight,
+          },
+    [
+      redactMarginLinked,
+      redactMarginPt,
+      redactMarginTop,
+      redactMarginBottom,
+      redactMarginLeft,
+      redactMarginRight,
+    ],
+  );
+  // DPI/JPEG品質は number input で min/max を即時clampすると
+  // 「144」等の複数桁入力の途中(例: "1")でmin値に強制されてしまい入力できなくなるため、
+  // 入力中はテキストのまま保持し、blur/Enter確定時にのみ clamp してストアへ反映する。
+  const [dpiText, setDpiText] = useState(String(imageDpi));
+  useEffect(() => setDpiText(String(imageDpi)), [imageDpi]);
+  const commitDpi = () => {
+    const n = Math.min(1200, Math.max(30, Math.round(Number(dpiText)) || 150));
+    setImageDpi(n);
+    setDpiText(String(n));
+  };
+  const [qualityText, setQualityText] = useState(String(imageJpegQuality));
+  useEffect(() => setQualityText(String(imageJpegQuality)), [imageJpegQuality]);
+  const commitQuality = () => {
+    const n = Math.min(100, Math.max(1, Math.round(Number(qualityText)) || 85));
+    setImageJpegQuality(n);
+    setQualityText(String(n));
+  };
+  const [marginPtText, setMarginPtText] = useState(String(redactMarginPt));
+  useEffect(() => setMarginPtText(String(redactMarginPt)), [redactMarginPt]);
+  const commitMarginPt = () => {
+    const n = Math.max(0, Math.round(Number(marginPtText)) || 0);
+    setRedactMarginPt(n);
+    setMarginPtText(String(n));
+  };
   const { pickSave, commitSave, discardSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
@@ -403,7 +457,7 @@ export function CompressPage({
           merge_fonts: mergeFonts || undefined,
           object_stream: objectStream || undefined,
           redact_outside_crop: redactOutsideCrop,
-          redact_margin_pt: redactMarginPt,
+          ...redactMarginOpts,
           image_dpi: imageDpi > 0 ? imageDpi : undefined,
           image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
           layout_w: convertLayoutW,
@@ -446,7 +500,7 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     redactOutsideCrop,
-    redactMarginPt,
+    redactMarginOpts,
     imageDpi,
     imageJpegQuality,
     pdfInfo,
@@ -532,7 +586,7 @@ export function CompressPage({
             merge_fonts: mergeFonts || undefined,
             object_stream: objectStream || undefined,
             redact_outside_crop: redactOutsideCrop,
-            redact_margin_pt: redactMarginPt,
+            ...redactMarginOpts,
             image_dpi: imageDpi > 0 ? imageDpi : undefined,
             image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
             layout_w: convertLayoutW,
@@ -565,7 +619,7 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     redactOutsideCrop,
-    redactMarginPt,
+    redactMarginOpts,
     imageDpi,
     imageJpegQuality,
     pickSave,
@@ -649,7 +703,7 @@ export function CompressPage({
             merge_fonts: mergeFonts || undefined,
             object_stream: objectStream || undefined,
             redact_outside_crop: redactOutsideCrop,
-            redact_margin_pt: redactMarginPt,
+            ...redactMarginOpts,
             image_dpi: imageDpi > 0 ? imageDpi : undefined,
             image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
             layout_w: convertLayoutW,
@@ -697,7 +751,7 @@ export function CompressPage({
     mergeFonts,
     objectStream,
     redactOutsideCrop,
-    redactMarginPt,
+    redactMarginOpts,
     imageDpi,
     imageJpegQuality,
     outDir,
@@ -1004,7 +1058,7 @@ export function CompressPage({
                     label={t("compress.redact_outside_crop")}
                     val={
                       p.redact_outside_crop
-                        ? `${t("common.yes")} (${p.redact_margin_pt ?? 100}pt)`
+                        ? formatRedactMarginDisplay(p, t)
                         : t("common.no")
                     }
                   />
@@ -1292,22 +1346,74 @@ export function CompressPage({
               </span>
             </div>
             {redactOutsideCrop && (
-              <div style={c.optRow}>
-                <label style={c.optLabel}>
-                  {t("compress.redact_margin_label")}
+              <div style={{ ...c.optRow, flexDirection: "column", alignItems: "flex-start" }}>
+                <label style={{ ...c.optLabel, marginBottom: 6 }}>
                   <input
-                    type="number"
-                    min={0}
-                    step={10}
-                    value={redactMarginPt}
-                    onChange={(e) => {
-                      const v = Math.max(0, Number(e.target.value) || 0);
-                      setRedactMarginPt(v);
-                    }}
-                    style={{ marginLeft: 8, width: 80 }}
+                    type="checkbox"
+                    checked={!redactMarginLinked}
+                    onChange={(e) => setRedactMarginLinked(!e.target.checked)}
+                    style={{ marginRight: 6 }}
                   />
-                  <span style={{ marginLeft: 4 }}>pt</span>
+                  {t("compress.redact_margin_individual_label")}
                 </label>
+                {redactMarginLinked ? (
+                  <label style={c.optLabel}>
+                    {t("compress.redact_margin_label")}
+                    <input
+                      type="number"
+                      min={0}
+                      step={10}
+                      value={marginPtText}
+                      onChange={(e) => setMarginPtText(e.target.value)}
+                      onBlur={commitMarginPt}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                      }}
+                      style={{ marginLeft: 8, width: 80 }}
+                    />
+                    <span style={{ marginLeft: 4 }}>pt</span>
+                  </label>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "70px 70px 70px",
+                      gridTemplateRows: "auto auto auto",
+                      justifyItems: "center",
+                      gap: 4,
+                      marginTop: 2,
+                    }}
+                  >
+                    <div style={{ gridColumn: "2 / 3", gridRow: "1" }}>
+                      <MarginNumField
+                        label={t("compress.margin_top")}
+                        value={redactMarginTop}
+                        onChange={setRedactMarginTop}
+                      />
+                    </div>
+                    <div style={{ gridColumn: "1 / 2", gridRow: "2" }}>
+                      <MarginNumField
+                        label={t("compress.margin_left")}
+                        value={redactMarginLeft}
+                        onChange={setRedactMarginLeft}
+                      />
+                    </div>
+                    <div style={{ gridColumn: "3 / 4", gridRow: "2" }}>
+                      <MarginNumField
+                        label={t("compress.margin_right")}
+                        value={redactMarginRight}
+                        onChange={setRedactMarginRight}
+                      />
+                    </div>
+                    <div style={{ gridColumn: "2 / 3", gridRow: "3" }}>
+                      <MarginNumField
+                        label={t("compress.margin_bottom")}
+                        value={redactMarginBottom}
+                        onChange={setRedactMarginBottom}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div style={c.optRow}>
@@ -1335,10 +1441,11 @@ export function CompressPage({
                     min={30}
                     max={1200}
                     step={10}
-                    value={imageDpi}
-                    onChange={(e) => {
-                      const v = Math.min(1200, Math.max(30, Number(e.target.value) || 150));
-                      setImageDpi(v);
+                    value={dpiText}
+                    onChange={(e) => setDpiText(e.target.value)}
+                    onBlur={commitDpi}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
                     }}
                     style={{ marginLeft: 8, width: 80 }}
                   />
@@ -1351,10 +1458,11 @@ export function CompressPage({
                     min={1}
                     max={100}
                     step={5}
-                    value={imageJpegQuality}
-                    onChange={(e) => {
-                      const v = Math.min(100, Math.max(1, Number(e.target.value) || 85));
-                      setImageJpegQuality(v);
+                    value={qualityText}
+                    onChange={(e) => setQualityText(e.target.value)}
+                    onBlur={commitQuality}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
                     }}
                     style={{ marginLeft: 8, width: 70 }}
                   />
@@ -1480,6 +1588,26 @@ export function CompressPage({
   );
 }
 
+function formatRedactMarginDisplay(
+  p: {
+    redact_margin_top: number;
+    redact_margin_bottom: number;
+    redact_margin_left: number;
+    redact_margin_right: number;
+  },
+  t: (key: string, vars?: Record<string, string>) => string,
+): string {
+  const { redact_margin_top: top, redact_margin_bottom: bottom, redact_margin_left: left, redact_margin_right: right } =
+    p;
+  const yes = t("common.yes");
+  if (top === bottom && bottom === left && left === right) {
+    return `${yes} (${top}pt)`;
+  }
+  return `${yes} (${t("compress.margin_top")}${top} / ${t("compress.margin_bottom")}${bottom} / ${t(
+    "compress.margin_left",
+  )}${left} / ${t("compress.margin_right")}${right} pt)`;
+}
+
 function PRow({ label, val }: { label: string; val: string | React.ReactNode }) {
   return (
     <div
@@ -1493,6 +1621,41 @@ function PRow({ label, val }: { label: string; val: string | React.ReactNode }) 
     >
       <span style={{ color: "var(--c-textDim)" }}>{label}</span>
       <span style={{ color: "var(--c-text)" }}>{val}</span>
+    </div>
+  );
+}
+
+function MarginNumField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const n = Math.max(0, Math.round(Number(text)) || 0);
+    onChange(n);
+    setText(String(n));
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>{label}</span>
+      <input
+        type="number"
+        min={0}
+        step={10}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        style={{ width: 60, textAlign: "center" }}
+      />
     </div>
   );
 }

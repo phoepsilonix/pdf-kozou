@@ -1067,6 +1067,14 @@ export interface CompressRequest {
   redact_outside_crop?: boolean;
   /** redact_outside_crop 有効時、CropBox 外側に持たせる余白 (pt、上下左右共通。デフォルト 100) */
   redact_margin_pt?: number;
+  /** 上方向の余白 (pt) を個別指定する場合 (未指定時は redact_margin_pt を使用) */
+  redact_margin_top?: number;
+  /** 下方向の余白 (pt) を個別指定する場合 (未指定時は redact_margin_pt を使用) */
+  redact_margin_bottom?: number;
+  /** 左方向の余白 (pt) を個別指定する場合 (未指定時は redact_margin_pt を使用) */
+  redact_margin_left?: number;
+  /** 右方向の余白 (pt) を個別指定する場合 (未指定時は redact_margin_pt を使用) */
+  redact_margin_right?: number;
   /** 埋め込み画像を指定 DPI にダウンサンプルして再圧縮する (compress_images 有効時のみ適用) */
   image_dpi?: number;
   /** image_dpi 指定時の JPEG 品質 (1-100、デフォルト 85) */
@@ -1093,7 +1101,10 @@ export interface CompressResponse {
     object_stream: boolean;
     merge_fonts: boolean;
     redact_outside_crop: boolean;
-    redact_margin_pt: number;
+    redact_margin_top: number;
+    redact_margin_bottom: number;
+    redact_margin_left: number;
+    redact_margin_right: number;
     images_recompressed?: number;
     rewrite_fallback?: boolean;
   };

@@ -408,8 +408,23 @@ pub struct CompressRequest {
 
     /// redact_outside_crop 有効時、CropBox 外側に持たせる余白 (pt、上下左右共通)。
     /// 未指定時は `crop_cleanup::DEFAULT_REDACT_MARGIN_PT` (100pt) を使う。
+    /// 下記の redact_margin_top/bottom/left/right が個別に指定されていれば
+    /// そちらが優先され、指定の無い方向のみこの値にフォールバックする。
     #[serde(default)]
     pub redact_margin_pt: Option<f32>,
+
+    /// 上方向の余白 (pt) を個別に指定する場合。未指定時は redact_margin_pt を使う。
+    #[serde(default)]
+    pub redact_margin_top: Option<f32>,
+    /// 下方向の余白 (pt) を個別に指定する場合。未指定時は redact_margin_pt を使う。
+    #[serde(default)]
+    pub redact_margin_bottom: Option<f32>,
+    /// 左方向の余白 (pt) を個別に指定する場合。未指定時は redact_margin_pt を使う。
+    #[serde(default)]
+    pub redact_margin_left: Option<f32>,
+    /// 右方向の余白 (pt) を個別に指定する場合。未指定時は redact_margin_pt を使う。
+    #[serde(default)]
+    pub redact_margin_right: Option<f32>,
 
     /// 埋め込み画像を再圧縮する際の目標解像度 (DPI)。
     /// `compress_images` が有効な場合のみ適用され、ページ上での実表示サイズから
@@ -449,8 +464,11 @@ pub struct CompressParamsUsed {
     /// CropBox 外を apply_redactions で物理的に削除したか
     /// (CropBox が無い/全ページ対象外だった場合は false)
     pub redact_outside_crop: bool,
-    /// redact_outside_crop 実行時に使われた余白 (pt)
-    pub redact_margin_pt: f32,
+    /// redact_outside_crop 実行時に使われた余白 (pt、上下左右)
+    pub redact_margin_top: f32,
+    pub redact_margin_bottom: f32,
+    pub redact_margin_left: f32,
+    pub redact_margin_right: f32,
     /// 未参照フォントの除去を実行したか
     /// pdf_subset_fonts() を実行したか
     pub font_subset: bool,
@@ -505,10 +523,19 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
             }
         }
     }
-    let redact_margin_pt = req
+    let redact_margin_uniform = req
         .redact_margin_pt
         .unwrap_or(crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT)
         .max(0.0);
+    let redact_margins = crate::crop_cleanup::RedactMargins {
+        top: req.redact_margin_top.unwrap_or(redact_margin_uniform).max(0.0),
+        bottom: req
+            .redact_margin_bottom
+            .unwrap_or(redact_margin_uniform)
+            .max(0.0),
+        left: req.redact_margin_left.unwrap_or(redact_margin_uniform).max(0.0),
+        right: req.redact_margin_right.unwrap_or(redact_margin_uniform).max(0.0),
+    };
 
     let mut redact_applied = false;
     let _redact_guard: TempFileGuard = {
@@ -518,12 +545,13 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
             match crate::crop_cleanup::redact_outside_cropbox(
                 &current_input,
                 &redact_tmp,
-                Some(redact_margin_pt),
+                Some(redact_margins),
             ) {
                 Ok(stats) if stats.pages_redacted > 0 => {
                     eprintln!(
-                        "[compress] redact_outside_crop: {}/{} pages redacted (margin={redact_margin_pt}pt)",
-                        stats.pages_redacted, stats.pages_total
+                        "[compress] redact_outside_crop: {}/{} pages redacted (margins top={} bottom={} left={} right={})",
+                        stats.pages_redacted, stats.pages_total,
+                        redact_margins.top, redact_margins.bottom, redact_margins.left, redact_margins.right
                     );
                     current_input = redact_tmp.clone();
                     redact_applied = true;
@@ -626,7 +654,10 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 merge_fonts,
                 object_stream,
                 redact_outside_crop: redact_applied,
-                redact_margin_pt,
+                redact_margin_top: redact_margins.top,
+                redact_margin_bottom: redact_margins.bottom,
+                redact_margin_left: redact_margins.left,
+                redact_margin_right: redact_margins.right,
                 subset_skipped: false,
                 //subset_skipped: result.fell_back || !result.subset_applied,
                 images_recompressed: if images_recompressed > 0 {
@@ -656,7 +687,10 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         );
         if let Ok(ref mut r) = resp {
             r.params_used.redact_outside_crop = redact_applied;
-            r.params_used.redact_margin_pt = redact_margin_pt;
+            r.params_used.redact_margin_top = redact_margins.top;
+            r.params_used.redact_margin_bottom = redact_margins.bottom;
+            r.params_used.redact_margin_left = redact_margins.left;
+            r.params_used.redact_margin_right = redact_margins.right;
             r.params_used.images_recompressed = if images_recompressed > 0 {
                 Some(images_recompressed)
             } else {
@@ -912,7 +946,10 @@ fn safe_compress_only(
             merge_fonts,
             object_stream,
             redact_outside_crop: false,
-            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
             font_subset: false,
             subset_skipped: false,
             images_recompressed: None,
@@ -1014,7 +1051,10 @@ pub fn rewrite(
                     merge_fonts,
                     object_stream,
                     redact_outside_crop: false,
-                    redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
                     images_recompressed: None,
                 },
                 warning: size_increased_warning(ib, ob),
@@ -1062,7 +1102,10 @@ pub fn rewrite(
                     merge_fonts,
                     object_stream,
                     redact_outside_crop: false,
-                    redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
                     images_recompressed: None,
                 },
                 warning: Some(warns.join(" ")),
@@ -1232,7 +1275,10 @@ pub fn rasterize_with_quality(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
-            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
             images_recompressed: None,
         },
         warning: Some(format!(
@@ -1332,7 +1378,10 @@ pub fn rasterize_no_text_with_quality(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
-            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
             images_recompressed: None,
         },
         warning: Some(format!(
@@ -1440,7 +1489,10 @@ pub fn compose_image_pdf_keep_text_with_quality(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
-            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
             images_recompressed: None,
         },
         warning: Some(format!(
@@ -1521,7 +1573,10 @@ pub fn compress_preserving_type3(
             merge_fonts: false,
             object_stream: false,
             redact_outside_crop: false,
-            redact_margin_pt: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+            redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
             images_recompressed: None,
         },
         warning: size_increased_warning(ib, ob),
