@@ -571,36 +571,37 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     };
 
     // 0.5 (オプション) 画像の DPI/JPEG品質を指定してダウンサンプル再圧縮
-    //     compress_images が有効かつ image_dpi が指定された場合のみ実行。
+    //     image_dpi が指定されていれば実行する。
+    //     以前は compress_images (プリセット由来のフラグ、フロントエンドは
+    //     明示的に送っていないためプリセットのデフォルト値に落ちる) が
+    //     false のプリセット(例: Light)だと、DPIチェックボックスをONに
+    //     しても無条件でスキップされてしまう不具合があったため、
+    //     image_dpi 自体をユーザーが明示指定した意思として独立させた。
     let mut images_recompressed: usize = 0;
     let _image_recompress_guard: TempFileGuard = {
-        if compress_images {
-            if let Some(target_dpi) = req.image_dpi {
-                let quality = req.image_jpeg_quality.unwrap_or(85).clamp(1, 100);
-                let recompress_tmp = format!("{}.imgdpi.tmp.pdf", req.output);
-                match crate::image_recompress::recompress_images(
-                    &current_input,
-                    &recompress_tmp,
-                    target_dpi,
-                    quality,
-                ) {
-                    Ok(stats) if stats.images_recompressed > 0 => {
-                        eprintln!(
-                            "[compress] image_dpi: {} image(s) downsampled to {target_dpi}dpi/q{quality}",
-                            stats.images_recompressed
-                        );
-                        current_input = recompress_tmp.clone();
-                        images_recompressed = stats.images_recompressed;
-                        TempFileGuard(Some(recompress_tmp))
-                    }
-                    Ok(_) => TempFileGuard(None), // 対象画像なし
-                    Err(e) => {
-                        eprintln!("[compress] image_dpi warning (skipped): {e}");
-                        TempFileGuard(None)
-                    }
+        if let Some(target_dpi) = req.image_dpi {
+            let quality = req.image_jpeg_quality.unwrap_or(85).clamp(1, 100);
+            let recompress_tmp = format!("{}.imgdpi.tmp.pdf", req.output);
+            match crate::image_recompress::recompress_images(
+                &current_input,
+                &recompress_tmp,
+                target_dpi,
+                quality,
+            ) {
+                Ok(stats) if stats.images_recompressed > 0 => {
+                    eprintln!(
+                        "[compress] image_dpi: {} image(s) downsampled to {target_dpi}dpi/q{quality}",
+                        stats.images_recompressed
+                    );
+                    current_input = recompress_tmp.clone();
+                    images_recompressed = stats.images_recompressed;
+                    TempFileGuard(Some(recompress_tmp))
                 }
-            } else {
-                TempFileGuard(None)
+                Ok(_) => TempFileGuard(None), // 対象画像なし
+                Err(e) => {
+                    eprintln!("[compress] image_dpi warning (skipped): {e}");
+                    TempFileGuard(None)
+                }
             }
         } else {
             TempFileGuard(None)
@@ -637,9 +638,10 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         if !result.subset_applied {
             warnings.push("Type3フォントのためサブセット化をスキップしました。".into());
         }
-        if let Some(w) = size_increased_warning(result.input_bytes, result.output_bytes) {
-            warnings.push(w);
-        }
+        // サイズ増加警告は、current_input が redact/image_dpi 前処理の一時
+        // ファイルに差し替わっている可能性があり、ここで result.input_bytes を
+        // 使うと本来の入力ファイルではなく一時ファイル基準の誤った判定に
+        // なりうる。関数末尾で真の req.input サイズを使って一括判定する。
 
         Ok(CompressResponse {
             ok: true,
@@ -706,10 +708,11 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     // let _ = std::fs::remove_file(&temp_purge_path);
     //}
 
-    // redact_outside_crop の前処理を挟むと current_input が一時ファイルに
-    // 差し替わり、各圧縮パスが input_bytes をその一時ファイルのサイズで
-    // 計算してしまう。結果画面に表示する「元のファイルサイズ」は常に
-    // req.input（本来の入力ファイル）基準に補正する。
+    // redact_outside_crop / image_dpi の前処理を挟むと current_input が一時
+    // ファイルに差し替わり、各圧縮パスが input_bytes をその一時ファイルの
+    // サイズで計算してしまう。結果画面に表示する「元のファイルサイズ」・
+    // 圧縮率・サイズ増加警告は、常に req.input（本来の入力ファイル）基準に
+    // 補正してから決定する。
     result_res.map(|mut r| {
         if let Ok(meta) = std::fs::metadata(&req.input) {
             let true_input_bytes = meta.len();
@@ -717,6 +720,12 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 r.input_bytes = true_input_bytes;
                 r.ratio = safe_ratio(r.input_bytes, r.output_bytes);
             }
+        }
+        if let Some(w) = size_increased_warning(r.input_bytes, r.output_bytes) {
+            r.warning = Some(match r.warning {
+                Some(existing) if !existing.is_empty() => format!("{existing} {w}"),
+                _ => w,
+            });
         }
         r
     })
@@ -956,7 +965,7 @@ fn safe_compress_only(
             subset_skipped: false,
             images_recompressed: None,
         },
-        warning: size_increased_warning(ib, ob),
+        warning: None, // サイズ増加警告は compress() 末尾で真の入力サイズを使って一括判定する
     })
 }
 
