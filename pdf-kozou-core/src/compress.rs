@@ -429,7 +429,9 @@ pub struct CompressRequest {
     /// 埋め込み画像を再圧縮する際の目標解像度 (DPI)。
     /// `compress_images` が有効な場合のみ適用され、ページ上での実表示サイズから
     /// 逆算した必要ピクセル数を上回る画像のみダウンサンプルする。
-    /// 現状 DCTDecode(JPEG) 由来の画像のみ対応（他フィルタはスキップ）。
+    /// 現状 DCTDecode(JPEG) と、8bpc の Gray/RGB/CMYK 生ビットマップ
+    /// (FlateDecode/無フィルタ) に対応（Indexed/CCITT/JBIG2/JPX 等はスキップ）。
+    /// 生ビットマップは表示サイズによらず常に JPEG 化される (元々ほぼ無圧縮のため)。
     /// 未指定時はダウンサンプルを行わない（従来通りの挙動）。
     #[serde(default)]
     pub image_dpi: Option<f32>,
