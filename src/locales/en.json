@@ -231,7 +231,9 @@
     "preview_pages": "Preview — {{count}} pages",
     "imposition_blank_page": "Blank",
     "label_error": "Error",
-    "btn_clear": "Clear"
+    "btn_clear": "Clear",
+    "menu_show": "Show menu",
+    "menu_hide": "Hide menu"
   },
   "split": {
     "processing": "Splitting…",

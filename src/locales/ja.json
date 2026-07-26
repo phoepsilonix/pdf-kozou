@@ -231,7 +231,9 @@
     "preview_pages": "プレビュー — {{count}}ページ",
     "imposition_blank_page": "空白",
     "label_error": "エラー",
-    "btn_clear": "クリア"
+    "btn_clear": "クリア",
+    "menu_show": "メニューを表示",
+    "menu_hide": "メニューを閉じる"
   },
   "split": {
     "processing": "分割処理中…",

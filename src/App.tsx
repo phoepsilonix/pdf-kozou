@@ -158,6 +158,8 @@ export default function App() {
   const [photoOverlayHover, setPhotoOverlayHover] = useState(false);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemeId);
   const [uiScale, setUiScale] = useState<number>(loadUiScale);
+  // 狭幅時、上部の表示設定メニューを畳んでおくためのトグル（フローティング表示）
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dragCounter = useRef(0);
   const [statusMsg, setStatusMsg] = useState("");
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
@@ -539,25 +541,49 @@ export default function App() {
     >
       {!photoOnlyMode && (
         <>
-          {/* 読み上げ・言語・テーマ選択 */}
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 820,
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
-              gap: 8,
-              alignItems: "center",
-              zIndex: 20,
-              flexShrink: 0,
-            }}
-          >
-            <A11yControls />
-            <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
-            <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
-            <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
-          </div>
+          {/* 読み上げ・言語・テーマ選択（狭幅時はフローティングで畳める） */}
+          {isNarrow ? (
+            <div style={{ width: "100%", position: "relative", zIndex: 20, flexShrink: 0 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen((v) => !v)}
+                  aria-expanded={mobileMenuOpen}
+                  aria-label={mobileMenuOpen ? t("common.menu_hide") : t("common.menu_show")}
+                  style={s.mobileMenuToggle}
+                >
+                  {mobileMenuOpen ? "✕" : "☰"}
+                </button>
+              </div>
+              {mobileMenuOpen && (
+                <div style={s.mobileMenuPanel}>
+                  <A11yControls />
+                  <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
+                  <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
+                  <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 820,
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "flex-end",
+                gap: 8,
+                alignItems: "center",
+                zIndex: 20,
+                flexShrink: 0,
+              }}
+            >
+              <A11yControls />
+              <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
+              <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
+              <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
+            </div>
+          )}
         </>
       )}
 
@@ -597,13 +623,25 @@ export default function App() {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <img
                   src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
-                  style={{ width: "48px", height: "48px", lineHeight: 2, gap: 6, borderRadius: 10 }}
+                  style={{
+                    width: isNarrow ? "32px" : "48px",
+                    height: isNarrow ? "32px" : "48px",
+                    lineHeight: 2,
+                    gap: 6,
+                    borderRadius: 10,
+                  }}
                   alt="logo"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = "/app-icon.svg";
                   }}
                 />
-                <span style={s.logo}>
+                <span
+                  style={
+                    isNarrow
+                      ? { ...s.logo, fontSize: "32px", height: "48px", lineHeight: "48px" }
+                      : s.logo
+                  }
+                >
                   PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
                 </span>
                 {/* Aboutボタン */}
@@ -1187,6 +1225,12 @@ function ToolShell({
 
   const { isNarrow, width: viewportWidth } = useViewport();
   const { layoutModeOverride, setLayoutModeOverride } = usePdfStore();
+  // 狭幅時、テーマメニュー・ツールタブを畳んでフローティング表示にするためのトグル
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 画面（アクティブツール）が変わったらフローティングメニューは自動で閉じる
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [activeTool]);
 
   // ツール画面でのショートカット（切り替え + ホーム）
   useKeyboardShortcuts({
@@ -1233,24 +1277,56 @@ function ToolShell({
     F1: () => announceKey("shortcut.tool"),
   });
 
+  const toolTabsContent = (
+    <>
+      {TOOLS.map((tool) => (
+        <button
+          key={tool.id}
+          style={{ ...sh.tab, ...(activeTool === tool.id ? sh.tabOn : {}) }}
+          onClick={(e) => {
+            onToolChange(tool.id);
+            (e.currentTarget as HTMLButtonElement).blur();
+            if (isNarrow) setMobileMenuOpen(false);
+          }}
+          title={`${tool.label} (Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1})`}
+          aria-label={`${tool.label} Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1}${activeTool === tool.id ? " 現在のツール" : ""}`}
+        >
+          <span>{tool.icon}</span>
+          <span style={sh.tabLabel}>{tool.label}</span>
+        </button>
+      ))}
+    </>
+  );
+
+  const themeControlsContent = (
+    <>
+      <A11yControls />
+      <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
+      <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
+      <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
+    </>
+  );
+
   return (
     <div style={sh.root}>
-      <nav style={sh.nav}>
+      <nav style={{ ...sh.nav, position: "relative" }}>
         <div style={sh.navTop}>
           <button style={sh.homeBtn} onClick={onHome}>
             PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-            <span
-              style={{
-                color: "var(--c-text)",
-                fontSize: 10,
-                opacity: 0.6,
-                marginLeft: 12,
-                fontWeight: 400,
-              }}
-            >
-              {" "}
-              v{pkg.version}
-            </span>
+            {!isNarrow && (
+              <span
+                style={{
+                  color: "var(--c-text)",
+                  fontSize: 10,
+                  opacity: 0.6,
+                  marginLeft: 12,
+                  fontWeight: 400,
+                }}
+              >
+                {" "}
+                v{pkg.version}
+              </span>
+            )}
             <img src="/app-icon.svg" style={{ width: 20, height: 20, borderRadius: 4 }} alt="" />
           </button>
           <div style={sh.div} />
@@ -1264,30 +1340,31 @@ function ToolShell({
             </span>
           )}
           <div style={{ flex: 1 }} />
-          <div style={sh.navRight}>
-            <A11yControls />
-            <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
-            <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
-            <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
-          </div>
-        </div>
-        <div style={sh.navTabs}>
-          {TOOLS.map((tool) => (
+          {isNarrow ? (
             <button
-              key={tool.id}
-              style={{ ...sh.tab, ...(activeTool === tool.id ? sh.tabOn : {}) }}
-              onClick={(e) => {
-                onToolChange(tool.id);
-                (e.currentTarget as HTMLButtonElement).blur();
-              }}
-              title={`${tool.label} (Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1})`}
-              aria-label={`${tool.label} Alt+${TOOL_DEFS.findIndex((d) => d.id === tool.id) + 1}${activeTool === tool.id ? " 現在のツール" : ""}`}
+              type="button"
+              style={sh.mobileMenuToggle}
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              aria-expanded={mobileMenuOpen}
+              aria-label={mobileMenuOpen ? t("common.menu_hide") : t("common.menu_show")}
             >
-              <span>{tool.icon}</span>
-              <span style={sh.tabLabel}>{tool.label}</span>
+              {mobileMenuOpen ? "✕" : "☰"}
             </button>
-          ))}
+          ) : (
+            <div style={sh.navRight}>{themeControlsContent}</div>
+          )}
         </div>
+        {isNarrow ? (
+          mobileMenuOpen && (
+            <div style={sh.mobileNavPanel}>
+              <div style={sh.mobileNavPanelTabs}>{toolTabsContent}</div>
+              <div style={sh.mobileNavPanelDiv} />
+              <div style={sh.mobileNavPanelControls}>{themeControlsContent}</div>
+            </div>
+          )
+        ) : (
+          <div style={sh.navTabs}>{toolTabsContent}</div>
+        )}
       </nav>
 
       <div style={{ flex: 1, overflow: "hidden" }}>
@@ -1503,6 +1580,35 @@ const s: Record<string, React.CSSProperties> = {
   toolIcon: { fontSize: 24 },
   toolLabel: { fontSize: FS.label, fontWeight: 700, color: "inherit" },
   toolDesc: { fontSize: FS.caption, color: "var(--c-textSub)", textAlign: "center" as const },
+  mobileMenuToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+    color: "var(--c-text)",
+    fontSize: 16,
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  mobileMenuPanel: {
+    position: "absolute" as const,
+    top: "calc(100% + 6px)",
+    right: 0,
+    zIndex: 30,
+    display: "flex",
+    flexWrap: "wrap" as const,
+    justifyContent: "flex-end",
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+    maxWidth: "calc(100vw - 24px)",
+    maxHeight: "70vh",
+    overflowY: "auto" as const,
+  },
   dragOverlay: {
     position: "fixed" as const, // fixedにすることで他の要素を動かさない
     inset: 0,
@@ -1709,5 +1815,43 @@ const sh: Record<string, React.CSSProperties> = {
   BgBtnSolid: {
     background: "rgba(0, 0, 0, 0.45)",
     color: "rgba(255, 255, 255, 1)",
+  },
+  mobileMenuToggle: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bgCard)",
+    color: "var(--c-text)",
+    fontSize: 15,
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  mobileNavPanel: {
+    position: "absolute" as const,
+    top: "100%",
+    left: 0,
+    right: 0,
+    zIndex: 30,
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 8,
+    padding: 10,
+    background: "var(--c-navBg)",
+    borderBottom: `1px solid var(--c-navBd)`,
+    boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
+    maxHeight: "70vh",
+    overflowY: "auto" as const,
+  },
+  mobileNavPanelTabs: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))",
+    gap: 6,
+  },
+  mobileNavPanelDiv: { height: 1, background: "var(--c-border)" },
+  mobileNavPanelControls: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: 6,
   },
 };
