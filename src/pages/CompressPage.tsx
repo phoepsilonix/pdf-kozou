@@ -169,6 +169,8 @@ export function CompressPage({
     setRedactMarginLeft,
     redactMarginRight,
     setRedactMarginRight,
+    imageRecompress,
+    setImageRecompress,
     imageDpi,
     setImageDpi,
     imageJpegQuality,
@@ -200,7 +202,7 @@ export function CompressPage({
   const [dpiText, setDpiText] = useState(String(imageDpi));
   useEffect(() => setDpiText(String(imageDpi)), [imageDpi]);
   const commitDpi = () => {
-    const n = Math.min(1200, Math.max(30, Math.round(Number(dpiText)) || 150));
+    const n = Math.min(1200, Math.max(30, Math.round(Number(dpiText)) || 144));
     setImageDpi(n);
     setDpiText(String(n));
   };
@@ -458,8 +460,8 @@ export function CompressPage({
           object_stream: objectStream || undefined,
           redact_outside_crop: redactOutsideCrop,
           ...redactMarginOpts,
-          image_dpi: imageDpi > 0 ? imageDpi : undefined,
-          image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
+          image_dpi: imageRecompress ? imageDpi : undefined,
+          image_jpeg_quality: imageRecompress ? imageJpegQuality : undefined,
           layout_w: convertLayoutW,
           layout_h: convertLayoutH,
           layout_em: convertLayoutEm,
@@ -587,8 +589,8 @@ export function CompressPage({
             object_stream: objectStream || undefined,
             redact_outside_crop: redactOutsideCrop,
             ...redactMarginOpts,
-            image_dpi: imageDpi > 0 ? imageDpi : undefined,
-            image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
+            image_dpi: imageRecompress ? imageDpi : undefined,
+            image_jpeg_quality: imageRecompress ? imageJpegQuality : undefined,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -704,8 +706,8 @@ export function CompressPage({
             object_stream: objectStream || undefined,
             redact_outside_crop: redactOutsideCrop,
             ...redactMarginOpts,
-            image_dpi: imageDpi > 0 ? imageDpi : undefined,
-            image_jpeg_quality: imageDpi > 0 ? imageJpegQuality : undefined,
+            image_dpi: imageRecompress ? imageDpi : undefined,
+            image_jpeg_quality: imageRecompress ? imageJpegQuality : undefined,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -1056,11 +1058,7 @@ export function CompressPage({
                   />
                   <PRow
                     label={t("compress.redact_outside_crop")}
-                    val={
-                      p.redact_outside_crop
-                        ? formatRedactMarginDisplay(p, t)
-                        : t("common.no")
-                    }
+                    val={p.redact_outside_crop ? formatRedactMarginDisplay(p, t) : t("common.no")}
                   />
                   {typeof p.images_recompressed === "number" && p.images_recompressed > 0 && (
                     <PRow
@@ -1420,19 +1418,17 @@ export function CompressPage({
               <label style={c.optLabel}>
                 <input
                   type="checkbox"
-                  checked={imageDpi > 0}
-                  onChange={(e) => setImageDpi(e.target.checked ? 150 : 0)}
+                  checked={imageRecompress}
+                  onChange={(e) => setImageRecompress(e.target.checked)}
                   style={{ marginRight: 6 }}
                 />
                 {t("compress.image_dpi_label")}
               </label>
               <span style={c.optHint}>
-                {imageDpi > 0
-                  ? t("compress.image_dpi_on")
-                  : t("compress.image_dpi_off")}
+                {imageRecompress ? t("compress.image_dpi_on") : t("compress.image_dpi_off")}
               </span>
             </div>
-            {imageDpi > 0 && (
+            {imageRecompress && (
               <div style={c.optRow}>
                 <label style={c.optLabel}>
                   {t("compress.image_dpi_value_label")}
@@ -1597,8 +1593,12 @@ function formatRedactMarginDisplay(
   },
   t: (key: string, vars?: Record<string, string>) => string,
 ): string {
-  const { redact_margin_top: top, redact_margin_bottom: bottom, redact_margin_left: left, redact_margin_right: right } =
-    p;
+  const {
+    redact_margin_top: top,
+    redact_margin_bottom: bottom,
+    redact_margin_left: left,
+    redact_margin_right: right,
+  } = p;
   const yes = t("common.yes");
   if (top === bottom && bottom === left && left === right) {
     return `${yes} (${top}pt)`;

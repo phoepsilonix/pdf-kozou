@@ -316,13 +316,13 @@ const s: Record<string, React.CSSProperties> = {
     // position: fixed + right:0 でウィンドウ右端に寄せる
     // ドロワー内から開いても右側が切れない
     position: "fixed",
-    top: "50%",
+    top: 0,
     right: 0,
-    transform: "translateY(-50%)",
+    //transform: "translateY(-55%)",
     zIndex: 201,
     width: "min(480px, 100vw)",
-    maxWidth: "100vw",
-    maxHeight: "90vh",
+    maxWidth: "100%",
+    maxHeight: "100%",
     display: "flex",
     flexDirection: "column",
     background: "var(--c-bgCard)",
@@ -333,6 +333,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     overflow: "hidden",
     boxSizing: "border-box" as const,
+    paddingBottom: "12px",
   },
   header: {
     display: "flex",

@@ -659,6 +659,13 @@ function InfoDrawer({
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const meta: PdfMetadata = info?.metadata ?? {};
 
+  const z = getUiScale();
+  const innerW = window.innerWidth;
+  const DrawerDvh = isNarrow ? 0.8 : 0.6;
+  const baseWidth = innerW * DrawerDvh;
+  const correctedWidth = Math.floor(baseWidth / (z > 1 ? z : 1));
+  const correctedHeight = Math.floor((window.innerHeight * 0.7) / (z > 1 ? z : 1.0) - z * 48);
+
   // PdfMetadata → PdfMeta 変換（MetadataEditModal 用）
   const toPdfMeta = (): PdfMeta => ({
     title: meta.title,
@@ -710,7 +717,8 @@ function InfoDrawer({
     <div
       style={{
         ...ds.drawer,
-        width: isNarrow ? "88dvw" : "60dvw",
+        width: correctedWidth,
+        maxHeight: correctedHeight,
         transform: open ? "translateX(0)" : "translateX(100%)",
         pointerEvents: open ? "auto" : "none",
       }}
@@ -1522,141 +1530,141 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         />
       )}
 
-      <div style={bodyStyle}>
-        {/* 左ペイン（ファイル一覧） */}
-        {isMulti &&
-          (filePaneCollapsed ? (
-            <button
-              style={paneCollapsedBarStyle}
-              onClick={toggleFilePane}
-              title={t("common.pane_files", { count: String(fileList.length) })}
-              aria-label={t("common.pane_files", { count: String(fileList.length) })}
-            >
-              {isNarrow ? "▼" : "▶"}
-            </button>
-          ) : (
-            <div style={filePaneStyle}>
-              <div style={s.paneHead}>
-                <span style={{ flex: 1 }}>
-                  {t("common.pane_files", { count: String(fileList.length) })}
-                </span>
-                <button
-                  style={s.paneCollapseBtn}
-                  onClick={toggleFilePane}
-                  title={t("common.collapse_pane")}
-                  aria-label={t("common.collapse_pane")}
-                >
-                  {isNarrow ? "▲" : "◀"}
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: "auto" }}>
-                {fileList.map((f, i) => {
-                  const cover = fileCoverThumbs.get(f.path);
-                  return (
-                    <button
-                      key={f.id}
-                      style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
-                      onClick={() => {
-                        setActiveIdx(i);
-                        setViewPage(0);
-                        setInfoOpen(false);
-                      }}
-                    >
-                      <div style={s.filePaneThumbBox}>
-                        {cover ? (
-                          <img
-                            src={`data:image/jpeg;base64,${cover}`}
-                            style={s.filePaneThumbImg}
-                            alt=""
-                          />
-                        ) : (
-                          <span style={s.filePaneIcon}>📄</span>
-                        )}
-                      </div>
-                      <div style={s.filePaneInfo}>
-                        <div style={s.filePaneName} title={f.filename}>
-                          {f.filename || t("viewer.untitled")}
-                        </div>
-                        <div style={s.filePaneMeta}>{f.pageCount}p</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-
-        {/* サムネイルペイン */}
-        {isNarrow ||
-          (thumbPaneCollapsed ? (
-            <button
-              style={paneCollapsedBarStyle}
-              onClick={toggleThumbPane}
-              title={`${viewPage + 1} / ${total}`}
-              aria-label={t("common.expand_pane")}
-            >
-              {isNarrow ? "▼" : "▶"}
-            </button>
-          ) : (
-            <div style={thumbPaneStyle}>
-              <div style={s.paneHead}>
-                <span style={{ flex: 1 }}>
-                  {viewPage + 1} / {total}
-                </span>
-                <button
-                  style={s.paneCollapseBtn}
-                  onClick={toggleThumbPane}
-                  title={t("common.collapse_pane")}
-                  aria-label={t("common.collapse_pane")}
-                >
-                  {isNarrow ? "▲" : "◀"}
-                </button>
-              </div>
-              <div style={thumbListStyle}>
-                {Array.from({ length: total }, (_, i) => {
-                  const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
-                  return (
-                    <button
-                      key={i}
-                      style={{ ...thumbItemStyle, ...(i === viewPage ? s.thumbItemOn : {}) }}
-                      onClick={() => setViewPage(i)}
-                    >
-                      <div
-                        style={{
-                          width: THUMB_W,
-                          height: th,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          overflow: "hidden",
-                          background: "var(--c-bg)",
-                          borderRadius: 2,
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+        <div style={bodyStyle}>
+          {/* 左ペイン（ファイル一覧） */}
+          {isMulti &&
+            (filePaneCollapsed ? (
+              <button
+                style={paneCollapsedBarStyle}
+                onClick={toggleFilePane}
+                title={t("common.pane_files", { count: String(fileList.length) })}
+                aria-label={t("common.pane_files", { count: String(fileList.length) })}
+              >
+                {isNarrow ? "▼" : "▶"}
+              </button>
+            ) : (
+              <div style={filePaneStyle}>
+                <div style={s.paneHead}>
+                  <span style={{ flex: 1 }}>
+                    {t("common.pane_files", { count: String(fileList.length) })}
+                  </span>
+                  <button
+                    style={s.paneCollapseBtn}
+                    onClick={toggleFilePane}
+                    title={t("common.collapse_pane")}
+                    aria-label={t("common.collapse_pane")}
+                  >
+                    {isNarrow ? "▲" : "◀"}
+                  </button>
+                </div>
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  {fileList.map((f, i) => {
+                    const cover = fileCoverThumbs.get(f.path);
+                    return (
+                      <button
+                        key={f.id}
+                        style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
+                        onClick={() => {
+                          setActiveIdx(i);
+                          setViewPage(0);
+                          setInfoOpen(false);
                         }}
                       >
-                        {thumbs[i] ? (
-                          <img
-                            src={`data:image/jpeg;base64,${thumbs[i]}`}
-                            style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain" }}
-                            alt=""
-                          />
-                        ) : (
-                          <div
-                            style={{ width: THUMB_W, height: th, background: "var(--c-border)" }}
-                          />
-                        )}
-                      </div>
-                      <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>
-                        {i + 1}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <div style={s.filePaneThumbBox}>
+                          {cover ? (
+                            <img
+                              src={`data:image/jpeg;base64,${cover}`}
+                              style={s.filePaneThumbImg}
+                              alt=""
+                            />
+                          ) : (
+                            <span style={s.filePaneIcon}>📄</span>
+                          )}
+                        </div>
+                        <div style={s.filePaneInfo}>
+                          <div style={s.filePaneName} title={f.filename}>
+                            {f.filename || t("viewer.untitled")}
+                          </div>
+                          <div style={s.filePaneMeta}>{f.pageCount}p</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-        {/* メインビュー + ドロワー */}
-        <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+          {/* サムネイルペイン */}
+          {isNarrow ||
+            (thumbPaneCollapsed ? (
+              <button
+                style={paneCollapsedBarStyle}
+                onClick={toggleThumbPane}
+                title={`${viewPage + 1} / ${total}`}
+                aria-label={t("common.expand_pane")}
+              >
+                {isNarrow ? "▼" : "▶"}
+              </button>
+            ) : (
+              <div style={thumbPaneStyle}>
+                <div style={s.paneHead}>
+                  <span style={{ flex: 1 }}>
+                    {viewPage + 1} / {total}
+                  </span>
+                  <button
+                    style={s.paneCollapseBtn}
+                    onClick={toggleThumbPane}
+                    title={t("common.collapse_pane")}
+                    aria-label={t("common.collapse_pane")}
+                  >
+                    {isNarrow ? "▲" : "◀"}
+                  </button>
+                </div>
+                <div style={thumbListStyle}>
+                  {Array.from({ length: total }, (_, i) => {
+                    const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
+                    return (
+                      <button
+                        key={i}
+                        style={{ ...thumbItemStyle, ...(i === viewPage ? s.thumbItemOn : {}) }}
+                        onClick={() => setViewPage(i)}
+                      >
+                        <div
+                          style={{
+                            width: THUMB_W,
+                            height: th,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            overflow: "hidden",
+                            background: "var(--c-bg)",
+                            borderRadius: 2,
+                          }}
+                        >
+                          {thumbs[i] ? (
+                            <img
+                              src={`data:image/jpeg;base64,${thumbs[i]}`}
+                              style={{ maxWidth: THUMB_W, maxHeight: th, objectFit: "contain" }}
+                              alt=""
+                            />
+                          ) : (
+                            <div
+                              style={{ width: THUMB_W, height: th, background: "var(--c-border)" }}
+                            />
+                          )}
+                        </div>
+                        <span style={{ ...s.thumbN, ...(i === viewPage ? s.thumbNOn : {}) }}>
+                          {i + 1}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+          {/* メインビュー + ドロワー */}
           <div style={s.mainView}>
             <div
               style={s.viewScroll}

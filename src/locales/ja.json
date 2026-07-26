@@ -520,7 +520,7 @@
     "margin_bottom": "下",
     "margin_left": "左",
     "margin_right": "右",
-    "image_dpi_label": "埋め込み画像をダウンサンプルして再圧縮",
+    "image_dpi_label": "埋め込み画像をダウンサンプリングして再圧縮",
     "image_dpi_on": "有効 (指定DPI・JPEG品質で画像を再圧縮。(必要解像度の15%以上の)JPEGおよび無圧縮系のGray/RGB/CMYK画像が対象)",
     "image_dpi_off": "無効 (画像は既存の設定のまま圧縮)",
     "image_dpi_value_label": "目標DPI",

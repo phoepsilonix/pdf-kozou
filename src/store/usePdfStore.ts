@@ -50,6 +50,8 @@ interface PdfStore {
   redactMarginRight: number;
   setRedactMarginRight: (v: number) => void;
   /** 埋め込み画像の再圧縮先 DPI (0 = 無効/従来通り) */
+  imageRecompress: boolean;
+  setImageRecompress: (v: boolean) => void;
   imageDpi: number;
   setImageDpi: (v: number) => void;
   /** image_dpi 有効時の JPEG 品質 (1-100) */
@@ -174,7 +176,9 @@ export const usePdfStore = create<PdfStore>()(
       redactMarginRight: 100,
       setRedactMarginRight: (v) => set({ redactMarginRight: v }),
       // 画像DPI/JPEG品質 (0 = 無効)
-      imageDpi: 0,
+      imageRecompress: true,
+      setImageRecompress: (v) => set({ imageRecompress: v }),
+      imageDpi: 144,
       setImageDpi: (v) => set({ imageDpi: v }),
       imageJpegQuality: 85,
       setImageJpegQuality: (v) => set({ imageJpegQuality: v }),
