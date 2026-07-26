@@ -28,6 +28,7 @@ const PageSizeBookletPage = lazy(() => import("./pages/PageSizeBookletPage"));
 const LicensePage = lazy(() => import("./pages/LicensePage"));
 
 import { LazyBoundary } from "./components/LazyBoundary";
+import { FloatingMenu } from "./components/FloatingMenu";
 import { usePdfStore, type FileEntry } from "./store/usePdfStore";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
@@ -152,6 +153,7 @@ export default function App() {
   const { isNarrow, width: viewportWidth } = useViewport();
   const fileListTopRef = useRef<HTMLDivElement>(null);
   const optionsTopRef = useRef<HTMLDivElement>(null);
+  const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
   const [toolFiles, setToolFiles] = useState<FileEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
@@ -543,26 +545,29 @@ export default function App() {
         <>
           {/* 読み上げ・言語・テーマ選択（狭幅時はフローティングで畳める） */}
           {isNarrow ? (
-            <div style={{ width: "100%", position: "relative", zIndex: 20, flexShrink: 0 }}>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen((v) => !v)}
-                  aria-expanded={mobileMenuOpen}
-                  aria-label={mobileMenuOpen ? t("common.menu_hide") : t("common.menu_show")}
-                  style={s.mobileMenuToggle}
-                >
-                  {mobileMenuOpen ? "✕" : "☰"}
-                </button>
-              </div>
-              {mobileMenuOpen && (
-                <div style={s.mobileMenuPanel}>
+            <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", zIndex: 20, flexShrink: 0 }}>
+              <button
+                ref={mobileMenuToggleRef}
+                type="button"
+                onClick={() => setMobileMenuOpen((v) => !v)}
+                aria-expanded={mobileMenuOpen}
+                aria-label={mobileMenuOpen ? t("common.menu_hide") : t("common.menu_show")}
+                style={s.mobileMenuToggle}
+              >
+                {mobileMenuOpen ? "✕" : "☰"}
+              </button>
+              <FloatingMenu
+                open={mobileMenuOpen}
+                onClose={() => setMobileMenuOpen(false)}
+                anchorRef={mobileMenuToggleRef}
+              >
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
                   <A11yControls />
                   <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
                   <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
                 </div>
-              )}
+              </FloatingMenu>
             </div>
           ) : (
             <div
@@ -1227,6 +1232,7 @@ function ToolShell({
   const { layoutModeOverride, setLayoutModeOverride } = usePdfStore();
   // 狭幅時、テーマメニュー・ツールタブを畳んでフローティング表示にするためのトグル
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
   // 画面（アクティブツール）が変わったらフローティングメニューは自動で閉じる
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -1342,6 +1348,7 @@ function ToolShell({
           <div style={{ flex: 1 }} />
           {isNarrow ? (
             <button
+              ref={mobileMenuToggleRef}
               type="button"
               style={sh.mobileMenuToggle}
               onClick={() => setMobileMenuOpen((v) => !v)}
@@ -1355,13 +1362,15 @@ function ToolShell({
           )}
         </div>
         {isNarrow ? (
-          mobileMenuOpen && (
-            <div style={sh.mobileNavPanel}>
-              <div style={sh.mobileNavPanelTabs}>{toolTabsContent}</div>
-              <div style={sh.mobileNavPanelDiv} />
-              <div style={sh.mobileNavPanelControls}>{themeControlsContent}</div>
-            </div>
-          )
+          <FloatingMenu
+            open={mobileMenuOpen}
+            onClose={() => setMobileMenuOpen(false)}
+            anchorRef={mobileMenuToggleRef}
+          >
+            <div style={sh.mobileNavPanelTabs}>{toolTabsContent}</div>
+            <div style={sh.mobileNavPanelDiv} />
+            <div style={sh.mobileNavPanelControls}>{themeControlsContent}</div>
+          </FloatingMenu>
         ) : (
           <div style={sh.navTabs}>{toolTabsContent}</div>
         )}
@@ -1591,24 +1600,6 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     flexShrink: 0,
   },
-  mobileMenuPanel: {
-    position: "absolute" as const,
-    top: "calc(100% + 6px)",
-    right: 0,
-    zIndex: 30,
-    display: "flex",
-    flexWrap: "wrap" as const,
-    justifyContent: "flex-end",
-    gap: 8,
-    padding: 10,
-    borderRadius: 10,
-    border: "1px solid var(--c-border)",
-    background: "var(--c-bgCard)",
-    boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
-    maxWidth: "calc(100vw - 24px)",
-    maxHeight: "70vh",
-    overflowY: "auto" as const,
-  },
   dragOverlay: {
     position: "fixed" as const, // fixedにすることで他の要素を動かさない
     inset: 0,
@@ -1826,22 +1817,6 @@ const sh: Record<string, React.CSSProperties> = {
     fontSize: 15,
     cursor: "pointer",
     flexShrink: 0,
-  },
-  mobileNavPanel: {
-    position: "absolute" as const,
-    top: "100%",
-    left: 0,
-    right: 0,
-    zIndex: 30,
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 8,
-    padding: 10,
-    background: "var(--c-navBg)",
-    borderBottom: `1px solid var(--c-navBd)`,
-    boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
-    maxHeight: "70vh",
-    overflowY: "auto" as const,
   },
   mobileNavPanelTabs: {
     display: "grid",
