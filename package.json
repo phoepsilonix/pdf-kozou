@@ -16,7 +16,8 @@
     "build:android": "tauri android build --apk",
     "build:android:debug": "tauri android build --debug --apk",
     "tauri:android:build": "pnpm exec --no-install tauri android build --apk --aab --ci",
-    "tauri:ios:build": "pnpm exec --no-install tauri ios build --ci --no-sign"
+    "tauri:ios:build": "pnpm exec --no-install tauri ios build --ci --no-sign",
+    "version": "echo $npm_package_version"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
