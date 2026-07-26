@@ -498,11 +498,15 @@ fn recompress_one(
     let stream = obj
         .as_stream_mut()
         .map_err(|e| format!("image {xref:?} as_stream_mut: {e}"))?;
+    // set_plain_content() は Filter/DecodeParms を消し Length を再設定する
+    // ため、必ず先に呼ぶ。後から Filter=DCTDecode 等を設定しないと、
+    // JPEGバイト列なのに Filter 無し(=無圧縮の生データ)として解釈され、
+    // ビューアで壊れた画像 (黒塗り/truncated 警告) になってしまう。
+    stream.set_plain_content(out_buf);
     stream.dict.set("Width", Object::Integer(w as i64));
     stream.dict.set("Height", Object::Integer(h as i64));
     stream.dict.set("BitsPerComponent", Object::Integer(8));
     stream.dict.set("Filter", Object::Name(b"DCTDecode".to_vec()));
-    stream.dict.remove(b"DecodeParms");
     stream.dict.remove(b"Decode");
     if grayscale {
         stream
@@ -513,7 +517,6 @@ fn recompress_one(
             .dict
             .set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
     }
-    stream.set_plain_content(out_buf);
 
     Ok(())
 }
