@@ -521,7 +521,7 @@
     "margin_left": "Left",
     "margin_right": "Right",
     "image_dpi_label": "Downsample embedded images",
-    "image_dpi_on": "Enabled (recompresses images at the given DPI/JPEG quality; applies to JPEG and uncompressed-style Gray/RGB/CMYK images)",
+    "image_dpi_on": "Enabled (recompresses images at the given DPI/JPEG quality; applies to JPEG(≥15% of required resolution) and uncompressed-style Gray/RGB/CMYK images)",
     "image_dpi_off": "Disabled (images are compressed with existing settings)",
     "image_dpi_value_label": "Target DPI",
     "image_jpeg_quality_label": "JPEG quality",
