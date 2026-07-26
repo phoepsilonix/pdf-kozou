@@ -100,6 +100,19 @@ fn resolve_dict(doc: &Document, obj: &Object) -> Option<Dictionary> {
     resolved.as_dict().ok().cloned()
 }
 
+/// Object::as_dict() は Object::Dictionary にしかマッチせず、
+/// Image/Form XObject のように実体が Object::Stream (かつ辞書を
+/// stream.dict に持つ) ケースは Err になってしまう。
+/// 画像・Form XObject はどちらも常に Stream なので、Do 呼び出し先の
+/// XObject を扱う箇所では必ずこちらを使う。
+fn as_dict_any(obj: &Object) -> Option<&Dictionary> {
+    match obj {
+        Object::Dictionary(d) => Some(d),
+        Object::Stream(s) => Some(&s.dict),
+        _ => None,
+    }
+}
+
 /// ページ (または Form) の /Resources を辞書として解決する。
 /// ページ自身に無ければ /Parent を辿って継承分を探す（PDF の仕様どおり）。
 fn resolve_resources(doc: &Document, obj_id: ObjectId) -> Option<Dictionary> {
@@ -208,7 +221,7 @@ fn walk_content(
                 let Ok(xobj) = doc.get_object(*xref) else {
                     continue;
                 };
-                let Ok(xobj_dict_inner) = xobj.as_dict() else {
+                let Some(xobj_dict_inner) = as_dict_any(xobj) else {
                     continue;
                 };
                 let subtype = xobj_dict_inner

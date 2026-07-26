@@ -206,7 +206,7 @@ enum Commands {
         #[arg(long)]
         redact_margin_right: Option<f32>,
         /// 埋め込み画像を指定 DPI にダウンサンプルして再圧縮する
-        /// (compress_images 有効時のみ適用。未指定ならダウンサンプルしない)
+        /// (--no-compress-images とは独立して動作する。未指定ならダウンサンプルしない)
         #[arg(long)]
         image_dpi: Option<f32>,
         /// image_dpi 指定時の JPEG 品質 (1-100、デフォルト 85)
