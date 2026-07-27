@@ -694,6 +694,12 @@ jobs:
           #pnpm run tauri android build --apk --aab --debug --ci
           #pnpm run tauri android build --apk --split-per-abi --ci
           #pnpm run tauri android build --apk --aab --ci
+          #
+          sudo update-java-alternatives --set temurin-21-jdk-amd64
+          ls /usr/lib/jvm || true
+          echo $JAVA_HOME || true
+          which java || true
+          java --version || true
           pnpm tauri android build --apk --split-per-abi --ci
           pnpm tauri android build --apk --aab --ci
 
