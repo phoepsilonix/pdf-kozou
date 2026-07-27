@@ -664,7 +664,13 @@ function InfoDrawer({
   const DrawerDvh = isNarrow ? 0.8 : 0.6;
   const baseWidth = innerW * DrawerDvh;
   const correctedWidth = Math.floor(baseWidth / (z > 1 ? z : 1));
-  const correctedHeight = Math.floor((window.innerHeight * 0.7) / (z > 1 ? z : 1.0) - z * 48);
+  // 高さは position:absolute の top:0/bottom:0 に任せる（ViewerPage の root が
+  // position:relative になったことで、実際に使えるコンテンツ領域
+  // ＝ナビバーの高さ（フローティングメニューのオン/オフ・縦積み/横並び・
+  // OSごとの違いを含めて実際にレイアウトされた高さ）を正しく除いた領域に
+  // 自動で追従する。以前は window.innerHeight から固定の係数で高さを
+  // 見積もっていたが、ナビの高さがフローティングメニューの状態や環境で
+  // 変わるため、画面によって余ったり溢れたりしていた。
 
   // PdfMetadata → PdfMeta 変換（MetadataEditModal 用）
   const toPdfMeta = (): PdfMeta => ({
@@ -718,7 +724,6 @@ function InfoDrawer({
       style={{
         ...ds.drawer,
         width: correctedWidth,
-        maxHeight: correctedHeight,
         transform: open ? "translateX(0)" : "translateX(100%)",
         pointerEvents: open ? "auto" : "none",
       }}
@@ -1952,7 +1957,13 @@ const ds: Record<string, React.CSSProperties> = {
 };
 
 const s: Record<string, React.CSSProperties> = {
-  root: { height: "100%", display: "flex", flexDirection: "column", background: "var(--c-bg)" },
+  root: {
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+    background: "var(--c-bg)",
+    position: "relative",
+  },
   body: { flex: 1, display: "flex", overflow: "hidden" },
   thumbPane: {
     width: 140,

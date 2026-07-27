@@ -172,9 +172,8 @@ export default function App() {
   const optionsTopRef = useRef<HTMLDivElement>(null);
   const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
   // ファイル追加後、最後に使った機能（なければビューワ）のツールボタンへ
-  // フォーカスを移すための参照と、追加が完了したことを示すフラグ
+  // フォーカスを移すための参照
   const toolButtonRefs = useRef<Partial<Record<ToolId, HTMLButtonElement | null>>>({});
-  const justAddedFilesRef = useRef(false);
   const [toolFiles, setToolFiles] = useState<FileEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
@@ -282,32 +281,31 @@ export default function App() {
         }),
       );
       // ファイル追加の一連の流れ（複数ファイルの連続追加も含む）が完了した後、
-      // 続く useEffect でツール選択ボタンへフォーカスを移す
-      if (pdfPaths.length > 0) justAddedFilesRef.current = true;
+      // 次に行うのは機能（ツール）の選択という自然な流れになるため、
+      // 最後に使った機能（未使用ならビューワ→分割の順にフォールバック）の
+      // ツールボタンへ自動でフォーカスを移す。
+      // ツールボタンはこの直前の addFiles によって初めて描画されるため、
+      // 描画・コミットが終わってから（次の描画フレームで）フォーカスする。
+      if (pdfPaths.length > 0) {
+        requestAnimationFrame(() => {
+          const preferred = loadLastTool() ?? "viewer";
+          // 優先候補が無効化されている場合（例: 最後に使ったのが merge で
+          // 今回はファイルが1つだけ）に備え、viewer → split の順にフォールバックする
+          const candidates: ToolId[] = [preferred, "viewer", "split"];
+          let target: HTMLButtonElement | null | undefined = null;
+          for (const id of candidates) {
+            const el = toolButtonRefs.current[id];
+            if (el && !el.disabled) {
+              target = el;
+              break;
+            }
+          }
+          target?.focus();
+        });
+      }
     },
     [addFiles, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
-
-  // ファイルを選択・追加した直後は、次に行うのは機能（ツール）の選択という
-  // 自然な流れになるため、最後に使った機能（未使用ならビューワ）のツール
-  // ボタンへ自動でフォーカスを移し、Tabキーを何度も押さなくて済むようにする。
-  useEffect(() => {
-    if (!justAddedFilesRef.current) return;
-    justAddedFilesRef.current = false;
-    const preferred = loadLastTool() ?? "viewer";
-    // 優先候補が無効化されている場合（例: 最後に使ったのが merge で
-    // 今回はファイルが1つだけ）に備え、viewer → split の順にフォールバックする
-    const candidates: ToolId[] = [preferred, "viewer", "split"];
-    let target: HTMLButtonElement | null | undefined = null;
-    for (const id of candidates) {
-      const el = toolButtonRefs.current[id];
-      if (el && !el.disabled) {
-        target = el;
-        break;
-      }
-    }
-    target?.focus();
-  }, [fileList]);
 
   useEffect(() => {
     let unlistenCustom: (() => void) | null = null;
