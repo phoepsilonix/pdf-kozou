@@ -590,7 +590,15 @@ export default function App() {
         <>
           {/* 読み上げ・言語・テーマ選択（設定でフローティング表示が有効な場合は畳める） */}
           {useFloatingMenu ? (
-            <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", zIndex: 20, flexShrink: 0 }}>
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                justifyContent: "flex-end",
+                zIndex: 20,
+                flexShrink: 0,
+              }}
+            >
               <button
                 ref={mobileMenuToggleRef}
                 type="button"
@@ -606,7 +614,9 @@ export default function App() {
                 onClose={() => setMobileMenuOpen(false)}
                 anchorRef={mobileMenuToggleRef}
               >
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                <div
+                  style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}
+                >
                   <A11yControls />
                   <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
@@ -639,13 +649,13 @@ export default function App() {
               <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
               <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
               <LayoutModeControl
-                    mode={layoutModeOverride}
-                    onChange={setLayoutModeOverride}
-                    floatingNarrow={floatingMenuNarrow}
-                    floatingWide={floatingMenuWide}
-                    onFloatingNarrowChange={setFloatingMenuNarrow}
-                    onFloatingWideChange={setFloatingMenuWide}
-                  />
+                mode={layoutModeOverride}
+                onChange={setLayoutModeOverride}
+                floatingNarrow={floatingMenuNarrow}
+                floatingWide={floatingMenuWide}
+                onFloatingNarrowChange={setFloatingMenuNarrow}
+                onFloatingWideChange={setFloatingMenuWide}
+              />
             </div>
           )}
         </>
@@ -1291,7 +1301,14 @@ function ToolShell({
   const batchFiles = isBatch ? toolFiles : undefined;
 
   const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
-  const { layoutModeOverride, setLayoutModeOverride, floatingMenuNarrow, floatingMenuWide, setFloatingMenuNarrow, setFloatingMenuWide } = usePdfStore();
+  const {
+    layoutModeOverride,
+    setLayoutModeOverride,
+    floatingMenuNarrow,
+    floatingMenuWide,
+    setFloatingMenuNarrow,
+    setFloatingMenuWide,
+  } = usePdfStore();
   // 狭幅時、テーマメニュー・ツールタブを畳んでフローティング表示にするためのトグル
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);

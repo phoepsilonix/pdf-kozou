@@ -55,7 +55,14 @@
 //      閉じたとき（選択・Esc・外側クリックいずれも）はアンカーへフォーカスを
 //      戻し、キーボード操作の位置を見失わないようにする。
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 
 const PANEL_MARKER = "data-kozou-floating-menu";
