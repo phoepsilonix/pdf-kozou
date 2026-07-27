@@ -530,13 +530,22 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         .unwrap_or(crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT)
         .max(0.0);
     let redact_margins = crate::crop_cleanup::RedactMargins {
-        top: req.redact_margin_top.unwrap_or(redact_margin_uniform).max(0.0),
+        top: req
+            .redact_margin_top
+            .unwrap_or(redact_margin_uniform)
+            .max(0.0),
         bottom: req
             .redact_margin_bottom
             .unwrap_or(redact_margin_uniform)
             .max(0.0),
-        left: req.redact_margin_left.unwrap_or(redact_margin_uniform).max(0.0),
-        right: req.redact_margin_right.unwrap_or(redact_margin_uniform).max(0.0),
+        left: req
+            .redact_margin_left
+            .unwrap_or(redact_margin_uniform)
+            .max(0.0),
+        right: req
+            .redact_margin_right
+            .unwrap_or(redact_margin_uniform)
+            .max(0.0),
     };
 
     let mut redact_applied = false;
@@ -552,8 +561,12 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 Ok(stats) if stats.pages_redacted > 0 => {
                     eprintln!(
                         "[compress] redact_outside_crop: {}/{} pages redacted (margins top={} bottom={} left={} right={})",
-                        stats.pages_redacted, stats.pages_total,
-                        redact_margins.top, redact_margins.bottom, redact_margins.left, redact_margins.right
+                        stats.pages_redacted,
+                        stats.pages_total,
+                        redact_margins.top,
+                        redact_margins.bottom,
+                        redact_margins.left,
+                        redact_margins.right
                     );
                     current_input = redact_tmp.clone();
                     redact_applied = true;

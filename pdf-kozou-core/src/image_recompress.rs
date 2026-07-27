@@ -343,13 +343,13 @@ fn colorspace_components(doc: &Document, cs: &Object) -> Option<u8> {
 fn classify_source(doc: &Document, dict: &Dictionary) -> Option<SourceKind> {
     let filter_name: Option<&[u8]> = match dict.get(b"Filter") {
         Ok(Object::Name(n)) => Some(n.as_slice()),
-        Err(_) => None, // Filter 無し = 無圧縮の生データ
+        Err(_) => None,   // Filter 無し = 無圧縮の生データ
         _ => return None, // 配列 (複合フィルタ) は非対応
     };
     match filter_name {
         Some(b"DCTDecode") => return Some(SourceKind::Dct),
         Some(b"FlateDecode") | None => {} // 下で成分数を見て判定
-        _ => return None, // CCITTFaxDecode / JBIG2Decode / JPXDecode 等は非対応
+        _ => return None,                 // CCITTFaxDecode / JBIG2Decode / JPXDecode 等は非対応
     }
 
     let bpc = dict.get(b"BitsPerComponent").ok()?.as_i64().ok()?;
@@ -391,8 +391,8 @@ fn recompress_one(
             .as_stream()
             .map_err(|e| format!("image {xref:?} as_stream: {e}"))?;
         let dict = &stream.dict;
-        let kind =
-            classify_source(doc, dict).ok_or_else(|| format!("image {xref:?}: unsupported filter/colorspace"))?;
+        let kind = classify_source(doc, dict)
+            .ok_or_else(|| format!("image {xref:?}: unsupported filter/colorspace"))?;
         let (native_w, native_h) = image_native_size(dict)
             .ok_or_else(|| format!("image {xref:?}: missing Width/Height"))?;
         // CMYK で /Decode が [1 0 1 0 1 0 1 0] のように反転指定されている場合を検出
@@ -424,8 +424,12 @@ fn recompress_one(
                     raw_bytes.len()
                 ));
             }
-            let buf = GrayImage::from_raw(native_w as u32, native_h as u32, raw_bytes[..expected].to_vec())
-                .ok_or_else(|| format!("image {xref:?}: GrayImage::from_raw failed"))?;
+            let buf = GrayImage::from_raw(
+                native_w as u32,
+                native_h as u32,
+                raw_bytes[..expected].to_vec(),
+            )
+            .ok_or_else(|| format!("image {xref:?}: GrayImage::from_raw failed"))?;
             (DynamicImage::ImageLuma8(buf), true)
         }
         SourceKind::RawRgb8 => {
@@ -436,8 +440,12 @@ fn recompress_one(
                     raw_bytes.len()
                 ));
             }
-            let buf = RgbImage::from_raw(native_w as u32, native_h as u32, raw_bytes[..expected].to_vec())
-                .ok_or_else(|| format!("image {xref:?}: RgbImage::from_raw failed"))?;
+            let buf = RgbImage::from_raw(
+                native_w as u32,
+                native_h as u32,
+                raw_bytes[..expected].to_vec(),
+            )
+            .ok_or_else(|| format!("image {xref:?}: RgbImage::from_raw failed"))?;
             (DynamicImage::ImageRgb8(buf), false)
         }
         SourceKind::RawCmyk8 => {
@@ -506,7 +514,9 @@ fn recompress_one(
     stream.dict.set("Width", Object::Integer(w as i64));
     stream.dict.set("Height", Object::Integer(h as i64));
     stream.dict.set("BitsPerComponent", Object::Integer(8));
-    stream.dict.set("Filter", Object::Name(b"DCTDecode".to_vec()));
+    stream
+        .dict
+        .set("Filter", Object::Name(b"DCTDecode".to_vec()));
     stream.dict.remove(b"Decode");
     if grayscale {
         stream
