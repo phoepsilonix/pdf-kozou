@@ -131,7 +131,7 @@ pdf-kozou-coreコマンドラインはv1.7.20以前のパッケージから取�
 | Linux (x64)      | `PDF-Kozou-${version}-1.x86_64.rpm` `PDF-Kozou_${version}_amd64.deb`           |
 |                  | `PDF-Kozou_${version}_amd64.AppImage` `PDF-Kozou_${version}_amd64-linux.7z`    |
 | Android          | `PDF-Kozou_${version}_.apk` `PDF-Kozou_${version}.aab`                         |
-|                  | `app-universal-release-unsigned.apk` `app-universal-release.aab`               |
+|                  | `app-universal-release.apk` `app-universal-release.aab`                        |
 | macOS            | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
 | iOS              | `PDF-Kozou_${version}_.ipa` `PDF-Kozou_${version}.app`                         |
 
@@ -149,14 +149,14 @@ GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除�
 v1.8.2より、apply_redactionsの活用により、Cropbox領域外のファイルサイズの削減率をアップしました。  
 v1.8.4より、画像のダウンサンプリングを追加しました。必要解像度より15%以上大きいJpeg画像や無圧縮タイプの画像を再圧縮します。  
 GhostScript呼び出しは無理なので、PDFの構造によっては、圧縮が見込めない場合もあります。  
-ただ上記２つのオプションによって、以前よりは圧縮率が改善したと思います。  
+ただ上記２つのオプションによって、以前よりは圧縮率が改善したと思います。
 
 ### MacOS
 
 試験的にパッケージビルドのみ行っています。  
 macOS版のパッケージは動作未チェック。動作確認環境がないため。また署名なしなので、実行時に警告がでると思います。
 v1.8.2より、apply_redactionsの活用により、Cropbox領域外のファイルサイズの削減率をアップしました。  
-v1.8.4より、画像のダウンサンプリングを追加しました。必要解像度より15%以上大きいJpeg画像や無圧縮タイプの画像を再圧縮します。  
+v1.8.4より、画像のダウンサンプリングを追加しました。必要解像度より15%以上大きいJpeg画像や無圧縮タイプの画像を再圧縮します。
 
 ### iOS
 
@@ -167,7 +167,7 @@ iOS(iphone,ipad)版のパッケージは動作未チェック。動作確認環�
 v1.8.2より、apply_redactionsの活用により、Cropbox領域外のファイルサイズの削減率をアップしました。  
 v1.8.4より、画像のダウンサンプリングを追加しました。必要解像度より15%以上大きいJpeg画像や無圧縮タイプの画像を再圧縮します。  
 GhostScripts呼び出しは無理なので、PDFの構造によっては、圧縮が見込めない場合もあります。  
-ただ上記２つのオプションによって、以前よりは圧縮率が改善したと思います。  
+ただ上記２つのオプションによって、以前よりは圧縮率が改善したと思います。
 
 ### ソースからビルド
 
