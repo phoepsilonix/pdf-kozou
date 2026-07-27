@@ -120,6 +120,14 @@ interface PdfStore {
   /// "auto" = 画面幅で自動判定（既定）、"narrow" = 常に縦積み、"wide" = 常に横並び
   layoutModeOverride: "auto" | "narrow" | "wide";
   setLayoutModeOverride: (mode: "auto" | "narrow" | "wide") => void;
+
+  /// 上部のテーマメニュー・ツールメニューをフローティング（トグルで畳む）表示にするか。
+  /// 縦積み(narrow)時／横並び(wide)時でそれぞれ独立してオン/オフを保存する。
+  /// 既定: モバイル(縦積み)は ON、デスクトップ(横並び)は OFF。
+  floatingMenuNarrow: boolean;
+  floatingMenuWide: boolean;
+  setFloatingMenuNarrow: (v: boolean) => void;
+  setFloatingMenuWide: (v: boolean) => void;
 }
 
 export const usePdfStore = create<PdfStore>()(
@@ -243,6 +251,11 @@ export const usePdfStore = create<PdfStore>()(
 
       layoutModeOverride: "auto",
       setLayoutModeOverride: (mode) => set({ layoutModeOverride: mode }),
+
+      floatingMenuNarrow: true,
+      floatingMenuWide: false,
+      setFloatingMenuNarrow: (v) => set({ floatingMenuNarrow: v }),
+      setFloatingMenuWide: (v) => set({ floatingMenuWide: v }),
       // 自動向き判定
       autoDetectOrientation: (input) => {
         let aspects: number[] = [];
@@ -277,6 +290,8 @@ export const usePdfStore = create<PdfStore>()(
         impositionMode: state.impositionMode,
         previewEnabled: state.previewEnabled,
         layoutModeOverride: state.layoutModeOverride,
+        floatingMenuNarrow: state.floatingMenuNarrow,
+        floatingMenuWide: state.floatingMenuWide,
         redactMarginPt: state.redactMarginPt,
         redactMarginLinked: state.redactMarginLinked,
         redactMarginTop: state.redactMarginTop,

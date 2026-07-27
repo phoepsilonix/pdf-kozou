@@ -42,11 +42,31 @@
 //    → 各パネルに data-kozou-floating-menu を付与し、クリック先が
 //      「いずれかの FloatingMenu パネルの内部」であれば、自分のパネルの外で
 //      あっても閉じないようにする。
+//
+// 4. キーボード操作時のタブ順序がわかりにくい問題:
+//    パネルは document.body の末尾に Portal で追加されるため、DOM上の
+//    タブ順序はアンカーボタンの直後ではなく、ページの最後になってしまう。
+//    そのため「アンカーをキーボードで開いた流れのまま Tab で操作する」と、
+//    パネルの中身ではなく、ページの他の要素に飛んでしまっていた。
+//    → アンカーにフォーカスがある状態で Tab を押すと、パネル内の最初の
+//      要素へ直接ジャンプするようにする。パネル内では Tab/Shift+Tab が
+//      パネル内だけを循環し（先頭で Shift+Tab するとアンカーへ戻る）、
+//      ページの他の部分へタブで抜けてしまわないようにする。
+//      閉じたとき（選択・Esc・外側クリックいずれも）はアンカーへフォーカスを
+//      戻し、キーボード操作の位置を見失わないようにする。
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 const PANEL_MARKER = "data-kozou-floating-menu";
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.offsetParent !== null, // 非表示要素は除外
+  );
+}
 
 interface FloatingMenuProps {
   open: boolean;
@@ -127,12 +147,66 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
     return () => document.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
+  // アンカーにフォーカスがある状態で Tab を押したら、パネル内の先頭要素へ
+  // 直接ジャンプする（DOM上はパネルが document.body 末尾にあるため、
+  // 何もしないとページの他の要素へ飛んでしまう）。
+  useEffect(() => {
+    if (!open) return;
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const handleAnchorKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || e.shiftKey) return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = getFocusable(panel);
+      if (focusables.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      focusables[0].focus();
+    };
+    anchor.addEventListener("keydown", handleAnchorKeyDown);
+    return () => anchor.removeEventListener("keydown", handleAnchorKeyDown);
+  }, [open, anchorRef]);
+
+  // パネル内では Tab/Shift+Tab がパネル内だけを循環するようにする
+  // （末尾で Tab → 先頭へ、先頭で Shift+Tab → アンカーへ戻る）。
+  const handlePanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusables = getFocusable(panel);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      e.stopPropagation();
+      (anchorRef.current ?? last).focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      e.stopPropagation();
+      first.focus();
+    }
+  };
+
+  // 閉じたとき（選択・Esc・外側クリックいずれの経路でも）はアンカーへ
+  // フォーカスを戻し、キーボード操作の位置を見失わないようにする。
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (wasOpenRef.current && !open) {
+      anchorRef.current?.focus();
+    }
+    wasOpenRef.current = open;
+  }, [open, anchorRef]);
+
   if (!open || !pos || typeof document === "undefined") return null;
 
   return createPortal(
     <div
       ref={panelRef}
       {...{ [PANEL_MARKER]: true }}
+      onKeyDown={handlePanelKeyDown}
       style={{
         position: "fixed",
         top: pos.top,

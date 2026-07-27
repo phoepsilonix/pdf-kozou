@@ -20,11 +20,22 @@ export type LayoutMode = "auto" | "narrow" | "wide";
 interface Props {
   mode: LayoutMode;
   onChange: (mode: LayoutMode) => void;
+  floatingNarrow: boolean;
+  floatingWide: boolean;
+  onFloatingNarrowChange: (v: boolean) => void;
+  onFloatingWideChange: (v: boolean) => void;
 }
 
 const F = "'JetBrains Mono','Noto Sans JP',monospace";
 
-export function LayoutModeControl({ mode, onChange }: Props) {
+export function LayoutModeControl({
+  mode,
+  onChange,
+  floatingNarrow,
+  floatingWide,
+  onFloatingNarrowChange,
+  onFloatingWideChange,
+}: Props) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const { t } = useI18n();
@@ -38,6 +49,56 @@ export function LayoutModeControl({ mode, onChange }: Props) {
   );
 
   const icon = mode === "narrow" ? "📱" : mode === "wide" ? "🖥️" : "🔁";
+
+  const toggleRow = (label: string, value: boolean, onSet: (v: boolean) => void) => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        padding: "8px 14px",
+      }}
+    >
+      <span style={{ fontSize: FS.body, color: "var(--c-text)" }}>{label}</span>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button
+          onClick={() => onSet(false)}
+          aria-pressed={!value}
+          style={{
+            padding: "2px 8px",
+            fontSize: FS.caption,
+            borderRadius: 4,
+            cursor: "pointer",
+            border: "1px solid var(--c-borderHi)",
+            background: !value ? "var(--c-accentBg)" : "transparent",
+            color: !value ? "var(--c-accent)" : "var(--c-textSub)",
+            fontWeight: !value ? 700 : 400,
+            fontFamily: F,
+          }}
+        >
+          {t("layout.floating_off")}
+        </button>
+        <button
+          onClick={() => onSet(true)}
+          aria-pressed={value}
+          style={{
+            padding: "2px 8px",
+            fontSize: FS.caption,
+            borderRadius: 4,
+            cursor: "pointer",
+            border: "1px solid var(--c-borderHi)",
+            background: value ? "var(--c-accentBg)" : "transparent",
+            color: value ? "var(--c-accent)" : "var(--c-textSub)",
+            fontWeight: value ? 700 : 400,
+            fontFamily: F,
+          }}
+        >
+          {t("layout.floating_on")}
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -119,6 +180,23 @@ export function LayoutModeControl({ mode, onChange }: Props) {
               )}
             </button>
           ))}
+
+          <div
+            style={{
+              padding: "8px 14px 4px",
+              fontSize: FS.caption,
+              color: "var(--c-textDim)",
+              letterSpacing: "0.1em",
+              borderTop: "1px solid var(--c-border)",
+              borderBottom: "1px solid var(--c-border)",
+              background: "var(--c-bgHover)",
+              marginTop: 4,
+            }}
+          >
+            {t("layout.floating_section")}
+          </div>
+          {toggleRow(t("layout.floating_narrow"), floatingNarrow, onFloatingNarrowChange)}
+          {toggleRow(t("layout.floating_wide"), floatingWide, onFloatingWideChange)}
         </div>
       </FloatingMenu>
     </>

@@ -1234,7 +1234,8 @@ export function CompressPage({
                   cursor: "pointer",
                   border: "1px solid var(--c-borderHi)",
                   background: !useGs ? "var(--c-accentBg)" : "transparent",
-                  color: !useGs ? "#000" : "var(--c-textSub)",
+                  color: !useGs ? "var(--c-accent)" : "var(--c-textSub)",
+                  fontWeight: !useGs ? 700 : 400,
                   fontFamily: F,
                 }}
                 aria-pressed={!useGs}
@@ -1250,7 +1251,8 @@ export function CompressPage({
                   cursor: "pointer",
                   border: "1px solid var(--c-borderHi)",
                   background: useGs ? "var(--c-accentBg)" : "transparent",
-                  color: useGs ? "#000" : "var(--c-textSub)",
+                  color: useGs ? "var(--c-accent)" : "var(--c-textSub)",
+                  fontWeight: useGs ? 700 : 400,
                   fontFamily: F,
                 }}
                 aria-pressed={useGs}
@@ -2034,7 +2036,7 @@ const c: Record<string, React.CSSProperties> = {
     flex: 1,
     padding: "8px 12px",
     background: "var(--c-accent)",
-    color: "#000",
+    color: "var(--c-accentText)",
     border: "none",
     borderRadius: 6,
     fontSize: FS.small,

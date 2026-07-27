@@ -827,7 +827,12 @@
     "mode_narrow": "縦積み",
     "mode_hint": "設定とプレビューの並び方（自動判定 / 常に横並び / 常に縦積み）を切り替えます",
     "switcher_label": "画面レイアウト",
-    "switcher_title": "レイアウト切り替え（自動 / 横並び / 縦積み）"
+    "switcher_title": "レイアウト切り替え（自動 / 横並び / 縦積み）",
+    "floating_section": "上部メニューのフローティング表示",
+    "floating_narrow": "縦積み時",
+    "floating_wide": "横並び時",
+    "floating_on": "オン（畳んで表示）",
+    "floating_off": "オフ（常時表示）"
   },
   "preview": {
     "hide": "プレビュー非表示",

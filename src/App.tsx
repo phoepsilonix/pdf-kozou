@@ -66,6 +66,7 @@ import { useViewport } from "./hooks/useViewport";
 import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
 import type { ThemeId } from "./lib/themes";
+import { loadLastTool, saveLastTool } from "./lib/lastTool";
 
 const copyToClipboard = async (text: string) => {
   try {
@@ -159,13 +160,21 @@ export default function App() {
     updatePageCount,
     layoutModeOverride,
     setLayoutModeOverride,
+    floatingMenuNarrow,
+    floatingMenuWide,
+    setFloatingMenuNarrow,
+    setFloatingMenuWide,
   } = usePdfStore();
 
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
-  const { isNarrow, width: viewportWidth } = useViewport();
+  const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
   const fileListTopRef = useRef<HTMLDivElement>(null);
   const optionsTopRef = useRef<HTMLDivElement>(null);
   const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
+  // ファイル追加後、最後に使った機能（なければビューワ）のツールボタンへ
+  // フォーカスを移すための参照と、追加が完了したことを示すフラグ
+  const toolButtonRefs = useRef<Partial<Record<ToolId, HTMLButtonElement | null>>>({});
+  const justAddedFilesRef = useRef(false);
   const [toolFiles, setToolFiles] = useState<FileEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
@@ -272,9 +281,33 @@ export default function App() {
           }
         }),
       );
+      // ファイル追加の一連の流れ（複数ファイルの連続追加も含む）が完了した後、
+      // 続く useEffect でツール選択ボタンへフォーカスを移す
+      if (pdfPaths.length > 0) justAddedFilesRef.current = true;
     },
     [addFiles, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
+
+  // ファイルを選択・追加した直後は、次に行うのは機能（ツール）の選択という
+  // 自然な流れになるため、最後に使った機能（未使用ならビューワ）のツール
+  // ボタンへ自動でフォーカスを移し、Tabキーを何度も押さなくて済むようにする。
+  useEffect(() => {
+    if (!justAddedFilesRef.current) return;
+    justAddedFilesRef.current = false;
+    const preferred = loadLastTool() ?? "viewer";
+    // 優先候補が無効化されている場合（例: 最後に使ったのが merge で
+    // 今回はファイルが1つだけ）に備え、viewer → split の順にフォールバックする
+    const candidates: ToolId[] = [preferred, "viewer", "split"];
+    let target: HTMLButtonElement | null | undefined = null;
+    for (const id of candidates) {
+      const el = toolButtonRefs.current[id];
+      if (el && !el.disabled) {
+        target = el;
+        break;
+      }
+    }
+    target?.focus();
+  }, [fileList]);
 
   useEffect(() => {
     let unlistenCustom: (() => void) | null = null;
@@ -336,6 +369,7 @@ export default function App() {
       }
       setToolFiles(sel);
       setActiveTool(toolId);
+      saveLastTool(toolId);
     },
     [fileList, setFile, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
@@ -374,6 +408,7 @@ export default function App() {
         setToolFiles(sel);
       }
       setActiveTool(t);
+      saveLastTool(t);
     },
     [
       toolFiles,
@@ -555,8 +590,8 @@ export default function App() {
     >
       {!photoOnlyMode && (
         <>
-          {/* 読み上げ・言語・テーマ選択（狭幅時はフローティングで畳める） */}
-          {isNarrow ? (
+          {/* 読み上げ・言語・テーマ選択（設定でフローティング表示が有効な場合は畳める） */}
+          {useFloatingMenu ? (
             <div style={{ width: "100%", display: "flex", justifyContent: "flex-end", zIndex: 20, flexShrink: 0 }}>
               <button
                 ref={mobileMenuToggleRef}
@@ -577,7 +612,14 @@ export default function App() {
                   <A11yControls />
                   <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
-                  <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
+                  <LayoutModeControl
+                    mode={layoutModeOverride}
+                    onChange={setLayoutModeOverride}
+                    floatingNarrow={floatingMenuNarrow}
+                    floatingWide={floatingMenuWide}
+                    onFloatingNarrowChange={setFloatingMenuNarrow}
+                    onFloatingWideChange={setFloatingMenuWide}
+                  />
                 </div>
               </FloatingMenu>
             </div>
@@ -598,7 +640,14 @@ export default function App() {
               <A11yControls />
               <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
               <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
-              <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
+              <LayoutModeControl
+                    mode={layoutModeOverride}
+                    onChange={setLayoutModeOverride}
+                    floatingNarrow={floatingMenuNarrow}
+                    floatingWide={floatingMenuWide}
+                    onFloatingNarrowChange={setFloatingMenuNarrow}
+                    onFloatingWideChange={setFloatingMenuWide}
+                  />
             </div>
           )}
         </>
@@ -794,6 +843,9 @@ export default function App() {
                 return (
                   <button
                     key={tool.id}
+                    ref={(el) => {
+                      toolButtonRefs.current[tool.id] = el;
+                    }}
                     style={{ ...s.toolBtn, ...(enabled ? s.toolBtnOn : s.toolBtnOff) }}
                     onClick={() => enabled && handleLaunchTool(tool.id)}
                     disabled={!enabled}
@@ -1240,8 +1292,8 @@ function ToolShell({
   const filename = filePath.split(/[/\\]/).pop() ?? "";
   const batchFiles = isBatch ? toolFiles : undefined;
 
-  const { isNarrow, width: viewportWidth } = useViewport();
-  const { layoutModeOverride, setLayoutModeOverride } = usePdfStore();
+  const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
+  const { layoutModeOverride, setLayoutModeOverride, floatingMenuNarrow, floatingMenuWide, setFloatingMenuNarrow, setFloatingMenuWide } = usePdfStore();
   // 狭幅時、テーマメニュー・ツールタブを畳んでフローティング表示にするためのトグル
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
@@ -1321,7 +1373,14 @@ function ToolShell({
       <A11yControls />
       <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
       <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
-      <LayoutModeControl mode={layoutModeOverride} onChange={setLayoutModeOverride} />
+      <LayoutModeControl
+        mode={layoutModeOverride}
+        onChange={setLayoutModeOverride}
+        floatingNarrow={floatingMenuNarrow}
+        floatingWide={floatingMenuWide}
+        onFloatingNarrowChange={setFloatingMenuNarrow}
+        onFloatingWideChange={setFloatingMenuWide}
+      />
     </>
   );
 
@@ -1358,7 +1417,7 @@ function ToolShell({
             </span>
           )}
           <div style={{ flex: 1 }} />
-          {isNarrow ? (
+          {useFloatingMenu ? (
             <button
               ref={mobileMenuToggleRef}
               type="button"
@@ -1373,15 +1432,34 @@ function ToolShell({
             <div style={sh.navRight}>{themeControlsContent}</div>
           )}
         </div>
-        {isNarrow ? (
+        {useFloatingMenu ? (
           <FloatingMenu
             open={mobileMenuOpen}
             onClose={() => setMobileMenuOpen(false)}
             anchorRef={mobileMenuToggleRef}
           >
-            <div style={sh.mobileNavPanelTabs}>{toolTabsContent}</div>
+            {/* 縦積み(モバイル既定)ではツールタブをグリッドで畳んで縦に、
+                横並び(デスクトップでフローティングを有効にした場合)では
+                横に並べて表示する。 */}
+            <div
+              style={
+                isNarrow
+                  ? sh.mobileNavPanelTabs
+                  : { display: "flex", flexWrap: "wrap" as const, gap: 6 }
+              }
+            >
+              {toolTabsContent}
+            </div>
             <div style={sh.mobileNavPanelDiv} />
-            <div style={sh.mobileNavPanelControls}>{themeControlsContent}</div>
+            <div
+              style={
+                isNarrow
+                  ? sh.mobileNavPanelControls
+                  : { display: "flex", flexWrap: "wrap" as const, gap: 6 }
+              }
+            >
+              {themeControlsContent}
+            </div>
           </FloatingMenu>
         ) : (
           <div style={sh.navTabs}>{toolTabsContent}</div>

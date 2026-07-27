@@ -48,6 +48,8 @@ function computeEffectiveWidth(): number {
 export function useViewport() {
   const [width, setWidth] = useState(computeEffectiveWidth);
   const layoutModeOverride = usePdfStore((s) => s.layoutModeOverride);
+  const floatingMenuNarrow = usePdfStore((s) => s.floatingMenuNarrow);
+  const floatingMenuWide = usePdfStore((s) => s.floatingMenuWide);
 
   useEffect(() => {
     const onChange = () => setWidth(computeEffectiveWidth());
@@ -64,5 +66,12 @@ export function useViewport() {
   const isNarrow =
     layoutModeOverride === "narrow" ? true : layoutModeOverride === "wide" ? false : autoIsNarrow;
 
-  return { isNarrow, width, layoutModeOverride };
+  // 上部メニューをフローティング(トグルで畳む)表示にするかどうか。
+  // 縦積み(isNarrow)時は floatingMenuNarrow、横並び時は floatingMenuWide を見る。
+  // 既定値はそれぞれ true / false（モバイルは畳む、デスクトップは常時表示）だが、
+  // ユーザーが LayoutModeControl から個別にオン/オフを切り替えられ、その状態は
+  // usePdfStore 経由で永続化される。
+  const useFloatingMenu = isNarrow ? floatingMenuNarrow : floatingMenuWide;
+
+  return { isNarrow, width, layoutModeOverride, useFloatingMenu };
 }
