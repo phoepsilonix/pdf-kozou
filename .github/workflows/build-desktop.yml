@@ -692,8 +692,10 @@ jobs:
           #tauri android build --apk --aab --debug --ci || pnpm run tauri android build --apk --aab --debug --ci
           #pnpm run tauri android build --apk --split-per-abi --debug --ci
           #pnpm run tauri android build --apk --aab --debug --ci
-          pnpm run tauri android build --apk --split-per-abi --ci
-          pnpm run tauri android build --apk --aab --ci
+          #pnpm run tauri android build --apk --split-per-abi --ci
+          #pnpm run tauri android build --apk --aab --ci
+          pnpm tauri android build --apk --split-per-abi --ci
+          pnpm tauri android build --apk --aab --ci
 
       - name: Move bundle folder
         run: |

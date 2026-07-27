@@ -16,6 +16,10 @@ val tauriProperties = Properties().apply {
 
 android {
     compileSdk = 36
+    compileOptions {
+      sourceCompatibility = JavaVersion.VERSION_17
+      targetCompatibility = JavaVersion.VERSION_17
+    }
     namespace = "phoepsilonix.pdfkozou"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
@@ -62,7 +66,7 @@ android {
         }
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
     buildFeatures {
         buildConfig = true

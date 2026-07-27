@@ -20,11 +20,15 @@ export default defineConfig({
     // Oxc(またはRolldown内蔵高速ミニファイア)による圧縮を明示
     //minify: "oxc",
     minify: true,
+    //minify: "rolldown",
     cssMinify: true,
     chunkSizeWarningLimit: 500,
 
     // Vite 8/Rolldown環境のコード分割設定
     rolldownOptions: {
+      checks: {
+        pluginTimings: true,
+      },
       output: {
         // manualChunks または最新の規格に合わせたコードスプリッティング
         manualChunks(id) {
