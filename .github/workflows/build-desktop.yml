@@ -814,7 +814,9 @@ jobs:
 
       - name: Save Cache
         uses: actions/cache/save@v6.1.0
-        if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        #キャッシュサイズが肥大化しているので、一時的にオフ。
+        #if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mobile') && github.event.inputs.save_cache == 'true' }}
+        if: ${{ github.ref == 'refs/heads/mobile' && github.event.inputs.save_cache == 'true' }}
         with:
           path: |
             ~/.cargo/bin/
