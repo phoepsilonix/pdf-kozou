@@ -3,11 +3,12 @@
 // -------------------------------------------------------------------------
 
 // src/components/ThemeSwitcher.tsx
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 //import { THEMES, getTheme, type ThemeId } from "../lib/themes";
 import { THEMES, type ThemeId } from "../lib/themes";
 import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
+import { FloatingMenu } from "./FloatingMenu";
 
 interface Props {
   currentId: ThemeId;
@@ -16,6 +17,7 @@ interface Props {
 
 export function ThemeSwitcher({ currentId, onChange }: Props) {
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const { t } = useI18n();
   //const C = getTheme();
   const F = "'JetBrains Mono','Noto Sans JP',monospace";
@@ -30,8 +32,9 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
   );
 
   return (
-    <div style={{ position: "relative" }}>
+    <>
       <button
+        ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={{
           display: "flex",
@@ -54,92 +57,73 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
         <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
       </button>
 
-      {open && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setOpen(false)}
-          />
+      <FloatingMenu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef}>
+        <div style={{ minWidth: 190 }}>
           <div
             style={{
-              position: "absolute",
-              top: "calc(100% + 6px)",
-              right: 0,
-              zIndex: 1000,
-              background: "var(--c-bgCard)",
-              border: `1px solid var(--c-border)`,
-              borderRadius: 10,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
-              overflow: "hidden",
-              minWidth: 190,
+              padding: "8px 14px",
+              fontSize: FS.caption,
+              color: "var(--c-textDim)",
+              letterSpacing: "0.1em",
+              borderBottom: `1px solid var(--c-border)`,
+              background: "var(--c-bgHover)",
             }}
           >
-            <div
+            {t("theme.switcher_label")}
+          </div>
+          {(Object.values(THEMES) as Array<(typeof THEMES)[ThemeId]>).map((theme) => (
+            <button
+              key={theme.id}
+              onClick={() => handlePick(theme.id as ThemeId)}
               style={{
-                padding: "8px 14px",
-                fontSize: FS.caption,
-                color: "var(--c-textDim)",
-                letterSpacing: "0.1em",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "10px 14px",
+                background: theme.id === currentId ? "var(--c-accentBg)" : "transparent",
+                border: "none",
                 borderBottom: `1px solid var(--c-border)`,
-                background: "var(--c-bgHover)",
+                cursor: "pointer",
+                fontFamily: F,
+                textAlign: "left" as const,
+                transition: "background 0.08s",
               }}
             >
-              {t("theme.switcher_label")}
-            </div>
-            {(Object.values(THEMES) as Array<(typeof THEMES)[ThemeId]>).map((theme) => (
-              <button
-                key={theme.id}
-                onClick={() => handlePick(theme.id as ThemeId)}
+              {/* カラースウォッチ */}
+              <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                {[theme.bg, theme.bgCard, theme.accent].map((col, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 11,
+                      height: 11,
+                      borderRadius: "50%",
+                      background: col,
+                      border: `1px solid ${theme.borderHi}`,
+                    }}
+                  />
+                ))}
+              </div>
+              <span style={{ fontSize: FS.label }}>{theme.emoji}</span>
+              <span
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  width: "100%",
-                  padding: "10px 14px",
-                  background: theme.id === currentId ? "var(--c-accentBg)" : "transparent",
-                  border: "none",
-                  borderBottom: `1px solid var(--c-border)`,
-                  cursor: "pointer",
-                  fontFamily: F,
-                  textAlign: "left" as const,
-                  transition: "background 0.08s",
+                  fontSize: FS.body,
+                  color: theme.id === currentId ? "var(--c-accent)" : "var(--c-text)",
+                  fontWeight: theme.id === currentId ? 700 : 400,
                 }}
               >
-                {/* カラースウォッチ */}
-                <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-                  {[theme.bg, theme.bgCard, theme.accent].map((col, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: 11,
-                        height: 11,
-                        borderRadius: "50%",
-                        background: col,
-                        border: `1px solid ${theme.borderHi}`,
-                      }}
-                    />
-                  ))}
-                </div>
-                <span style={{ fontSize: FS.label }}>{theme.emoji}</span>
-                <span
-                  style={{
-                    fontSize: FS.body,
-                    color: theme.id === currentId ? "var(--c-accent)" : "var(--c-text)",
-                    fontWeight: theme.id === currentId ? 700 : 400,
-                  }}
-                >
-                  {t(`theme.${theme.id}`)}
+                {t(`theme.${theme.id}`)}
+              </span>
+              {theme.id === currentId && (
+                <span style={{ marginLeft: "auto", fontSize: FS.body, color: "var(--c-accent)" }}>
+                  ✓
                 </span>
-                {theme.id === currentId && (
-                  <span style={{ marginLeft: "auto", fontSize: FS.body, color: "var(--c-accent)" }}>
-                    ✓
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </FloatingMenu>
+    </>
   );
 }

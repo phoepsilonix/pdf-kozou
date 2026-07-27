@@ -14,12 +14,13 @@
 // 使い方:
 //   <A11yControls />
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { tts } from "../lib/tts";
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "../lib/i18n";
 import type { Locale } from "../lib/i18n";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
+import { FloatingMenu } from "./FloatingMenu";
 
 // ── 読み上げトグルボタン ──────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ export function TtsToggleButton() {
 export function LocaleSelector() {
   const { locale, setLocale, t } = useI18n();
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
   const handlePick = useCallback(
     (loc: Locale) => {
@@ -123,8 +125,9 @@ export function LocaleSelector() {
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <>
       <button
+        ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={btnStyle}
         aria-label={t("locale.select_aria")}
@@ -136,54 +139,34 @@ export function LocaleSelector() {
         <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
       </button>
 
-      {open && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="listbox"
-            style={{
-              position: "absolute",
-              top: "calc(100% + 4px)",
-              right: 0,
-              zIndex: 1000,
-              background: "var(--c-bgCard)",
-              border: "1px solid var(--c-border)",
-              borderRadius: 8,
-              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-              overflow: "hidden",
-              minWidth: 110,
-            }}
-          >
-            {SUPPORTED_LOCALES.map((loc) => (
-              <button
-                key={loc}
-                role="option"
-                aria-selected={loc === locale}
-                onClick={() => handlePick(loc)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "8px 14px",
-                  background: loc === locale ? "var(--c-accentBg)" : "transparent",
-                  border: "none",
-                  color: loc === locale ? "var(--c-accent)" : "var(--c-text)",
-                  fontWeight: loc === locale ? 700 : 400,
-                  cursor: "pointer",
-                  fontFamily: F,
-                  fontSize: FS.body,
-                  textAlign: "left" as const,
-                }}
-              >
-                {LOCALE_LABELS[loc]}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+      <FloatingMenu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef}>
+        <div role="listbox" style={{ minWidth: 110 }}>
+          {SUPPORTED_LOCALES.map((loc) => (
+            <button
+              key={loc}
+              role="option"
+              aria-selected={loc === locale}
+              onClick={() => handlePick(loc)}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "8px 14px",
+                background: loc === locale ? "var(--c-accentBg)" : "transparent",
+                border: "none",
+                color: loc === locale ? "var(--c-accent)" : "var(--c-text)",
+                fontWeight: loc === locale ? 700 : 400,
+                cursor: "pointer",
+                fontFamily: F,
+                fontSize: FS.body,
+                textAlign: "left" as const,
+              }}
+            >
+              {LOCALE_LABELS[loc]}
+            </button>
+          ))}
+        </div>
+      </FloatingMenu>
+    </>
   );
 }
 

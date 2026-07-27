@@ -5,18 +5,31 @@
 // src/components/FloatingMenu.tsx
 //
 // アンカー要素（トグルボタン）の下にドロップダウン表示するフローティングメニュー。
-// document.body 直下へ React Portal でマウントすることで、
-// #root にかかっている overflow:hidden / zoom（lib/uiScale.ts, applyToRoot 参照）
-// による意図しないクリッピングを避ける。#root は表示スケール用に CSS zoom を
-// 常時適用しており、zoom がかかった祖先の内側では position:fixed の子要素が
-// 祖先基準でコンテインされてしまう（＝#root の overflow:hidden にそのまま
-// クリップされる）環境があるため、#root の外（body 直下）に描画するのが安全。
+// document.body 直下へ React Portal でマウントすることで、以下の2つの問題を回避する。
 //
-// 位置はアンカーの getBoundingClientRect() から都度計算するため、
-// #root 内側の zoom によるスケーリングの影響を受けず、実ビューポート座標で
-// 正しく配置される。
+// 1. クリッピング問題:
+//    #root には表示スケール機能のため CSS zoom が常時適用されており
+//    (lib/uiScale.ts, applyToRoot)、同時に overflow: hidden も設定されている。
+//    この組み合わせの環境では #root 配下にネストした position:absolute の
+//    フローティングパネルが実ビューポートではなく #root 自体を基準にクリップされる。
+//    さらに、このパネルの中に別のドロップダウン（テーマ選択など、各コンポーネントが
+//    自前で position:absolute + overflow を使って実装しているもの）を入れ子にすると、
+//    実際にはその下に表示できる画面領域が十分あっても、パネル自身の
+//    overflow/高さで再度クリップされてしまう。→ 全て document.body 直下に
+//    position:fixed で描画し、実ビューポート座標で配置することで解消する。
+//
+// 2. 開いた直後に閉じてしまう問題:
+//    以前は「全画面の透明オーバーレイに onClick={onClose} を仕込む」方式で
+//    外側クリックを検知していたが、環境（Linux/WebKitGTK 等）によっては
+//    開いた直後に閉じてしまい、パネル内の項目を選択できないことがあった。
+//    → ネイティブの pointerdown リスナーを「次のイベントループ」まで登録を
+//      遅延させる方式に変更し、開いた瞬間のクリックで即座に閉じないようにする。
+//
+// 高さについても、固定の "70vh" のような割合ではなく、アンカーの下から
+// 画面下端までの「実際に使える領域」を都度計算して使うようにしている
+// （UI拡大率が高い場合でも、使える領域を最大限使う）。
 
-import { useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 interface FloatingMenuProps {
@@ -26,9 +39,15 @@ interface FloatingMenuProps {
   children: ReactNode;
 }
 
-export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMenuProps) {
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+const MARGIN = 8;
+const GAP = 6;
+const MIN_PANEL_HEIGHT = 120;
 
+export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMenuProps) {
+  const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // アンカーの実座標から配置・高さを計算する。
   useLayoutEffect(() => {
     if (!open) {
       setPos(null);
@@ -38,10 +57,13 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       const el = anchorRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const gap = 6;
+      const top = rect.bottom + GAP;
+      // アンカー下端から画面下端までの実際に使える高さをそのまま使う
+      const available = Math.max(MIN_PANEL_HEIGHT, window.innerHeight - top - MARGIN);
       setPos({
-        top: rect.bottom + gap,
-        right: Math.max(8, window.innerWidth - rect.right),
+        top,
+        right: Math.max(MARGIN, window.innerWidth - rect.right),
+        maxHeight: available,
       });
     };
     update();
@@ -55,36 +77,62 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
     };
   }, [open, anchorRef]);
 
+  // 外側クリックで閉じる。全画面オーバーレイでの即時クローズは環境によって
+  // 「開いた瞬間のクリックで即座に閉じる」不具合を起こすため、
+  // ネイティブリスナーの登録自体を次のイベントループまで遅らせる。
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (panelRef.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      onClose();
+    };
+    const timerId = window.setTimeout(() => {
+      document.addEventListener("pointerdown", handlePointerDown, true);
+    }, 0);
+    return () => {
+      window.clearTimeout(timerId);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [open, anchorRef, onClose]);
+
+  // Esc キーでも閉じられるようにする
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
   if (!open || !pos || typeof document === "undefined") return null;
 
   return createPortal(
-    <>
-      {/* 外側クリックで閉じるための透明な全画面オーバーレイ */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 1199 }} onClick={onClose} />
-      <div
-        style={{
-          position: "fixed",
-          top: pos.top,
-          right: pos.right,
-          zIndex: 1200,
-          maxWidth: "calc(100vw - 16px)",
-          maxHeight: "70vh",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          padding: 10,
-          borderRadius: 10,
-          border: "1px solid var(--c-border)",
-          background: "var(--c-bgCard)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
-        }}
-        // パネル自体のクリックがオーバーレイへ伝播して即座に閉じないようにする
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </>,
+    <div
+      ref={panelRef}
+      style={{
+        position: "fixed",
+        top: pos.top,
+        right: pos.right,
+        zIndex: 1200,
+        maxWidth: "calc(100vw - 16px)",
+        maxHeight: pos.maxHeight,
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: 10,
+        borderRadius: 10,
+        border: "1px solid var(--c-border)",
+        background: "var(--c-bgCard)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+      }}
+    >
+      {children}
+    </div>,
     document.body,
   );
 }

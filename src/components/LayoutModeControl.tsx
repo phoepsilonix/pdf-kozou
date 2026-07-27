@@ -10,9 +10,10 @@
 // 自動判定だけでは意図した幅を検出できないことがあるため、手動切り替えの
 // 逃げ道として用意している。
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
+import { FloatingMenu } from "./FloatingMenu";
 
 export type LayoutMode = "auto" | "narrow" | "wide";
 
@@ -25,6 +26,7 @@ const F = "'JetBrains Mono','Noto Sans JP',monospace";
 
 export function LayoutModeControl({ mode, onChange }: Props) {
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const { t } = useI18n();
 
   const handlePick = useCallback(
@@ -38,8 +40,9 @@ export function LayoutModeControl({ mode, onChange }: Props) {
   const icon = mode === "narrow" ? "📱" : mode === "wide" ? "🖥️" : "🔁";
 
   return (
-    <div style={{ position: "relative" }}>
+    <>
       <button
+        ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={{
           display: "flex",
@@ -64,81 +67,60 @@ export function LayoutModeControl({ mode, onChange }: Props) {
         <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
       </button>
 
-      {open && (
-        <>
+      <FloatingMenu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef}>
+        <div role="dialog" aria-label={t("layout.switcher_title")} style={{ minWidth: 210 }}>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-label={t("layout.switcher_title")}
             style={{
-              position: "absolute",
-              top: "calc(100% + 6px)",
-              right: 0,
-              zIndex: 1000,
-              background: "var(--c-bgCard)",
-              border: "1px solid var(--c-border)",
-              borderRadius: 10,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
-              overflow: "hidden",
-              minWidth: 210,
+              padding: "8px 14px",
+              fontSize: FS.caption,
+              color: "var(--c-textDim)",
+              letterSpacing: "0.1em",
+              borderBottom: "1px solid var(--c-border)",
+              background: "var(--c-bgHover)",
             }}
           >
-            <div
+            {t("layout.switcher_label")}
+          </div>
+          {(["auto", "narrow", "wide"] as LayoutMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => handlePick(m)}
               style={{
-                padding: "8px 14px",
-                fontSize: FS.caption,
-                color: "var(--c-textDim)",
-                letterSpacing: "0.1em",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "10px 14px",
+                background: m === mode ? "var(--c-accentBg)" : "transparent",
+                border: "none",
                 borderBottom: "1px solid var(--c-border)",
-                background: "var(--c-bgHover)",
+                cursor: "pointer",
+                fontFamily: F,
+                textAlign: "left" as const,
+                transition: "background 0.08s",
               }}
             >
-              {t("layout.switcher_label")}
-            </div>
-            {(["auto", "narrow", "wide"] as LayoutMode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => handlePick(m)}
+              <span style={{ fontSize: FS.label }}>
+                {m === "narrow" ? "📱" : m === "wide" ? "🖥️" : "🔁"}
+              </span>
+              <span
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  width: "100%",
-                  padding: "10px 14px",
-                  background: m === mode ? "var(--c-accentBg)" : "transparent",
-                  border: "none",
-                  borderBottom: "1px solid var(--c-border)",
-                  cursor: "pointer",
-                  fontFamily: F,
-                  textAlign: "left" as const,
-                  transition: "background 0.08s",
+                  fontSize: FS.body,
+                  color: m === mode ? "var(--c-accent)" : "var(--c-text)",
+                  fontWeight: m === mode ? 700 : 400,
                 }}
               >
-                <span style={{ fontSize: FS.label }}>
-                  {m === "narrow" ? "📱" : m === "wide" ? "🖥️" : "🔁"}
+                {t(`layout.mode_${m}`)}
+              </span>
+              {m === mode && (
+                <span style={{ marginLeft: "auto", fontSize: FS.body, color: "var(--c-accent)" }}>
+                  ✓
                 </span>
-                <span
-                  style={{
-                    fontSize: FS.body,
-                    color: m === mode ? "var(--c-accent)" : "var(--c-text)",
-                    fontWeight: m === mode ? 700 : 400,
-                  }}
-                >
-                  {t(`layout.mode_${m}`)}
-                </span>
-                {m === mode && (
-                  <span style={{ marginLeft: "auto", fontSize: FS.body, color: "var(--c-accent)" }}>
-                    ✓
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </FloatingMenu>
+    </>
   );
 }

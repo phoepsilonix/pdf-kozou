@@ -11,10 +11,11 @@
 // 80%〜150% を 5% 刻みで調整する。値は localStorage に永続化され、
 // #root 要素の zoom として即時反映される（レイアウト比率は維持）。
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { F } from "../lib/theme";
 import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
+import { FloatingMenu } from "./FloatingMenu";
 import {
   UI_SCALE_MIN,
   UI_SCALE_MAX,
@@ -31,6 +32,7 @@ interface Props {
 export function FontScaleControl({ scale, onChange }: Props) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
   const setClamped = useCallback((pct: number) => onChange(clampUiScale(pct)), [onChange]);
   const dec = useCallback(() => setClamped(scale - UI_SCALE_STEP), [scale, setClamped]);
@@ -70,8 +72,9 @@ export function FontScaleControl({ scale, onChange }: Props) {
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <>
       <button
+        ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={btnStyle}
         aria-label={t("fontscale.select_aria")}
@@ -84,110 +87,89 @@ export function FontScaleControl({ scale, onChange }: Props) {
         <span style={{ fontSize: 10, color: "var(--c-textDim)" }}>▾</span>
       </button>
 
-      {open && (
-        <>
+      <FloatingMenu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef}>
+        <div role="dialog" aria-label={t("fontscale.select_title")} style={{ minWidth: 230 }}>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-label={t("fontscale.select_title")}
             style={{
-              position: "absolute",
-              top: "calc(100% + 4px)",
-              right: 0,
-              zIndex: 1000,
-              background: "var(--c-bgCard)",
-              border: "1px solid var(--c-border)",
-              borderRadius: 10,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
-              padding: "12px 14px",
-              minWidth: 230,
+              fontSize: FS.caption,
+              color: "var(--c-textDim)",
+              letterSpacing: "0.1em",
+              marginBottom: 10,
             }}
           >
-            <div
-              style={{
-                fontSize: FS.caption,
-                color: "var(--c-textDim)",
-                letterSpacing: "0.1em",
-                marginBottom: 10,
-              }}
-            >
-              {t("fontscale.label")}
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button
-                style={stepBtn}
-                onClick={dec}
-                disabled={scale <= UI_SCALE_MIN}
-                aria-label={t("fontscale.decrease")}
-                title={t("fontscale.decrease")}
-              >
-                −
-              </button>
-              <input
-                type="range"
-                min={UI_SCALE_MIN}
-                max={UI_SCALE_MAX}
-                step={UI_SCALE_STEP}
-                value={scale}
-                onChange={(e) => setClamped(Number(e.target.value))}
-                aria-label={t("fontscale.label")}
-                aria-valuetext={`${scale}%`}
-                style={{ flex: 1, accentColor: "var(--c-accent)", cursor: "pointer" }}
-              />
-              <button
-                style={stepBtn}
-                onClick={inc}
-                disabled={scale >= UI_SCALE_MAX}
-                aria-label={t("fontscale.increase")}
-                title={t("fontscale.increase")}
-              >
-                ＋
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginTop: 10,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: FS.subtitle,
-                  fontWeight: 700,
-                  color: "var(--c-accent)",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {scale}%
-              </span>
-              <button
-                onClick={reset}
-                disabled={scale === UI_SCALE_DEFAULT}
-                style={{
-                  padding: "3px 10px",
-                  background: "transparent",
-                  border: "1px solid var(--c-border)",
-                  borderRadius: 6,
-                  color: "var(--c-textSub)",
-                  cursor: scale === UI_SCALE_DEFAULT ? "default" : "pointer",
-                  opacity: scale === UI_SCALE_DEFAULT ? 0.45 : 1,
-                  fontFamily: F,
-                  fontSize: FS.small,
-                }}
-              >
-                {t("fontscale.reset")}
-              </button>
-            </div>
+            {t("fontscale.label")}
           </div>
-        </>
-      )}
-    </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              style={stepBtn}
+              onClick={dec}
+              disabled={scale <= UI_SCALE_MIN}
+              aria-label={t("fontscale.decrease")}
+              title={t("fontscale.decrease")}
+            >
+              −
+            </button>
+            <input
+              type="range"
+              min={UI_SCALE_MIN}
+              max={UI_SCALE_MAX}
+              step={UI_SCALE_STEP}
+              value={scale}
+              onChange={(e) => setClamped(Number(e.target.value))}
+              aria-label={t("fontscale.label")}
+              aria-valuetext={`${scale}%`}
+              style={{ flex: 1, accentColor: "var(--c-accent)", cursor: "pointer" }}
+            />
+            <button
+              style={stepBtn}
+              onClick={inc}
+              disabled={scale >= UI_SCALE_MAX}
+              aria-label={t("fontscale.increase")}
+              title={t("fontscale.increase")}
+            >
+              ＋
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: 10,
+            }}
+          >
+            <span
+              style={{
+                fontSize: FS.subtitle,
+                fontWeight: 700,
+                color: "var(--c-accent)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {scale}%
+            </span>
+            <button
+              onClick={reset}
+              disabled={scale === UI_SCALE_DEFAULT}
+              style={{
+                padding: "3px 10px",
+                background: "transparent",
+                border: "1px solid var(--c-border)",
+                borderRadius: 6,
+                color: "var(--c-textSub)",
+                cursor: scale === UI_SCALE_DEFAULT ? "default" : "pointer",
+                opacity: scale === UI_SCALE_DEFAULT ? 0.45 : 1,
+                fontFamily: F,
+                fontSize: FS.small,
+              }}
+            >
+              {t("fontscale.reset")}
+            </button>
+          </div>
+        </div>
+      </FloatingMenu>
+    </>
   );
 }
