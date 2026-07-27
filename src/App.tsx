@@ -88,16 +88,28 @@ function makeGlobalCss(t: typeof C) {
   @keyframes spin   { to { transform: rotate(360deg); } }
   @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
   input[type=number]::-webkit-inner-spin-button { opacity:0.5; }
-  input:focus  { border-color:${t.accent} !important; outline:none; }
+  input:focus { border-color:${t.accent} !important; }
   ::-webkit-scrollbar       { width:6px; height:6px; }
   ::-webkit-scrollbar-track { background:${t.bg}; }
   ::-webkit-scrollbar-thumb { background:${t.borderHi}; border-radius:3px; }
   button:hover:not(:disabled) { filter:brightness(1.1); }
   button:active:not(:disabled){ filter:brightness(0.9); }
-  button:focus         { outline: none !important; box-shadow: none !important; }
-  button:focus-visible { outline: 2px solid ${t.accent}; outline-offset: 2px; }
-  button:focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }
   button:disabled { cursor:not-allowed !important; }
+  /* キーボード操作時のフォーカス位置をわかりやすくする。
+     マウス/タッチでのクリック直後（:focus だが :focus-visible ではない）は
+     従来通り枠を出さず、Tabキー移動時にだけ、アクセントカラーの二重リングで
+     はっきり示す（背景色によらず視認できるよう accentBg の外側リングを併用）。
+     button 以外にも、独自の tabIndex 付き div（ファイル行など）や
+     input/select/textarea/リンクにも同じルールを適用する。 */
+  :where(button, [tabindex]:not([tabindex="-1"]), input, select, textarea, a[href]):focus-visible {
+    outline: 3px solid ${t.accent} !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 5px ${t.accentBg} !important;
+  }
+  :where(button, [tabindex]:not([tabindex="-1"]), input, select, textarea, a[href]):focus:not(:focus-visible) {
+    outline: none !important;
+    box-shadow: none !important;
+  }
 `;
 }
 
