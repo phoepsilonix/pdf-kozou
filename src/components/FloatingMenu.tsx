@@ -28,9 +28,25 @@
 // 高さについても、固定の "70vh" のような割合ではなく、アンカーの下から
 // 画面下端までの「実際に使える領域」を都度計算して使うようにしている
 // （UI拡大率が高い場合でも、使える領域を最大限使う）。
+//
+// 3. 入れ子になった FloatingMenu 同士の干渉:
+//    テーマ選択などの各コントロールも自身のドロップダウンを FloatingMenu で
+//    実装しているため、モバイル用メニュー（外側）の中に、それらのコントロール
+//    （内側）が入れ子で存在する。だが Portal 先はどちらも同じ document.body
+//    直下で、DOM上は兄弟関係（内側パネルは外側パネルの子孫ではない）になる。
+//    この状態で内側パネルの項目をクリックすると、外側の「外側クリックで閉じる」
+//    判定が「パネルの外がクリックされた」と誤認し、外側パネルを閉じてしまう。
+//    すると選択に使ったボタン自体がその再描画で消えてしまい、React の click
+//    イベントが発火する前に対象のボタンがDOMから消え、選択が反映されない
+//    （pointerdown → 外側が閉じて対象ボタンがアンマウント → click が飛ばない）。
+//    → 各パネルに data-kozou-floating-menu を付与し、クリック先が
+//      「いずれかの FloatingMenu パネルの内部」であれば、自分のパネルの外で
+//      あっても閉じないようにする。
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+
+const PANEL_MARKER = "data-kozou-floating-menu";
 
 interface FloatingMenuProps {
   open: boolean;
@@ -87,6 +103,9 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       if (!target) return;
       if (panelRef.current?.contains(target)) return;
       if (anchorRef.current?.contains(target)) return;
+      // 入れ子になった別の FloatingMenu（テーマ選択など）の内部クリックは、
+      // 自分のパネルの外であっても「外側クリック」として扱わない。
+      if (target instanceof Element && target.closest(`[${PANEL_MARKER}]`)) return;
       onClose();
     };
     const timerId = window.setTimeout(() => {
@@ -113,6 +132,7 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
   return createPortal(
     <div
       ref={panelRef}
+      {...{ [PANEL_MARKER]: true }}
       style={{
         position: "fixed",
         top: pos.top,
