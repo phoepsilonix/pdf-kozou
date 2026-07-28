@@ -3319,7 +3319,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou"
-version = "1.8.5"
+version = "1.8.6"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3351,12 +3351,13 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou-core"
-version = "1.8.5"
+version = "1.8.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
  "cc",
  "clap",
+ "flate2",
  "image",
  "lopdf",
  "mupdf",
