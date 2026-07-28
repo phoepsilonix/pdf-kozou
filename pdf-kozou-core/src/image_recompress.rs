@@ -15,7 +15,7 @@
 //      その場で置き換える（参照側の Resources 辞書は一切変更不要）。
 //
 // 制限事項:
-//   - 対象は次の2種類の画像のみ:
+//   - 対象は次の3種類の画像のみ:
 //       (a) Filter が単一の /DCTDecode (JPEG)
 //       (b) Filter が単一の /FlateDecode (または無フィルタ) の生ビットマップで、
 //           BitsPerComponent=8、ColorSpace が DeviceGray/DeviceRGB/DeviceCMYK
@@ -23,8 +23,11 @@
 //           このケースは「表示サイズを超えているか」に関わらず、常に JPEG へ
 //           変換する（Flate生ビットマップは元々ほぼ無圧縮に近く、JPEG化する
 //           だけで大幅に縮小できるため）。
-//     Indexed / 1bit・16bit / CCITTFaxDecode / JBIG2Decode / JPXDecode や
-//     複合フィルタ (配列) はデコード経路が複雑なため安全側でスキップする
+//       (c) Filter が [/FlateDecode /DCTDecode] の2要素配列 (JPEG バイト列を
+//           さらに Flate で包んだもの。Canva 等一部の生成ツールが出力する)。
+//           Flate を展開した結果を JPEG として (a) と同じ経路で扱う。
+//     Indexed / 1bit・16bit / CCITTFaxDecode / JBIG2Decode / JPXDecode や、
+//     上記以外の複合フィルタはデコード経路が複雑なため安全側でスキップする
 //     （元のまま保持）。
 //   - インライン画像 (BI...EI) は対象外。
 //   - /SMask (アルファ) が同じ画像に付随する場合は、本体と同じ目標サイズに
@@ -295,6 +298,9 @@ fn walk_content(
 enum SourceKind {
     /// Filter=/DCTDecode (JPEG)。表示サイズを超える場合のみ対象にする。
     Dct,
+    /// Filter=[/FlateDecode /DCTDecode]。Flate を展開すれば JPEG バイト列に
+    /// なる複合フィルタ。扱いは Dct と同じ (表示サイズを超える場合のみ対象)。
+    DctFlateWrapped,
     /// Filter=/FlateDecode (または無フィルタ) の生ビットマップ。
     /// 常に JPEG へ変換する（元々ほぼ無圧縮なので DPI 未設定でも縮小効果が大きい）。
     RawGray8,
@@ -304,7 +310,7 @@ enum SourceKind {
 
 impl SourceKind {
     fn is_raw(self) -> bool {
-        !matches!(self, SourceKind::Dct)
+        !matches!(self, SourceKind::Dct | SourceKind::DctFlateWrapped)
     }
 }
 
@@ -343,8 +349,18 @@ fn colorspace_components(doc: &Document, cs: &Object) -> Option<u8> {
 fn classify_source(doc: &Document, dict: &Dictionary) -> Option<SourceKind> {
     let filter_name: Option<&[u8]> = match dict.get(b"Filter") {
         Ok(Object::Name(n)) => Some(n.as_slice()),
-        Err(_) => None,   // Filter 無し = 無圧縮の生データ
-        _ => return None, // 配列 (複合フィルタ) は非対応
+        Err(_) => None, // Filter 無し = 無圧縮の生データ
+        Ok(Object::Array(arr)) => {
+            // [/FlateDecode /DCTDecode] のみ対応 (Flate展開後がJPEGバイト列になる形)。
+            // それ以外の配列 (ASCII85+LZW 等) は非対応。
+            let names: Option<Vec<&[u8]>> =
+                arr.iter().map(|o| o.as_name().ok()).collect();
+            return match names.as_deref() {
+                Some([b"FlateDecode", b"DCTDecode"]) => Some(SourceKind::DctFlateWrapped),
+                _ => None,
+            };
+        }
+        _ => return None,
     };
     match filter_name {
         Some(b"DCTDecode") => return Some(SourceKind::Dct),
@@ -402,6 +418,14 @@ fn recompress_one(
         );
         let raw_bytes = match kind {
             SourceKind::Dct => stream.content.clone(),
+            SourceKind::DctFlateWrapped => {
+                use std::io::Read;
+                let mut inflated = Vec::new();
+                flate2::read::ZlibDecoder::new(stream.content.as_slice())
+                    .read_to_end(&mut inflated)
+                    .map_err(|e| format!("image {xref:?} inflate (Flate+DCT): {e}"))?;
+                inflated
+            }
             _ => stream
                 .decompressed_content()
                 .map_err(|e| format!("image {xref:?} decompress: {e}"))?,
@@ -410,7 +434,7 @@ fn recompress_one(
     };
 
     let (decoded, grayscale) = match kind {
-        SourceKind::Dct => {
+        SourceKind::Dct | SourceKind::DctFlateWrapped => {
             let img = image::load_from_memory_with_format(&raw_bytes, image::ImageFormat::Jpeg)
                 .map_err(|e| format!("jpeg decode {xref:?}: {e}"))?;
             let gray = matches!(img.color(), image::ColorType::L8 | image::ColorType::L16);
