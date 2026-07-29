@@ -42,6 +42,8 @@ pub struct ImageRecompressStats {
     pub images_scanned: usize,
     pub images_recompressed: usize,
     pub images_skipped_filter: usize,
+    pub images_cropped: usize,
+    pub images_stubbed: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -151,7 +153,7 @@ fn get_content_bytes(doc: &Document, obj: &Object) -> Vec<u8> {
             }
         }
         Object::Stream(s) => {
-            if let Ok(data) = s.decompressed_content() {
+            if let Ok(data) = stream_bytes(s) {
                 out.extend(data);
             }
         }
@@ -269,7 +271,7 @@ fn walk_content(
                             .and_then(|o| resolve_dict(doc, o))
                             .unwrap_or_else(|| resources.clone());
                         let form_bytes = if let Object::Stream(s) = xobj {
-                            s.decompressed_content().unwrap_or_default()
+                            stream_bytes(s).unwrap_or_default()
                         } else {
                             Vec::new()
                         };
@@ -295,7 +297,7 @@ fn walk_content(
 
 /// 対応している画像ソースの種類。
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum SourceKind {
+pub(crate) enum SourceKind {
     /// Filter=/DCTDecode (JPEG)。表示サイズを超える場合のみ対象にする。
     Dct,
     /// Filter=[/FlateDecode /DCTDecode]。Flate を展開すれば JPEG バイト列に
@@ -346,7 +348,22 @@ fn colorspace_components(doc: &Document, cs: &Object) -> Option<u8> {
 }
 
 /// 画像辞書から SourceKind を判定する。未対応の場合は None。
-fn classify_source(doc: &Document, dict: &Dictionary) -> Option<SourceKind> {
+/// `lopdf::Stream::decompressed_content()` は Filter キーが一つも無い
+/// ストリーム(PDF仕様上は「フィルタ無しの生データ」として正当)に対して
+/// `filters()` の実装上 `Err` を返してしまう(`self.dict.get(b"Filter")?`
+/// が素通しで失敗するため)。本来は生バイト列をそのまま返すのが正しい
+/// 挙動なので、その分だけこちらで肩代わりする。
+/// (`set_plain_content()` は Filter キーを削除するため、切り出し・
+/// クロップ後の書き戻しストリームでは特に必須。)
+pub(crate) fn stream_bytes(stream: &lopdf::Stream) -> Result<Vec<u8>, lopdf::Error> {
+    if stream.dict.get(b"Filter").is_err() {
+        Ok(stream.content.clone())
+    } else {
+        stream.decompressed_content()
+    }
+}
+
+pub(crate) fn classify_source(doc: &Document, dict: &Dictionary) -> Option<SourceKind> {
     let filter_name: Option<&[u8]> = match dict.get(b"Filter") {
         Ok(Object::Name(n)) => Some(n.as_slice()),
         Err(_) => None, // Filter 無し = 無圧縮の生データ
@@ -381,7 +398,7 @@ fn classify_source(doc: &Document, dict: &Dictionary) -> Option<SourceKind> {
     }
 }
 
-fn image_native_size(dict: &Dictionary) -> Option<(i64, i64)> {
+pub(crate) fn image_native_size(dict: &Dictionary) -> Option<(i64, i64)> {
     let w = dict.get(b"Width").ok()?.as_i64().ok()?;
     let h = dict.get(b"Height").ok()?.as_i64().ok()?;
     Some((w, h))
@@ -426,9 +443,7 @@ fn recompress_one(
                     .map_err(|e| format!("image {xref:?} inflate (Flate+DCT): {e}"))?;
                 inflated
             }
-            _ => stream
-                .decompressed_content()
-                .map_err(|e| format!("image {xref:?} decompress: {e}"))?,
+            _ => stream_bytes(stream).map_err(|e| format!("image {xref:?} decompress: {e}"))?,
         };
         (kind, raw_bytes, native_w, native_h, decode_inverted)
     };
@@ -563,16 +578,31 @@ pub fn recompress_images(
     output: &str,
     target_dpi: f32,
     jpeg_quality: u8,
+    crop_to_visible: bool,
 ) -> Result<ImageRecompressStats, String> {
     let mut stats = ImageRecompressStats::default();
-    if target_dpi <= 0.0 {
+    if target_dpi <= 0.0 && !crop_to_visible {
         if input != output {
             std::fs::copy(input, output).map_err(|e| format!("copy: {e}"))?;
         }
         return Ok(stats);
     }
 
-    let doc = Document::load(input).map_err(|e| format!("lopdf load: {e}"))?;
+    let mut doc = Document::load(input).map_err(|e| format!("lopdf load: {e}"))?;
+
+    // 0. (オプション) 実際に見えている範囲だけへの画像クロップ。
+    //    表示サイズ(pt) 集計より前に行うことで、この後の DPI 判定が
+    //    正しく縮小された表示サイズを基準にできるようにする。
+    if crop_to_visible {
+        let crop_stats = crate::visible_crop::crop_to_visible_area(&mut doc, jpeg_quality);
+        stats.images_cropped = crop_stats.images_cropped;
+        stats.images_stubbed = crop_stats.images_stubbed;
+    }
+
+    if target_dpi <= 0.0 {
+        doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
+        return Ok(stats);
+    }
 
     // 1. 表示サイズ集計
     let mut needed: HashMap<ObjectId, (f32, f32)> = HashMap::new();
@@ -603,9 +633,7 @@ pub fn recompress_images(
     }
 
     if needed.is_empty() {
-        if input != output {
-            std::fs::copy(input, output).map_err(|e| format!("copy: {e}"))?;
-        }
+        doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
         return Ok(stats);
     }
 
@@ -650,14 +678,11 @@ pub fn recompress_images(
     }
 
     if targets.is_empty() {
-        if input != output {
-            std::fs::copy(input, output).map_err(|e| format!("copy: {e}"))?;
-        }
+        doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
         return Ok(stats);
     }
 
-    // 3. 実際の再圧縮 (可変借用のため doc を作り直す)
-    let mut doc = doc;
+    // 3. 実際の再圧縮
     for (xref, tw, th) in &targets {
         match recompress_one(&mut doc, *xref, *tw, *th, jpeg_quality) {
             Ok(()) => stats.images_recompressed += 1,

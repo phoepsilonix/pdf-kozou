@@ -440,6 +440,16 @@ pub struct CompressRequest {
     /// `image_dpi` 指定時のみ意味を持つ。未指定時は 85。
     #[serde(default)]
     pub image_jpeg_quality: Option<u8>,
+
+    /// 埋め込み画像のうち、ページ上で実際に見えている範囲だけを残して
+    /// ピクセルデータを切り詰めるかどうか。クリップパスや Form の /BBox に
+    /// よって画像の一部しか表示されていない (あるいは全く表示されていない)
+    /// 場合に有効。`image_dpi` の指定有無に関わらず単独でも動作する
+    /// (この場合 image_dpi によるダウンサンプルは行われない)。
+    /// 回転・スキューを伴う配置や矩形以外のクリップ形状は安全側で対象外
+    /// とし、元のまま保持する。未指定時は false (従来通りの挙動)。
+    #[serde(default)]
+    pub crop_to_visible_image_area: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -583,16 +593,20 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         }
     };
 
-    // 0.5 (オプション) 画像の DPI/JPEG品質を指定してダウンサンプル再圧縮
-    //     image_dpi が指定されていれば実行する。
+    // 0.5 (オプション) 画像の DPI/JPEG品質を指定してダウンサンプル再圧縮、
+    //     および/または実表示範囲外のピクセルクロップを行う。
+    //     image_dpi または crop_to_visible_image_area のどちらかが
+    //     指定されていれば実行する。
     //     以前は compress_images (プリセット由来のフラグ、フロントエンドは
     //     明示的に送っていないためプリセットのデフォルト値に落ちる) が
     //     false のプリセット(例: Light)だと、DPIチェックボックスをONに
     //     しても無条件でスキップされてしまう不具合があったため、
     //     image_dpi 自体をユーザーが明示指定した意思として独立させた。
     let mut images_recompressed: usize = 0;
+    let crop_to_visible = req.crop_to_visible_image_area.unwrap_or(false);
     let _image_recompress_guard: TempFileGuard = {
-        if let Some(target_dpi) = req.image_dpi {
+        if req.image_dpi.is_some() || crop_to_visible {
+            let target_dpi = req.image_dpi.unwrap_or(0.0);
             let quality = req.image_jpeg_quality.unwrap_or(85).clamp(1, 100);
             let recompress_tmp = format!("{}.imgdpi.tmp.pdf", req.output);
             match crate::image_recompress::recompress_images(
@@ -600,11 +614,16 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 &recompress_tmp,
                 target_dpi,
                 quality,
+                crop_to_visible,
             ) {
-                Ok(stats) if stats.images_recompressed > 0 => {
+                Ok(stats)
+                    if stats.images_recompressed > 0
+                        || stats.images_cropped > 0
+                        || stats.images_stubbed > 0 =>
+                {
                     eprintln!(
-                        "[compress] image_dpi: {} image(s) downsampled to {target_dpi}dpi/q{quality}",
-                        stats.images_recompressed
+                        "[compress] image_dpi/crop: {} downsampled, {} cropped, {} stubbed (target_dpi={target_dpi}, q{quality})",
+                        stats.images_recompressed, stats.images_cropped, stats.images_stubbed
                     );
                     current_input = recompress_tmp.clone();
                     images_recompressed = stats.images_recompressed;
@@ -612,7 +631,7 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 }
                 Ok(_) => TempFileGuard(None), // 対象画像なし
                 Err(e) => {
-                    eprintln!("[compress] image_dpi warning (skipped): {e}");
+                    eprintln!("[compress] image_dpi/crop warning (skipped): {e}");
                     TempFileGuard(None)
                 }
             }

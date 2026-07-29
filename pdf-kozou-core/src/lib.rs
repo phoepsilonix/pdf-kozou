@@ -22,6 +22,7 @@ pub mod split;
 pub mod stext;
 pub mod trim;
 pub mod type3_sanitize;
+pub mod visible_crop;
 
 // 開発用: mupdf-sys シンボル探索（本実装前に削除予定）
 #[allow(dead_code)]

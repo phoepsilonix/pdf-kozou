@@ -212,6 +212,10 @@ enum Commands {
         /// image_dpi 指定時の JPEG 品質 (1-100、デフォルト 85)
         #[arg(long)]
         image_jpeg_quality: Option<u8>,
+        /// 埋め込み画像のうち、ページ上で実際に見えている範囲だけを残して
+        /// ピクセルデータを切り詰める (image_dpi と併用可、単独でも動作する)
+        #[arg(long)]
+        crop_to_visible_image_area: bool,
         /// Type3 フォント検出時のラスタライズ DPI（--rewrite 時のみ有効、デフォルト 150）
         #[arg(long)]
         rasterize_dpi: Option<f32>,
@@ -636,6 +640,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             redact_margin_right,
             image_dpi,
             image_jpeg_quality,
+            crop_to_visible_image_area,
             rasterize_dpi,
             rasterize_quality,
         } => {
@@ -713,6 +718,11 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                     redact_margin_right,
                     image_dpi,
                     image_jpeg_quality,
+                    crop_to_visible_image_area: if crop_to_visible_image_area {
+                        Some(true)
+                    } else {
+                        None
+                    },
                 };
                 pdf_kozou_core::compress::compress(&req)?
             };
