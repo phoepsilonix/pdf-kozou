@@ -61,7 +61,7 @@ impl GsCompressionLevel {
 }
 
 /// Ghostscriptを使用してPDFを再構築・圧縮する
-/// gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dEmbedAllFonts=true -dSubsetFonts=true -dColorConversionStrategy=/LeaveColorUnchanged -dNOPAUSE -dBATCH
+/// gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dEmbedAllFonts=true -dSubsetFonts=true -dColorConversionStrategy=/LeaveColorUnchanged -dColorConversionStrategyForImages=/LeaveColorUnchanged -dNOPAUSE -dBATCH
 
 #[tauri::command]
 pub async fn run_gs_optimize(
@@ -116,6 +116,12 @@ pub async fn run_gs_optimize(
         "-dEmbedAllFonts=true",
         "-dSubsetFonts=true",
         "-dColorConversionStrategy=/LeaveColorUnchanged",
+        // -dColorConversionStrategy は主にベクター/テキストのカラー変換方針で、
+        // 画像に埋め込まれたICCプロファイルの扱いは別枠(画像固有の色変換)に
+        // なるGSのバージョン/ビルドがある。そちらもLeaveColorUnchangedに
+        // 揃えないと、画像のICCプロファイルが空ストリームに壊されて
+        // (Length=0)、閲覧環境によって色味がずれることがある。
+        "-dColorConversionStrategyForImages=/LeaveColorUnchanged",
         "-dAutoRotatePages=/None",
         &format!("-sOutputFile={}", &output),
         &input,
