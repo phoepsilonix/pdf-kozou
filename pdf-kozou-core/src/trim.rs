@@ -445,41 +445,50 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         });
     }
 
-    // ── extract あり: 不要ページを後ろから delete_page で削除 ─────────────────
-    // keep_pages が全ページより少ない場合のみ削除処理を行う
+    // ── extract あり: split.rs と同じ graft 方式で「残すページだけ」の新規文書を作る ──
+    // delete_page() は不要ページをページツリーから外すだけで、そのページだけが
+    // 使っていたはずの画像等が参照グラフ上「到達可能」なまま残ってしまう
+    // ケースがあり (garbage_level を上げても解消しない)、抽出後のファイルが
+    // 不必要に大きくなる不具合があった。split.rs の「新規 PdfDocument へ
+    // graft_map でコピー」方式に統一する。
     let has_extract = keep_pages.len() < page_count as usize;
     if has_extract {
-        // 削除するページ = 全ページ - keep_pages、後ろから削除して番号ずれを防ぐ
-        (0..page_count)
-            .filter(|p| !keep_pages.contains(p))
-            .rev() // 逆順、降順
-            .try_for_each(|idx| {
-                doc.delete_page(idx)
-                    .map_err(|e| CoreError::MuPdf(e.to_string()))
-            })?;
-    }
+        let mut dst = PdfDocument::new();
+        let mut graft = dst
+            .new_graft_map()
+            .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
 
-    // ── インクリメンタル保存（/Info を含む全メタデータを保持）──────────────────
-    // gc=0: 構造変更なし（delete_page がある場合も gc=1 では OK だが
-    //        incremental=true との組み合わせで gc=0 が最も安全）
-    // 注意: extract あり（delete_page 実行済み）の場合は incremental=false にする
-    //        incremental=true でページ削除をしても差分追記になるが、
-    //        ビューア互換性のため通常保存を使う
-    let mut opts = PdfWriteOptions::default();
-    if has_extract {
-        // ページ数が変わる場合: gc=1 の通常保存
+        for &page_idx in &keep_pages {
+            let src_page = doc
+                .find_page(page_idx)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            let dst_page = graft
+                .graft_object(&src_page)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            let at = dst
+                .page_count()
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            dst.insert_page(at, &dst_page)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+        }
+
+        let mut opts = PdfWriteOptions::default();
         opts.set_incremental(false)
             .set_compress(true)
             .set_compress_fonts(true)
-            .set_garbage_level(1)
+            .set_compress_images(true)
+            .set_garbage_level(2)
+            .set_sanitize(false)
             .set_clean(false);
-        doc.save_with_options(&req.output, opts)
+        dst.save_with_options(&req.output, opts)
             .map_err(|e| CoreError::MuPdf(e.to_string()))?;
-        // delete_page で /Info が消えた場合に備えてメタデータを書き戻す
+
+        // graft では /Info 等のメタデータが引き継がれないため書き戻す
         let metadata = crate::compress::collect_metadata(&req.input);
         crate::compress::copy_metadata_after_write(&req.output, &metadata);
     } else {
-        // ページ数変わらず: インクリメンタル保存で /Info 完全保持
+        // ── ページ数変わらず: インクリメンタル保存で /Info 完全保持 ────────────
+        let mut opts = PdfWriteOptions::default();
         opts.set_incremental(true)
             .set_compress(true)
             .set_garbage_level(0)
