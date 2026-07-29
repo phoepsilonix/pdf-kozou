@@ -659,8 +659,14 @@ pub fn recompress_images(
         }
         let needed_w = ((disp_w_pt / 72.0) * target_dpi).ceil().max(1.0) as i64;
         let needed_h = ((disp_h_pt / 72.0) * target_dpi).ceil().max(1.0) as i64;
-        let tw = needed_w.clamp(8, native_w) as u32;
-        let th = needed_h.clamp(8, native_h) as u32;
+        // 下限 8px を狙うが、ネイティブ解像度がそれより小さい場合は
+        // native_w/h 自体を下限にする (visible_crop の 1x1 プレースホルダ等、
+        // native が 8px 未満のケースで clamp(8, native) が min>max になり
+        // panic するのを防ぐ)。
+        let floor_w = 8i64.min(native_w.max(1));
+        let floor_h = 8i64.min(native_h.max(1));
+        let tw = needed_w.clamp(floor_w, native_w.max(1)) as u32;
+        let th = needed_h.clamp(floor_h, native_h.max(1)) as u32;
 
         if kind.is_raw() {
             // Flate等の生ビットマップは元々ほぼ無圧縮なので、ダウンサンプルが
