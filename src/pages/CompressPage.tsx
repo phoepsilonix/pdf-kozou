@@ -175,6 +175,8 @@ export function CompressPage({
     setImageDpi,
     imageJpegQuality,
     setImageJpegQuality,
+    cropToVisibleImageArea,
+    setCropToVisibleImageArea,
   } = usePdfStore();
   const redactMarginOpts = useMemo(
     () =>
@@ -462,6 +464,7 @@ export function CompressPage({
           ...redactMarginOpts,
           image_dpi: imageRecompress ? imageDpi : undefined,
           image_jpeg_quality: imageRecompress ? imageJpegQuality : undefined,
+          crop_to_visible_image_area: cropToVisibleImageArea || undefined,
           layout_w: convertLayoutW,
           layout_h: convertLayoutH,
           layout_em: convertLayoutEm,
@@ -505,6 +508,7 @@ export function CompressPage({
     redactMarginOpts,
     imageDpi,
     imageJpegQuality,
+    cropToVisibleImageArea,
     pdfInfo,
     setError,
   ]);
@@ -591,6 +595,7 @@ export function CompressPage({
             ...redactMarginOpts,
             image_dpi: imageRecompress ? imageDpi : undefined,
             image_jpeg_quality: imageRecompress ? imageJpegQuality : undefined,
+            crop_to_visible_image_area: cropToVisibleImageArea || undefined,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -624,6 +629,7 @@ export function CompressPage({
     redactMarginOpts,
     imageDpi,
     imageJpegQuality,
+    cropToVisibleImageArea,
     pickSave,
     commitSave,
     setError,
@@ -708,6 +714,7 @@ export function CompressPage({
             ...redactMarginOpts,
             image_dpi: imageRecompress ? imageDpi : undefined,
             image_jpeg_quality: imageRecompress ? imageJpegQuality : undefined,
+            crop_to_visible_image_area: cropToVisibleImageArea || undefined,
             layout_w: convertLayoutW,
             layout_h: convertLayoutH,
             layout_em: convertLayoutEm,
@@ -756,6 +763,7 @@ export function CompressPage({
     redactMarginOpts,
     imageDpi,
     imageJpegQuality,
+    cropToVisibleImageArea,
     outDir,
     pickDir,
     ensureAndroidFolder,
@@ -1429,6 +1437,18 @@ export function CompressPage({
               <span style={c.optHint}>
                 {imageRecompress ? t("compress.image_dpi_on") : t("compress.image_dpi_off")}
               </span>
+            </div>
+            <div style={c.optRow}>
+              <label style={c.optLabel}>
+                <input
+                  type="checkbox"
+                  checked={cropToVisibleImageArea}
+                  onChange={(e) => setCropToVisibleImageArea(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                {t("compress.crop_to_visible_label")}
+              </label>
+              <span style={c.optHint}>{t("compress.crop_to_visible_hint")}</span>
             </div>
             {imageRecompress && (
               <div style={c.optRow}>

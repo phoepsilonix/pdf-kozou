@@ -1079,6 +1079,8 @@ export interface CompressRequest {
   image_dpi?: number;
   /** image_dpi 指定時の JPEG 品質 (1-100、デフォルト 85) */
   image_jpeg_quality?: number;
+  /** 埋め込み画像を実際に表示されている範囲だけに切り詰める (image_dpi と独立に単体でも動作する) */
+  crop_to_visible_image_area?: boolean;
   /** リフロー文書変換レイアウト幅 (pt) */
   layout_w?: number;
   /** リフロー文書変換レイアウト高さ (pt) */

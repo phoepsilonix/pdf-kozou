@@ -527,6 +527,8 @@
     "image_dpi_off": "無効 (画像は既存の設定のまま圧縮)",
     "image_dpi_value_label": "目標DPI",
     "image_jpeg_quality_label": "JPEG品質",
+    "crop_to_visible_label": "埋め込み画像を実際に表示されている範囲だけに切り詰める",
+    "crop_to_visible_hint": "クリップやフォームのBBoxで一部(または全部)しか表示されていない画像の、見えない部分のピクセルを削除します",
     "images_recompressed": "再圧縮した画像枚数",
     "gs_info_title": "Ghostscript プロモードについて",
     "gs_info_1": "• 外部プログラムのGhostScriptを呼び出して、高度な再構築を行います。",

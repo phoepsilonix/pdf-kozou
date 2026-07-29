@@ -57,6 +57,9 @@ interface PdfStore {
   /** image_dpi 有効時の JPEG 品質 (1-100) */
   imageJpegQuality: number;
   setImageJpegQuality: (v: number) => void;
+  /** 埋め込み画像を実際に表示されている範囲だけに切り詰める */
+  cropToVisibleImageArea: boolean;
+  setCropToVisibleImageArea: (v: boolean) => void;
 
   // --- GS管理 ---
   gsAvailable: boolean;
@@ -190,6 +193,8 @@ export const usePdfStore = create<PdfStore>()(
       setImageDpi: (v) => set({ imageDpi: v }),
       imageJpegQuality: 85,
       setImageJpegQuality: (v) => set({ imageJpegQuality: v }),
+      cropToVisibleImageArea: false,
+      setCropToVisibleImageArea: (v) => set({ cropToVisibleImageArea: v }),
 
       // GS初期化
       gsAvailable: false,
