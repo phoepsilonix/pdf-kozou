@@ -370,8 +370,7 @@ pub(crate) fn classify_source(doc: &Document, dict: &Dictionary) -> Option<Sourc
         Ok(Object::Array(arr)) => {
             // [/FlateDecode /DCTDecode] のみ対応 (Flate展開後がJPEGバイト列になる形)。
             // それ以外の配列 (ASCII85+LZW 等) は非対応。
-            let names: Option<Vec<&[u8]>> =
-                arr.iter().map(|o| o.as_name().ok()).collect();
+            let names: Option<Vec<&[u8]>> = arr.iter().map(|o| o.as_name().ok()).collect();
             return match names.as_deref() {
                 Some([b"FlateDecode", b"DCTDecode"]) => Some(SourceKind::DctFlateWrapped),
                 _ => None,

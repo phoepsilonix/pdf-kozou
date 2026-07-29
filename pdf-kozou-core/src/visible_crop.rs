@@ -29,7 +29,7 @@
 //      クリップパスは無視する = クリップを狭めないだけで、見えている
 //      部分を誤って切り落とすことはない。
 
-use crate::image_recompress::{classify_source, image_native_size, SourceKind};
+use crate::image_recompress::{SourceKind, classify_source, image_native_size};
 use lopdf::content::{Content, Operation};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::{HashMap, HashSet};
@@ -62,7 +62,14 @@ struct Matrix {
 }
 
 impl Matrix {
-    const IDENTITY: Matrix = Matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 };
+    const IDENTITY: Matrix = Matrix {
+        a: 1.0,
+        b: 0.0,
+        c: 0.0,
+        d: 1.0,
+        e: 0.0,
+        f: 0.0,
+    };
 
     fn concat(&self, other: &Matrix) -> Matrix {
         Matrix {
@@ -76,7 +83,10 @@ impl Matrix {
     }
 
     fn transform_point(&self, x: f32, y: f32) -> (f32, f32) {
-        (self.a * x + self.c * y + self.e, self.b * x + self.d * y + self.f)
+        (
+            self.a * x + self.c * y + self.e,
+            self.b * x + self.d * y + self.f,
+        )
     }
 
     fn unit_square_rect(&self) -> Rect {
@@ -241,8 +251,10 @@ fn walk(
     let mut path_ops: u32 = 0;
     let mut path_rect: Option<Rect> = None;
 
-    let xobject_dict: Option<Dictionary> =
-        resources.get(b"XObject").ok().and_then(|o| resolve_dict(doc, o));
+    let xobject_dict: Option<Dictionary> = resources
+        .get(b"XObject")
+        .ok()
+        .and_then(|o| resolve_dict(doc, o));
 
     for (op_index, op) in content.operations.iter().enumerate() {
         match op.operator.as_str() {
@@ -305,11 +317,21 @@ fn walk(
                     Object::Name(n) => n.clone(),
                     _ => continue,
                 };
-                let Some(xobj_dict) = &xobject_dict else { continue };
-                let Ok(entry) = xobj_dict.get(&name) else { continue };
-                let Object::Reference(xref) = entry else { continue };
-                let Ok(xobj) = doc.get_object(*xref) else { continue };
-                let Some(xobj_dict_inner) = as_dict_any(xobj) else { continue };
+                let Some(xobj_dict) = &xobject_dict else {
+                    continue;
+                };
+                let Ok(entry) = xobj_dict.get(&name) else {
+                    continue;
+                };
+                let Object::Reference(xref) = entry else {
+                    continue;
+                };
+                let Ok(xobj) = doc.get_object(*xref) else {
+                    continue;
+                };
+                let Some(xobj_dict_inner) = as_dict_any(xobj) else {
+                    continue;
+                };
                 let subtype = xobj_dict_inner
                     .get(b"Subtype")
                     .ok()
@@ -428,11 +450,15 @@ fn walk(
 fn analyze(doc: &Document) -> CropAnalysis {
     let mut analysis = CropAnalysis::default();
     for page_id in doc.page_iter() {
-        let Some(resources) = resolve_resources(doc, page_id) else { continue };
+        let Some(resources) = resolve_resources(doc, page_id) else {
+            continue;
+        };
         let Ok(page_dict) = doc.get_object(page_id).and_then(|o| o.as_dict().cloned()) else {
             continue;
         };
-        let Ok(contents) = page_dict.get(b"Contents") else { continue };
+        let Ok(contents) = page_dict.get(b"Contents") else {
+            continue;
+        };
 
         let mut visiting = HashSet::new();
         let mut walk_one = |id: ObjectId| {
@@ -473,8 +499,8 @@ fn analyze(doc: &Document) -> CropAnalysis {
 /// stream_bytes()/decompressed_content() 呼び出し経路によっては扱いが
 /// 分かれてしまう。ここでは常に Filter=FlateDecode を設定して統一する。
 fn set_flate_content(stream: &mut lopdf::Stream, bytes: Vec<u8>) {
-    use flate2::write::ZlibEncoder;
     use flate2::Compression;
+    use flate2::write::ZlibEncoder;
     use std::io::Write;
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
     let compressed = match encoder.write_all(&bytes).and_then(|_| encoder.finish()) {
@@ -487,12 +513,19 @@ fn set_flate_content(stream: &mut lopdf::Stream, bytes: Vec<u8>) {
         }
     };
     stream.set_plain_content(compressed);
-    stream.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+    stream
+        .dict
+        .set("Filter", Object::Name(b"FlateDecode".to_vec()));
 }
 
 /// 画像 xref のピクセルデータを uv (ローカル UV [0,1]^2) の範囲だけに
 /// 切り出す。対応フォーマットは image_recompress::classify_source と同じ。
-fn crop_image_pixels(doc: &mut Document, xref: ObjectId, uv: Rect, jpeg_quality: u8) -> Result<(), String> {
+fn crop_image_pixels(
+    doc: &mut Document,
+    xref: ObjectId,
+    uv: Rect,
+    jpeg_quality: u8,
+) -> Result<(), String> {
     use image::codecs::jpeg::JpegEncoder;
     use image::{ColorType, GenericImageView, ImageEncoder};
 
@@ -606,7 +639,8 @@ fn crop_image_pixels(doc: &mut Document, xref: ObjectId, uv: Rect, jpeg_quality:
                 _ => unreachable!(),
             };
             let row_stride = (native_w * components) as usize;
-            let mut cropped_bytes = Vec::with_capacity((new_w as i64 * components) as usize * new_h as usize);
+            let mut cropped_bytes =
+                Vec::with_capacity((new_w as i64 * components) as usize * new_h as usize);
             for row in row0..row1 {
                 let row_start = row as usize * row_stride + (col0 * components) as usize;
                 let row_len = (new_w as i64 * components) as usize;
@@ -650,7 +684,8 @@ fn insert_compensating_cm(
             let content =
                 Content::decode(&bytes).map_err(|e| format!("stream {stream_id:?} decode: {e}"))?;
 
-            let mut new_ops: Vec<Operation> = Vec::with_capacity(content.operations.len() + targets.len());
+            let mut new_ops: Vec<Operation> =
+                Vec::with_capacity(content.operations.len() + targets.len());
             for (i, op) in content.operations.iter().enumerate() {
                 if let Some(s) = targets.get(&i) {
                     new_ops.push(Operation::new(
@@ -667,7 +702,9 @@ fn insert_compensating_cm(
                 }
                 new_ops.push(op.clone());
             }
-            let new_content = Content { operations: new_ops };
+            let new_content = Content {
+                operations: new_ops,
+            };
             let encoded = new_content
                 .encode()
                 .map_err(|e| format!("stream {stream_id:?} encode: {e}"))?;
@@ -675,7 +712,9 @@ fn insert_compensating_cm(
             Ok(())
         })();
         if let Err(e) = result {
-            eprintln!("[visible_crop] cm insert failed for stream {stream_id:?}: {e} (image left uncropped-consistent state may be broken; consider skipping crop for its images)");
+            eprintln!(
+                "[visible_crop] cm insert failed for stream {stream_id:?}: {e} (image left uncropped-consistent state may be broken; consider skipping crop for its images)"
+            );
         }
     }
 }
@@ -756,7 +795,10 @@ pub fn crop_to_visible_area(doc: &mut Document, jpeg_quality: u8) -> VisibleCrop
                 };
                 if let Some(sites) = analysis.do_sites.get(xref) {
                     for (stream_id, op_index) in sites {
-                        by_stream.entry(*stream_id).or_default().insert(*op_index, s);
+                        by_stream
+                            .entry(*stream_id)
+                            .or_default()
+                            .insert(*op_index, s);
                     }
                 }
             }
