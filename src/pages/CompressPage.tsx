@@ -789,7 +789,7 @@ export function CompressPage({
   if (phase === "processing" && !isBatch) {
     return (
       <div style={c.center}>
-        <Spinner label={t("compress.processing")} />;
+        <Spinner label={t("compress.processing")} />
       </div>
     );
   }
@@ -806,7 +806,7 @@ export function CompressPage({
           <div style={{ ...c.bpBar, width: `${(batchProg.cur / batchProg.total) * 100}%` }} />
         </div>
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
-        <Spinner label={t("compress.processing")} />;
+        <Spinner label={t("compress.processing")} />
         <div style={c.bpLog}>
           {batchProg.done.map((d, i) => (
             <div key={i} style={c.bpRow}>
