@@ -109,17 +109,16 @@ pub async fn run_gs_optimize(
     // その他の環境変数はそのまま継承（ユーザーのカスタマイズを尊重）
     // args をそのまま渡す
 
+    // GSがそのまま処理できないカラープロファイルの形式の場合、GS標準のカラー
+    // プロファイルに置き換えることで、エラーを回避する。
+    // GSがそのまま扱えるタイプの場合、そのカラープロファイルは継承される。
+    //
     // Ghostscript のバージョンによっては (ユーザー環境の GS 10.07.1 で確認)、
     // 元PDFに埋め込まれたICCプロファイルが何らかの理由で不正/非標準な形式に
     // なっていると、-dColorConversionStrategy(ForImages)=/LeaveColorUnchanged
     // を指定していても、書き出し時にICCプロファイルが壊れた(空の)ストリーム
     // になってしまう。
     //
-    // 対策として、まず装飾的なカラー変換オプションを一切指定しない最小限の
-    // pdfwrite 書き出しを一度行うと、GS がこの過程で不正なICCプロファイルを
-    // 修復する("Invalid ICC colour profile, ... using /N to select a device
-    // space" という警告が出ることがある)。その「矯正済み」の一時ファイルに
-    // 対して、本来のフォント埋め込み・カラー保持オプション一式を適用する
     // 2段階処理にすることで、-dOverrideICC=true のように元のICCプロファイル
     // 自体を捨てることなく回避できる。
     let normalize_tmp = format!("{output}.gsnorm.tmp.pdf");
@@ -137,6 +136,14 @@ pub async fn run_gs_optimize(
         normalize_cmd.args([
             "-sDEVICE=pdfwrite",
             "-dCompatibilityLevel=1.4",
+            &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
+            "-dKeepInfo=true",
+            "-dKeepNumberedPages=true",
+            "-dEmbedAllFonts=true",
+            "-dSubsetFonts=true",
+            "-dColorConversionStrategy=/LeaveColorUnchanged",
+            "-dColorConversionStrategyForImages=/LeaveColorUnchanged",
+            "-dAutoRotatePages=/None",
             "-dNOPAUSE",
             "-dBATCH",
             &format!("-sOutputFile={}", &normalize_tmp),
@@ -163,10 +170,10 @@ pub async fn run_gs_optimize(
 
     cmd.args([
         "-sDEVICE=pdfwrite",
-        "-dCompatibilityLevel=1.5",
+        "-dCompatibilityLevel=1.4",
         &format!("-dPDFSETTINGS={}", level.as_gs_setting()),
-        "-dNOPAUSE",
-        "-dBATCH",
+        "-dKeepInfo=true",
+        "-dKeepNumberedPages=true",
         "-dEmbedAllFonts=true",
         "-dSubsetFonts=true",
         "-dColorConversionStrategy=/LeaveColorUnchanged",
@@ -177,6 +184,8 @@ pub async fn run_gs_optimize(
         // (Length=0)、閲覧環境によって色味がずれることがある。
         "-dColorConversionStrategyForImages=/LeaveColorUnchanged",
         "-dAutoRotatePages=/None",
+        "-dNOPAUSE",
+        "-dBATCH",
         &format!("-sOutputFile={}", &output),
         &normalize_tmp,
     ]);
