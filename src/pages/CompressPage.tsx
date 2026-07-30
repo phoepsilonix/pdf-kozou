@@ -14,7 +14,6 @@ import { useSaveDialog } from "../hooks/useSaveDialog";
 import { usePdfStore } from "../store/usePdfStore";
 import {
   compressPdf,
-  getTmpPath,
   getUniqueTempPath,
   moveFile,
   renderPage,
@@ -419,7 +418,7 @@ export function CompressPage({
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
     try {
-      const tmp = await getTmpPath("kozou_compress_preview.pdf");
+      const tmp = await getUniqueTempPath("kozou_compress_preview", "pdf");
       // 圧縮後サイズ ÷ 元サイズ（残存率）。読み上げ・表示はこの確定値を使う。
       // ※ React の result(state) は setResult 直後はまだ更新されておらず stale な
       //   ため、ここで参照すると初回は null→100% を読み上げてしまう。必ず今回の
@@ -518,8 +517,8 @@ export function CompressPage({
     if (!tmpFile) return;
 
     try {
-      // kozou_compress_preview.pdf は次回のプレビューで上書きされるため、
-      // 連携用に(衝突しない)一意なファイルへ一度退避させる
+      // tmpFile は次回のプレビューで別ファイルに差し替わる(state更新)ため、
+      // 連携用に現在のプレビュー結果を一意なファイルへ複製して確保しておく
       const chainedPath = await getUniqueTempPath("chained_step", "pdf");
       await invoke("copy_file", { src: tmpFile, dst: chainedPath });
 
