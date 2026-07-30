@@ -61,7 +61,9 @@ impl GsCompressionLevel {
 }
 
 /// Ghostscriptを使用してPDFを再構築・圧縮する
-/// gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dEmbedAllFonts=true -dSubsetFonts=true -dColorConversionStrategy=/LeaveColorUnchanged -dColorConversionStrategyForImages=/LeaveColorUnchanged -dOverrideICC=true -dNOPAUSE -dBATCH
+/// Ghostscript 2段階実行:
+///   1回目 (正規化): gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dBATCH -sOutputFile=<一時ファイル> <input>
+///   2回目 (本圧縮): gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dEmbedAllFonts=true -dSubsetFonts=true -dColorConversionStrategy=/LeaveColorUnchanged -dColorConversionStrategyForImages=/LeaveColorUnchanged -dNOPAUSE -dBATCH -sOutputFile=<output> <一時ファイル>
 
 #[tauri::command]
 pub async fn run_gs_optimize(
@@ -107,6 +109,58 @@ pub async fn run_gs_optimize(
     // その他の環境変数はそのまま継承（ユーザーのカスタマイズを尊重）
     // args をそのまま渡す
 
+    // Ghostscript のバージョンによっては (ユーザー環境の GS 10.07.1 で確認)、
+    // 元PDFに埋め込まれたICCプロファイルが何らかの理由で不正/非標準な形式に
+    // なっていると、-dColorConversionStrategy(ForImages)=/LeaveColorUnchanged
+    // を指定していても、書き出し時にICCプロファイルが壊れた(空の)ストリーム
+    // になってしまう。
+    //
+    // 対策として、まず装飾的なカラー変換オプションを一切指定しない最小限の
+    // pdfwrite 書き出しを一度行うと、GS がこの過程で不正なICCプロファイルを
+    // 修復する("Invalid ICC colour profile, ... using /N to select a device
+    // space" という警告が出ることがある)。その「矯正済み」の一時ファイルに
+    // 対して、本来のフォント埋め込み・カラー保持オプション一式を適用する
+    // 2段階処理にすることで、-dOverrideICC=true のように元のICCプロファイル
+    // 自体を捨てることなく回避できる。
+    let normalize_tmp = format!("{output}.gsnorm.tmp.pdf");
+    {
+        let mut normalize_cmd = std::process::Command::new(&gs_path);
+        #[cfg(target_os = "linux")]
+        {
+            let filtered = get_filtered_ld_path();
+            if filtered.is_empty() {
+                normalize_cmd.env_remove("LD_LIBRARY_PATH");
+            } else {
+                normalize_cmd.env("LD_LIBRARY_PATH", filtered);
+            }
+        }
+        normalize_cmd.args([
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.4",
+            "-dNOPAUSE",
+            "-dBATCH",
+            &format!("-sOutputFile={}", &normalize_tmp),
+            &input,
+        ]);
+        normalize_cmd
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            normalize_cmd.creation_flags(0x08000000);
+        }
+        let normalize_out = normalize_cmd
+            .output()
+            .map_err(|e| format!("GS(正規化パス) 起動失敗: {e}"))?;
+        if !normalize_out.status.success() || !std::path::Path::new(&normalize_tmp).exists() {
+            let stderr = String::from_utf8_lossy(&normalize_out.stderr).to_string();
+            let stdout = String::from_utf8_lossy(&normalize_out.stdout).to_string();
+            let detail = if !stderr.is_empty() { &stderr } else { &stdout };
+            return Err(format!("GS(正規化パス)エラー:\n{detail}"));
+        }
+    }
+
     cmd.args([
         "-sDEVICE=pdfwrite",
         "-dCompatibilityLevel=1.5",
@@ -122,20 +176,9 @@ pub async fn run_gs_optimize(
         // 揃えないと、画像のICCプロファイルが空ストリームに壊されて
         // (Length=0)、閲覧環境によって色味がずれることがある。
         "-dColorConversionStrategyForImages=/LeaveColorUnchanged",
-        // Ghostscript のバージョンによっては、上記2つの LeaveColorUnchanged
-        // を指定していても、画像に埋め込まれた ICC プロファイルが
-        // 壊れた(空の)ストリームとして出力されてしまう既知の不具合がある
-        // (ユーザー環境の GS 10.07.1 で確認・再現。CompatibilityLevel や
-        // PDFSETTINGS のプリセットを変えても解消しなかった)。
-        // -dOverrideICC=true を指定すると、画像の色空間を ICCBased ではなく
-        // 単純な DeviceRGB/DeviceGray として書き出すようになり、
-        // 壊れたICCプロファイルが埋め込まれること自体を回避できる
-        // (元のICCプロファイルが表す厳密な色域情報は失われるが、
-        //  空/破損したICCプロファイルで表示が乱れるよりも安全側)。
-        "-dOverrideICC=true",
         "-dAutoRotatePages=/None",
         &format!("-sOutputFile={}", &output),
-        &input,
+        &normalize_tmp,
     ]);
 
     // stdin/stdout/stderr をすべて明示する
@@ -151,6 +194,9 @@ pub async fn run_gs_optimize(
     }
 
     let out = cmd.output().map_err(|e| format!("GS 起動失敗: {e}"))?;
+
+    // 正規化パスの一時ファイルは成功・失敗どちらでも掃除する
+    let _ = std::fs::remove_file(&normalize_tmp);
 
     if out.status.success() {
         // 出力ファイルの存在確認
