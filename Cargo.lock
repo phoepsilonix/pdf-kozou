@@ -3319,7 +3319,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou"
-version = "1.8.6"
+version = "1.8.7"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3341,6 +3341,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
@@ -3351,7 +3352,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou-core"
-version = "1.8.6"
+version = "1.8.7"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
