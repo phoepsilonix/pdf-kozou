@@ -61,7 +61,7 @@ impl GsCompressionLevel {
 }
 
 /// Ghostscriptを使用してPDFを再構築・圧縮する
-/// gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dEmbedAllFonts=true -dSubsetFonts=true -dColorConversionStrategy=/LeaveColorUnchanged -dColorConversionStrategyForImages=/LeaveColorUnchanged -dNOPAUSE -dBATCH
+/// gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dEmbedAllFonts=true -dSubsetFonts=true -dColorConversionStrategy=/LeaveColorUnchanged -dColorConversionStrategyForImages=/LeaveColorUnchanged -dOverrideICC=true -dNOPAUSE -dBATCH
 
 #[tauri::command]
 pub async fn run_gs_optimize(
@@ -122,6 +122,17 @@ pub async fn run_gs_optimize(
         // 揃えないと、画像のICCプロファイルが空ストリームに壊されて
         // (Length=0)、閲覧環境によって色味がずれることがある。
         "-dColorConversionStrategyForImages=/LeaveColorUnchanged",
+        // Ghostscript のバージョンによっては、上記2つの LeaveColorUnchanged
+        // を指定していても、画像に埋め込まれた ICC プロファイルが
+        // 壊れた(空の)ストリームとして出力されてしまう既知の不具合がある
+        // (ユーザー環境の GS 10.07.1 で確認・再現。CompatibilityLevel や
+        // PDFSETTINGS のプリセットを変えても解消しなかった)。
+        // -dOverrideICC=true を指定すると、画像の色空間を ICCBased ではなく
+        // 単純な DeviceRGB/DeviceGray として書き出すようになり、
+        // 壊れたICCプロファイルが埋め込まれること自体を回避できる
+        // (元のICCプロファイルが表す厳密な色域情報は失われるが、
+        //  空/破損したICCプロファイルで表示が乱れるよりも安全側)。
+        "-dOverrideICC=true",
         "-dAutoRotatePages=/None",
         &format!("-sOutputFile={}", &output),
         &input,
