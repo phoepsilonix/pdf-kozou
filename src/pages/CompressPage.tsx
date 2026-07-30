@@ -1428,6 +1428,18 @@ export function CompressPage({
               <label style={c.optLabel}>
                 <input
                   type="checkbox"
+                  checked={cropToVisibleImageArea}
+                  onChange={(e) => setCropToVisibleImageArea(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                {t("compress.crop_to_visible_label")}
+              </label>
+              <span style={c.optHint}>{t("compress.crop_to_visible_hint")}</span>
+            </div>
+            <div style={c.optRow}>
+              <label style={c.optLabel}>
+                <input
+                  type="checkbox"
                   checked={imageRecompress}
                   onChange={(e) => setImageRecompress(e.target.checked)}
                   style={{ marginRight: 6 }}
@@ -1437,18 +1449,6 @@ export function CompressPage({
               <span style={c.optHint}>
                 {imageRecompress ? t("compress.image_dpi_on") : t("compress.image_dpi_off")}
               </span>
-            </div>
-            <div style={c.optRow}>
-              <label style={c.optLabel}>
-                <input
-                  type="checkbox"
-                  checked={cropToVisibleImageArea}
-                  onChange={(e) => setCropToVisibleImageArea(e.target.checked)}
-                  style={{ marginRight: 6 }}
-                />
-                {t("compress.crop_to_visible_label")}
-              </label>
-              <span style={c.optHint}>{t("compress.crop_to_visible_hint")}</span>
             </div>
             {imageRecompress && (
               <div style={c.optRow}>
