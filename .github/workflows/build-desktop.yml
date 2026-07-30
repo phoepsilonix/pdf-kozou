@@ -34,7 +34,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Install system dependencies (GTK3 / WebKitGTK — NO portal)
         run: |
@@ -274,7 +274,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Install make
         run: |
@@ -467,7 +467,7 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -603,7 +603,7 @@ jobs:
     if: ${{ github.event.inputs.skip_android != 'true' }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Install system dependencies
         run: |
@@ -744,7 +744,7 @@ jobs:
     if: ${{ github.event.inputs.skip_ios != 'true' }}
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Install Rust toolchain (iOS targets)
         uses: dtolnay/rust-toolchain@stable
