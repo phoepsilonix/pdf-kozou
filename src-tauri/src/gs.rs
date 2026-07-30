@@ -121,7 +121,12 @@ pub async fn run_gs_optimize(
     //
     // 2段階処理にすることで、-dOverrideICC=true のように元のICCプロファイル
     // 自体を捨てることなく回避できる。
-    let normalize_tmp = format!("{output}.gsnorm.tmp.pdf");
+    let normalize_tmp = crate::tempdir::kozou_temp_path(&format!(
+        "gsnorm_{}.pdf",
+        uuid::Uuid::new_v4()
+    ))
+    .to_string_lossy()
+    .to_string();
     {
         let mut normalize_cmd = std::process::Command::new(&gs_path);
         #[cfg(target_os = "linux")]

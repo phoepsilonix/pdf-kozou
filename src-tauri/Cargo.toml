@@ -51,6 +51,9 @@ which = "8"
 # 元のファイル名(拡張子込み)を復元するために使用 (percent-decode)。
 percent-encoding = "2"
 
+# 一時ファイル名の衝突回避 (gs.rs の2段階実行での中間ファイル名など)
+uuid = { version = "1", features = ["v4"] }
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56.0"
 
