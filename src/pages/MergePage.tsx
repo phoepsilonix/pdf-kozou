@@ -26,7 +26,7 @@ import {
   mergePdf,
   renderPage,
   getPdfInfo,
-  getTempPath,
+  getUniqueTempPath,
   type MergeResponse,
   type PdfInfo,
 } from "../lib/tauri";
@@ -394,7 +394,7 @@ useEffect(() => {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
     try {
-      const tmp = await getTempPath("kozou_merge_tmp.pdf");
+      const tmp = await getUniqueTempPath("kozou_merge_tmp", "pdf");
       const psize = resolvePageSizePt(pageSizeId, pageOrientation);
       const res = await mergePdf(
         entries.map((e) => e.path),

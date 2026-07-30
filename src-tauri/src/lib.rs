@@ -84,6 +84,7 @@ pub fn run() {
             core::export_images,
             core::export_image_pdf,
             core::get_temp_path,
+            core::get_unique_temp_path,
             core::move_file,
             core::copy_file,
             core::remove_file,

@@ -54,6 +54,19 @@ pub fn kozou_temp_path(name: &str) -> PathBuf {
     kozou_temp_dir().join(name)
 }
 
+/// UUID (v4) を付与し、ファイル名衝突を避けた一時ファイルパスを返す。
+/// 生成されるファイル名は `{prefix}_{uuid}.{ext}` の形式。
+///
+/// 同名の固定ファイル名で一時ファイルを作ると、複数ウィンドウ/複数プロセス
+/// を同時に開いている場合や、バッチ処理中に前回分の後始末が終わる前に次の
+/// 処理が走った場合などに、書き込み中のファイルを別の処理が上書き/読み込み
+/// してしまう衝突が起こり得る。新規に一時ファイルを作る箇所では、（同一
+/// セッション内で意図的に使い回す作業用スロットのような場合を除き）基本的
+/// にこちらを使う。
+pub fn kozou_temp_unique_path(prefix: &str, ext: &str) -> PathBuf {
+    kozou_temp_path(&format!("{prefix}_{}.{ext}", uuid::Uuid::new_v4()))
+}
+
 /// アプリ終了時クリーンアップ: pdf-kozou フォルダをまるごと削除。
 /// エラーは無視 (best-effort)。
 pub fn cleanup_kozou_temp() {

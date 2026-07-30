@@ -15,6 +15,7 @@ import { usePdfStore } from "../store/usePdfStore";
 import {
   compressPdf,
   getTmpPath,
+  getUniqueTempPath,
   moveFile,
   renderPage,
   type CompressPreset,
@@ -518,8 +519,8 @@ export function CompressPage({
 
     try {
       // kozou_compress_preview.pdf は次回のプレビューで上書きされるため、
-      // 連携用の固定名か、タイムスタンプ付きのファイルに一度退避させる
-      const chainedPath = await getTmpPath(`chained_step_${Date.now()}.pdf`);
+      // 連携用に(衝突しない)一意なファイルへ一度退避させる
+      const chainedPath = await getUniqueTempPath("chained_step", "pdf");
       await invoke("copy_file", { src: tmpFile, dst: chainedPath });
 
       // 連携ファイルのパスを記録（リセット時に削除するため）

@@ -13,7 +13,7 @@ import {
   rotatePdf,
   getPdfInfo,
   moveFile,
-  getTempPath,
+  getUniqueTempPath,
   commitSavedFile,
   type PdfInfo,
   type PickedFolder,
@@ -333,8 +333,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         .split(/[/\\]/)
         .pop()
         ?.replace(/\.[^/.]+$/, "") ?? "file";
-    const saveTo = await getTempPath(`${base}_rotated_tmp.pdf`).catch(
-      () => `/tmp/${base}_rotated_tmp.pdf`,
+    const saveTo = await getUniqueTempPath(`${base}_rotated_tmp`, "pdf").catch(
+      () => `/tmp/${base}_rotated_tmp_${Date.now()}.pdf`,
     );
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));

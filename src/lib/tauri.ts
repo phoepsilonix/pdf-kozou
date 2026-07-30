@@ -1301,6 +1301,18 @@ export async function getTempPath(name: string): Promise<string> {
   return invoke<string>("get_temp_path", { name });
 }
 
+/**
+ * UUIDを付与した衝突しない一時ファイルパスを返す (`{prefix}_{uuid}.{ext}`)。
+ * 固定名だと複数ウィンドウ/バッチ処理間で書き込み中のファイルが衝突しうる
+ * 箇所ではこちらを使う。
+ */
+export async function getUniqueTempPath(
+  prefix: string,
+  ext: string,
+): Promise<string> {
+  return invoke<string>("get_unique_temp_path", { prefix, ext });
+}
+
 export type GsLevel = "prepress" | "printer" | "ebook";
 
 export async function checkGsInstalled(): Promise<boolean> {

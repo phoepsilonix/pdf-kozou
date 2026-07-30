@@ -17,7 +17,7 @@ import { resolvePageSizePt } from "../lib/pageSize";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { Spinner, BtnPrimary } from "../components/common";
 import {
-  getTempPath,
+  getUniqueTempPath,
   renderPage,
   moveFile,
   trimPdf,
@@ -347,7 +347,9 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           );
           const psize = resolvePageSizePt(pageSizeId, pageOrientation);
           const needFit = hasImage([f.filename]) && psize != null;
-          const trimOut = needFit ? await getTempPath("trimmed_natural_batch_tmp.pdf") : out;
+          const trimOut = needFit
+            ? await getUniqueTempPath("trimmed_natural_batch_tmp", "pdf")
+            : out;
           const res = await trimPdf(
             f.path,
             trimOut,
@@ -1101,7 +1103,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     await new Promise((resolve) => setTimeout(resolve, 0));
     setResultImgs([]);
     try {
-      const tmpPath = await getTempPath("trimmed_tmp.pdf");
+      const tmpPath = await getUniqueTempPath("trimmed_tmp", "pdf");
       setOutTmp(tmpPath);
 
       console.log(
@@ -1117,7 +1119,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       // 画像入力 + ページサイズ指定時は「自然サイズでトリム → 結果を目標サイズへフィット」。
       // マージンは自然サイズ基準のまま使えるので座標の割合再計算が不要。
       const needFit = hasImage([filePath]) && psize != null;
-      const trimOut = needFit ? await getTempPath("trimmed_natural_tmp.pdf") : tmpPath;
+      const trimOut = needFit
+        ? await getUniqueTempPath("trimmed_natural_tmp", "pdf")
+        : tmpPath;
       const res = await trimPdf(
         filePath,
         trimOut,

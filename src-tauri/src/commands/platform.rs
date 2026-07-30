@@ -310,7 +310,20 @@ pub async fn begin_folder_save(
             .map(tauri_plugin_fs::FilePath::Url)
             .map_err(|e| format!("保存先URIの解析に失敗しました: {e}"))?;
 
-        let temp_path = crate::tempdir::kozou_temp_path(&file_name);
+        // file_name をそのまま一時ファイル名に使うと、同名ファイルを別々の
+        // フォルダへ同時に保存するケース(バッチ保存など)で一時パスが衝突し、
+        // PendingSaves のエントリや書き込み中の実体を取り違えてしまう恐れが
+        // あるため、UUIDで一意化する(拡張子・ベース名は識別しやすさのため
+        // prefixとして残す)。
+        let stem = std::path::Path::new(&file_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("saf_save");
+        let ext = std::path::Path::new(&file_name)
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("bin");
+        let temp_path = crate::tempdir::kozou_temp_unique_path(stem, ext);
         if let Some(pending) = app.try_state::<platform::PendingSaves>() {
             pending
                 .0

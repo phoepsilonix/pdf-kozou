@@ -728,6 +728,14 @@ pub async fn get_temp_path(name: String) -> Result<String> {
     Ok(path.display().to_string())
 }
 
+/// UUID付きの一意な一時ファイルパスを返す (`{prefix}_{uuid}.{ext}`)。
+/// 固定ファイル名だと複数ウィンドウ/バッチ処理間で衝突しうる箇所で使う。
+#[tauri::command]
+pub async fn get_unique_temp_path(prefix: String, ext: String) -> Result<String> {
+    let path = crate::tempdir::kozou_temp_unique_path(&prefix, &ext);
+    Ok(path.display().to_string())
+}
+
 /// ファイルを移動 (rename → 失敗なら copy + delete)
 #[tauri::command]
 pub async fn move_file(src: String, dst: String) -> Result<()> {
