@@ -1119,9 +1119,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       // 画像入力 + ページサイズ指定時は「自然サイズでトリム → 結果を目標サイズへフィット」。
       // マージンは自然サイズ基準のまま使えるので座標の割合再計算が不要。
       const needFit = hasImage([filePath]) && psize != null;
-      const trimOut = needFit
-        ? await getUniqueTempPath("trimmed_natural_tmp", "pdf")
-        : tmpPath;
+      const trimOut = needFit ? await getUniqueTempPath("trimmed_natural_tmp", "pdf") : tmpPath;
       const res = await trimPdf(
         filePath,
         trimOut,
