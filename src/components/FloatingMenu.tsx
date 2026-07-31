@@ -222,29 +222,31 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       ref={panelRef}
       {...{ [PANEL_MARKER]: true }}
       onKeyDown={handlePanelKeyDown}
-      style={{
-        position: "fixed",
-        top: pos.top,
-        right: pos.right,
-        zIndex: 1200,
-        maxWidth: "calc(100vw - 16px)",
-        // pos.maxHeight は実ビューポート px(ズーム前)で計算済み。zoom は
-        // 位置決定(top/right)には影響しないが、要素自身の高さは scale 倍に
-        // 描画されるため、先に scale で割って実際に画面へ収まるようにする。
-        maxHeight: pos.maxHeight / scale,
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        padding: 10,
-        borderRadius: 10,
-        border: "1px solid var(--c-border)",
-        background: "var(--c-bgCard)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
-        // #root と同じ CSS zoom を適用し、UI拡大率と見た目を連動させる。
-        // 型定義に zoom が無いため CSSProperties を拡張してキャストする。
-        zoom: scale,
-      } as React.CSSProperties & { zoom?: number | string }}
+      style={
+        {
+          position: "fixed",
+          top: pos.top,
+          right: pos.right,
+          zIndex: 1200,
+          maxWidth: "calc(100vw - 16px)",
+          // pos.maxHeight は実ビューポート px(ズーム前)で計算済み。zoom は
+          // 位置決定(top/right)には影響しないが、要素自身の高さは scale 倍に
+          // 描画されるため、先に scale で割って実際に画面へ収まるようにする。
+          maxHeight: pos.maxHeight / scale,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          padding: 10,
+          borderRadius: 10,
+          border: "1px solid var(--c-border)",
+          background: "var(--c-bgCard)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+          // #root と同じ CSS zoom を適用し、UI拡大率と見た目を連動させる。
+          // 型定義に zoom が無いため CSSProperties を拡張してキャストする。
+          zoom: scale,
+        } as React.CSSProperties & { zoom?: number | string }
+      }
     >
       {children}
     </div>,
