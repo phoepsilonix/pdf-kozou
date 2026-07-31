@@ -64,6 +64,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { getUiScale } from "../lib/uiScale";
 
 const PANEL_MARKER = "data-kozou-floating-menu";
 const FOCUSABLE_SELECTOR =
@@ -88,6 +89,12 @@ const MIN_PANEL_HEIGHT = 120;
 
 export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMenuProps) {
   const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
+  // #root 直下ではなく document.body 直下へ Portal するため、#root にかかる
+  // 表示スケール（CSS zoom, lib/uiScale.ts）の対象外になり、UI拡大率を
+  // 上げ下げしてもパネル自身の文字サイズ・余白だけ変わらず違和感があった。
+  // 位置計算は実ビューポート座標のまま(zoomはfixed要素の位置決定に影響しない)、
+  // パネル自身の描画にだけ同じ倍率を掛けて他のUIと見た目を揃える。
+  const [scale, setScale] = useState(() => getUiScale());
   const panelRef = useRef<HTMLDivElement>(null);
 
   // アンカーの実座標から配置・高さを計算する。
@@ -99,6 +106,7 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
     const update = () => {
       const el = anchorRef.current;
       if (!el) return;
+      setScale(getUiScale());
       const rect = el.getBoundingClientRect();
       const top = rect.bottom + GAP;
       // アンカー下端から画面下端までの実際に使える高さをそのまま使う
@@ -220,7 +228,10 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
         right: pos.right,
         zIndex: 1200,
         maxWidth: "calc(100vw - 16px)",
-        maxHeight: pos.maxHeight,
+        // pos.maxHeight は実ビューポート px(ズーム前)で計算済み。zoom は
+        // 位置決定(top/right)には影響しないが、要素自身の高さは scale 倍に
+        // 描画されるため、先に scale で割って実際に画面へ収まるようにする。
+        maxHeight: pos.maxHeight / scale,
         overflowY: "auto",
         display: "flex",
         flexDirection: "column",
@@ -230,7 +241,10 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
         border: "1px solid var(--c-border)",
         background: "var(--c-bgCard)",
         boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
-      }}
+        // #root と同じ CSS zoom を適用し、UI拡大率と見た目を連動させる。
+        // 型定義に zoom が無いため CSSProperties を拡張してキャストする。
+        zoom: scale,
+      } as React.CSSProperties & { zoom?: number | string }}
     >
       {children}
     </div>,

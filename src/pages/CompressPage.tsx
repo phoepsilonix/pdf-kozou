@@ -177,6 +177,8 @@ export function CompressPage({
     setImageJpegQuality,
     cropToVisibleImageArea,
     setCropToVisibleImageArea,
+    objectStream,
+    setObjectStream,
   } = usePdfStore();
   const redactMarginOpts = useMemo(
     () =>
@@ -329,7 +331,6 @@ export function CompressPage({
   // 結果画面では自動フォーカスを与えない（縦幅の短い画面で上部の結果表示が
   // スクロールで隠れるのを避けるため）。保存は Ctrl+S（圧縮して保存）で行える。
   const [preset, setPreset] = useState<CompressPreset>("standard");
-  const [objectStream, setObjectStream] = useState(false);
   const [mergeFonts, setMergeFonts] = useState(false);
 
   const [result, setResult] = useState<CompressResponse | null>(null);

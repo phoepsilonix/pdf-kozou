@@ -60,6 +60,9 @@ interface PdfStore {
   /** 埋め込み画像を実際に表示されている範囲だけに切り詰める */
   cropToVisibleImageArea: boolean;
   setCropToVisibleImageArea: (v: boolean) => void;
+  /** オブジェクトストリームを使用してPDF内部の構造をさらに圧縮する */
+  objectStream: boolean;
+  setObjectStream: (v: boolean) => void;
 
   // --- GS管理 ---
   gsAvailable: boolean;
@@ -139,10 +142,26 @@ export const usePdfStore = create<PdfStore>()(
       fileList: [],
       addFiles: (entries) =>
         set((s) => {
-          const existing = new Set(s.fileList.map((f) => f.path));
-          const fresh = entries
-            .filter((e) => !existing.has(e.path))
-            .map((e) => ({ ...e, id: makeEntryId() }));
+          const existingPaths = new Set(s.fileList.map((f) => f.path));
+          // モバイル(Android/iOS)では content:// / file:// URI から都度新しい
+          // 一時ファイルへコピーするため(src-tauri/src/platform/mod.rs の
+          // filepath_to_local)、同じファイルを再度選んでも path は毎回異なる
+          // 値になり、path だけの比較では重複を検出できない
+          // (デスクトップは実ファイルパスなので path 比較のみで機能する)。
+          // ファイル名・サイズ・ページ数がすべて一致する場合も同一ファイル
+          // とみなして弾く。
+          const existingIdentity = new Set(
+            s.fileList.map((f) => `${f.filename}\u0000${f.sizeBytes}\u0000${f.pageCount}`),
+          );
+          const fresh: FileEntry[] = [];
+          for (const e of entries) {
+            if (existingPaths.has(e.path)) continue;
+            const identity = `${e.filename}\u0000${e.sizeBytes}\u0000${e.pageCount}`;
+            if (existingIdentity.has(identity)) continue;
+            existingPaths.add(e.path);
+            existingIdentity.add(identity);
+            fresh.push({ ...e, id: makeEntryId() });
+          }
           return { fileList: [...s.fileList, ...fresh] };
         }),
       removeFile: (id) => set((s) => ({ fileList: s.fileList.filter((f) => f.id !== id) })),
@@ -195,6 +214,8 @@ export const usePdfStore = create<PdfStore>()(
       setImageJpegQuality: (v) => set({ imageJpegQuality: v }),
       cropToVisibleImageArea: false,
       setCropToVisibleImageArea: (v) => set({ cropToVisibleImageArea: v }),
+      objectStream: false,
+      setObjectStream: (v) => set({ objectStream: v }),
 
       // GS初期化
       gsAvailable: false,
@@ -305,6 +326,7 @@ export const usePdfStore = create<PdfStore>()(
         redactMarginRight: state.redactMarginRight,
         imageDpi: state.imageDpi,
         imageJpegQuality: state.imageJpegQuality,
+        objectStream: state.objectStream,
       }),
     },
   ),
