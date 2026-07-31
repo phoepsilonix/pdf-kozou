@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const TrimPage = lazy(() => import("./pages/TrimPage"));
 const CompressPage = lazy(() => import("./pages/CompressPage"));
@@ -318,6 +319,40 @@ export default function App() {
 
     return () => {
       if (unlistenCustom) unlistenCustom();
+    };
+  }, [handleAddPaths]);
+
+  // Android: 「共有(Share)」/「アプリで開く(Open with)」で渡されたファイルは
+  // ネイティブ側のキュー(PendingFilesPlugin)に溜められる。デスクトップ/iOS
+  // では get_pending_open_files は常に空配列を返すため無害。
+  // - 起動直後(コールドスタート)に1回
+  // - ウィンドウがフォーカスされた際(アプリ起動中に共有され、Androidが
+  //   singleTaskのタスクを前面に戻したタイミング)に都度
+  // ポーリングして取りこぼしを防ぐ。
+  useEffect(() => {
+    let cancelled = false;
+    const pollPending = async () => {
+      try {
+        const paths = await invoke<string[]>("get_pending_open_files");
+        if (!cancelled && paths.length) await handleAddPaths(paths);
+      } catch {
+        // 起動直後の一時的な失敗等は無視して黙ってスキップする
+      }
+    };
+    pollPending();
+
+    let unlistenFocus: (() => void) | null = null;
+    getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) pollPending();
+      })
+      .then((un) => {
+        unlistenFocus = un;
+      });
+
+    return () => {
+      cancelled = true;
+      if (unlistenFocus) unlistenFocus();
     };
   }, [handleAddPaths]);
 

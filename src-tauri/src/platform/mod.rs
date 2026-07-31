@@ -19,6 +19,9 @@ pub mod android_media_store;
 #[cfg(target_os = "android")]
 pub mod android_saf_folder;
 
+#[cfg(target_os = "android")]
+pub mod android_pending_files;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 
@@ -201,8 +204,11 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
+// `commands::platform::get_pending_open_files` (Android の共有/Open with で
+// 渡された content:// URI をローカル実パスへ変換する処理) からも呼べるように
+// `pub(crate)` にしている。
 #[cfg(mobile)]
-async fn filepath_to_local(
+pub(crate) async fn filepath_to_local(
     app: &tauri::AppHandle,
     file_path: tauri_plugin_fs::FilePath,
 ) -> Result<std::path::PathBuf, String> {

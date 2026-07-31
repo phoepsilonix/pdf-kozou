@@ -514,3 +514,48 @@ pub async fn commit_batch_to_folder(
         Ok(vec![])
     }
 }
+
+/// Android で「共有(Share)」/「アプリで開く(Open with)」経由で渡された
+/// ファイルの URI 一覧を取り出し、ローカルの実パスへ変換して返す。
+///
+/// Kotlin 側 (`PendingFilesPlugin`) が Intent (ACTION_VIEW /
+/// ACTION_SEND[_MULTIPLE]) から取り出した URI をキューに溜めており、
+/// ここではそれをドレインして `platform::filepath_to_local` (既存の
+/// ファイルピッカーが返す content:// URI をローカルへコピーする処理と
+/// 同一の経路) でバイトを読み込み、元のファイル名を復元した一時ファイル
+/// パスへ変換する。
+///
+/// フロントエンドは起動時、および (共有→アプリへ復帰した際に発生する)
+/// ウィンドウフォーカス時にこのコマンドを呼び出し、返ってきたパスを
+/// 通常のファイル追加 (`handleAddPaths`) と同じ扱いでファイル一覧に足す。
+///
+/// デスクトップ/iOS では常に空配列を返す (デスクトップは起動時引数/
+/// `RunEvent::Opened` 経由、iOS も `RunEvent::Opened` 経由で
+/// `open-pdf-files` イベントとして別途処理される)。
+#[tauri::command]
+pub async fn get_pending_open_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+
+        let uris: Vec<String> = app
+            .try_state::<platform::android_pending_files::KozouPendingFiles>()
+            .map(|state| state.get_pending_files())
+            .unwrap_or_default();
+
+        let mut out = Vec::with_capacity(uris.len());
+        for uri in uris {
+            let file_path = url::Url::parse(&uri)
+                .map(tauri_plugin_fs::FilePath::Url)
+                .map_err(|e| format!("共有されたファイルのURIの解析に失敗しました: {e}"))?;
+            let local = platform::filepath_to_local(&app, file_path).await?;
+            out.push(local.display().to_string());
+        }
+        Ok(out)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = &app;
+        Ok(vec![])
+    }
+}
