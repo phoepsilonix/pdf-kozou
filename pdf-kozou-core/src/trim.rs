@@ -349,7 +349,7 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
     std::fs::copy(&req.input, &work_path).map_err(CoreError::Io)?;
 
     // ── 作業ファイルを開いてページ情報を取得 ───────────────────────────────
-    let mut doc = PdfDocument::open(&work_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let doc = PdfDocument::open(&work_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
     let page_count = doc
         .page_count()
         .map_err(|e| CoreError::MuPdf(e.to_string()))?;

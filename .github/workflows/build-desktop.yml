@@ -138,8 +138,8 @@ jobs:
       #  with:
       #    bun-version-file: ".bun-version"
 
-      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - name: corepack
+        run: corepack enable
 
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
@@ -273,8 +273,25 @@ jobs:
   # ===========================================================================
   build-windows:
     runs-on: windows-latest
+    env:
+      GIT_CONFIG_PARAMETERS: "'core.symlinks=true'"
+
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # actions/checkoutに直接Git設定を渡す
+          set-safe-directory: 'true'
+
+      # ✨【重要】Cargoが依存クレートを展開する前に、Windowsの開発者モードをONにする
+      - name: Enable Developer Mode
+        run: |
+          # レジストリを変更して開発者モードを有効化
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name "AllowDevelopmentWithoutDevLicense" -Value 1
+        shell: powershell
+
+      # Cargo（Git含む）全体でシンボリックリンクを有効化するためのグローバル設定
+      - name: Configure Git Global Symlinks 
+        run: git config set --global core.symlinks true 
 
       - name: Install make
         run: |
@@ -358,8 +375,8 @@ jobs:
           #export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
           #cpan -i Pod::Usage
 
-      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - name: corepack
+        run: corepack enable
 
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
@@ -394,6 +411,16 @@ jobs:
           rustup toolchain install stable-x86_64-pc-windows-gnu
           rustup target add x86_64-pc-windows-gnu
           rustup default stable-x86_64-pc-windows-gnu
+
+      # 【超重要】すでに壊れたキャッシュが残っている場合に備え、
+      # 該当のmupdf-rsのチェックアウトディレクトリだけを強制削除してCargoに再取得させる
+      - name: Clear corrupted mupdf-rs git cache
+        run: |
+          if (Test-Path "C:\Users\runneradmin\.cargo\git\checkouts\mupdf-rs-*") {
+              Remove-Item -Recress -Force "C:\Users\runneradmin\.cargo\git\checkouts\mupdf-rs-*"
+          }
+        shell: powershell
+        continue-on-error: true # ディレクトリが存在しない場合のエラーを無視
 
       - name: Build (release)
         shell: bash
@@ -491,8 +518,8 @@ jobs:
             ${{ runner.os }}-rust-
             v0-rust-pdf-kozou-v1-${{ runner.os }}
 
-      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - name: corepack
+        run: corepack enable
 
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
@@ -633,8 +660,8 @@ jobs:
             ${{ runner.os }}-mobile-rust-v1-
             ${{ runner.os }}-mobile-rust-
 
-      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - name: corepack
+        run: corepack enable
 
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
@@ -766,8 +793,8 @@ jobs:
       #      ${{ runner.os }}-mobile-rust-v1-
       #      ${{ runner.os }}-mobile-rust-
 
-      - name: setup pnpm @v6 6.0.9(0ebf47130e4866e96fce0953f49152a61190b271)
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - name: corepack
+        run: corepack enable
 
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0

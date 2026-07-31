@@ -12,12 +12,12 @@ serde_json = "1"
 thiserror  = "2"
 anyhow     = "1"
 tokio      = { version = "1", features = ["full"] }
-base64     = "0.22"
+base64     = "0.23"
 image      = { version = "0.25", features = ["jpeg", "png"] }
 uuid       = { version = "1", features = ["v4", "fast-rng"] }
 tempfile   = "3"
 tracing    = "0.1"
-lopdf      = "0.41"
+lopdf      = "0.44"
 flate2     = "1"
 # SVG 入力を正しい PDF（ソフトマスク・不透明度保持）に変換するため。
 # MuPDF の SVG リーダは画像 luminance マスクを解釈できず透明部分が黒くなる。
@@ -30,8 +30,10 @@ svg2pdf    = "=0.11.0"
 pdf-writer = "0.10"
 
 [patch.crates-io]
-mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "f734aa07716949923445e544a0e170c06993181c" }
-mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "f734aa07716949923445e544a0e170c06993181c" }
+mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "846f044980fe2c3c43c289b9f89b11de73eecf7f" }
+mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "846f044980fe2c3c43c289b9f89b11de73eecf7f" }
+#mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "ecc74f78b5618b35333a8b015495a342447c4bd6" }
+#mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "ecc74f78b5618b35333a8b015495a342447c4bd6" }
 
 [profile.release]
 strip = "symbols"

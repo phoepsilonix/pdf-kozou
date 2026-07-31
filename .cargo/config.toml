@@ -7,3 +7,16 @@ rustflags = [
 #    "-C", "debug-assertions=false",
 "-C","link-arg=-fuse-ld=lld",
 ]
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "link-args=-mmacosx-version-min=10.15",
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "link-args=-mmacosx-version-min=10.15",
+]
+
+#[env]
+#MACOSX_DEPLOYMENT_TARGET = "10.15"
