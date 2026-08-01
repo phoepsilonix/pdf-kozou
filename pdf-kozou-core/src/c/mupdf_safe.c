@@ -120,7 +120,6 @@ fz_document *kozou_fz_open_document(
 {
     fz_document *doc = NULL;
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
         set_ok(result);
     }
@@ -332,7 +331,6 @@ void kozou_pdf_purge_and_save(fz_context *ctx, const char *input, const char *ou
     int *page_list = NULL;
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
 
         pdf = pdf_open_document(ctx, input);
 
@@ -826,7 +824,6 @@ void kozou_set_pdf_info_key(
 
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
 
         /* PDF を読み書きモードで開く */
         pdf = pdf_open_document(ctx, path);
@@ -891,7 +888,6 @@ void kozou_write_pdf_info(
     pdf_obj      *info = NULL;
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
 
         pdf = pdf_open_document(ctx, path);
 
@@ -986,7 +982,6 @@ int kozou_get_pdf_info_key(
     if (buf && buf_len > 0) buf[0] = '\0';
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
 
         pdf = pdf_open_document(ctx, path);
 
@@ -1072,7 +1067,6 @@ void kozou_convert_to_pdf(
     fz_var(pdfout);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
 
         /* 入力ファイルを開く */
         doc = fz_open_document(ctx, input);
@@ -1244,7 +1238,6 @@ void kozou_rasterize(
     fz_var(pdfout);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
 
         doc = fz_open_document(ctx, input);
 
@@ -1478,7 +1471,6 @@ void kozou_rasterize_no_text(
     fz_var(pdfout);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
 
         doc = fz_open_document(ctx, input);
 
@@ -2755,7 +2747,6 @@ void kozou_get_doc_info(
     *out_page_count = 0;
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         int is_reflowable = fz_is_document_reflowable(ctx, doc);
@@ -2850,7 +2841,6 @@ fz_buffer *kozou_render_page(
     *out_page_h_pt = 0.0f;
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         if (fz_is_document_reflowable(ctx, doc)) {
@@ -3147,7 +3137,6 @@ void kozou_detect_transparent_text(
     KozouXObjDevice *xobj_dev = NULL;
     fz_var(xobj_dev);
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         if (fz_is_document_reflowable(ctx, doc)) {
@@ -3595,7 +3584,6 @@ void kozou_detect_low_contrast_text(
     if (contrast_threshold > 21.0f) contrast_threshold = 21.0f;
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         /* ページをレンダリング（3倍解像度で背景色を精度よくサンプリング）*/
@@ -3852,7 +3840,6 @@ void kozou_detect_tiny_text(
     KozouXObjDevice *xobj_dev = NULL;
     fz_var(xobj_dev);
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         if (fz_is_document_reflowable(ctx, doc)) {
@@ -4510,7 +4497,6 @@ void kozou_collect_xobj_bboxes(
     fz_var(page);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         pdf = (pdf_document *)fz_open_document(ctx, path);
         if (!pdf)
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "not a PDF");
@@ -4595,7 +4581,6 @@ void kozou_detect_buried_text(
     fz_var(orderdev); fz_var(list); fz_var(xobj_dev);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         if (fz_is_document_reflowable(ctx, doc)) {
@@ -6176,7 +6161,6 @@ void kozou_sanitize_hidden_text(
     fz_var(pdf);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         pdf = (pdf_document *)fz_open_document(ctx, input_path);
         if (!pdf)
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "not a PDF");
@@ -7116,7 +7100,6 @@ void kozou_detect_control_chars(
     fz_var(stext);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         if (fz_is_document_reflowable(ctx, doc)) {
@@ -7447,7 +7430,6 @@ void kozou_split_imposition_pdf(
     fz_var(pdfout);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, input);
         if (fz_is_document_reflowable(ctx, doc)) {
             float w  = layout_w  > 0 ? layout_w  : 450.0f;
@@ -7914,7 +7896,6 @@ void kozou_split_cell_render(
     fz_var(pix);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, input);
         if (fz_is_document_reflowable(ctx, doc)) {
             float w  = layout_w  > 0 ? layout_w  : 450.0f;
@@ -7996,7 +7977,6 @@ void kozou_rasterize_imposition(
     fz_var(pdfout);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, input);
         if (fz_is_document_reflowable(ctx, doc)) {
             float w  = layout_w  > 0 ? layout_w  : 450.0f;
@@ -8134,7 +8114,6 @@ void kozou_render_imposition(
     fz_var(fout);
 
     fz_try(ctx) {
-        fz_register_document_handlers(ctx);
         doc = fz_open_document(ctx, path);
 
         if (fz_is_document_reflowable(ctx, doc)) {
