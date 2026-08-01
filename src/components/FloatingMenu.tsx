@@ -92,7 +92,9 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
   // #root 直下ではなく document.body 直下へ Portal するため、#root にかかる
   // 表示スケール（CSS zoom, lib/uiScale.ts）の対象外になり、UI拡大率を
   // 上げ下げしてもパネル自身の文字サイズ・余白だけ変わらず違和感があった。
-  // 位置計算は実ビューポート座標のまま(zoomはfixed要素の位置決定に影響しない)、
+  // 位置計算は実ビューポート座標のまま行い、実際に描画する top/right/maxHeight
+  // は scale で割ってから渡す(zoom を適用した要素自身に非ゼロの px 値を
+  // 指定すると、その値自体も他の長さと同様に scale 倍されて描画されるため)。
   // パネル自身の描画にだけ同じ倍率を掛けて他のUIと見た目を揃える。
   const [scale, setScale] = useState(() => getUiScale());
   const panelRef = useRef<HTMLDivElement>(null);
@@ -225,13 +227,17 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       style={
         {
           position: "fixed",
-          top: pos.top,
-          right: pos.right,
+          // pos.top / pos.right は実ビューポート px(ズーム前)で計算済み。
+          // #root の inset:0 は「0px」なので zoom を掛けても 0px のまま
+          // 変わらないが、この top/right のような非ゼロの px 値は zoom を
+          // 適用した要素自身に指定すると、その他の長さ(padding 等)と同様に
+          // scale 倍されてレンダリングされてしまい、位置がズレる。
+          // そのため先に scale で割っておき、zoom 適用後に実際の座標へ戻す。
+          top: pos.top / scale,
+          right: pos.right / scale,
           zIndex: 1200,
           maxWidth: "calc(100vw - 16px)",
-          // pos.maxHeight は実ビューポート px(ズーム前)で計算済み。zoom は
-          // 位置決定(top/right)には影響しないが、要素自身の高さは scale 倍に
-          // 描画されるため、先に scale で割って実際に画面へ収まるようにする。
+          // maxHeight も同様に、zoom で拡大される分を先に差し引いておく。
           maxHeight: pos.maxHeight / scale,
           overflowY: "auto",
           display: "flex",
