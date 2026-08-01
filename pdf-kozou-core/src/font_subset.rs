@@ -22,6 +22,7 @@
 
 use crate::error::{CoreError, Result};
 use crate::ffi::FfiResult;
+use crate::ffi::kozou_fz_new_context;
 use crate::ffi::kozou_pdf_default_write_options;
 use crate::ffi::kozou_pdf_save_document;
 
@@ -51,7 +52,6 @@ impl FfiResult {
 }
 
 unsafe extern "C" {
-    fn kozou_fz_new_context() -> *mut mupdf_sys::fz_context;
     fn kozou_fz_open_document(
         ctx: *mut mupdf_sys::fz_context,
         path: *const std::ffi::c_char,

@@ -36,8 +36,10 @@ impl fmt::Display for FfiResult {
 }
 
 unsafe extern "C" {
-    pub fn kozou_new_context() -> *mut fz_context;
-    pub fn kozou_fz_new_context() -> *mut fz_context;
+    #[link_name = "kozou_new_context"]
+    fn kozou_new_context_raw() -> *mut fz_context;
+    #[link_name = "kozou_fz_new_context"]
+    fn kozou_fz_new_context_raw() -> *mut fz_context;
 
     pub fn kozou_fz_open_document(
         ctx: *mut fz_context,
@@ -437,4 +439,33 @@ unsafe extern "C" {
         page_indices_len: c_int,
         result: *mut FfiResult,
     );
+}
+
+/// `kozou_new_context` (C) が作る `fz_context` は、mupdf-rs クレート自身の
+/// `Context`/`Document::open` 経路を通らないため、そのままでは
+/// `fz_install_load_system_font_funcs` が一切呼ばれず、埋め込まれていない
+/// CJK フォント等の代替フォント解決が常に失敗する
+/// (`"cannot find builtin CJK font"`)。生成直後にフックを明示的にインストールする。
+///
+/// 呼び出し側は従来通り `crate::ffi::kozou_new_context()` を呼ぶだけでよい。
+pub fn kozou_new_context() -> *mut fz_context {
+    unsafe {
+        let ctx = kozou_new_context_raw();
+        if !ctx.is_null() {
+            mupdf::install_system_font_funcs(ctx);
+        }
+        ctx
+    }
+}
+
+/// [`kozou_new_context`] と同じ理由で、こちらのコンテキスト生成経路にも
+/// 同じフックを適用する。
+pub fn kozou_fz_new_context() -> *mut fz_context {
+    unsafe {
+        let ctx = kozou_fz_new_context_raw();
+        if !ctx.is_null() {
+            mupdf::install_system_font_funcs(ctx);
+        }
+        ctx
+    }
 }
