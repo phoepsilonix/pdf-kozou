@@ -3093,12 +3093,10 @@ dependencies = [
 [[package]]
 name = "mupdf"
 version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=8c24401b423f264a884f38c6861f2ea2ee7796af#8c24401b423f264a884f38c6861f2ea2ee7796af"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=b8f85d58cc405278a1b9e8dcb1a07944ccc0194c#b8f85d58cc405278a1b9e8dcb1a07944ccc0194c"
 dependencies = [
  "bitflags 2.13.1",
  "font-kit",
- "mupdf-fonts-droid",
- "mupdf-fonts-noto",
  "mupdf-sys",
  "once_cell",
  "percent-encoding",
@@ -3106,19 +3104,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "mupdf-fonts-droid"
-version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=8c24401b423f264a884f38c6861f2ea2ee7796af#8c24401b423f264a884f38c6861f2ea2ee7796af"
-
-[[package]]
-name = "mupdf-fonts-noto"
-version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=8c24401b423f264a884f38c6861f2ea2ee7796af#8c24401b423f264a884f38c6861f2ea2ee7796af"
-
-[[package]]
 name = "mupdf-sys"
 version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=8c24401b423f264a884f38c6861f2ea2ee7796af#8c24401b423f264a884f38c6861f2ea2ee7796af"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=b8f85d58cc405278a1b9e8dcb1a07944ccc0194c#b8f85d58cc405278a1b9e8dcb1a07944ccc0194c"
 dependencies = [
  "bindgen",
  "cc",

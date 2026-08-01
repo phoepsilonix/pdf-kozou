@@ -58,13 +58,25 @@ clap = { version = "4", features = ["derive"] }
 # ZIP ファイル読み込み（DOCX/XLSX/PPTX のメタデータ取得用）
 zip = { version = "8", default-features = false, features = ["deflate"] }
 
-# Linux のみ (droid と noto ,sil)
-[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+# bundled-fontsをフォールバックフォントとして組み込む。
+# 当面、Linuxのみ。
+# Linuxには必須。現時点のMuPDFではLinuxではsystem-fontsは活用されていないようだ。
+# フォールバックはされていないので、bundled-fontsをフォールバック用として追加。
+# 豆腐表示が改善される。(droid と noto, sil）
+# Windowsはfonts-kitでシステム内のフォントを代替するので、不要。
+# 念の為同梱してもいいが表示のされ方を見ると、埋め込まないほうが良さそう。
+#[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 mupdf = { version = "0.8", features = ["bundled-fonts-droid", "bundled-fonts-noto", "bundled-fonts-sil"] }
 
-# Androidに droid,sil を追加
-[target.'cfg(target_os = "android")'.dependencies]
-mupdf = { version = "0.8", features = ["bundled-fonts-droid", "bundled-fonts-sil"] }
+# AndroidはMuPDFのコードで、独自にシステム内のフォントを探す仕組みを持っている。
+# またbundled-fontsがあるとアプリが起動しなくなっていたので、組み込まない。
+#[target.'cfg(target_os = "android")'.dependencies]
+#mupdf = { version = "0.8", features = [bundled-fonts-droid", "bundled-fonts-sil"] }
+
+# macos , iOSはビルドエラーのため、保留。
+#[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+#mupdf = { version = "0.8", features = ["bundled-fonts-droid", "bundled-fonts-noto", "bundled-fonts-sil"] }
 
 [build-dependencies]
 # mupdf_safe.c のコンパイルに使う
