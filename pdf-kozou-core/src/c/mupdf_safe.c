@@ -86,6 +86,11 @@ static int kozou_is_whitespace_codepoint(int cp)
             cp == 0x0009 || cp == 0x000D); /* TAB/CR (LF除外) */
 }
 
+/* 注: Rust側 (ffi.rs) からはもう呼ばれていません。mupdf-rs のフォント代替
+ * フックが内部で使う共有コンテキストと異なるグループになってしまうため、
+ * Rust側は代わりに mupdf::new_context() (共有コンテキストのクローン) を
+ * 使うよう変更されました。単独のコンテキストが必要なC側の他の用途のために
+ * 関数自体は残しています。 */
 fz_context *kozou_new_context(void) {
     // 第1引数(alloc)と第2引数(locks)を NULL にするとデフォルトが使われます
     // FZ_STORE_DEFAULT はメモリキャッシュサイズです

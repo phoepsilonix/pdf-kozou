@@ -36,11 +36,6 @@ impl fmt::Display for FfiResult {
 }
 
 unsafe extern "C" {
-    #[link_name = "kozou_new_context"]
-    fn kozou_new_context_raw() -> *mut fz_context;
-    #[link_name = "kozou_fz_new_context"]
-    fn kozou_fz_new_context_raw() -> *mut fz_context;
-
     pub fn kozou_fz_open_document(
         ctx: *mut fz_context,
         path: *const c_char,
@@ -441,31 +436,24 @@ unsafe extern "C" {
     );
 }
 
-/// `kozou_new_context` (C) が作る `fz_context` は、mupdf-rs クレート自身の
-/// `Context`/`Document::open` 経路を通らないため、そのままでは
-/// `fz_install_load_system_font_funcs` が一切呼ばれず、埋め込まれていない
-/// CJK フォント等の代替フォント解決が常に失敗する
-/// (`"cannot find builtin CJK font"`)。生成直後にフックを明示的にインストールする。
+/// `fz_new_context()` で独立に作った `fz_context` は、mupdf-rs クレート
+/// 自身が使う共有コンテキスト(メモリアロケータ/ロック/store/グリフキャッシュ)
+/// とは完全に別物のグループになる。ところが `system-fonts`/`bundled-fonts-*`
+/// のフォールバックフック実装は、内部で mupdf-rs 自身の共有コンテキスト
+/// (`mupdf::context()`) を使って `fz_font` を生成するため、無関係な独立
+/// コンテキストにその `fz_font` を渡す(`fz_keep_font` 等)と未定義動作になる
+/// (メモリ破壊/クラッシュ/デッドロックとして顕在化し、フックを繋いだだけの
+/// 前バージョンでこれが起きていた)。
 ///
+/// `mupdf::new_context()` は mupdf-rs 自身の共有コンテキストの「クローン」
+/// を返す(フックのインストールも内部で保証される)ため、この問題を起こさない。
 /// 呼び出し側は従来通り `crate::ffi::kozou_new_context()` を呼ぶだけでよい。
 pub fn kozou_new_context() -> *mut fz_context {
-    unsafe {
-        let ctx = kozou_new_context_raw();
-        if !ctx.is_null() {
-            mupdf::install_system_font_funcs(ctx);
-        }
-        ctx
-    }
+    unsafe { mupdf::new_context() }
 }
 
 /// [`kozou_new_context`] と同じ理由で、こちらのコンテキスト生成経路にも
-/// 同じフックを適用する。
+/// `mupdf::new_context()` を使う。
 pub fn kozou_fz_new_context() -> *mut fz_context {
-    unsafe {
-        let ctx = kozou_fz_new_context_raw();
-        if !ctx.is_null() {
-            mupdf::install_system_font_funcs(ctx);
-        }
-        ctx
-    }
+    unsafe { mupdf::new_context() }
 }
