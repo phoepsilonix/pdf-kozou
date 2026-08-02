@@ -29,6 +29,7 @@ package phoepsilonix.pdfkozou
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.IntentCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
@@ -62,14 +63,12 @@ class PendingFilesPlugin(private val activity: Activity) : Plugin(activity) {
         Intent.ACTION_VIEW ->
           intent.data?.let { listOf(it) } ?: emptyList()
         Intent.ACTION_SEND -> {
-          @Suppress("DEPRECATION")
-          intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { listOf(it) }
-            ?: emptyList()
+          IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            ?.let { listOf(it) } ?: emptyList()
         }
         Intent.ACTION_SEND_MULTIPLE -> {
-          @Suppress("DEPRECATION")
-          intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.toList()
-            ?: emptyList()
+          IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            ?.toList() ?: emptyList()
         }
         else -> emptyList()
       }
