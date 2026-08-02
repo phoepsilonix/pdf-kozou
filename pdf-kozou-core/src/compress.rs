@@ -593,6 +593,47 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         }
     };
 
+    // 0.6 redact_outside_crop (Pixels 方式) は交差した画像を生ピクセルの
+    //     ままページに書き戻す。MuPDF 書き出しの compress/compress_images
+    //     オプションは対象ストリームを Flate でラップするだけで、実際に
+    //     JPEG 等へ再エンコードするわけではないため、これだけでは元の
+    //     DCTDecode 相当のサイズには戻らない（do_compress が真の場合、
+    //     compress_images の有無に関わらず既に Flate ラップ自体はされて
+    //     しまうため、そこを弄っても効果がない）。
+    //     redact が実際に画像を書き換えた場合のみ、その場でネイティブ
+    //     解像度のまま JPEG へ再圧縮しておく（ダウンサンプルはしない）。
+    //     これにより、後段の最終圧縮パスは常にプリセット/ユーザー指定の
+    //     compress_images をそのまま尊重できる。
+    let _redact_image_fix_guard: TempFileGuard = {
+        if redact_applied {
+            let quality = req.image_jpeg_quality.unwrap_or(85).clamp(1, 100);
+            let fix_tmp = format!("{}.redactimg.tmp.pdf", req.output);
+            match crate::image_recompress::recompress_raw_images_native(
+                &current_input,
+                &fix_tmp,
+                quality,
+            ) {
+                Ok(stats) if stats.images_recompressed > 0 => {
+                    eprintln!(
+                        "[compress] redact_outside_crop: {} raw image(s) re-encoded to JPEG (q{quality})",
+                        stats.images_recompressed
+                    );
+                    current_input = fix_tmp.clone();
+                    TempFileGuard(Some(fix_tmp))
+                }
+                Ok(_) => TempFileGuard(None), // 生ピクセル画像なし
+                Err(e) => {
+                    eprintln!(
+                        "[compress] redact_outside_crop: raw image re-encode warning (skipped): {e}"
+                    );
+                    TempFileGuard(None)
+                }
+            }
+        } else {
+            TempFileGuard(None)
+        }
+    };
+
     // 0.5 (オプション) 画像の DPI/JPEG品質を指定してダウンサンプル再圧縮、
     //     および/または実表示範囲外のピクセルクロップを行う。
     //     image_dpi または crop_to_visible_image_area のどちらかが

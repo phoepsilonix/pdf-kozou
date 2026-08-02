@@ -722,3 +722,68 @@ pub fn recompress_images(
     doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
     Ok(stats)
 }
+
+/// `redact_outside_crop` (MuPDF の pixel 方式 redaction) 等が生成した
+/// 「生ピクセル画像 (Flate/無フィルタの未圧縮ビットマップ)」だけを対象に、
+/// ダウンサンプルはせずネイティブ解像度のまま JPEG へ再圧縮する軽量パス。
+///
+/// `recompress_images()` と違い、ページ上の表示サイズ集計 (content stream
+/// 解析) を行わない — 文書内の全 Image XObject を直接スキャンし、生
+/// ビットマップだけを対象にする。DCTDecode (既に JPEG) の画像には触れない。
+pub fn recompress_raw_images_native(
+    input: &str,
+    output: &str,
+    jpeg_quality: u8,
+) -> Result<ImageRecompressStats, String> {
+    let mut stats = ImageRecompressStats::default();
+    let mut doc = Document::load(input).map_err(|e| format!("lopdf load: {e}"))?;
+
+    let mut targets: Vec<(ObjectId, u32, u32)> = Vec::new();
+    let object_ids: Vec<ObjectId> = doc.objects.keys().copied().collect();
+    for xref in object_ids {
+        let Ok(obj) = doc.get_object(xref) else {
+            continue;
+        };
+        let Ok(stream) = obj.as_stream() else {
+            continue;
+        };
+        let dict = &stream.dict;
+        let is_image = matches!(
+            dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()),
+            Some(b"Image")
+        );
+        if !is_image {
+            continue;
+        }
+        let Some(kind) = classify_source(&doc, dict) else {
+            continue;
+        };
+        if !kind.is_raw() {
+            continue; // 既に JPEG (DCTDecode) の画像はそのまま
+        }
+        let Some((native_w, native_h)) = image_native_size(dict) else {
+            continue;
+        };
+        stats.images_scanned += 1;
+        targets.push((xref, native_w.max(1) as u32, native_h.max(1) as u32));
+    }
+
+    if targets.is_empty() {
+        if input != output {
+            std::fs::copy(input, output).map_err(|e| format!("copy: {e}"))?;
+        }
+        return Ok(stats);
+    }
+
+    for (xref, tw, th) in &targets {
+        match recompress_one(&mut doc, *xref, *tw, *th, jpeg_quality) {
+            Ok(()) => stats.images_recompressed += 1,
+            Err(e) => {
+                eprintln!("[image_recompress] raw-native xref={xref:?}: {e} (skipped, kept original)");
+            }
+        }
+    }
+
+    doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
+    Ok(stats)
+}
