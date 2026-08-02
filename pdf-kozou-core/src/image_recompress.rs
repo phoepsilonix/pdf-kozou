@@ -779,7 +779,9 @@ pub fn recompress_raw_images_native(
         match recompress_one(&mut doc, *xref, *tw, *th, jpeg_quality) {
             Ok(()) => stats.images_recompressed += 1,
             Err(e) => {
-                eprintln!("[image_recompress] raw-native xref={xref:?}: {e} (skipped, kept original)");
+                eprintln!(
+                    "[image_recompress] raw-native xref={xref:?}: {e} (skipped, kept original)"
+                );
             }
         }
     }

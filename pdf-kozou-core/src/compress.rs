@@ -609,7 +609,6 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         }
     };
 
-
     // 0.5 (オプション) 画像の DPI/JPEG品質を指定してダウンサンプル再圧縮、
     //     および/または実表示範囲外のピクセルクロップを行う。
     //     image_dpi または crop_to_visible_image_area のどちらかが
