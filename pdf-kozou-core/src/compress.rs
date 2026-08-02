@@ -519,6 +519,22 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let object_stream = req.object_stream.unwrap_or(preset_object_stream);
     let do_subset = req.font_subset.unwrap_or(preset_subset);
     //let do_purge = req.purge_fonts.unwrap_or(false);
+
+    // object_stream (クロスリファレンスストリーム/オブジェクトストリーム) は
+    // MuPDF の書き出し内部で gather_to_objstms() によりオブジェクトを
+    // まとめ直すが、その前提となるオブジェクトの再採番 (renumberobjs) は
+    // garbage_level >= 2 のときしか行われない (MuPDF pdf-write.c)。
+    // garbage_level 0/1 のまま object_stream を有効にすると、再採番されて
+    // いない状態のオブジェクトを objstm へ詰め込もうとして内部状態が不整合
+    // になり、MuPDF 側でエラー/クラッシュする。ここで先に弾いて分かりやすい
+    // エラーメッセージを返す。
+    if object_stream && garbage_level < 2 {
+        return Err(CoreError::InvalidArg(format!(
+            "object_stream を有効にする場合は garbage_level を 2 以上にしてください (現在: {garbage_level})。\
+             Light プリセット (garbage_level=1) と object_stream の組み合わせは MuPDF の制約によりサポートされません。"
+        )));
+    }
+
     // 処理の対象となる入力を保持する変数
     let mut current_input = req.input.clone();
     // 一時ファイルのパス（パージ用）
