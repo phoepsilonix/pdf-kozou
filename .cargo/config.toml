@@ -18,5 +18,21 @@ rustflags = [
     "-C", "link-args=-mmacosx-version-min=10.15",
 ]
 
+# Android: 16KB page size (16KB memory page size) 対応
+# NDK (lld) の既定 max-page-size はバージョンによって異なり (r27 以前は 4096)、
+# 4KB のままリンクされると 16KB ページの実機/Google Play の要件を満たせない。
+# NDK のバージョンに依存せず確実に 16KB アラインされた ELF セグメントを
+# 出力させるため、64-bit ターゲットへ明示的にリンカフラグを指定する。
+# (32-bit ABI である armv7 / i686 は対象外 — Google の要件も 64-bit のみ)
+[target.aarch64-linux-android]
+rustflags = [
+    "-C", "link-arg=-Wl,-z,max-page-size=16384",
+]
+
+[target.x86_64-linux-android]
+rustflags = [
+    "-C", "link-arg=-Wl,-z,max-page-size=16384",
+]
+
 #[env]
 #MACOSX_DEPLOYMENT_TARGET = "10.15"
