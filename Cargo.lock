@@ -2547,9 +2547,9 @@ dependencies = [
 
 [[package]]
 name = "ipnet"
-version = "2.12.0"
+version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
+checksum = "6a756c3fac73139e83f14c2d742155dd2b78d3ee56597b419a0579b7bdd6dd78"
 
 [[package]]
 name = "is-docker"
@@ -3097,11 +3097,29 @@ source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=b8f85d58cc405278a
 dependencies = [
  "bitflags 2.13.1",
  "font-kit",
+ "mupdf-fonts-droid",
+ "mupdf-fonts-noto",
+ "mupdf-fonts-sil",
  "mupdf-sys",
  "once_cell",
  "percent-encoding",
  "zerocopy",
 ]
+
+[[package]]
+name = "mupdf-fonts-droid"
+version = "0.8.0"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=b8f85d58cc405278a1b9e8dcb1a07944ccc0194c#b8f85d58cc405278a1b9e8dcb1a07944ccc0194c"
+
+[[package]]
+name = "mupdf-fonts-noto"
+version = "0.8.0"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=b8f85d58cc405278a1b9e8dcb1a07944ccc0194c#b8f85d58cc405278a1b9e8dcb1a07944ccc0194c"
+
+[[package]]
+name = "mupdf-fonts-sil"
+version = "0.8.0"
+source = "git+https://github.com/phoepsilonix/mupdf-rs.git?rev=b8f85d58cc405278a1b9e8dcb1a07944ccc0194c#b8f85d58cc405278a1b9e8dcb1a07944ccc0194c"
 
 [[package]]
 name = "mupdf-sys"
@@ -3609,7 +3627,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou"
-version = "1.8.7"
+version = "1.8.8"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3643,7 +3661,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-kozou-core"
-version = "1.8.7"
+version = "1.8.8"
 dependencies = [
  "anyhow",
  "base64 0.23.0",
