@@ -572,7 +572,7 @@
     "save_original_main": "圧縮せず保存",
     "save_original_sub": "元のファイルをコピーして保存します",
     "settings_title": "圧縮設定",
-    "object_stream_on": "有効 (リスク小)",
+    "object_stream_on": "有効 (lightプリセットでは使用不可)",
     "no_dir_placeholder": "出力先フォルダを選択してください...",
     "pro_gs": "プロ (GS)",
     "saved_title": "保存しました"

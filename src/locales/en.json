@@ -572,7 +572,7 @@
     "save_original_main": "Save without compressing",
     "save_original_sub": "Copy the original file and save",
     "settings_title": "Compression settings",
-    "object_stream_on": "Enabled (low risk)",
+    "object_stream_on": "Enabled (Cannot be used with light preset.)",
     "no_dir_placeholder": "Select an output folder...",
     "pro_gs": "Pro (GS)",
     "saved_title": "Saved"
