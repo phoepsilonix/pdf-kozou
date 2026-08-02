@@ -214,7 +214,7 @@ export const usePdfStore = create<PdfStore>()(
       setImageJpegQuality: (v) => set({ imageJpegQuality: v }),
       cropToVisibleImageArea: true,
       setCropToVisibleImageArea: (v) => set({ cropToVisibleImageArea: v }),
-      objectStream: false,
+      objectStream: true,
       setObjectStream: (v) => set({ objectStream: v }),
 
       // GS初期化
