@@ -794,9 +794,21 @@ useEffect(() => {
                     )}
                   </div>
                   <div style={s.itemInfo}>
-                    <span style={s.itemName} title={entry.path}>
-                      {entry.filename}
-                    </span>
+                    {isNarrow ? (
+                      <button
+                        type="button"
+                        style={{ ...s.itemNameBtn, ...s.itemName }}
+                        title={entry.path}
+                        aria-label={`${entry.filename} — ${t("common.show_full_filename")}`}
+                        onClick={() => window.alert(entry.filename)}
+                      >
+                        {entry.filename}
+                      </button>
+                    ) : (
+                      <span style={s.itemName} title={entry.path}>
+                        {entry.filename}
+                      </span>
+                    )}
                     <span style={s.itemPages}>
                       {t("common.pages", { count: String(entry.pageCount) })}
                     </span>
@@ -1042,6 +1054,15 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  itemNameBtn: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+    width: "100%",
   },
   itemPages: { fontSize: FS.small, color: "var(--c-textSub)" },
   moveBtns: { display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 },
