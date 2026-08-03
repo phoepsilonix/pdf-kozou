@@ -1208,10 +1208,10 @@ export function CompressPage({
     );
   }
 
-  const fname = inputFile.split(/[/\\]/).pop() ?? "";
-  // 設定画面ヘッダー: 「タイトル/ファイル名」の行と「GS/MuPDF切替・連携解除・
-  // ページ数」の行を分け、狭幅では後者を丸ごと折り返して2段にする。
-  // 広い画面では従来通り1行に収まる（挙動を変えない）。
+  // 設定画面ヘッダー: タイトル行と「GS/MuPDF切替・連携解除・ページ数」の行を
+  // 分け、狭幅では後者を丸ごと折り返して2段にする。広い画面では従来通り
+  // 1行に収まる（挙動を変えない）。ファイル名は上部の共通ヘッダーに既に
+  // 表示されているため、ここでは重複表示しない。
   const headerStyle: React.CSSProperties = isNarrow
     ? { ...c.header, flexWrap: "wrap", rowGap: 8 }
     : c.header;
@@ -1228,9 +1228,6 @@ export function CompressPage({
           </button>
         )}
         <span style={c.title}>{t("compress.settings_title")}</span>
-        <span style={c.fileSub} title={fname}>
-          {currentSource !== (sourceFile ?? filePath) ? `🔗 ${fname}` : fname}
-        </span>
         {currentSource !== (sourceFile ?? filePath) && (
           <span style={c.chainBadge}>{t("compress.chain_badge")}</span>
         )}
@@ -1296,9 +1293,6 @@ export function CompressPage({
           )}
 
           <div style={{ flex: 1 }} />
-          <span style={c.fileSub} title={fname}>
-            {fname}
-          </span>
           <span style={c.pageSub}>{t("common.pages", { count: String(pdfInfo.page_count) })}</span>
         </div>
       </div>
