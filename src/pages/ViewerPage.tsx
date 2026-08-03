@@ -1465,9 +1465,21 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     <div style={{ ...s.root, paddingBottom: "calc(var(--safe-bottom))" }}>
       <PageHeader>
         <span style={s.title}>{t("viewer.title_single")}</span>
-        <span style={s.fileSub} title={activePath}>
-          {fname}
-        </span>
+        {isNarrow ? (
+          <button
+            type="button"
+            style={{ ...s.fileSubBtn, ...s.fileSub, maxWidth: 110 }}
+            title={activePath}
+            aria-label={`${fname} — ${t("common.show_full_filename")}`}
+            onClick={() => window.alert(fname)}
+          >
+            {fname}
+          </button>
+        ) : (
+          <span style={s.fileSub} title={activePath}>
+            {fname}
+          </span>
+        )}
         <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>
         <div style={{ flex: 1 }} />
         <button
@@ -2080,7 +2092,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: FS.label,
   },
   pageInfo: { fontSize: FS.small, color: "var(--c-text)", minWidth: 40, textAlign: "center" },
-  title: { fontWeight: 700, fontSize: FS.title, fontFamily: F },
+  title: { fontWeight: 700, fontSize: FS.title, fontFamily: F, flexShrink: 0, whiteSpace: "nowrap" as const },
   fileSub: {
     fontSize: FS.caption,
     color: "var(--c-textDim)",
@@ -2089,12 +2101,22 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  fileSubBtn: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+  },
   pageBadge: {
     fontSize: FS.caption,
     background: "var(--c-border)",
     padding: "2px 8px",
     borderRadius: 10,
     marginLeft: 8,
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
   },
   paneHead: {
     display: "flex",
