@@ -1044,7 +1044,13 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bg)",
     fontFamily: F,
   },
-  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)", flexShrink: 0, whiteSpace: "nowrap" as const },
+  title: {
+    fontSize: FS.title,
+    fontWeight: 700,
+    color: "var(--c-text)",
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
+  },
   sub: { fontSize: FS.body, color: "var(--c-textDim)", marginLeft: 8 },
   body: {
     flex: 1,

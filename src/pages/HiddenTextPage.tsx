@@ -1352,7 +1352,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   expTitle: { fontSize: FS.small, fontWeight: 700, color: "#a78bfa", marginBottom: 1 },
   expBody: { fontSize: FS.caption, color: "#c4b5fd", lineHeight: 1.5 },
-  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)", flexShrink: 0, whiteSpace: "nowrap" as const },
+  title: {
+    fontSize: FS.title,
+    fontWeight: 700,
+    color: "var(--c-text)",
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
+  },
   layout: { display: "flex", flex: 2, overflow: "hidden" },
   left: {
     width: 230,

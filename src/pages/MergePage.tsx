@@ -931,7 +931,13 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     overflow: "hidden",
   },
-  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)", flexShrink: 0, whiteSpace: "nowrap" as const },
+  title: {
+    fontSize: FS.title,
+    fontWeight: 700,
+    color: "var(--c-text)",
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
+  },
   sub: { fontSize: FS.label, color: "var(--c-textSub)" },
   btnClear: {
     padding: "5px 14px",

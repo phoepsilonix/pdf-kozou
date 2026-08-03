@@ -2092,7 +2092,13 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: FS.label,
   },
   pageInfo: { fontSize: FS.small, color: "var(--c-text)", minWidth: 40, textAlign: "center" },
-  title: { fontWeight: 700, fontSize: FS.title, fontFamily: F, flexShrink: 0, whiteSpace: "nowrap" as const },
+  title: {
+    fontWeight: 700,
+    fontSize: FS.title,
+    fontFamily: F,
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
+  },
   fileSub: {
     fontSize: FS.caption,
     color: "var(--c-textDim)",
