@@ -1465,21 +1465,6 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     <div style={{ ...s.root, paddingBottom: "calc(var(--safe-bottom))" }}>
       <PageHeader>
         <span style={s.title}>{t("viewer.title_single")}</span>
-        {isNarrow ? (
-          <button
-            type="button"
-            style={{ ...s.fileSubBtn, ...s.fileSub, maxWidth: 110 }}
-            title={activePath}
-            aria-label={`${fname} — ${t("common.show_full_filename")}`}
-            onClick={() => window.alert(fname)}
-          >
-            {fname}
-          </button>
-        ) : (
-          <span style={s.fileSub} title={activePath}>
-            {fname}
-          </span>
-        )}
         <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>
         <div style={{ flex: 1 }} />
         <button
@@ -2098,22 +2083,6 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
-  },
-  fileSub: {
-    fontSize: FS.caption,
-    color: "var(--c-textDim)",
-    maxWidth: 200,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  fileSubBtn: {
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
   },
   pageBadge: {
     fontSize: FS.caption,
