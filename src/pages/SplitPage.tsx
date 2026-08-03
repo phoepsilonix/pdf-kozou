@@ -763,7 +763,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ? t("split.title_batch", { count: String(batchFiles!.length) })
             : t("split.title_single")}
         </span>
-        {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
+        {!isBatch &&
+          (isNarrow ? (
+            <button
+              type="button"
+              style={{ ...s.subBtn, ...s.sub, maxWidth: 110 }}
+              title={filePath}
+              aria-label={`${filePath.split(/[/\\]/).pop()} — ${t("common.show_full_filename")}`}
+              onClick={() => window.alert(filePath.split(/[/\\]/).pop() ?? "")}
+            >
+              {filePath.split(/[/\\]/).pop()}
+            </button>
+          ) : (
+            <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>
+          ))}
         {!isBatch && <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>}
         <div style={{ flex: 1 }} />
         <span style={s.groupCount}>
@@ -1293,7 +1306,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     overflow: "hidden",
   },
-  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)", flexShrink: 0, whiteSpace: "nowrap" as const },
   sub: {
     fontSize: FS.small,
     color: "var(--c-textSub)",
@@ -1302,6 +1315,14 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  subBtn: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+  },
   pageBadge: {
     padding: "2px 10px",
     background: "var(--c-bgCard)",
@@ -1309,8 +1330,16 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     fontSize: FS.caption,
     color: "var(--c-textSub)",
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
   },
-  groupCount: { fontSize: FS.body, color: "var(--c-accent)", fontWeight: 700 },
+  groupCount: {
+    fontSize: FS.body,
+    color: "var(--c-accent)",
+    fontWeight: 700,
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
+  },
 
   body: { flex: 1, display: "flex", overflow: "hidden", minHeight: 0 },
   panel: {
