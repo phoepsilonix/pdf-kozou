@@ -1607,19 +1607,34 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             ? t("image.title_batch", { count: String(batchFiles!.length) })
             : t("image.title_single")}
         </span>
-        {!isBatch && <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>}
+        {!isBatch &&
+          (isNarrow ? (
+            <button
+              type="button"
+              style={{ ...s.subBtn, ...s.sub, maxWidth: 110 }}
+              title={filePath}
+              aria-label={`${filePath.split(/[/\\]/).pop()} — ${t("common.show_full_filename")}`}
+              onClick={() => window.alert(filePath.split(/[/\\]/).pop() ?? "")}
+            >
+              {filePath.split(/[/\\]/).pop()}
+            </button>
+          ) : (
+            <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>
+          ))}
         {!isBatch && (
           <span style={s.pageBadge}>{t("common.pages", { count: String(resolvedPageCount) })}</span>
         )}
         <div style={{ flex: 1 }} />
-        <span style={s.outBadge}>
-          → {format.toUpperCase()} {pw}×{ph}px
-          {processDir === "deimpose"
-            ? ` (${t("image.est_per_cell" as any)})`
-            : impositionMode !== "1up"
-              ? ` (${t("image.est_per_sheet" as any)})`
-              : ""}
-        </span>
+        {!isNarrow && (
+          <span style={s.outBadge}>
+            → {format.toUpperCase()} {pw}×{ph}px
+            {processDir === "deimpose"
+              ? ` (${t("image.est_per_cell" as any)})`
+              : impositionMode !== "1up"
+                ? ` (${t("image.est_per_sheet" as any)})`
+                : ""}
+          </span>
+        )}
       </PageHeader>
 
       <div style={bodyStyle} ref={bodyScrollRef}>
@@ -1652,6 +1667,17 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 </button>
               ))}
             </div>
+
+            {isNarrow && (
+              <div style={s.outBadgeInline}>
+                → {format.toUpperCase()} {pw}×{ph}px
+                {processDir === "deimpose"
+                  ? ` (${t("image.est_per_cell" as any)})`
+                  : impositionMode !== "1up"
+                    ? ` (${t("image.est_per_sheet" as any)})`
+                    : ""}
+              </div>
+            )}
 
             {/* 処理方向: 通常変換/面付け ⇔ 面付け解除/分割 */}
             <div style={s.secLabel}>{t("image.process_dir_label" as any)}</div>
@@ -2696,7 +2722,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     overflow: "hidden",
   },
-  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.title, fontWeight: 700, color: "var(--c-text)", flexShrink: 0, whiteSpace: "nowrap" as const },
   sub: {
     fontSize: FS.body,
     color: "var(--c-textSub)",
@@ -2705,6 +2731,14 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  subBtn: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+  },
   pageBadge: {
     padding: "3px 11px",
     background: "var(--c-bgCard)",
@@ -2712,8 +2746,16 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     fontSize: FS.small,
     color: "var(--c-textSub)",
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
   },
-  outBadge: { fontSize: FS.label, color: "var(--c-accent)", fontWeight: 700 },
+  outBadge: { fontSize: FS.label, color: "var(--c-accent)", fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap" as const },
+  outBadgeInline: {
+    fontSize: FS.label,
+    color: "var(--c-accent)",
+    fontWeight: 700,
+    padding: "2px 0 10px",
+  },
 
   body: {
     flex: 1,
