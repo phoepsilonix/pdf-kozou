@@ -233,7 +233,8 @@
     "label_error": "Error",
     "btn_clear": "Clear",
     "menu_show": "Show menu",
-    "menu_hide": "Hide menu"
+    "menu_hide": "Hide menu",
+    "show_full_filename": "Tap to show the full filename"
   },
   "split": {
     "processing": "Splitting…",

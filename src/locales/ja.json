@@ -233,7 +233,8 @@
     "label_error": "エラー",
     "btn_clear": "クリア",
     "menu_show": "メニューを表示",
-    "menu_hide": "メニューを閉じる"
+    "menu_hide": "メニューを閉じる",
+    "show_full_filename": "タップしてファイル名全体を表示"
   },
   "split": {
     "processing": "分割処理中…",

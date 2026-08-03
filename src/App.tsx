@@ -1462,9 +1462,15 @@ function ToolShell({
           ) : isBatch ? (
             <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
           ) : (
-            <span style={sh.filename} title={filePath}>
+            <button
+              type="button"
+              style={{ ...sh.filenameBtn, ...sh.filename }}
+              title={filePath}
+              aria-label={`${filename} — ${t("common.show_full_filename")}`}
+              onClick={() => window.alert(filename)}
+            >
               {filename}
-            </span>
+            </button>
           )}
           <div style={{ flex: 1 }} />
           {useFloatingMenu ? (
@@ -1884,6 +1890,14 @@ const sh: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     flexShrink: 0,
+  },
+  filenameBtn: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
   },
   batchLabel: {
     fontSize: FS.small,
