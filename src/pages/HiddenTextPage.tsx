@@ -948,6 +948,19 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     <div style={s.root}>
       <PageHeader>
         <span style={s.title}>{t("hidden.title_single")}</span>
+        {isNarrow ? (
+          <button
+            type="button"
+            style={{ ...s.subFileBtn, ...s.subFile, maxWidth: 110 }}
+            title={filePath}
+            aria-label={`${filePath.split(/[/\\]/).pop()} — ${t("common.show_full_filename")}`}
+            onClick={() => window.alert(filePath.split(/[/\\]/).pop() ?? "")}
+          >
+            {filePath.split(/[/\\]/).pop()}
+          </button>
+        ) : (
+          <span style={s.subFile}>{filePath.split(/[/\\]/).pop()}</span>
+        )}
       </PageHeader>
       <SingleBanner />
       <div style={layoutStyle}>
@@ -1358,6 +1371,23 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--c-text)",
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
+  },
+  subFile: {
+    fontSize: FS.body,
+    color: "var(--c-textSub)",
+    maxWidth: 200,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    marginLeft: 8,
+  },
+  subFileBtn: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
   },
   layout: { display: "flex", flex: 2, overflow: "hidden" },
   left: {
