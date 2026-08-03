@@ -715,6 +715,20 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             ? t("booklet.title_batch", { count: String(batchFiles!.length) })
             : t("booklet.title")}
         </span>
+        {!isBatch &&
+          (isNarrow ? (
+            <button
+              type="button"
+              style={{ ...s.subFileBtn, ...s.subFile, maxWidth: 110 }}
+              title={filePath}
+              aria-label={`${filePath.split(/[/\\]/).pop()} — ${t("common.show_full_filename")}`}
+              onClick={() => window.alert(filePath.split(/[/\\]/).pop() ?? "")}
+            >
+              {filePath.split(/[/\\]/).pop()}
+            </button>
+          ) : (
+            <span style={s.subFile}>{filePath.split(/[/\\]/).pop()}</span>
+          ))}
         {!isBatch && <span style={s.sub}>{t("common.pages", { count: String(totalPages) })}</span>}
       </PageHeader>
 
@@ -1052,6 +1066,23 @@ const s: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap" as const,
   },
   sub: { fontSize: FS.body, color: "var(--c-textDim)", marginLeft: 8 },
+  subFile: {
+    fontSize: FS.body,
+    color: "var(--c-textSub)",
+    maxWidth: 200,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    marginLeft: 8,
+  },
+  subFileBtn: {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+  },
   body: {
     flex: 1,
     overflowY: "auto",
