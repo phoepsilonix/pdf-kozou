@@ -482,7 +482,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     return (
       <div style={s.root}>
         <PageHeader>
-          <span style={s.title}>{t("hidden.title_batch")}</span>
+          <span style={s.title}>
+            {t("hidden.title_batch", { count: String(progress.total) })}
+          </span>
         </PageHeader>
         <BatchBanner />
         <div style={layoutStyle}>
@@ -492,7 +494,21 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             <div style={s.statusBox}>
               {progress.current} / {progress.total}
             </div>
-            <div style={s.statusBox}>{progress.currentFile}</div>
+            {isNarrow ? (
+              <button
+                type="button"
+                style={{ ...s.currentFileBtn, ...s.currentFileBox }}
+                title={progress.currentFile}
+                aria-label={`${progress.currentFile} — ${t("common.show_full_filename")}`}
+                onClick={() => window.alert(progress.currentFile)}
+              >
+                {progress.currentFile}
+              </button>
+            ) : (
+              <div style={s.currentFileBox} title={progress.currentFile}>
+                {progress.currentFile}
+              </div>
+            )}
           </div>
           {/* 右: ログ */}
           <div style={rightStyle}>
@@ -519,7 +535,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     return (
       <div style={s.root}>
         <PageHeader>
-          <span style={s.title}>{t("hidden.title_batch")}</span>
+          <span style={s.title}>
+            {t("hidden.title_batch", { count: String(progress.total) })}
+          </span>
         </PageHeader>
         <BatchBanner />
         <div style={layoutStyle}>
@@ -603,7 +621,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>{t("hidden.title_batch")}</span>
+        <span style={s.title}>
+          {t("hidden.title_batch", { count: String(batchFiles.length) })}
+        </span>
       </PageHeader>
       <BatchBanner />
       <div style={layoutStyle}>
@@ -1594,6 +1614,25 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     borderRadius: 4,
     wordBreak: "break-all",
+  },
+  currentFileBox: {
+    fontSize: FS.small,
+    color: "var(--c-textSub)",
+    padding: "5px 7px",
+    background: "var(--c-bgCard)",
+    borderRadius: 4,
+    maxWidth: 220,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  currentFileBtn: {
+    background: "transparent",
+    border: "none",
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+    display: "block",
   },
   type3Note: {
     fontSize: FS.small,

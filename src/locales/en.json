@@ -844,7 +844,7 @@
   },
   "hidden": {
     "title_single": "Hidden Text Detection",
-    "title_batch": "Hidden Text Batch Detection",
+    "title_batch": "Hidden Text Batch Detection — {{count}}",
     "experimental_title": "Experimental — Hidden Text Detection & Sanitization",
     "experimental_batch_title": "Experimental — Batch Hidden Text Detection & Sanitization",
     "experimental_body": "Cannot guarantee detection of all hidden text methods. Developer is not responsible for any damage caused by use of this feature.",
