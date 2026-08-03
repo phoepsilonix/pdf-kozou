@@ -497,7 +497,21 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               }}
             />
           </div>
-          <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
+          {isNarrow ? (
+            <button
+              type="button"
+              style={{ ...s.bpCurrentBtn, ...s.bpCurrent, maxWidth: 220 }}
+              title={batchProgress.currentFile}
+              aria-label={`${batchProgress.currentFile} — ${t("common.show_full_filename")}`}
+              onClick={() => window.alert(batchProgress.currentFile)}
+            >
+              {batchProgress.currentFile}
+            </button>
+          ) : (
+            <div style={s.bpCurrent} title={batchProgress.currentFile}>
+              {batchProgress.currentFile}
+            </div>
+          )}
           <Spinner />
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
@@ -1290,7 +1304,22 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurrent: { fontSize: FS.body, color: "var(--c-textSub)" },
+  bpCurrent: {
+    fontSize: FS.body,
+    color: "var(--c-textSub)",
+    maxWidth: 280,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  bpCurrentBtn: {
+    background: "transparent",
+    border: "none",
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+    display: "block",
+  },
   bpLog: {
     width: "100%",
     maxWidth: 480,
