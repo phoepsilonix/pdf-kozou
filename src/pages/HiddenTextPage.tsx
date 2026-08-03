@@ -482,9 +482,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     return (
       <div style={s.root}>
         <PageHeader>
-          <span style={s.title}>
-            {t("hidden.title_batch", { count: String(progress.total) })}
-          </span>
+          <span style={s.title}>{t("hidden.title_batch", { count: String(progress.total) })}</span>
         </PageHeader>
         <BatchBanner />
         <div style={layoutStyle}>
@@ -535,9 +533,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     return (
       <div style={s.root}>
         <PageHeader>
-          <span style={s.title}>
-            {t("hidden.title_batch", { count: String(progress.total) })}
-          </span>
+          <span style={s.title}>{t("hidden.title_batch", { count: String(progress.total) })}</span>
         </PageHeader>
         <BatchBanner />
         <div style={layoutStyle}>
@@ -621,9 +617,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   return (
     <div style={s.root}>
       <PageHeader>
-        <span style={s.title}>
-          {t("hidden.title_batch", { count: String(batchFiles.length) })}
-        </span>
+        <span style={s.title}>{t("hidden.title_batch", { count: String(batchFiles.length) })}</span>
       </PageHeader>
       <BatchBanner />
       <div style={layoutStyle}>
