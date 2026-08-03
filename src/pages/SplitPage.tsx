@@ -527,7 +527,21 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               }}
             />
           </div>
-          <div style={s.bpCurrent}>{batchProgress.currentFile}</div>
+          {isNarrow ? (
+            <button
+              type="button"
+              style={{ ...s.bpCurrentBtn, ...s.bpCurrent, maxWidth: 220 }}
+              title={batchProgress.currentFile}
+              aria-label={`${batchProgress.currentFile} — ${t("common.show_full_filename")}`}
+              onClick={() => window.alert(batchProgress.currentFile)}
+            >
+              {batchProgress.currentFile}
+            </button>
+          ) : (
+            <div style={s.bpCurrent} title={batchProgress.currentFile}>
+              {batchProgress.currentFile}
+            </div>
+          )}
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpLogRow}>
@@ -763,20 +777,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ? t("split.title_batch", { count: String(batchFiles!.length) })
             : t("split.title_single")}
         </span>
-        {!isBatch &&
-          (isNarrow ? (
-            <button
-              type="button"
-              style={{ ...s.subBtn, ...s.sub, maxWidth: 110 }}
-              title={filePath}
-              aria-label={`${filePath.split(/[/\\]/).pop()} — ${t("common.show_full_filename")}`}
-              onClick={() => window.alert(filePath.split(/[/\\]/).pop() ?? "")}
-            >
-              {filePath.split(/[/\\]/).pop()}
-            </button>
-          ) : (
-            <span style={s.sub}>{filePath.split(/[/\\]/).pop()}</span>
-          ))}
         {!isBatch && <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>}
         <div style={{ flex: 1 }} />
         <span style={s.groupCount}>
@@ -1313,22 +1313,6 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
-  sub: {
-    fontSize: FS.small,
-    color: "var(--c-textSub)",
-    maxWidth: 180,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  subBtn: {
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
-  },
   pageBadge: {
     padding: "2px 10px",
     background: "var(--c-bgCard)",
@@ -1607,7 +1591,22 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurrent: { fontSize: FS.body, color: "var(--c-textSub)" },
+  bpCurrent: {
+    fontSize: FS.body,
+    color: "var(--c-textSub)",
+    maxWidth: 280,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  bpCurrentBtn: {
+    background: "transparent",
+    border: "none",
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+    display: "block",
+  },
   bpLog: {
     width: "100%",
     maxWidth: 480,
