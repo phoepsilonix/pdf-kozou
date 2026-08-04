@@ -34,9 +34,10 @@ import type { FileEntry } from "../store/usePdfStore";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
 import { PageOrientation } from "../lib/pageSize";
-import { PageHeader, BtnBack, BtnPrimary, Spinner, ErrorView } from "../components/common";
+import { PageHeader, BtnBack, BtnPrimary, Spinner, ErrorView, TapRevealText } from "../components/common";
 import { F } from "../lib/theme";
 import { useViewport } from "../hooks/useViewport";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { FixedMobileNav } from "../components/FixedMobileNav";
 
@@ -94,6 +95,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
 
   const { isNarrow } = useViewport();
+  const mobilePlatform = useIsMobilePlatform();
   const settingsTopRef = useRef<HTMLDivElement>(null);
   const previewTopRef = useRef<HTMLDivElement>(null);
   const mainScrollRef = useRef<HTMLDivElement>(null);
@@ -497,21 +499,12 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               }}
             />
           </div>
-          {isNarrow ? (
-            <button
-              type="button"
-              style={{ ...s.bpCurrentBtn, ...s.bpCurrent, maxWidth: 220 }}
-              title={batchProgress.currentFile}
-              aria-label={`${batchProgress.currentFile} — ${t("common.show_full_filename")}`}
-              onClick={() => window.alert(batchProgress.currentFile)}
-            >
-              {batchProgress.currentFile}
-            </button>
-          ) : (
-            <div style={s.bpCurrent} title={batchProgress.currentFile}>
-              {batchProgress.currentFile}
-            </div>
-          )}
+          <TapRevealText
+            text={batchProgress.currentFile}
+            fullText={batchProgress.currentFile}
+            mobilePlatform={mobilePlatform}
+            style={s.bpCurrent}
+          />
           <Spinner />
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
@@ -729,21 +722,6 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             ? t("booklet.title_batch", { count: String(batchFiles!.length) })
             : t("booklet.title")}
         </span>
-        {!isBatch &&
-          (isNarrow ? (
-            <button
-              type="button"
-              style={{ ...s.subFileBtn, ...s.subFile, maxWidth: 110 }}
-              title={filePath}
-              aria-label={`${filePath.split(/[/\\]/).pop()} — ${t("common.show_full_filename")}`}
-              onClick={() => window.alert(filePath.split(/[/\\]/).pop() ?? "")}
-            >
-              {filePath.split(/[/\\]/).pop()}
-            </button>
-          ) : (
-            <span style={s.subFile}>{filePath.split(/[/\\]/).pop()}</span>
-          ))}
-        {!isBatch && <span style={s.sub}>{t("common.pages", { count: String(totalPages) })}</span>}
       </PageHeader>
 
       <div style={mainStyle} ref={mainScrollRef}>
@@ -1079,24 +1057,6 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
-  sub: { fontSize: FS.body, color: "var(--c-textDim)", marginLeft: 8 },
-  subFile: {
-    fontSize: FS.body,
-    color: "var(--c-textSub)",
-    maxWidth: 200,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    marginLeft: 8,
-  },
-  subFileBtn: {
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
-  },
   body: {
     flex: 1,
     overflowY: "auto",
@@ -1311,14 +1271,6 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  },
-  bpCurrentBtn: {
-    background: "transparent",
-    border: "none",
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
-    display: "block",
   },
   bpLog: {
     width: "100%",
