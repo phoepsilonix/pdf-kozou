@@ -14,6 +14,7 @@ import {
   PageHeader,
   BtnBack,
   BtnPrimary,
+  TapRevealText,
 } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import {
@@ -59,6 +60,7 @@ import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobile
 import { PreviewPane } from "../components/PreviewPane";
 import { usePreview } from "../hooks/usePreview";
 import { useViewport } from "../hooks/useViewport";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { FixedMobileNav } from "../components/FixedMobileNav";
 import {
@@ -189,6 +191,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   }));
   const { enabled: previewEnabled } = usePreview("image");
   const { isNarrow } = useViewport();
+  const mobilePlatform = useIsMobilePlatform();
   const settingsTopRef = useRef<HTMLDivElement>(null);
   const previewTopRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -1323,21 +1326,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               }}
             />
           </div>
-          {isNarrow ? (
-            <button
-              type="button"
-              style={{ ...s.bpCurrentBtn, ...s.bpCurrent, maxWidth: 220 }}
-              title={batchProgress.currentFile}
-              aria-label={`${batchProgress.currentFile} — ${t("common.show_full_filename")}`}
-              onClick={() => window.alert(batchProgress.currentFile)}
-            >
-              {batchProgress.currentFile}
-            </button>
-          ) : (
-            <div style={s.bpCurrent} title={batchProgress.currentFile}>
-              {batchProgress.currentFile}
-            </div>
-          )}
+          <TapRevealText
+            text={batchProgress.currentFile}
+            fullText={batchProgress.currentFile}
+            mobilePlatform={mobilePlatform}
+            style={s.bpCurrent}
+          />
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpRow}>
@@ -3001,14 +2995,6 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  },
-  bpCurrentBtn: {
-    background: "transparent",
-    border: "none",
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
-    display: "block",
   },
   bpLog: {
     width: "100%",
