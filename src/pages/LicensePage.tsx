@@ -220,7 +220,7 @@ const LicensePage: React.FC = () => {
 
   const openGitHub = async () => {
     try {
-      openUrl("https://github.com/phoepsilonix/pdf-kozou");
+      await openUrl("https://github.com/phoepsilonix/pdf-kozou");
     } catch (e) {
       console.error("Failed to open browser:", e);
     }
