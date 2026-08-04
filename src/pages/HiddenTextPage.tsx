@@ -25,7 +25,7 @@ import {
   type MobileSavedFileInfo,
 } from "../lib/mobileOutput";
 import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
-import { Spinner, PageHeader } from "../components/common";
+import { Spinner, PageHeader, TapRevealText } from "../components/common";
 import { useI18n } from "../lib/i18n";
 import { buildName } from "../lib/filename";
 import { useA11y } from "../hooks/useA11y";
@@ -494,21 +494,12 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             <div style={s.statusBox}>
               {progress.current} / {progress.total}
             </div>
-            {mobilePlatform ? (
-              <button
-                type="button"
-                style={{ ...s.currentFileBtn, ...s.currentFileBox }}
-                title={progress.currentFile}
-                aria-label={`${progress.currentFile} — ${t("common.show_full_filename")}`}
-                onClick={() => window.alert(progress.currentFile)}
-              >
-                {progress.currentFile}
-              </button>
-            ) : (
-              <div style={s.currentFileBox} title={progress.currentFile}>
-                {progress.currentFile}
-              </div>
-            )}
+            <TapRevealText
+              text={progress.currentFile}
+              fullText={progress.currentFile}
+              mobilePlatform={mobilePlatform}
+              style={s.currentFileBox}
+            />
           </div>
           {/* 右: ログ */}
           <div style={rightStyle}>
@@ -1591,14 +1582,6 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  },
-  currentFileBtn: {
-    background: "transparent",
-    border: "none",
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
-    display: "block",
   },
   type3Note: {
     fontSize: FS.small,
