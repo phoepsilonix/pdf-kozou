@@ -1014,9 +1014,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               <div>検出タイプ</div>
               <div
                 style={
-                  isNarrow
-                    ? { flex: 5, flexDirection: "row", display: "flex", overflow: "auto" }
-                    : { flex: 1, flexDirection: "column", display: "flex", overflow: "auto" }
+                  // 狭幅時のみ横並びにしていたが、英語ラベルなどで横スクロール
+                  // が発生してしまうため撤回し、常に横長表示と同じ縦並びにする
+                  { flex: 1, flexDirection: "column", display: "flex", overflow: "auto" }
                 }
               >
                 {DETECT_TYPES.map((dt) => (
