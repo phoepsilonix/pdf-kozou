@@ -11,6 +11,13 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
+    "shell:default",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "url": "https://github.com/**/*" }
+      ]
+    },
     "fs:default",
     "fs:allow-mkdir",
     "fs:read-files",
