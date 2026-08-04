@@ -14,9 +14,7 @@
     "shell:default",
     {
       "identifier": "shell:allow-open",
-      "allow": [
-        { "url": "https://github.com/**/*" }
-      ]
+      "allow": [{ "url": "https://github.com/**/*" }]
     },
     "fs:default",
     "fs:allow-mkdir",

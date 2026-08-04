@@ -6,7 +6,14 @@
 export default RotatePage;
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Spinner, ErrorView, PageHeader, BtnBack, BtnPrimary, TapRevealText } from "../components/common";
+import {
+  Spinner,
+  ErrorView,
+  PageHeader,
+  BtnBack,
+  BtnPrimary,
+  TapRevealText,
+} from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import {
   renderPage,
