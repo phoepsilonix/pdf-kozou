@@ -131,6 +131,9 @@ type BatchProgress = {
   current: number;
   total: number;
   currentFile: string;
+  // 将来デスクトップ版の進捗表示でフルパス表示を選択可能にするための予備
+  // フィールド。現状は未使用（表示は常にファイル名のみ）
+  currentFilePath: string;
   done: { file: string; hits: number; saved?: string }[];
   errors: { file: string; msg: string }[];
 };
@@ -400,6 +403,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       current: 0,
       total: batchFiles.length,
       currentFile: "",
+      currentFilePath: "",
       done: [],
       errors: [],
     };
@@ -410,6 +414,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       const f = batchFiles[i];
       prog.current = i + 1;
       prog.currentFile = f.filename;
+      prog.currentFilePath = f.path;
       setProgress({ ...prog });
       try {
         const hits = await detectAllPages(f.path, f.pageCount, enabled, thr);
@@ -495,6 +500,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               {progress.current} / {progress.total}
             </div>
             <TapRevealText
+              // 進捗表示: 現状はモバイル・デスクトップともファイル名のみ。
+              // デスクトップは将来的にfullTextをprogress.currentFilePath
+              // （フルパス）に切り替える余地を残してある
               text={progress.currentFile}
               fullText={progress.currentFile}
               mobilePlatform={mobilePlatform}

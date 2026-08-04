@@ -72,6 +72,9 @@ interface BatchProgress {
   current: number;
   total: number;
   currentFile: string;
+  // 将来デスクトップ版の進捗表示でフルパス表示を選択可能にするための予備
+  // フィールド。現状は未使用（表示は常にファイル名のみ）
+  currentFilePath: string;
   done: { file: string; sheets: number; pdfPath?: string }[];
   errors: { file: string; msg: string }[];
 }
@@ -420,6 +423,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       current: 0,
       total: files.length,
       currentFile: "",
+      currentFilePath: "",
       done: [],
       errors: [],
     };
@@ -428,6 +432,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       const f = files[i];
       progress.current = i + 1;
       progress.currentFile = f.filename;
+      progress.currentFilePath = f.path;
       setBatchProgress({ ...progress });
       try {
         // ページ数はファイルごとに異なるので個別に取得してレイアウトを計算
@@ -507,6 +512,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             />
           </div>
           <TapRevealText
+            // 進捗表示: 現状はモバイル・デスクトップともファイル名のみ。
+            // デスクトップは将来的にfullTextをbatchProgress.currentFilePath
+            // （フルパス）に切り替える余地を残してある
             text={batchProgress.currentFile}
             fullText={batchProgress.currentFile}
             mobilePlatform={mobilePlatform}

@@ -91,6 +91,9 @@ interface BatchProgress {
   current: number;
   total: number;
   currentFile: string;
+  // 将来デスクトップ版の進捗表示でフルパス表示を選択可能にするための予備
+  // フィールド。現状は未使用（表示は常にファイル名のみ）
+  currentFilePath: string;
   // pdfPath: PDF 1ファイルとして保存した場合の出力パス
   // savedFiles: 画像分割など複数ファイルに出力した場合の全保存パス一覧
   done: { file: string; count: number; pdfPath?: string; savedFiles?: string[] }[];
@@ -1034,6 +1037,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       current: 0,
       total: files.length,
       currentFile: "",
+      currentFilePath: "",
       done: [],
       errors: [],
     };
@@ -1043,6 +1047,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const f = files[i];
       progress.current = i + 1;
       progress.currentFile = f.filename;
+      progress.currentFilePath = f.path;
       setBatchProgress({ ...progress });
 
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -1327,6 +1332,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             />
           </div>
           <TapRevealText
+            // 進捗表示: 現状はモバイル・デスクトップともファイル名のみ。
+            // デスクトップは将来的にfullTextをbatchProgress.currentFilePath
+            // （フルパス）に切り替える余地を残してある
             text={batchProgress.currentFile}
             fullText={batchProgress.currentFile}
             mobilePlatform={mobilePlatform}

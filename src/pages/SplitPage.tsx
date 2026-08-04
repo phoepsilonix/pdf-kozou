@@ -70,6 +70,9 @@ interface BatchProgress {
   current: number;
   total: number;
   currentFile: string;
+  // 将来デスクトップ版の進捗表示でフルパス表示を選択可能にするための予備
+  // フィールド。現状は未使用（表示は常にファイル名のみ）
+  currentFilePath: string;
   done: { file: string; count: number }[];
   errors: { file: string; msg: string }[];
 }
@@ -425,6 +428,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       current: 0,
       total: files.length,
       currentFile: "",
+      currentFilePath: "",
       done: [],
       errors: [],
     };
@@ -435,6 +439,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       const f = files[i];
       progress.current = i + 1;
       progress.currentFile = f.filename;
+      progress.currentFilePath = f.path;
       setBatchProgress({ ...progress });
       try {
         const info = await getPdfInfo(f.path, {
@@ -531,6 +536,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             />
           </div>
           <TapRevealText
+            // 進捗表示: 現状はモバイル・デスクトップともファイル名のみ。
+            // デスクトップは将来的にfullTextをbatchProgress.currentFilePath
+            // （フルパス）に切り替える余地を残してある
             text={batchProgress.currentFile}
             fullText={batchProgress.currentFile}
             mobilePlatform={mobilePlatform}
