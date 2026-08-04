@@ -14,6 +14,7 @@ import {
   PageHeader,
   BtnBack,
   BtnPrimary,
+  TapRevealText,
 } from "../components/common";
 import { usePdfStore } from "../store/usePdfStore";
 import { resolvePageSizePt } from "../lib/pageSize";
@@ -43,6 +44,7 @@ import { MetadataEditModal } from "../components/MetadataEditModal";
 import { listen } from "@tauri-apps/api/event";
 import { isMupdfExtension } from "../lib/fileTypes";
 import { useViewport } from "../hooks/useViewport";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
 
 interface PdfEntry {
   id: number;
@@ -64,6 +66,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const { isNarrow } = useViewport();
+  const mobilePlatform = useIsMobilePlatform();
   const [statusMsg, setStatusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
 
@@ -794,21 +797,12 @@ useEffect(() => {
                     )}
                   </div>
                   <div style={s.itemInfo}>
-                    {isNarrow ? (
-                      <button
-                        type="button"
-                        style={{ ...s.itemNameBtn, ...s.itemName }}
-                        title={entry.path}
-                        aria-label={`${entry.filename} — ${t("common.show_full_filename")}`}
-                        onClick={() => window.alert(entry.filename)}
-                      >
-                        {entry.filename}
-                      </button>
-                    ) : (
-                      <span style={s.itemName} title={entry.path}>
-                        {entry.filename}
-                      </span>
-                    )}
+                    <TapRevealText
+                      text={entry.filename}
+                      fullText={entry.path}
+                      mobilePlatform={mobilePlatform}
+                      style={s.itemName}
+                    />
                     <span style={s.itemPages}>
                       {t("common.pages", { count: String(entry.pageCount) })}
                     </span>
@@ -1054,15 +1048,6 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  },
-  itemNameBtn: {
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
-    width: "100%",
   },
   itemPages: { fontSize: FS.small, color: "var(--c-textSub)" },
   moveBtns: { display: "flex", flexDirection: "column", gap: 3, flexShrink: 0 },
