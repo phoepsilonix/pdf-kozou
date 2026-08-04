@@ -4,6 +4,7 @@
 
 // src/components/common.tsx — 共通 UI コンポーネント
 //import { C, F } from "../lib/theme";
+import { useState } from "react";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useI18n } from "../lib/i18n";
@@ -123,6 +124,90 @@ export function PageHeader({ children }: { children: React.ReactNode }) {
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * ellipsis省略されたファイル名などを、狭い場所でも確認できるようにする
+ * 共通コンポーネント。
+ *
+ * デスクトップ: マウスホバーで title 属性のツールチップが出るだけで
+ * 十分なため、従来通り <span title=...> のまま。
+ *
+ * モバイル実機(mobilePlatform=true): ホバー操作が無いため、タップすると
+ * すぐ下に全文を短時間(既定2.2秒)だけポップアップ表示して自動的に消える。
+ * window.alert() のようなOKタップが必要なダイアログは、デスクトップの
+ * ホバー表示に比べて煩わしいため使わない。
+ */
+export function TapRevealText({
+  text,
+  fullText,
+  mobilePlatform,
+  style,
+  toastMs = 2200,
+}: {
+  text: string;
+  fullText: string;
+  mobilePlatform: boolean;
+  style?: React.CSSProperties;
+  toastMs?: number;
+}) {
+  const [toastOpen, setToastOpen] = useState(false);
+
+  if (!mobilePlatform) {
+    return (
+      <span style={style} title={fullText}>
+        {text}
+      </span>
+    );
+  }
+
+  return (
+    <span style={{ position: "relative", display: "inline-block", minWidth: 0 }}>
+      <button
+        type="button"
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          fontFamily: F,
+          cursor: "pointer",
+          textAlign: "left",
+          display: "block",
+          width: "100%",
+          ...style,
+        }}
+        title={fullText}
+        onClick={() => {
+          setToastOpen(true);
+          window.setTimeout(() => setToastOpen(false), toastMs);
+        }}
+      >
+        {text}
+      </button>
+      {toastOpen && (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            marginTop: 4,
+            maxWidth: "80vw",
+            padding: "6px 10px",
+            background: "var(--c-text)",
+            color: "var(--c-bg)",
+            fontSize: FS.small,
+            borderRadius: 6,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+            zIndex: 1000,
+            wordBreak: "break-all",
+          }}
+        >
+          {fullText}
+        </div>
+      )}
+    </span>
   );
 }
 

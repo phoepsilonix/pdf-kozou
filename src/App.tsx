@@ -65,6 +65,7 @@ import { FontScaleControl } from "./components/FontScaleControl";
 import { loadUiScale, applyUiScale, saveUiScale } from "./lib/uiScale";
 import { useViewport } from "./hooks/useViewport";
 import { useIsMobilePlatform } from "./hooks/usePlatform";
+import { TapRevealText } from "./components/common";
 import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
 import type { ThemeId } from "./lib/themes";
@@ -1462,20 +1463,13 @@ function ToolShell({
             <span style={sh.batchLabel}>{t("app.about_label")}</span>
           ) : isBatch ? (
             <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
-          ) : mobilePlatform ? (
-            <button
-              type="button"
-              style={{ ...sh.filenameBtn, ...sh.filename }}
-              title={filePath}
-              aria-label={`${filename} — ${t("common.show_full_filename")}`}
-              onClick={() => window.alert(filename)}
-            >
-              {filename}
-            </button>
           ) : (
-            <span style={sh.filename} title={filePath}>
-              {filename}
-            </span>
+            <TapRevealText
+              text={filename}
+              fullText={filePath}
+              mobilePlatform={mobilePlatform}
+              style={sh.filename}
+            />
           )}
           <div style={{ flex: 1 }} />
           {useFloatingMenu ? (
@@ -1895,14 +1889,6 @@ const sh: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     flexShrink: 0,
-  },
-  filenameBtn: {
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
   },
   batchLabel: {
     fontSize: FS.small,
