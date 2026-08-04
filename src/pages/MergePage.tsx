@@ -798,8 +798,10 @@ useEffect(() => {
                   </div>
                   <div style={s.itemInfo}>
                     <TapRevealText
+                      // フルパスは表示しない方針（Android対策）。fullTextも
+                      // ファイル名のみとする
                       text={entry.filename}
-                      fullText={entry.path}
+                      fullText={entry.filename}
                       mobilePlatform={mobilePlatform}
                       style={s.itemName}
                     />

@@ -1270,7 +1270,9 @@ function FileRow({
       <span style={fr.handle}>⣿</span>
       <span style={fr.num}>{index + 1}</span>
       <div style={fr.info}>
-        <span style={fr.name} title={entry.path}>
+        {/* ここもフルパスは表示しない（Androidのキャッシュインポートパス対策）。
+            titleの内容はテキストと同じファイル名のみ */}
+        <span style={fr.name} title={entry.filename}>
           {entry.filename}
         </span>
         <span style={fr.meta}>
@@ -1465,8 +1467,11 @@ function ToolShell({
             <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
           ) : (
             <TapRevealText
+              // ヘッダーはフルパスを表示しない方針（Androidはキャッシュ
+              // インポート時のパスになるため、表示するとユーザーが混乱する）。
+              // text/fullTextとも常にファイル名のみとする。
               text={filename}
-              fullText={filePath}
+              fullText={filename}
               mobilePlatform={mobilePlatform}
               style={sh.filename}
             />
