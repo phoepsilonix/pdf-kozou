@@ -64,6 +64,7 @@ import { ThemeSwitcher } from "./components/ThemeSwitcher";
 import { FontScaleControl } from "./components/FontScaleControl";
 import { loadUiScale, applyUiScale, saveUiScale } from "./lib/uiScale";
 import { useViewport } from "./hooks/useViewport";
+import { useIsMobilePlatform } from "./hooks/usePlatform";
 import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
 import type { ThemeId } from "./lib/themes";
@@ -1332,10 +1333,10 @@ function ToolShell({
     ],
     [t],
   );
+  const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
+  const mobilePlatform = useIsMobilePlatform();
   const filename = filePath.split(/[/\\]/).pop() ?? "";
   const batchFiles = isBatch ? toolFiles : undefined;
-
-  const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
   const {
     layoutModeOverride,
     setLayoutModeOverride,
@@ -1461,7 +1462,7 @@ function ToolShell({
             <span style={sh.batchLabel}>{t("app.about_label")}</span>
           ) : isBatch ? (
             <span style={sh.batchLabel}>📂 {toolFiles.length}ファイル</span>
-          ) : (
+          ) : mobilePlatform ? (
             <button
               type="button"
               style={{ ...sh.filenameBtn, ...sh.filename }}
@@ -1471,6 +1472,10 @@ function ToolShell({
             >
               {filename}
             </button>
+          ) : (
+            <span style={sh.filename} title={filePath}>
+              {filename}
+            </span>
           )}
           <div style={{ flex: 1 }} />
           {useFloatingMenu ? (
