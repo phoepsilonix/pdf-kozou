@@ -6,7 +6,7 @@
 export default RotatePage;
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Spinner, ErrorView, PageHeader, BtnBack, BtnPrimary } from "../components/common";
+import { Spinner, ErrorView, PageHeader, BtnBack, BtnPrimary, TapRevealText } from "../components/common";
 import { usePdfStore, type FileEntry } from "../store/usePdfStore";
 import {
   renderPage,
@@ -49,6 +49,7 @@ import { usePreview } from "../hooks/usePreview";
 import { CompressPage } from "./CompressPage";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { useViewport } from "../hooks/useViewport";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { FixedMobileNav } from "../components/FixedMobileNav";
 
@@ -96,6 +97,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const { isNarrow } = useViewport();
+  const mobilePlatform = useIsMobilePlatform();
   const [statusMsg, setStatusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const { enabled: previewEnabled } = usePreview("rotate");
@@ -463,21 +465,12 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               }}
             />
           </div>
-          {isNarrow ? (
-            <button
-              type="button"
-              style={{ ...s.bpCurrentBtn, ...s.bpCurrent, maxWidth: 220 }}
-              title={batchProgress.currentFile}
-              aria-label={`${batchProgress.currentFile} — ${t("common.show_full_filename")}`}
-              onClick={() => window.alert(batchProgress.currentFile)}
-            >
-              {batchProgress.currentFile}
-            </button>
-          ) : (
-            <div style={s.bpCurrent} title={batchProgress.currentFile}>
-              {batchProgress.currentFile}
-            </div>
-          )}
+          <TapRevealText
+            text={batchProgress.currentFile}
+            fullText={batchProgress.currentFile}
+            mobilePlatform={mobilePlatform}
+            style={s.bpCurrent}
+          />
           <div style={s.bpLog}>
             {batchProgress.done.map((d, i) => (
               <div key={i} style={s.bpRow}>
@@ -1381,14 +1374,6 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  },
-  bpCurrentBtn: {
-    background: "transparent",
-    border: "none",
-    fontFamily: F,
-    cursor: "pointer",
-    textAlign: "left" as const,
-    display: "block",
   },
   bpLog: {
     width: "100%",
