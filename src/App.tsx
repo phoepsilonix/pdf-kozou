@@ -171,7 +171,6 @@ export default function App() {
 
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
-  const mobilePlatform = useIsMobilePlatform();
   const fileListTopRef = useRef<HTMLDivElement>(null);
   const optionsTopRef = useRef<HTMLDivElement>(null);
   const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
@@ -994,7 +993,6 @@ export default function App() {
                           key={f.id}
                           entry={f}
                           index={i}
-                          mobilePlatform={mobilePlatform}
                           onToggle={() => {
                             // 対象PDFとして使うかどうかのオンオフ。新しい状態をファイル名付きで読み上げ
                             const willUse = !f.selected;
@@ -1207,14 +1205,12 @@ export default function App() {
 function FileRow({
   entry,
   index,
-  mobilePlatform,
   onToggle,
   onRemove,
   onDragReorder,
 }: {
   entry: FileEntry;
   index: number;
-  mobilePlatform: boolean;
   onToggle: () => void;
   onRemove: () => void;
   onDragReorder: (f: number, t: number) => void;
@@ -1275,14 +1271,11 @@ function FileRow({
       <span style={fr.num}>{index + 1}</span>
       <div style={fr.info}>
         {/* フルパスは表示しない（Androidのキャッシュインポートパス対策）。
-            text/fullTextともファイル名のみ。titleホバーが効かないモバイル
-            実機ではTapRevealTextがタップ全文表示に切り替える */}
-        <TapRevealText
-          text={entry.filename}
-          fullText={entry.filename}
-          mobilePlatform={mobilePlatform}
-          style={fr.name}
-        />
+            スマホは横長ではないため、長いファイル名は1行に省略するより
+            折り返して全文を表示する方が実用的。TapRevealText(1行省略+
+            タップ全文表示)ではなく、折り返し可能な素のspanで常に全文を
+            表示する */}
+        <span style={fr.name}>{entry.filename}</span>
         <span style={fr.meta}>
           {entry.pageCount}
           {t("file.pages_unit")}
@@ -1826,9 +1819,8 @@ const fr: Record<string, React.CSSProperties> = {
   name: {
     fontSize: FS.label,
     color: "var(--c-text)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
   },
   meta: { fontSize: FS.small, color: "var(--c-textSub)" },
   del: {
