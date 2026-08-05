@@ -16,6 +16,15 @@
         { "url": "https://asset.localhost:*/**/*" }
       ]
     },
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://github.com/**/*" },
+        { "url": "https://ghostscript.com/**/*" },
+        { "url": "https://localhost:*/**/*" },
+        { "url": "https://asset.localhost:*/**/*" }
+      ]
+    },
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",

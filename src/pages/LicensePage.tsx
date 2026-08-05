@@ -11,7 +11,7 @@ import {
   suggestGsCandidates,
   isMobile,
 } from "../lib/tauri";
-import { open } from "@tauri-apps/plugin-shell";
+import { openUrl as openUrlPlugin } from "@tauri-apps/plugin-opener";
 import React, { useEffect, useState } from "react";
 
 import { usePdfStore } from "../store/usePdfStore";
@@ -129,7 +129,11 @@ const LicensePage: React.FC = () => {
   }, []);
 
   const openUrl = async (url: string) => {
-    await open(url);
+    // @tauri-apps/plugin-shellのopen()はJS呼び出し経路が内部でデスクトップ
+    // 専用のopenクレートを使っており、Androidでは何も起きず失敗する。
+    // plugin-openerのopenUrl()はモバイルではネイティブ実装(ACTION_VIEW等)
+    // に正しくルーティングされるためこちらを使う
+    await openUrlPlugin(url);
   };
 
   const checkGs = async (path?: string) => {

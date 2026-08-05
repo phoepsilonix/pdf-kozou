@@ -27,6 +27,7 @@ pdf-kozou-core       = { path = "../pdf-kozou-core" }
 tauri                = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-fs      = "2"
 tauri-plugin-dialog  = "2"
+tauri-plugin-opener  = "2"
 tauri-plugin-process = "2"
 tauri-plugin-shell   = "2"
 # フォルダ単位保存 (Android SAF, ACTION_OPEN_DOCUMENT_TREE) で得た
