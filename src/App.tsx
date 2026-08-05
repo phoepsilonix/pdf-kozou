@@ -1274,8 +1274,11 @@ function FileRow({
             スマホは横長ではないため、長いファイル名は1行に省略するより
             折り返して全文を表示する方が実用的。TapRevealText(1行省略+
             タップ全文表示)ではなく、折り返し可能な素のspanで常に全文を
-            表示する */}
-        <span style={fr.name}>{entry.filename}</span>
+            表示する。折り返し表示できる場合でもtitle属性(代替テキスト)は
+            維持する */}
+        <span style={fr.name} title={entry.filename}>
+          {entry.filename}
+        </span>
         <span style={fr.meta}>
           {entry.pageCount}
           {t("file.pages_unit")}
