@@ -175,6 +175,7 @@ export function TapRevealText({
           textAlign: "left",
           display: "block",
           width: "100%",
+          minWidth: 0,
           ...style,
         }}
         title={fullText}
@@ -183,7 +184,20 @@ export function TapRevealText({
           window.setTimeout(() => setToastOpen(false), toastMs);
         }}
       >
-        {text}
+        {/* <button>に直接overflow/ellipsis/nowrapを当てても、Android実機の
+            WebViewでは効かず2行に折り返されてしまうことがあるため、
+            確実に1行省略できる素のspanをここに1枚挟む */}
+        <span
+          style={{
+            display: "block",
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {text}
+        </span>
       </button>
       {toastOpen && (
         <div
