@@ -171,6 +171,7 @@ export default function App() {
 
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
+  const mobilePlatform = useIsMobilePlatform();
   const fileListTopRef = useRef<HTMLDivElement>(null);
   const optionsTopRef = useRef<HTMLDivElement>(null);
   const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
@@ -993,6 +994,7 @@ export default function App() {
                           key={f.id}
                           entry={f}
                           index={i}
+                          mobilePlatform={mobilePlatform}
                           onToggle={() => {
                             // 対象PDFとして使うかどうかのオンオフ。新しい状態をファイル名付きで読み上げ
                             const willUse = !f.selected;
@@ -1205,12 +1207,14 @@ export default function App() {
 function FileRow({
   entry,
   index,
+  mobilePlatform,
   onToggle,
   onRemove,
   onDragReorder,
 }: {
   entry: FileEntry;
   index: number;
+  mobilePlatform: boolean;
   onToggle: () => void;
   onRemove: () => void;
   onDragReorder: (f: number, t: number) => void;
@@ -1270,11 +1274,15 @@ function FileRow({
       <span style={fr.handle}>⣿</span>
       <span style={fr.num}>{index + 1}</span>
       <div style={fr.info}>
-        {/* ここもフルパスは表示しない（Androidのキャッシュインポートパス対策）。
-            titleの内容はテキストと同じファイル名のみ */}
-        <span style={fr.name} title={entry.filename}>
-          {entry.filename}
-        </span>
+        {/* フルパスは表示しない（Androidのキャッシュインポートパス対策）。
+            text/fullTextともファイル名のみ。titleホバーが効かないモバイル
+            実機ではTapRevealTextがタップ全文表示に切り替える */}
+        <TapRevealText
+          text={entry.filename}
+          fullText={entry.filename}
+          mobilePlatform={mobilePlatform}
+          style={fr.name}
+        />
         <span style={fr.meta}>
           {entry.pageCount}
           {t("file.pages_unit")}
