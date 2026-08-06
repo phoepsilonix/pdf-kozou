@@ -4119,13 +4119,101 @@ static float kozou_path_fill_ratio(
  * 罫線グリッドは比≈0、面塗り矩形は≈1、円/角丸も終点近似で 0.5 前後を確保。 */
 #define KOZOU_BURIED_MIN_FILL_RATIO 0.20f
 
+/* クリップ矩形の深さ上限。実務上のPDFでこれを超える深さの入れ子クリップは
+ * ほぼ無いが、超過した場合は "現状維持" のまま対応する pop を待つ
+ * (clip_over_depth で push/pop の対応を崩さない)。 */
+#define KOZOU_MAX_CLIP_DEPTH 256
+
 /* ---- デバイス ---- */
 typedef struct {
     fz_device      base;
     KozouBuriedList *list;
     KozouXObjFrame  xobj_stack[KOZOU_XOBJ_MAX_DEPTH];
     int             xobj_depth; /* 現在のスタック深さ (0=トップレベル) */
+
+    /* アクティブなクリップ矩形のスタック (bbox近似)。
+     * fill_path/fill_image が実際に見える範囲を正しく評価するため、
+     * clip_path 等で押し込まれた scissor (MuPDFが既に親クリップと
+     * 交差計算済みの矩形) をそのまま積む。 */
+    fz_rect         clip_stack[KOZOU_MAX_CLIP_DEPTH];
+    int             clip_depth;      /* 実際にスタックされている深さ */
+    int             clip_over_depth; /* 上限超過分の push 回数 (対応する pop で相殺) */
 } KozouBuriedDevice;
+
+/* 現在有効なクリップ矩形との交差を返す。clip_depth==0 (クリップ無し) の
+ * 場合は bbox をそのまま返す。fz_infinite_rect 等の特別な番兵値の解釈に
+ *依存したくないため、素朴な軸並行矩形の交差計算を自前で行う。 */
+static fz_rect kozou_buried_clip_intersect(const KozouBuriedDevice *dev, fz_rect bbox)
+{
+    if (dev->clip_depth <= 0) return bbox;
+    fz_rect c = dev->clip_stack[dev->clip_depth - 1];
+    fz_rect r;
+    r.x0 = bbox.x0 > c.x0 ? bbox.x0 : c.x0;
+    r.y0 = bbox.y0 > c.y0 ? bbox.y0 : c.y0;
+    r.x1 = bbox.x1 < c.x1 ? bbox.x1 : c.x1;
+    r.y1 = bbox.y1 < c.y1 ? bbox.y1 : c.y1;
+    return r;
+}
+
+static int kozou_buried_rect_is_empty(fz_rect r)
+{
+    return r.x0 >= r.x1 || r.y0 >= r.y1;
+}
+
+static void kozou_buried_push_clip(KozouBuriedDevice *dev, fz_rect scissor)
+{
+    if (dev->clip_depth < KOZOU_MAX_CLIP_DEPTH) {
+        dev->clip_stack[dev->clip_depth] = kozou_buried_clip_intersect(dev, scissor);
+        dev->clip_depth++;
+    } else {
+        dev->clip_over_depth++;
+    }
+}
+
+static void kozou_buried_pop_clip(fz_context *ctx, fz_device *dev_)
+{
+    (void)ctx;
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->clip_over_depth > 0) dev->clip_over_depth--;
+    else if (dev->clip_depth > 0) dev->clip_depth--;
+}
+
+/* clip_path/clip_stroke_path/clip_image_mask は「これから描画される内容が
+ * この矩形(scissor)でクリップされる」ことをデバイスに通知するコールバック。
+ * scissor はMuPDF側で既に親クリップと交差計算済みのデバイス空間bboxなので、
+ * そのままスタックに積むだけでよい (パス形状そのものの精密なクリップ形状
+ * までは追わず、外接矩形近似で扱う。fill_path/fill_image のカバー判定自体
+ * が既にbbox近似のため一貫している)。
+ *
+ * clip_text/clip_stroke_text は意図的に実装しない: Tr=7 (クリップのみ・
+ * 不可視) の文字はこれらのコールバックが未設定 (NULL) の場合に限って
+ * MuPDF が fill_text 経由でも通知してくれる (invisible_mode/clip_only 検出
+ * が fill_text 側に依存している既存の挙動、下のコメント参照)。ここで
+ * clip_text を実装してしまうと Tr=7 の文字が fill_text に来なくなり、
+ * 別機能である不可視テキスト検出を壊してしまうため、テキスト系クリップは
+ * 対象外のままにする (今回の誤検出はパスのクリップ (re/W*/n) が原因であり
+ * テキストクリップ由来ではないため、この範囲で実害はない)。 */
+static void kozou_buried_clip_path(
+    fz_context *ctx, fz_device *dev_, const fz_path *path,
+    int even_odd, fz_matrix ctm, fz_rect scissor)
+{
+    (void)ctx; (void)path; (void)even_odd; (void)ctm;
+    kozou_buried_push_clip((KozouBuriedDevice *)dev_, scissor);
+}
+static void kozou_buried_clip_stroke_path(
+    fz_context *ctx, fz_device *dev_, const fz_path *path,
+    const fz_stroke_state *stroke, fz_matrix ctm, fz_rect scissor)
+{
+    (void)ctx; (void)path; (void)stroke; (void)ctm;
+    kozou_buried_push_clip((KozouBuriedDevice *)dev_, scissor);
+}
+static void kozou_buried_clip_image_mask(
+    fz_context *ctx, fz_device *dev_, fz_image *image,
+    fz_matrix ctm, fz_rect scissor)
+{
+    (void)ctx; (void)image; (void)ctm;
+    kozou_buried_push_clip((KozouBuriedDevice *)dev_, scissor);
+}
 
 static void kozou_buried_fill_path(
     fz_context *ctx, fz_device *dev_,
@@ -4144,15 +4232,22 @@ static void kozou_buried_fill_path(
      * パスの実塗り面積が bbox に対して小さい場合、それは「面で覆う塗り」では
      * なく細い線なので被覆対象にしない。これを怠ると、カレンダー罫線等の
      * 広い bbox を持つ線パスが内側の可視テキストを buried と誤判定し、
-     * 無害化で可視テキストを破壊してしまう。 */
+     * 無害化で可視テキストを破壊してしまう。
+     * (fill_ratio はクリップ前の本来のパス面積比で判定する) */
     float fill_ratio = kozou_path_fill_ratio(ctx, path, ctm, bbox);
     if (fill_ratio < KOZOU_BURIED_MIN_FILL_RATIO) return;
+
+    /* アクティブなクリップ矩形と交差させる。クリップの外側は実際には
+     * 描画されない (見えない) ので、その部分をカバーとして扱ってしまうと
+     * クリップの外にあるテキストまで誤って埋没扱いしてしまう。 */
+    fz_rect clipped_bbox = kozou_buried_clip_intersect(dev, bbox);
+    if (kozou_buried_rect_is_empty(clipped_bbox)) return;
 
     KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
     cr->event_index = dev->list->event_counter++;
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
-    cr->x0 = bbox.x0; cr->y0 = bbox.y0;
-    cr->x1 = bbox.x1; cr->y1 = bbox.y1;
+    cr->x0 = clipped_bbox.x0; cr->y0 = clipped_bbox.y0;
+    cr->x1 = clipped_bbox.x1; cr->y1 = clipped_bbox.y1;
 }
 
 static void kozou_buried_fill_image(
@@ -4168,11 +4263,20 @@ static void kozou_buried_fill_image(
     if (bbox.x0 > bbox.x1) { float t = bbox.x0; bbox.x0 = bbox.x1; bbox.x1 = t; }
     if (bbox.y0 > bbox.y1) { float t = bbox.y0; bbox.y0 = bbox.y1; bbox.y1 = t; }
 
+    /* アクティブなクリップ矩形と交差させる。クリップの外側は実際には
+     * 描画されない (見えない) ので、その部分をカバーとして扱ってしまうと
+     * クリップの外にあるテキストまで誤って埋没扱いしてしまう。
+     * (画像の bbox は元々巨大でも、クリップで小さな帯状にしか見えていない
+     * ケースが実際にある。ベース画像とSMaskのunit square対応付けに使う
+     * cr->ctm は元の ctm のまま保持する = クリップ後の bbox とは独立) */
+    fz_rect clipped_bbox = kozou_buried_clip_intersect(dev, bbox);
+    if (kozou_buried_rect_is_empty(clipped_bbox)) return;
+
     KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
     cr->event_index = dev->list->event_counter++;
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
-    cr->x0 = bbox.x0; cr->y0 = bbox.y0;
-    cr->x1 = bbox.x1; cr->y1 = bbox.y1;
+    cr->x0 = clipped_bbox.x0; cr->y0 = clipped_bbox.y0;
+    cr->x1 = clipped_bbox.x1; cr->y1 = clipped_bbox.y1;
 
     /* SMask/Mask (PDFの /SMask, /Mask) を持つ画像だけ参照を保持する。
      * マスク無し画像は矩形全体が一様に不透明とみなしてよく、ピクセル
@@ -4180,7 +4284,7 @@ static void kozou_buried_fill_image(
     if (image && image->mask) {
         cr->is_image = 1;
         cr->image    = fz_keep_image(ctx, image);
-        cr->ctm      = ctm;
+        cr->ctm      = ctm; /* unit square→デバイスの対応付けは元のctmを使う */
     }
 }
 
@@ -4288,6 +4392,13 @@ static fz_device *kozou_new_buried_device(fz_context *ctx, KozouBuriedList *list
     dev->base.fill_text    = kozou_buried_fill_text;
     dev->base.begin_group  = kozou_buried_begin_group;
     dev->base.end_group    = kozou_buried_end_group;
+    /* クリップ矩形の追跡: fill_path/fill_image が実際に見える範囲だけを
+     * カバーとして登録するために必要 (詳細は各コールバックのコメント参照)。
+     * clip_text/clip_stroke_text はあえて未設定 (下記コメント参照)。 */
+    dev->base.clip_path         = kozou_buried_clip_path;
+    dev->base.clip_stroke_path  = kozou_buried_clip_stroke_path;
+    dev->base.clip_image_mask   = kozou_buried_clip_image_mask;
+    dev->base.pop_clip          = kozou_buried_pop_clip;
     /* clip_text (Tr=7) はシグネチャがバージョンにより異なるため省略。
      * Tr=7 の文字は fill_text コールバックでも記録されるため問題なし。 */
     dev->list      = list;
@@ -4295,6 +4406,8 @@ static fz_device *kozou_new_buried_device(fz_context *ctx, KozouBuriedList *list
     dev->xobj_stack[0].xref    = 0; /* トップレベル */
     dev->xobj_stack[0].ctm     = fz_identity;
     dev->xobj_stack[0].inv_ctm = fz_identity;
+    dev->clip_depth      = 0;
+    dev->clip_over_depth = 0;
     return (fz_device *)dev;
 }
 
