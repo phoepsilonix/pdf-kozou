@@ -4317,7 +4317,17 @@ static int kozou_cover_alpha_ok(
     const fz_rect         *stext_bbox,
     float                  alpha_threshold)
 {
-    if (!cr->is_image || !cr->image) return 1; /* 通常カバー: 従来通り */
+    if (!cr->is_image || !cr->image || !cr->image->mask) return 1; /* 通常カバー: 従来通り */
+
+    /* SMask/Mask (PDFの /SMask, /Mask) は、それ自体が独立した fz_image
+     * (image->mask) として保持される。ベース画像 (cr->image) を
+     * fz_get_pixmap_from_image でデコードしても、必ずしもマスクが
+     * 自動合成されたアルファ付きピクスマップが返るとは限らないため
+     * (実装依存)、マスク画像そのものを直接デコードしてグレー値=不透明度
+     * をサンプリングする方が確実。マスク画像は常にベース画像と同じ
+     * unit square [0,1]x[0,1] 上にマッピングされる(解像度は別で良い)ため、
+     * unit square 座標の計算はベース画像と共通でよい。 */
+    fz_image *mask = cr->image->mask;
 
     int ok = 1; /* デコード失敗時のフォールバック = 覆っているとみなす */
 
@@ -4345,39 +4355,41 @@ static int kozou_cover_alpha_ok(
 
         if (ux1 <= ux0 || uy1 <= uy0) {
             ok = 1; /* 変換不能・退化 → 安全側 */
-        } else if (cr->image->w <= 0 || cr->image->h <= 0) {
+        } else if (mask->w <= 0 || mask->h <= 0) {
             ok = 1;
         } else {
             fz_irect subarea;
-            subarea.x0 = (int)floorf(ux0 * (float)cr->image->w);
-            subarea.y0 = (int)floorf(uy0 * (float)cr->image->h);
-            subarea.x1 = (int)ceilf (ux1 * (float)cr->image->w);
-            subarea.y1 = (int)ceilf (uy1 * (float)cr->image->h);
+            subarea.x0 = (int)floorf(ux0 * (float)mask->w);
+            subarea.y0 = (int)floorf(uy0 * (float)mask->h);
+            subarea.x1 = (int)ceilf (ux1 * (float)mask->w);
+            subarea.y1 = (int)ceilf (uy1 * (float)mask->h);
             if (subarea.x1 <= subarea.x0) subarea.x1 = subarea.x0 + 1;
             if (subarea.y1 <= subarea.y0) subarea.y1 = subarea.y0 + 1;
-            if (subarea.x1 > cr->image->w) subarea.x1 = cr->image->w;
-            if (subarea.y1 > cr->image->h) subarea.y1 = cr->image->h;
+            if (subarea.x1 > mask->w) subarea.x1 = mask->w;
+            if (subarea.y1 > mask->h) subarea.y1 = mask->h;
 
             /* ネイティブ解像度でデコードさせるため、unit square → 実ピクセル
              * サイズへのスケール行列を渡す (低解像度への間引きを避ける)。 */
-            fz_matrix decode_ctm = fz_scale((float)cr->image->w, (float)cr->image->h);
+            fz_matrix decode_ctm = fz_scale((float)mask->w, (float)mask->h);
             int dw = 0, dh = 0;
             fz_pixmap *pm = fz_get_pixmap_from_image(
-                ctx, cr->image, &subarea, &decode_ctm, &dw, &dh);
+                ctx, mask, &subarea, &decode_ctm, &dw, &dh);
 
             if (pm) {
                 fz_try(ctx) {
-                    if (pm->alpha && pm->n > 0 && pm->w > 0 && pm->h > 0) {
+                    if (pm->n > 0 && pm->w > 0 && pm->h > 0) {
                         long sum = 0;
                         long count = 0;
                         int n = pm->n;
                         unsigned char *base = pm->samples;
+                        /* SMask/Mask はDeviceGray(1成分)が基本で、画素値
+                         * そのものが不透明度(0=透明,255=不透明)を表す。
+                         * 先頭成分を用いる(pm->alphaのようなアルファ合成
+                         * 済みの値に依存しない)。 */
                         for (int y = 0; y < pm->h; y++) {
                             unsigned char *row = base + (size_t)y * pm->stride;
                             for (int x = 0; x < pm->w; x++) {
-                                /* premultiplied pixmap のアルファは各画素の
-                                 * 最終成分 (スポットカラー無し画像を想定) */
-                                sum += row[x * n + (n - 1)];
+                                sum += row[x * n];
                                 count++;
                             }
                         }
@@ -4386,8 +4398,6 @@ static int kozou_cover_alpha_ok(
                             ok = (avg_alpha >= alpha_threshold);
                         }
                     }
-                    /* pm->alpha が立っていない = このサブ領域はアルファ情報を
-                     * 持たない (デコーダの都合等) → 判定できないので安全側 */
                 }
                 fz_always(ctx) { fz_drop_pixmap(ctx, pm); }
                 fz_catch(ctx) { ok = 1; }
