@@ -320,6 +320,7 @@ unsafe extern "C" {
         layout_h: f32,
         layout_em: f32,
         cover_ratio: f32,
+        image_alpha_threshold: f32,
         out: *mut mupdf_sys::fz_output,
         result: *mut FfiResult,
     );

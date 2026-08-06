@@ -12,6 +12,7 @@
  */
 
 #include <limits.h>
+#include <math.h>
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
@@ -3978,6 +3979,16 @@ typedef struct {
     int   event_index;
     int   xobj_xref;         /* 所属 XObject の xref (0=トップレベル) */
     float x0, y0, x1, y1;   /* デバイス座標 (Y下向き) */
+
+    /* SMask/Mask を持つ画像カバーの精査用 (fill_path 由来では is_image=0)。
+     * 画像は矩形(bbox)が重なっていても実際には透明な部分があり得るため、
+     * 後段でグリフと重なる領域だけをピクセル単位でサンプリングする
+     * (kozou_cover_alpha_ok 参照)。fz_keep_image で参照を保持し、
+     * 検出処理の終了時 (kozou_detect_buried_text の fz_always) に
+     * fz_drop_image で解放する。 */
+    int       is_image;
+    fz_image *image;   /* NULL = 通常のパスカバー、またはマスク無し画像 */
+    fz_matrix ctm;      /* この画像描画時の CTM (unit square → デバイス座標) */
 } KozouCoverRect;
 
 /* 内部: テキスト文字イベント (fill_text) */
@@ -4162,6 +4173,15 @@ static void kozou_buried_fill_image(
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
     cr->x0 = bbox.x0; cr->y0 = bbox.y0;
     cr->x1 = bbox.x1; cr->y1 = bbox.y1;
+
+    /* SMask/Mask (PDFの /SMask, /Mask) を持つ画像だけ参照を保持する。
+     * マスク無し画像は矩形全体が一様に不透明とみなしてよく、ピクセル
+     * サンプリングの負荷をかける必要が無いため is_image=0 のままにする。 */
+    if (image && image->mask) {
+        cr->is_image = 1;
+        cr->image    = fz_keep_image(ctx, image);
+        cr->ctm      = ctm;
+    }
 }
 
 static void kozou_buried_fill_text(
@@ -4278,12 +4298,117 @@ static fz_device *kozou_new_buried_device(fz_context *ctx, KozouBuriedList *list
     return (fz_device *)dev;
 }
 
+/* ──────────────────────────────────────────────────────────────────
+ * SMask/Mask 付き画像カバーについて、グリフと重なる領域だけを
+ * ピクセル単位でサンプリングし、平均アルファがしきい値以上かを判定する
+ * (buried 誤検出防止・画像版)。
+ *
+ * kozou_path_fill_ratio が「bboxは広いが実際の塗りは細い罫線/枠」を
+ * 除外するのと同じ狙いで、こちらは「bboxは広いが SMask によって
+ * ほとんど透明な装飾画像」を除外する。
+ *
+ * デコードや変換に失敗した場合は安全側 (=覆っているとみなす、戻り値1)
+ * に倒す。判定できないケースで可視テキストを誤って隠しテキスト扱い
+ * から除外してしまう方が、誤検出のまま残るより実害が小さいため。
+ * ───────────────────────────────────────────────────────────────── */
+static int kozou_cover_alpha_ok(
+    fz_context            *ctx,
+    const KozouCoverRect  *cr,
+    const fz_rect         *stext_bbox,
+    float                  alpha_threshold)
+{
+    if (!cr->is_image || !cr->image) return 1; /* 通常カバー: 従来通り */
+
+    int ok = 1; /* デコード失敗時のフォールバック = 覆っているとみなす */
+
+    fz_try(ctx) {
+        fz_matrix inv = fz_invert_matrix(cr->ctm);
+
+        /* stext_bbox (デバイス座標) の4隅を画像の unit square 座標系
+         * (0..1 x 0..1) に逆変換する。CTM が回転/せん断を含む場合に
+         * 備えて4隅すべてを変換してから軸並行な外接矩形を取る。 */
+        fz_point p0 = fz_transform_point(fz_make_point(stext_bbox->x0, stext_bbox->y0), inv);
+        fz_point p1 = fz_transform_point(fz_make_point(stext_bbox->x1, stext_bbox->y0), inv);
+        fz_point p2 = fz_transform_point(fz_make_point(stext_bbox->x0, stext_bbox->y1), inv);
+        fz_point p3 = fz_transform_point(fz_make_point(stext_bbox->x1, stext_bbox->y1), inv);
+
+        float ux0 = fz_min(fz_min(p0.x, p1.x), fz_min(p2.x, p3.x));
+        float ux1 = fz_max(fz_max(p0.x, p1.x), fz_max(p2.x, p3.x));
+        float uy0 = fz_min(fz_min(p0.y, p1.y), fz_min(p2.y, p3.y));
+        float uy1 = fz_max(fz_max(p0.y, p1.y), fz_max(p2.y, p3.y));
+
+        /* unit square にクランプ (グリフがカバーのbboxからはみ出ている
+         * 部分は判定対象外。呼び出し元で bbox 重なりを確認済みなので
+         * 通常はクランプ後も非退化のはず) */
+        ux0 = fz_clamp(ux0, 0.0f, 1.0f); ux1 = fz_clamp(ux1, 0.0f, 1.0f);
+        uy0 = fz_clamp(uy0, 0.0f, 1.0f); uy1 = fz_clamp(uy1, 0.0f, 1.0f);
+
+        if (ux1 <= ux0 || uy1 <= uy0) {
+            ok = 1; /* 変換不能・退化 → 安全側 */
+        } else if (cr->image->w <= 0 || cr->image->h <= 0) {
+            ok = 1;
+        } else {
+            fz_irect subarea;
+            subarea.x0 = (int)floorf(ux0 * (float)cr->image->w);
+            subarea.y0 = (int)floorf(uy0 * (float)cr->image->h);
+            subarea.x1 = (int)ceilf (ux1 * (float)cr->image->w);
+            subarea.y1 = (int)ceilf (uy1 * (float)cr->image->h);
+            if (subarea.x1 <= subarea.x0) subarea.x1 = subarea.x0 + 1;
+            if (subarea.y1 <= subarea.y0) subarea.y1 = subarea.y0 + 1;
+            if (subarea.x1 > cr->image->w) subarea.x1 = cr->image->w;
+            if (subarea.y1 > cr->image->h) subarea.y1 = cr->image->h;
+
+            /* ネイティブ解像度でデコードさせるため、unit square → 実ピクセル
+             * サイズへのスケール行列を渡す (低解像度への間引きを避ける)。 */
+            fz_matrix decode_ctm = fz_scale((float)cr->image->w, (float)cr->image->h);
+            int dw = 0, dh = 0;
+            fz_pixmap *pm = fz_get_pixmap_from_image(
+                ctx, cr->image, &subarea, &decode_ctm, &dw, &dh);
+
+            if (pm) {
+                fz_try(ctx) {
+                    if (pm->alpha && pm->n > 0 && pm->w > 0 && pm->h > 0) {
+                        long sum = 0;
+                        long count = 0;
+                        int n = pm->n;
+                        unsigned char *base = pm->samples;
+                        for (int y = 0; y < pm->h; y++) {
+                            unsigned char *row = base + (size_t)y * pm->stride;
+                            for (int x = 0; x < pm->w; x++) {
+                                /* premultiplied pixmap のアルファは各画素の
+                                 * 最終成分 (スポットカラー無し画像を想定) */
+                                sum += row[x * n + (n - 1)];
+                                count++;
+                            }
+                        }
+                        if (count > 0) {
+                            float avg_alpha = (float)sum / (float)count / 255.0f;
+                            ok = (avg_alpha >= alpha_threshold);
+                        }
+                    }
+                    /* pm->alpha が立っていない = このサブ領域はアルファ情報を
+                     * 持たない (デコーダの都合等) → 判定できないので安全側 */
+                }
+                fz_always(ctx) { fz_drop_pixmap(ctx, pm); }
+                fz_catch(ctx) { ok = 1; }
+            }
+        }
+    }
+    fz_catch(ctx) {
+        ok = 1; /* サンプリング中の例外は安全側 (=覆っているとみなす) */
+    }
+
+    return ok;
+}
+
 /* ---- 埋没判定 ---- */
 static int kozou_char_is_buried(
+    fz_context             *ctx,
     const KozouBuriedList *list,
     const KozouTextEvt    *te,
     const fz_rect         *stext_bbox,  /* stextのより正確なbbox */
-    float                  cover_ratio)
+    float                  cover_ratio,
+    float                  image_alpha_threshold)
 {
     float tw = stext_bbox->x1 - stext_bbox->x0;
     float th = stext_bbox->y1 - stext_bbox->y0;
@@ -4301,7 +4426,14 @@ static int kozou_char_is_buried(
 
         if (ix1 <= ix0 || iy1 <= iy0) continue;
         float overlap = (ix1 - ix0) * (iy1 - iy0);
-        if (overlap / text_area >= cover_ratio) return 1;
+        if (overlap / text_area < cover_ratio) continue;
+
+        /* bbox上は覆われているが、SMask付き画像の場合は実ピクセルを
+         * サンプリングして実質的に不透明かどうかを再確認する。 */
+        if (!kozou_cover_alpha_ok(ctx, cr, stext_bbox, image_alpha_threshold))
+            continue;
+
+        return 1;
     }
     return 0;
 }
@@ -4567,6 +4699,7 @@ void kozou_detect_buried_text(
     float        layout_h,
     float        layout_em,
     float        cover_ratio,
+    float        image_alpha_threshold,
     fz_output   *out,
     FfiResult   *result)
 {
@@ -4617,6 +4750,11 @@ void kozou_detect_buried_text(
         stext = fz_new_stext_page_from_page(ctx, page, &opts);
 
         if (cover_ratio <= 0.0f || cover_ratio > 1.0f) cover_ratio = 0.8f;
+        /* SMask付き画像カバーの平均アルファがこの値未満なら「実質透明」と
+         * みなし覆いから除外する。デフォルト0.5 = カバー領域の半分以上が
+         * 不透明でなければ隠蔽と判定しない。 */
+        if (image_alpha_threshold <= 0.0f || image_alpha_threshold > 1.0f)
+            image_alpha_threshold = 0.5f;
 
         int hit_count = 0;
         fz_write_printf(ctx, out,
@@ -4663,7 +4801,8 @@ void kozou_detect_buried_text(
                     stext_bbox.x1 = q.ur.x > q.lr.x ? q.ur.x : q.lr.x;
                     stext_bbox.y1 = q.ll.y > q.lr.y ? q.ll.y : q.lr.y;
 
-                    if (!kozou_char_is_buried(list, matched, &stext_bbox, cover_ratio))
+                    if (!kozou_char_is_buried(ctx, list, matched, &stext_bbox,
+                            cover_ratio, image_alpha_threshold))
                         continue;
 
                     int cp = ch->c;
@@ -4722,7 +4861,14 @@ void kozou_detect_buried_text(
         set_ok(result);
     }
     fz_always(ctx) {
-        if (list)     fz_free(ctx, list);
+        if (list) {
+            /* kozou_buried_fill_image で fz_keep_image した参照を解放する */
+            for (int _ci = 0; _ci < list->cover_count; _ci++) {
+                if (list->covers[_ci].image)
+                    fz_drop_image(ctx, list->covers[_ci].image);
+            }
+            fz_free(ctx, list);
+        }
         if (stext)    fz_drop_stext_page(ctx, stext);
         if (orderdev) { fz_close_device(ctx, orderdev);
                         fz_drop_device(ctx, orderdev); }

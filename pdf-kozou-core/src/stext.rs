@@ -839,6 +839,11 @@ pub struct DetectBuriedRequest {
     /// 覆われ率の閾値 0.0〜1.0 (デフォルト 0.8)
     #[serde(default)]
     pub cover_ratio: Option<f32>,
+    /// SMask/Mask付き画像カバーの平均アルファしきい値 0.0〜1.0 (デフォルト 0.5)。
+    /// カバー領域(グリフと重なる部分)の平均アルファがこの値未満なら
+    /// 「実質透明」とみなし、覆いから除外する。
+    #[serde(default)]
+    pub image_alpha_threshold: Option<f32>,
     #[serde(default)]
     pub layout_w: Option<f32>,
     #[serde(default)]
@@ -883,6 +888,7 @@ pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedRespo
             req.layout_h.unwrap_or(0.0),
             req.layout_em.unwrap_or(0.0),
             req.cover_ratio.unwrap_or(0.8),
+            req.image_alpha_threshold.unwrap_or(0.5),
             out,
             &mut res,
         );

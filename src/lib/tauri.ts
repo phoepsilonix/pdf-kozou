@@ -258,17 +258,22 @@ export interface DetectBuriedResponse {
  * 覆われたテキストを検出する。
  * @param coverRatio 覆われ率の閾値 0.0〜1.0 (デフォルト 0.8)
  *   文字bboxの80%以上が後続オブジェクトに覆われていれば隠蔽と判定。
+ * @param imageAlphaThreshold SMask/Mask付き画像カバーの平均アルファしきい値
+ *   0.0〜1.0 (デフォルト 0.5)。bbox上は覆われていても、グリフと重なる
+ *   領域の平均アルファがこの値未満なら「実質透明」とみなし覆いから除外する。
  */
 export async function detectBuriedText(
   path: string,
   page: number,
   coverRatio?: number,
   options?: ConvertOptions,
+  imageAlphaThreshold?: number,
 ): Promise<DetectBuriedResponse> {
   return invoke<DetectBuriedResponse>("detect_buried_text", {
     path,
     page,
     coverRatio: coverRatio ?? null,
+    imageAlphaThreshold: imageAlphaThreshold ?? null,
     layoutW: options?.layoutW ?? null,
     layoutH: options?.layoutH ?? null,
     layoutEm: options?.layoutEm ?? null,
