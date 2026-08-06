@@ -4854,8 +4854,16 @@ void kozou_detect_buried_text(
         memset(list, 0, sizeof(KozouBuriedList));
         list->page_h = page_h;
 
-        /* Pass 1: 描画順を記録 */
+        /* Pass 1: 描画順を記録
+         * CropBox外にはみ出した装飾 (デザインツール書き出しでよくある
+         * 塗り足し/オーバーフロー) を、覆いとして誤登録しないよう、
+         * ページの実際の可視領域 (CropBox) を初期クリップとして積んでおく。
+         * これが無いと、Form XObject 自身のBBoxクリップは追えても、
+         * 「ページそのものの外側にはみ出した部分」は素通りしてしまう
+         * (今回の X48 のケースと全く同じ構造の問題がページレベルでも
+         * 起こり得る)。 */
         orderdev = kozou_new_buried_device(ctx, list);
+        kozou_buried_push_clip((KozouBuriedDevice *)orderdev, page_bounds);
         fz_run_page(ctx, page, orderdev, fz_identity, NULL);
         fz_close_device(ctx, orderdev);
         fz_drop_device(ctx, orderdev);
