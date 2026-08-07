@@ -879,6 +879,7 @@
     "reason_low_contrast": "Low contrast",
     "reason_tiny": "Tiny font",
     "reason_buried": "Buried",
+    "reason_clipped": "Hidden by clip",
     "reason_control": "Control char",
     "reason_whitespace": "Whitespace",
     "page_label": "Page",

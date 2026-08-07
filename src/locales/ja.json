@@ -879,6 +879,7 @@
     "reason_low_contrast": "低コントラスト",
     "reason_tiny": "極小フォント",
     "reason_buried": "オブジェクト裏",
+    "reason_clipped": "クリップで不可視",
     "reason_control": "制御文字",
     "reason_whitespace": "空白系文字",
     "page_label": "ページ",

@@ -3999,6 +3999,15 @@ typedef struct {
     float ix, iy;            /* XObject 内部座標系での origin */
     float ox, oy;            /* デバイス座標 (Y下向き) */
     float x0, y0, x1, y1;   /* グリフ bbox (デバイス座標) */
+
+    /* このテキストが描画された時点で有効だったクリップ矩形のスナップ
+     * ショット。Tr=0(通常描画)の可視テキストであっても、その文字位置を
+     * 含まない小さなクリップ矩形の内側に押し込めることで見た目上隠す
+     * ことができる (覆うオブジェクトが無いため fill_path/fill_image側の
+     * カバー判定では検出できない別系統の隠蔽手口)。
+     * has_clip=0 の場合はクリップ無し (制限なし)。 */
+    int     has_clip;
+    fz_rect clip;
 } KozouTextEvt;
 
 #define KOZOU_MAX_COVERS 8192
@@ -4348,6 +4357,16 @@ static void kozou_buried_fill_text(
             te->oy = oy;
             te->x0 = glyph_bbox.x0; te->y0 = glyph_bbox.y0;
             te->x1 = glyph_bbox.x1; te->y1 = glyph_bbox.y1;
+
+            /* 描画時点のクリップ矩形をスナップショットしておく
+             * (クリップで実質的に見えなくされているテキストを、後段の
+             * kozou_char_is_clipped_out で検出するため)。 */
+            if (dev->clip_depth > 0) {
+                te->has_clip = 1;
+                te->clip = dev->clip_stack[dev->clip_depth - 1];
+            } else {
+                te->has_clip = 0;
+            }
         }
     }
 }
@@ -4559,6 +4578,35 @@ static int kozou_char_is_buried(
         return 1;
     }
     return 0;
+}
+
+/* ---- クリップによる隠蔽の判定 ----
+ * 覆うオブジェクトが無くても、テキスト自身が描画時点のクリップ矩形の
+ * 大部分の外側にあれば実質的に不可視。buried (覆い) とは別の隠蔽経路
+ * なので、呼び出し側で理由 ("clipped") を区別できるよう関数を分ける。 */
+static int kozou_char_is_clipped_out(
+    const KozouTextEvt *te,
+    const fz_rect      *stext_bbox,
+    float                cover_ratio)
+{
+    if (!te->has_clip) return 0;
+
+    float tw = stext_bbox->x1 - stext_bbox->x0;
+    float th = stext_bbox->y1 - stext_bbox->y0;
+    if (tw <= 0.5f || th <= 0.5f) return 0;
+    float text_area = tw * th;
+
+    float ix0 = stext_bbox->x0 > te->clip.x0 ? stext_bbox->x0 : te->clip.x0;
+    float iy0 = stext_bbox->y0 > te->clip.y0 ? stext_bbox->y0 : te->clip.y0;
+    float ix1 = stext_bbox->x1 < te->clip.x1 ? stext_bbox->x1 : te->clip.x1;
+    float iy1 = stext_bbox->y1 < te->clip.y1 ? stext_bbox->y1 : te->clip.y1;
+
+    float visible_area = 0.0f;
+    if (ix1 > ix0 && iy1 > iy0)
+        visible_area = (ix1 - ix0) * (iy1 - iy0);
+
+    float hidden_ratio = 1.0f - (visible_area / text_area);
+    return hidden_ratio >= cover_ratio;
 }
 
 /* ---- 公開関数 ---- */
@@ -4932,9 +4980,13 @@ void kozou_detect_buried_text(
                     stext_bbox.x1 = q.ur.x > q.lr.x ? q.ur.x : q.lr.x;
                     stext_bbox.y1 = q.ll.y > q.lr.y ? q.ll.y : q.lr.y;
 
+                    int buried_is_clipped = 0;
                     if (!kozou_char_is_buried(ctx, list, matched, &stext_bbox,
-                            cover_ratio, image_alpha_threshold))
-                        continue;
+                            cover_ratio, image_alpha_threshold)) {
+                        if (!kozou_char_is_clipped_out(matched, &stext_bbox, cover_ratio))
+                            continue;
+                        buried_is_clipped = 1;
+                    }
 
                     int cp = ch->c;
                     /* sanitized は hits から除外 */
@@ -4943,6 +4995,7 @@ void kozou_detect_buried_text(
 
                     const char *buried_reason =
                         kozou_is_whitespace_codepoint(cp) ? "whitespace_only"
+                        : buried_is_clipped ? "clipped"
                         : "buried";
 
                     /* JSON エスケープ */

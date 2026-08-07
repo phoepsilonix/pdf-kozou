@@ -57,6 +57,7 @@ const REASON_KEY: Record<string, string> = {
   low_contrast: "hidden.reason_low_contrast",
   tiny_font: "hidden.reason_tiny",
   buried: "hidden.reason_buried",
+  clipped: "hidden.reason_clipped",
   control_char: "hidden.reason_control",
   whitespace_only: "hidden.reason_whitespace",
 };

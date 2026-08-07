@@ -241,7 +241,7 @@ export interface BuriedChar {
   char: string;
   color_rgb: [number, number, number];
   size: number;
-  /** "buried" | "sanitized" | "whitespace_only" */
+  /** "buried" | "clipped" | "sanitized" | "whitespace_only" */
   reason: string;
   origin: [number, number];
   quad: [number, number, number, number, number, number, number, number];
