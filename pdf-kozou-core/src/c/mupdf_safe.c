@@ -4200,7 +4200,7 @@ static void kozou_buried_pop_clip(fz_context *ctx, fz_device *dev_)
  * が fill_text 側に依存している既存の挙動、下のコメント参照)。ここで
  * clip_text を実装してしまうと Tr=7 の文字が fill_text に来なくなり、
  * 別機能である不可視テキスト検出を壊してしまうため、テキスト系クリップは
- * 対象外のままにする (今回の誤検出はパスのクリップ (re/W*/n) が原因であり
+ * 対象外のままにする (今回の誤検出はパスのクリップ (re → W* → n) が原因であり
  * テキストクリップ由来ではないため、この範囲で実害はない)。 */
 static void kozou_buried_clip_path(
     fz_context *ctx, fz_device *dev_, const fz_path *path,
