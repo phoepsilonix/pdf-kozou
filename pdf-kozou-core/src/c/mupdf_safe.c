@@ -5941,6 +5941,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                 float dev_x = full.e;
                 float dev_y = full.f;
                 int do_blank = blank_entire_bt;
+                int origin_is_target = 0;
                 if (!do_blank && n_targets > 0) {
                     int cur_invisible = kozou_tr_is_invisible(cur_tr);
                     /* この Tj が実際に描くグリフの identity を stext マップから取得。
@@ -5958,11 +5959,25 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         if (dx*dx + dy*dy > tol2) continue;
                         if (!kozou_identity_ok(targets[_ti].codepoint, targets[_ti].size,
                                                have_g, g_ucs, g_size)) continue;
-                        do_blank = 1; break;
+                        origin_is_target = 1; break;
                     }
-                    /* Tm 原点がターゲット外でも、文字単位で前進して再照合。
-                     * 先頭文字が検出されない場合 (部分被覆の buried 等) に対応。 */
-                    if (!do_blank && pdf && font_dict) {
+
+                    /* Tm 原点がターゲット外/内いずれの場合も、文字単位で前進しながら
+                     * 個別に対象/非対象を判定・記録する。かつては最初に見つかった対象で
+                     * 即座に do_blank=1 として行全体を確定していたが、これだと被覆矩形の
+                     * 外側にはみ出した対象外の文字まで巻き添えで消えてしまうため、
+                     * ページ側 (kozou_sanitize_hidden_text) と同じ方針で文字単位のラン
+                     * ごとに出力を分ける。 */
+#define KOZOU_XOBJ_LINE_MAX_CH 128
+                    const char *ch_start[KOZOU_XOBJ_LINE_MAX_CH];
+                    const char *ch_end[KOZOU_XOBJ_LINE_MAX_CH];
+                    int         ch_blank[KOZOU_XOBJ_LINE_MAX_CH];
+                    float       ch_w[KOZOU_XOBJ_LINE_MAX_CH];
+                    int         n_ch_scanned = 0;
+                    int         any_char_blank = 0;
+                    const char *scan_str_start = NULL;
+
+                    if (pdf && font_dict) {
                         /* Tj/TJ 行から文字列を抜き出す */
                         const char *line_p = (const char *)src + ts;
                         const char *str_start = NULL;
@@ -5970,11 +5985,13 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                             if (line_p[_ci] == '(') { str_start = line_p + _ci; break; }
                         }
                         if (str_start) {
+                            scan_str_start = str_start;
                             pdf_obj *fobj_c = pdf_dict_gets(ctx, font_dict, cur_font_name);
                             int is_mb_c = kozou_is_multibyte_font(ctx, fobj_c);
                             float adv_c = 0.0f;
                             const char *p_c = str_start + 1;
-                            while (*p_c && *p_c != ')' && !do_blank) {
+                            while (*p_c && *p_c != ')' && n_ch_scanned < KOZOU_XOBJ_LINE_MAX_CH) {
+                                const char *cstart_c = p_c;
                                 int cc_c;
                                 if (*p_c == '\\') {
                                     p_c++;
@@ -6010,33 +6027,106 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 if (qmap)
                                     have_g_c = kozou_quad_map_lookup_glyph(
                                         qmap, ch_dev_x, ch_dev_y, 4.0f, &g_c_ucs, &g_c_size);
-                                for (int _ti2 = 0; _ti2 < n_targets && !do_blank; _ti2++) {
-                                    if (targets[_ti2].render_invisible >= 0 &&
-                                        targets[_ti2].render_invisible != cur_invisible)
-                                        continue;
-                                    float dx2 = targets[_ti2].ox - ch_dev_x;
-                                    float dy2 = targets[_ti2].oy - ch_dev_y;
-                                    if (dx2*dx2 + dy2*dy2 > tol2) continue;
-                                    if (!kozou_identity_ok(targets[_ti2].codepoint,
-                                            targets[_ti2].size, have_g_c, g_c_ucs, g_c_size))
-                                        continue;
-                                    do_blank = 1;
+                                /* 先頭文字は Tm 原点そのものの判定(origin_is_target)も尊重する */
+                                int this_blank = (n_ch_scanned == 0 && origin_is_target);
+                                if (!this_blank) {
+                                    for (int _ti2 = 0; _ti2 < n_targets; _ti2++) {
+                                        if (targets[_ti2].render_invisible >= 0 &&
+                                            targets[_ti2].render_invisible != cur_invisible)
+                                            continue;
+                                        float dx2 = targets[_ti2].ox - ch_dev_x;
+                                        float dy2 = targets[_ti2].oy - ch_dev_y;
+                                        if (dx2*dx2 + dy2*dy2 > tol2) continue;
+                                        if (!kozou_identity_ok(targets[_ti2].codepoint,
+                                                targets[_ti2].size, have_g_c, g_c_ucs, g_c_size))
+                                            continue;
+                                        this_blank = 1; break;
+                                    }
                                 }
-                                adv_c += cw_c;
+                                /* 幅差分補正用: この文字自身の位置で quad マップを個別照合し、
+                                 * 実描画幅が取れればそちらを優先する(ページ側と同じ方針)。
+                                 * 見つからなければフォントメトリクスにフォールバック。 */
+                                float qw_c = qmap ? kozou_quad_map_lookup(
+                                    qmap, ch_dev_x, ch_dev_y, tol2) : -1.0f;
+                                float cw_eff_c = (qw_c > 0.0f) ? qw_c : cw_c;
+                                ch_start[n_ch_scanned] = cstart_c;
+                                ch_end[n_ch_scanned]   = p_c;
+                                ch_blank[n_ch_scanned] = this_blank;
+                                ch_w[n_ch_scanned]     = cw_eff_c;
+                                if (this_blank) any_char_blank = 1;
+                                n_ch_scanned++;
+                                adv_c += cw_c;  /* 位置追跡は必ずメトリクス幅を使う(quad幅ではドリフトする) */
                             }
                         }
                     }
+
+                    if (any_char_blank) {
+                        /* 対象/非対象を連続ランに分けて出力する。非対象ランは元バイト列を
+                         * そのまま書き戻し、対象ランのみ Helvetica + 幅差分TJ補正で置換する。
+                         * (行内の文字列以降の残りトークン(閉じ括弧の TJ/] TJ 等)は、
+                         * 各ランを独立した Tj として出力し直すため元のまま引き継ぐ必要はない) */
+                        int i = 0;
+                        while (i < n_ch_scanned) {
+                            int j = i;
+                            int blank_run = ch_blank[i];
+                            while (j < n_ch_scanned && ch_blank[j] == blank_run) j++;
+                            if (!blank_run) {
+                                fz_append_byte(ctx,out_buf,'(');
+                                fz_append_data(ctx,out_buf, ch_start[i],
+                                    (size_t)(ch_end[j-1]-ch_start[i]));
+                                fz_append_string(ctx,out_buf,") Tj\n");
+                            } else {
+                                int   run_n = j - i;
+                                float run_w = 0.0f;
+                                for (int m=i;m<j;m++) run_w += ch_w[m];
+                                float sp_total = KOZOU_HELVETICA_SPACE_WIDTH * run_n;
+                                float diff = run_w - sp_total;
+                                if (hv_ref)
+                                    fz_append_printf(ctx,out_buf,"/%s %g Tf\n", KOZOU_HV, cur_font_size);
+                                if (diff>0.5f||diff<-0.5f) {
+                                    fz_append_string(ctx,out_buf,"[(");
+                                    for(int m=0;m<run_n;m++) fz_append_byte(ctx,out_buf,0x20);
+                                    fz_append_printf(ctx,out_buf,") %.2f] TJ\n",-diff);
+                                } else {
+                                    fz_append_string(ctx,out_buf,"(");
+                                    for(int m=0;m<run_n;m++) fz_append_byte(ctx,out_buf,0x20);
+                                    fz_append_string(ctx,out_buf,") Tj\n");
+                                }
+                                if (hv_ref && cur_font_name[0])
+                                    fz_append_printf(ctx,out_buf,"%s\n", cur_font_line);
+                            }
+                            i = j;
+                        }
+                    } else if (origin_is_target) {
+                        /* 原点は対象だが文字列を特定できず文字単位判定ができなかった場合の
+                         * 安全側フォールバック: 従来通り行全体を単一スペースに置換する。 */
+                        do_blank = 1;
+                    } else {
+                        fz_append_data(ctx, out_buf, src + line_start, line_len);
+                        fz_append_byte(ctx, out_buf, '\n');
+                    }
+#undef KOZOU_XOBJ_LINE_MAX_CH
                 }
-                if (!do_blank) {
-                    fz_append_data(ctx, out_buf, src + line_start, line_len);
-                    fz_append_byte(ctx, out_buf, '\n');
-                } else if (hv_ref) {
-                    fz_append_printf(ctx, out_buf,
-                        "/%s %g Tf\n( ) Tj\n%s\n",
-                        KOZOU_HV, cur_font_size,
-                        cur_font_name[0] ? cur_font_line : "");
-                } else {
-                    fz_append_string(ctx, out_buf, "( ) Tj\n");
+                if (blank_entire_bt || (do_blank && n_targets == 0)) {
+                    /* blank_entire_bt (全 BT 一括空白化) モード専用の従来経路 */
+                    if (hv_ref) {
+                        fz_append_printf(ctx, out_buf,
+                            "/%s %g Tf\n( ) Tj\n%s\n",
+                            KOZOU_HV, cur_font_size,
+                            cur_font_name[0] ? cur_font_line : "");
+                    } else {
+                        fz_append_string(ctx, out_buf, "( ) Tj\n");
+                    }
+                } else if (do_blank && n_targets > 0) {
+                    /* 文字単位判定ができなかった場合の安全側フォールバック */
+                    if (hv_ref) {
+                        fz_append_printf(ctx, out_buf,
+                            "/%s %g Tf\n( ) Tj\n%s\n",
+                            KOZOU_HV, cur_font_size,
+                            cur_font_name[0] ? cur_font_line : "");
+                    } else {
+                        fz_append_string(ctx, out_buf, "( ) Tj\n");
+                    }
                 }
             } else {
                 if (trimmed_len >= 2 && src[te-2] == 'T' && src[te-1] == 'm') {
