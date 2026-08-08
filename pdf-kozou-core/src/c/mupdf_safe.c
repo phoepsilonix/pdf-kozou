@@ -6883,13 +6883,22 @@ void kozou_sanitize_hidden_text(
                             int this_blank = (n_ch == 0 && origin_is_target) ||
                                 kozou_sanitize_is_target(pi_targets,pi_n,cp.x,cp.y,tol2,
                                     kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size);
+                            /* 幅差分補正用: この文字自身の位置で quad マップを個別に照合し、
+                             * 実描画幅が取れればそちらを優先する(合字・RTL・縦書き対応)。
+                             * 見つからなければフォントメトリクスの値を使う。
+                             * 注意: quad幅は「1文字ぶん」の値であり、複数文字にまたがる
+                             * ランの幅を文字列全体幅からの比例配分で近似するのは誤り
+                             * (過小評価によりレイアウト崩壊を招く)。必ず文字ごとに
+                             * 個別照合して積算すること。 */
+                            float qw = kozou_quad_map_lookup(qmap, cp.x, cp.y, tol2);
+                            float cw_eff = (qw > 0.0f) ? qw : cw;
                             ch_start[n_ch] = cstart;
                             ch_end[n_ch]   = p2;
                             ch_blank[n_ch] = this_blank;
-                            ch_w[n_ch]     = cw;
+                            ch_w[n_ch]     = cw_eff;
                             if (this_blank) any_blank = 1;
                             n_ch++;
-                            adv += cw;
+                            adv += cw;  /* 次文字の位置追跡は必ずメトリクス幅を使う(quad幅ではドリフトする) */
                         }
 
                         if (!any_blank) {
@@ -6898,9 +6907,8 @@ void kozou_sanitize_hidden_text(
                             /* Step 2: 対象/非対象それぞれの連続ランごとにまとめて出力する。
                              * 非対象ランは元のバイト列をそのまま書き戻す(再エスケープ不要で安全)。
                              * 対象ランは Helvetica の空白 + 幅差分TJ補正で置換する
-                             * (従来の全文字列一括置換と同じ手法をラン単位に適用)。 */
-                            float quad_w = kozou_quad_map_lookup(
-                                qmap, dev_x, dev_y, tol2 * 4.0f);
+                             * (従来の全文字列一括置換と同じ手法をラン単位に適用)。
+                             * 幅は上のスキャンで文字ごとに個別確定済みの ch_w を単純合計する。 */
                             int i = 0;
                             while (i < n_ch) {
                                 int j = i;
@@ -6913,13 +6921,8 @@ void kozou_sanitize_hidden_text(
                                     fz_append_string(ctx,new_buf,") Tj\n");
                                 } else {
                                     int   run_n = j - i;
-                                    float orig_w = 0.0f;
-                                    for (int k=i;k<j;k++) orig_w += ch_w[k];
-                                    /* quad幅(実描画幅)が取得できる場合、文字列全体の幅に対する
-                                     * このランの advance 比率で按分して近似する */
-                                    float eff_orig = orig_w;
-                                    if (quad_w > 0.0f && adv > 0.0f)
-                                        eff_orig = quad_w * (orig_w / adv);
+                                    float eff_orig = 0.0f;
+                                    for (int k=i;k<j;k++) eff_orig += ch_w[k];
                                     float sp_total = KOZOU_HELVETICA_SPACE_WIDTH * run_n;
                                     float diff = eff_orig - sp_total;
                                     if (diff>200.0f||diff<-200.0f) page_warn=1;
@@ -7026,8 +7029,6 @@ void kozou_sanitize_hidden_text(
                              * 隣接文字(被覆矩形の外側にはみ出した部分など)まで巻き添えで
                              * 消えてしまうため、ランごとに Tj/TJ とフォント切替を分けて出す。
                              * カーニング数値はテキストを描かない [num] TJ として素通しする。 */
-                            float tj_quad_w = kozou_quad_map_lookup(
-                                qmap, dev_x, dev_y, tol2 * 4.0f);
                             float tj_adv2 = 0.0f;
                             int   first_char_seen2 = 0;
 #define KOZOU_TJ_ELEM_MAX 128
@@ -7038,7 +7039,6 @@ void kozou_sanitize_hidden_text(
                                     int         ch_blank[KOZOU_TJ_ELEM_MAX];
                                     float       ch_w[KOZOU_TJ_ELEM_MAX];
                                     int         n_ch = 0;
-                                    float       elem_w = 0.0f;
                                     const char *p2 = stk[k].s + 1;
                                     while (*p2 && *p2 != ')' && n_ch < KOZOU_TJ_ELEM_MAX) {
                                         const char *cstart = p2;
@@ -7075,14 +7075,16 @@ void kozou_sanitize_hidden_text(
                                             kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2,
                                                 kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
                                         first_char_seen2 = 1;
+                                        /* 幅差分補正用: 文字ごとに quad マップを個別照合(1文字ぶんの
+                                         * 実描画幅)し、見つからなければメトリクス幅にフォールバック。
+                                         * 複数文字ランへの比例配分は過小評価を招くため行わない。 */
+                                        float qw2 = kozou_quad_map_lookup(qmap, cp2.x, cp2.y, tol2);
+                                        float cw2_eff = (qw2 > 0.0f) ? qw2 : cw2;
                                         ch_start[n_ch]=cstart; ch_end[n_ch]=p2;
-                                        ch_blank[n_ch]=this_blank; ch_w[n_ch]=cw2;
+                                        ch_blank[n_ch]=this_blank; ch_w[n_ch]=cw2_eff;
                                         n_ch++;
-                                        elem_w += cw2;
-                                        tj_adv2 += cw2;
+                                        tj_adv2 += cw2;  /* 位置追跡は必ずメトリクス幅を使う */
                                     }
-                                    /* この文字列要素の実描画幅: quadマップの値があれば優先 */
-                                    float eff_elem_w = (tj_quad_w > 0.0f) ? tj_quad_w : elem_w;
                                     int i = 0;
                                     while (i < n_ch) {
                                         int j = i;
@@ -7095,10 +7097,8 @@ void kozou_sanitize_hidden_text(
                                             fz_append_string(ctx,new_buf,") Tj\n");
                                         } else {
                                             int   run_n = j - i;
-                                            float run_w = 0.0f;
-                                            for (int m=i;m<j;m++) run_w += ch_w[m];
-                                            float eff_run = (elem_w > 0.0f)
-                                                ? eff_elem_w * (run_w / elem_w) : eff_elem_w;
+                                            float eff_run = 0.0f;
+                                            for (int m=i;m<j;m++) eff_run += ch_w[m];
                                             float sp_total = KOZOU_HELVETICA_SPACE_WIDTH * run_n;
                                             float diff = eff_run - sp_total;
                                             if (diff>200.0f||diff<-200.0f) page_warn=1;
