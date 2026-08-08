@@ -3564,6 +3564,9 @@ static int kozou_find_background(
 /*   }]                                                               */
 /* }                                                                   */
 /* ------------------------------------------------------------------ */
+/* リング32点中、低コントラスト点がこの割合以上を占めたら「埋没」と判定する */
+#define KOZOU_LC_RATIO_THRESHOLD 0.4f
+
 void kozou_detect_low_contrast_text(
     fz_context  *ctx,
     const char  *path,
@@ -3694,16 +3697,22 @@ void kozou_detect_low_contrast_text(
 
                     /* Step 2: 外周リング 32点 を均等配置でサンプリング
                      * 各点について fg との知覚色差 ΔE と WCAG コントラスト比を計算。
-                     * 「最悪値判定」: リング上で最も背景と差がある方向(最大ΔE/最大CR)
-                     * を見て、その最良の見えやすさが閾値以下なら「埋もれている」と判定。
-                     * グラデーション背景でも、文字の縁のどこか一点でも見えていれば
-                     * 「見えている」と正しく扱える。 */
+                     * 「割合判定」: 低コントラスト点(cr_i<=閾値)がリング全体の
+                     * KOZOU_LC_RATIO_THRESHOLD 以上を占めるなら「埋もれている」と判定。
+                     * 「上半分だけ同化」等の部分的同化でも角度に依らず正確に捕捉できる。
+                     *
+                     * 外周点が fg と全く同じ色の場合（文字色と背景色が完全一致）も、
+                     * かつてはスキップして無効サンプル扱いにしていたが、これは
+                     * 「背景が本当に文字色と同一」という最も強い埋没シグナルを
+                     * 逆に捨ててしまうバグだった。fg==bg はコントラスト比1.0
+                     * （最も低い値）として正しくカウントする。 */
                     float ring_rx = char_w * 0.5f + char_h * 0.7f + 3.0f;
                     float ring_ry = char_h * 0.5f + char_h * 0.7f + 3.0f;
-                    int   lc_total = 0;
+                    int   ring_total = 0;      /* pixmap範囲内でサンプリングできた点数 */
+                    int   low_count  = 0;      /* 低コントラストと判定された点数 */
                     int   bg_r_sum = 0, bg_g_sum = 0, bg_b_sum = 0;
-                    float max_de   = 0.0f;     /* リング上の最大 ΔE (最も見える方向) */
-                    float max_cr   = 1.0f;     /* リング上の最大コントラスト比 */
+                    float de_sum = 0.0f;
+                    float cr_sum = 0.0f;
                     for (int ri = 0; ri < 32; ri++) {
                         float angle = (float)(2.0 * 3.14159265358979 * ri / 32);
                         int bpx = (int)((cx + ring_rx * cosf(angle)) * RENDER_SCALE);
@@ -3715,31 +3724,37 @@ void kozou_detect_low_contrast_text(
                         float bg_r_f = bp[0] / 255.0f;
                         float bg_g_f = bp[1] / 255.0f;
                         float bg_b_f = bp[2] / 255.0f;
-                        /* 外周点が fg と同じ色 = 別の文字グリフ上の可能性 → スキップ */
-                        float dr = fg_r - bg_r_f, dg = fg_g - bg_g_f, db = fg_b - bg_b_f;
-                        if (dr*dr + dg*dg + db*db < 0.001f) continue;
                         float de_i = kozou_delta_e76(
                             fg_r, fg_g, fg_b, bg_r_f, bg_g_f, bg_b_f);
                         float cr_i = kozou_contrast_ratio(
                             fg_r, fg_g, fg_b, bg_r_f, bg_g_f, bg_b_f);
-                        if (de_i > max_de) max_de = de_i;
-                        if (cr_i > max_cr) max_cr = cr_i;
-                        lc_total++;
+                        ring_total++;
+                        de_sum += de_i;
+                        cr_sum += cr_i;
                         bg_r_sum += bp[0]; bg_g_sum += bp[1]; bg_b_sum += bp[2];
+                        if (cr_i <= contrast_threshold) low_count++;
                     }
-                    int bg_r = lc_total > 0 ? bg_r_sum / lc_total : 128;
-                    int bg_g = lc_total > 0 ? bg_g_sum / lc_total : 128;
-                    int bg_b = lc_total > 0 ? bg_b_sum / lc_total : 128;
+                    if (ring_total == 0) continue;  /* ページ端でサンプリング不能 */
+                    int bg_r = bg_r_sum / ring_total;
+                    int bg_g = bg_g_sum / ring_total;
+                    int bg_b = bg_b_sum / ring_total;
 
-                    /* Step 3: 最悪値判定で検出
-                     * 判定基準は WCAG コントラスト比 (max_cr) を主とする。
-                     * リング上で最もコントラストが高い方向ですら閾値以下なら埋没。
-                     * (ΔE は将来の第2レイヤー/確信度表示用に算出して JSON に含める) */
-                    if (lc_total == 0) continue;
-                    if (max_cr > contrast_threshold) continue;
+                    /* Step 3: 割合判定で検出
+                     * リング32点中、低コントラストな点が
+                     * KOZOU_LC_RATIO_THRESHOLD (40%) 以上を占めるかどうかで判定する。
+                     * 単一方向の最良値(max)による判定は、
+                     *  - 背景色と文字色が完全一致し外周が丸ごと同色になるケース
+                     *  - 文字を囲む着色矩形が小さく、サンプリングリングがその外側の
+                     *    ページ地色（白）にわずかにはみ出すケース
+                     * のいずれでも、ごく一部の点（あるいは0点）だけで
+                     * 「見える／見えない」を決めてしまい誤判定を招くため、
+                     * リング全体に対する比率で安定して判定する。 */
+                    float low_ratio = (float)low_count / (float)ring_total;
+                    if (low_ratio < KOZOU_LC_RATIO_THRESHOLD) continue;
 
-                    /* JSON 出力用コントラスト代表値（最良方向の実測値）*/
-                    float cr = max_cr;
+                    /* JSON 出力用の代表値（リング平均）*/
+                    float cr = cr_sum / ring_total;
+                    float max_de = de_sum / ring_total;
 
                     /* 無害な文字はスキップ */
                     int _lc_san = kozou_is_sanitized_space(ch->c) &&
