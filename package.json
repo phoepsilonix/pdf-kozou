@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.8.11",
   "type": "module",
-  "packageManager": "pnpm@11.18.0",
+  "packageManager": "pnpm@11.19.0",
   "scripts": {
     "tauri": "tauri",
     "dev:core": "cargo build --bin pdf-kozou-core",
