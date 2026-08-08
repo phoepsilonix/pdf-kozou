@@ -6043,19 +6043,16 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                         this_blank = 1; break;
                                     }
                                 }
-                                /* 幅差分補正用: この文字自身の位置で quad マップを個別照合し、
-                                 * 実描画幅が取れればそちらを優先する(ページ側と同じ方針)。
-                                 * 見つからなければフォントメトリクスにフォールバック。 */
-                                float qw_c = qmap ? kozou_quad_map_lookup(
-                                    qmap, ch_dev_x, ch_dev_y, tol2) : -1.0f;
-                                float cw_eff_c = (qw_c > 0.0f) ? qw_c : cw_c;
+                                /* 幅差分補正用の幅は必ずフォントメトリクスを使う
+                                 * (quad の width_1000 は描画インクのbbox幅であり送り幅とは
+                                 * 別物。スペース等インクの薄い文字で過小評価するため撤廃) */
                                 ch_start[n_ch_scanned] = cstart_c;
                                 ch_end[n_ch_scanned]   = p_c;
                                 ch_blank[n_ch_scanned] = this_blank;
-                                ch_w[n_ch_scanned]     = cw_eff_c;
+                                ch_w[n_ch_scanned]     = cw_c;
                                 if (this_blank) any_char_blank = 1;
                                 n_ch_scanned++;
-                                adv_c += cw_c;  /* 位置追跡は必ずメトリクス幅を使う(quad幅ではドリフトする) */
+                                adv_c += cw_c;
                             }
                         }
                     }
@@ -6973,22 +6970,20 @@ void kozou_sanitize_hidden_text(
                             int this_blank = (n_ch == 0 && origin_is_target) ||
                                 kozou_sanitize_is_target(pi_targets,pi_n,cp.x,cp.y,tol2,
                                     kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size);
-                            /* 幅差分補正用: この文字自身の位置で quad マップを個別に照合し、
-                             * 実描画幅が取れればそちらを優先する(合字・RTL・縦書き対応)。
-                             * 見つからなければフォントメトリクスの値を使う。
-                             * 注意: quad幅は「1文字ぶん」の値であり、複数文字にまたがる
-                             * ランの幅を文字列全体幅からの比例配分で近似するのは誤り
-                             * (過小評価によりレイアウト崩壊を招く)。必ず文字ごとに
-                             * 個別照合して積算すること。 */
-                            float qw = kozou_quad_map_lookup(qmap, cp.x, cp.y, tol2);
-                            float cw_eff = (qw > 0.0f) ? qw : cw;
+                            /* 幅差分補正用の幅は必ずフォントメトリクス(実際のPDF送り幅)を使う。
+                             * quad マップの width_1000 は「文字の描画インクのbboxから逆算した
+                             * 幅」であり、送り幅(advance width)とは別物。スペースのように
+                             * 送り幅はあるが描画インクがない文字では 0 に近い値になり、
+                             * 送り幅の代用にすると幅を過小評価してレイアウトが崩れる。
+                             * (かつてここで quad 幅を文字ごとに優先採用していたが、この
+                             * 理由により撤廃した) */
                             ch_start[n_ch] = cstart;
                             ch_end[n_ch]   = p2;
                             ch_blank[n_ch] = this_blank;
-                            ch_w[n_ch]     = cw_eff;
+                            ch_w[n_ch]     = cw;
                             if (this_blank) any_blank = 1;
                             n_ch++;
-                            adv += cw;  /* 次文字の位置追跡は必ずメトリクス幅を使う(quad幅ではドリフトする) */
+                            adv += cw;
                         }
 
                         if (!any_blank) {
@@ -7165,15 +7160,14 @@ void kozou_sanitize_hidden_text(
                                             kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2,
                                                 kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
                                         first_char_seen2 = 1;
-                                        /* 幅差分補正用: 文字ごとに quad マップを個別照合(1文字ぶんの
-                                         * 実描画幅)し、見つからなければメトリクス幅にフォールバック。
-                                         * 複数文字ランへの比例配分は過小評価を招くため行わない。 */
-                                        float qw2 = kozou_quad_map_lookup(qmap, cp2.x, cp2.y, tol2);
-                                        float cw2_eff = (qw2 > 0.0f) ? qw2 : cw2;
+                                        /* 幅差分補正用の幅は必ずフォントメトリクスを使う
+                                         * (quad の width_1000 は描画インクのbbox幅であり、
+                                         * 送り幅とは別物。スペース等インクの薄い文字で
+                                         * 過小評価するため、文字ごとの優先採用は撤廃した) */
                                         ch_start[n_ch]=cstart; ch_end[n_ch]=p2;
-                                        ch_blank[n_ch]=this_blank; ch_w[n_ch]=cw2_eff;
+                                        ch_blank[n_ch]=this_blank; ch_w[n_ch]=cw2;
                                         n_ch++;
-                                        tj_adv2 += cw2;  /* 位置追跡は必ずメトリクス幅を使う */
+                                        tj_adv2 += cw2;
                                     }
                                     int i = 0;
                                     while (i < n_ch) {
