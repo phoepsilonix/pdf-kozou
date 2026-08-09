@@ -5870,6 +5870,10 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     int in_bt = 0;
     int blank_entire_bt = (n_targets == 0);
     float tol2 = tol * tol;
+    /* 文字単位スキャンでの推定座標同士の照合には、より緩い許容半径を使う
+     * (ページ側 kozou_sanitize_hidden_text と同じ理由: 幅の積算による
+     * 誤差が細い文字で許容を超えやすい)。 */
+    float tol2_est = tol2 * 16.0f;
     /* Tm を完全な行列として保持する。Tm は [a b c d e f] で回転・反転・
      * スケールを含みうる（例: [1 0 0 -1 tx ty] の Y 反転）。
      * 平行移動成分(tx,ty)だけを使うと、回転・反転を持つ XObject 内テキストの
@@ -6026,7 +6030,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 int g_c_ucs = -1; float g_c_size = 0.0f; int have_g_c = 0;
                                 if (qmap)
                                     have_g_c = kozou_quad_map_lookup_glyph(
-                                        qmap, ch_dev_x, ch_dev_y, 4.0f, &g_c_ucs, &g_c_size);
+                                        qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
                                 /* 先頭文字は Tm 原点そのものの判定(origin_is_target)も尊重する */
                                 int this_blank = (n_ch_scanned == 0 && origin_is_target);
                                 if (!this_blank) {
@@ -6036,7 +6040,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                             continue;
                                         float dx2 = targets[_ti2].ox - ch_dev_x;
                                         float dy2 = targets[_ti2].oy - ch_dev_y;
-                                        if (dx2*dx2 + dy2*dy2 > tol2) continue;
+                                        if (dx2*dx2 + dy2*dy2 > tol2_est) continue;
                                         if (!kozou_identity_ok(targets[_ti2].codepoint,
                                                 targets[_ti2].size, have_g_c, g_c_ucs, g_c_size))
                                             continue;
@@ -6631,6 +6635,19 @@ void kozou_sanitize_hidden_text(
                 target_render_class ? target_render_class[i] : -1;
         }
         float tol2 = tolerance > 0 ? tolerance*tolerance : 1.0f;
+        /* 文字単位スキャンで再計算する座標は「推定値」であり、mupdf 自身が
+         * 管理する Tj/TJ の原点(dev_x,dev_y)とは異なり、幅の積算(adv)を
+         * 経由するため文字数が進むごとに誤差が乗りやすい。特に "i","l" の
+         * ような細い文字(送り幅 2〜3pt 程度)では、既定の tolerance=1pt
+         * ではわずかな誤差ですら対象リストとの照合・quad マップでの
+         * グリフ識別照合に失敗し、その文字以降が軒並み無害化されずに
+         * 残ってしまう(実機で確認: "Partially hidden text" の "P,a,r,t"
+         * のみ検出され、"i" 以降が全く一致しなくなった)。
+         * 原点一致は mupdf の値そのものなので tol2 のままでよいが、
+         * 文字単位の推定座標同士の照合には、より緩い許容半径を使う。
+         * 実描画グリフの identity(codepoint/size)照合が別途あるので、
+         * 座標許容を広げても無関係な文字を巻き込む危険は低い。 */
+        float tol2_est = tol2 * 16.0f;  /* 線形半径で4倍(例: 1pt→4pt) */
 
         int page_count  = pdf_count_pages(ctx, pdf);
         int width_warn  = 0;
@@ -6973,11 +6990,11 @@ void kozou_sanitize_hidden_text(
                             fz_point cp = fz_transform_point(fz_make_point(cx, cy), gs_stack[gs_sp]);
                             cp = fz_transform_point(cp, page_ctm);
                             int g2_ucs = -1; float g2_size = 0.0f;
-                            int have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2, &g2_ucs, &g2_size);
+                            int have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
                             /* 先頭文字は Tj 原点そのものの判定も orgin_is_target として尊重する
                              * (原点座標と先頭文字位置が完全一致しないケースの取りこぼし防止) */
                             int this_blank = (n_ch == 0 && origin_is_target) ||
-                                kozou_sanitize_is_target(pi_targets,pi_n,cp.x,cp.y,tol2,
+                                kozou_sanitize_is_target(pi_targets,pi_n,cp.x,cp.y,tol2_est,
                                     kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size);
                             /* 幅差分補正用の幅は必ずフォントメトリクス(実際のPDF送り幅)を使う。
                              * quad マップの width_1000 は「文字の描画インクのbboxから逆算した
@@ -7106,9 +7123,9 @@ void kozou_sanitize_hidden_text(
                                     fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                     cp2 = fz_transform_point(cp2, page_ctm);
                                     int g3_ucs = -1; float g3_size = 0.0f;
-                                    int have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2, &g3_ucs, &g3_size);
+                                    int have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
                                     int this_blank = (!first_char_seen && origin_is_target) ||
-                                        kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2,
+                                        kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                             kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
                                     first_char_seen = 1;
                                     if (this_blank) any_blank = 1;
@@ -7173,9 +7190,9 @@ void kozou_sanitize_hidden_text(
                                         fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                         cp2 = fz_transform_point(cp2, page_ctm);
                                         int g3_ucs = -1; float g3_size = 0.0f;
-                                        int have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2, &g3_ucs, &g3_size);
+                                        int have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
                                         int this_blank = (!first_char_seen2 && origin_is_target) ||
-                                            kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2,
+                                            kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                                 kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
                                         first_char_seen2 = 1;
                                         /* 幅差分補正用の幅は必ずフォントメトリクスを使う
