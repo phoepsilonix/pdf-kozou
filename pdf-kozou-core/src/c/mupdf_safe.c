@@ -6028,9 +6028,13 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 float ch_dev_x = adv_dev.x;
                                 float ch_dev_y = adv_dev.y;
                                 int g_c_ucs = -1; float g_c_size = 0.0f; int have_g_c = 0;
-                                if (qmap)
+                                if (!is_mb_c && cc_c >= 0x20 && cc_c <= 0x7E) {
+                                    /* ページ側と同じ理由(空間再検索での隣接グリフ取り違え防止) */
+                                    g_c_ucs = cc_c; g_c_size = cur_font_size; have_g_c = 1;
+                                } else if (qmap) {
                                     have_g_c = kozou_quad_map_lookup_glyph(
                                         qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
+                                }
                                 /* 先頭文字は Tm 原点そのものの判定(origin_is_target)も尊重する */
                                 int this_blank = (n_ch_scanned == 0 && origin_is_target);
                                 if (!this_blank) {
@@ -6989,8 +6993,23 @@ void kozou_sanitize_hidden_text(
                             float cy = tm[5] + adv_pts * tm[1];
                             fz_point cp = fz_transform_point(fz_make_point(cx, cy), gs_stack[gs_sp]);
                             cp = fz_transform_point(cp, page_ctm);
-                            int g2_ucs = -1; float g2_size = 0.0f;
-                            int have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
+                            int g2_ucs = -1; float g2_size = 0.0f; int have_g2 = 0;
+                            if (!is_mb2 && cc2 >= 0x20 && cc2 <= 0x7E) {
+                                /* 単純フォントの印字可能ASCII範囲は文字コードがそのまま
+                                 * Unicode と一致する(WinAnsi/StandardEncoding 共通)。
+                                 * quad マップでの空間再検索は、推定座標にわずかでも
+                                 * 残差誤差があると隣接グリフを誤って拾ってしまう
+                                 * (実機で確認: "Hidden under white rect DETECTED" の
+                                 * ような全面一致で埋没しているはずの行で、"n","e","h"
+                                 * のような孤立した1文字だけが誤って identity 不一致
+                                 * 扱いになり無害化を逃れていた)。デコード済みの文字
+                                 * コードを直接使い、この空間的な取り違えを避ける。 */
+                                g2_ucs = cc2;
+                                g2_size = font_size;
+                                have_g2 = 1;
+                            } else {
+                                have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
+                            }
                             /* 先頭文字は Tj 原点そのものの判定も orgin_is_target として尊重する
                              * (原点座標と先頭文字位置が完全一致しないケースの取りこぼし防止) */
                             int this_blank = (n_ch == 0 && origin_is_target) ||
@@ -7122,8 +7141,13 @@ void kozou_sanitize_hidden_text(
                                     float cy2 = tm[5] + adv_pts2 * tm[1];
                                     fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                     cp2 = fz_transform_point(cp2, page_ctm);
-                                    int g3_ucs = -1; float g3_size = 0.0f;
-                                    int have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                    int g3_ucs = -1; float g3_size = 0.0f; int have_g3 = 0;
+                                    if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
+                                        /* Tj と同じ理由(空間再検索での隣接グリフ取り違え防止) */
+                                        g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                    } else {
+                                        have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                    }
                                     int this_blank = (!first_char_seen && origin_is_target) ||
                                         kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                             kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
@@ -7189,8 +7213,12 @@ void kozou_sanitize_hidden_text(
                                         float cy2 = tm[5] + adv_pts2 * tm[1];
                                         fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                         cp2 = fz_transform_point(cp2, page_ctm);
-                                        int g3_ucs = -1; float g3_size = 0.0f;
-                                        int have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                        int g3_ucs = -1; float g3_size = 0.0f; int have_g3 = 0;
+                                        if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
+                                            g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                        } else {
+                                            have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                        }
                                         int this_blank = (!first_char_seen2 && origin_is_target) ||
                                             kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                                 kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
