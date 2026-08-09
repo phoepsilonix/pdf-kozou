@@ -6768,6 +6768,13 @@ void kozou_sanitize_hidden_text(
                 typedef struct { char s[128]; float v; int is_num; int is_str; } SOp;
                 SOp  stk[SSTK];
                 int  stk_top = 0;
+                /* 現在の演算子のオペランド列が書き込まれ始める直前の new_buf 長。
+                 * 汎用パススルーはオペランドをトークン化と同時に無条件で
+                 * new_buf にエコー済み書き出ししてしまうため、Tj/TJ を文字単位で
+                 * 書き換える際にこの位置まで巻き戻してから新しい内容を書き直す
+                 * 必要がある(でないと元のオペランドが宙に浮いた未消費トークンとして
+                 * 残ってしまい、不正なコンテンツストリームになる)。 */
+                size_t pre_op_len = 0;
 
                 pdf_lexbuf lxb;
                 pdf_lexbuf_init(ctx, &lxb, PDF_LEXBUF_SMALL);
@@ -6813,6 +6820,8 @@ void kozou_sanitize_hidden_text(
                     }
 
                     if (tok != PDF_TOK_KEYWORD) {
+                        if (stk_top == 0)
+                            pre_op_len = fz_buffer_storage(ctx, new_buf, NULL);
                         if (op.s[0] && stk_top < SSTK) stk[stk_top++] = op;
                         if (op.s[0]) fz_append_printf(ctx, new_buf, "%s ", op.s);
                         continue;
@@ -6989,6 +6998,11 @@ void kozou_sanitize_hidden_text(
                         if (!any_blank) {
                             fz_append_printf(ctx,new_buf,"%s\n",kw);
                         } else {
+                            /* 汎用パススルーが既にエコー済みの元オペランド(この Tj の
+                             * 文字列本体)を巻き戻して消す。でないと宙に浮いた未消費の
+                             * 文字列トークンが残り、不正なコンテンツストリームになる
+                             * (例: "(元の文字列) (T) Tj" のような二重化)。 */
+                            fz_resize_buffer(ctx, new_buf, pre_op_len);
                             /* Step 2: 対象/非対象それぞれの連続ランごとにまとめて出力する。
                              * 非対象ランは元のバイト列をそのまま書き戻す(再エスケープ不要で安全)。
                              * 対象ランは Helvetica の空白 + 幅差分TJ補正で置換する
@@ -7109,6 +7123,10 @@ void kozou_sanitize_hidden_text(
                         if (!any_blank) {
                             fz_append_printf(ctx,new_buf,"%s\n",kw);
                         } else {
+                            /* 汎用パススルーが既にエコー済みの元オペランド(この TJ の
+                             * "[" 以降配列全体)を巻き戻して消す。でないと宙に浮いた
+                             * 未消費トークン列が残り、不正なコンテンツストリームになる。 */
+                            fz_resize_buffer(ctx, new_buf, pre_op_len);
                             /* Pass 2: 対象/非対象を文字単位・連続ランで判定しながら出力する。
                              * 配列全体を一括で Helvetica に置換していた旧実装だと、対象外の
                              * 隣接文字(被覆矩形の外側にはみ出した部分など)まで巻き添えで
