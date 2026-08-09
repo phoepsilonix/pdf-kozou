@@ -775,9 +775,12 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       }
     : s.left;
   const rightStyle: React.CSSProperties = isNarrow ? { ...s.right, minHeight: 0 } : s.right;
+  // 横並び時、検出結果リストは幅を固定して自身でスクロールさせる。
+  // 以前は幅指定がなく、検出件数が多いとリストの内容幅なりに広がって
+  // プレビュー領域(s.preview)を圧迫し、消えてしまっていた。
   const groupListStyle: React.CSSProperties = isNarrow
     ? { ...s.groupList, height: 160 }
-    : s.groupList;
+    : { ...s.groupList, width: 280, flexShrink: 0, borderTop: "none", borderLeft: "1px solid var(--c-border)" };
 
   const pageCount = pdfInfo.page_count;
   const pageInfo = pdfInfo.pages?.[pageIndex];
@@ -1389,6 +1392,7 @@ const s: Record<string, React.CSSProperties> = {
   right: { flex: 1, display: "flex", flexDirection: "column", overflow: "auto" },
   preview: {
     flex: 2,
+    minWidth: 0,
     overflow: "auto",
     display: "flex",
     alignItems: "flex-start",
