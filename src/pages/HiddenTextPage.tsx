@@ -780,7 +780,13 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   // プレビュー領域(s.preview)を圧迫し、消えてしまっていた。
   const groupListStyle: React.CSSProperties = isNarrow
     ? { ...s.groupList, height: 160 }
-    : { ...s.groupList, width: 280, flexShrink: 0, borderTop: "none", borderLeft: "1px solid var(--c-border)" };
+    : {
+        ...s.groupList,
+        width: 280,
+        flexShrink: 0,
+        borderTop: "none",
+        borderLeft: "1px solid var(--c-border)",
+      };
 
   const pageCount = pdfInfo.page_count;
   const pageInfo = pdfInfo.pages?.[pageIndex];
