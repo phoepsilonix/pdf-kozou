@@ -6095,6 +6095,11 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     int ctm_sp = 0;
     ctm_stack[0] = fz_identity;
 
+    /* Type0(CID)フォントの identity 解決用 /ToUnicode キャッシュ。
+     * このXObject処理呼び出し内で使い回す(kozou_tounicode_lookup 参照)。 */
+    KozouToUnicodeCacheEntry tu_cache[KOZOU_TU_CACHE_MAX];
+    int tu_cache_n = 0;
+
     while (pos < src_len) {
         size_t line_start = pos;
         while (pos < src_len && src[pos] != '\n') pos++;
@@ -6234,6 +6239,19 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 if (!is_mb_c && cc_c >= 0x20 && cc_c <= 0x7E) {
                                     /* ページ側と同じ理由(空間再検索での隣接グリフ取り違え防止) */
                                     g_c_ucs = cc_c; g_c_size = cur_font_size; have_g_c = 1;
+                                } else if (is_mb_c && pdf) {
+                                    /* ページ側と同じ理由(/ToUnicode による直接 identity 解決)。
+                                     * このXObject処理は特に、装飾テキストや疑似太字効果などで
+                                     * 同一/近接座標に複数テキストが重なりやすく、空間再検索だけ
+                                     * では別グリフを誤って拾いやすい。 */
+                                    int tu_ucs_c = kozou_tounicode_lookup(
+                                        ctx, pdf, fobj_c, tu_cache, &tu_cache_n, (unsigned int)cc_c);
+                                    if (tu_ucs_c >= 0) {
+                                        g_c_ucs = tu_ucs_c; g_c_size = cur_font_size; have_g_c = 1;
+                                    } else if (qmap) {
+                                        have_g_c = kozou_quad_map_lookup_glyph(
+                                            qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
+                                    }
                                 } else if (qmap) {
                                     have_g_c = kozou_quad_map_lookup_glyph(
                                         qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
