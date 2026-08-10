@@ -5538,6 +5538,74 @@ static int kozou_is_multibyte_font(fz_context *ctx, pdf_obj *font_res)
     return (st && strcmp(st, "Type0") == 0);
 }
 
+/* ------------------------------------------------------------------ */
+/* ToUnicode CMap によるマルチバイト文字の直接 identity 解決             */
+/*                                                                      */
+/* 単純フォント(ASCII印字可能範囲)では文字コード=Unicodeなので、Tj/TJ    */
+/* 再スキャン時にデコード済みの文字コードをそのまま identity として     */
+/* 使える(kozou_identity_ok 参照)。しかし Type0(CID)フォントでは文字    */
+/* コード(CID)がUnicodeと無関係なため、これまでは書き換え対象座標で     */
+/* stext quad マップを再検索して identity を求めていた                  */
+/* (kozou_quad_map_lookup_glyph)。この方法は「その座標に最も近いグリフ」 */
+/* を拾うため、複数のテキストが同一/近接座標に重なって描画されている場   */
+/* 合(実機PDFで確認: Canvaエクスポートのフォント疑似太字/装飾効果で、    */
+/* 同じ文字列を同一座標に複数回描画している、あるいは装飾用Type3フォン   */
+/* トが本文と全く同じ原点に重なっている等)に別グリフを拾って identity   */
+/* 不一致と誤判定し、無害化が歯抜けになる不具合があった。                */
+/*                                                                      */
+/* フォントの /ToUnicode (埋め込みCMapストリーム、CIDから実際のUnicode   */
+/* コードポイントへの対応表)を使えば、単純フォントと同じ「デコード済み  */
+/* コードから直接 identity を求める」方式が CID フォントでも可能になり、 */
+/* 空間的な取り違えを根本から避けられる。mupdf 自身が stext 抽出時に     */
+/* 同じ /ToUnicode から Unicode を得ているため、ここで得る値も一致する。 */
+/* ------------------------------------------------------------------ */
+#define KOZOU_TU_CACHE_MAX 64
+typedef struct {
+    int       xref;  /* /ToUnicode ストリームの xref (0以下は未使用) */
+    pdf_cmap *cmap;  /* ロード済み CMap (NULL=ロード失敗/ToUnicode無し) */
+} KozouToUnicodeCacheEntry;
+
+/* font_res の /ToUnicode から cid の Unicode コードポイントを引く。
+ * 見つからない(ToUnicode無し/CID未登録)場合は -1 を返す。
+ * cache は呼び出し元が文書処理全体で使い回す小さな線形キャッシュで、
+ * 同じフォントに対する CMap の再パースを避ける(1ドキュメントに登場する
+ * フォント種類数は通常 KOZOU_TU_CACHE_MAX 以下)。キャッシュが溢れた場合
+ * は毎回ロードし直すが正当性には影響しない。ロードした pdf_cmap は
+ * このプロセスの生存期間(1文書処理につき1プロセスの CLI/sidecar)を通じて
+ * 保持されそのまま終了時に解放されるため、明示的な drop は行わない。 */
+static int kozou_tounicode_lookup(
+    fz_context *ctx, pdf_document *pdf, pdf_obj *font_res,
+    KozouToUnicodeCacheEntry *cache, int *cache_n, unsigned int cid)
+{
+    if (!font_res) return -1;
+    pdf_obj *font = pdf_resolve_indirect(ctx, font_res);
+    if (!font) return -1;
+    pdf_obj *tu = pdf_dict_get(ctx, font, PDF_NAME(ToUnicode));
+    if (!tu) return -1;
+    int xref = pdf_to_num(ctx, tu);
+    if (xref <= 0) return -1;
+
+    pdf_cmap *cmap = NULL;
+    int in_cache = 0;
+    for (int i = 0; i < *cache_n; i++) {
+        if (cache[i].xref == xref) { cmap = cache[i].cmap; in_cache = 1; break; }
+    }
+    if (!in_cache) {
+        fz_try(ctx) {
+            cmap = pdf_load_embedded_cmap(ctx, pdf, tu);
+        } fz_catch(ctx) {
+            cmap = NULL; /* 破損 ToUnicode 等: 従来の空間検索にフォールバック */
+        }
+        if (*cache_n < KOZOU_TU_CACHE_MAX) {
+            cache[*cache_n].xref = xref;
+            cache[*cache_n].cmap = cmap;
+            (*cache_n)++;
+        }
+    }
+    if (!cmap) return -1;
+    return pdf_lookup_cmap(cmap, cid);
+}
+
 /* Helvetica フォントリソースをページに追加して名前を返す */
 static pdf_obj *kozou_ensure_helvetica(
     fz_context *ctx, pdf_document *pdf, pdf_obj *page_obj)
@@ -6788,6 +6856,11 @@ void kozou_sanitize_hidden_text(
          * 座標許容を広げても無関係な文字を巻き込む危険は低い。 */
         float tol2_est = tol2 * 16.0f;  /* 線形半径で4倍(例: 1pt→4pt) */
 
+        /* Type0(CID)フォントの identity 解決用 /ToUnicode キャッシュ。
+         * 文書全体で使い回す(kozou_tounicode_lookup 参照)。 */
+        KozouToUnicodeCacheEntry tu_cache[KOZOU_TU_CACHE_MAX];
+        int tu_cache_n = 0;
+
         int page_count  = pdf_count_pages(ctx, pdf);
         int width_warn  = 0;
 
@@ -7142,6 +7215,24 @@ void kozou_sanitize_hidden_text(
                                 g2_ucs = cc2;
                                 g2_size = font_size;
                                 have_g2 = 1;
+                            } else if (is_mb2) {
+                                /* CID フォントは /ToUnicode があれば直接 identity を
+                                 * 解決する(単純フォントと同じ考え方)。座標だけを
+                                 * 頼りに quad マップを再検索すると、同一/近接座標に
+                                 * 複数のテキストが重なって描画されている場合
+                                 * (実機PDFで確認: Canvaエクスポートの疑似太字/装飾で
+                                 * 同一文字列を同座標に複数回描画、装飾用Type3フォント
+                                 * が本文と全く同じ原点に重なる等)に別グリフを拾い、
+                                 * identity 不一致と誤判定して無害化が歯抜けになる。 */
+                                int tu_ucs = kozou_tounicode_lookup(
+                                    ctx, pdf, fobj2, tu_cache, &tu_cache_n, (unsigned int)cc2);
+                                if (tu_ucs >= 0) {
+                                    g2_ucs = tu_ucs;
+                                    g2_size = font_size;
+                                    have_g2 = 1;
+                                } else {
+                                    have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
+                                }
                             } else {
                                 have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
                             }
@@ -7280,6 +7371,15 @@ void kozou_sanitize_hidden_text(
                                     if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
                                         /* Tj と同じ理由(空間再検索での隣接グリフ取り違え防止) */
                                         g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                    } else if (is_mb_tj) {
+                                        /* Tj と同じ理由(/ToUnicode による直接 identity 解決) */
+                                        int tu_ucs = kozou_tounicode_lookup(
+                                            ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2);
+                                        if (tu_ucs >= 0) {
+                                            g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
+                                        } else {
+                                            have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                        }
                                     } else {
                                         have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
                                     }
@@ -7351,6 +7451,14 @@ void kozou_sanitize_hidden_text(
                                         int g3_ucs = -1; float g3_size = 0.0f; int have_g3 = 0;
                                         if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
                                             g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                        } else if (is_mb_tj) {
+                                            int tu_ucs = kozou_tounicode_lookup(
+                                                ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2);
+                                            if (tu_ucs >= 0) {
+                                                g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
+                                            } else {
+                                                have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                            }
                                         } else {
                                             have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
                                         }
