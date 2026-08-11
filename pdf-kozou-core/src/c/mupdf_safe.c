@@ -4729,7 +4729,7 @@ static void kozou_collect_xobj_recursive(
     if (depth > 8) return; /* 無限再帰防止 */
     fz_context *ctx = cx->ctx;
 
-    pdf_obj *xobj_dict = pdf_dict_get(ctx, res_dict, PDF_NAME(XObject));
+    pdf_obj *xobj_dict = pdf_dict_gets(ctx, res_dict, "XObject");
     if (!xobj_dict) return;
 
     int n = pdf_dict_len(ctx, xobj_dict);
@@ -5680,7 +5680,7 @@ static int kozou_xobj_place_ctm_scan(
 {
     if (depth > 8) return 0;
     pdf_obj *xdict = resources ?
-        pdf_dict_get(ctx, resources, PDF_NAME(XObject)) : NULL;
+        pdf_dict_gets(ctx, resources, "XObject") : NULL;
 
     fz_matrix ctm_stack[64];
     int sp = 0;
@@ -5974,7 +5974,7 @@ static void kozou_find_all_xobjs_by_tm_dict(
         if (!dup) {
             pdf_obj *child_res = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
             if (child_res) {
-                pdf_obj *child_xdict = pdf_dict_get(ctx, child_res, PDF_NAME(XObject));
+                pdf_obj *child_xdict = pdf_dict_gets(ctx, child_res, "XObject");
                 if (child_xdict)
                     kozou_find_all_xobjs_by_tm_dict(ctx, pdf, child_xdict,
                                                     ix, iy, tol2,
@@ -6000,7 +6000,7 @@ static void kozou_find_all_xobjs_by_tm(
     if (!ppage || !out_xrefs || !n_out) return;
     pdf_obj *res = pdf_page_resources(ctx, ppage);
     if (getenv("KOZOU_SANITIZE_DEBUG")) {
-        pdf_obj *xdict_dbg = res ? pdf_dict_get(ctx, res, PDF_NAME(XObject)) : NULL;
+        pdf_obj *xdict_dbg = res ? pdf_dict_gets(ctx, res, "XObject") : NULL;
         fprintf(stderr,
             "[KOZOU_XOBJ_TM_TOP] ix=%.2f iy=%.2f res=%p xdict=%p xdict_len=%d\n",
             ix, iy, (void*)res, (void*)xdict_dbg,
@@ -6039,7 +6039,7 @@ static void kozou_find_all_xobjs_by_tm(
         }
     }
     if (!res) return;
-    pdf_obj *xdict = pdf_dict_get(ctx, res, PDF_NAME(XObject));
+    pdf_obj *xdict = pdf_dict_gets(ctx, res, "XObject");
     if (!xdict) return;
 
     float tol2 = tol * tol;
