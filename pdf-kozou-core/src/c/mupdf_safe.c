@@ -6005,6 +6005,26 @@ static void kozou_find_all_xobjs_by_tm(
             "[KOZOU_XOBJ_TM_TOP] ix=%.2f iy=%.2f res=%p xdict=%p xdict_len=%d\n",
             ix, iy, (void*)res, (void*)xdict_dbg,
             xdict_dbg ? pdf_dict_len(ctx, xdict_dbg) : -1);
+        if (res) {
+            int rn = pdf_dict_len(ctx, res);
+            fprintf(stderr, "[KOZOU_XOBJ_TM_RESKEYS] res_dict_len=%d keys=[", rn);
+            for (int _k = 0; _k < rn; _k++) {
+                pdf_obj *key = pdf_dict_get_key(ctx, res, _k);
+                const char *kn = pdf_is_name(ctx, key) ? pdf_to_name(ctx, key) : "?";
+                fprintf(stderr, "%s%s", _k ? "," : "", kn);
+            }
+            fprintf(stderr, "]\n");
+            /* pdf_page_resources が空/不完全な場合に備え、page_obj からも
+             * 継承込みで Resources を取り直して比較する */
+            pdf_obj *pobj = ppage->obj;
+            pdf_obj *res2 = pobj ? pdf_dict_get_inheritable(ctx, pobj, PDF_NAME(Resources)) : NULL;
+            pdf_obj *xdict2 = res2 ? pdf_dict_get(ctx, res2, PDF_NAME(XObject)) : NULL;
+            fprintf(stderr,
+                "[KOZOU_XOBJ_TM_RES2] page_obj=%p res2(inheritable)=%p xdict2=%p xdict2_len=%d same_as_res=%d\n",
+                (void*)pobj, (void*)res2, (void*)xdict2,
+                xdict2 ? pdf_dict_len(ctx, xdict2) : -1,
+                res == res2);
+        }
     }
     if (!res) return;
     pdf_obj *xdict = pdf_dict_get(ctx, res, PDF_NAME(XObject));
