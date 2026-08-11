@@ -6012,6 +6012,18 @@ static void kozou_find_all_xobjs_by_tm(
                 pdf_obj *key = pdf_dict_get_key(ctx, res, _k);
                 const char *kn = pdf_is_name(ctx, key) ? pdf_to_name(ctx, key) : "?";
                 fprintf(stderr, "%s%s", _k ? "," : "", kn);
+                if (kn && !strcmp(kn, "XObject")) {
+                    pdf_obj *raw_val = pdf_dict_get_val(ctx, res, _k);
+                    int is_ind = pdf_is_indirect(ctx, raw_val);
+                    int refnum = is_ind ? pdf_to_num(ctx, raw_val) : -1;
+                    pdf_obj *resolved = pdf_resolve_indirect(ctx, raw_val);
+                    fprintf(stderr,
+                        "\n[KOZOU_XOBJ_TM_XOBJVAL] raw_val=%p is_indirect=%d refnum=%d "
+                        "resolved=%p is_dict=%d is_null=%d resolved_len=%d\n",
+                        (void*)raw_val, is_ind, refnum, (void*)resolved,
+                        pdf_is_dict(ctx, resolved), pdf_is_null(ctx, resolved),
+                        (resolved && pdf_is_dict(ctx, resolved)) ? pdf_dict_len(ctx, resolved) : -1);
+                }
             }
             fprintf(stderr, "]\n");
             /* pdf_page_resources が空/不完全な場合に備え、page_obj からも
