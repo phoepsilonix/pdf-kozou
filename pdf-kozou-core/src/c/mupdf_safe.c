@@ -5890,6 +5890,23 @@ static void kozou_find_all_xobjs_by_tm_dict(
             size_t len = fz_buffer_storage(ctx, buf, &d);
             const char *src = (const char *)d;
 
+            if (getenv("KOZOU_SANITIZE_DEBUG")) {
+                size_t nl = 0, cr = 0, tm_sub = 0, tj_sub = 0, bt_sub = 0;
+                for (size_t k = 0; k + 1 < len; k++) {
+                    if (src[k] == '\n') nl++;
+                    if (src[k] == '\r') cr++;
+                    if (src[k]=='T' && src[k+1]=='m') tm_sub++;
+                    if (src[k]=='T' && src[k+1]=='j') tj_sub++;
+                    if (src[k]=='B' && src[k+1]=='T') bt_sub++;
+                }
+                fprintf(stderr,
+                    "[KOZOU_XOBJ_TM_SCAN] xref=%d len=%zu newlines=%zu cr=%zu "
+                    "\"Tm\"count=%zu \"Tj\"count=%zu \"BT\"count=%zu "
+                    "target(ix=%.2f,iy=%.2f) head=[%.80s]\n",
+                    xref, len, nl, cr, tm_sub, tj_sub, bt_sub, ix, iy,
+                    len > 0 ? src : "");
+            }
+
             int in_bt = 0;
             float tm_tx = 0, tm_ty = 0;
             float td_x = 0, td_y = 0;
@@ -5941,6 +5958,9 @@ static void kozou_find_all_xobjs_by_tm_dict(
                         }
                     }
                 }
+            }
+            if (getenv("KOZOU_SANITIZE_DEBUG")) {
+                fprintf(stderr, "[KOZOU_XOBJ_TM_SCAN] xref=%d found=%d\n", xref, found);
             }
         } fz_always(ctx) {
             if (buf) { fz_drop_buffer(ctx, buf); buf = NULL; }
