@@ -4743,8 +4743,9 @@ static void kozou_collect_xobj_recursive(
         pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
         if (!xobj) continue;
 
-        pdf_obj *subtype = pdf_dict_get(ctx, xobj, PDF_NAME(Subtype));
-        if (!pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
+        pdf_obj *subtype = pdf_dict_gets(ctx, xobj, "Subtype");
+        const char *subtype_name = pdf_is_name(ctx, subtype) ? pdf_to_name(ctx, subtype) : NULL;
+        if (!subtype_name || strcmp(subtype_name, "Form") != 0) continue;
 
         const char *name = pdf_to_name(ctx, key);
         if (!name || !*name) continue;
@@ -4791,7 +4792,7 @@ static void kozou_collect_xobj_recursive(
             pg_bbox.x1, pg_bbox.y1);
 
         /* 子 XObject のリソースを再帰処理 */
-        pdf_obj *child_res = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
+        pdf_obj *child_res = pdf_dict_gets(ctx, xobj, "Resources");
         if (child_res) {
             kozou_collect_xobj_recursive(
                 cx, child_res, combined, xref, depth + 1);
@@ -5746,8 +5747,9 @@ static int kozou_xobj_place_ctm_scan(
                 /* ネスト Form XObject なら再帰探索 */
                 if (xr != 0) {
                     pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
-                    pdf_obj *st = xobj ? pdf_dict_get(ctx, xobj, PDF_NAME(Subtype)) : NULL;
-                    if (st && pdf_name_eq(ctx, st, PDF_NAME(Form))) {
+                    pdf_obj *st = xobj ? pdf_dict_gets(ctx, xobj, "Subtype") : NULL;
+                    const char *st_name = (st && pdf_is_name(ctx, st)) ? pdf_to_name(ctx, st) : NULL;
+                    if (st_name && strcmp(st_name, "Form") == 0) {
                         fz_buffer *cbuf = NULL;
                         int hit = 0;
                         fz_var(cbuf); fz_var(hit);
@@ -5767,7 +5769,7 @@ static int kozou_xobj_place_ctm_scan(
                                 xm.f = pdf_to_real(ctx, pdf_array_get(ctx, mo, 5));
                             }
                             fz_matrix child_base = fz_concat(xm, ctm_stack[sp]);
-                            pdf_obj *xres = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
+                            pdf_obj *xres = pdf_dict_gets(ctx, xobj, "Resources");
                             if (!xres) xres = resources;
                             unsigned char *cd = NULL;
                             size_t clen = fz_buffer_storage(ctx, cbuf, &cd);
@@ -5875,8 +5877,9 @@ static void kozou_find_all_xobjs_by_tm_dict(
 
         pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
         if (!xobj) continue;
-        pdf_obj *subtype = pdf_dict_get(ctx, xobj, PDF_NAME(Subtype));
-        if (!pdf_name_eq(ctx, subtype, PDF_NAME(Form))) continue;
+        pdf_obj *subtype = pdf_dict_gets(ctx, xobj, "Subtype");
+        const char *subtype_name = pdf_is_name(ctx, subtype) ? pdf_to_name(ctx, subtype) : NULL;
+        if (!subtype_name || strcmp(subtype_name, "Form") != 0) continue;
 
         fz_buffer *buf = NULL;
         int found = 0;
@@ -5972,7 +5975,7 @@ static void kozou_find_all_xobjs_by_tm_dict(
 
         /* このXObject自身の Resources を再帰的にスキャン（ネスト XObject 対応）*/
         if (!dup) {
-            pdf_obj *child_res = pdf_dict_get(ctx, xobj, PDF_NAME(Resources));
+            pdf_obj *child_res = pdf_dict_gets(ctx, xobj, "Resources");
             if (child_res) {
                 pdf_obj *child_xdict = pdf_dict_gets(ctx, child_res, "XObject");
                 if (child_xdict)
