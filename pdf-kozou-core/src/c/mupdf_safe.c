@@ -7635,13 +7635,23 @@ void kozou_sanitize_hidden_text(
                 }
             }
 
-            /* buried XObject 特定: このページ pi のターゲットを使用
-             * xobj_search_page は pi ページをロード済み */
+            /* XObject 特定: このページ pi のターゲットを使用
+             * xobj_search_page は pi ページをロード済み。
+             * 従来は is_buried (不透明矩形による被覆) のみをXObject探索対象に
+             * していたが、ページのコンテンツ全体が単一の Form XObject 呼び出し
+             * (例: `/X177 Do`) でラップされている PDF (Canva等のデザインツール
+             * エクスポートで頻出) では、transparent/low_contrast/tiny で検出
+             * された文字もページ直下ではなく XObject 内にしか存在しないため、
+             * is_buried 限定では一切書き換えに到達できなかった (実機で確認:
+             * 469検出中、is_buried以外の415件がxobj_xref=0のまま常に page-level
+             * 経路に回され、page 直下に Tj/TJ が存在しないため無害化0件になる
+             * 不具合)。detect_* 側は buried 以外でも internal_origin (ix,iy) を
+             * 同じ kozou_xobj_lookup 経由で埋めているため、is_buried に関わらず
+             * 内部Tm座標が有効な全ターゲットを対象にする。 */
             int n_xrefs = 0;
             if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
                 if (targets[i].page_index >= 0 && targets[i].page_index != pi) continue;
-                if (!targets[i].is_buried) continue; /* buried のみ XObject 処理 */
                 float ix = targets[i].ix; /* Tm の tx (internal_origin x) */
                 float iy = targets[i].iy; /* Tm の ty (internal_origin y) */
                 if (ix == 0.0f && iy == 0.0f) continue;
