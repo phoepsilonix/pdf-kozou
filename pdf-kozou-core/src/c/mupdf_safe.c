@@ -7752,7 +7752,11 @@ void kozou_sanitize_hidden_text(
                         int n_page = 0;
                         for (int _pi = 0; _pi < n && n_page < KOZOU_SANITIZE_MAX; _pi++) {
                             if (targets[_pi].page_index >= 0 && targets[_pi].page_index != pi) continue;
-                            if (!targets[_pi].is_buried) continue; /* buried のみ */
+                            /* 上のXObject特定ループと同様、is_buried限定を撤廃。
+                             * ここでフィルタをburiedだけに戻すと、上で発見した
+                             * XObjectにtransparent/low_contrast/tinyターゲットが
+                             * 一切渡らず、実際の書き換えが空振りする。 */
+                            if (!targets[_pi].in_xobj) continue; /* このXObjectで見つかったもののみ */
                             page_targets[n_page++] = targets[_pi];
                         }
                         /* n_page==0 のときは呼ばない（全BT blank を防ぐ）*/
