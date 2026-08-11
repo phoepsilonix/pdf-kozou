@@ -5999,6 +5999,13 @@ static void kozou_find_all_xobjs_by_tm(
 {
     if (!ppage || !out_xrefs || !n_out) return;
     pdf_obj *res = pdf_page_resources(ctx, ppage);
+    if (getenv("KOZOU_SANITIZE_DEBUG")) {
+        pdf_obj *xdict_dbg = res ? pdf_dict_get(ctx, res, PDF_NAME(XObject)) : NULL;
+        fprintf(stderr,
+            "[KOZOU_XOBJ_TM_TOP] ix=%.2f iy=%.2f res=%p xdict=%p xdict_len=%d\n",
+            ix, iy, (void*)res, (void*)xdict_dbg,
+            xdict_dbg ? pdf_dict_len(ctx, xdict_dbg) : -1);
+    }
     if (!res) return;
     pdf_obj *xdict = pdf_dict_get(ctx, res, PDF_NAME(XObject));
     if (!xdict) return;
