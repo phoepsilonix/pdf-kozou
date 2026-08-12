@@ -7005,7 +7005,20 @@ void kozou_sanitize_hidden_text(
          * 1個(=最終的に画面に見える層)は消してはいけない。
          * クラスタ全員に「残り消去許容数 = クラスタ人数-1」を共有させ、
          * ストリーム順(=描画順)で先に出現した分から消費する。
-         * 単独ターゲット(重複なし)は従来通り出現した瞬間に必ず消去される。 */
+         * 単独ターゲット(重複なし)は従来通り出現した瞬間に必ず消去される。
+         *
+         * 【is_buried 限定の理由】buried は「後から描かれた不透明な図形/
+         * 文字が先の同一文字を覆う」という重なり順の幾何判定であり、
+         * 「最後の1個は覆う側=可視レイヤーのはず」という推測が物理的に
+         * 成立する。一方 transparent/low_contrast/tiny は各インスタンスの
+         * 描画状態(alpha・コントラスト等)を個別に直接測定して「このもの
+         * 自体が隠れている」と確定させた検出であり、重なり順とは無関係。
+         * これらを is_buried と同じクラスタ化に混ぜると、同一位置に複数
+         * 独立に検出された transparent/low_contrast ターゲットがあっても
+         * 「最後の1個は可視のはず」と機械的に救済され無害化されずに残り、
+         * 次回スキャンで再検出される退行を招く。よってクラスタの構成員は
+         * is_buried 同士に限定し、transparent/low_contrast/tiny は従来通り
+         * 検出された分すべてを必ず消去する。 */
         {
             int   *cluster_members = (int *)fz_malloc(ctx, sizeof(int) * n);
             int  **dup_counters    = (int **)fz_malloc(ctx, sizeof(int *) * n);
@@ -7013,13 +7026,16 @@ void kozou_sanitize_hidden_text(
             /* clustering に用いる座標許容半径。書き換え時のマッチング半径
              * (tol2, 後段で算出) と同じ考え方で十分小さい固定値を使う。 */
             const float cluster_tol2 = 1.0f;
+            int kozou_dbg = getenv("KOZOU_SANITIZE_DEBUG") != NULL;
             for (int i = 0; i < n; i++) {
                 if (targets[i].remaining_ptr) continue; /* 既にクラスタ済み */
                 if (targets[i].codepoint < 0) continue;  /* identity不明はクラスタ化しない(安全側) */
+                if (!targets[i].is_buried) continue;     /* buried以外はクラスタ化しない(安全側) */
                 int nm = 0;
                 cluster_members[nm++] = i;
                 for (int j = i + 1; j < n; j++) {
                     if (targets[j].remaining_ptr) continue;
+                    if (!targets[j].is_buried) continue;
                     if (targets[j].page_index != targets[i].page_index) continue;
                     if (targets[j].codepoint != targets[i].codepoint) continue;
                     float sz_i = targets[i].size, sz_j = targets[j].size;
@@ -7037,6 +7053,11 @@ void kozou_sanitize_hidden_text(
                     dup_counters[dup_counter_n++] = counter;
                     for (int k = 0; k < nm; k++)
                         targets[cluster_members[k]].remaining_ptr = counter;
+                    if (kozou_dbg) {
+                        fprintf(stderr,
+                            "[KOZOU_DUP_CLUSTER] page=%d cp=%d size=%.2f members=%d (buried限定)\n",
+                            targets[i].page_index, targets[i].codepoint, targets[i].size, nm);
+                    }
                 }
             }
             fz_free(ctx, cluster_members);
