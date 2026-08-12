@@ -5241,6 +5241,14 @@ typedef struct {
      * 座標が近いだけの別グリフ (隣接文字・重なり) を巻き込まない。 */
     int   codepoint;
     float size;
+    /* 重複スタック(同一位置に同一文字が複数回描画される疑似太字/影効果等、
+     * Canva書き出しPDFで頻出)対策。同一クラスタに属する全ターゲットが
+     * 同じヒープ確保intへのポインタを共有し、「残り消去許容数」を
+     * 管理する。ストリーム順(=描画順)で先に出現したものから消費し、
+     * 0になった後の出現(=最後に描画された、最終的に見える層)は
+     * 消去しない。NULL = クラスタ化なし(単独ターゲット、従来通り
+     * 出現した瞬間に必ず消去)。 */
+    int  *remaining_ptr;
 } KozouSanitizeOrigin;
 
 /* show 演算子の現在の描画モード Tr が「不可視(塗り/線なし)」かを返す。
@@ -5269,6 +5277,13 @@ static int kozou_sanitize_is_target(
          * 座標が近いだけの隣接/重なりグリフを巻き込まない。 */
         if (!kozou_identity_ok(t[i].codepoint, t[i].size,
                                have_glyph, g_ucs, g_size)) continue;
+        /* 重複スタック消費チェック: 残り消去許容数が尽きていれば
+         * (=最後に描画された生き残りの1個) この出現は消去しない。
+         * 他のターゲットとの一致は引き続き試すため continue する。 */
+        if (t[i].remaining_ptr) {
+            if (*t[i].remaining_ptr <= 0) continue;
+            (*t[i].remaining_ptr)--;
+        }
         return 1;
     }
     return 0;
@@ -5280,7 +5295,12 @@ static int kozou_sanitize_is_target_ix(
 {
     for (int i = 0; i < n; i++) {
         float dx = t[i].ix - ix, dy = t[i].iy - iy;
-        if (dx*dx + dy*dy <= tol2) return 1;
+        if (dx*dx + dy*dy > tol2) continue;
+        if (t[i].remaining_ptr) {
+            if (*t[i].remaining_ptr <= 0) continue;
+            (*t[i].remaining_ptr)--;
+        }
+        return 1;
     }
     return 0;
 }
@@ -5292,7 +5312,12 @@ static int kozou_sanitize_is_xobj_target(
     for (int i = 0; i < n; i++) {
         if (t[i].xobj_xref != xref) continue;
         float dx = t[i].ix - ix, dy = t[i].iy - iy;
-        if (dx*dx + dy*dy <= tol2) return 1;
+        if (dx*dx + dy*dy > tol2) continue;
+        if (t[i].remaining_ptr) {
+            if (*t[i].remaining_ptr <= 0) continue;
+            (*t[i].remaining_ptr)--;
+        }
+        return 1;
     }
     return 0;
 }
@@ -6233,6 +6258,10 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         if (dx*dx + dy*dy > tol2) continue;
                         if (!kozou_identity_ok(targets[_ti].codepoint, targets[_ti].size,
                                                have_g, g_ucs, g_size)) continue;
+                        if (targets[_ti].remaining_ptr) {
+                            if (*targets[_ti].remaining_ptr <= 0) continue;
+                            (*targets[_ti].remaining_ptr)--;
+                        }
                         origin_is_target = 1; break;
                     }
 
@@ -6331,6 +6360,10 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                         if (!kozou_identity_ok(targets[_ti2].codepoint,
                                                 targets[_ti2].size, have_g_c, g_c_ucs, g_c_size))
                                             continue;
+                                        if (targets[_ti2].remaining_ptr) {
+                                            if (*targets[_ti2].remaining_ptr <= 0) continue;
+                                            (*targets[_ti2].remaining_ptr)--;
+                                        }
                                         this_blank = 1; break;
                                     }
                                 }
@@ -6882,6 +6915,8 @@ void kozou_sanitize_hidden_text(
 {
     pdf_document *pdf = NULL;
     fz_var(pdf);
+    int   **kozou_dup_counters  = NULL;
+    int     kozou_dup_counter_n = 0;
 
     fz_try(ctx) {
         pdf = (pdf_document *)fz_open_document(ctx, input_path);
@@ -6920,6 +6955,55 @@ void kozou_sanitize_hidden_text(
             /* 描画モード (取り違え防止)。並列配列が無ければ -1 (不明=従来動作)。 */
             targets[i].render_invisible =
                 target_render_class ? target_render_class[i] : -1;
+        }
+
+        /* 重複スタック検出 (Canva 疑似太字/影効果対策):
+         * 同一ページ・同一 codepoint・同一サイズ・ほぼ同一デバイス座標(ox,oy)
+         * の対象が複数存在する場合、それらは「同じ文字が複数回重ねて
+         * 描画されている」ことを意味する。この場合、無害化すべきなのは
+         * 覆われている(先に描画された)側だけであり、最後に描画された
+         * 1個(=最終的に画面に見える層)は消してはいけない。
+         * クラスタ全員に「残り消去許容数 = クラスタ人数-1」を共有させ、
+         * ストリーム順(=描画順)で先に出現した分から消費する。
+         * 単独ターゲット(重複なし)は従来通り出現した瞬間に必ず消去される。 */
+        {
+            int   *cluster_members = (int *)fz_malloc(ctx, sizeof(int) * n);
+            int  **dup_counters    = (int **)fz_malloc(ctx, sizeof(int *) * n);
+            int    dup_counter_n   = 0;
+            /* clustering に用いる座標許容半径。書き換え時のマッチング半径
+             * (tol2, 後段で算出) と同じ考え方で十分小さい固定値を使う。 */
+            const float cluster_tol2 = 1.0f;
+            for (int i = 0; i < n; i++) {
+                if (targets[i].remaining_ptr) continue; /* 既にクラスタ済み */
+                if (targets[i].codepoint < 0) continue;  /* identity不明はクラスタ化しない(安全側) */
+                int nm = 0;
+                cluster_members[nm++] = i;
+                for (int j = i + 1; j < n; j++) {
+                    if (targets[j].remaining_ptr) continue;
+                    if (targets[j].page_index != targets[i].page_index) continue;
+                    if (targets[j].codepoint != targets[i].codepoint) continue;
+                    float sz_i = targets[i].size, sz_j = targets[j].size;
+                    if (sz_i > 0.0f && sz_j > 0.0f) {
+                        if (sz_j < sz_i * 0.75f || sz_j > sz_i * 1.25f) continue;
+                    }
+                    float ddx = targets[i].ox - targets[j].ox;
+                    float ddy = targets[i].oy - targets[j].oy;
+                    if (ddx*ddx + ddy*ddy > cluster_tol2) continue;
+                    cluster_members[nm++] = j;
+                }
+                if (nm >= 2) {
+                    int *counter = (int *)fz_malloc(ctx, sizeof(int));
+                    *counter = nm - 1; /* 最後の1個(最終的に見える層)だけ残す */
+                    dup_counters[dup_counter_n++] = counter;
+                    for (int k = 0; k < nm; k++)
+                        targets[cluster_members[k]].remaining_ptr = counter;
+                }
+            }
+            fz_free(ctx, cluster_members);
+            /* dup_counters/dup_counter_n は関数末尾の targets 解放時に
+             * 一緒に解放する (kozou_dup_counters/kozou_dup_counter_n に退避)。 */
+            kozou_dup_counters   = dup_counters;
+            kozou_dup_counter_n  = dup_counter_n;
         }
         float tol2 = tolerance > 0 ? tolerance*tolerance : 1.0f;
         /* 文字単位スキャンで再計算する座標は「推定値」であり、mupdf 自身が
@@ -7893,6 +7977,11 @@ void kozou_sanitize_hidden_text(
 
         /* targets は XObject 処理ループまで参照されるため、ここで解放する */
         fz_free(ctx, targets);
+        /* 重複スタック用の共有カウンタも解放する
+         * (targets[].remaining_ptr が指していたポインタ群) */
+        for (int _dc = 0; _dc < kozou_dup_counter_n; _dc++)
+            fz_free(ctx, kozou_dup_counters[_dc]);
+        fz_free(ctx, kozou_dup_counters);
 
         pdf_write_options opts = pdf_default_write_options;
         opts.do_compress        = 1;
