@@ -3715,12 +3715,40 @@ void kozou_detect_low_contrast_text(
                     float cr_sum = 0.0f;
                     for (int ri = 0; ri < 32; ri++) {
                         float angle = (float)(2.0 * 3.14159265358979 * ri / 32);
-                        int bpx = (int)((cx + ring_rx * cosf(angle)) * RENDER_SCALE);
-                        int bpy = (int)((cy + ring_ry * sinf(angle)) * RENDER_SCALE);
-                        if (bpx < 0 || bpx >= pixmap->w ||
-                            bpy < 0 || bpy >= pixmap->h) continue;
-                        unsigned char *bp = pixmap->samples +
-                            bpy * pixmap->stride + bpx * pixmap->n;
+                        int cxpx = (int)((cx + ring_rx * cosf(angle)) * RENDER_SCALE);
+                        int cypx = (int)((cy + ring_ry * sinf(angle)) * RENDER_SCALE);
+                        if (cxpx < 0 || cxpx >= pixmap->w ||
+                            cypx < 0 || cypx >= pixmap->h) continue;
+                        /* 単一ピクセルではなく、周囲 3x3 の平均色を使う。
+                         * 写真等の細かいテクスチャ背景の上に乗った文字は、
+                         * 単一ピクセルサンプリングだと偶然近い色のピクセルに
+                         * 当たっただけで「低コントラスト」と誤判定しやすい
+                         * (例: 桜柄の背景画像に重ねた大きな見出し文字)。
+                         * 小さい範囲を平均することでこの種の偶然の単発一致に
+                         * よる誤検出を減らす。範囲は主観的な体感差を保つため
+                         * 1pt 相当(RENDER_SCALE px)にとどめ、過度なぼかしは
+                         * 避ける。 */
+                        int    patch_n = 0;
+                        long   psum_r = 0, psum_g = 0, psum_b = 0;
+                        int    prad = (int)(RENDER_SCALE); /* 約1pt */
+                        for (int py = -prad; py <= prad; py++) {
+                            int spy = cypx + py;
+                            if (spy < 0 || spy >= pixmap->h) continue;
+                            for (int px = -prad; px <= prad; px++) {
+                                int spx = cxpx + px;
+                                if (spx < 0 || spx >= pixmap->w) continue;
+                                unsigned char *sp = pixmap->samples +
+                                    spy * pixmap->stride + spx * pixmap->n;
+                                psum_r += sp[0]; psum_g += sp[1]; psum_b += sp[2];
+                                patch_n++;
+                            }
+                        }
+                        if (patch_n == 0) continue;
+                        unsigned char bp[3] = {
+                            (unsigned char)(psum_r / patch_n),
+                            (unsigned char)(psum_g / patch_n),
+                            (unsigned char)(psum_b / patch_n)
+                        };
                         float bg_r_f = bp[0] / 255.0f;
                         float bg_g_f = bp[1] / 255.0f;
                         float bg_b_f = bp[2] / 255.0f;
@@ -5636,13 +5664,22 @@ static int kozou_tounicode_lookup(
 static pdf_obj *kozou_ensure_helvetica(
     fz_context *ctx, pdf_document *pdf, pdf_obj *page_obj)
 {
-    pdf_obj *res = pdf_dict_get_inheritable(ctx, page_obj, PDF_NAME(Resources));
+    /* page_obj はページ本体だけでなく XObject ストリーム辞書としても
+     * 呼ばれる (kozou_blank_all_bt_blocks_hv_ctm の呼び出し元)。
+     * XObject には /Parent によるページツリー継承の概念が無いため、
+     * pdf_dict_get_inheritable をいきなり使うと (本来 /Resources が
+     * 直接存在するにもかかわらず) 誤って NULL を返し、既存の
+     * /Resources を丸ごと新しい空辞書で上書きしてしまう危険がある。
+     * まず文字列比較ベースの直接ルックップを試し、それで見つからない
+     * 場合のみページツリー継承にフォールバックする。 */
+    pdf_obj *res = pdf_dict_gets(ctx, page_obj, "Resources");
+    if (!res) res = pdf_dict_get_inheritable(ctx, page_obj, PDF_NAME(Resources));
     if (!res) {
         res = pdf_new_dict(ctx, pdf, 4);
         pdf_dict_put_drop(ctx, page_obj, PDF_NAME(Resources), res);
     }
     /* Font辞書 */
-    pdf_obj *font_dict = pdf_dict_get(ctx, res, PDF_NAME(Font));
+    pdf_obj *font_dict = pdf_dict_gets(ctx, res, "Font");
     if (!font_dict) {
         font_dict = pdf_new_dict(ctx, pdf, 4);
         pdf_dict_put_drop(ctx, res, PDF_NAME(Font), font_dict);
@@ -5659,7 +5696,7 @@ static pdf_obj *kozou_ensure_helvetica(
     }
     /* KOZOU_NORMAL: fill/stroke alpha=1.0 に正規化する ExtGState
      * 置き換え文字の前に適用して ca=0 等の透明状態を解除する            */
-    pdf_obj *ext_dict = pdf_dict_get(ctx, res, PDF_NAME(ExtGState));
+    pdf_obj *ext_dict = pdf_dict_gets(ctx, res, "ExtGState");
     if (!ext_dict) {
         ext_dict = pdf_new_dict(ctx, pdf, 4);
         pdf_dict_put_drop(ctx, res, PDF_NAME(ExtGState), ext_dict);
@@ -7845,8 +7882,8 @@ void kozou_sanitize_hidden_text(
                     if (!xobj_buf) fz_throw(ctx, FZ_ERROR_ARGUMENT, "xobj stream null");
 
                     /* XObject の Resources からフォントを取得 */
-                    pdf_obj *xobj_res = pdf_dict_get(ctx, xobj_obj, PDF_NAME(Resources));
-                    pdf_obj *xobj_fonts = xobj_res ? pdf_dict_get(ctx, xobj_res, PDF_NAME(Font)) : NULL;
+                    pdf_obj *xobj_res = pdf_dict_gets(ctx, xobj_obj, "Resources");
+                    pdf_obj *xobj_fonts = xobj_res ? pdf_dict_gets(ctx, xobj_res, "Font") : NULL;
 
                     /* Helvetica フォントを XObject リソースに登録 */
                     if (!xobj_fonts) {
@@ -7854,12 +7891,12 @@ void kozou_sanitize_hidden_text(
                             xobj_res = pdf_new_dict(ctx, pdf, 1);
                             pdf_dict_put(ctx, xobj_obj, PDF_NAME(Resources), xobj_res);
                             pdf_drop_obj(ctx, xobj_res);
-                            xobj_res = pdf_dict_get(ctx, xobj_obj, PDF_NAME(Resources));
+                            xobj_res = pdf_dict_gets(ctx, xobj_obj, "Resources");
                         }
                         xobj_fonts = pdf_new_dict(ctx, pdf, 1);
                         pdf_dict_put(ctx, xobj_res, PDF_NAME(Font), xobj_fonts);
                         pdf_drop_obj(ctx, xobj_fonts);
-                        xobj_fonts = pdf_dict_get(ctx, xobj_res, PDF_NAME(Font));
+                        xobj_fonts = pdf_dict_gets(ctx, xobj_res, "Font");
                     }
 
                     /* KOZOU_HV フォントを登録（未登録の場合）*/
@@ -7869,8 +7906,9 @@ void kozou_sanitize_hidden_text(
                         int np = pdf_count_pages(ctx, pdf);
                         for (int pi = 0; pi < np && !hv_ref; pi++) {
                             pdf_obj *pg  = pdf_lookup_page_obj(ctx, pdf, pi);
-                            pdf_obj *pr  = pdf_dict_get_inheritable(ctx, pg, PDF_NAME(Resources));
-                            pdf_obj *pf  = pr ? pdf_dict_get(ctx, pr, PDF_NAME(Font)) : NULL;
+                            pdf_obj *pr  = pdf_dict_gets(ctx, pg, "Resources");
+                            if (!pr) pr = pdf_dict_get_inheritable(ctx, pg, PDF_NAME(Resources));
+                            pdf_obj *pf  = pr ? pdf_dict_gets(ctx, pr, "Font") : NULL;
                             pdf_obj *phv = pf ? pdf_dict_gets(ctx, pf, KOZOU_HV) : NULL;
                             if (phv) {
                                 pdf_dict_puts(ctx, xobj_fonts, KOZOU_HV, phv);
@@ -7888,9 +7926,9 @@ void kozou_sanitize_hidden_text(
                     /* buried テキスト: kozou_blank_all_bt_blocks_hv で
                      * Tm 座標マッチングと Helvetica 幅補正を行う */
                     kozou_ensure_helvetica(ctx, pdf, xobj_obj);
-                    pdf_obj *xobj_res2 = pdf_dict_get(ctx, xobj_obj, PDF_NAME(Resources));
+                    pdf_obj *xobj_res2 = pdf_dict_gets(ctx, xobj_obj, "Resources");
                     pdf_obj *xobj_fonts2 = xobj_res2 ?
-                        pdf_dict_get(ctx, xobj_res2, PDF_NAME(Font)) : NULL;
+                        pdf_dict_gets(ctx, xobj_res2, "Font") : NULL;
                     pdf_obj *hv_ref2 = xobj_fonts2 ?
                         pdf_dict_gets(ctx, xobj_fonts2, KOZOU_HV) : NULL;
                     /* このページ pi 向けターゲットのみで XObject を書き換え */
