@@ -6203,6 +6203,8 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     fz_context                *ctx,
     pdf_document              *pdf,        /* フォント幅取得用 (NULL可) */
     pdf_obj                   *font_dict,  /* XObject の Resources/Font (NULL可) */
+    pdf_obj                   *res_dict,   /* XObject の Resources (NULL可)。
+                                             * ExtGState 解決 (/ca 追跡) 用。 */
     fz_buffer                 *in_buf,
     fz_buffer                 *out_buf,
     pdf_obj                   *hv_ref,
@@ -6210,7 +6212,8 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     int                        n_targets,
     float                      tol,
     fz_matrix                  place_ctm,  /* XObject → ページデバイス座標 */
-    const KozouQuadMap        *qmap)       /* ページ stext マップ (identity 照合用, NULL可) */
+    const KozouQuadMap        *qmap,       /* ページ stext マップ (identity 照合用, NULL可) */
+    int                        alpha_threshold) /* 0-255: ca 照合しきい値 */
 {
     unsigned char *src_data = NULL;
     size_t src_len = fz_buffer_storage(ctx, in_buf, &src_data);
@@ -6243,6 +6246,15 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     int ctm_sp = 0;
     ctm_stack[0] = fz_identity;
 
+    /* 現在の塗り不透明度 (ExtGState /ca) を q/Q と連動して追跡する。
+     * ページ側 kozou_sanitize_hidden_text と同じ理由: 同一位置に影/透明/
+     * 本体のように複数レイヤーで重ねて描画される場合、alpha_gate が
+     * 立っている対象(検出理由が「transparent」)は、いま処理している
+     * 出現の実際の ca も低いことを確認してからでないとマッチさせない。 */
+    float alpha_stack[64];
+    alpha_stack[0] = 1.0f;
+    pdf_obj *extg_dict = res_dict ? pdf_dict_gets(ctx, res_dict, "ExtGState") : NULL;
+
     /* Type0(CID)フォントの identity 解決用 /ToUnicode キャッシュ。
      * このXObject処理呼び出し内で使い回す(kozou_tounicode_lookup 参照)。 */
     KozouToUnicodeCacheEntry tu_cache[KOZOU_TU_CACHE_MAX];
@@ -6260,9 +6272,13 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
         size_t trimmed_len = te - ts;
 
         if (!in_bt) {
-            /* q / Q / cm を追跡 (BT 外のグラフィックス状態) */
+            /* q / Q / cm / gs を追跡 (BT 外のグラフィックス状態) */
             if (trimmed_len == 1 && src[ts] == 'q') {
-                if (ctm_sp < 63) { ctm_stack[ctm_sp+1] = ctm_stack[ctm_sp]; ctm_sp++; }
+                if (ctm_sp < 63) {
+                    ctm_stack[ctm_sp+1]   = ctm_stack[ctm_sp];
+                    alpha_stack[ctm_sp+1] = alpha_stack[ctm_sp];
+                    ctm_sp++;
+                }
             } else if (trimmed_len == 1 && src[ts] == 'Q') {
                 if (ctm_sp > 0) ctm_sp--;
             } else if (trimmed_len >= 2 && src[te-2] == 'c' && src[te-1] == 'm') {
@@ -6273,6 +6289,23 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                 if (sscanf(cmline,"%f %f %f %f %f %f cm",&a,&b,&c,&d,&e,&f) == 6) {
                     fz_matrix m = { a,b,c,d,e,f };
                     ctm_stack[ctm_sp] = fz_concat(m, ctm_stack[ctm_sp]);
+                }
+            } else if (trimmed_len >= 4 && src[te-2] == 'g' && src[te-1] == 's' &&
+                       (src[te-3] == ' ' || src[te-3] == '\t') && src[ts] == '/') {
+                /* /GSx gs: ExtGState 辞書から /ca (塗り不透明度) を解決する。
+                 * キーが無ければ現在値を維持 (PDF仕様: ExtGState の未指定
+                 * キーは「変更なし」を意味する)。 */
+                size_t ne = ts + 1;
+                while (ne < te - 3 && src[ne] != ' ' && src[ne] != '\t') ne++;
+                char gsname[64] = {0};
+                size_t nl = ne - (ts + 1);
+                if (nl > 63) nl = 63;
+                memcpy(gsname, src + ts + 1, nl);
+                gsname[nl] = 0;
+                if (extg_dict) {
+                    pdf_obj *gs_obj = pdf_dict_gets(ctx, extg_dict, gsname);
+                    pdf_obj *ca_obj = gs_obj ? pdf_dict_get(ctx, gs_obj, PDF_NAME(ca)) : NULL;
+                    if (ca_obj) alpha_stack[ctm_sp] = pdf_to_real(ctx, ca_obj);
                 }
             } else if (trimmed_len == 2 && src[ts] == 'B' && src[ts+1] == 'T') {
                 in_bt = 1;
@@ -6314,6 +6347,14 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         if (targets[_ti].render_invisible >= 0 &&
                             targets[_ti].render_invisible != cur_invisible)
                             continue;
+                        /* alpha_gate: reason=="transparent"(ca=0)由来の対象は、
+                         * いま処理している出現の実際の ca も低いことを要求する。
+                         * 同一位置に影/透明/本体のように複数レイヤーで重ねて
+                         * 描画される場合の巻き添え消去を防ぐ (ページ側と同じ)。 */
+                        if (targets[_ti].alpha_gate) {
+                            int cur_a255 = (int)(alpha_stack[ctm_sp] * 255.0f + 0.5f);
+                            if (cur_a255 > alpha_threshold) continue;
+                        }
                         float dx = targets[_ti].ox - dev_x;
                         float dy = targets[_ti].oy - dev_y;
                         if (dx*dx + dy*dy > tol2) continue;
@@ -6415,6 +6456,11 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                         if (targets[_ti2].render_invisible >= 0 &&
                                             targets[_ti2].render_invisible != cur_invisible)
                                             continue;
+                                        if (targets[_ti2].alpha_gate) {
+                                            int cur_a255 =
+                                                (int)(alpha_stack[ctm_sp] * 255.0f + 0.5f);
+                                            if (cur_a255 > alpha_threshold) continue;
+                                        }
                                         float dx2 = targets[_ti2].ox - ch_dev_x;
                                         float dy2 = targets[_ti2].oy - ch_dev_y;
                                         if (dx2*dx2 + dy2*dy2 > tol2_est) continue;
@@ -8047,9 +8093,10 @@ void kozou_sanitize_hidden_text(
                             int got = kozou_get_xobj_place_ctm(ctx, pdf,
                                 xobj_search_page, xref, &place_ctm);
                             if (got) {
-                                kozou_blank_all_bt_blocks_hv_ctm(ctx, pdf, xobj_fonts2,
+                                kozou_blank_all_bt_blocks_hv_ctm(ctx, pdf, xobj_fonts2, xobj_res2,
                                     xobj_buf, new_xobj_buf, hv_ref2,
-                                    page_targets, n_page, 4.0f, place_ctm, xqmap);
+                                    page_targets, n_page, 4.0f, place_ctm, xqmap,
+                                    alpha_threshold);
                             } else {
                                 /* 配置 CTM 不明: 安全側で元ストリームをコピー */
                                 unsigned char *sd = NULL;

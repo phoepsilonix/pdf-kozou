@@ -864,16 +864,21 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               ...toAnyHits("control_chars", (await detectControlChars(filePath, p)).hits, p),
             );
         }
-        const grps = groupHits(all);
+        // skipType3 が有効な場合、Type3(輪郭/装飾フォント等)由来のヒットは
+        // 現状 sanitizeType3Text と連携しておらず無害化できないため、
+        // 「選択できるのに無害化ボタンを押すと対象なしになる」という
+        // 分かりにくい挙動を避けるべく一覧に出す前段階で除外する。
+        const visible = skipType3 ? all.filter((h) => !h.isType3) : all;
+        const grps = groupHits(visible);
         setGroups(grps);
         const autoSel = new Set(grps.filter((g) => !g.isWs).map((g) => g.id));
         setSelectedIds(autoSel);
         setStatus(
-          all.length === 0
+          visible.length === 0
             ? t("hidden.batch_no_detection")
             : effectiveAllPages
-              ? `${grps.filter((g) => !g.isWs).length}件検出（${all.length}文字、全${pages.length}ページ）`
-              : `${grps.filter((g) => !g.isWs).length}件検出（${all.length}文字）`,
+              ? `${grps.filter((g) => !g.isWs).length}件検出（${visible.length}文字、全${pages.length}ページ）`
+              : `${grps.filter((g) => !g.isWs).length}件検出（${visible.length}文字）`,
         );
       } catch (e) {
         setStatus(`エラー: ${e}`);
