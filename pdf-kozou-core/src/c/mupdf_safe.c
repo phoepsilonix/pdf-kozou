@@ -5265,6 +5265,13 @@ typedef struct {
      * 同一座標に可視と不可視のグリフが重なる場合に、検出されたモードと
      * 一致する show 演算子だけを無害化し、別グリフを巻き込まないために使う。 */
     int   render_invisible;
+    /* 1 = detect_transparent_text の reason=="transparent" (ExtGState ca=0)
+     * によって検出された対象で、書き換え時に ca が実際に低いことも確認
+     * してからでないとマッチさせてはいけない。0 = それ以外
+     * (low_contrast/tiny/buried や invisible_mode/clip_only_mode 等、ca
+     * を見る必要がない・見てはいけない対象)。render_invisible とは独立
+     * (render_invisible は Tr モード、alpha_gate は ca 由来かどうか)。 */
+    int   alpha_gate;
     /* 文字 identity (取り違え防止の本命):
      *  codepoint = 検出されたグリフの Unicode (-1=不明→従来動作)
      *  size      = 検出されたグリフのサイズ pt (stext 空間, 0=不明)
@@ -5295,13 +5302,27 @@ static int kozou_tr_is_invisible(int tr_mode)
 static int kozou_sanitize_is_target(
     const KozouSanitizeOrigin *t, int n, float x, float y, float tol2,
     int cur_invisible,
-    int have_glyph, int g_ucs, float g_size)
+    int have_glyph, int g_ucs, float g_size,
+    float cur_alpha01, int alpha_threshold)
 {
     for (int i = 0; i < n; i++) {
         if (t[i].in_xobj) continue; /* XObject内で処理するのでスキップ */
         if (t[i].xobj_xref != 0) continue; /* XObject内ターゲットは階層側で処理 (取り違え防止) */
         if (t[i].render_invisible >= 0 &&
             t[i].render_invisible != cur_invisible) continue; /* モード不一致は別グリフ */
+        /* alpha_gate (detect_transparent_text の reason=="transparent"
+         * = ExtGState ca=0 由来の対象) は、いま処理している出現の実際の
+         * ca も低くなければマッチさせない。Canva書き出しPDF等で同一
+         * 文字列が影(ca=0.4)/完全透明(ca=0)/本体(ca=1.0)のように複数
+         * レイヤーで同一位置に重ねて描画される場合、座標+文字種+Tr
+         * モードだけでは区別がつかず、検出された1レイヤー(ca=0)以外の
+         * 可視レイヤーまで巻き添えで消去してしまうのを防ぐ。
+         * low_contrast/tiny/buried や invisible_mode/clip_only_mode は
+         * ca を見ないので alpha_gate=0 であり、この判定の対象外。 */
+        if (t[i].alpha_gate) {
+            int cur_alpha255 = (int)(cur_alpha01 * 255.0f + 0.5f);
+            if (cur_alpha255 > alpha_threshold) continue;
+        }
         float dx = t[i].x - x, dy = t[i].y - y;
         if (dx*dx + dy*dy > tol2) continue;
         /* 文字 identity の照合 (取り違え防止の本命)。
@@ -6951,6 +6972,15 @@ void kozou_sanitize_hidden_text(
                                         * NULL 可 (全て -1 とみなし従来動作)。
                                         * 既存の 9 要素パック配列のストライドは
                                         * 変更しないため互換性を壊さない。 */
+    const int   *target_alpha_gate,   /* 並列配列: 各ターゲットが
+                                        * detect_transparent_text の
+                                        * reason=="transparent" (ExtGState
+                                        * ca=0) 由来かどうか (1=要 ca 照合,
+                                        * 0=不要)。NULL 可 (全て 0 とみなし
+                                        * 従来動作、後方互換)。 */
+    int          alpha_threshold,     /* 0-255: ca 照合時、この値以下を
+                                        * 「実際に透明」とみなす。検出側の
+                                        * alpha_threshold と同じ値を渡すこと。 */
     FfiResult   *result)
 {
     pdf_document *pdf = NULL;
@@ -6995,6 +7025,9 @@ void kozou_sanitize_hidden_text(
             /* 描画モード (取り違え防止)。並列配列が無ければ -1 (不明=従来動作)。 */
             targets[i].render_invisible =
                 target_render_class ? target_render_class[i] : -1;
+            /* ca 照合要否。並列配列が無ければ 0 (照合しない=従来動作、後方互換)。 */
+            targets[i].alpha_gate =
+                target_alpha_gate ? target_alpha_gate[i] : 0;
         }
 
         /* 重複スタック検出 (Canva 疑似太字/影効果対策):
@@ -7218,6 +7251,22 @@ void kozou_sanitize_hidden_text(
                 int gs_sp = 0;
                 gs_stack[0] = fz_identity;
 
+                /* 現在の塗り不透明度 (ExtGState /ca) を q/Q と連動して追跡する。
+                 * 「透明でないものが透明として誤検出/誤消去される」問題対策:
+                 * Canva書き出しPDF等で同一文字列が同一位置に影(ca=0.4)/
+                 * 完全不透明(ca=0)/本体(ca=1.0)のように複数レイヤーで重ねて
+                 * 描画される場合、検出フェーズでは ca=0 のレイヤーだけが
+                 * 「transparent」ヒットとして正しく検出されるが、従来の
+                 * 書き換え側は座標+文字種+Trモードのみで照合しており ca を
+                 * 見ていなかったため、同一位置の他レイヤー(影・本体)まで
+                 * 巻き添えで消去してしまっていた。ここで ca を実際に追跡し、
+                 * kozou_sanitize_is_target 内で「検出時に ca=0 由来と判定
+                 * された対象は、いま処理している出現も実際に ca が低い
+                 * ときだけ」マッチさせることで、この巻き添え消去を防ぐ。 */
+                float alpha_stack[32];
+                alpha_stack[0] = 1.0f;
+                pdf_obj *extg_dict = res ? pdf_dict_get(ctx, res, PDF_NAME(ExtGState)) : NULL;
+
 #define SSTK 16  /* スタック消費削減のため縮小 (旧64) */
                 typedef struct { char s[128]; float v; int is_num; int is_str; } SOp;
                 SOp  stk[SSTK];
@@ -7305,7 +7354,11 @@ void kozou_sanitize_hidden_text(
                     if (!in_text) {
                         /* グラフィックス状態 CTM の追跡 (BT 外でのみ更新可能) */
                         if (!strcmp(kw,"q")) {
-                            if (gs_sp < 31) { gs_stack[gs_sp+1] = gs_stack[gs_sp]; gs_sp++; }
+                            if (gs_sp < 31) {
+                                gs_stack[gs_sp+1]    = gs_stack[gs_sp];
+                                alpha_stack[gs_sp+1] = alpha_stack[gs_sp];
+                                gs_sp++;
+                            }
                         } else if (!strcmp(kw,"Q")) {
                             if (gs_sp > 0) gs_sp--;
                         } else if (!strcmp(kw,"cm") && stk_top >= 6) {
@@ -7313,6 +7366,17 @@ void kozou_sanitize_hidden_text(
                                 stk[stk_top-6].v, stk[stk_top-5].v, stk[stk_top-4].v,
                                 stk[stk_top-3].v, stk[stk_top-2].v, stk[stk_top-1].v };
                             gs_stack[gs_sp] = fz_concat(cm, gs_stack[gs_sp]);
+                        } else if (!strcmp(kw,"gs") && stk_top >= 1 && stk[stk_top-1].s[0] == '/') {
+                            /* /GSx gs: ExtGState 辞書から /ca (塗り不透明度) を解決する。
+                             * キーが無ければ現在値を維持 (PDF仕様: ExtGState の未指定
+                             * キーは「変更なし」を意味する)。 */
+                            const char *gsn = stk[stk_top-1].s + 1;
+                            if (extg_dict) {
+                                pdf_obj *gs_obj = pdf_dict_gets(ctx, extg_dict, gsn);
+                                pdf_obj *ca_obj = gs_obj ?
+                                    pdf_dict_get(ctx, gs_obj, PDF_NAME(ca)) : NULL;
+                                if (ca_obj) alpha_stack[gs_sp] = pdf_to_real(ctx, ca_obj);
+                            }
                         } else if (!strcmp(kw,"Tr") && stk_top >= 1) {
                             /* Tr はグラフィックス状態で BT/ET をまたいで持続する。
                              * BT 外で設定されるケースも追跡し、取り違え防止の
@@ -7373,7 +7437,8 @@ void kozou_sanitize_hidden_text(
                             qmap, dev_x, dev_y, tol2, &g_ucs, &g_size);
                         int origin_is_target = kozou_sanitize_is_target(
                             pi_targets,pi_n,dev_x,dev_y,tol2,
-                            kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size);
+                            kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size,
+                            alpha_stack[gs_sp],alpha_threshold);
 
                         /* Step 1: 文字単位でスキャンしながら、各文字ごとに個別に
                          * 「対象(埋没/低コントラスト)かどうか」を判定して記録する。
@@ -7465,7 +7530,8 @@ void kozou_sanitize_hidden_text(
                              * (原点座標と先頭文字位置が完全一致しないケースの取りこぼし防止) */
                             int this_blank = (n_ch == 0 && origin_is_target) ||
                                 kozou_sanitize_is_target(pi_targets,pi_n,cp.x,cp.y,tol2_est,
-                                    kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size);
+                                    kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size,
+                                    alpha_stack[gs_sp],alpha_threshold);
                             /* 幅差分補正用の幅は必ずフォントメトリクス(実際のPDF送り幅)を使う。
                              * quad マップの width_1000 は「文字の描画インクのbboxから逆算した
                              * 幅」であり、送り幅(advance width)とは別物。スペースのように
@@ -7548,7 +7614,8 @@ void kozou_sanitize_hidden_text(
                             qmap, dev_x, dev_y, tol2, &g_ucs, &g_size);
                         int origin_is_target = kozou_sanitize_is_target(
                             pi_targets,pi_n,dev_x,dev_y,tol2,
-                            kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size);
+                            kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size,
+                            alpha_stack[gs_sp],alpha_threshold);
                         pdf_obj *fobj_tj = font_dict ?
                             pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
                         int is_mb_tj = kozou_is_multibyte_font(ctx, fobj_tj);
@@ -7610,7 +7677,8 @@ void kozou_sanitize_hidden_text(
                                     }
                                     int this_blank = (!first_char_seen && origin_is_target) ||
                                         kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
-                                            kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
+                                            kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
+                                            alpha_stack[gs_sp],alpha_threshold);
                                     first_char_seen = 1;
                                     if (this_blank) any_blank = 1;
                                     tj_adv += cw2;
@@ -7689,7 +7757,8 @@ void kozou_sanitize_hidden_text(
                                         }
                                         int this_blank = (!first_char_seen2 && origin_is_target) ||
                                             kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
-                                                kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size);
+                                                kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
+                                                alpha_stack[gs_sp],alpha_threshold);
                                         first_char_seen2 = 1;
                                         /* 幅差分補正用の幅は必ずフォントメトリクスを使う
                                          * (quad の width_1000 は描画インクのbbox幅であり、

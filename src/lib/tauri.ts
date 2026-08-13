@@ -192,6 +192,13 @@ export interface SanitizeOrigin {
   // 座標が近いだけの隣接/重なりグリフを巻き込まないために使う。
   codepoint?: number;
   size?: number; // 検出グリフのサイズ pt (identity 照合の補助)
+  // detect_transparent_text の reason=="transparent"(ExtGState ca=0)由来かどうか。
+  // 1の場合、無害化の書き換え時に「いま処理している出現の実際の ca」も
+  // alpha_threshold 以下であることを確認してからでないとマッチさせない。
+  // 同一位置に影/透明/本体のように複数レイヤーで重ねて描画される場合に、
+  // 検出された透明レイヤー以外の可視レイヤーを巻き添えで消さないための対策。
+  // 省略/0 = low_contrast/tiny/buried 等、ca を見てはいけない対象(既定)。
+  alpha_gate?: number;
 }
 
 export interface SanitizeResponse {
@@ -211,6 +218,9 @@ export interface SanitizeRequest {
   layoutW?: number;
   layoutH?: number;
   layoutEm?: number;
+  /** 0-255: ca 照合のしきい値。detect_transparent_text に渡した alphaThreshold と
+   * 同じ値を指定すること。省略時 13 (detect側の既定値と合わせる)。 */
+  alphaThreshold?: number;
 }
 
 /**
@@ -232,6 +242,7 @@ export async function sanitizeHiddenText(req: SanitizeRequest): Promise<Sanitize
       layout_w: req.layoutW ?? null,
       layout_h: req.layoutH ?? null,
       layout_em: req.layoutEm ?? null,
+      alpha_threshold: req.alphaThreshold ?? null,
     },
   });
 }

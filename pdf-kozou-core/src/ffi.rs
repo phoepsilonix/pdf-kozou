@@ -188,6 +188,13 @@ unsafe extern "C" {
         n_origins: c_int,
         tolerance: f32,
         target_render_class: *const c_int,
+        // 並列配列: 各ターゲットが detect_transparent_text の
+        // reason=="transparent" (ExtGState ca=0) 由来かどうか
+        // (1=書き換え時に実際の ca も確認する, 0=不要)。NULL 可。
+        target_alpha_gate: *const c_int,
+        // 0-255: ca 照合時、この値以下を「実際に透明」とみなす。
+        // 検出側の alpha_threshold と同じ値を渡すこと。
+        alpha_threshold: c_int,
         result: *mut FfiResult,
     );
 

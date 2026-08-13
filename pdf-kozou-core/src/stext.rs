@@ -1002,6 +1002,17 @@ pub struct SanitizeOrigin {
     /// 検出グリフのサイズ pt (stext 空間, 0=不明)。codepoint と併せて identity 照合。
     #[serde(default)]
     pub size: f32,
+    /// detect_transparent_text の reason=="transparent" (ExtGState ca=0) 由来かどうか。
+    /// 1 の場合、無害化の書き換え時に「いま処理している出現の実際の ca」も
+    /// alpha_threshold 以下であることを確認してからでないとマッチさせない。
+    /// Canva書き出しPDF等で同一文字列が影(ca=0.4)/完全透明(ca=0)/本体(ca=1.0)の
+    /// ように複数レイヤーで同一位置に重ねて描画される場合、座標+文字種+Trモード
+    /// だけでは区別がつかず、検出された1レイヤー(ca=0)以外の可視レイヤーまで
+    /// 巻き添えで消去してしまうのを防ぐ。0(既定): low_contrast/tiny/buried や
+    /// invisible_mode/clip_only_mode など、ca を見る必要がない/見てはいけない対象。
+    /// 0 or 1 (他の取り違え防止フラグ render_invisible/is_buried と同じ数値慣習)。
+    #[serde(default)]
+    pub alpha_gate: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -1066,6 +1077,10 @@ pub struct SanitizeRequest {
     pub layout_h: Option<f32>,
     #[serde(default)]
     pub layout_em: Option<f32>,
+    /// 0-255: ca 照合のしきい値。detect_transparent_text に渡した alpha_threshold と
+    /// 同じ値を指定すること。省略/null 時 13 (detect側の既定値と合わせる)。
+    #[serde(default)]
+    pub alpha_threshold: Option<i32>,
 }
 
 /// 隠しテキストの文字コードをスペースに置き換える（試験的）。
@@ -1118,6 +1133,12 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
         .iter()
         .map(|o| o.render_invisible as std::os::raw::c_int)
         .collect();
+    // ca 照合要否の並列配列。要素数は n_origins と一致する。
+    let alpha_gate: Vec<std::os::raw::c_int> = req
+        .targets
+        .iter()
+        .map(|o| o.alpha_gate as std::os::raw::c_int)
+        .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);
 
@@ -1138,6 +1159,8 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
             n_origins,
             tolerance,
             render_class.as_ptr(),
+            alpha_gate.as_ptr(),
+            req.alpha_threshold.unwrap_or(13) as std::os::raw::c_int,
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);

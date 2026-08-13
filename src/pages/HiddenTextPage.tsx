@@ -172,6 +172,17 @@ function renderInvisibleOf(reason: string): number {
   return reason === "invisible_mode" || reason === "clip_only_mode" ? 1 : 0;
 }
 
+// ca (ExtGState 塗り不透明度) 照合が必要な検出理由か。
+// "transparent" (Tr は塗り/線ありだが ExtGState ca=0 による透明) だけが対象。
+// 同一位置に影(ca=0.4)/透明(ca=0)/本体(ca=1.0)のように複数レイヤーで重ねて
+// 描画される場合、無害化側で実際の ca も確認しないと、検出された透明レイヤー
+// 以外の可視レイヤーまで巻き添えで消してしまう(実機で確認: 完全に見えている
+// 見出しが透明無害化だけで消える不具合)。low_contrast/tiny/buried/
+// invisible_mode/clip_only_mode は ca と無関係なので対象外(0)。
+function alphaGateOf(reason: string): number {
+  return reason === "transparent" ? 1 : 0;
+}
+
 // 検出グリフの先頭 Unicode コードポイントを返す(取り違え防止の文字 identity)。
 // 文字が無い/不明の場合は -1(C 層で従来の座標のみ照合にフォールバック)。
 function codepointOf(ch: string | undefined): number {
@@ -436,12 +447,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             // 文字 identity(取り違え防止): 検出グリフの Unicode とサイズ
             codepoint: codepointOf(h.char),
             size: h.size ?? 0,
+            alpha_gate: alphaGateOf(h.reason),
           }));
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
           const outPath = joinPath(resolvedDir, buildName(f.filename, ["sanitized"]));
-          await sanitizeHiddenText({ input: f.path, output: outPath, targets, tolerance: 1.5 });
+          await sanitizeHiddenText({ input: f.path, output: outPath, targets, tolerance: 1.5, alphaThreshold: thr.alpha });
           prog.done.push({
             file: f.filename,
             hits: targets.length,
@@ -893,6 +905,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             render_invisible: renderInvisibleOf(c.reason),
             codepoint: codepointOf(c.char),
             size: c.size ?? 0,
+            alpha_gate: alphaGateOf(c.reason),
           })),
       );
     if (!targets.length) {
@@ -905,7 +918,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     setSanitizing(true);
     setStatus(t("hidden.sanitize_btn", { chars: String(targets.length) }));
     try {
-      await sanitizeHiddenText({ input: filePath, output: outPath, targets, tolerance: 1.5 });
+      await sanitizeHiddenText({ input: filePath, output: outPath, targets, tolerance: 1.5, alphaThreshold: thr.alpha });
       await commitSave(outPath);
       const doneName = outPath.split(/[/\\]/).pop() ?? "";
       setStatus(t("hidden.sanitize_done", { name: doneName }));
