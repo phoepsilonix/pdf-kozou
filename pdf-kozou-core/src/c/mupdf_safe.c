@@ -65,13 +65,106 @@ static const char *kozou_control_char_category(int cp);
 /* kozou_sanitize は KOZOU_HV (Helvetica Type1) を使うため、           */
 /* Helvetica + U+0020 の組み合わせを sanitized と確定判定できる         */
 /* ------------------------------------------------------------------ */
+/* Helvetica U+0020 の標準幅 (1/1000em)。KOZOU_HV フォント自身の
+ * /Widths 配列にもこの値 (278) を設定している (後方の
+ * KOZOU_HELVETICA_SPACE_WIDTH と同じ値、用途が異なるため定数は分けている)。
+ * PDF仕様上、/Widths が明示された単純フォントはレイアウト計算に必ず
+ * この値を使うことが要求されるため、実際にどの書体がレンダリング用に
+ * 代替されようとも fz_advance_glyph() はこの値を返すはずで、
+ * フォント名文字列(fz_font_name)に依存する判定よりプラットフォーム間で
+ * 安定する。 */
+#define KOZOU_HV_SPACE_ADV_1000 278.0f
+
+/* KOZOU_HV_SPACE_TTF: 半角スペース(U+0020)1文字のみを持つ、自前で
+ * 生成した極小TrueTypeフォント(852バイト)。/Widths や fz_font_name()
+ * がプラットフォームのフォント代替解決に依存しないよう、無害化の
+ * 置き換え文字は「他のどの標準フォント名にも依存しない、常に自分で
+ * 埋め込む専用フォント」を使う方針にした(実機でAndroidのみ
+ * fz_font_name()が"Helvetica"/"KOZOU_HV"を含まない値を返すことを
+ * 確認済み — 実機検証: fz_new_font_from_memory + fz_advance_glyph で
+ * name="KozouSpace", U+0020のadvance=278/1000em を確認)。
+ * fontTools で生成 (space グリフのみ、輪郭なし、advance width=278)。 */
+static const unsigned char KOZOU_HV_SPACE_TTF[] = {
+    0,1,0,0,0,10,0,128,0,3,0,32,79,83,47,50,
+    69,0,66,210,0,0,1,40,0,0,0,96,99,109,97,112,
+    0,12,0,115,0,0,1,144,0,0,0,52,103,108,121,102,
+    0,0,0,0,0,0,1,204,0,0,0,1,104,101,97,100,
+    44,96,209,164,0,0,0,172,0,0,0,54,104,104,101,97,
+    3,34,0,81,0,0,0,228,0,0,0,36,104,109,116,120,
+    1,22,0,0,0,0,1,136,0,0,0,8,108,111,99,97,
+    0,0,0,0,0,0,1,196,0,0,0,6,109,97,120,112,
+    0,3,0,2,0,0,1,8,0,0,0,32,110,97,109,101,
+    78,132,120,185,0,0,1,208,0,0,1,92,112,111,115,116,
+    0,7,0,0,0,0,3,44,0,0,0,38,0,1,0,0,
+    0,1,0,0,29,49,127,62,95,15,60,245,0,3,3,232,
+    0,0,0,0,230,165,72,98,0,0,0,0,230,165,72,98,
+    0,0,0,0,0,0,0,0,0,0,0,3,0,2,0,0,
+    0,0,0,0,0,1,0,0,3,32,255,56,0,0,1,22,
+    0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,2,0,1,0,0,0,2,0,0,
+    0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,3,1,22,1,144,0,5,
+    0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,
+    0,0,63,63,63,63,0,0,0,32,0,32,3,32,255,56,
+    0,0,3,32,0,200,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,32,0,0,0,0,0,0,1,22,0,0,
+    0,0,0,2,0,0,0,3,0,0,0,20,0,3,0,1,
+    0,0,0,20,0,4,0,32,0,0,0,4,0,4,0,1,
+    0,0,0,32,255,255,0,0,0,32,255,255,255,225,0,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,12,0,150,0,1,0,0,0,0,0,1,0,10,
+    0,0,0,1,0,0,0,0,0,2,0,7,0,10,0,1,
+    0,0,0,0,0,3,0,18,0,17,0,1,0,0,0,0,
+    0,4,0,18,0,35,0,1,0,0,0,0,0,5,0,13,
+    0,53,0,1,0,0,0,0,0,6,0,18,0,17,0,3,
+    0,1,4,9,0,1,0,20,0,66,0,3,0,1,4,9,
+    0,2,0,14,0,86,0,3,0,1,4,9,0,3,0,36,
+    0,100,0,3,0,1,4,9,0,4,0,36,0,136,0,3,
+    0,1,4,9,0,5,0,26,0,172,0,3,0,1,4,9,
+    0,6,0,36,0,100,75,111,122,111,117,83,112,97,99,101,
+    82,101,103,117,108,97,114,75,111,122,111,117,83,112,97,99,
+    101,45,82,101,103,117,108,97,114,75,111,122,111,117,83,112,
+    97,99,101,32,82,101,103,117,108,97,114,86,101,114,115,105,
+    111,110,32,49,46,48,48,48,0,75,0,111,0,122,0,111,
+    0,117,0,83,0,112,0,97,0,99,0,101,0,82,0,101,
+    0,103,0,117,0,108,0,97,0,114,0,75,0,111,0,122,
+    0,111,0,117,0,83,0,112,0,97,0,99,0,101,0,45,
+    0,82,0,101,0,103,0,117,0,108,0,97,0,114,0,75,
+    0,111,0,122,0,111,0,117,0,83,0,112,0,97,0,99,
+    0,101,0,32,0,82,0,101,0,103,0,117,0,108,0,97,
+    0,114,0,86,0,101,0,114,0,115,0,105,0,111,0,110,
+    0,32,0,49,0,46,0,48,0,48,0,48,0,2,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,
+    0,3,0,0
+};
+#define KOZOU_HV_SPACE_TTF_LEN ((int)sizeof(KOZOU_HV_SPACE_TTF))
+
 static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font)
 {
     if (!font) return 0;
     const char *name = fz_font_name(ctx, font);
-    if (!name) return 0;
-    return (strstr(name, "Helvetica") != NULL ||
-            strstr(name, "KOZOU_HV") != NULL);
+    if (name && (strstr(name, "Helvetica") != NULL ||
+                 strstr(name, "KOZOU_HV") != NULL ||
+                 strstr(name, "KozouSpace") != NULL))
+        return 1;
+    /* フォント名での判定に失敗した場合のフォールバック:
+     * U+0020 のグリフ前進幅が Helvetica の宣言値(278/1000em)と
+     * 一致するかで判定する。プラットフォームのフォント代替解決の
+     * 違い(実機で Android のみ発生を確認)で fz_font_name() が
+     * "Helvetica"/"KOZOU_HV" を含まない文字列を返すケースへの対策。 */
+    {
+        int glyph = fz_encode_character(ctx, font, 0x0020);
+        if (glyph >= 0) {
+            float adv1000 = fz_advance_glyph(ctx, font, glyph, 0) * 1000.0f;
+            if (adv1000 > KOZOU_HV_SPACE_ADV_1000 - 3.0f &&
+                adv1000 < KOZOU_HV_SPACE_ADV_1000 + 3.0f)
+                return 1;
+        }
+    }
+    return 0;
 }
 
 /* U+0020 以外の空白系文字 — 無害化対象候補として検出する               */
@@ -5739,15 +5832,28 @@ static pdf_obj *kozou_ensure_helvetica(
         font_dict = pdf_new_dict(ctx, pdf, 4);
         pdf_dict_put_drop(ctx, res, PDF_NAME(Font), font_dict);
     }
-    /* KOZOU_HV: Helvetica Type1 内蔵フォント */
+    /* KOZOU_HV: 自前埋め込みの単一グリフ(空白)フォント。
+     * 以前は BaseFont=/Helvetica の非埋め込み参照だったが、実際の
+     * レンダリング/計測に使われる代替フォントの解決がプラットフォーム
+     * (特にAndroid)によって異なり、fz_font_name() が "Helvetica" を
+     * 含まない値を返す環境があることが実機検証で判明したため、
+     * どの環境でも同一のバイト列が使われる自前フォントを埋め込む方式に
+     * 変更した。これにより検出側の判定も、無害化後の表示レイアウトも
+     * 環境非依存になる。 */
     if (!pdf_dict_gets(ctx, font_dict, "KOZOU_HV")) {
-        pdf_obj *fobj = pdf_new_dict(ctx, pdf, 6);
-        pdf_dict_put_name(ctx, fobj, PDF_NAME(Type),     "Font");
-        pdf_dict_put_name(ctx, fobj, PDF_NAME(Subtype),  "Type1");
-        pdf_dict_put_name(ctx, fobj, PDF_NAME(BaseFont), "Helvetica");
-        pdf_dict_put_name(ctx, fobj, PDF_NAME(Encoding), "WinAnsiEncoding");
-        pdf_obj *ind = pdf_add_object_drop(ctx, pdf, fobj);
-        pdf_dict_put_drop(ctx, font_dict, pdf_new_name(ctx, "KOZOU_HV"), ind);
+        fz_font *ttf = fz_new_font_from_memory(
+            ctx, "KozouSpace", KOZOU_HV_SPACE_TTF, KOZOU_HV_SPACE_TTF_LEN, 0, 0);
+        pdf_obj *fobj;
+        fz_try(ctx) {
+            fobj = pdf_add_simple_font(ctx, pdf, ttf, PDF_SIMPLE_ENCODING_LATIN);
+        }
+        fz_always(ctx) {
+            fz_drop_font(ctx, ttf);
+        }
+        fz_catch(ctx) {
+            fz_rethrow(ctx);
+        }
+        pdf_dict_put_drop(ctx, font_dict, pdf_new_name(ctx, "KOZOU_HV"), fobj);
     }
     /* KOZOU_NORMAL: fill/stroke alpha=1.0 に正規化する ExtGState
      * 置き換え文字の前に適用して ca=0 等の透明状態を解除する            */
