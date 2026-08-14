@@ -195,6 +195,9 @@ unsafe extern "C" {
         // 0-255: ca 照合時、この値以下を「実際に透明」とみなす。
         // 検出側の alpha_threshold と同じ値を渡すこと。
         alpha_threshold: c_int,
+        // 並列配列: 各ターゲットが検出されたフォントの種別
+        // (1=Type3, 0=Type3以外, -1=絞り込まない)。NULL可。
+        target_font_class: *const c_int,
         result: *mut FfiResult,
     );
 

@@ -448,6 +448,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             codepoint: codepointOf(h.char),
             size: h.size ?? 0,
             alpha_gate: alphaGateOf(h.reason),
+            font_class: h.isType3 ? 1 : 0,
           }));
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
@@ -662,7 +663,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           </button>
           {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           {/* Type3フォントの扱い */}
-          {/*
+          {
           <div style={s.sec}>
             <div style={s.secTitle}>Type3</div>
             <label style={s.chkRow}>
@@ -674,7 +675,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               {t("hidden.skip_type3" as any)}
             </label>
           </div>
-	  */}
+	  }
           {/* 出力先フォルダ */}
           <div style={s.sec}>
             <div style={s.secTitle}>出力先フォルダ</div>
@@ -911,6 +912,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             codepoint: codepointOf(c.char),
             size: c.size ?? 0,
             alpha_gate: alphaGateOf(c.reason),
+            font_class: c.isType3 ? 1 : 0,
           })),
       );
     if (!targets.length) {

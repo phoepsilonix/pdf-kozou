@@ -1013,6 +1013,15 @@ pub struct SanitizeOrigin {
     /// 0 or 1 (他の取り違え防止フラグ render_invisible/is_buried と同じ数値慣習)。
     #[serde(default)]
     pub alpha_gate: i32,
+    /// Type3(装飾輪郭フォント等)かどうかによる取り違え防止。
+    /// 1=Type3フォントのグリフとして検出、0=Type3以外として検出、
+    /// -1(既定)=フォント種別では絞り込まない(従来動作)。
+    /// Canva書き出しPDF等で「装飾用Type3輪郭フォント」と「実際の本文
+    /// フォント」が同一座標に重ねて描画されるケースがあり、低コントラスト
+    /// 等の検出がType3側のみを拾った場合でも、座標+文字種+Trモードだけ
+    /// では両者を区別できず本文フォント側まで巻き添えで消してしまうのを防ぐ。
+    #[serde(default = "default_minus_one")]
+    pub font_class: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -1139,6 +1148,12 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
         .iter()
         .map(|o| o.alpha_gate as std::os::raw::c_int)
         .collect();
+    // フォント種別(Type3かどうか)照合の並列配列。要素数は n_origins と一致する。
+    let font_class: Vec<std::os::raw::c_int> = req
+        .targets
+        .iter()
+        .map(|o| o.font_class as std::os::raw::c_int)
+        .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);
 
@@ -1161,6 +1176,7 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
             render_class.as_ptr(),
             alpha_gate.as_ptr(),
             req.alpha_threshold.unwrap_or(13) as std::os::raw::c_int,
+            font_class.as_ptr(),
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);

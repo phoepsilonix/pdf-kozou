@@ -199,6 +199,12 @@ export interface SanitizeOrigin {
   // 検出された透明レイヤー以外の可視レイヤーを巻き添えで消さないための対策。
   // 省略/0 = low_contrast/tiny/buried 等、ca を見てはいけない対象(既定)。
   alpha_gate?: number;
+  // 検出時のフォント種別(Type3かどうか)。1=Type3, 0=Type3以外、
+  // 省略/-1=フォント種別では絞り込まない。Canva書き出しPDF等で
+  // 「装飾用Type3輪郭フォント」と「実際の本文フォント」が同一座標に
+  // 重ねて描画されるケースで、検出がType3側のみを拾った場合でも
+  // 本文フォント側を巻き添えで消さないための対策。
+  font_class?: number;
 }
 
 export interface SanitizeResponse {

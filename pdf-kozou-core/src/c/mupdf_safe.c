@@ -5272,6 +5272,18 @@ typedef struct {
      * を見る必要がない・見てはいけない対象)。render_invisible とは独立
      * (render_invisible は Tr モード、alpha_gate は ca 由来かどうか)。 */
     int   alpha_gate;
+    /* Type3(装飾輪郭フォント等)かどうかによる取り違え防止:
+     *  1 = Type3 フォントのグリフとして検出された対象
+     *  0 = Type3 以外のフォントのグリフとして検出された対象
+     * -1 = 不明 → フォント種別では絞り込まない (後方互換: 従来動作)
+     * Canvaエクスポート等で、同じ文字列を「装飾用Type3輪郭フォント」と
+     * 「実際の本文フォント」の2種類で同一座標に重ねて描画するケースが
+     * ある(実機PDFで確認)。低コントラスト等の検出がType3側のみを
+     * 拾った場合でも、座標+文字種+Trモードだけでは両者を区別できず、
+     * 書き換え時に本文フォント側まで巻き添えで消してしまう。ここで
+     * 検出時のフォント種別を記録し、書き換え時に現在処理中のフォントが
+     * 同じ種別かどうかも確認してからマッチさせることでこれを防ぐ。 */
+    int   font_class;
     /* 文字 identity (取り違え防止の本命):
      *  codepoint = 検出されたグリフの Unicode (-1=不明→従来動作)
      *  size      = 検出されたグリフのサイズ pt (stext 空間, 0=不明)
@@ -5299,17 +5311,36 @@ static int kozou_tr_is_invisible(int tr_mode)
 /* ページ座標でのマッチング (xobj_xref==0 の場合)。
  * cur_invisible = この show 演算子の現在 Tr の不可視クラス (0/1)。
  * ターゲットの render_invisible が -1 (不明) なら座標のみで照合する。 */
+/* font_dict 内の name というキーのフォントが /Subtype /Type3 かどうかを
+ * 判定する。font_dict が NULL、または該当フォントが見つからない場合は
+ * 0 (Type3 以外扱い) を返す。 */
+static int kozou_font_is_type3(fz_context *ctx, pdf_obj *font_dict, const char *name)
+{
+    if (!font_dict || !name || !name[0]) return 0;
+    pdf_obj *fobj = pdf_dict_gets(ctx, font_dict, name);
+    if (!fobj) return 0;
+    pdf_obj *subtype = pdf_dict_get(ctx, fobj, PDF_NAME(Subtype));
+    return subtype && pdf_name_eq(ctx, subtype, PDF_NAME(Type3));
+}
+
 static int kozou_sanitize_is_target(
     const KozouSanitizeOrigin *t, int n, float x, float y, float tol2,
     int cur_invisible,
     int have_glyph, int g_ucs, float g_size,
-    float cur_alpha01, int alpha_threshold)
+    float cur_alpha01, int alpha_threshold,
+    int cur_is_type3)
 {
     for (int i = 0; i < n; i++) {
         if (t[i].in_xobj) continue; /* XObject内で処理するのでスキップ */
         if (t[i].xobj_xref != 0) continue; /* XObject内ターゲットは階層側で処理 (取り違え防止) */
         if (t[i].render_invisible >= 0 &&
             t[i].render_invisible != cur_invisible) continue; /* モード不一致は別グリフ */
+        /* font_class: 検出時のフォント種別(Type3かどうか)と、いま処理して
+         * いる出現の実際のフォント種別が一致しなければマッチさせない。
+         * Canva書き出しPDF等で「装飾用Type3輪郭フォント」と「実際の
+         * 本文フォント」が同一座標に重ねて描画されるケースがあり、
+         * 座標+文字種+Trモードだけでは区別がつかないため。 */
+        if (t[i].font_class >= 0 && t[i].font_class != cur_is_type3) continue;
         /* alpha_gate (detect_transparent_text の reason=="transparent"
          * = ExtGState ca=0 由来の対象) は、いま処理している出現の実際の
          * ca も低くなければマッチさせない。Canva書き出しPDF等で同一
@@ -6355,6 +6386,14 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                             int cur_a255 = (int)(alpha_stack[ctm_sp] * 255.0f + 0.5f);
                             if (cur_a255 > alpha_threshold) continue;
                         }
+                        /* font_class: 検出時のフォント種別(Type3かどうか)と、いま
+                         * 処理している出現の実際のフォント種別が一致しなければ
+                         * マッチさせない (ページ側と同じ、装飾用Type3輪郭フォント
+                         * と本文フォントが同一座標に重なるケースへの対策)。 */
+                        if (targets[_ti].font_class >= 0 &&
+                            targets[_ti].font_class !=
+                                kozou_font_is_type3(ctx, font_dict, cur_font_name))
+                            continue;
                         float dx = targets[_ti].ox - dev_x;
                         float dy = targets[_ti].oy - dev_y;
                         if (dx*dx + dy*dy > tol2) continue;
@@ -6461,6 +6500,10 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                                 (int)(alpha_stack[ctm_sp] * 255.0f + 0.5f);
                                             if (cur_a255 > alpha_threshold) continue;
                                         }
+                                        if (targets[_ti2].font_class >= 0 &&
+                                            targets[_ti2].font_class !=
+                                                kozou_font_is_type3(ctx, font_dict, cur_font_name))
+                                            continue;
                                         float dx2 = targets[_ti2].ox - ch_dev_x;
                                         float dy2 = targets[_ti2].oy - ch_dev_y;
                                         if (dx2*dx2 + dy2*dy2 > tol2_est) continue;
@@ -7027,6 +7070,10 @@ void kozou_sanitize_hidden_text(
     int          alpha_threshold,     /* 0-255: ca 照合時、この値以下を
                                         * 「実際に透明」とみなす。検出側の
                                         * alpha_threshold と同じ値を渡すこと。 */
+    const int   *target_font_class,   /* 並列配列: 各ターゲットが検出された
+                                        * フォントの種別 (1=Type3, 0=Type3
+                                        * 以外, -1=絞り込まない)。NULL 可
+                                        * (全て -1 とみなし従来動作)。 */
     FfiResult   *result)
 {
     pdf_document *pdf = NULL;
@@ -7074,6 +7121,9 @@ void kozou_sanitize_hidden_text(
             /* ca 照合要否。並列配列が無ければ 0 (照合しない=従来動作、後方互換)。 */
             targets[i].alpha_gate =
                 target_alpha_gate ? target_alpha_gate[i] : 0;
+            /* Type3 種別照合要否。並列配列が無ければ -1 (絞り込まない=従来動作)。 */
+            targets[i].font_class =
+                target_font_class ? target_font_class[i] : -1;
         }
 
         /* 重複スタック検出 (Canva 疑似太字/影効果対策):
@@ -7484,7 +7534,8 @@ void kozou_sanitize_hidden_text(
                         int origin_is_target = kozou_sanitize_is_target(
                             pi_targets,pi_n,dev_x,dev_y,tol2,
                             kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size,
-                            alpha_stack[gs_sp],alpha_threshold);
+                            alpha_stack[gs_sp],alpha_threshold,
+                            kozou_font_is_type3(ctx,font_dict,cur_font));
 
                         /* Step 1: 文字単位でスキャンしながら、各文字ごとに個別に
                          * 「対象(埋没/低コントラスト)かどうか」を判定して記録する。
@@ -7577,7 +7628,8 @@ void kozou_sanitize_hidden_text(
                             int this_blank = (n_ch == 0 && origin_is_target) ||
                                 kozou_sanitize_is_target(pi_targets,pi_n,cp.x,cp.y,tol2_est,
                                     kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size,
-                                    alpha_stack[gs_sp],alpha_threshold);
+                                    alpha_stack[gs_sp],alpha_threshold,
+                                    kozou_font_is_type3(ctx,font_dict,cur_font));
                             /* 幅差分補正用の幅は必ずフォントメトリクス(実際のPDF送り幅)を使う。
                              * quad マップの width_1000 は「文字の描画インクのbboxから逆算した
                              * 幅」であり、送り幅(advance width)とは別物。スペースのように
@@ -7661,7 +7713,8 @@ void kozou_sanitize_hidden_text(
                         int origin_is_target = kozou_sanitize_is_target(
                             pi_targets,pi_n,dev_x,dev_y,tol2,
                             kozou_tr_is_invisible(tr_mode),have_g,g_ucs,g_size,
-                            alpha_stack[gs_sp],alpha_threshold);
+                            alpha_stack[gs_sp],alpha_threshold,
+                            kozou_font_is_type3(ctx,font_dict,cur_font));
                         pdf_obj *fobj_tj = font_dict ?
                             pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
                         int is_mb_tj = kozou_is_multibyte_font(ctx, fobj_tj);
@@ -7724,7 +7777,8 @@ void kozou_sanitize_hidden_text(
                                     int this_blank = (!first_char_seen && origin_is_target) ||
                                         kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                             kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
-                                            alpha_stack[gs_sp],alpha_threshold);
+                                            alpha_stack[gs_sp],alpha_threshold,
+                                            kozou_font_is_type3(ctx,font_dict,cur_font));
                                     first_char_seen = 1;
                                     if (this_blank) any_blank = 1;
                                     tj_adv += cw2;
@@ -7804,7 +7858,8 @@ void kozou_sanitize_hidden_text(
                                         int this_blank = (!first_char_seen2 && origin_is_target) ||
                                             kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                                 kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
-                                                alpha_stack[gs_sp],alpha_threshold);
+                                                alpha_stack[gs_sp],alpha_threshold,
+                                                kozou_font_is_type3(ctx,font_dict,cur_font));
                                         first_char_seen2 = 1;
                                         /* 幅差分補正用の幅は必ずフォントメトリクスを使う
                                          * (quad の width_1000 は描画インクのbbox幅であり、
