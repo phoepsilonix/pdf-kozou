@@ -663,7 +663,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           </button>
           {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           {/* Type3フォントの扱い */}
-          {
+          {/*
           <div style={s.sec}>
             <div style={s.secTitle}>Type3</div>
             <label style={s.chkRow}>
@@ -675,7 +675,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               {t("hidden.skip_type3" as any)}
             </label>
           </div>
-	  }
+	  */}
           {/* 出力先フォルダ */}
           <div style={s.sec}>
             <div style={s.secTitle}>出力先フォルダ</div>
