@@ -146,9 +146,9 @@ static int kozou_is_helvetica_font(fz_context *ctx, fz_font *font)
 {
     if (!font) return 0;
     const char *name = fz_font_name(ctx, font);
-    if (name && (strstr(name, "Helvetica") != NULL ||
+    if (name && (strstr(name, "KozouSpace") != NULL ||
                  strstr(name, "KOZOU_HV") != NULL ||
-                 strstr(name, "KozouSpace") != NULL))
+                 strstr(name, "Helvetica") != NULL))
         return 1;
     /* フォント名での判定に失敗した場合のフォールバック:
      * U+0020 のグリフ前進幅が Helvetica の宣言値(278/1000em)と
