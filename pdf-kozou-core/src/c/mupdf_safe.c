@@ -6615,8 +6615,26 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 }
                                 /* 先頭文字は Tm 原点そのものの判定(origin_is_target)も尊重する */
                                 int this_blank = (n_ch_scanned == 0 && origin_is_target);
+                                int kozou_dbg_xobj = getenv("KOZOU_SANITIZE_DEBUG") != NULL;
+                                int cur_is_type3_c = kozou_dbg_xobj
+                                    ? kozou_font_is_type3(ctx, font_dict, cur_font_name) : 0;
+                                /* デバッグ用: 最も近いターゲット(距離順)とその不一致理由を
+                                 * 記録する。KOZOU_SANITIZE_DEBUG=1 のとき、実際にどの条件で
+                                 * マッチが失敗しているか(font_class/位置/identity)を可視化する
+                                 * ため。通常ビルドの挙動には一切影響しない。 */
+                                float kozou_dbg_best_d2 = -1.0f;
+                                int   kozou_dbg_best_ti = -1;
+                                const char *kozou_dbg_fail = "no_target";
                                 if (!this_blank) {
                                     for (int _ti2 = 0; _ti2 < n_targets; _ti2++) {
+                                        if (kozou_dbg_xobj) {
+                                            float ddx = targets[_ti2].ox - ch_dev_x;
+                                            float ddy = targets[_ti2].oy - ch_dev_y;
+                                            float dd2 = ddx*ddx + ddy*ddy;
+                                            if (kozou_dbg_best_ti < 0 || dd2 < kozou_dbg_best_d2) {
+                                                kozou_dbg_best_d2 = dd2; kozou_dbg_best_ti = _ti2;
+                                            }
+                                        }
                                         if (targets[_ti2].render_invisible >= 0 &&
                                             targets[_ti2].render_invisible != cur_invisible)
                                             continue;
@@ -6627,20 +6645,49 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                         }
                                         if (targets[_ti2].font_class >= 0 &&
                                             targets[_ti2].font_class !=
-                                                kozou_font_is_type3(ctx, font_dict, cur_font_name))
+                                                kozou_font_is_type3(ctx, font_dict, cur_font_name)) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "font_class";
                                             continue;
+                                        }
                                         float dx2 = targets[_ti2].ox - ch_dev_x;
                                         float dy2 = targets[_ti2].oy - ch_dev_y;
-                                        if (dx2*dx2 + dy2*dy2 > tol2_est) continue;
-                                        if (!kozou_identity_ok(targets[_ti2].codepoint,
-                                                targets[_ti2].size, have_g_c, g_c_ucs, g_c_size))
+                                        if (dx2*dx2 + dy2*dy2 > tol2_est) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "position";
                                             continue;
+                                        }
+                                        if (!kozou_identity_ok(targets[_ti2].codepoint,
+                                                targets[_ti2].size, have_g_c, g_c_ucs, g_c_size)) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "identity";
+                                            continue;
+                                        }
                                         if (targets[_ti2].remaining_ptr) {
-                                            if (*targets[_ti2].remaining_ptr <= 0) continue;
+                                            if (*targets[_ti2].remaining_ptr <= 0) {
+                                                if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                    kozou_dbg_fail = "remaining_ptr";
+                                                continue;
+                                            }
                                             (*targets[_ti2].remaining_ptr)--;
                                         }
+                                        if (kozou_dbg_xobj) kozou_dbg_fail = "matched";
                                         this_blank = 1; break;
                                     }
+                                }
+                                if (kozou_dbg_xobj && cur_is_type3_c) {
+                                    fprintf(stderr,
+                                        "[KOZOU_XOBJ_CHAR] font=%s cc=0x%02x tu_used=%d "
+                                        "g_ucs=%d have_g=%d pos=(%.1f,%.1f) "
+                                        "n_targets=%d best_ti=%d best_d=%.1f "
+                                        "best_font_class=%d best_cp=%d fail=%s blank=%d\n",
+                                        cur_font_name ? cur_font_name : "?",
+                                        (unsigned)cc_c, (tu_ucs_c >= 0), g_c_ucs, have_g_c,
+                                        ch_dev_x, ch_dev_y, n_targets, kozou_dbg_best_ti,
+                                        kozou_dbg_best_ti >= 0 ? (double)sqrtf(kozou_dbg_best_d2) : -1.0,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].font_class : -99,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].codepoint : -1,
+                                        kozou_dbg_fail, this_blank);
                                 }
                                 /* 幅差分補正用の幅は必ずフォントメトリクスを使う
                                  * (quad の width_1000 は描画インクのbbox幅であり送り幅とは
