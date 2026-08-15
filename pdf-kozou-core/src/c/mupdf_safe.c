@@ -5810,7 +5810,13 @@ static int kozou_tounicode_lookup(
 
 /* Helvetica フォントリソースをページに追加して名前を返す */
 static pdf_obj *kozou_ensure_helvetica(
-    fz_context *ctx, pdf_document *pdf, pdf_obj *page_obj)
+    fz_context *ctx, pdf_document *pdf, pdf_obj *page_obj,
+    pdf_obj **hv_font_cache)  /* in/out: 1回の kozou_sanitize_hidden_text
+                               * 呼び出し内でフォントオブジェクトを1個だけ
+                               * 作って使い回すためのキャッシュ。呼び出し元が
+                               * *hv_font_cache = NULL で初期化しておくこと。
+                               * NULL を渡した場合は毎回新規作成する
+                               * (従来動作、後方互換)。 */
 {
     /* page_obj はページ本体だけでなく XObject ストリーム辞書としても
      * 呼ばれる (kozou_blank_all_bt_blocks_hv_ctm の呼び出し元)。
@@ -5841,19 +5847,32 @@ static pdf_obj *kozou_ensure_helvetica(
      * 変更した。これにより検出側の判定も、無害化後の表示レイアウトも
      * 環境非依存になる。 */
     if (!pdf_dict_gets(ctx, font_dict, "KOZOU_HV")) {
-        fz_font *ttf = fz_new_font_from_memory(
-            ctx, "KozouSpace", KOZOU_HV_SPACE_TTF, KOZOU_HV_SPACE_TTF_LEN, 0, 0);
-        pdf_obj *fobj;
-        fz_try(ctx) {
-            fobj = pdf_add_simple_font(ctx, pdf, ttf, PDF_SIMPLE_ENCODING_LATIN);
+        if (hv_font_cache && *hv_font_cache) {
+            /* 既に他のページ/XObjectで作成済みの同一フォントオブジェクトを
+             * 再利用する (実データの重複埋め込みを避ける)。
+             * pdf_dict_put は独自の参照を keep するので、キャッシュ側の
+             * 参照は drop せずそのまま次回の再利用に残す。 */
+            pdf_dict_put(ctx, font_dict, pdf_new_name(ctx, "KOZOU_HV"), *hv_font_cache);
+        } else {
+            fz_font *ttf = fz_new_font_from_memory(
+                ctx, "KozouSpace", KOZOU_HV_SPACE_TTF, KOZOU_HV_SPACE_TTF_LEN, 0, 0);
+            pdf_obj *fobj;
+            fz_try(ctx) {
+                fobj = pdf_add_simple_font(ctx, pdf, ttf, PDF_SIMPLE_ENCODING_LATIN);
+            }
+            fz_always(ctx) {
+                fz_drop_font(ctx, ttf);
+            }
+            fz_catch(ctx) {
+                fz_rethrow(ctx);
+            }
+            if (hv_font_cache) {
+                /* 次回以降の再利用のため、こちら側の参照は保持したまま
+                 * 辞書へは keep 経由で別参照を追加する。 */
+                *hv_font_cache = pdf_keep_obj(ctx, fobj);
+            }
+            pdf_dict_put_drop(ctx, font_dict, pdf_new_name(ctx, "KOZOU_HV"), fobj);
         }
-        fz_always(ctx) {
-            fz_drop_font(ctx, ttf);
-        }
-        fz_catch(ctx) {
-            fz_rethrow(ctx);
-        }
-        pdf_dict_put_drop(ctx, font_dict, pdf_new_name(ctx, "KOZOU_HV"), fobj);
     }
     /* KOZOU_NORMAL: fill/stroke alpha=1.0 に正規化する ExtGState
      * 置き換え文字の前に適用して ca=0 等の透明状態を解除する            */
@@ -7186,6 +7205,11 @@ void kozou_sanitize_hidden_text(
     fz_var(pdf);
     int   **kozou_dup_counters  = NULL;
     int     kozou_dup_counter_n = 0;
+    /* KOZOU_HV フォントオブジェクトをこの呼び出し内で1個だけ作成し、
+     * ページ/各XObjectのFont辞書へは参照を使い回す (実データの重複
+     * 埋め込みを避ける)。kozou_ensure_helvetica 参照。 */
+    pdf_obj *hv_font_cache = NULL;
+    fz_var(hv_font_cache);
 
     fz_try(ctx) {
         pdf = (pdf_document *)fz_open_document(ctx, input_path);
@@ -7358,7 +7382,7 @@ void kozou_sanitize_hidden_text(
                 pdf_obj *font_dict = res ? pdf_dict_get(ctx, res, PDF_NAME(Font)) : NULL;
 
                 /* Helvetica フォントをリソースに登録 */
-                kozou_ensure_helvetica(ctx, pdf, page_obj);
+                kozou_ensure_helvetica(ctx, pdf, page_obj, &hv_font_cache);
 
                 /* Pass 0: fz_stext_page から origin → quad幅 マップを構築
  * RTL・縦書き・合字すべてに対応できる実描画幅をMuPDFから直接取得 */
@@ -8225,7 +8249,7 @@ void kozou_sanitize_hidden_text(
 
                     /* buried テキスト: kozou_blank_all_bt_blocks_hv で
                      * Tm 座標マッチングと Helvetica 幅補正を行う */
-                    kozou_ensure_helvetica(ctx, pdf, xobj_obj);
+                    kozou_ensure_helvetica(ctx, pdf, xobj_obj, &hv_font_cache);
                     pdf_obj *xobj_res2 = pdf_dict_gets(ctx, xobj_obj, "Resources");
                     pdf_obj *xobj_fonts2 = xobj_res2 ?
                         pdf_dict_gets(ctx, xobj_res2, "Font") : NULL;
@@ -8331,6 +8355,7 @@ void kozou_sanitize_hidden_text(
         set_ok(result);
     }
     fz_always(ctx) {
+        if (hv_font_cache) pdf_drop_obj(ctx, hv_font_cache);
         if (pdf) fz_drop_document(ctx, (fz_document *)pdf);
     }
     fz_catch(ctx) {
