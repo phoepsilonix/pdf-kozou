@@ -454,7 +454,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
           const outPath = joinPath(resolvedDir, buildName(f.filename, ["sanitized"]));
-          await sanitizeHiddenText({ input: f.path, output: outPath, targets, tolerance: 1.5, alphaThreshold: thr.alpha });
+          await sanitizeHiddenText({
+            input: f.path,
+            output: outPath,
+            targets,
+            tolerance: 1.5,
+            alphaThreshold: thr.alpha,
+          });
           prog.done.push({
             file: f.filename,
             hits: targets.length,
@@ -663,19 +669,19 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           </button>
           {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
           {/* Type3フォントの扱い */}
-          {/*
-          <div style={s.sec}>
-            <div style={s.secTitle}>Type3</div>
-            <label style={s.chkRow}>
-              <input
-                type="checkbox"
-                checked={skipType3}
-                onChange={(e) => setSkipType3(e.target.checked)}
-              />
-              {t("hidden.skip_type3" as any)}
-            </label>
-          </div>
-	  */}
+          {
+            <div style={s.sec}>
+              <div style={s.secTitle}>Type3</div>
+              <label style={s.chkRow}>
+                <input
+                  type="checkbox"
+                  checked={skipType3}
+                  onChange={(e) => setSkipType3(e.target.checked)}
+                />
+                {t("hidden.skip_type3" as any)}
+              </label>
+            </div>
+          }
           {/* 出力先フォルダ */}
           <div style={s.sec}>
             <div style={s.secTitle}>出力先フォルダ</div>
@@ -773,7 +779,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [imgNatH, setImgNatH] = useState(1);
   const { pickSave, commitSave } = useSaveDialog();
   const { announceSuccess, announceError, announceKey } = useA11y();
-  const [skipType3, setSkipType3] = useState(true);
+  const [skipType3, setSkipType3] = useState(false);
 
   const layoutStyle: React.CSSProperties = isNarrow
     ? { display: "flex", flex: 1, flexDirection: "column", overflow: "hidden", minHeight: 0 }
@@ -887,7 +893,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         setRunning(false);
       }
     },
-    [filePath, pageIndex, pageCount, enabled, thr, allPagesMode, t],
+    [filePath, pageIndex, pageCount, enabled, thr, allPagesMode, t, skipType3],
   );
 
   const runSanitize = useCallback(async () => {
@@ -925,7 +931,13 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     setSanitizing(true);
     setStatus(t("hidden.sanitize_btn", { chars: String(targets.length) }));
     try {
-      await sanitizeHiddenText({ input: filePath, output: outPath, targets, tolerance: 1.5, alphaThreshold: thr.alpha });
+      await sanitizeHiddenText({
+        input: filePath,
+        output: outPath,
+        targets,
+        tolerance: 1.5,
+        alphaThreshold: thr.alpha,
+      });
       await commitSave(outPath);
       const doneName = outPath.split(/[/\\]/).pop() ?? "";
       setStatus(t("hidden.sanitize_done", { name: doneName }));
@@ -1072,19 +1084,19 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             </button>
             {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
 
-            {/*
-          <div style={s.sec}>
-            <div style={s.secTitle}>Type3</div>
-            <label style={s.chkRow}>
-              <input
-                type="checkbox"
-                checked={skipType3}
-                onChange={(e) => setSkipType3(e.target.checked)}
-              />
-              {t("hidden.skip_type3" as any)}
-            </label>
-          </div>
-	  */}
+            {
+              <div style={s.sec}>
+                <div style={s.secTitle}>Type3</div>
+                <label style={s.chkRow}>
+                  <input
+                    type="checkbox"
+                    checked={skipType3}
+                    onChange={(e) => setSkipType3(e.target.checked)}
+                  />
+                  {t("hidden.skip_type3" as any)}
+                </label>
+              </div>
+            }
 
             <div style={s.sec}>
               <div style={s.secTitle}>実行</div>
