@@ -6593,22 +6593,22 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 float ch_dev_x = adv_dev.x;
                                 float ch_dev_y = adv_dev.y;
                                 int g_c_ucs = -1; float g_c_size = 0.0f; int have_g_c = 0;
-                                if (!is_mb_c && cc_c >= 0x20 && cc_c <= 0x7E) {
+                                /* /ToUnicode があればフォント種別(単純/CID)を問わず最優先で
+                                 * 使う。単純フォントでも /Differences で独自グリフ名を割り
+                                 * 当てている場合(Type3の装飾/輪郭フォント等)は文字コードが
+                                 * Unicodeと一致しないため、コード=Unicode前提の直読みでは
+                                 * 誤判定になる(実機PDFで確認: Canvaエクスポートで /ToUnicode
+                                 * が <65>→U+30A7 のように非ASCII的対応表を持つType3フォント
+                                 * を、コード0x65がASCII範囲内というだけで 'e' として扱ってしま
+                                 * い、検出時(mupdf stextはToUnicodeを正しく解決)と無害化時で
+                                 * identityが食い違い、無害化対象から漏れていた)。 */
+                                int tu_ucs_c = (pdf && fobj_c) ? kozou_tounicode_lookup(
+                                    ctx, pdf, fobj_c, tu_cache, &tu_cache_n, (unsigned int)cc_c) : -1;
+                                if (tu_ucs_c >= 0) {
+                                    g_c_ucs = tu_ucs_c; g_c_size = cur_font_size; have_g_c = 1;
+                                } else if (!is_mb_c && cc_c >= 0x20 && cc_c <= 0x7E) {
                                     /* ページ側と同じ理由(空間再検索での隣接グリフ取り違え防止) */
                                     g_c_ucs = cc_c; g_c_size = cur_font_size; have_g_c = 1;
-                                } else if (is_mb_c && pdf) {
-                                    /* ページ側と同じ理由(/ToUnicode による直接 identity 解決)。
-                                     * このXObject処理は特に、装飾テキストや疑似太字効果などで
-                                     * 同一/近接座標に複数テキストが重なりやすく、空間再検索だけ
-                                     * では別グリフを誤って拾いやすい。 */
-                                    int tu_ucs_c = kozou_tounicode_lookup(
-                                        ctx, pdf, fobj_c, tu_cache, &tu_cache_n, (unsigned int)cc_c);
-                                    if (tu_ucs_c >= 0) {
-                                        g_c_ucs = tu_ucs_c; g_c_size = cur_font_size; have_g_c = 1;
-                                    } else if (qmap) {
-                                        have_g_c = kozou_quad_map_lookup_glyph(
-                                            qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
-                                    }
                                 } else if (qmap) {
                                     have_g_c = kozou_quad_map_lookup_glyph(
                                         qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
@@ -7724,7 +7724,22 @@ void kozou_sanitize_hidden_text(
                             fz_point cp = fz_transform_point(fz_make_point(cx, cy), gs_stack[gs_sp]);
                             cp = fz_transform_point(cp, page_ctm);
                             int g2_ucs = -1; float g2_size = 0.0f; int have_g2 = 0;
-                            if (!is_mb2 && cc2 >= 0x20 && cc2 <= 0x7E) {
+                            /* /ToUnicode があればフォント種別(単純/CID)を問わず最優先で使う。
+                             * 単純フォントでも /Differences で独自グリフ名を割り当てている
+                             * 場合(Type3の装飾/輪郭フォント等)は文字コードがUnicodeと一致
+                             * しないため、コード=Unicode前提の直読みでは誤判定になる
+                             * (実機PDFで確認: Canvaエクスポートで /ToUnicode が
+                             * <65>→U+30A7 のように非ASCII的対応表を持つType3フォントを、
+                             * コード0x65がASCII範囲内というだけで 'e' として扱ってしまい、
+                             * 検出時(mupdf stextはToUnicodeを正しく解決)と無害化時で
+                             * identityが食い違い、無害化対象から漏れていた)。 */
+                            int tu_ucs = (pdf && fobj2) ? kozou_tounicode_lookup(
+                                ctx, pdf, fobj2, tu_cache, &tu_cache_n, (unsigned int)cc2) : -1;
+                            if (tu_ucs >= 0) {
+                                g2_ucs = tu_ucs;
+                                g2_size = font_size;
+                                have_g2 = 1;
+                            } else if (!is_mb2 && cc2 >= 0x20 && cc2 <= 0x7E) {
                                 /* 単純フォントの印字可能ASCII範囲は文字コードがそのまま
                                  * Unicode と一致する(WinAnsi/StandardEncoding 共通)。
                                  * quad マップでの空間再検索は、推定座標にわずかでも
@@ -7737,24 +7752,6 @@ void kozou_sanitize_hidden_text(
                                 g2_ucs = cc2;
                                 g2_size = font_size;
                                 have_g2 = 1;
-                            } else if (is_mb2) {
-                                /* CID フォントは /ToUnicode があれば直接 identity を
-                                 * 解決する(単純フォントと同じ考え方)。座標だけを
-                                 * 頼りに quad マップを再検索すると、同一/近接座標に
-                                 * 複数のテキストが重なって描画されている場合
-                                 * (実機PDFで確認: Canvaエクスポートの疑似太字/装飾で
-                                 * 同一文字列を同座標に複数回描画、装飾用Type3フォント
-                                 * が本文と全く同じ原点に重なる等)に別グリフを拾い、
-                                 * identity 不一致と誤判定して無害化が歯抜けになる。 */
-                                int tu_ucs = kozou_tounicode_lookup(
-                                    ctx, pdf, fobj2, tu_cache, &tu_cache_n, (unsigned int)cc2);
-                                if (tu_ucs >= 0) {
-                                    g2_ucs = tu_ucs;
-                                    g2_size = font_size;
-                                    have_g2 = 1;
-                                } else {
-                                    have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
-                                }
                             } else {
                                 have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
                             }
@@ -7894,21 +7891,19 @@ void kozou_sanitize_hidden_text(
                                     fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                     cp2 = fz_transform_point(cp2, page_ctm);
                                     int g3_ucs = -1; float g3_size = 0.0f; int have_g3 = 0;
-                                    if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
-                                        /* Tj と同じ理由(空間再検索での隣接グリフ取り違え防止) */
-                                        g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
-                                    } else if (is_mb_tj) {
-                                        /* Tj と同じ理由(/ToUnicode による直接 identity 解決) */
-                                        int tu_ucs = kozou_tounicode_lookup(
-                                            ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2);
-                                        if (tu_ucs >= 0) {
-                                            g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
-                                        } else {
-                                            have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
-                                        }
-                                    } else {
-                                        have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
-                                    }
+                                    /* /ToUnicode があればフォント種別を問わず最優先(Type3等の
+                                     * 独自エンコーディング単純フォント対策、詳細は上のTj処理
+                                     * 側コメント参照) */
+                                    { int tu_ucs = (pdf && fobj_tj) ? kozou_tounicode_lookup(
+                                          ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2) : -1;
+                                      if (tu_ucs >= 0) {
+                                          g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
+                                      } else if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
+                                          /* Tj と同じ理由(空間再検索での隣接グリフ取り違え防止) */
+                                          g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                      } else {
+                                          have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                      } }
                                     int this_blank = (!first_char_seen && origin_is_target) ||
                                         kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                             kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
@@ -7977,19 +7972,16 @@ void kozou_sanitize_hidden_text(
                                         fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                         cp2 = fz_transform_point(cp2, page_ctm);
                                         int g3_ucs = -1; float g3_size = 0.0f; int have_g3 = 0;
-                                        if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
-                                            g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
-                                        } else if (is_mb_tj) {
-                                            int tu_ucs = kozou_tounicode_lookup(
-                                                ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2);
-                                            if (tu_ucs >= 0) {
-                                                g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
-                                            } else {
-                                                have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
-                                            }
-                                        } else {
-                                            have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
-                                        }
+                                        /* /ToUnicode 優先(詳細は上のTj処理側コメント参照) */
+                                        { int tu_ucs = (pdf && fobj_tj) ? kozou_tounicode_lookup(
+                                              ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2) : -1;
+                                          if (tu_ucs >= 0) {
+                                              g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
+                                          } else if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
+                                              g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                          } else {
+                                              have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
+                                          } }
                                         int this_blank = (!first_char_seen2 && origin_is_target) ||
                                             kozou_sanitize_is_target(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
                                                 kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
