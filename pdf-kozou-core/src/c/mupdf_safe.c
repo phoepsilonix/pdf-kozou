@@ -7381,8 +7381,13 @@ void kozou_sanitize_hidden_text(
                 pdf_obj *res       = pdf_dict_get_inheritable(ctx, page_obj, PDF_NAME(Resources));
                 pdf_obj *font_dict = res ? pdf_dict_get(ctx, res, PDF_NAME(Font)) : NULL;
 
-                /* Helvetica フォントをリソースに登録 */
-                kozou_ensure_helvetica(ctx, pdf, page_obj, &hv_font_cache);
+                /* Helvetica フォントをリソースに登録。
+                 * このページに無害化対象が無ければ、参照エントリを追加
+                 * するだけでも無駄なので登録自体をスキップする
+                 * (フォント実データは0022のキャッシュで既に文書全体で
+                 * 1個化済みだが、Font辞書への参照登録は依然ページ単位
+                 * だったため)。 */
+                if (pi_n > 0) kozou_ensure_helvetica(ctx, pdf, page_obj, &hv_font_cache);
 
                 /* Pass 0: fz_stext_page から origin → quad幅 マップを構築
  * RTL・縦書き・合字すべてに対応できる実描画幅をMuPDFから直接取得 */
