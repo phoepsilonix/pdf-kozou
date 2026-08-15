@@ -6094,6 +6094,7 @@ static int kozou_get_xobj_place_ctm(
 static void kozou_find_all_xobjs_by_tm_dict(
     fz_context   *ctx,
     pdf_document *pdf,
+    pdf_page     *ppage,
     pdf_obj      *xdict,
     float         ix,
     float         iy,
@@ -6125,6 +6126,18 @@ static void kozou_find_all_xobjs_by_tm_dict(
 
         fz_buffer *buf = NULL;
         int found = 0;
+        /* このXObject自身がページ上でどう配置されるか(q/Q/cm/Matrix連鎖込みの
+         * 実際のCTM)を求める。detect_* 側が記録する internal_origin(ix,iy)は
+         * fz_run_page のデバイスCTM基準(ページ座標系)であり、これから直接
+         * パースする生の Tm/Td 値はこの XObject 自身のローカル座標系
+         * (Canvaのような設計時の大きな仮想キャンバスサイズなど、placement
+         * cm によるスケールを含まない値)であるため、そのまま比較すると
+         * スケール違いで絶対に一致しない。kozou_get_xobj_place_ctm で
+         * 実際の配置CTMを求め、ローカル Tm/Td 点をこれで変換してから
+         * ix,iy と比較する。 */
+        fz_matrix place_ctm = fz_identity;
+        int have_place_ctm = ppage
+            ? kozou_get_xobj_place_ctm(ctx, pdf, ppage, xref, &place_ctm) : 0;
         fz_try(ctx) {
             pdf_obj *xobj_ind = pdf_new_indirect(ctx, pdf, xref, 0);
             buf = pdf_load_stream(ctx, xobj_ind);
@@ -6147,8 +6160,11 @@ static void kozou_find_all_xobjs_by_tm_dict(
                 fprintf(stderr,
                     "[KOZOU_XOBJ_TM_SCAN] xref=%d len=%zu newlines=%zu cr=%zu "
                     "\"Tm\"count=%zu \"Tj\"count=%zu \"BT\"count=%zu "
+                    "have_place_ctm=%d place_ctm=[%.4f %.4f %.4f %.4f %.2f %.2f] "
                     "target(ix=%.2f,iy=%.2f) head=[%.80s]\n",
-                    xref, len, nl, cr, tm_sub, tj_sub, bt_sub, ix, iy,
+                    xref, len, nl, cr, tm_sub, tj_sub, bt_sub,
+                    have_place_ctm, place_ctm.a, place_ctm.b, place_ctm.c,
+                    place_ctm.d, place_ctm.e, place_ctm.f, ix, iy,
                     len > 0 ? src : "");
             }
 
@@ -6197,6 +6213,11 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                               || src[le-2]=='T' && src[le-1]=='J')) {
                         float cur_x = tm_tx + td_x;
                         float cur_y = tm_ty + td_y;
+                        if (have_place_ctm) {
+                            fz_point pdev = fz_transform_point(
+                                fz_make_point(cur_x, cur_y), place_ctm);
+                            cur_x = pdev.x; cur_y = pdev.y;
+                        }
                         float dx = cur_x - ix, dy = cur_y - iy;
                         if (dx*dx + dy*dy <= tol2) {
                             found = 1;
@@ -6221,7 +6242,7 @@ static void kozou_find_all_xobjs_by_tm_dict(
             if (child_res) {
                 pdf_obj *child_xdict = pdf_dict_gets(ctx, child_res, "XObject");
                 if (child_xdict)
-                    kozou_find_all_xobjs_by_tm_dict(ctx, pdf, child_xdict,
+                    kozou_find_all_xobjs_by_tm_dict(ctx, pdf, ppage, child_xdict,
                                                     ix, iy, tol2,
                                                     out_xrefs, n_out, max_out, depth+1);
             }
@@ -6288,7 +6309,7 @@ static void kozou_find_all_xobjs_by_tm(
     if (!xdict) return;
 
     float tol2 = tol * tol;
-    kozou_find_all_xobjs_by_tm_dict(ctx, pdf, xdict, ix, iy, tol2,
+    kozou_find_all_xobjs_by_tm_dict(ctx, pdf, ppage, xdict, ix, iy, tol2,
                                     out_xrefs, n_out, max_out, 0);
 }
 
