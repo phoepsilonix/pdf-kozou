@@ -6452,23 +6452,30 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                               || src[le-2]=='T' && src[le-1]=='J')) {
                         float cur_x = tm_tx + td_x;
                         float cur_y = tm_ty + td_y;
-                        /* 座標系を混在させない: place_ctm(群)が解決できている
-                         * とき(通常時)は、ローカル(q/cm/Q)+各place_ctmを通した
-                         * デバイス座標での判定のみを行う。生のTm/Td値(XObject
-                         * 内部のローカル座標系、例えば設計キャンバスの座標系)
-                         * を同じ許容誤差でそのままデバイス座標系の ix,iy と
-                         * 比較するのは、たまたま数値が近いだけの無関係な文字を
-                         * 誤って一致させてしまう不整合であり許容できない。
-                         * 同じ xref が複数箇所(異なるスケール/位置)で再利用
-                         * されている場合、kozou_get_xobj_place_ctm_all で集めた
-                         * 全ての実配置を順に試す(いずれもデバイス座標系なので
-                         * 座標系の混在にはならない)。生座標へのフォールバックは
-                         * place_ctm が1つも求まらず、デバイス座標への変換手段が
-                         * 一切無い場合に限る。 */
+                        /* 実機検証の結果: n_place_ctms(place_ctmが求まった
+                         * かどうか)は「この特定の文字に対して変換が正しいか」
+                         * を一切保証しない(常に何かしら見つかってしまうため、
+                         * 事実上いつも「変換を信頼する」分岐に落ちていた)。
+                         * また、そもそも低コントラスト/透明テキスト等の
+                         * 主要な取りこぼしケースは0027〜0029で検出時点の
+                         * xobj_xref確定(kozou_xobj_lookup)側で解決済みになり、
+                         * この関数(座標だけを頼りにした事後的な位置探索)は
+                         * "xobj_xrefが検出時点で分からなかった残りのケース"
+                         * だけを扱う経路になった。実機ログでは、この残りの
+                         * ケースについて生のTm/Td比較(変換なし)が一貫して
+                         * 正しく、place_ctm変換を使うと逆に一致しなくなる
+                         * (644件が生座標では一致、変換ロジック使用時は
+                         * ほぼ全滅)ことが確認されたため、変換による判定は
+                         * 行わず、生座標比較のみを判定に使う。
+                         * place_ctm自体の計算(kozou_get_xobj_place_ctm_all)
+                         * に何らかの不具合が残っている可能性があり、将来
+                         * 本当に「XObject内部でスケールされていて、かつ
+                         * kozou_xobj_lookupにも失敗する」ケースが見つかった
+                         * 場合は、この場で再度有効化を検討する。デバッグ用
+                         * の最短距離だけは診断のため両方とも記録しておく
+                         * (判定ロジックには使わない)。 */
                         int matched = 0;
                         {
-                            /* デバッグ用の最短距離更新(生座標)。判定ロジック
-                             * そのものには使わない。 */
                             float rdx = cur_x - ix, rdy = cur_y - iy;
                             float rd2 = rdx*rdx + rdy*rdy;
                             if (kozou_dbg_best_raw_d2 < 0 || rd2 < kozou_dbg_best_raw_d2) {
@@ -6476,8 +6483,10 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                 kozou_dbg_best_raw_xy[0] = cur_x;
                                 kozou_dbg_best_raw_xy[1] = cur_y;
                             }
+                            if (rd2 <= tol2) matched = 1;
                         }
-                        if (n_place_ctms > 0) {
+                        if (getenv("KOZOU_SANITIZE_DEBUG") && n_place_ctms > 0) {
+                            /* 判定には使わない、純粋な診断用ログ */
                             for (int _pci = 0; _pci < n_place_ctms; _pci++) {
                                 fz_matrix full = fz_concat(local_stack[local_sp], place_ctms[_pci]);
                                 fz_point pdev = fz_transform_point(
@@ -6489,11 +6498,7 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                     kozou_dbg_best_xform_xy[0] = pdev.x;
                                     kozou_dbg_best_xform_xy[1] = pdev.y;
                                 }
-                                if (d2 <= tol2) matched = 1;
                             }
-                        } else {
-                            float dx = cur_x - ix, dy = cur_y - iy;
-                            if (dx*dx + dy*dy <= tol2) matched = 1;
                         }
                         if (matched) found = 1;
                     }
