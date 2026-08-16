@@ -3680,6 +3680,9 @@ void kozou_detect_low_contrast_text(
     fz_pixmap     *pixmap = NULL;
     fz_var(doc); fz_var(page); fz_var(stext); fz_var(pixmap);
 
+    KozouXObjDevice *xobj_dev = NULL;
+    fz_var(xobj_dev);
+
     if (contrast_threshold <= 0.0f) contrast_threshold = 1.2f;
     if (contrast_threshold > 21.0f) contrast_threshold = 21.0f;
 
@@ -3703,6 +3706,20 @@ void kozou_detect_low_contrast_text(
         (void)page_h;
 
         stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+        /* XObject 追跡スキャン: transparent_text/tiny_text/buried_text と
+         * 同じ手法で、文字ごとの所属XObject xref とローカルTm座標
+         * (=生のTm+Tdと直接一致する値) を検出時点で確定させる。従来は
+         * internal_origin に mupdf stext のデバイス座標(ch->origin)を
+         * そのまま流用し、xobj_xref は常に0のままにしていたため、
+         * 無害化側でどのXObjectに属するか座標変換を伴う位置探索
+         * (discovery)で毎回推測し直す必要があり、脆さの原因になって
+         * いた。ここで検出時点にxobj_xref/ローカル座標を確定しておけば、
+         * 無害化側は他のカテゴリ同様、探索なしで直接そのXObjectへ
+         * ルーティングできる。 */
+        xobj_dev = kozou_new_xobj_device(ctx);
+        fz_run_page(ctx, page, (fz_device *)xobj_dev, fz_identity, NULL);
+
 
         int hit_count = 0;
         fz_write_printf(ctx, out,
@@ -3909,7 +3926,17 @@ void kozou_detect_low_contrast_text(
                     fz_quad lq = ch->quad;
                     if (hit_count > 0) fz_write_printf(ctx, out, ",");
 
-                    /* xobj_xref は常に 0 (low_contrast は stext から取得) */
+                    /* XObject 情報ルックアップ: transparent_text 等と同じ手法。
+                     * 見つかれば所属XObjectのxrefと、そのXObject内部の
+                     * 生Tm+Td座標(=無害化側でdiscoveryを経由せず直接
+                     * 照合できる値)を使う。見つからない場合(例: XObjectに
+                     * 包まれないページ直下のテキスト)は、従来通り
+                     * xobj_xref=0・internal_origin=デバイス座標(ch->origin)
+                     * にフォールバックする。 */
+                    const KozouCharXObj *lc_xobj_info = kozou_xobj_lookup(
+                        xobj_dev, ch->origin.x, ch->origin.y, 2.0f,
+                        ch->c, ch->size);
+
                     fz_write_printf(ctx, out,
                         "{\"char\":\"%s\","
                         "\"color_rgb\":[%d,%d,%d],"
@@ -3921,7 +3948,7 @@ void kozou_detect_low_contrast_text(
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
                         "\"size\":%.3f,"
                         "\"is_type3\":%s,"
-                        "\"xobj_xref\":0,"
+                        "\"xobj_xref\":%d,"
                         "\"internal_origin\":[%.3f,%.3f]}",
                         escaped,
                         (int)(fg_r * 255), (int)(fg_g * 255), (int)(fg_b * 255),
@@ -3936,7 +3963,9 @@ void kozou_detect_low_contrast_text(
                         (double)lq.lr.x, (double)lq.lr.y,
                         (double)(ch->size > 0 ? ch->size : 12.0f),
                         lc_is_type3 ? "true" : "false",
-                        (double)ch->origin.x, (double)ch->origin.y);
+                        lc_xobj_info ? lc_xobj_info->xobj_xref : 0,
+                        lc_xobj_info ? (double)lc_xobj_info->ix : (double)ch->origin.x,
+                        lc_xobj_info ? (double)lc_xobj_info->iy : (double)ch->origin.y);
 
                     hit_count++;
                 }
@@ -3947,6 +3976,7 @@ void kozou_detect_low_contrast_text(
         result->ok = 1;
     }
     fz_always(ctx) {
+        if (xobj_dev) fz_drop_device(ctx, (fz_device *)xobj_dev);
         if (pixmap) fz_drop_pixmap(ctx, pixmap);
         if (stext)  fz_drop_stext_page(ctx, stext);
         if (page)   fz_drop_page(ctx, page);
