@@ -6244,22 +6244,25 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                               || src[le-2]=='T' && src[le-1]=='J')) {
                         float cur_x = tm_tx + td_x;
                         float cur_y = tm_ty + td_y;
-                        /* まずローカル(この候補ストリーム内のq/cm/Q)+外側の
-                         * place_ctm を両方通した「正しいはず」の座標で判定する。 */
+                        /* 座標系を混在させない: place_ctm が解決できているとき
+                         * (通常時)は、ローカル(q/cm/Q)+place_ctm を通した
+                         * デバイス座標での判定のみを行う。生のTm/Td値(XObject
+                         * 内部のローカル座標系、例えば設計キャンバスの座標系)
+                         * を同じ許容誤差でそのままデバイス座標系の ix,iy と
+                         * 比較するのは、たまたま数値が近いだけの無関係な文字を
+                         * 誤って一致させてしまう不整合であり許容できない
+                         * (前コミットで追加した「変換後/生のいずれかが一致すれば
+                         * OK」という OR フォールバックは、この理由により撤回する)。
+                         * 生座標へのフォールバックは、place_ctm自体が求まらず
+                         * デバイス座標への変換手段が無い場合に限る。 */
                         int matched = 0;
-                        {
-                            fz_matrix full = have_place_ctm
-                                ? fz_concat(local_stack[local_sp], place_ctm)
-                                : local_stack[local_sp];
+                        if (have_place_ctm) {
+                            fz_matrix full = fz_concat(local_stack[local_sp], place_ctm);
                             fz_point pdev = fz_transform_point(
                                 fz_make_point(cur_x, cur_y), full);
                             float dx = pdev.x - ix, dy = pdev.y - iy;
                             if (dx*dx + dy*dy <= tol2) matched = 1;
-                        }
-                        /* 変換なしの生の値でも一致するなら、それも許容する
-                         * (0021 以前から一致していた既存ケースを壊さないための
-                         * 後方互換フォールバック)。 */
-                        if (!matched) {
+                        } else {
                             float dx = cur_x - ix, dy = cur_y - iy;
                             if (dx*dx + dy*dy <= tol2) matched = 1;
                         }
