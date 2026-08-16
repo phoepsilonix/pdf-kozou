@@ -6324,28 +6324,10 @@ static void kozou_find_all_xobjs_by_tm_dict(
 
         fz_buffer *buf = NULL;
         int found = 0;
-        /* デバッグ用: 生座標/変換後座標それぞれで実際に観測された
-         * 最短距離を記録する(found=0/1だけでは「どれだけ・どちら向きに
-         * ズレているか」が分からず、机上の推測を繰り返す原因になって
-         * いたため)。通常ビルドの挙動には影響しない。 */
         float kozou_dbg_best_raw_d2 = -1.0f;
         float kozou_dbg_best_xform_d2 = -1.0f;
         float kozou_dbg_best_raw_xy[2] = {0,0};
         float kozou_dbg_best_xform_xy[2] = {0,0};
-        /* このXObject自身がページ上でどう配置されるか(q/Q/cm/Matrix連鎖込みの
-         * 実際のCTM)を求める。detect_* 側が記録する internal_origin(ix,iy)は
-         * fz_run_page のデバイスCTM基準(ページ座標系)であり、これから直接
-         * パースする生の Tm/Td 値はこの XObject 自身のローカル座標系
-         * (Canvaのような設計時の大きな仮想キャンバスサイズなど、placement
-         * cm によるスケールを含まない値)であるため、そのまま比較すると
-         * スケール違いで絶対に一致しない。kozou_get_xobj_place_ctm で
-         * 実際の配置CTMを求め、ローカル Tm/Td 点をこれで変換してから
-         * ix,iy と比較する。 */
-        fz_matrix place_ctms[16];
-        int n_place_ctms = ppage
-            ? kozou_get_xobj_place_ctm_all(ctx, pdf, ppage, xref, place_ctms, 16) : 0;
-        int have_place_ctm = (n_place_ctms > 0);
-        fz_matrix place_ctm = have_place_ctm ? place_ctms[0] : fz_identity;
         fz_try(ctx) {
             pdf_obj *xobj_ind = pdf_new_indirect(ctx, pdf, xref, 0);
             buf = pdf_load_stream(ctx, xobj_ind);
@@ -6356,35 +6338,9 @@ static void kozou_find_all_xobjs_by_tm_dict(
             size_t len = fz_buffer_storage(ctx, buf, &d);
             const char *src = (const char *)d;
 
-            if (getenv("KOZOU_SANITIZE_DEBUG")) {
-                size_t nl = 0, cr = 0, tm_sub = 0, tj_sub = 0, bt_sub = 0;
-                for (size_t k = 0; k + 1 < len; k++) {
-                    if (src[k] == '\n') nl++;
-                    if (src[k] == '\r') cr++;
-                    if (src[k]=='T' && src[k+1]=='m') tm_sub++;
-                    if (src[k]=='T' && src[k+1]=='j') tj_sub++;
-                    if (src[k]=='B' && src[k+1]=='T') bt_sub++;
-                }
-                fprintf(stderr,
-                    "[KOZOU_XOBJ_TM_SCAN] xref=%d len=%zu newlines=%zu cr=%zu "
-                    "\"Tm\"count=%zu \"Tj\"count=%zu \"BT\"count=%zu "
-                    "n_place_ctms=%d place_ctm0=[%.4f %.4f %.4f %.4f %.2f %.2f] "
-                    "target(ix=%.2f,iy=%.2f) head=[%.80s]\n",
-                    xref, len, nl, cr, tm_sub, tj_sub, bt_sub,
-                    n_place_ctms, place_ctm.a, place_ctm.b, place_ctm.c,
-                    place_ctm.d, place_ctm.e, place_ctm.f, ix, iy,
-                    len > 0 ? src : "");
-            }
-
             int in_bt = 0;
             float tm_tx = 0, tm_ty = 0;
             float td_x = 0, td_y = 0;
-            /* Tm/Td だけでなく、BT の外側にある q/cm/Q もこの候補XObject自身の
-             * コンテンツストリーム内で追跡する。place_ctm はこの XObject の
-             * "外側"(ページからの配置)しか表さないため、ストリーム内部で
-             * さらに cm によるローカルな平行移動/縮小(例: 個々の画像や装飾要素
-             * ごとのq/cm/Q)が使われている場合、それも合成しないと実際の
-             * デバイス座標には一致しない。 */
             fz_matrix local_stack[64];
             int local_sp = 0;
             local_stack[0] = fz_identity;
@@ -6452,13 +6408,13 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                               || src[le-2]=='T' && src[le-1]=='J')) {
                         float cur_x = tm_tx + td_x;
                         float cur_y = tm_ty + td_y;
-                        /* 実機検証の結果: n_place_ctms(place_ctmが求まった
-                         * かどうか)は「この特定の文字に対して変換が正しいか」
-                         * を一切保証しない(常に何かしら見つかってしまうため、
+                        /* 実機検証の結果: place_ctmが求まったかどうか)は
+			 * 「この特定の文字に対して変換が正しいか」を一切
+			 * 保証しない(常に何かしら見つかってしまうため、
                          * 事実上いつも「変換を信頼する」分岐に落ちていた)。
                          * また、そもそも低コントラスト/透明テキスト等の
-                         * 主要な取りこぼしケースは0027〜0029で検出時点の
-                         * xobj_xref確定(kozou_xobj_lookup)側で解決済みになり、
+                         * 主要な取りこぼしケースは検出時点のxobj_xref確定
+			 * (kozou_xobj_lookup)側で解決済みになり、
                          * この関数(座標だけを頼りにした事後的な位置探索)は
                          * "xobj_xrefが検出時点で分からなかった残りのケース"
                          * だけを扱う経路になった。実機ログでは、この残りの
@@ -6467,13 +6423,7 @@ static void kozou_find_all_xobjs_by_tm_dict(
                          * (644件が生座標では一致、変換ロジック使用時は
                          * ほぼ全滅)ことが確認されたため、変換による判定は
                          * 行わず、生座標比較のみを判定に使う。
-                         * place_ctm自体の計算(kozou_get_xobj_place_ctm_all)
-                         * に何らかの不具合が残っている可能性があり、将来
-                         * 本当に「XObject内部でスケールされていて、かつ
-                         * kozou_xobj_lookupにも失敗する」ケースが見つかった
-                         * 場合は、この場で再度有効化を検討する。デバッグ用
-                         * の最短距離だけは診断のため両方とも記録しておく
-                         * (判定ロジックには使わない)。 */
+			 */
                         int matched = 0;
                         {
                             float rdx = cur_x - ix, rdy = cur_y - iy;
@@ -6484,21 +6434,6 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                 kozou_dbg_best_raw_xy[1] = cur_y;
                             }
                             if (rd2 <= tol2) matched = 1;
-                        }
-                        if (getenv("KOZOU_SANITIZE_DEBUG") && n_place_ctms > 0) {
-                            /* 判定には使わない、純粋な診断用ログ */
-                            for (int _pci = 0; _pci < n_place_ctms; _pci++) {
-                                fz_matrix full = fz_concat(local_stack[local_sp], place_ctms[_pci]);
-                                fz_point pdev = fz_transform_point(
-                                    fz_make_point(cur_x, cur_y), full);
-                                float dx = pdev.x - ix, dy = pdev.y - iy;
-                                float d2 = dx*dx + dy*dy;
-                                if (kozou_dbg_best_xform_d2 < 0 || d2 < kozou_dbg_best_xform_d2) {
-                                    kozou_dbg_best_xform_d2 = d2;
-                                    kozou_dbg_best_xform_xy[0] = pdev.x;
-                                    kozou_dbg_best_xform_xy[1] = pdev.y;
-                                }
-                            }
                         }
                         if (matched) found = 1;
                     }
