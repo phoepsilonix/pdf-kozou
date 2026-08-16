@@ -6294,6 +6294,14 @@ static void kozou_find_all_xobjs_by_tm_dict(
 
         fz_buffer *buf = NULL;
         int found = 0;
+        /* デバッグ用: 生座標/変換後座標それぞれで実際に観測された
+         * 最短距離を記録する(found=0/1だけでは「どれだけ・どちら向きに
+         * ズレているか」が分からず、机上の推測を繰り返す原因になって
+         * いたため)。通常ビルドの挙動には影響しない。 */
+        float kozou_dbg_best_raw_d2 = -1.0f;
+        float kozou_dbg_best_xform_d2 = -1.0f;
+        float kozou_dbg_best_raw_xy[2] = {0,0};
+        float kozou_dbg_best_xform_xy[2] = {0,0};
         /* このXObject自身がページ上でどう配置されるか(q/Q/cm/Matrix連鎖込みの
          * 実際のCTM)を求める。detect_* 側が記録する internal_origin(ix,iy)は
          * fz_run_page のデバイスCTM基準(ページ座標系)であり、これから直接
@@ -6428,13 +6436,30 @@ static void kozou_find_all_xobjs_by_tm_dict(
                          * place_ctm が1つも求まらず、デバイス座標への変換手段が
                          * 一切無い場合に限る。 */
                         int matched = 0;
+                        {
+                            /* デバッグ用の最短距離更新(生座標)。判定ロジック
+                             * そのものには使わない。 */
+                            float rdx = cur_x - ix, rdy = cur_y - iy;
+                            float rd2 = rdx*rdx + rdy*rdy;
+                            if (kozou_dbg_best_raw_d2 < 0 || rd2 < kozou_dbg_best_raw_d2) {
+                                kozou_dbg_best_raw_d2 = rd2;
+                                kozou_dbg_best_raw_xy[0] = cur_x;
+                                kozou_dbg_best_raw_xy[1] = cur_y;
+                            }
+                        }
                         if (n_place_ctms > 0) {
-                            for (int _pci = 0; _pci < n_place_ctms && !matched; _pci++) {
+                            for (int _pci = 0; _pci < n_place_ctms; _pci++) {
                                 fz_matrix full = fz_concat(local_stack[local_sp], place_ctms[_pci]);
                                 fz_point pdev = fz_transform_point(
                                     fz_make_point(cur_x, cur_y), full);
                                 float dx = pdev.x - ix, dy = pdev.y - iy;
-                                if (dx*dx + dy*dy <= tol2) matched = 1;
+                                float d2 = dx*dx + dy*dy;
+                                if (kozou_dbg_best_xform_d2 < 0 || d2 < kozou_dbg_best_xform_d2) {
+                                    kozou_dbg_best_xform_d2 = d2;
+                                    kozou_dbg_best_xform_xy[0] = pdev.x;
+                                    kozou_dbg_best_xform_xy[1] = pdev.y;
+                                }
+                                if (d2 <= tol2) matched = 1;
                             }
                         } else {
                             float dx = cur_x - ix, dy = cur_y - iy;
@@ -6445,7 +6470,16 @@ static void kozou_find_all_xobjs_by_tm_dict(
                 }
             }
             if (getenv("KOZOU_SANITIZE_DEBUG")) {
-                fprintf(stderr, "[KOZOU_XOBJ_TM_SCAN] xref=%d found=%d\n", xref, found);
+                fprintf(stderr,
+                    "[KOZOU_XOBJ_TM_SCAN] xref=%d found=%d "
+                    "best_raw_d=%.2f best_raw_xy=(%.2f,%.2f) "
+                    "best_xform_d=%.2f best_xform_xy=(%.2f,%.2f) target(ix=%.2f,iy=%.2f)\n",
+                    xref, found,
+                    kozou_dbg_best_raw_d2 >= 0 ? (double)sqrtf(kozou_dbg_best_raw_d2) : -1.0,
+                    kozou_dbg_best_raw_xy[0], kozou_dbg_best_raw_xy[1],
+                    kozou_dbg_best_xform_d2 >= 0 ? (double)sqrtf(kozou_dbg_best_xform_d2) : -1.0,
+                    kozou_dbg_best_xform_xy[0], kozou_dbg_best_xform_xy[1],
+                    ix, iy);
             }
         } fz_always(ctx) {
             if (buf) { fz_drop_buffer(ctx, buf); buf = NULL; }
