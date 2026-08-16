@@ -8492,8 +8492,33 @@ void kozou_sanitize_hidden_text(
             if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
                 if (targets[i].page_index >= 0 && targets[i].page_index != pi) continue;
-                float ix = targets[i].ix; /* Tm の tx (internal_origin x) */
-                float iy = targets[i].iy; /* Tm の ty (internal_origin y) */
+                /* detect_* 側の internal_origin (ix,iy) は検出カテゴリによって
+                 * 意味が異なる:
+                 *  - low_contrast: mupdf stext の ch->origin (デバイス座標)。
+                 *    xobj_xref は検出時点では常に0で、どのXObjectに属するかは
+                 *    座標を頼りに位置探索(discovery)で特定する必要がある。
+                 *  - buried/tiny_text 等(KozouXObjDeviceで検出): span->trm の
+                 *    逆行列で復元したローカル Tm 空間の座標(生のTm+Tdと直接
+                 *    一致する値)であり、しかも所属XObjectのxrefは検出時点で
+                 *    既に確定している(dev->xobj_stack[...].xref)。
+                 * この2つを同じ「座標を変換して位置探索する」経路に一律で
+                 * 通すと、後者(ローカル座標)を誤ってデバイス座標として扱って
+                 * しまい、変換後の座標がずれて検出漏れになる。
+                 * xobj_xref が検出時点で既に分かっている場合は、位置探索
+                 * (kozou_find_all_xobjs_by_tm、座標変換前提)を一切経由せず、
+                 * その xref をそのまま使う。 */
+                if (targets[i].xobj_xref != 0) {
+                    targets[i].in_xobj = 1;
+                    int dup = 0;
+                    for (int j = 0; j < n_xrefs; j++) {
+                        if (xobj_xrefs[j] == targets[i].xobj_xref) { dup = 1; break; }
+                    }
+                    if (!dup && n_xrefs < KOZOU_SANITIZE_MAX)
+                        xobj_xrefs[n_xrefs++] = targets[i].xobj_xref;
+                    continue;
+                }
+                float ix = targets[i].ix; /* Tm の tx (internal_origin x, デバイス座標) */
+                float iy = targets[i].iy; /* Tm の ty (internal_origin y, デバイス座標) */
                 if (ix == 0.0f && iy == 0.0f) continue;
                 /* Tm 座標に一致する全XObjectを収集（複数コピーがある場合も漏れなく処理）*/
                 int tmp_xr[64]; int n_tmp = 0;
