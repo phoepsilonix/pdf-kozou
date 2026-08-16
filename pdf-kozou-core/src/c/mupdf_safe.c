@@ -6657,12 +6657,19 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                             }
                                         }
                                         if (targets[_ti2].render_invisible >= 0 &&
-                                            targets[_ti2].render_invisible != cur_invisible)
+                                            targets[_ti2].render_invisible != cur_invisible) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "render_invisible";
                                             continue;
+                                        }
                                         if (targets[_ti2].alpha_gate) {
                                             int cur_a255 =
                                                 (int)(alpha_stack[ctm_sp] * 255.0f + 0.5f);
-                                            if (cur_a255 > alpha_threshold) continue;
+                                            if (cur_a255 > alpha_threshold) {
+                                                if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                    kozou_dbg_fail = "alpha_gate";
+                                                continue;
+                                            }
                                         }
                                         if (targets[_ti2].font_class >= 0 &&
                                             targets[_ti2].font_class !=
@@ -6699,15 +6706,23 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 if (kozou_dbg_xobj && cur_is_type3_c) {
                                     fprintf(stderr,
                                         "[KOZOU_XOBJ_CHAR] font=%s cc=0x%02x tu_used=%d "
-                                        "g_ucs=%d have_g=%d pos=(%.1f,%.1f) "
+                                        "g_ucs=%d have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f "
                                         "n_targets=%d best_ti=%d best_d=%.1f "
-                                        "best_font_class=%d best_cp=%d fail=%s blank=%d\n",
+                                        "best_font_class=%d best_cp=%d best_ox_oy=(%.1f,%.1f) "
+                                        "best_rvis=%d best_agate=%d cur_invisible=%d "
+                                        "fail=%s blank=%d\n",
                                         cur_font_name ? cur_font_name : "?",
                                         (unsigned)cc_c, (tu_ucs_c >= 0), g_c_ucs, have_g_c,
-                                        ch_dev_x, ch_dev_y, n_targets, kozou_dbg_best_ti,
+                                        ch_dev_x, ch_dev_y, tol2_est,
+                                        n_targets, kozou_dbg_best_ti,
                                         kozou_dbg_best_ti >= 0 ? (double)sqrtf(kozou_dbg_best_d2) : -1.0,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].font_class : -99,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].codepoint : -1,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].ox : -1.0,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].oy : -1.0,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].render_invisible : -99,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].alpha_gate : -99,
+                                        cur_invisible,
                                         kozou_dbg_fail, this_blank);
                                 }
                                 /* 幅差分補正用の幅は必ずフォントメトリクスを使う
