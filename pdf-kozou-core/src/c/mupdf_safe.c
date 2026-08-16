@@ -6089,6 +6089,174 @@ static int kozou_get_xobj_place_ctm(
     return hit;
 }
 
+/* kozou_xobj_place_ctm_scan は target_xref の最初の出現でreturnするため、
+ * 同じ xref が複数箇所(異なるスケール/位置)で再利用されている場合、
+ * そのうちの1つしか返せない。これは discovery(座標一致判定)で使うには
+ * 不十分 — 実際に一致する可能性がある「その xref の全ての配置」を集める
+ * バリアント。return せず配列に集めて走査を継続する点のみが異なる。 */
+static void kozou_xobj_place_ctm_scan_all(
+    fz_context *ctx, pdf_document *pdf,
+    const char *src, size_t len,
+    pdf_obj *resources,
+    int target_xref, fz_matrix base,
+    fz_matrix *out_ctms, int *n_out, int max_out, int depth)
+{
+    if (depth > 8 || *n_out >= max_out) return;
+    pdf_obj *xdict = resources ?
+        pdf_dict_gets(ctx, resources, "XObject") : NULL;
+
+    fz_matrix ctm_stack[64];
+    int sp = 0;
+    ctm_stack[0] = base;
+
+    size_t pos = 0;
+    while (pos < len && *n_out < max_out) {
+        size_t ls = pos;
+        while (pos < len && src[pos] != '\n') pos++;
+        size_t le = pos;
+        if (pos < len) pos++;
+        size_t ts = ls;
+        while (ts < le && (src[ts]==' '||src[ts]=='\t')) ts++;
+        size_t tl = le - ts;
+        if (tl < 1) continue;
+
+        if (tl == 1 && src[ts]=='q') {
+            if (sp < 63) { ctm_stack[sp+1]=ctm_stack[sp]; sp++; }
+        } else if (tl == 1 && src[ts]=='Q') {
+            if (sp > 0) sp--;
+        } else if (tl >= 2 && src[le-2]=='c' && src[le-1]=='m') {
+            char cmline[160] = {0};
+            size_t cl = tl < 159 ? tl : 159;
+            memcpy(cmline, src+ts, cl);
+            float a,b,c,d,e,f;
+            if (sscanf(cmline,"%f %f %f %f %f %f cm",&a,&b,&c,&d,&e,&f)==6) {
+                fz_matrix m = {a,b,c,d,e,f};
+                ctm_stack[sp] = fz_concat(m, ctm_stack[sp]);
+            }
+        } else if (tl >= 3 && src[le-2]=='D' && src[le-1]=='o' &&
+                   src[ts]=='/') {
+            char name[64] = {0};
+            int ni = 0;
+            size_t p2 = ts + 1;
+            while (p2 < le && src[p2] != ' ' && src[p2] != '\t' &&
+                   src[p2] != '\r' && ni < 63) {
+                name[ni++] = src[p2++];
+            }
+            if (xdict) {
+                pdf_obj *val = pdf_dict_gets(ctx, xdict, name);
+                int xr = pdf_is_indirect(ctx, val) ? pdf_to_num(ctx, val) : 0;
+                if (xr == target_xref) {
+                    fz_matrix tmx = fz_identity;
+                    pdf_obj *tobj = pdf_resolve_indirect(ctx, val);
+                    pdf_obj *tmo = tobj ? pdf_dict_get(ctx, tobj, PDF_NAME(Matrix)) : NULL;
+                    if (pdf_is_array(ctx, tmo) && pdf_array_len(ctx, tmo) == 6) {
+                        tmx.a = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 0));
+                        tmx.b = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 1));
+                        tmx.c = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 2));
+                        tmx.d = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 3));
+                        tmx.e = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 4));
+                        tmx.f = pdf_to_real(ctx, pdf_array_get(ctx, tmo, 5));
+                    }
+                    out_ctms[*n_out] = fz_concat(tmx, ctm_stack[sp]);
+                    (*n_out)++;
+                    /* ここでは return しない: 同じ target_xref が他の場所でも
+                     * 使われている可能性があるため走査を継続する。 */
+                }
+                if (xr != 0) {
+                    pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
+                    pdf_obj *st = xobj ? pdf_dict_gets(ctx, xobj, "Subtype") : NULL;
+                    const char *st_name = (st && pdf_is_name(ctx, st)) ? pdf_to_name(ctx, st) : NULL;
+                    if (st_name && strcmp(st_name, "Form") == 0) {
+                        fz_buffer *cbuf2 = NULL;
+                        fz_var(cbuf2);
+                        fz_try(ctx) {
+                            pdf_obj *ind = pdf_new_indirect(ctx, pdf, xr, 0);
+                            cbuf2 = pdf_load_stream(ctx, ind);
+                            pdf_drop_obj(ctx, ind);
+                            fz_matrix xm = fz_identity;
+                            pdf_obj *mo = pdf_dict_get(ctx, xobj, PDF_NAME(Matrix));
+                            if (pdf_is_array(ctx, mo) && pdf_array_len(ctx, mo) == 6) {
+                                xm.a = pdf_to_real(ctx, pdf_array_get(ctx, mo, 0));
+                                xm.b = pdf_to_real(ctx, pdf_array_get(ctx, mo, 1));
+                                xm.c = pdf_to_real(ctx, pdf_array_get(ctx, mo, 2));
+                                xm.d = pdf_to_real(ctx, pdf_array_get(ctx, mo, 3));
+                                xm.e = pdf_to_real(ctx, pdf_array_get(ctx, mo, 4));
+                                xm.f = pdf_to_real(ctx, pdf_array_get(ctx, mo, 5));
+                            }
+                            fz_matrix child_base = fz_concat(xm, ctm_stack[sp]);
+                            pdf_obj *xres = pdf_dict_gets(ctx, xobj, "Resources");
+                            if (!xres) xres = resources;
+                            unsigned char *cd2 = NULL;
+                            size_t clen2 = fz_buffer_storage(ctx, cbuf2, &cd2);
+                            if (cd2)
+                                kozou_xobj_place_ctm_scan_all(ctx, pdf,
+                                    (const char*)cd2, clen2, xres,
+                                    target_xref, child_base,
+                                    out_ctms, n_out, max_out, depth+1);
+                        } fz_always(ctx) {
+                            if (cbuf2) fz_drop_buffer(ctx, cbuf2);
+                        } fz_catch(ctx) { }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* target_xref がページ上で配置されている「全ての」CTMを集める。
+ * 同じ xref が複数箇所で異なるスケール/位置で再利用されている場合、
+ * 呼び出し側(discovery)がどの配置が実際の対象位置(ix,iy)に対応するか
+ * を自分で判定できるようにするため。 */
+static int kozou_get_xobj_place_ctm_all(
+    fz_context *ctx, pdf_document *pdf, pdf_page *ppage,
+    int target_xref, fz_matrix *out_ctms, int max_ctms)
+{
+    if (!ppage) return 0;
+    pdf_obj *res = pdf_page_resources(ctx, ppage);
+    fz_buffer *cbuf = NULL;
+    int n_out = 0;
+    fz_var(cbuf); fz_var(n_out);
+    fz_try(ctx) {
+        pdf_obj *contents = pdf_page_contents(ctx, ppage);
+        cbuf = fz_new_buffer(ctx, 1024);
+        if (pdf_is_array(ctx, contents)) {
+            int cn = pdf_array_len(ctx, contents);
+            for (int ci = 0; ci < cn; ci++) {
+                pdf_obj *part = pdf_array_get(ctx, contents, ci);
+                fz_buffer *pb = pdf_load_stream(ctx, part);
+                if (pb) {
+                    unsigned char *pd = NULL;
+                    size_t pl = fz_buffer_storage(ctx, pb, &pd);
+                    if (pd && pl) {
+                        fz_append_data(ctx, cbuf, pd, pl);
+                        fz_append_byte(ctx, cbuf, '\n');
+                    }
+                    fz_drop_buffer(ctx, pb);
+                }
+            }
+        } else if (contents) {
+            fz_buffer *pb = pdf_load_stream(ctx, contents);
+            if (pb) {
+                unsigned char *pd = NULL;
+                size_t pl = fz_buffer_storage(ctx, pb, &pd);
+                if (pd && pl) fz_append_data(ctx, cbuf, pd, pl);
+                fz_drop_buffer(ctx, pb);
+            }
+        }
+        unsigned char *cd = NULL;
+        size_t clen = fz_buffer_storage(ctx, cbuf, &cd);
+        fz_rect mbox;
+        fz_matrix page_ctm = fz_identity;
+        pdf_page_transform(ctx, ppage, &mbox, &page_ctm);
+        if (cd)
+            kozou_xobj_place_ctm_scan_all(ctx, pdf, (const char*)cd, clen,
+                res, target_xref, page_ctm, out_ctms, &n_out, max_ctms, 0);
+    } fz_always(ctx) {
+        if (cbuf) fz_drop_buffer(ctx, cbuf);
+    } fz_catch(ctx) { }
+    return n_out;
+}
+
 /* ix/iyに一致するTj/TJを持つXObjectのxrefを再帰的に収集する内部実装。
  * 第一引数 xdict は対象の XObject リソース辞書。depth で無限再帰を防ぐ。 */
 static void kozou_find_all_xobjs_by_tm_dict(
@@ -6135,9 +6303,11 @@ static void kozou_find_all_xobjs_by_tm_dict(
          * スケール違いで絶対に一致しない。kozou_get_xobj_place_ctm で
          * 実際の配置CTMを求め、ローカル Tm/Td 点をこれで変換してから
          * ix,iy と比較する。 */
-        fz_matrix place_ctm = fz_identity;
-        int have_place_ctm = ppage
-            ? kozou_get_xobj_place_ctm(ctx, pdf, ppage, xref, &place_ctm) : 0;
+        fz_matrix place_ctms[16];
+        int n_place_ctms = ppage
+            ? kozou_get_xobj_place_ctm_all(ctx, pdf, ppage, xref, place_ctms, 16) : 0;
+        int have_place_ctm = (n_place_ctms > 0);
+        fz_matrix place_ctm = have_place_ctm ? place_ctms[0] : fz_identity;
         fz_try(ctx) {
             pdf_obj *xobj_ind = pdf_new_indirect(ctx, pdf, xref, 0);
             buf = pdf_load_stream(ctx, xobj_ind);
@@ -6160,10 +6330,10 @@ static void kozou_find_all_xobjs_by_tm_dict(
                 fprintf(stderr,
                     "[KOZOU_XOBJ_TM_SCAN] xref=%d len=%zu newlines=%zu cr=%zu "
                     "\"Tm\"count=%zu \"Tj\"count=%zu \"BT\"count=%zu "
-                    "have_place_ctm=%d place_ctm=[%.4f %.4f %.4f %.4f %.2f %.2f] "
+                    "n_place_ctms=%d place_ctm0=[%.4f %.4f %.4f %.4f %.2f %.2f] "
                     "target(ix=%.2f,iy=%.2f) head=[%.80s]\n",
                     xref, len, nl, cr, tm_sub, tj_sub, bt_sub,
-                    have_place_ctm, place_ctm.a, place_ctm.b, place_ctm.c,
+                    n_place_ctms, place_ctm.a, place_ctm.b, place_ctm.c,
                     place_ctm.d, place_ctm.e, place_ctm.f, ix, iy,
                     len > 0 ? src : "");
             }
@@ -6244,24 +6414,28 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                               || src[le-2]=='T' && src[le-1]=='J')) {
                         float cur_x = tm_tx + td_x;
                         float cur_y = tm_ty + td_y;
-                        /* 座標系を混在させない: place_ctm が解決できているとき
-                         * (通常時)は、ローカル(q/cm/Q)+place_ctm を通した
+                        /* 座標系を混在させない: place_ctm(群)が解決できている
+                         * とき(通常時)は、ローカル(q/cm/Q)+各place_ctmを通した
                          * デバイス座標での判定のみを行う。生のTm/Td値(XObject
                          * 内部のローカル座標系、例えば設計キャンバスの座標系)
                          * を同じ許容誤差でそのままデバイス座標系の ix,iy と
                          * 比較するのは、たまたま数値が近いだけの無関係な文字を
-                         * 誤って一致させてしまう不整合であり許容できない
-                         * (前コミットで追加した「変換後/生のいずれかが一致すれば
-                         * OK」という OR フォールバックは、この理由により撤回する)。
-                         * 生座標へのフォールバックは、place_ctm自体が求まらず
-                         * デバイス座標への変換手段が無い場合に限る。 */
+                         * 誤って一致させてしまう不整合であり許容できない。
+                         * 同じ xref が複数箇所(異なるスケール/位置)で再利用
+                         * されている場合、kozou_get_xobj_place_ctm_all で集めた
+                         * 全ての実配置を順に試す(いずれもデバイス座標系なので
+                         * 座標系の混在にはならない)。生座標へのフォールバックは
+                         * place_ctm が1つも求まらず、デバイス座標への変換手段が
+                         * 一切無い場合に限る。 */
                         int matched = 0;
-                        if (have_place_ctm) {
-                            fz_matrix full = fz_concat(local_stack[local_sp], place_ctm);
-                            fz_point pdev = fz_transform_point(
-                                fz_make_point(cur_x, cur_y), full);
-                            float dx = pdev.x - ix, dy = pdev.y - iy;
-                            if (dx*dx + dy*dy <= tol2) matched = 1;
+                        if (n_place_ctms > 0) {
+                            for (int _pci = 0; _pci < n_place_ctms && !matched; _pci++) {
+                                fz_matrix full = fz_concat(local_stack[local_sp], place_ctms[_pci]);
+                                fz_point pdev = fz_transform_point(
+                                    fz_make_point(cur_x, cur_y), full);
+                                float dx = pdev.x - ix, dy = pdev.y - iy;
+                                if (dx*dx + dy*dy <= tol2) matched = 1;
+                            }
                         } else {
                             float dx = cur_x - ix, dy = cur_y - iy;
                             if (dx*dx + dy*dy <= tol2) matched = 1;
