@@ -8802,10 +8802,12 @@ void kozou_detect_control_chars(
     fz_document   *doc   = NULL;
     fz_page       *page  = NULL;
     fz_stext_page *stext = NULL;
+    KozouXObjDevice *xobj_dev = NULL;
 
     fz_var(doc);
     fz_var(page);
     fz_var(stext);
+    fz_var(xobj_dev);
 
     fz_try(ctx) {
         doc = fz_open_document(ctx, path);
@@ -8821,6 +8823,14 @@ void kozou_detect_control_chars(
         fz_stext_options opts = { FZ_STEXT_PRESERVE_WHITESPACE |
                                   FZ_STEXT_ACCURATE_BBOXES, 0 };
         stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+        /* XObject 追跡スキャン: low_contrast/transparent_text/tiny_text/
+         * buried_text と同じ手法で、文字ごとの所属XObject xref と
+         * ローカルTm座標(=生のTm+Tdと直接一致する値)を検出時点で
+         * 確定させる。これにより無害化側は座標変換を伴う位置探索
+         * (discovery)を経由せず、検出済みのxrefへ直接ルーティングできる。 */
+        xobj_dev = kozou_new_xobj_device(ctx);
+        fz_run_page(ctx, page, (fz_device *)xobj_dev, fz_identity, NULL);
 
         int hit_count = 0;
         fz_write_printf(ctx, out,
@@ -8849,6 +8859,14 @@ void kozou_detect_control_chars(
                     fz_quad  q = ch->quad;
                     fz_point o = ch->origin;
 
+                    /* XObject 情報ルックアップ(他カテゴリと同じ手法)。
+                     * 見つかれば所属XObjectのxrefと、そのXObject内部の
+                     * 生Tm+Td座標を internal_origin として使う。見つから
+                     * ない場合はxobj_xref=0・internal_origin=デバイス座標
+                     * にフォールバックする。 */
+                    const KozouCharXObj *cc_xobj_info = kozou_xobj_lookup(
+                        xobj_dev, o.x, o.y, 2.0f, ch->c, ch->size);
+
                     if (hit_count > 0) fz_write_printf(ctx, out, ",");
                     fz_write_printf(ctx, out,
                         "{"
@@ -8858,7 +8876,9 @@ void kozou_detect_control_chars(
                         "\"reason\":\"%s\","
                         "\"origin\":[%.3f,%.3f],"
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
-                        "\"size\":%.3f"
+                        "\"size\":%.3f,"
+                        "\"xobj_xref\":%d,"
+                        "\"internal_origin\":[%.3f,%.3f]"
                         "}",
                         cp, cp, cat, reason,
                         o.x, o.y,
@@ -8866,7 +8886,10 @@ void kozou_detect_control_chars(
                         q.ur.x, q.ur.y,
                         q.ll.x, q.ll.y,
                         q.lr.x, q.lr.y,
-                        ch->size
+                        ch->size,
+                        cc_xobj_info ? cc_xobj_info->xobj_xref : 0,
+                        cc_xobj_info ? (double)cc_xobj_info->ix : (double)o.x,
+                        cc_xobj_info ? (double)cc_xobj_info->iy : (double)o.y
                     );
                     hit_count++;
                 }
@@ -8877,6 +8900,7 @@ void kozou_detect_control_chars(
         set_ok(result);
     }
     fz_always(ctx) {
+        if (xobj_dev) fz_drop_device(ctx, (fz_device *)xobj_dev);
         if (stext) fz_drop_stext_page(ctx, stext);
         if (page)  fz_drop_page(ctx, page);
         if (doc)   fz_drop_document(ctx, doc);

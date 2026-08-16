@@ -1219,6 +1219,12 @@ pub struct ControlChar {
     pub origin: [f32; 2],
     pub quad: [f32; 8],
     pub size: f32,
+    /// 所属 XObject の xref (0=トップレベル)
+    #[serde(default)]
+    pub xobj_xref: i32,
+    /// XObject 内部座標 (Tm座標)
+    #[serde(default)]
+    pub internal_origin: [f32; 2],
 }
 
 #[derive(Debug, Serialize)]
@@ -1309,6 +1315,10 @@ pub fn detect_control_chars(req: &DetectControlCharsRequest) -> Result<DetectCon
         origin: [f32; 2],
         quad: [f32; 8],
         size: f32,
+        #[serde(default)]
+        xobj_xref: i32,
+        #[serde(default)]
+        internal_origin: [f32; 2],
     }
     #[derive(serde::Deserialize)]
     struct RawResp {
@@ -1334,6 +1344,8 @@ pub fn detect_control_chars(req: &DetectControlCharsRequest) -> Result<DetectCon
                 origin: h.origin,
                 quad: h.quad,
                 size: h.size,
+                xobj_xref: h.xobj_xref,
+                internal_origin: h.internal_origin,
             })
             .collect(),
     })
