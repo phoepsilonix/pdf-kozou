@@ -6171,6 +6171,15 @@ static void kozou_find_all_xobjs_by_tm_dict(
             int in_bt = 0;
             float tm_tx = 0, tm_ty = 0;
             float td_x = 0, td_y = 0;
+            /* Tm/Td だけでなく、BT の外側にある q/cm/Q もこの候補XObject自身の
+             * コンテンツストリーム内で追跡する。place_ctm はこの XObject の
+             * "外側"(ページからの配置)しか表さないため、ストリーム内部で
+             * さらに cm によるローカルな平行移動/縮小(例: 個々の画像や装飾要素
+             * ごとのq/cm/Q)が使われている場合、それも合成しないと実際の
+             * デバイス座標には一致しない。 */
+            fz_matrix local_stack[64];
+            int local_sp = 0;
+            local_stack[0] = fz_identity;
 
             size_t pos = 0;
             while (pos < len && !found) {
@@ -6182,6 +6191,28 @@ static void kozou_find_all_xobjs_by_tm_dict(
                 size_t ts = ls;
                 while (ts < le && (src[ts]==' '||src[ts]=='\t')) ts++;
                 size_t trimlen = le - ts;
+                if (trimlen < 1) continue;
+
+                if (trimlen == 1 && src[ts]=='q') {
+                    if (local_sp < 63) {
+                        local_stack[local_sp+1] = local_stack[local_sp];
+                        local_sp++;
+                    }
+                    continue;
+                } else if (trimlen == 1 && src[ts]=='Q') {
+                    if (local_sp > 0) local_sp--;
+                    continue;
+                } else if (trimlen >= 2 && src[le-2]=='c' && src[le-1]=='m') {
+                    char cmline[160] = {0};
+                    size_t cl = trimlen < 159 ? trimlen : 159;
+                    memcpy(cmline, src+ts, cl);
+                    float a,b,c,d,e,f;
+                    if (sscanf(cmline,"%f %f %f %f %f %f cm",&a,&b,&c,&d,&e,&f)==6) {
+                        fz_matrix m = {a,b,c,d,e,f};
+                        local_stack[local_sp] = fz_concat(m, local_stack[local_sp]);
+                    }
+                    continue;
+                }
                 if (trimlen < 2) continue;
 
                 if (!in_bt) {
@@ -6213,15 +6244,26 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                               || src[le-2]=='T' && src[le-1]=='J')) {
                         float cur_x = tm_tx + td_x;
                         float cur_y = tm_ty + td_y;
-                        if (have_place_ctm) {
+                        /* まずローカル(この候補ストリーム内のq/cm/Q)+外側の
+                         * place_ctm を両方通した「正しいはず」の座標で判定する。 */
+                        int matched = 0;
+                        {
+                            fz_matrix full = have_place_ctm
+                                ? fz_concat(local_stack[local_sp], place_ctm)
+                                : local_stack[local_sp];
                             fz_point pdev = fz_transform_point(
-                                fz_make_point(cur_x, cur_y), place_ctm);
-                            cur_x = pdev.x; cur_y = pdev.y;
+                                fz_make_point(cur_x, cur_y), full);
+                            float dx = pdev.x - ix, dy = pdev.y - iy;
+                            if (dx*dx + dy*dy <= tol2) matched = 1;
                         }
-                        float dx = cur_x - ix, dy = cur_y - iy;
-                        if (dx*dx + dy*dy <= tol2) {
-                            found = 1;
+                        /* 変換なしの生の値でも一致するなら、それも許容する
+                         * (0021 以前から一致していた既存ケースを壊さないための
+                         * 後方互換フォールバック)。 */
+                        if (!matched) {
+                            float dx = cur_x - ix, dy = cur_y - iy;
+                            if (dx*dx + dy*dy <= tol2) matched = 1;
                         }
+                        if (matched) found = 1;
                     }
                 }
             }
