@@ -858,6 +858,7 @@
     "threshold_label": "閾値設定",
     "threshold_alpha": "透明度 (0-255)",
     "threshold_contrast": "コントラスト比 (小=厳格/同色のみ, 大=緩め)",
+    "threshold_lc_ratio": "低コントラスト: 周囲同化の判定割合 (小=緩め/部分的な同化も検出, 大=厳格/全周同化のみ)",
     "threshold_size": "フォントサイズ pt",
     "threshold_cover": "被覆率",
     "threshold_reset": "リセット",
@@ -917,7 +918,8 @@
     "skip_type3": "Type3フォントはそのまま残す",
     "detect_current_page": "🔍 {page}ページ検出",
     "detect_all_pages": "🔍 全ページ検出",
-    "threshold_contrast_hint": "1.0=完全同色のみ / 1.2=標準 / 1.5=緩め"
+    "threshold_contrast_hint": "1.0=完全同色のみ / 1.2=標準 / 1.5=緩め",
+    "threshold_lc_ratio_hint": "0.5=緩め(誤検出増/見逃し減) / 0.75=標準 / 0.9=厳格(誤検出減/見逃し増)"
   },
   "filename": {
     "suffix": {

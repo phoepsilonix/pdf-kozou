@@ -369,12 +369,14 @@ export async function detectLowContrastText(
   path: string,
   page: number,
   contrastThreshold?: number,
+  ratioThreshold?: number,
   options?: ConvertOptions,
 ): Promise<DetectLowContrastResponse> {
   return invoke<DetectLowContrastResponse>("detect_low_contrast_text", {
     path,
     page,
     contrastThreshold: contrastThreshold ?? null,
+    ratioThreshold: ratioThreshold ?? null,
     layoutW: options?.layoutW ?? null,
     layoutH: options?.layoutH ?? null,
     layoutEm: options?.layoutEm ?? null,

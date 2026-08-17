@@ -858,6 +858,7 @@
     "threshold_label": "Thresholds",
     "threshold_alpha": "Alpha (0-255)",
     "threshold_contrast": "Contrast ratio (low=strict/same color, high=loose)",
+    "threshold_lc_ratio": "Low contrast: ring-coverage ratio (low=loose/catches partial blending, high=strict/full-ring only)",
     "threshold_size": "Font size (pt)",
     "threshold_cover": "Cover ratio",
     "threshold_reset": "Reset",
@@ -917,7 +918,8 @@
     "skip_type3": "Keep Type3 fonts as-is",
     "detect_current_page": "🔍 Page {page}",
     "detect_all_pages": "🔍 All Pages",
-    "threshold_contrast_hint": "1.0=identical only / 1.2=standard / 1.5=loose"
+    "threshold_contrast_hint": "1.0=identical only / 1.2=standard / 1.5=loose",
+    "threshold_lc_ratio_hint": "0.5=loose (more false positives / fewer misses) / 0.75=standard / 0.9=strict (fewer false positives / more misses)"
   },
   "filename": {
     "suffix": {

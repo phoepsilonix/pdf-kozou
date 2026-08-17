@@ -355,6 +355,7 @@ unsafe extern "C" {
         layout_h: f32,
         layout_em: f32,
         contrast_threshold: f32,
+        ratio_threshold: f32,
         out: *mut mupdf_sys::fz_output,
         result: *mut FfiResult,
     );

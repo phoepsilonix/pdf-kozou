@@ -3658,10 +3658,13 @@ static int kozou_find_background(
 /* }                                                                   */
 /* ------------------------------------------------------------------ */
 /* リング32点中、低コントラスト点がこの割合以上を占めたら「埋没」と判定する
- * 0.4(40%)では、輪郭のみ低コントラストになりがちなType3装飾フォント等での
- * 誤検出(false positive)が目立ったため、0.75(32点中24点以上)に引き上げる。
- * 「上半分だけ同化」のような部分的同化はまだ十分に検出できる比率。 */
-#define KOZOU_LC_RATIO_THRESHOLD 0.75f
+ * デフォルトは0.75(32点中24点以上)。0.4(40%)では、輪郭のみ低コントラスト
+ * になりがちなType3装飾フォント等での誤検出(false positive)が目立った
+ * ため引き上げた経緯がある一方、0.75は行の高さに対して小さいハイライト
+ * 矩形では縦長文字(ascender/cap高)だけ境界はみ出しで検出漏れしやすい
+ * (test_color.pdfで実測)。用途(誤検出許容度 vs 見逃し許容度)に応じて
+ * GUI等の呼び出し元から調整できるよう引数化した。 */
+#define KOZOU_LC_RATIO_THRESHOLD_DEFAULT 0.75f
 
 void kozou_detect_low_contrast_text(
     fz_context  *ctx,
@@ -3671,6 +3674,7 @@ void kozou_detect_low_contrast_text(
     float        layout_h,
     float        layout_em,
     float        contrast_threshold,
+    float        ratio_threshold,
     fz_output   *out,
     FfiResult   *result)
 {
@@ -3685,6 +3689,13 @@ void kozou_detect_low_contrast_text(
 
     if (contrast_threshold <= 0.0f) contrast_threshold = 1.2f;
     if (contrast_threshold > 21.0f) contrast_threshold = 21.0f;
+    /* ratio_threshold <= 0 は「未指定/デフォルト使用」を意味する
+     * (0はリング全点が高コントラストでも検出してしまう無効な値なので
+     * 実際の入力として使う意味がなく、センチネルに転用できる)。
+     * 1.0 は「リング全32点が低コントラストでないと検出しない」= 最も
+     * 見逃しに寛容な設定として有効な値なのでクランプの上限に含める。 */
+    if (ratio_threshold <= 0.0f) ratio_threshold = KOZOU_LC_RATIO_THRESHOLD_DEFAULT;
+    if (ratio_threshold > 1.0f) ratio_threshold = 1.0f;
 
     fz_try(ctx) {
         doc = fz_open_document(ctx, path);
@@ -3909,7 +3920,7 @@ void kozou_detect_low_contrast_text(
                      * 「見える／見えない」を決めてしまい誤判定を招くため、
                      * リング全体に対する比率で安定して判定する。 */
                     float low_ratio = (float)low_count / (float)ring_total;
-                    if (low_ratio < KOZOU_LC_RATIO_THRESHOLD) continue;
+                    if (low_ratio < ratio_threshold) continue;
 
                     /* JSON 出力用の代表値（リング平均）*/
                     float cr = cr_sum / ring_total;

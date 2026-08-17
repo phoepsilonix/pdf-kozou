@@ -519,6 +519,12 @@ pub struct DetectLowContrastRequest {
     /// コントラスト比の閾値 (1.0〜21.0)。デフォルト 1.5。
     #[serde(default)]
     pub contrast_threshold: Option<f32>,
+    /// 外周リング(32点)のうち低コントラスト点が占める割合の閾値
+    /// (0.0〜1.0)。デフォルト 0.75。小さいほど部分的な同化も拾いやすく
+    /// なる(見逃し減/誤検出増のトレードオフ)、大きいほど全周が同化して
+    /// いる場合のみ検出する(誤検出減/見逃し増)。
+    #[serde(default)]
+    pub ratio_threshold: Option<f32>,
     #[serde(default)]
     pub layout_w: Option<f32>,
     #[serde(default)]
@@ -540,6 +546,7 @@ pub fn detect_low_contrast_text(
         .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
     let contrast_threshold = req.contrast_threshold.unwrap_or(1.5);
+    let ratio_threshold = req.ratio_threshold.unwrap_or(0.0); // 0.0 = C側でデフォルト(0.75)適用
     let layout_w = req.layout_w.unwrap_or(0.0);
     let layout_h = req.layout_h.unwrap_or(0.0);
     let layout_em = req.layout_em.unwrap_or(0.0);
@@ -571,6 +578,7 @@ pub fn detect_low_contrast_text(
             layout_h,
             layout_em,
             contrast_threshold,
+            ratio_threshold,
             out,
             &mut res,
         );

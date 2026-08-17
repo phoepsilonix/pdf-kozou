@@ -61,7 +61,10 @@ const REASON_KEY: Record<string, string> = {
   whitespace_only: "hidden.reason_whitespace",
 };
 
-const DEFAULT_THR = { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8 };
+// lcRatio: 低コントラスト検出の外周リング(32点)のうち何割が低コントラスト
+// なら「埋没」と判定するか(0.0〜1.0)。大きいほど厳格(全周が同化して
+// いる場合のみ検出)、小さいほど緩め(部分的な同化も拾う)。
+const DEFAULT_THR = { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.75 };
 
 type Thr = typeof DEFAULT_THR;
 
@@ -69,17 +72,17 @@ const PRESETS: { id: string; labelKey: string; thr: Thr }[] = [
   {
     id: "strict",
     labelKey: "hidden.preset_strict",
-    thr: { alpha: 5, contrast: 1.0, size: 1.0, cover: 0.9 },
+    thr: { alpha: 5, contrast: 1.0, size: 1.0, cover: 0.9, lcRatio: 0.9 },
   },
   {
     id: "normal",
     labelKey: "hidden.preset_normal",
-    thr: { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8 },
+    thr: { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.75 },
   },
   {
     id: "loose",
     labelKey: "hidden.preset_loose",
-    thr: { alpha: 30, contrast: 1.5, size: 4.0, cover: 0.6 },
+    thr: { alpha: 30, contrast: 1.5, size: 4.0, cover: 0.6, lcRatio: 0.5 },
   },
 ];
 
@@ -90,7 +93,10 @@ function loadLastThr(): Thr | null {
     const raw = localStorage.getItem(LAST_THR_KEY);
     if (!raw) return null;
     const v = JSON.parse(raw) as Thr;
-    if (typeof v.alpha === "number" && typeof v.contrast === "number") return v;
+    if (typeof v.alpha === "number" && typeof v.contrast === "number") {
+      // 旧バージョンで保存された値に lcRatio が無い場合はデフォルトで補完
+      return { ...DEFAULT_THR, ...v };
+    }
   } catch {}
   return null;
 }
@@ -250,7 +256,11 @@ async function detectAllPages(
       );
     if (enabled.has("low_contrast"))
       all.push(
-        ...toAnyHits("low_contrast", (await detectLowContrastText(path, p, thr.contrast)).hits, p),
+        ...toAnyHits(
+          "low_contrast",
+          (await detectLowContrastText(path, p, thr.contrast, thr.lcRatio)).hits,
+          p,
+        ),
       );
     if (enabled.has("tiny"))
       all.push(...toAnyHits("tiny", (await detectTinyText(path, p, thr.size)).hits, p));
@@ -855,7 +865,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             all.push(
               ...toAnyHits(
                 "low_contrast",
-                (await detectLowContrastText(filePath, p, thr.contrast)).hits,
+                (await detectLowContrastText(filePath, p, thr.contrast, thr.lcRatio))
+                  .hits,
                 p,
               ),
             );
@@ -1332,6 +1343,11 @@ function ThrPanel({
   const sliders = [
     { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1 },
     { key: "contrast", label: t("hidden.threshold_contrast"), min: 1, max: 21, step: 0.1 },
+    // lcRatio は low_contrast 用の2つ目のパラメータなので contrast の直後に置き、
+    // ラベル自体にも「低コントラスト」を明記して同じ検出タイプへの対応が
+    // 一目でわかるようにする(alpha/contrast/size/coverだけだと見た目上
+    // どの検出トグルに対応するかが名前からしか判断できなかったため)。
+    { key: "lcRatio", label: t("hidden.threshold_lc_ratio"), min: 0.1, max: 1, step: 0.05 },
     { key: "size", label: t("hidden.threshold_size"), min: 0.1, max: 10, step: 0.1 },
     { key: "cover", label: t("hidden.threshold_cover"), min: 0.1, max: 1, step: 0.05 },
   ] as const;
