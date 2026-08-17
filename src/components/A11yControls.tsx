@@ -14,11 +14,11 @@
 // 使い方:
 //   <A11yControls />
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { tts } from "../lib/tts";
-import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "../lib/i18n";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Locale } from "../lib/i18n";
+import { LOCALE_LABELS, SUPPORTED_LOCALES, useI18n } from "../lib/i18n";
 import { F } from "../lib/theme";
+import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
 import { FloatingMenu } from "./FloatingMenu";
 
@@ -61,6 +61,7 @@ export function TtsToggleButton() {
 
   return (
     <button
+      type="button"
       onClick={toggle}
       style={{
         ...btnStyle,
@@ -127,6 +128,7 @@ export function LocaleSelector() {
   return (
     <>
       <button
+        type="button"
         ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={btnStyle}
@@ -143,6 +145,7 @@ export function LocaleSelector() {
         <div role="listbox" style={{ minWidth: 110 }}>
           {SUPPORTED_LOCALES.map((loc) => (
             <button
+              type="button"
               key={loc}
               role="option"
               aria-selected={loc === locale}

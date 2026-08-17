@@ -8,41 +8,41 @@
 
 export default CompressPage;
 
-import { useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useSaveDialog } from "../hooks/useSaveDialog";
-import { usePdfStore } from "../store/usePdfStore";
-import {
-  compressPdf,
-  getUniqueTempPath,
-  moveFile,
-  renderPage,
-  type CompressPreset,
-  type CompressResponse,
-  type PdfInfo,
-  type PickedFolder,
-  joinPath,
-  isAndroid,
-} from "../lib/tauri";
-import {
-  buildMobileOutputSubfolder,
-  mobileOutputPreviewLabel,
-  type MobileSavedFileInfo,
-} from "../lib/mobileOutput";
-import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
-import { F } from "../lib/theme";
-import { FS } from "../lib/typography";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { LiveRegion } from "../components/A11yControls";
+import { Spinner } from "../components/common";
+import { MetadataEditModal } from "../components/MetadataEditModal";
 import { useA11y } from "../hooks/useA11y";
 import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
-import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { LiveRegion } from "../components/A11yControls";
-import { useI18n } from "../lib/i18n";
-import { buildName, appendName, stem } from "../lib/filename";
-import { formatFilenameForSpeech } from "../lib/speakName";
-import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
-import { Spinner } from "../components/common";
+import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
+import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
+import { appendName, buildName, stem } from "../lib/filename";
+import { useI18n } from "../lib/i18n";
+import {
+  buildMobileOutputSubfolder,
+  type MobileSavedFileInfo,
+  mobileOutputPreviewLabel,
+} from "../lib/mobileOutput";
+import { formatFilenameForSpeech } from "../lib/speakName";
+import {
+  type CompressPreset,
+  type CompressResponse,
+  compressPdf,
+  getUniqueTempPath,
+  isAndroid,
+  joinPath,
+  moveFile,
+  type PdfInfo,
+  type PickedFolder,
+  renderPage,
+} from "../lib/tauri";
+import { F } from "../lib/theme";
+import { tts } from "../lib/tts";
+import { FS } from "../lib/typography";
+import { usePdfStore } from "../store/usePdfStore";
 
 interface Props {
   filePath: string;
@@ -148,8 +148,6 @@ export function CompressPage({
     setError,
     gsAvailable,
     setGsAvailable,
-    activeCompressMode,
-    setActiveCompressMode,
     useGsPreference,
     customGsPath,
     convertLayoutW,
@@ -228,7 +226,7 @@ export function CompressPage({
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
   const { isNarrow } = useViewport();
-  const [statusMsg, setStatusMsg] = useState("");
+  const [statusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const [savedFilePath, setSavedFilePath] = useState<string | null>(null);
   const PRESET_OPTIONS_I18N = useMemo(
@@ -483,7 +481,7 @@ export function CompressPage({
             layoutEm: convertLayoutEm,
           }),
         );
-      } catch (e) {
+      } catch {
         setPreview("");
       }
       // 画面表示（−X%）と同じ「削減率」を読み上げる。負（増加）の場合は 0 とみなす。
@@ -844,6 +842,7 @@ export function CompressPage({
         </span>
         <pre style={c.errPre}>{errMsg}</pre>
         <button
+          type="button"
           style={c.btnBackSm}
           onClick={() => {
             setPhase("edit");
@@ -920,6 +919,7 @@ export function CompressPage({
           ))}
         </div>
         <button
+          type="button"
           style={c.btnBackSm}
           onClick={() => {
             setPhase("edit");
@@ -979,6 +979,7 @@ export function CompressPage({
       <div style={c.root}>
         <div style={c.header}>
           <button
+            type="button"
             style={c.btnBack}
             onClick={() => {
               if (savedFilePath) discardSave(savedFilePath);
@@ -1103,7 +1104,7 @@ export function CompressPage({
                 >
                   {t("compress.chain_mode")}
                 </div>
-                <button style={c.btnChain} onClick={handleChainNext}>
+                <button type="button" style={c.btnChain} onClick={handleChainNext}>
                   {useGs ? t("compress.chain_hint_mupdf") : t("compress.chain_hint_gs")}
                 </button>
                 <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginTop: 4 }}>
@@ -1155,6 +1156,7 @@ export function CompressPage({
               <div style={saveBtnRowStyle}>
                 {savedFilePath && (
                   <button
+                    type="button"
                     style={metaEditBtnStyle}
                     onClick={() => setMetaEditOpen(true)}
                     aria-label={t("meta_edit.title")}
@@ -1163,7 +1165,12 @@ export function CompressPage({
                   </button>
                 )}
                 <div style={saveBtnPairStyle}>
-                  <button style={c.btnSaveOriginal} onClick={handleSaveOriginal} disabled={saving}>
+                  <button
+                    type="button"
+                    style={c.btnSaveOriginal}
+                    onClick={handleSaveOriginal}
+                    disabled={saving}
+                  >
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}
                     >
@@ -1175,6 +1182,7 @@ export function CompressPage({
                     </div>
                   </button>
                   <button
+                    type="button"
                     style={c.btnSaveCompressed}
                     onClick={handleSaveCompressed}
                     disabled={saving}
@@ -1223,7 +1231,7 @@ export function CompressPage({
     <div style={c.root}>
       <div style={headerStyle}>
         {onBack && (
-          <button style={c.backBtn} onClick={onBack}>
+          <button type="button" style={c.backBtn} onClick={onBack}>
             {t("compress.back_to_source")}
           </button>
         )}
@@ -1236,6 +1244,7 @@ export function CompressPage({
           {gsAvailable && (
             <div style={{ display: "flex", gap: 4 }}>
               <button
+                type="button"
                 style={{
                   padding: "2px 10px",
                   fontSize: FS.caption,
@@ -1253,6 +1262,7 @@ export function CompressPage({
                 {t("compress.standard_mupdf")}
               </button>
               <button
+                type="button"
                 style={{
                   padding: "2px 10px",
                   fontSize: FS.caption,
@@ -1276,6 +1286,7 @@ export function CompressPage({
               連携元(trim/rotate 等)へ戻るには上の「戻る」ボタンを使う。 */}
           {currentSource !== (sourceFile ?? filePath) && (
             <button
+              type="button"
               style={{
                 padding: "4px 10px",
                 fontSize: FS.caption,
@@ -1303,6 +1314,7 @@ export function CompressPage({
             <div style={c.presetGrid}>
               {PRESET_OPTIONS_I18N.map((p) => (
                 <button
+                  type="button"
                   key={p.id}
                   onClick={() => setPreset(p.id)}
                   aria-label={p.label}
@@ -1310,7 +1322,7 @@ export function CompressPage({
                   style={{
                     ...c.card,
                     ...(preset === p.id
-                      ? { borderColor: p.color, background: p.color + "22" }
+                      ? { borderColor: p.color, background: `${p.color}22` }
                       : {}),
                   }}
                 >
@@ -1506,6 +1518,7 @@ export function CompressPage({
             <div style={c.presetGrid}>
               {GS_PRESETS_I18N.map((p) => (
                 <button
+                  type="button"
                   key={p.id}
                   onClick={() => setGsPreset(p.id)}
                   aria-label={p.label}
@@ -1513,7 +1526,7 @@ export function CompressPage({
                   style={{
                     ...c.card,
                     ...(gsPreset === p.id
-                      ? { borderColor: p.color, background: p.color + "22" }
+                      ? { borderColor: p.color, background: `${p.color}22` }
                       : {}),
                   }}
                 >
@@ -1550,7 +1563,7 @@ export function CompressPage({
               androidUI ? (
                 <div style={c.dirRow}>
                   <div style={c.dirPath}>{androidFolder?.folderName || t("common.select_dir")}</div>
-                  <button style={c.dirPickBtn} onClick={() => pickAndroidFolder()}>
+                  <button type="button" style={c.dirPickBtn} onClick={() => pickAndroidFolder()}>
                     {t("compress.select_folder")}
                   </button>
                 </div>
@@ -1569,12 +1582,13 @@ export function CompressPage({
             ) : (
               <div style={c.dirRow}>
                 <div style={c.dirPath}>{outDir || t("compress.no_dir_placeholder")}</div>
-                <button style={c.dirPickBtn} onClick={pickDir}>
+                <button type="button" style={c.dirPickBtn} onClick={pickDir}>
                   {t("compress.select_folder")}
                 </button>
               </div>
             )}
             <button
+              type="button"
               style={c.btnExec}
               onClick={handleBatch}
               // useGs による制限を解除。gsPath があれば実行可能に
@@ -1588,6 +1602,7 @@ export function CompressPage({
         ) : (
           <div style={c.singleExecBox}>
             <button
+              type="button"
               style={{ ...c.btnExec, ...(useGs && !gsPath ? c.btnExecDim : {}) }}
               onClick={handlePreview}
               // GSモードでも gsPath が見つかっていれば有効化

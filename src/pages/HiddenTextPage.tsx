@@ -2,41 +2,40 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
 
-import { useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  renderPage,
-  detectTransparentText,
-  detectLowContrastText,
-  detectTinyText,
-  detectBuriedText,
-  detectControlChars,
-  sanitizeHiddenText,
-  sanitizeType3Text,
-  type PdfInfo,
-  type SanitizeOrigin,
-  type PickedFolder,
-  joinPath,
-  isAndroid,
-} from "../lib/tauri";
-import {
-  buildMobileOutputSubfolder,
-  mobileOutputPreviewLabel,
-  type MobileSavedFileInfo,
-} from "../lib/mobileOutput";
-import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
-import { Spinner, PageHeader, TapRevealText } from "../components/common";
-import { useI18n } from "../lib/i18n";
-import { buildName } from "../lib/filename";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { PageHeader, Spinner, TapRevealText } from "../components/common";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { tts } from "../lib/tts";
-import { F } from "../lib/theme";
-import { FS } from "../lib/typography";
-import { useSaveDialog } from "../hooks/useSaveDialog";
-import { type FileEntry } from "../store/usePdfStore";
-import { useViewport } from "../hooks/useViewport";
+import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
 import { useIsMobilePlatform } from "../hooks/usePlatform";
+import { useSaveDialog } from "../hooks/useSaveDialog";
+import { useViewport } from "../hooks/useViewport";
+import { buildName } from "../lib/filename";
+import { useI18n } from "../lib/i18n";
+import {
+  buildMobileOutputSubfolder,
+  type MobileSavedFileInfo,
+  mobileOutputPreviewLabel,
+} from "../lib/mobileOutput";
+import {
+  detectBuriedText,
+  detectControlChars,
+  detectLowContrastText,
+  detectTinyText,
+  detectTransparentText,
+  isAndroid,
+  joinPath,
+  type PdfInfo,
+  type PickedFolder,
+  renderPage,
+  type SanitizeOrigin,
+  sanitizeHiddenText,
+} from "../lib/tauri";
+import { F } from "../lib/theme";
+import { tts } from "../lib/tts";
+import { FS } from "../lib/typography";
+import type { FileEntry } from "../store/usePdfStore";
 
 // ── 型定義 ─────────────────────────────────────────────────────────────────
 
@@ -596,6 +595,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 <div style={s.statusBox}>{t("mobile.save_preview_pending" as any)}</div>
               ))}
             <button
+              type="button"
               style={s.detectBtn}
               onClick={() => {
                 setPhase("edit");
@@ -664,7 +664,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             ))}
           </div>
           {/* 閾値 */}
-          <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
+          <button type="button" style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
             ⚙ 閾値設定 {showThr ? "▲" : "▼"}
           </button>
           {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
@@ -691,7 +691,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   <div style={s.statusBox}>
                     {androidFolder?.folderName || t("hidden.output_dir_empty")}
                   </div>
-                  <button style={s.navBtn} onClick={() => pickAndroidFolder()}>
+                  <button type="button" style={s.navBtn} onClick={() => pickAndroidFolder()}>
                     {t("hidden.output_dir_pick" as any)}
                   </button>
                 </>
@@ -708,7 +708,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             ) : (
               <>
                 <div style={s.statusBox}>{outDir || t("hidden.output_dir_empty")}</div>
-                <button style={s.navBtn} onClick={pickDir}>
+                <button type="button" style={s.navBtn} onClick={pickDir}>
                   {t("hidden.output_dir_pick" as any)}
                 </button>
               </>
@@ -732,6 +732,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               ))}
               {/* 実行ボタン */}
               <button
+                type="button"
                 style={s.detectBtn}
                 onClick={() => {
                   const r = runBatch();
@@ -772,7 +773,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [groups, setGroups] = useState<HitGroup[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sanitizing, setSanitizing] = useState(false);
-  const [type3Sanitizing, setType3Sanitizing] = useState(false);
   const [status, setStatus] = useState("");
   const [imgSrc, setImgSrc] = useState("");
   const [imgNatW, setImgNatW] = useState(1);
@@ -793,7 +793,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         borderBottom: "1px solid var(--c-border)",
       }
     : s.left;
-  const rightStyle: React.CSSProperties = isNarrow ? { ...s.right, minHeight: 0 } : s.right;
   // 横並び時、検出結果リストは幅を固定して自身でスクロールさせる。
   // 以前は幅指定がなく、検出件数が多いとリストの内容幅なりに広がって
   // プレビュー領域(s.preview)を圧迫し、消えてしまっていた。
@@ -1020,6 +1019,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               <div style={s.secTitle}>ページ</div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <button
+                  type="button"
                   style={s.navBtn}
                   onClick={() => {
                     setPageIndex((p) => Math.max(0, p - 1));
@@ -1037,6 +1037,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                   {pageIndex + 1} / {pageCount}
                 </div>
                 <button
+                  type="button"
                   style={s.navBtn}
                   onClick={() => {
                     setPageIndex((p) => Math.min(pageCount - 1, p + 1));
@@ -1079,7 +1080,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               </div>
             </div>
 
-            <button style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
+            <button type="button" style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
               ⚙ 閾値設定 {showThr ? "▲" : "▼"}
             </button>
             {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
@@ -1118,6 +1119,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                 />
                 {groups.length > 0 && imgNatW > 1 && (
                   <svg
+                    aria-hidden="true"
                     style={{
                       position: "absolute",
                       inset: 0,
@@ -1166,7 +1168,6 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                 </div>
                 {groups.map((g) => {
                   const sel = selectedIds.has(g.id);
-                  const color = typeColor(g.type);
                   const icon = DETECT_TYPES.find((d) => d.id === g.type)?.icon ?? "";
                   return (
                     <div
@@ -1210,6 +1211,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                       </span>
                       <span style={s.groupCount}>{g.chars.length}字</span>
                       <button
+                        type="button"
                         style={s.expandBtn}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1251,6 +1253,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
 
       <div style={s.runBar}>
         <button
+          type="button"
           style={s.detectBtn}
           onClick={() => {
             setAllPagesMode(false);
@@ -1263,6 +1266,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         </button>
         {pageCount > 1 && (
           <button
+            type="button"
             style={s.detectBtn}
             onClick={() => {
               setAllPagesMode(true);
@@ -1275,7 +1279,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           </button>
         )}
         {groups.length > 0 && (
-          <button style={s.sanBtn} onClick={runSanitize} disabled={sanitizing}>
+          <button type="button" style={s.sanBtn} onClick={runSanitize} disabled={sanitizing}>
             {sanitizing ? <Spinner /> : `🧹 無害化 (${selCharCount}字)`}
           </button>
         )}
@@ -1340,6 +1344,7 @@ function ThrPanel({
           const active = JSON.stringify(thr) === JSON.stringify(p.thr);
           return (
             <button
+              type="button"
               key={p.id}
               style={{ ...s.smBtn, fontWeight: active ? 700 : 400 }}
               onClick={() => setThr(() => p.thr)}
@@ -1349,7 +1354,7 @@ function ThrPanel({
           );
         })}
         {lastThr && (
-          <button style={s.smBtn} onClick={() => setThr(() => lastThr)}>
+          <button type="button" style={s.smBtn} onClick={() => setThr(() => lastThr)}>
             ↩ {t("hidden.preset_last")}
           </button>
         )}
@@ -1376,7 +1381,7 @@ function ThrPanel({
           </div>
         </label>
       ))}
-      <button style={s.resetBtn} onClick={() => setThr(() => DEFAULT_THR)}>
+      <button type="button" style={s.resetBtn} onClick={() => setThr(() => DEFAULT_THR)}>
         {t("hidden.threshold_reset")}
       </button>
     </div>

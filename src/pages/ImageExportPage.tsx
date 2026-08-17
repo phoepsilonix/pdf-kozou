@@ -5,69 +5,65 @@
 // src/pages/ImageExportPage.tsx — 単体 & バッチ対応
 export default ImageExportPage;
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LiveRegion } from "../components/A11yControls";
 import {
-  Spinner,
-  ErrorView,
-  ThumbCard,
-  PageHeader,
   BtnBack,
   BtnPrimary,
+  ErrorView,
+  PageHeader,
+  Spinner,
   TapRevealText,
+  ThumbCard,
 } from "../components/common";
-import { usePdfStore, type FileEntry } from "../store/usePdfStore";
-import {
-  renderPage,
-  exportImages,
-  exportImagePdf,
-  checkPathConflict,
-  getPdfInfo,
-  type PdfInfo,
-  type ImageFormat,
-  joinPath,
-} from "../lib/tauri";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
-//import { C, F } from "../lib/theme";
-import { F } from "../lib/theme";
+import { PreviewPane } from "../components/PreviewPane";
 import { useA11y } from "../hooks/useA11y";
-import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { LiveRegion } from "../components/A11yControls";
-import { useI18n } from "../lib/i18n";
-import { announceValueChange } from "../lib/announce";
-import { FS } from "../lib/typography";
+import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
+import { usePreview } from "../hooks/usePreview";
 import { useSaveDialog } from "../hooks/useSaveDialog";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { useViewport } from "../hooks/useViewport";
+import { announceValueChange } from "../lib/announce";
+import { useI18n } from "../lib/i18n";
 import {
-  type ImpositionMode,
-  IMPOSITION_MODE_DEFS,
-  IMPOSITION_MODES,
   calcSheets,
-  type DeImpositionMode,
-  DE_IMPOSITION_MODE_DEFS,
-  calcBookletSheets,
   calcSplitCells,
+  DE_IMPOSITION_MODE_DEFS,
+  type DeImpositionMode,
+  IMPOSITION_MODE_DEFS,
+  type ImpositionMode,
 } from "../lib/imposition";
 import {
-  renderImposition,
-  rasterizeImposition,
-  splitImpositionPdf,
-  splitCellRender,
-  isAndroid,
-  type PickedFolder,
-} from "../lib/tauri";
-import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
-import { PreviewPane } from "../components/PreviewPane";
-import { usePreview } from "../hooks/usePreview";
-import { useViewport } from "../hooks/useViewport";
-import { useIsMobilePlatform } from "../hooks/usePlatform";
-import { useSectionToggle } from "../hooks/useSectionToggle";
-import { FixedMobileNav } from "../components/FixedMobileNav";
-import {
   buildMobileOutputSubfolder,
-  mobileOutputPreviewLabel,
   type MobileSavedFileInfo,
+  mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import {
+  checkPathConflict,
+  exportImagePdf,
+  exportImages,
+  getPdfInfo,
+  type ImageFormat,
+  isAndroid,
+  joinPath,
+  type PdfInfo,
+  type PickedFolder,
+  rasterizeImposition,
+  renderImposition,
+  renderPage,
+  splitCellRender,
+  splitImpositionPdf,
+} from "../lib/tauri";
+//import { C, F } from "../lib/theme";
+import { F } from "../lib/theme";
+import { tts } from "../lib/tts";
+import { FS } from "../lib/typography";
+import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 
 interface Props {
   filePath: string;
@@ -130,7 +126,7 @@ function buildOpToken({
   // deimpose 以外
   if (opTokenKey !== "deimposed") {
     if (impositionMode !== "1up" && outputMode === "pdf") {
-      return t("filename.label.rasterized") + "_" + t(`filename.label.${opTokenKey}`);
+      return `${t("filename.label.rasterized")}_${t(`filename.label.${opTokenKey}`)}`;
     }
     if (impositionMode === "1up" && outputMode !== "pdf") {
       return "";
@@ -142,7 +138,7 @@ function buildOpToken({
   // deimpose の場合
   const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
   const prefix = modePrefixMap[def.labelKey] ?? "booklet";
-  return t(`filename.label.${prefix}`) + "_" + t(`filename.label.${opTokenKey}`);
+  return `${t(`filename.label.${prefix}`)}_${t(`filename.label.${opTokenKey}`)}`;
 }
 
 export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
@@ -288,36 +284,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   );
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
 
-  // 現在のモードに対応するファイル名トークンのキー
-  const opTokenKey = useMemo(() => {
-    if (processDir === "deimpose") return "deimposed";
-    return impositionMode === "1up" ? "rasterized" : impositionMode; // 2up/4up/booklet
-  }, [processDir, impositionMode]);
-
-  // ローカライズ済みトークン（例: 画像化 / 2面 / 中綴じ / 面付け解除）
-  /*
-  let opTokenTmp;
-  if (opTokenKey !== "deimposed") {
-    if (impositionMode !== "1up" && outputMode === "pdf") {
-      opTokenTmp = t(`filename.label.rasterized`) + "_" + t(`filename.label.${opTokenKey}` as any);
-    } else if (impositionMode === "1up" && outputMode !== "pdf") {
-      opTokenTmp = "";
-    } else {
-      opTokenTmp = t(`filename.label.${opTokenKey}` as any);
-    }
-  } else {
-    const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
-    if (def.id === "sequential") {
-      if (def.labelKey === "image.deimp_2up") {
-        opTokenTmp = t("filename.label.2up") + "_" + t(`filename.label.${opTokenKey}` as any);
-      } else if (def.labelKey === "image.deimp_4up") {
-        opTokenTmp = t("filename.label.4up") + "_" + t(`filename.label.${opTokenKey}` as any);
-      }
-    } else {
-      opTokenTmp = t("filename.label.booklet") + "_" + t(`filename.label.${opTokenKey}` as any);
-    }
-  }
-  const opToken = opTokenTmp;*/
   const opToken = buildOpToken({
     processDir,
     impositionMode,
@@ -489,7 +455,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 面付け/製本モードそのものの切り替えはクライアント側の合成表示なので
   // ここでの再取得は不要（単体プレビューと同じ仕組み）。
   useEffect(() => {
-    if (!isBatch || !batchFiles || !batchFiles[previewIdx]) return;
+    if (!isBatch || !batchFiles?.[previewIdx]) return;
     if (!previewEnabled) {
       setBatchPreviewInfo(null);
       setBatchPreviewThumbs([]);
@@ -606,7 +572,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
       // 入力（A3等）シートの枚数 = 対象ページ数
       const pageSpec = resolvePageSpec(pages || "", total); // 0始まり
-      let sheetPageNums = (
+      const sheetPageNums = (
         pageSpec.length ? pageSpec : Array.from({ length: total }, (_, i) => i)
       ).map((i) => i + 1); // 1始まり
 
@@ -917,7 +883,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               }
             }
           }
-          const res = await rasterizeImposition({
+          await rasterizeImposition({
             input: filePath,
             output: outPath,
             sheetPages,
@@ -1066,7 +1032,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           // 入力（A3等）シートの枚数 = 対象ページ数
           const pageSpec = resolvePageSpec(pages || "", total); // 0始まり
-          let sheetPageNums = (
+          const sheetPageNums = (
             pageSpec.length ? pageSpec : Array.from({ length: total }, (_, i) => i)
           ).map((i) => i + 1); // 1始まり
 
@@ -1347,14 +1313,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.bpFile}>{d.file} → </span>
                 {d.pdfPath ? (
                   <>
-                    <span style={s.bpMeta}>{d.pdfPath.split(/[\/\\]/).pop() ?? ""}</span>
+                    <span style={s.bpMeta}>{d.pdfPath.split(/[/\\]/).pop() ?? ""}</span>
                     <span style={s.bpCount}>
                       {t("image.pages_count", { count: String(d.count) })}
                     </span>
                   </>
                 ) : d.savedFiles && d.savedFiles.length > 0 ? (
                   <>
-                    <span style={s.bpMeta}>{d.savedFiles[0].split(/[\/\\]/).pop() ?? ""}</span>
+                    <span style={s.bpMeta}>{d.savedFiles[0].split(/[/\\]/).pop() ?? ""}</span>
                     <span style={s.bpCount}>
                       {t("image.images_total", { count: String(d.savedFiles.length) })}
                     </span>
@@ -1647,6 +1613,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.fmtRow}>
               {(["jpeg", "png", "svg"] as const).map((f) => (
                 <button
+                  type="button"
                   key={f}
                   aria-label={f.toUpperCase()}
                   aria-pressed={format === f}
@@ -1685,6 +1652,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.secLabel}>{t("image.process_dir_label" as any)}</div>
             <div style={s.fmtRow}>
               <button
+                type="button"
                 aria-label={t("image.process_dir_normal" as any)}
                 aria-pressed={processDir === "normal"}
                 onClick={(e) => {
@@ -1698,6 +1666,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.fmtDesc}>{t("image.process_dir_normal_sub" as any)}</span>
               </button>
               <button
+                type="button"
                 aria-label={t("image.process_dir_split" as any)}
                 aria-pressed={processDir === "deimpose"}
                 onClick={(e) => {
@@ -1722,6 +1691,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.secLabel}>{t("image.output_mode")}</div>
             <div style={s.fmtRow}>
               <button
+                type="button"
                 aria-label={t("image.mode_images")}
                 aria-pressed={outputMode === "images"}
                 onClick={(e) => {
@@ -1734,6 +1704,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.fmtDesc}>{t("image.mode_images_sub")}</span>
               </button>
               <button
+                type="button"
                 aria-label={t("image.mode_pdf")}
                 aria-pressed={outputMode === "pdf"}
                 disabled={format === "svg"}
@@ -1761,6 +1732,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {IMPOSITION_MODES_I18N.map((m) => (
                     <button
+                      type="button"
                       key={m.id}
                       aria-label={m.label}
                       aria-pressed={impositionMode === m.id}
@@ -1812,6 +1784,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {DE_IMPOSITION_MODE_DEFS.map((m, idx) => (
                     <button
+                      type="button"
                       key={idx}
                       aria-label={t(m.labelKey as any)}
                       aria-pressed={deimpIndex === idx}
@@ -1852,6 +1825,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.dpiGrid}>
                   {DPI_PRESETS.map((p) => (
                     <button
+                      type="button"
                       key={p.val}
                       aria-label={p.label}
                       aria-pressed={dpi === p.val}
@@ -1869,6 +1843,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 {/* DPI 数値直接入力 — 大きめフォント */}
                 <div style={s.numRow}>
                   <button
+                    type="button"
                     style={s.stepBtn}
                     data-voice-skip
                     onClick={() => {
@@ -1886,9 +1861,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     min={36}
                     max={1200}
                     aria-label={t("image.dpi_label")}
-                    onChange={(e) => setDpi(parseInt(e.target.value) || 72)}
+                    onChange={(e) => setDpi(parseInt(e.target.value, 10) || 72)}
                   />
                   <button
+                    type="button"
                     style={s.stepBtn}
                     data-voice-skip
                     onClick={() => {
@@ -1921,7 +1897,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   step={5}
                   value={quality}
                   aria-label={t("image.quality_label")}
-                  onChange={(e) => setQuality(parseInt(e.target.value))}
+                  onChange={(e) => setQuality(parseInt(e.target.value, 10))}
                   style={{ width: "100%", accentColor: "var(--c-accent)" }}
                 />
                 <div style={s.rangeLabels}>
@@ -1995,6 +1971,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                         {androidFolder?.folderName || t("common.select_dir")}
                       </div>
                       <button
+                        type="button"
                         style={s.dirPickBtn}
                         onClick={() => pickAndroidFolder()}
                         aria-label={t("aria.output_dir_btn")}
@@ -2026,6 +2003,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       {outDir || t("common.select_dir")}
                     </div>
                     <button
+                      type="button"
                       style={s.dirPickBtn}
                       onClick={pickDir}
                       aria-label={t("aria.output_dir_btn")}
@@ -2318,7 +2296,7 @@ function ImpositionPreview({
   //   縦長ページ(h>w): w=PAGE_SHORT_SIDE, h=PAGE_SHORT_SIDE/aspect
   //   横長ページ(w>h): h=PAGE_SHORT_SIDE, w=PAGE_SHORT_SIDE*aspect
   const repPage = pdfInfo.pages?.[0];
-  const repAspect = repPage ? repPage.w / repPage.h : 1 / 1.414;
+  const repAspect = repPage ? repPage.w / repPage.h : 1 / Math.SQRT2;
   // 1ページの短辺サイズ。サイズ変更・製本ページの基準(480×330)と同じ
   // 1.5倍スケールに合わせて 120px → 180px に統一。
   // 狭い画面ではサイズ変更・製本ページと同じ比率(0.625倍)で縮小する。
@@ -2506,7 +2484,7 @@ function DeImpositionPreview({
 
   // 代表アスペクト（空白ページのサイズ決定にも使う）
   const repPb = pdfInfo.pages?.[sheetIdx[0]];
-  const repAspect = repPb ? repPb.w / repPb.h : 1.414;
+  const repAspect = repPb ? repPb.w / repPb.h : Math.SQRT2;
   // プレビュー基準サイズ: サイズ変更・製本ページの基準(480×330)に統一。
   // 狭い画面では同ページと同じ比率(0.625倍)で縮小する。
   const MAX_SHEET_H = isNarrow ? 210 : 330;

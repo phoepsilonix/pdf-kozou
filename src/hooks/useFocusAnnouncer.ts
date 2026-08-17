@@ -14,8 +14,8 @@
 // 使い方: App など最上位で一度だけ useFocusAnnouncer() を呼ぶ。
 
 import { useEffect } from "react";
-import { tts } from "../lib/tts";
 import { useI18n } from "../lib/i18n";
+import { tts } from "../lib/tts";
 
 function collapse(s: string): string {
   return s.replace(/\s+/g, " ").trim();
@@ -55,7 +55,9 @@ function labelText(el: HTMLElement): string {
   const wrap = el.closest("label");
   if (wrap) {
     const clone = wrap.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll("input, select, textarea").forEach((n) => n.remove());
+    clone.querySelectorAll("input, select, textarea").forEach((n) => {
+      n.remove();
+    });
     const c = collapse(clone.textContent || "");
     if (c) return c;
   }
@@ -65,19 +67,19 @@ function labelText(el: HTMLElement): string {
 /** 要素のアクセシブル名（aria-label > ラベル > テキスト > title > placeholder） */
 function accName(el: HTMLElement): string {
   const aria = el.getAttribute("aria-label");
-  if (aria && aria.trim()) return collapse(aria);
+  if (aria?.trim()) return collapse(aria);
   // フォーム部品は紐づくラベルから名前を得る（チェック/ラジオは自身に文言が無い）
   const tag = el.tagName.toLowerCase();
   if (tag === "input" || tag === "select" || tag === "textarea") {
     const lbl = labelText(el);
-    if (lbl) return lbl.length > 80 ? lbl.slice(0, 80) + "…" : lbl;
+    if (lbl) return lbl.length > 80 ? `${lbl.slice(0, 80)}…` : lbl;
   }
   const text = collapse(el.textContent || "");
-  if (text) return text.length > 80 ? text.slice(0, 80) + "…" : text;
+  if (text) return text.length > 80 ? `${text.slice(0, 80)}…` : text;
   const title = el.getAttribute("title");
-  if (title && title.trim()) return collapse(title);
+  if (title?.trim()) return collapse(title);
   const ph = (el as HTMLInputElement).placeholder;
-  if (ph && ph.trim()) return collapse(ph);
+  if (ph?.trim()) return collapse(ph);
   return "";
 }
 
@@ -234,7 +236,7 @@ export function useFocusAnnouncer() {
     const onChange = (e: Event) => {
       if (!tts.enabled) return;
       const el = e.target as HTMLElement | null;
-      if (!el || el.nodeType !== 1) return;
+      if (el?.nodeType !== 1) return;
       const msg = describeChange(el, t);
       if (msg) tts.speak(msg, true);
     };
@@ -243,7 +245,7 @@ export function useFocusAnnouncer() {
     const onInput = (e: Event) => {
       if (!tts.enabled) return;
       const el = e.target as HTMLElement | null;
-      if (!el || el.nodeType !== 1) return;
+      if (el?.nodeType !== 1) return;
       if (el.tagName.toLowerCase() !== "input" && el.tagName.toLowerCase() !== "textarea") return;
       if (inputTimer) clearTimeout(inputTimer);
       inputTimer = setTimeout(() => {

@@ -9,7 +9,9 @@
 import { create } from "zustand";
 
 export type BatchSaveConflictChoice =
-  { action: "overwrite" } | { action: "auto" } | { action: "cancel" };
+  | { action: "overwrite" }
+  | { action: "auto" }
+  | { action: "cancel" };
 
 interface BatchSaveConflictRequest {
   conflictCount: number;

@@ -3,10 +3,10 @@
 // -------------------------------------------------------------------------
 
 // src/components/ThemeSwitcher.tsx
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useI18n } from "../lib/i18n";
 //import { THEMES, getTheme, type ThemeId } from "../lib/themes";
 import { THEMES, type ThemeId } from "../lib/themes";
-import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
 import { FloatingMenu } from "./FloatingMenu";
 
@@ -34,6 +34,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
   return (
     <>
       <button
+        type="button"
         ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={{
@@ -73,6 +74,7 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
           </div>
           {(Object.values(THEMES) as Array<(typeof THEMES)[ThemeId]>).map((theme) => (
             <button
+              type="button"
               key={theme.id}
               onClick={() => handlePick(theme.id as ThemeId)}
               style={{

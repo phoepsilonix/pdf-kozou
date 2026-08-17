@@ -4,8 +4,8 @@
 // サムネイル読み込みの停止は呼び元側で enabled を見て制御する。
 
 import type { CSSProperties, ReactNode } from "react";
-import { useI18n } from "../lib/i18n";
 import { usePreview } from "../hooks/usePreview";
+import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
 
 interface PreviewPaneProps {
@@ -29,12 +29,14 @@ export function PreviewPane({ pageKey, label, children, fill = true }: PreviewPa
       <div style={s.head}>
         <span style={s.headLabel}>{label}</span>
         <button
+          type="button"
           style={s.toggleBtn}
           onClick={toggle}
           title={enabled ? t("preview.hide") : t("preview.show")}
         >
           {enabled ? (
             <svg
+              aria-hidden="true"
               width="14"
               height="14"
               viewBox="0 0 24 24"
@@ -49,6 +51,7 @@ export function PreviewPane({ pageKey, label, children, fill = true }: PreviewPa
             </svg>
           ) : (
             <svg
+              aria-hidden="true"
               width="14"
               height="14"
               viewBox="0 0 24 24"
@@ -72,6 +75,7 @@ export function PreviewPane({ pageKey, label, children, fill = true }: PreviewPa
       ) : (
         <div style={fill ? s.placeholder : s.placeholderGrow}>
           <svg
+            aria-hidden="true"
             width="28"
             height="28"
             viewBox="0 0 24 24"
@@ -87,7 +91,7 @@ export function PreviewPane({ pageKey, label, children, fill = true }: PreviewPa
             <line x1="1" y1="1" x2="23" y2="23" />
           </svg>
           <span style={s.placeholderText}>{t("preview.hidden_note")}</span>
-          <button style={s.showBtn} onClick={toggle}>
+          <button type="button" style={s.showBtn} onClick={toggle}>
             {t("preview.show")}
           </button>
         </div>

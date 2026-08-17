@@ -7,7 +7,7 @@ import { FS } from "../lib/typography";
 // src/components/PageSelector.tsx — 共通ページ範囲指定コンポーネント
 // 対応表記: "1-3,5,7-", "odd", "even", "-5" (末尾から5ページ), "all"
 
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 //import { getTheme } from "../lib/themes";
 
 export interface PageSelectorProps {
@@ -158,6 +158,7 @@ export function PageSelector({
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {(["all", "odd", "even", "range"] as Mode[]).map((m) => (
             <button
+              type="button"
               key={m}
               style={mode === m ? btnOn : btnBase}
               onClick={() => handleMode(m)}
@@ -233,6 +234,7 @@ export function PageSelector({
                       : t("page_selector.range");
             return (
               <button
+                type="button"
                 key={m}
                 style={mode === m ? btnOn : btnBase}
                 onClick={() => handleMode(m)}
@@ -300,17 +302,17 @@ export function resolvePageSpec(spec: string, total: number): number[] {
 
   for (const part of parts) {
     if (part.startsWith("^")) {
-      const n = parseInt(part.slice(1));
+      const n = parseInt(part.slice(1), 10);
       if (!isNaN(n) && n >= 1 && n <= total) excluded.add(n - 1);
       continue;
     }
     if (part.includes("-")) {
       const [a, b] = part.split("-");
-      const from = a ? parseInt(a) - 1 : 0;
-      const to = b ? parseInt(b) - 1 : total - 1;
+      const from = a ? parseInt(a, 10) - 1 : 0;
+      const to = b ? parseInt(b, 10) - 1 : total - 1;
       for (let i = Math.max(0, from); i <= Math.min(total - 1, to); i++) included.push(i);
     } else {
-      const n = parseInt(part) - 1;
+      const n = parseInt(part, 10) - 1;
       if (!isNaN(n) && n >= 0 && n < total) included.push(n);
     }
   }

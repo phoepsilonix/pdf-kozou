@@ -17,8 +17,8 @@
 // 場合に前のフォルダ分だけ保存されてしまう(中途半端な状態)。そのため
 // 全フォルダ分をまとめて事前スキャンしてから、確認は1回だけ行う。
 
-import { listFolderNames } from "./tauri";
 import { useBatchSaveConflictStore } from "../store/useBatchSaveConflictStore";
+import { listFolderNames } from "./tauri";
 
 /** "sample.png" -> ["sample", ".png"] / 拡張子なしなら ["name", ""] */
 function splitExt(name: string): [string, string] {

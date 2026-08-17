@@ -10,8 +10,8 @@
 // 読み上げず、ページが実際に変化したときのみ通知する。
 
 import { useEffect, useRef } from "react";
-import { tts } from "../lib/tts";
 import { useI18n } from "../lib/i18n";
+import { tts } from "../lib/tts";
 
 export function usePageAnnouncer(pageIndex: number, totalPages: number) {
   const { t } = useI18n();

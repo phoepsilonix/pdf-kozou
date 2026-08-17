@@ -9,8 +9,8 @@
 // イベントを発火しない値変更で使う。useFocusAnnouncer の input 監視では
 // 拾えないため、これらの操作箇所から明示的に呼び出す。
 
-import { tts } from "./tts";
 import { getCurrentLocale, translate } from "./i18n";
+import { tts } from "./tts";
 
 /** 「〇〇 を □□ に変更しました」と即座に読み上げる（ステッパー等の値変更用）。 */
 export function announceValueChange(name: string, value: string | number): void {

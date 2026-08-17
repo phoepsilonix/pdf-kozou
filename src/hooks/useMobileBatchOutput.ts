@@ -10,10 +10,10 @@
 // から呼び出す薄いラッパーにするだけでよい。
 
 import { useCallback, useEffect, useState } from "react";
-import { isMobile, isAndroid, type PickedFolder } from "../lib/tauri";
-import { commitSavedBatch, type MobileSavedFileInfo } from "../lib/mobileOutput";
-import { useBatchSaveFolder } from "./useBatchSaveFolder";
 import { guessMimeTypeFromPath } from "../lib/mimeType";
+import { commitSavedBatch, type MobileSavedFileInfo } from "../lib/mobileOutput";
+import { isAndroid, isMobile, type PickedFolder } from "../lib/tauri";
+import { useBatchSaveFolder } from "./useBatchSaveFolder";
 
 /**
  * commitMobileOutput() が投げるエラーのうち、「実行前に ensureAndroidFolder()

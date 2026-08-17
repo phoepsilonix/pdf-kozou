@@ -12,7 +12,7 @@
 // 2セクションしかない単純なケースでは閾値調整が不要でわかりやすいため。
 
 // hooks/useSectionToggle.ts
-import { useEffect, useState, useCallback, type RefObject } from "react";
+import { type RefObject, useCallback, useEffect, useState } from "react";
 
 export function useSectionToggle(
   scrollContainerRef: RefObject<HTMLElement | null>,

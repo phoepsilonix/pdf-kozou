@@ -3,20 +3,20 @@
 // -------------------------------------------------------------------------
 
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl as openUrlPlugin } from "@tauri-apps/plugin-opener";
+import type React from "react";
+import { useEffect, useState } from "react";
+import { useI18n } from "../lib/i18n";
 import {
-  verifyGsPath,
-  pickGsExecutable,
   findGsExecutable,
   findGsInDir,
-  suggestGsCandidates,
   isMobile,
+  pickGsExecutable,
+  suggestGsCandidates,
+  verifyGsPath,
 } from "../lib/tauri";
-import { openUrl as openUrlPlugin } from "@tauri-apps/plugin-opener";
-import React, { useEffect, useState } from "react";
-
-import { usePdfStore } from "../store/usePdfStore";
-import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
+import { usePdfStore } from "../store/usePdfStore";
 
 // ── ShortcutGroup サブコンポーネント ────────────────────────────────────────
 
@@ -362,6 +362,7 @@ const LicensePage: React.FC = () => {
                 </span>
               </div>
               <button
+                type="button"
                 onClick={() => checkGs()}
                 style={{
                   ...s.btnSmall,
@@ -383,7 +384,7 @@ const LicensePage: React.FC = () => {
                   <br />
                   {t("license.diag_gs_hint")}
                 </p>
-                <button onClick={openGitHub} style={s.btnSmall}>
+                <button type="button" onClick={openGitHub} style={s.btnSmall}>
                   {t("license.diag_github_btn")}
                 </button>
               </div>
@@ -422,6 +423,7 @@ const LicensePage: React.FC = () => {
                 spellCheck={false}
               />
               <button
+                type="button"
                 style={s.btnSmall}
                 onClick={handlePickGsFolder}
                 title={t("license.gs_browse_folder_hint")}
@@ -429,6 +431,7 @@ const LicensePage: React.FC = () => {
                 📁 {t("license.gs_browse_folder")}
               </button>
               <button
+                type="button"
                 style={{ ...s.btnSmall, ...s.btnSecondary }}
                 onClick={handlePickGs}
                 title={t("license.gs_path_browse")}
@@ -436,6 +439,7 @@ const LicensePage: React.FC = () => {
                 🔍
               </button>
               <button
+                type="button"
                 style={{ ...s.btnSmall, ...(gsVerifying ? s.btnDisabled : {}) }}
                 onClick={handleVerify}
                 disabled={gsVerifying || !gsPathInput.trim()}
@@ -443,7 +447,11 @@ const LicensePage: React.FC = () => {
                 ✔ {gsVerifying ? t("license.gs_path_verifying") : t("license.gs_path_verify")}
               </button>
               {customGsPath && (
-                <button style={{ ...s.btnSmall, ...s.btnClear }} onClick={handleClearCustomGs}>
+                <button
+                  type="button"
+                  style={{ ...s.btnSmall, ...s.btnClear }}
+                  onClick={handleClearCustomGs}
+                >
                   ✕ {t("license.gs_path_clear")}
                 </button>
               )}
@@ -458,6 +466,7 @@ const LicensePage: React.FC = () => {
                 </span>
                 {gsCandidates.map((c) => (
                   <button
+                    type="button"
                     key={c}
                     style={s.candidateBtn}
                     onClick={() => {
@@ -614,7 +623,7 @@ const LicensePage: React.FC = () => {
         <h2 style={s.h2}>{t("license.source_heading")}</h2>
         <div style={s.card}>
           <p style={{ fontSize: "14px", marginBottom: "12px" }}>{t("license.source_body")}</p>
-          <button onClick={openGitHub} style={s.githubBtn}>
+          <button type="button" onClick={openGitHub} style={s.githubBtn}>
             <span style={{ fontSize: "18px" }}>{t("license.github_btn")}</span>
             <span style={{ fontSize: "12px", opacity: 0.8 }}> (External Link)</span>
           </button>

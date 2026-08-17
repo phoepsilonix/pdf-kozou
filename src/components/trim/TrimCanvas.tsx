@@ -12,7 +12,7 @@
 //   - PDF は左下原点・Y軸上向き → top/bottom は視覚的に反転しない (top=画面上側の余白)
 
 //import { useRef, useEffect, useCallback, useState } from "react";
-import { useRef, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { TrimMargins } from "../../lib/tauri";
 import { getUiScale } from "../../lib/uiScale";
 

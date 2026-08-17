@@ -10,9 +10,9 @@
 // - {{variable}} 形式の変数展開に対応
 // - React Context で言語切り替え時にリロード不要
 
-import ja from "../locales/ja.json";
+import { createContext, type ReactNode, useCallback, useContext, useState } from "react";
 import en from "../locales/en.json";
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import ja from "../locales/ja.json";
 
 export type Locale = "ja" | "en";
 export const SUPPORTED_LOCALES: Locale[] = ["ja", "en"];

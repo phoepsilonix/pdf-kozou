@@ -10,29 +10,29 @@
 //   - 前後1ページをプリフェッチ
 export default ViewerPage;
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import {
-  renderPage,
-  getPdfInfo,
-  getPageText,
-  searchPage,
-  getPageLinks,
-  type PdfInfo,
-  type PdfMetadata,
-  type STextBlock,
-  type PageLink,
-} from "../lib/tauri";
-import { Spinner, PageHeader } from "../components/common";
-import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
-import { type FileEntry, usePdfStore } from "../store/usePdfStore";
-import { F } from "../lib/theme";
-import { getUiScale } from "../lib/uiScale";
-import { FS } from "../lib/typography";
-import { useI18n } from "../lib/i18n";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PageHeader, Spinner } from "../components/common";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { useViewport } from "../hooks/useViewport";
+import { useI18n } from "../lib/i18n";
+import {
+  getPageLinks,
+  getPageText,
+  getPdfInfo,
+  type PageLink,
+  type PdfInfo,
+  type PdfMetadata,
+  renderPage,
+  type STextBlock,
+  searchPage,
+} from "../lib/tauri";
+import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
+import { getUiScale } from "../lib/uiScale";
+import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 const THUMB_DPI = 52;
@@ -40,7 +40,7 @@ const RENDER_DPI = 96; // 固定。ズームは CSS transform で対応
 
 // ── ユーティリティ ────────────────────────────────────────────────────────────
 function pageAspect(info: PdfInfo | null, i: number): number {
-  if (!info?.pages[i]) return 1 / 1.414;
+  if (!info?.pages[i]) return 1 / Math.SQRT2;
   const p = info.pages[i];
   return (p as any).rotate === 90 || (p as any).rotate === 270 ? p.h / p.w : p.w / p.h;
 }
@@ -619,6 +619,7 @@ function MetaRow({ label, value }: { label: string; value?: string }) {
         {value}
       </span>
       <button
+        type="button"
         style={{ ...ds.copyBtn, ...(copied ? ds.copyBtnDone : {}) }}
         onClick={() =>
           navigator.clipboard.writeText(value).then(() => {
@@ -733,6 +734,7 @@ function InfoDrawer({
         <div style={{ flex: 1 }} />
         {(filePath.toLowerCase().endsWith(".pdf") || isImagePath(filePath)) && (
           <button
+            type="button"
             style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: FS.caption }}
             onClick={() => setMetaEditOpen(true)}
             title={t("meta_edit.title")}
@@ -742,12 +744,13 @@ function InfoDrawer({
           </button>
         )}
         <button
+          type="button"
           style={{ ...ds.copyBtn, padding: "3px 10px", fontSize: FS.caption }}
           onClick={handleCopyAll}
         >
           {allCopied ? t("viewer.copied") : t("viewer.copy_all")}
         </button>
-        <button style={ds.closeBtn} onClick={onClose}>
+        <button type="button" style={ds.closeBtn} onClick={onClose}>
           ✕
         </button>
       </div>
@@ -756,7 +759,11 @@ function InfoDrawer({
         <div style={ds.row}>
           <span style={ds.label}>{t("viewer.meta_filename")}</span>
           <span style={{ ...ds.value, wordBreak: "break-all" }}>{fileName}</span>
-          <button style={ds.copyBtn} onClick={() => navigator.clipboard.writeText(fileName)}>
+          <button
+            type="button"
+            style={ds.copyBtn}
+            onClick={() => navigator.clipboard.writeText(fileName)}
+          >
             ⎘
           </button>
         </div>
@@ -765,7 +772,11 @@ function InfoDrawer({
           <span style={{ ...ds.value, wordBreak: "break-all", fontSize: FS.caption }}>
             {filePath}
           </span>
-          <button style={ds.copyBtn} onClick={() => navigator.clipboard.writeText(filePath)}>
+          <button
+            type="button"
+            style={ds.copyBtn}
+            onClick={() => navigator.clipboard.writeText(filePath)}
+          >
             ⎘
           </button>
         </div>
@@ -992,15 +1003,25 @@ function SearchBar({
       )}
       {allHits.length > 0 && (
         <>
-          <button style={ss.navBtn} onClick={() => go(-1)} title={t("viewer.prev_hit")}>
+          <button
+            type="button"
+            style={ss.navBtn}
+            onClick={() => go(-1)}
+            title={t("viewer.prev_hit")}
+          >
             ◀
           </button>
-          <button style={ss.navBtn} onClick={() => go(1)} title={t("viewer.next_hit")}>
+          <button
+            type="button"
+            style={ss.navBtn}
+            onClick={() => go(1)}
+            title={t("viewer.next_hit")}
+          >
             ▶
           </button>
         </>
       )}
-      <button style={ss.close} onClick={handleClose}>
+      <button type="button" style={ss.close} onClick={handleClose}>
         ✕
       </button>
     </div>
@@ -1468,6 +1489,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>
         <div style={{ flex: 1 }} />
         <button
+          type="button"
           style={{ ...s.zBtn, ...(showSearch ? s.btnOn : {}), marginRight: 4 }}
           onClick={() => setShowSearch((v) => !v)}
           title={t("viewer.search_btn")}
@@ -1477,6 +1499,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           🔍
         </button>
         <button
+          type="button"
           style={{ ...s.zBtn, ...(infoOpen ? s.btnOn : {}), marginRight: 8 }}
           onClick={() => setInfoOpen((v) => !v)}
           title={t("viewer.info_btn")}
@@ -1486,6 +1509,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         {isNarrow || (
           <div style={s.zoomRow}>
             <button
+              type="button"
               style={s.zBtn}
               onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.05).toFixed(2)))}
             >
@@ -1493,15 +1517,16 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
             </button>
             <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
             <button
+              type="button"
               style={s.zBtn}
               onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.05).toFixed(2)))}
             >
               ＋
             </button>
-            <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
+            <button type="button" style={s.zBtnSm} onClick={() => setZoom(1.0)}>
               100%
             </button>
-            <button style={s.zBtnSm} onClick={() => setZoom(1.5)}>
+            <button type="button" style={s.zBtnSm} onClick={() => setZoom(1.5)}>
               150%
             </button>
           </div>
@@ -1538,6 +1563,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           {isMulti &&
             (filePaneCollapsed ? (
               <button
+                type="button"
                 style={paneCollapsedBarStyle}
                 onClick={toggleFilePane}
                 title={t("common.pane_files", { count: String(fileList.length) })}
@@ -1552,6 +1578,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                     {t("common.pane_files", { count: String(fileList.length) })}
                   </span>
                   <button
+                    type="button"
                     style={s.paneCollapseBtn}
                     onClick={toggleFilePane}
                     title={t("common.collapse_pane")}
@@ -1565,6 +1592,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                     const cover = fileCoverThumbs.get(f.path);
                     return (
                       <button
+                        type="button"
                         key={f.id}
                         style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
                         onClick={() => {
@@ -1601,6 +1629,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           {isNarrow ||
             (thumbPaneCollapsed ? (
               <button
+                type="button"
                 style={paneCollapsedBarStyle}
                 onClick={toggleThumbPane}
                 title={`${viewPage + 1} / ${total}`}
@@ -1615,6 +1644,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                     {viewPage + 1} / {total}
                   </span>
                   <button
+                    type="button"
                     style={s.paneCollapseBtn}
                     onClick={toggleThumbPane}
                     title={t("common.collapse_pane")}
@@ -1628,6 +1658,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                     const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
                     return (
                       <button
+                        type="button"
                         key={i}
                         style={{ ...thumbItemStyle, ...(i === viewPage ? s.thumbItemOn : {}) }}
                         onClick={() => setViewPage(i)}
@@ -1750,6 +1781,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
               {isNarrow && (
                 <div style={s.zoomRow}>
                   <button
+                    type="button"
                     style={s.zBtn}
                     onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.05).toFixed(2)))}
                   >
@@ -1757,20 +1789,22 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                   </button>
                   <span style={s.zVal}>{Math.round(zoom * 100)}%</span>
                   <button
+                    type="button"
                     style={s.zBtn}
                     onClick={() => setZoom((z) => Math.min(4.0, +(z + 0.05).toFixed(2)))}
                   >
                     ＋
                   </button>
-                  <button style={s.zBtnSm} onClick={() => setZoom(1.0)}>
+                  <button type="button" style={s.zBtnSm} onClick={() => setZoom(1.0)}>
                     100%
                   </button>
-                  <button style={s.zBtnSm} onClick={() => setZoom(1.5)}>
+                  <button type="button" style={s.zBtnSm} onClick={() => setZoom(1.5)}>
                     150%
                   </button>
                 </div>
               )}
               <button
+                type="button"
                 style={s.navBtn}
                 onClick={() => setViewPage((p) => Math.max(0, p - 1))}
                 disabled={viewPage === 0}
@@ -1781,6 +1815,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                 {viewPage + 1} / {total}
               </span>
               <button
+                type="button"
                 style={s.navBtn}
                 onClick={() => setViewPage((p) => Math.min(total - 1, p + 1))}
                 disabled={viewPage >= total - 1}

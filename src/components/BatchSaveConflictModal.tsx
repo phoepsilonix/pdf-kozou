@@ -5,10 +5,10 @@
 // 「すべて上書き / 重複分だけ自動連番 / キャンセル」の3択のみを出す
 // (出力ファイルが多数になり得るため、1件ずつの個別リネームは扱わない)。
 
-import { useBatchSaveConflictStore } from "../store/useBatchSaveConflictStore";
 import { useI18n } from "../lib/i18n";
-import { FS } from "../lib/typography";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
+import { useBatchSaveConflictStore } from "../store/useBatchSaveConflictStore";
 
 export function BatchSaveConflictModal() {
   const { request, resolve } = useBatchSaveConflictStore();
@@ -38,13 +38,18 @@ export function BatchSaveConflictModal() {
           </p>
 
           <div style={s.choices}>
-            <button style={s.choiceBtn} onClick={() => resolve({ action: "overwrite" })}>
+            <button
+              type="button"
+              style={s.choiceBtn}
+              onClick={() => resolve({ action: "overwrite" })}
+            >
               {t("batch_save_conflict.overwrite" as any)}
             </button>
-            <button style={s.choiceBtn} onClick={() => resolve({ action: "auto" })}>
+            <button type="button" style={s.choiceBtn} onClick={() => resolve({ action: "auto" })}>
               {t("batch_save_conflict.auto_rename" as any)}
             </button>
             <button
+              type="button"
               style={{ ...s.choiceBtn, ...s.cancelBtn }}
               onClick={() => resolve({ action: "cancel" })}
             >

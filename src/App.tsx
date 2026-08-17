@@ -2,20 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-// src/App.tsx
-import {
-  useState,
-  useCallback,
-  useEffect,
-  useRef,
-  useMemo,
-  lazy,
-  Suspense,
-  RefObject,
-} from "react";
-
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+// src/App.tsx
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const TrimPage = lazy(() => import("./pages/TrimPage"));
 const CompressPage = lazy(() => import("./pages/CompressPage"));
@@ -28,48 +18,46 @@ const HiddenTextPage = lazy(() => import("./pages/HiddenTextPage"));
 const PageSizeBookletPage = lazy(() => import("./pages/PageSizeBookletPage"));
 const LicensePage = lazy(() => import("./pages/LicensePage"));
 
-import { LazyBoundary } from "./components/LazyBoundary";
-import { FloatingMenu } from "./components/FloatingMenu";
-import { usePdfStore, type FileEntry } from "./store/usePdfStore";
-import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
-import { isMupdfExtension, hasImage, hasReflowable } from "./lib/fileTypes";
-import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
-import { PageSizeSelector } from "./components/PageSizeSelector";
-import type { ConvertOptions } from "./lib/tauri";
 import pkg from "../package.json";
 import { A11yControls, LiveRegion } from "./components/A11yControls";
+import { BatchSaveConflictModal } from "./components/BatchSaveConflictModal";
+import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
+import { TapRevealText } from "./components/common";
+import { FloatingMenu } from "./components/FloatingMenu";
+import { FontScaleControl } from "./components/FontScaleControl";
+import { JumpButton } from "./components/JumpNav";
+import { LayoutModeControl } from "./components/LayoutModeControl";
+import { LazyBoundary } from "./components/LazyBoundary";
+import { PageSizeSelector } from "./components/PageSizeSelector";
 import { SaveConflictModal } from "./components/SaveConflictModal";
 import { SaveNamePromptModal } from "./components/SaveNamePromptModal";
-import { BatchSaveConflictModal } from "./components/BatchSaveConflictModal";
+import { ThemeSwitcher } from "./components/ThemeSwitcher";
 import { useA11y } from "./hooks/useA11y";
 import { useFocusAnnouncer } from "./hooks/useFocusAnnouncer";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
-import { tts } from "./lib/tts";
-import { formatFilenameForSpeech } from "./lib/speakName";
+import { useIsMobilePlatform } from "./hooks/usePlatform";
+import { useViewport } from "./hooks/useViewport";
+import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { useI18n } from "./lib/i18n";
-import { FS } from "./lib/typography";
-
+import { loadLastTool, saveLastTool } from "./lib/lastTool";
+import { formatFilenameForSpeech } from "./lib/speakName";
+import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
 import {
-  C,
-  F,
-  setTheme,
-  loadThemeId,
-  THEMES,
   applyThemeCssVars,
+  type C,
+  F,
   initThemeCssVars,
+  loadThemeId,
+  setTheme,
+  THEMES,
 } from "./lib/theme";
-import { ThemeSwitcher } from "./components/ThemeSwitcher";
-import { FontScaleControl } from "./components/FontScaleControl";
-import { loadUiScale, applyUiScale, saveUiScale } from "./lib/uiScale";
-import { useViewport } from "./hooks/useViewport";
-import { useIsMobilePlatform } from "./hooks/usePlatform";
-import { TapRevealText } from "./components/common";
-import { JumpButton } from "./components/JumpNav";
-import { LayoutModeControl } from "./components/LayoutModeControl";
 import type { ThemeId } from "./lib/themes";
-import { loadLastTool, saveLastTool } from "./lib/lastTool";
+import { tts } from "./lib/tts";
+import { FS } from "./lib/typography";
+import { applyUiScale, loadUiScale, saveUiScale } from "./lib/uiScale";
+import { type FileEntry, usePdfStore } from "./store/usePdfStore";
 
 const copyToClipboard = async (text: string) => {
   try {
@@ -247,7 +235,7 @@ export default function App() {
   const handleAddPaths = useCallback(
     async (paths: string[]) => {
       // MuPDF 対応ファイルに絞り込み（PDF, EPUB, DOCX, XPS, CBZ, 画像 等）
-      const pdfPaths = paths.filter((p) => isMupdfExtension(p.split(/[\/\\]/).pop() ?? p));
+      const pdfPaths = paths.filter((p) => isMupdfExtension(p.split(/[/\\]/).pop() ?? p));
 
       await Promise.all(
         pdfPaths.map(async (path) => {
@@ -758,6 +746,7 @@ export default function App() {
                 </span>
                 {/* Aboutボタン */}
                 <button
+                  type="button"
                   onClick={() => setActiveTool("about")}
                   style={{
                     background: "var(--c-bgSub)",
@@ -888,6 +877,7 @@ export default function App() {
                   selCount >= tool.minFiles && (tool.maxFiles == null || selCount <= tool.maxFiles);
                 return (
                   <button
+                    type="button"
                     key={tool.id}
                     ref={(el) => {
                       toolButtonRefs.current[tool.id] = el;
@@ -978,6 +968,7 @@ export default function App() {
                 {fileList.length === 0 ? (
                   <div style={s.emptyZone}>
                     <button
+                      type="button"
                       style={s.btnAddBig}
                       onClick={handlePickFiles}
                       aria-label={t("app.select_file_hint")}
@@ -1018,17 +1009,18 @@ export default function App() {
                       ))}
                     </div>
                     <div style={s.listFooter}>
-                      <button style={s.btnAdd} onClick={handlePickFiles}>
+                      <button type="button" style={s.btnAdd} onClick={handlePickFiles}>
                         {t("file.add")}
                       </button>
-                      <button style={s.btnSm} onClick={selectAll}>
+                      <button type="button" style={s.btnSm} onClick={selectAll}>
                         {t("file.select_all")}
                       </button>
-                      <button style={s.btnSm} onClick={selectNone}>
+                      <button type="button" style={s.btnSm} onClick={selectNone}>
                         {t("file.deselect")}
                       </button>
                       <div style={{ flex: 1 }} />
                       <button
+                        type="button"
                         style={s.btnClear}
                         onClick={() => {
                           // 全ファイルを読み込み対象の一覧から外す（ディスクからの削除ではない）
@@ -1179,6 +1171,7 @@ export default function App() {
             {photoOnlyMode && photoCreditBlock}
           </div>
           <button
+            type="button"
             title={photoOnlyMode ? t("home.home_screen") : t("home.photo_only")}
             onClick={() => setPhotoOnlyMode((v) => !v)}
             className={photoOnlyMode ? "sh.BgBtn sh.BgBtnSubtle" : "sh.BgBtn sh.BgBtnSolid"}
@@ -1222,7 +1215,7 @@ function FileRow({
   const { t } = useI18n();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const mb = entry.sizeBytes > 0 ? (entry.sizeBytes / 1048576).toFixed(1) + " MB" : "";
+  const mb = entry.sizeBytes > 0 ? `${(entry.sizeBytes / 1048576).toFixed(1)} MB` : "";
   return (
     <div
       tabIndex={0}
@@ -1251,7 +1244,7 @@ function FileRow({
       onDrop={(e) => {
         e.preventDefault();
         setIsDragOver(false);
-        const fid = parseInt(e.dataTransfer.getData("fileId") || "0");
+        const fid = parseInt(e.dataTransfer.getData("fileId") || "0", 10);
         if (fid && fid !== entry.id) onDragReorder(fid, entry.id);
       }}
       style={{
@@ -1262,6 +1255,7 @@ function FileRow({
       }}
     >
       <button
+        type="button"
         style={{ ...fr.check, ...(entry.selected ? fr.checkOn : {}) }}
         onClick={onToggle}
         role="checkbox"
@@ -1289,10 +1283,11 @@ function FileRow({
         <span style={fr.meta}>
           {entry.pageCount}
           {t("file.pages_unit")}
-          {mb ? "  " + mb : ""}
+          {mb ? `  ${mb}` : ""}
         </span>
       </div>
       <button
+        type="button"
         style={fr.del}
         onClick={onRemove}
         aria-label={t("file.remove_one", { name: entry.filename })}
@@ -1347,7 +1342,7 @@ function ToolShell({
     ],
     [t],
   );
-  const { isNarrow, width: viewportWidth, useFloatingMenu } = useViewport();
+  const { isNarrow, useFloatingMenu } = useViewport();
   const mobilePlatform = useIsMobilePlatform();
   const filename = filePath.split(/[/\\]/).pop() ?? "";
   const batchFiles = isBatch ? toolFiles : undefined;
@@ -1416,6 +1411,7 @@ function ToolShell({
     <>
       {TOOLS.map((tool) => (
         <button
+          type="button"
           key={tool.id}
           style={{ ...sh.tab, ...(activeTool === tool.id ? sh.tabOn : {}) }}
           onClick={(e) => {
@@ -1453,7 +1449,7 @@ function ToolShell({
     <div style={sh.root}>
       <nav style={{ ...sh.nav, position: "relative" }}>
         <div style={sh.navTop}>
-          <button style={sh.homeBtn} onClick={onHome}>
+          <button type="button" style={sh.homeBtn} onClick={onHome}>
             PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
             {!isNarrow && (
               <span

@@ -1,7 +1,7 @@
-import { usePdfStore } from "../store/usePdfStore";
 import { useI18n } from "../lib/i18n";
+import { PAGE_ORIENTATION_DEFS, PAGE_SIZE_DEFS } from "../lib/pageSize";
 import { FS } from "../lib/typography";
-import { PAGE_SIZE_DEFS, PAGE_ORIENTATION_DEFS } from "../lib/pageSize";
+import { usePdfStore } from "../store/usePdfStore";
 
 /**
  * 標準ページサイズ設定セレクタ（共有コンポーネント）。
@@ -33,6 +33,7 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
         {PAGE_SIZE_DEFS.map((ps) => (
           <button
+            type="button"
             key={ps.id}
             aria-label={t(ps.labelKey as any)}
             aria-pressed={pageSizeId === ps.id}
@@ -61,6 +62,7 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
         </span>
         {PAGE_ORIENTATION_DEFS.map((o) => (
           <button
+            type="button"
             key={o.id}
             aria-label={t(o.labelKey as any)}
             aria-pressed={pageOrientation === o.id && pageSizeId !== "image"}

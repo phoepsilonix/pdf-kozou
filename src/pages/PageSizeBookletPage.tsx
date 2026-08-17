@@ -6,47 +6,46 @@
 //   - 各元ページを出力ページ上に再生するためテキスト/ベクターを保持（ラスタ化しない）。
 //   - 例: A4×4 → A3×2(見開き製本)
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { usePdfStore } from "../store/usePdfStore";
-import { useSaveDialog } from "../hooks/useSaveDialog";
-import { useI18n } from "../lib/i18n";
-import { FS } from "../lib/typography";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  BtnBack,
+  BtnPrimary,
+  ErrorView,
+  PageHeader,
+  Spinner,
+  TapRevealText,
+} from "../components/common";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { tts } from "../lib/tts";
+import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
+import { useSaveDialog } from "../hooks/useSaveDialog";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { useViewport } from "../hooks/useViewport";
+import { useI18n } from "../lib/i18n";
+import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
+import {
+  buildMobileOutputSubfolder,
+  type MobileSavedFileInfo,
+  mobileOutputPreviewLabel,
+} from "../lib/mobileOutput";
+import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import {
   composeImpositionPdf,
-  renderPage,
   getPdfInfo,
+  isAndroid,
   joinPath,
   type PdfInfo,
   type PickedFolder,
-  isAndroid,
+  renderPage,
 } from "../lib/tauri";
-import {
-  buildMobileOutputSubfolder,
-  mobileOutputPreviewLabel,
-  type MobileSavedFileInfo,
-} from "../lib/mobileOutput";
-import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
-import type { FileEntry } from "../store/usePdfStore";
-import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
-import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
-import { PageOrientation } from "../lib/pageSize";
-import {
-  PageHeader,
-  BtnBack,
-  BtnPrimary,
-  Spinner,
-  ErrorView,
-  TapRevealText,
-} from "../components/common";
 import { F } from "../lib/theme";
-import { useViewport } from "../hooks/useViewport";
-import { useIsMobilePlatform } from "../hooks/usePlatform";
-import { useSectionToggle } from "../hooks/useSectionToggle";
-import { FixedMobileNav } from "../components/FixedMobileNav";
+import { tts } from "../lib/tts";
+import { FS } from "../lib/typography";
+import type { FileEntry } from "../store/usePdfStore";
+import { usePdfStore } from "../store/usePdfStore";
 
 type Props = {
   filePath: string;
@@ -121,7 +120,6 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     setPageSize,
     setImpositionMode,
     setOrientation,
-    autoDetectOrientation,
   } = usePdfStore();
 
   const [mode, setMode] = useState<ImpositionMode>(impositionMode);
@@ -527,7 +525,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
-                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}
+                  {d.pdfPath ? (d.pdfPath.split(/[/\\]/).pop() ?? "") : ""}
                 </span>
                 <span style={s.bpLogCount}>
                   {t("booklet.sheets_count", { count: String(d.sheets) })}
@@ -607,7 +605,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
-                  {d.pdfPath ? (d.pdfPath.split(/[\/\\]/).pop() ?? "") : ""}
+                  {d.pdfPath ? (d.pdfPath.split(/[/\\]/).pop() ?? "") : ""}
                 </span>
                 <span style={s.bpLogCount}>
                   {t("booklet.sheets_count", { count: String(d.sheets) })}
@@ -749,6 +747,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               <div style={s.btnRow}>
                 {MODES.map((m) => (
                   <button
+                    type="button"
                     key={m.id}
                     aria-label={t(m.labelKey)}
                     aria-pressed={mode === m.id}
@@ -767,6 +766,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               <div style={s.btnRow}>
                 {SIZE_IDS.map((id) => (
                   <button
+                    type="button"
                     key={id}
                     aria-label={id}
                     aria-pressed={sizeId === id}
@@ -780,6 +780,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               <div style={{ ...s.btnRow, marginTop: 8 }}>
                 {(["auto", "portrait", "landscape"] as Orient[]).map((o) => (
                   <button
+                    type="button"
                     key={o}
                     aria-label={t(
                       o === "auto"
@@ -874,7 +875,11 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                       <div style={s.dirPath} title={androidFolder?.folderName ?? ""}>
                         {androidFolder?.folderName || t("common.select_dir")}
                       </div>
-                      <button style={s.dirPickBtn} onClick={() => pickAndroidFolder()}>
+                      <button
+                        type="button"
+                        style={s.dirPickBtn}
+                        onClick={() => pickAndroidFolder()}
+                      >
                         {t("common.browse")}
                       </button>
                     </div>
@@ -901,7 +906,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                     <div style={s.dirPath} title={outDir}>
                       {outDir || t("common.select_dir")}
                     </div>
-                    <button style={s.dirPickBtn} onClick={pickDir}>
+                    <button type="button" style={s.dirPickBtn} onClick={pickDir}>
                       {t("common.browse")}
                     </button>
                   </div>
@@ -941,6 +946,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               縦積み時は実行ボタンをここに置かず、画面下部の共通固定バーに1つだけ表示する。 */}
           <div style={actionBarStyle}>
             <button
+              type="button"
               onClick={buildPreview}
               disabled={totalPages <= 0 || building}
               style={s.previewBtn}

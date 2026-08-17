@@ -5,10 +5,10 @@
 // src/components/common.tsx — 共通 UI コンポーネント
 //import { C, F } from "../lib/theme";
 import { useState } from "react";
+import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
+import { useI18n } from "../lib/i18n";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
-import { useI18n } from "../lib/i18n";
-import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
 
 /** kozou-spinner クラスと @keyframes kozou-spin の CSS 文字列。
  *  WebKitGTK / WebView2(Blink) ではインラインスタイルの animation から
@@ -90,6 +90,7 @@ export function ErrorView({ msg, onBack }: { msg: string; onBack: () => void }) 
         {msg}
       </pre>
       <button
+        type="button"
         style={{
           padding: "9px 24px",
           background: "transparent",
@@ -228,6 +229,7 @@ export function BtnBack({
   const { t } = useI18n();
   return (
     <button
+      type="button"
       onClick={onClick}
       style={{
         padding: "6px 16px",
@@ -260,6 +262,7 @@ export function BtnPrimary({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       autoFocus={autoFocus}
@@ -304,10 +307,11 @@ export function ThumbCard({
   onClick?: () => void;
 }) {
   // aspectRatio = w/h。横長(>1)でも縦長(<1)でも適切な高さに
-  const ratio = aspectRatio ?? 1 / 1.414;
+  const ratio = aspectRatio ?? 1 / Math.SQRT2;
   const h = Math.round(width / ratio);
   return (
     <button
+      type="button"
       onClick={onClick}
       style={{
         display: "flex",

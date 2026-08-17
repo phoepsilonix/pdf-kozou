@@ -56,12 +56,12 @@
 //      戻し、キーボード操作の位置を見失わないようにする。
 
 import {
+  type ReactNode,
+  type RefObject,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
-  type ReactNode,
-  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import { getUiScale } from "../lib/uiScale";

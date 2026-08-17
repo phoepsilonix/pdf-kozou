@@ -4,61 +4,62 @@
 
 // src/pages/RotatePage.tsx — 単体 & バッチ対応
 export default RotatePage;
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LiveRegion } from "../components/A11yControls";
 import {
-  Spinner,
-  ErrorView,
-  PageHeader,
   BtnBack,
   BtnPrimary,
+  ErrorView,
+  PageHeader,
+  Spinner,
   TapRevealText,
 } from "../components/common";
-import { usePdfStore, type FileEntry } from "../store/usePdfStore";
-import {
-  renderPage,
-  rotatePdf,
-  getPdfInfo,
-  moveFile,
-  getUniqueTempPath,
-  commitSavedFile,
-  type PdfInfo,
-  type PickedFolder,
-  joinPath,
-  isAndroid,
-  pickSaveFolder,
-  beginFolderSave,
-} from "../lib/tauri";
-import { resolveSaveConflict } from "../lib/saveConflict";
-import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
-import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
-import {
-  buildMobileOutputSubfolder,
-  mobileOutputPreviewLabel,
-  type MobileSavedFileInfo,
-} from "../lib/mobileOutput";
-import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
+import { FixedMobileNav } from "../components/FixedMobileNav";
+import { MetadataEditModal } from "../components/MetadataEditModal";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { PageSizeSelector } from "../components/PageSizeSelector";
-import { hasImage } from "../lib/fileTypes";
-import { buildName, stem, opSuffix } from "../lib/filename";
-import { formatFilenameForSpeech } from "../lib/speakName";
-import { resolvePageSizePt } from "../lib/pageSize";
-import { F } from "../lib/theme";
-import { FS } from "../lib/typography";
-import { useA11y } from "../hooks/useA11y";
-import { tts } from "../lib/tts";
-import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { LiveRegion } from "../components/A11yControls";
-import { useI18n } from "../lib/i18n";
 import { PreviewPane } from "../components/PreviewPane";
-import { usePreview } from "../hooks/usePreview";
-import { CompressPage } from "./CompressPage";
-import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
-import { useViewport } from "../hooks/useViewport";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
 import { useIsMobilePlatform } from "../hooks/usePlatform";
+import { usePreview } from "../hooks/usePreview";
 import { useSectionToggle } from "../hooks/useSectionToggle";
-import { FixedMobileNav } from "../components/FixedMobileNav";
+import { useViewport } from "../hooks/useViewport";
+import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
+import { buildName, opSuffix, stem } from "../lib/filename";
+import { hasImage } from "../lib/fileTypes";
+import { useI18n } from "../lib/i18n";
+import {
+  buildMobileOutputSubfolder,
+  type MobileSavedFileInfo,
+  mobileOutputPreviewLabel,
+} from "../lib/mobileOutput";
+import { resolvePageSizePt } from "../lib/pageSize";
+import { resolveSaveConflict } from "../lib/saveConflict";
+import { formatFilenameForSpeech } from "../lib/speakName";
+import {
+  beginFolderSave,
+  commitSavedFile,
+  getPdfInfo,
+  getUniqueTempPath,
+  isAndroid,
+  joinPath,
+  moveFile,
+  type PdfInfo,
+  type PickedFolder,
+  pickSaveFolder,
+  renderPage,
+  rotatePdf,
+} from "../lib/tauri";
+import { F } from "../lib/theme";
+import { tts } from "../lib/tts";
+import { FS } from "../lib/typography";
+import { type FileEntry, usePdfStore } from "../store/usePdfStore";
+import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
+import { CompressPage } from "./CompressPage";
 
 interface Props {
   filePath: string;
@@ -108,7 +109,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const { t } = useI18n();
   const { isNarrow } = useViewport();
   const mobilePlatform = useIsMobilePlatform();
-  const [statusMsg, setStatusMsg] = useState("");
+  const [statusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const { enabled: previewEnabled } = usePreview("rotate");
   // Ctrl+S からプレビュー画面の doSave を呼ぶための ref
@@ -598,6 +599,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           <span style={s.previewSub}>{t("rotate.select_save_method")}</span>
           <div style={s.previewBtns}>
             <button
+              type="button"
               style={s.btnMetaEdit}
               onClick={() => setMetaEditOpen(true)}
               aria-label={t("meta_edit.title")}
@@ -614,7 +616,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               {t("rotate.save")}
             </BtnPrimary>
           </div>
-          <button style={s.btnBack2} onClick={() => setPhase("edit")}>
+          <button type="button" style={s.btnBack2} onClick={() => setPhase("edit")}>
             {t("rotate.redo")}
           </button>
         </div>
@@ -854,7 +856,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
 
             <div style={s.secLabel}>{t("rotate.individual_settings")}</div>
             <p style={s.hint}>{t("rotate.individual_hint")}</p>
-            <button style={s.resetBtn} onClick={resetAll}>
+            <button type="button" style={s.resetBtn} onClick={resetAll}>
               {t("rotate.reset_range")}
             </button>
 
@@ -867,7 +869,11 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                       <div style={s.dirPath} title={androidFolder?.folderName ?? ""}>
                         {androidFolder?.folderName || t("common.select_dir")}
                       </div>
-                      <button style={s.dirPickBtn} onClick={() => pickAndroidFolder()}>
+                      <button
+                        type="button"
+                        style={s.dirPickBtn}
+                        onClick={() => pickAndroidFolder()}
+                      >
                         {t("common.browse")}
                       </button>
                     </div>
@@ -894,7 +900,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                     <div style={s.dirPath} title={outDir}>
                       {outDir || t("common.select_dir")}
                     </div>
-                    <button style={s.dirPickBtn} onClick={pickDir}>
+                    <button type="button" style={s.dirPickBtn} onClick={pickDir}>
                       {t("common.browse")}
                     </button>
                   </div>
@@ -922,6 +928,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={globalBtnsStyle}>
               {([0, 90, 180, 270] as const).map((deg) => (
                 <button
+                  type="button"
                   key={deg}
                   aria-label={
                     deg === 0 ? t("rotate.reset_to") : t("rotate.rotate_deg", { deg: String(deg) })
@@ -1027,6 +1034,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                       {changed && <span style={s.rotBadge}>{rot}°</span>}
                       <div style={s.rotateBtns}>
                         <button
+                          type="button"
                           style={s.rotBtn}
                           onClick={() => rotate(i, -90)}
                           title={t("rotate.rotate_left")}
@@ -1034,6 +1042,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                           ↺
                         </button>
                         <button
+                          type="button"
                           style={s.rotBtn}
                           onClick={() => rotate(i, 90)}
                           title={t("rotate.rotate_right")}

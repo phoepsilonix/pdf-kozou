@@ -32,8 +32,8 @@
 // 避けてこの実効pxから計算したいケースがある。
 
 import { useEffect, useState } from "react";
-import { usePdfStore } from "../store/usePdfStore";
 import { getUiScale } from "../lib/uiScale";
+import { usePdfStore } from "../store/usePdfStore";
 
 // この幅未満を「狭い画面（設定とプレビューを縦積みにする）」とみなす。
 // （#root の zoom 補正後の実効px基準）

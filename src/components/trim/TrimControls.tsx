@@ -6,12 +6,12 @@
 // 余白指定パネル: 上下左右それぞれ「何mm削るか」を指定 + ページ範囲/抽出
 
 import { useCallback } from "react";
-import type { TrimMargins, PageSelection } from "../../lib/tauri";
-import { PageSelector, resolvePageSpec } from "../PageSelector";
-import { PageSizeSelector } from "../PageSizeSelector";
+import { useI18n } from "../../lib/i18n";
+import type { TrimMargins } from "../../lib/tauri";
 import { F } from "../../lib/theme";
 import { FS } from "../../lib/typography";
-import { useI18n } from "../../lib/i18n";
+import { PageSelector } from "../PageSelector";
+import { PageSizeSelector } from "../PageSizeSelector";
 
 interface Props {
   margins: TrimMargins;

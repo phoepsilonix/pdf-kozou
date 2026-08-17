@@ -72,7 +72,9 @@ class TtsService {
   }
 
   private _notifyListeners(): void {
-    this._listeners.forEach((fn) => fn(this._enabled));
+    this._listeners.forEach((fn) => {
+      fn(this._enabled);
+    });
   }
 
   // ── 設定変更 ─────────────────────────────────────────────────────────────────

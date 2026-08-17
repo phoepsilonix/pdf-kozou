@@ -6,9 +6,10 @@
 // リフロー可能文書（DOCX/EPUB/HTML）変換時のレイアウト設定パネル。
 // 非 PDF ファイルが含まれる場合にのみ表示する。
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import type { ConvertOptions } from "../lib/tauri";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
+import type { ConvertOptions } from "../lib/tauri";
 import { FS } from "../lib/typography";
 
 export interface ConvertOptionsPanelProps {

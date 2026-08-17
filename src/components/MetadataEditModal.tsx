@@ -14,11 +14,11 @@
 //     onSaved={(newMeta) => { /* 保存後の処理 */ }}
 //   />
 
-import { useState, useCallback, useEffect } from "react";
-import { setPdfMetadata, getPdfInfo, getImageMetadata, setImageMetadata } from "../lib/tauri";
+import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
-import { tts } from "../lib/tts";
+import { getImageMetadata, getPdfInfo, setImageMetadata, setPdfMetadata } from "../lib/tauri";
 import { F } from "../lib/theme";
+import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
 
 // ── 型定義 ─────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ export function MetadataEditModal({
     } catch (e) {
       const msg = String(e);
       setError(msg);
-      tts.speak(t("meta_edit.save_error") + " " + msg);
+      tts.speak(`${t("meta_edit.save_error")} ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -210,10 +210,11 @@ export function MetadataEditModal({
             {isOutputFile ? t("meta_edit.title_output") : t("meta_edit.title_source")}
           </span>
           <button
+            type="button"
             style={s.closeBtn}
             onClick={onClose}
             aria-label={t("meta_edit.close")}
-            title={t("meta_edit.close") + " (Escape)"}
+            title={`${t("meta_edit.close")} (Escape)`}
           >
             ✕
           </button>
@@ -285,15 +286,21 @@ export function MetadataEditModal({
 
         {/* フッタボタン */}
         <div style={s.footer}>
-          <button style={s.cancelBtn} onClick={onClose} aria-label={t("meta_edit.close")}>
+          <button
+            type="button"
+            style={s.cancelBtn}
+            onClick={onClose}
+            aria-label={t("meta_edit.close")}
+          >
             {t("meta_edit.close")}
           </button>
           <button
+            type="button"
             style={{ ...s.saveBtn, ...(saving ? s.saveBtnDisabled : {}) }}
             onClick={handleSave}
             disabled={saving}
-            aria-label={t("meta_edit.save") + " Ctrl+Enter"}
-            onFocus={() => tts.speak(t("meta_edit.save") + "。Ctrl+Enterでも実行できます。")}
+            aria-label={`${t("meta_edit.save")} Ctrl+Enter`}
+            onFocus={() => tts.speak(`${t("meta_edit.save")}。Ctrl+Enterでも実行できます。`)}
           >
             {saving ? t("meta_edit.saving") : (saveLabel ?? t("meta_edit.save"))}
           </button>

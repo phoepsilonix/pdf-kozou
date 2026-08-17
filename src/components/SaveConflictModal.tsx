@@ -5,10 +5,10 @@
 // Promise の解決として返す(モーダル自身は保存処理を知らない)。
 
 import { useEffect, useState } from "react";
-import { useSaveConflictStore } from "../store/useSaveConflictStore";
 import { useI18n } from "../lib/i18n";
-import { FS } from "../lib/typography";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
+import { useSaveConflictStore } from "../store/useSaveConflictStore";
 
 export function SaveConflictModal() {
   const { request, resolve } = useSaveConflictStore();
@@ -43,16 +43,21 @@ export function SaveConflictModal() {
 
           {!editing ? (
             <div style={s.choices}>
-              <button style={s.choiceBtn} onClick={() => resolve({ action: "overwrite" })}>
+              <button
+                type="button"
+                style={s.choiceBtn}
+                onClick={() => resolve({ action: "overwrite" })}
+              >
                 {t("save_conflict.overwrite")}
               </button>
-              <button style={s.choiceBtn} onClick={() => resolve({ action: "auto" })}>
+              <button type="button" style={s.choiceBtn} onClick={() => resolve({ action: "auto" })}>
                 {t("save_conflict.auto_rename")}
               </button>
-              <button style={s.choiceBtn} onClick={() => setEditing(true)}>
+              <button type="button" style={s.choiceBtn} onClick={() => setEditing(true)}>
                 {t("save_conflict.rename")}
               </button>
               <button
+                type="button"
                 style={{ ...s.choiceBtn, ...s.cancelBtn }}
                 onClick={() => resolve({ action: "cancel" })}
               >
@@ -73,10 +78,11 @@ export function SaveConflictModal() {
                 autoFocus
               />
               <div style={s.renameBtnRow}>
-                <button style={s.backBtn} onClick={() => setEditing(false)}>
+                <button type="button" style={s.backBtn} onClick={() => setEditing(false)}>
                   {t("save_conflict.rename_back")}
                 </button>
                 <button
+                  type="button"
                   style={s.confirmBtn}
                   disabled={!nameInput.trim()}
                   onClick={() => resolve({ action: "rename", fileName: nameInput.trim() })}

@@ -22,8 +22,8 @@
 //   <button aria-label={t("action.execute")}>実行</button>
 
 import { useCallback } from "react";
-import { tts } from "../lib/tts";
 import { useI18n } from "../lib/i18n";
+import { tts } from "../lib/tts";
 
 export function useA11y() {
   const { t } = useI18n();

@@ -3,8 +3,8 @@
 // ファイル名衝突解決ロジック。useSaveDialog フックと、それを経由しない
 // RotatePage の直接呼び出しの両方から共有で使う。
 
-import { checkSaveNameExists } from "./tauri";
 import { useSaveConflictStore } from "../store/useSaveConflictStore";
+import { checkSaveNameExists } from "./tauri";
 
 /** "sample.pdf" -> ["sample", ".pdf"] / 拡張子なしなら ["name", ""] */
 function splitExt(name: string): [string, string] {

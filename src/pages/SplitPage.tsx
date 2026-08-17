@@ -5,52 +5,52 @@
 // src/pages/SplitPage.tsx  —  単体 & バッチ対応
 export default SplitPage;
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LiveRegion } from "../components/A11yControls";
 import {
-  Spinner,
-  ErrorView,
-  ThumbCard,
-  PageHeader,
   BtnBack,
   BtnPrimary,
+  ErrorView,
+  PageHeader,
+  Spinner,
   TapRevealText,
+  ThumbCard,
 } from "../components/common";
-import { usePdfStore, type FileEntry } from "../store/usePdfStore";
-import {
-  renderPage,
-  splitPdf,
-  getPdfInfo,
-  type SplitMode,
-  type SplitResponse,
-  type PdfInfo,
-  type OverrideMeta,
-  type PickedFolder,
-  isAndroid,
-} from "../lib/tauri";
-import {
-  buildMobileOutputSubfolder,
-  mobileOutputPreviewLabel,
-  type MobileSavedFileInfo,
-} from "../lib/mobileOutput";
-import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
+import { FixedMobileNav } from "../components/FixedMobileNav";
 import { MetadataEditModal } from "../components/MetadataEditModal";
-//import { C, F } from "../lib/theme";
-import { F } from "../lib/theme";
+import { PreviewPane } from "../components/PreviewPane";
 //import { CompressPage } from "./CompressPage";
 import { useA11y } from "../hooks/useA11y";
-import { tts } from "../lib/tts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { LiveRegion } from "../components/A11yControls";
-import { useI18n } from "../lib/i18n";
-import { announceValueChange } from "../lib/announce";
-import { FS } from "../lib/typography";
-import { PreviewPane } from "../components/PreviewPane";
-import { usePreview } from "../hooks/usePreview";
-import { useViewport } from "../hooks/useViewport";
+import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
 import { useIsMobilePlatform } from "../hooks/usePlatform";
+import { usePreview } from "../hooks/usePreview";
 import { useSectionToggle } from "../hooks/useSectionToggle";
-import { FixedMobileNav } from "../components/FixedMobileNav";
+import { useViewport } from "../hooks/useViewport";
+import { announceValueChange } from "../lib/announce";
+import { useI18n } from "../lib/i18n";
+import {
+  buildMobileOutputSubfolder,
+  type MobileSavedFileInfo,
+  mobileOutputPreviewLabel,
+} from "../lib/mobileOutput";
+import {
+  getPdfInfo,
+  isAndroid,
+  type OverrideMeta,
+  type PdfInfo,
+  type PickedFolder,
+  renderPage,
+  type SplitMode,
+  type SplitResponse,
+  splitPdf,
+} from "../lib/tauri";
+//import { C, F } from "../lib/theme";
+import { F } from "../lib/theme";
+import { tts } from "../lib/tts";
+import { FS } from "../lib/typography";
+import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const mobilePlatform = useIsMobilePlatform();
   const [statusMsg, setStatusMsg] = useState("");
   const rangeRef = useRef<HTMLInputElement | null>(null);
-  const dirBtnRef = useRef<HTMLButtonElement | null>(null);
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const [overrideMetadata, setOverrideMetadata] = useState<OverrideMeta[] | undefined>(undefined);
   // 縦積みレイアウト用: 設定パネル⇄プレビューの表示切替とジャンプ
@@ -817,6 +816,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 ] as const
               ).map((m) => (
                 <button
+                  type="button"
                   key={m.id}
                   aria-label={m.label}
                   aria-pressed={modeId === m.id}
@@ -845,6 +845,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 {isBatch && <div style={s.batchRangeNote}>{t("split.every_apply_all")}</div>}
                 <div style={s.numRow}>
                   <button
+                    type="button"
                     style={s.stepBtn}
                     data-voice-skip
                     onClick={() => {
@@ -862,9 +863,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     min={1}
                     max={isBatch ? 999 : total}
                     aria-label={t("aria.every_n_input")}
-                    onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value, 10) || 1))}
                   />
                   <button
+                    type="button"
                     style={s.stepBtn}
                     data-voice-skip
                     onClick={() => {
@@ -888,6 +890,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 0, -1)}
@@ -906,11 +909,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                         max={total}
                         onChange={(e) =>
                           setRanges((r) =>
-                            r.map((x, j) => (j === i ? [parseInt(e.target.value) || 1, x[1]] : x)),
+                            r.map((x, j) =>
+                              j === i ? [parseInt(e.target.value, 10) || 1, x[1]] : x,
+                            ),
                           )
                         }
                       />
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 0, 1)}
@@ -921,6 +927,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     <span style={s.rangeSep}>〜</span>
                     <div style={s.rangeGroup}>
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 1, -1)}
@@ -936,11 +943,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                         aria-label={`${t("aria.range_input")} #${i + 1}`}
                         onChange={(e) =>
                           setRanges((r) =>
-                            r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),
+                            r.map((x, j) =>
+                              j === i ? [x[0], parseInt(e.target.value, 10) || 1] : x,
+                            ),
                           )
                         }
                       />
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 1, 1)}
@@ -950,6 +960,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     </div>
                     {ranges.length > 1 && (
                       <button
+                        type="button"
                         style={s.delBtn}
                         onClick={() => setRanges((r) => r.filter((_, j) => j !== i))}
                       >
@@ -959,6 +970,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   </div>
                 ))}
                 <button
+                  type="button"
                   style={s.addBtn}
                   onClick={(e) => {
                     setRanges((r) => [...r, [1, total]]);
@@ -978,6 +990,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 0, -1)}
@@ -992,11 +1005,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                         aria-label={`${t("aria.range_input")} #${i + 1}`}
                         onChange={(e) =>
                           setRanges((r) =>
-                            r.map((x, j) => (j === i ? [parseInt(e.target.value) || 1, x[1]] : x)),
+                            r.map((x, j) =>
+                              j === i ? [parseInt(e.target.value, 10) || 1, x[1]] : x,
+                            ),
                           )
                         }
                       />
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 0, 1)}
@@ -1007,6 +1023,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     <span style={s.rangeSep}>〜</span>
                     <div style={s.rangeGroup}>
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 1, -1)}
@@ -1021,11 +1038,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                         aria-label={`${t("aria.range_input")} #${i + 1}`}
                         onChange={(e) =>
                           setRanges((r) =>
-                            r.map((x, j) => (j === i ? [x[0], parseInt(e.target.value) || 1] : x)),
+                            r.map((x, j) =>
+                              j === i ? [x[0], parseInt(e.target.value, 10) || 1] : x,
+                            ),
                           )
                         }
                       />
                       <button
+                        type="button"
                         style={s.rangeArrow}
                         data-voice-skip
                         onClick={() => stepRange(i, 1, 1)}
@@ -1035,6 +1055,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     </div>
                     {ranges.length > 1 && (
                       <button
+                        type="button"
                         style={s.delBtn}
                         onClick={() => setRanges((r) => r.filter((_, j) => j !== i))}
                       >
@@ -1044,6 +1065,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   </div>
                 ))}
                 <button
+                  type="button"
                   style={s.addBtn}
                   onClick={(e) => {
                     setRanges((r) => [...r, [1, 99]]);
@@ -1094,6 +1116,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                     </span>
                   </div>
                   <button
+                    type="button"
                     style={s.dirPickBtn}
                     onClick={() => pickAndroidFolder()}
                     aria-label={t("aria.output_dir_btn")}
@@ -1127,6 +1150,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   </span>
                 </div>
                 <button
+                  type="button"
                   style={s.dirPickBtn}
                   onClick={pickDir}
                   aria-label={t("aria.output_dir_btn")}
@@ -1139,6 +1163,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             {/* メタデータを分割前に編集（任意）*/}
             <div style={s.metaEditRow}>
               <button
+                type="button"
                 style={s.btnMetaEdit}
                 onClick={() => setMetaEditOpen(true)}
                 aria-label={t("split.meta_edit_btn")}
@@ -1147,6 +1172,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               </button>
               {overrideMetadata && (
                 <button
+                  type="button"
                   style={s.btnMetaClear}
                   onClick={() => setOverrideMetadata(undefined)}
                   title={t("split.meta_clear")}

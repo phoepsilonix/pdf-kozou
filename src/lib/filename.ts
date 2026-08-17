@@ -1,6 +1,6 @@
 // 出力ファイル名の生成を一元化するヘルパー。
 // 操作サフィックス（_trimmed 等）はロケール（ja/en）で切り替える。
-import { translate, getCurrentLocale } from "./i18n";
+import { getCurrentLocale, translate } from "./i18n";
 
 /** パスから拡張子なしのファイル名（ステム）を取り出す */
 export function stem(path: string): string {
@@ -32,7 +32,7 @@ export function opSuffix(op: FileOp): string {
  *   ja → "写真_トリミング_圧縮.pdf" / en → "写真_trimmed_compressed.pdf"
  */
 export function buildName(originalPath: string, ops: FileOp[], ext = "pdf"): string {
-  return stem(originalPath) + ops.map(opSuffix).join("") + "." + ext;
+  return `${stem(originalPath) + ops.map(opSuffix).join("")}.${ext}`;
 }
 
 /**
@@ -41,5 +41,5 @@ export function buildName(originalPath: string, ops: FileOp[], ext = "pdf"): str
  * 例: appendName("写真_トリミング", ["compressed"]) → "写真_トリミング_圧縮.pdf"
  */
 export function appendName(baseName: string, ops: FileOp[], ext = "pdf"): string {
-  return baseName + ops.map(opSuffix).join("") + "." + ext;
+  return `${baseName + ops.map(opSuffix).join("")}.${ext}`;
 }

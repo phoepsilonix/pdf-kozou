@@ -75,10 +75,10 @@ export class LazyBoundary extends Component<Props, State> {
           </div>
         )}
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={this.retry} style={btn(false)}>
+          <button type="button" onClick={this.retry} style={btn(false)}>
             再試行
           </button>
-          <button onClick={() => location.reload()} style={btn(true)}>
+          <button type="button" onClick={() => location.reload()} style={btn(true)}>
             再読み込み
           </button>
         </div>

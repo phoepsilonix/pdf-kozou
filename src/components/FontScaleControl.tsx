@@ -11,18 +11,18 @@
 // 80%〜150% を 5% 刻みで調整する。値は localStorage に永続化され、
 // #root 要素の zoom として即時反映される（レイアウト比率は維持）。
 
-import { useState, useCallback, useRef } from "react";
-import { F } from "../lib/theme";
+import { useCallback, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
+import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
-import { FloatingMenu } from "./FloatingMenu";
 import {
-  UI_SCALE_MIN,
-  UI_SCALE_MAX,
-  UI_SCALE_STEP,
-  UI_SCALE_DEFAULT,
   clampUiScale,
+  UI_SCALE_DEFAULT,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
+  UI_SCALE_STEP,
 } from "../lib/uiScale";
+import { FloatingMenu } from "./FloatingMenu";
 
 interface Props {
   scale: number; // 現在の表示倍率(%)
@@ -74,6 +74,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
   return (
     <>
       <button
+        type="button"
         ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={btnStyle}
@@ -102,6 +103,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
+              type="button"
               style={stepBtn}
               onClick={dec}
               disabled={scale <= UI_SCALE_MIN}
@@ -122,6 +124,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
               style={{ flex: 1, accentColor: "var(--c-accent)", cursor: "pointer" }}
             />
             <button
+              type="button"
               style={stepBtn}
               onClick={inc}
               disabled={scale >= UI_SCALE_MAX}
@@ -151,6 +154,7 @@ export function FontScaleControl({ scale, onChange }: Props) {
               {scale}%
             </span>
             <button
+              type="button"
               onClick={reset}
               disabled={scale === UI_SCALE_DEFAULT}
               style={{

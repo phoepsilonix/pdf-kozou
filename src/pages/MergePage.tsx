@@ -5,46 +5,44 @@
 // src/pages/MergePage.tsx
 export default MergePage;
 
-import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LiveRegion } from "../components/A11yControls";
 import {
-  Spinner,
-  ErrorView,
-  ThumbCard,
-  PageHeader,
   BtnBack,
   BtnPrimary,
+  ErrorView,
+  PageHeader,
+  Spinner,
   TapRevealText,
+  ThumbCard,
 } from "../components/common";
-import { usePdfStore } from "../store/usePdfStore";
-import { resolvePageSizePt } from "../lib/pageSize";
+import { MetadataEditModal } from "../components/MetadataEditModal";
 import { PageSizeSelector } from "../components/PageSizeSelector";
-import { hasImage } from "../lib/fileTypes";
-import { buildName, stem, opSuffix } from "../lib/filename";
-import { formatFilenameForSpeech } from "../lib/speakName";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
+import { useViewport } from "../hooks/useViewport";
+import { buildName, opSuffix, stem } from "../lib/filename";
+import { hasImage, isMupdfExtension } from "../lib/fileTypes";
+import { useI18n } from "../lib/i18n";
+import { resolvePageSizePt } from "../lib/pageSize";
+import { formatFilenameForSpeech } from "../lib/speakName";
 import {
-  mergePdf,
-  renderPage,
   getPdfInfo,
   getUniqueTempPath,
   type MergeResponse,
+  mergePdf,
   type PdfInfo,
+  renderPage,
 } from "../lib/tauri";
-import { CompressPage } from "./CompressPage";
 //import { C, F } from "../lib/theme";
 import { F } from "../lib/theme";
-import { useA11y } from "../hooks/useA11y";
 import { tts } from "../lib/tts";
-import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { LiveRegion } from "../components/A11yControls";
-import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
-import { MetadataEditModal } from "../components/MetadataEditModal";
-import { listen } from "@tauri-apps/api/event";
-import { isMupdfExtension } from "../lib/fileTypes";
-import { useViewport } from "../hooks/useViewport";
-import { useIsMobilePlatform } from "../hooks/usePlatform";
+import { usePdfStore } from "../store/usePdfStore";
+import { CompressPage } from "./CompressPage";
 
 interface PdfEntry {
   id: number;
@@ -67,7 +65,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   const { t } = useI18n();
   const { isNarrow } = useViewport();
   const mobilePlatform = useIsMobilePlatform();
-  const [statusMsg, setStatusMsg] = useState("");
+  const [statusMsg] = useState("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
 
   // 画面表示時の読み上げ
@@ -507,6 +505,7 @@ useEffect(() => {
             {t("merge.done_detail", { count: String(entries.length) })}
           </div>
           <button
+            type="button"
             style={s.btnMeta}
             onClick={() => setMetaEditOpen(true)}
             aria-label={t("meta_edit.title")}
@@ -696,6 +695,7 @@ useEffect(() => {
             </span>
             <div style={{ flex: 1 }} />
             <button
+              type="button"
               style={s.btnClear}
               onClick={(e) => {
                 setEntries([]);
@@ -739,7 +739,7 @@ useEffect(() => {
             <span style={s.dropIcon}>⊕</span>
             <span style={s.dropTitle}>{t("merge.drop_title")}</span>
             <span style={s.dropSub}>{t("merge.drop_sub")}</span>
-            <button style={s.btnAddBig} onClick={pickFiles}>
+            <button type="button" style={s.btnAddBig} onClick={pickFiles}>
               {t("merge.select_placeholder")}
             </button>
           </div>
@@ -789,7 +789,7 @@ useEffect(() => {
                         style={{
                           ...s.thumbMore,
                           width: thumbWidth,
-                          height: Math.round(thumbWidth * 1.414),
+                          height: Math.round(thumbWidth * Math.SQRT2),
                         }}
                       >
                         +{entry.pageCount - thumbCount}
@@ -811,6 +811,7 @@ useEffect(() => {
                   </div>
                   <div style={s.moveBtns}>
                     <button
+                      type="button"
                       style={s.moveBtn}
                       onClick={() => moveUp(i)}
                       disabled={i === 0}
@@ -819,6 +820,7 @@ useEffect(() => {
                       ↑
                     </button>
                     <button
+                      type="button"
                       style={s.moveBtn}
                       onClick={() => moveDown(i)}
                       disabled={i === entries.length - 1}
@@ -828,6 +830,7 @@ useEffect(() => {
                     </button>
                   </div>
                   <button
+                    type="button"
                     style={s.delBtn}
                     onClick={() => remove(entry.id)}
                     title={t("merge.delete_btn")}
@@ -879,7 +882,7 @@ useEffect(() => {
                   }
                 }}
               >
-                <button style={s.btnAdd} onClick={pickFiles}>
+                <button type="button" style={s.btnAdd} onClick={pickFiles}>
                   {t("merge.add_btn")}
                 </button>
                 {/*<span style={s.addHint}>ここにドロップしても追加できます</span>*/}
@@ -905,6 +908,7 @@ useEffect(() => {
               </div>
               <div style={execBtnsStyle}>
                 <button
+                  type="button"
                   style={{ ...s.btnPreview, ...(entries.length < 2 ? s.btnDis : {}) }}
                   onClick={handlePreview}
                   disabled={entries.length < 2}

@@ -284,7 +284,7 @@ export const usePdfStore = create<PdfStore>()(
       setFloatingMenuWide: (v) => set({ floatingMenuWide: v }),
       // 自動向き判定
       autoDetectOrientation: (input) => {
-        let aspects: number[] = [];
+        const aspects: number[] = [];
         if (Array.isArray(input)) {
           input.forEach((f) => {
             if (f.pageCount && f.pageCount > 0) aspects.push(1.0); // 簡易

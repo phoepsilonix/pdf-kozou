@@ -14,8 +14,8 @@
 //     active が true の間だけ計測し、false で停止する。
 
 import { useEffect } from "react";
-import { tts } from "../lib/tts";
 import { useI18n } from "../lib/i18n";
+import { tts } from "../lib/tts";
 
 const DELAY_MS = 4000; // この時間を超えて処理が続くと最初の通知
 const REPEAT_MS = 12000; // さらに長引くときの再通知間隔
@@ -24,7 +24,7 @@ export function useBusyAnnouncer(active: boolean, label?: string) {
   const { t } = useI18n();
   useEffect(() => {
     if (!active || !tts.enabled) return;
-    const msg = label && label.trim() ? label : t("voice.processing");
+    const msg = label?.trim() ? label : t("voice.processing");
     let interval: ReturnType<typeof setInterval> | undefined;
     const start = setTimeout(() => {
       tts.speak(msg, false);

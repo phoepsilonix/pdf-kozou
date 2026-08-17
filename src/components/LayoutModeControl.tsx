@@ -10,7 +10,7 @@
 // 自動判定だけでは意図した幅を検出できないことがあるため、手動切り替えの
 // 逃げ道として用意している。
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
 import { FloatingMenu } from "./FloatingMenu";
@@ -63,6 +63,7 @@ export function LayoutModeControl({
       <span style={{ fontSize: FS.body, color: "var(--c-text)" }}>{label}</span>
       <div style={{ display: "flex", gap: 4 }}>
         <button
+          type="button"
           onClick={() => onSet(false)}
           aria-pressed={!value}
           style={{
@@ -80,6 +81,7 @@ export function LayoutModeControl({
           {t("layout.floating_off")}
         </button>
         <button
+          type="button"
           onClick={() => onSet(true)}
           aria-pressed={value}
           style={{
@@ -103,6 +105,7 @@ export function LayoutModeControl({
   return (
     <>
       <button
+        type="button"
         ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         style={{
@@ -144,6 +147,7 @@ export function LayoutModeControl({
           </div>
           {(["auto", "narrow", "wide"] as LayoutMode[]).map((m) => (
             <button
+              type="button"
               key={m}
               onClick={() => handlePick(m)}
               style={{

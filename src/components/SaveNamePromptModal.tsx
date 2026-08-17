@@ -9,12 +9,12 @@
 // ここから行える。
 
 import { useEffect, useState } from "react";
-import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
-import { pickSaveFolder, type PickedFolder } from "../lib/tauri";
 import { persistAndroidSaveFolder } from "../lib/androidSaveFolder";
 import { useI18n } from "../lib/i18n";
-import { FS } from "../lib/typography";
+import { type PickedFolder, pickSaveFolder } from "../lib/tauri";
 import { F } from "../lib/theme";
+import { FS } from "../lib/typography";
+import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
 
 export function SaveNamePromptModal() {
   const { request, resolve } = useSaveNamePromptStore();
@@ -65,7 +65,7 @@ export function SaveNamePromptModal() {
               <div style={s.folderPath} title={folder?.folderName ?? ""}>
                 {folder?.folderName ?? ""}
               </div>
-              <button style={s.changeBtn} onClick={changeFolder}>
+              <button type="button" style={s.changeBtn} onClick={changeFolder}>
                 {t("save_name_prompt.change_folder" as any)}
               </button>
             </div>
@@ -87,10 +87,15 @@ export function SaveNamePromptModal() {
             />
           </div>
           <div style={s.btnRow}>
-            <button style={s.cancelBtn} onClick={() => resolve(null)}>
+            <button type="button" style={s.cancelBtn} onClick={() => resolve(null)}>
               {t("save_name_prompt.cancel" as any)}
             </button>
-            <button style={s.confirmBtn} disabled={!nameInput.trim()} onClick={confirm}>
+            <button
+              type="button"
+              style={s.confirmBtn}
+              disabled={!nameInput.trim()}
+              onClick={confirm}
+            >
               {t("save_name_prompt.save" as any)}
             </button>
           </div>

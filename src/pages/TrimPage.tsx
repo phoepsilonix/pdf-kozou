@@ -4,52 +4,53 @@
 
 // src/pages/TrimPage.tsx
 export default TrimPage;
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LiveRegion } from "../components/A11yControls";
+import { BtnPrimary, Spinner } from "../components/common";
+import { FixedMobileNav } from "../components/FixedMobileNav";
+import { MetadataEditModal } from "../components/MetadataEditModal";
+import { PreviewPane } from "../components/PreviewPane";
 import { TrimCanvas } from "../components/trim/TrimCanvas";
 import { TrimControls } from "../components/trim/TrimControls";
-import { CompressPage } from "./CompressPage";
-import { usePdfStore, type FileEntry } from "../store/usePdfStore";
-import { hasImage } from "../lib/fileTypes";
-import { buildName, stem, opSuffix } from "../lib/filename";
-import { formatFilenameForSpeech } from "../lib/speakName";
-import { resolvePageSizePt } from "../lib/pageSize";
+import { useA11y } from "../hooks/useA11y";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
+import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
+import { usePreview } from "../hooks/usePreview";
 import { useSaveDialog } from "../hooks/useSaveDialog";
-import { Spinner, BtnPrimary } from "../components/common";
-import {
-  getUniqueTempPath,
-  renderPage,
-  moveFile,
-  trimPdf,
-  getPdfInfo,
-  composeImpositionPdf,
-  type TrimMargins,
-  type PdfInfo,
-  type PickedFolder,
-  joinPath,
-  isAndroid,
-} from "../lib/tauri";
+import { useSectionToggle } from "../hooks/useSectionToggle";
+import { useViewport } from "../hooks/useViewport";
+import { announceMargins } from "../lib/announce";
+import { buildName, opSuffix, stem } from "../lib/filename";
+import { hasImage } from "../lib/fileTypes";
+import { useI18n } from "../lib/i18n";
 import {
   buildMobileOutputSubfolder,
-  mobileOutputPreviewLabel,
   type MobileSavedFileInfo,
+  mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
-import { useMobileBatchOutput, ANDROID_FOLDER_MISSING } from "../hooks/useMobileBatchOutput";
-import { C, F } from "../lib/theme";
-import { useA11y } from "../hooks/useA11y";
+import { resolvePageSizePt } from "../lib/pageSize";
+import { formatFilenameForSpeech } from "../lib/speakName";
+import {
+  composeImpositionPdf,
+  getPdfInfo,
+  getUniqueTempPath,
+  isAndroid,
+  joinPath,
+  moveFile,
+  type PdfInfo,
+  type PickedFolder,
+  renderPage,
+  type TrimMargins,
+  trimPdf,
+} from "../lib/tauri";
+import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
-import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { LiveRegion } from "../components/A11yControls";
-import { useI18n } from "../lib/i18n";
 import { FS } from "../lib/typography";
-import { PreviewPane } from "../components/PreviewPane";
-import { usePreview } from "../hooks/usePreview";
-import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
-import { announceMargins } from "../lib/announce";
-import { useViewport } from "../hooks/useViewport";
-import { useSectionToggle } from "../hooks/useSectionToggle";
-import { FixedMobileNav } from "../components/FixedMobileNav";
-import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
+import { type FileEntry, usePdfStore } from "../store/usePdfStore";
+import { CompressPage } from "./CompressPage";
 
 interface Props {
   filePath: string;
@@ -106,9 +107,9 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
 
 // ── バッチトリム ──────────────────────────────────────────────────────────────
 function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
-  const { setError, convertLayoutW, convertLayoutH, convertLayoutEm, pageSizeId, pageOrientation } =
+  const { convertLayoutW, convertLayoutH, convertLayoutEm, pageSizeId, pageOrientation } =
     usePdfStore();
-  const { announceSuccess, announceError } = useA11y();
+  const { announceSuccess } = useA11y();
   const { t } = useI18n();
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [outDir, setOutDir] = useState("");
@@ -144,7 +145,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
   const [trimPages, onPages] = useState("all");
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
-  const [cropCleanup, setCropCleanup] = useState(false);
+  const [cropCleanup] = useState(false);
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [zoom, setZoom] = useState(0.75);
@@ -177,10 +178,6 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
     bodyScrollRef,
     settingsTopRef,
   );
-
-  const currentPage = firstPdfInfo.pages[previewPage] ?? { w: 595, h: 842, rotate: 0 };
-  const pageW = currentPage.w;
-  const pageH = currentPage.h;
 
   // コンテナ幅に追従してプレビューサイズを動的更新。
   // コールバック ref にすることで、フェーズ遷移（編集→プレビュー→編集）で
@@ -505,6 +502,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
           ))}
         </div>
         <button
+          type="button"
           style={b.backBtn}
           onClick={() => {
             setPhase("edit");
@@ -644,6 +642,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             ページ切り替え(キャンバス)の上側に積む） */}
         {filePaneCollapsed ? (
           <button
+            type="button"
             style={filePaneCollapsedBarStyle}
             onClick={toggleFilePane}
             title={t("trim.preview_target")}
@@ -668,6 +667,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             >
               <span style={{ flex: 1 }}>{t("trim.preview_target")}</span>
               <button
+                type="button"
                 style={{
                   background: "none",
                   border: "none",
@@ -686,6 +686,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             <div style={{ flex: 1, overflowY: "auto" }}>
               {files.map((f, i) => (
                 <button
+                  type="button"
                   key={f.id}
                   style={{
                     ...s.thumb,
@@ -722,6 +723,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
             }}
           >
             <button
+              type="button"
               style={s.zBtn}
               onClick={() => setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
             >
@@ -731,12 +733,13 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               {Math.round(zoom * 100)}%
             </span>
             <button
+              type="button"
               style={s.zBtn}
               onClick={() => setZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2))}
             >
               ＋
             </button>
-            <button style={s.zBtn} onClick={() => setZoom(1.0)}>
+            <button type="button" style={s.zBtn} onClick={() => setZoom(1.0)}>
               100%
             </button>
             {/* ページ切り替え */}
@@ -750,6 +753,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               }}
             />
             <button
+              type="button"
               style={{ ...s.zBtn, opacity: previewPage === 0 ? 0.35 : 1 }}
               disabled={previewPage === 0}
               onClick={() => {
@@ -772,6 +776,7 @@ function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfIn
               {previewPage + 1} / {curPages}
             </span>
             <button
+              type="button"
               style={{ ...s.zBtn, opacity: previewPage >= curPages - 1 ? 0.35 : 1 }}
               disabled={previewPage >= curPages - 1}
               onClick={() => {
@@ -915,12 +920,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   } = usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
-  const [statusMsg, setStatusMsg] = useState("");
+  const [statusMsg] = useState("");
   const marginTopRef = useRef<HTMLInputElement | null>(null);
   const rangeRef = useRef<HTMLInputElement | null>(null);
-  // TrimPageSingle では出力先フォルダはファイル保存ダイアログで処理するため
-  // Alt+D は設定中の旨を読み上げるのみ（バッチ側の pickDir とは別）
-  const pickSingle = useSaveDialog().pickSave;
 
   useEffect(() => {
     announceScreen("screen.trim");
@@ -1179,7 +1181,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             layoutEm: convertLayoutEm,
           });
           imgs.push(b64);
-        } catch (e) {
+        } catch {
           break;
         }
       }
@@ -1251,6 +1253,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         </span>
         <pre style={s.errMsg}>{errMsg}</pre>
         <button
+          type="button"
           style={s.errBtn}
           onClick={() => {
             setPhase("edit");
@@ -1301,10 +1304,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           {savedPath}
         </span>
         <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-          <button style={s.errBtn} onClick={() => setMetaEditOpen(true)}>
+          <button type="button" style={s.errBtn} onClick={() => setMetaEditOpen(true)}>
             ✏️ {t("meta_edit.title")}
           </button>
           <button
+            type="button"
             style={s.errBtn}
             onClick={() => {
               if (savedPath) discardSave(savedPath);
@@ -1401,6 +1405,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             <div style={s.thumbList}>
               {Array.from({ length: pdfInfo.page_count }, (_, i) => (
                 <button
+                  type="button"
                   key={i}
                   style={{
                     ...s.thumb,
@@ -1433,6 +1438,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           {isNarrow ? (
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
+                type="button"
                 style={{ ...s.zBtn, opacity: previewPage === 0 ? 0.35 : 1 }}
                 disabled={previewPage === 0}
                 onClick={() => setPreviewPage((p) => Math.max(0, p - 1))}
@@ -1448,6 +1454,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
                 })}
               </span>
               <button
+                type="button"
                 style={{ ...s.zBtn, opacity: previewPage >= pdfInfo.page_count - 1 ? 0.35 : 1 }}
                 disabled={previewPage >= pdfInfo.page_count - 1}
                 onClick={() => setPreviewPage((p) => Math.min(pdfInfo.page_count - 1, p + 1))}
@@ -1468,6 +1475,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           {/* ズームコントロール */}
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
             <button
+              type="button"
               style={s.zBtn}
               onClick={() => setZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
             >
@@ -1477,12 +1485,13 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               {Math.round(zoom * 100)}%
             </span>
             <button
+              type="button"
               style={s.zBtn}
               onClick={() => setZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2))}
             >
               ＋
             </button>
-            <button style={s.zBtn} onClick={() => setZoom(1.0)}>
+            <button type="button" style={s.zBtn} onClick={() => setZoom(1.0)}>
               100%
             </button>
           </div>
@@ -1618,7 +1627,7 @@ function ResultView({
   return (
     <div style={r.root}>
       <div style={{ ...r.header, flexWrap: "wrap", rowGap: 6 }}>
-        <button style={r.btnBack} onClick={onBack}>
+        <button type="button" style={r.btnBack} onClick={onBack}>
           {t("common.back")}
         </button>
         {/* タイトル/件数は、幅が狭いときに文字が内部で折り返して見出し行
@@ -1649,6 +1658,7 @@ function ResultView({
           }}
         >
           <button
+            type="button"
             style={r.btnBack}
             onClick={() => setLocalZoom((z) => +Math.max(0.25, z - 0.25).toFixed(2))}
           >
@@ -1658,12 +1668,13 @@ function ResultView({
             {Math.round(localZoom * 100)}%
           </span>
           <button
+            type="button"
             style={r.btnBack}
             onClick={() => setLocalZoom((z) => +Math.min(4.0, z + 0.25).toFixed(2))}
           >
             ＋
           </button>
-          <button style={r.btnBack} onClick={() => setLocalZoom(1.0)}>
+          <button type="button" style={r.btnBack} onClick={() => setLocalZoom(1.0)}>
             100%
           </button>
         </div>
@@ -1687,17 +1698,18 @@ function ResultView({
       </div>
 
       <div style={r.footer}>
-        <button style={r.btnBack} onClick={onBack}>
+        <button type="button" style={r.btnBack} onClick={onBack}>
           {t("common.back")}
         </button>
         <button
+          type="button"
           style={{ ...r.btnSave, ...(isSaving ? r.dis : {}) }}
           onClick={onSave}
           disabled={isSaving}
         >
           {isSaving ? t("common.saving") : t("common.save_pdf")}
         </button>
-        <button ref={saveBtnRef} style={r.btnCompress} onClick={onCompress}>
+        <button type="button" ref={saveBtnRef} style={r.btnCompress} onClick={onCompress}>
           {t("common.compress_then_save")}
         </button>
       </div>
