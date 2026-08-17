@@ -7802,7 +7802,17 @@ void kozou_sanitize_hidden_text(
                  * ときだけ」マッチさせることで、この巻き添え消去を防ぐ。 */
                 float alpha_stack[32];
                 alpha_stack[0] = 1.0f;
-                pdf_obj *extg_dict = res ? pdf_dict_get(ctx, res, PDF_NAME(ExtGState)) : NULL;
+                /* PDF_NAME(ExtGState) によるポインタ比較は、このPDFで
+                 * パースされた /ExtGState 名オブジェクトがmupdfの事前
+                 * インターン済み定数と一致しない実体になっている場合に
+                 * 失敗する(0015で /XObject 探索について特定・修正済みの
+                 * 既知の問題と同じパターン。kozou_blank_all_bt_blocks_hv_ctm
+                 * 側は既に pdf_dict_gets の安全な文字列比較lookupを使って
+                 * いるが、後から追加されたこのページ直下Tj/TJ経路の
+                 * alpha_gate実装だけ移行が漏れていた)。失敗するとalpha_stackが
+                 * 常に1.0のままとなり、ca=0由来のtransparentターゲットが
+                 * 一切書き換えられなくなる。 */
+                pdf_obj *extg_dict = res ? pdf_dict_gets(ctx, res, "ExtGState") : NULL;
 
 #define SSTK 16  /* スタック消費削減のため縮小 (旧64) */
                 typedef struct { char s[128]; float v; int is_num; int is_str; } SOp;
