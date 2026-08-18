@@ -3664,7 +3664,7 @@ static int kozou_find_background(
  * 矩形では縦長文字(ascender/cap高)だけ境界はみ出しで検出漏れしやすい
  * (test_color.pdfで実測)。用途(誤検出許容度 vs 見逃し許容度)に応じて
  * GUI等の呼び出し元から調整できるよう引数化した。 */
-#define KOZOU_LC_RATIO_THRESHOLD_DEFAULT 0.85f
+#define KOZOU_LC_RATIO_THRESHOLD_DEFAULT 0.75f
 
 /* ------------------------------------------------------------------ */
 /* kozou_lc_is_shadow_duplicate                                        */

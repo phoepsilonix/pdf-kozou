@@ -64,7 +64,7 @@ const REASON_KEY: Record<string, string> = {
 // lcRatio: 低コントラスト検出の外周リング(32点)のうち何割が低コントラスト
 // なら「埋没」と判定するか(0.0〜1.0)。大きいほど厳格(全周が同化して
 // いる場合のみ検出)、小さいほど緩め(部分的な同化も拾う)。
-const DEFAULT_THR = { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.85 };
+const DEFAULT_THR = { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.75 };
 
 type Thr = typeof DEFAULT_THR;
 
@@ -77,7 +77,7 @@ const PRESETS: { id: string; labelKey: string; thr: Thr }[] = [
   {
     id: "normal",
     labelKey: "hidden.preset_normal",
-    thr: { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.85 },
+    thr: { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.75 },
   },
   {
     id: "loose",
