@@ -862,6 +862,8 @@
     "threshold_size": "Font size (pt)",
     "threshold_cover": "Cover ratio",
     "threshold_reset": "Reset",
+    "threshold_strict": "Strict",
+    "threshold_loose": "Loose",
     "detect_btn": "🔍 Detect",
     "result_label": "Results",
     "result_empty": "Nothing detected",

@@ -862,6 +862,8 @@
     "threshold_size": "フォントサイズ pt",
     "threshold_cover": "被覆率",
     "threshold_reset": "リセット",
+    "threshold_strict": "厳格",
+    "threshold_loose": "緩め",
     "detect_btn": "🔍 検出実行",
     "result_label": "検出結果",
     "result_empty": "検出なし",

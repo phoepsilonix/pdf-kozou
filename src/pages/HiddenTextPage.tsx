@@ -64,7 +64,7 @@ const REASON_KEY: Record<string, string> = {
 // lcRatio: 低コントラスト検出の外周リング(32点)のうち何割が低コントラスト
 // なら「埋没」と判定するか(0.0〜1.0)。大きいほど厳格(全周が同化して
 // いる場合のみ検出)、小さいほど緩め(部分的な同化も拾う)。
-const DEFAULT_THR = { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.75 };
+const DEFAULT_THR = { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.85 };
 
 type Thr = typeof DEFAULT_THR;
 
@@ -77,7 +77,7 @@ const PRESETS: { id: string; labelKey: string; thr: Thr }[] = [
   {
     id: "normal",
     labelKey: "hidden.preset_normal",
-    thr: { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.75 },
+    thr: { alpha: 13, contrast: 1.2, size: 2.0, cover: 0.8, lcRatio: 0.85 },
   },
   {
     id: "loose",
@@ -1340,16 +1340,44 @@ function ThrPanel({
   t: (key: string, vars?: Record<string, string>) => string;
 }) {
   const lastThr = loadLastThr();
+  // strictAt: そのスライダーで「厳格(検出を絞り込む)」側が min/max どちらか。
+  // alpha/contrast/size は数値が小さいほど厳格、cover/lcRatio は数値が
+  // 大きいほど厳格(=より高い被覆率/割合を要求する)という、パラメータの
+  // 意味上どうしても生じる向きの違いがある。数値の並び自体(左=小さい値/
+  // 右=大きい値)はスライダーとして自然なので変えず、代わりに全スライダー
+  // 共通で「厳格 ←→ 緩め」の文言をこのフラグに従って実際の向きに配置する
+  // ことで、方向の矛盾を解消する。
   const sliders = [
-    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1 },
-    { key: "contrast", label: t("hidden.threshold_contrast"), min: 1, max: 21, step: 0.1 },
+    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1, strictAt: "min" },
+    {
+      key: "contrast",
+      label: t("hidden.threshold_contrast"),
+      min: 1,
+      max: 21,
+      step: 0.1,
+      strictAt: "min",
+    },
     // lcRatio は low_contrast 用の2つ目のパラメータなので contrast の直後に置き、
     // ラベル自体にも「低コントラスト」を明記して同じ検出タイプへの対応が
     // 一目でわかるようにする(alpha/contrast/size/coverだけだと見た目上
     // どの検出トグルに対応するかが名前からしか判断できなかったため)。
-    { key: "lcRatio", label: t("hidden.threshold_lc_ratio"), min: 0.1, max: 1, step: 0.05 },
-    { key: "size", label: t("hidden.threshold_size"), min: 0.1, max: 10, step: 0.1 },
-    { key: "cover", label: t("hidden.threshold_cover"), min: 0.1, max: 1, step: 0.05 },
+    {
+      key: "lcRatio",
+      label: t("hidden.threshold_lc_ratio"),
+      min: 0.1,
+      max: 1,
+      step: 0.05,
+      strictAt: "max",
+    },
+    { key: "size", label: t("hidden.threshold_size"), min: 0.1, max: 10, step: 0.1, strictAt: "min" },
+    {
+      key: "cover",
+      label: t("hidden.threshold_cover"),
+      min: 0.1,
+      max: 1,
+      step: 0.05,
+      strictAt: "max",
+    },
   ] as const;
 
   return (
@@ -1376,7 +1404,7 @@ function ThrPanel({
         )}
       </div>
 
-      {sliders.map(({ key, label, min, max, step }) => (
+      {sliders.map(({ key, label, min, max, step, strictAt }) => (
         <label key={key} style={s.sec}>
           <div style={s.secTitle}>{label}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1394,6 +1422,10 @@ function ThrPanel({
                 ? Math.round((thr as any)[key])
                 : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
             </span>
+          </div>
+          <div style={s.strictLooseRow}>
+            <span>{strictAt === "min" ? t("hidden.threshold_strict") : t("hidden.threshold_loose")}</span>
+            <span>{strictAt === "min" ? t("hidden.threshold_loose") : t("hidden.threshold_strict")}</span>
           </div>
         </label>
       ))}
@@ -1524,6 +1556,13 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "center",
   },
   sec: { display: "flex", flexDirection: "column", gap: 4 },
+  strictLooseRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
+    opacity: 0.75,
+  },
   secTitle: {
     fontSize: FS.caption,
     fontWeight: 700,
