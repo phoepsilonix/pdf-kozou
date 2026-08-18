@@ -3666,6 +3666,55 @@ static int kozou_find_background(
  * GUI等の呼び出し元から調整できるよう引数化した。 */
 #define KOZOU_LC_RATIO_THRESHOLD_DEFAULT 0.75f
 
+/* ------------------------------------------------------------------ */
+/* kozou_lc_is_shadow_duplicate                                        */
+/* ------------------------------------------------------------------ */
+/* 同じstextページ内に、同じ文字コード・ほぼ同じ位置で、かつ有意に不透明な
+ * (=はっきり見えている) 別の文字インスタンスが存在するかを調べる。
+ *
+ * Canva等のデザインツールは「白フチ取り/ドロップシャドウ+本体色」という、
+ * 同一文字を色/不透明度違いで複数枚重ねる表現をよく使う。この場合、
+ * 半透明フチ取り層(例: alpha=102)は本体の不透明層(alpha=255)にほぼ
+ * 完全に隠れて描画されるため、コントラスト比だけを見ると「背景と同化
+ * している」と判定されがちだが、実際には情報を隠す意図も効果もない
+ * (読者が目にするのは常に上に重なる不透明な本体層であり、フチ取り層
+ * 単体を「隠しテキスト」として無害化しても盗み見られる情報は増減
+ * しない。むしろフチ取り効果の一部が欠けて見た目が乱れるだけの実害の
+ * 方が大きい)。低コントラスト検出がこの種の装飾的重ね書きを拾わない
+ * ようにするためのガード。 */
+static int kozou_lc_is_shadow_duplicate(
+    fz_stext_page *stext,
+    fz_stext_char *self,
+    float cx, float cy, float tol, int self_alpha)
+{
+    for (fz_stext_block *b = stext->first_block; b; b = b->next) {
+        if (b->type != FZ_STEXT_BLOCK_TEXT) continue;
+        for (fz_stext_line *l = b->u.t.first_line; l; l = l->next) {
+            for (fz_stext_char *o = l->first_char; o; o = o->next) {
+                if (o == self) continue;
+                if (o->c != self->c) continue;
+                unsigned int opacked = (unsigned int)o->argb;
+                int oalpha = (opacked >> 24) & 0xFF;
+                /* 明らかに自分より不透明(=より前面に見えている)側だけを
+                 * 「隠している側」の候補とする。両方とも同程度の
+                 * 不透明度なら通常の重複描画や合字の可能性があり、
+                 * ここでは対象にしない。 */
+                if (oalpha - self_alpha < 50) continue;
+                fz_quad oq = o->quad;
+                float ox0 = oq.ul.x < oq.ll.x ? oq.ul.x : oq.ll.x;
+                float ox1 = oq.ur.x > oq.lr.x ? oq.ur.x : oq.lr.x;
+                float oy0 = oq.ul.y < oq.ur.y ? oq.ul.y : oq.ur.y;
+                float oy1 = oq.ll.y > oq.lr.y ? oq.ll.y : oq.lr.y;
+                float ocx = (ox0 + ox1) * 0.5f;
+                float ocy = (oy0 + oy1) * 0.5f;
+                float dx = ocx - cx, dy = ocy - cy;
+                if (dx*dx + dy*dy <= tol*tol) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 void kozou_detect_low_contrast_text(
     fz_context  *ctx,
     const char  *path,
@@ -3921,6 +3970,14 @@ void kozou_detect_low_contrast_text(
                      * リング全体に対する比率で安定して判定する。 */
                     float low_ratio = (float)low_count / (float)ring_total;
                     if (low_ratio < ratio_threshold) continue;
+
+                    /* ドロップシャドウ/フチ取り等の装飾的重ね書きを除外する。
+                     * 「本当に文字色と背景が同化している」通常のケースでは
+                     * 同一位置に別のはっきり見える同じ文字は存在しないので、
+                     * このガードで誤って弾かれることはない。 */
+                    if (kozou_lc_is_shadow_duplicate(
+                            stext, ch, cx, cy,
+                            char_h * 0.6f + 2.0f, alpha)) continue;
 
                     /* JSON 出力用の代表値（リング平均）*/
                     float cr = cr_sum / ring_total;
