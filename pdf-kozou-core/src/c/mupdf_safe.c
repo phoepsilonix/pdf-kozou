@@ -7943,9 +7943,11 @@ void kozou_sanitize_hidden_text(
                                 stk[stk_top-3].v, stk[stk_top-2].v, stk[stk_top-1].v };
                             gs_stack[gs_sp] = fz_concat(cm, gs_stack[gs_sp]);
                         } else if (!strcmp(kw,"gs") && stk_top >= 1 && stk[stk_top-1].s[0] == '/') {
-                            /* /GSx gs: ExtGState 辞書から /ca (塗り不透明度) を解決する。
-                             * キーが無ければ現在値を維持 (PDF仕様: ExtGState の未指定
-                             * キーは「変更なし」を意味する)。 */
+                            /* BT/ET 外で発行される gs。BT/ET 内で発行される gs は
+                             * 別途 in_text 分岐側(Tr ハンドラ直後)で同じロジックを
+                             * 処理する(q/Q/cm と異なりgsはテキストオブジェクト内でも
+                             * 合法な演算子のため、この!in_text限定の分岐だけでは
+                             * 取りこぼす)。 */
                             const char *gsn = stk[stk_top-1].s + 1;
                             if (extg_dict) {
                                 pdf_obj *gs_obj = pdf_dict_gets(ctx, extg_dict, gsn);
@@ -7996,6 +7998,27 @@ void kozou_sanitize_hidden_text(
                     }
                     if (!strcmp(kw,"Tr")&&stk_top>=1) {
                         tr_mode=(int)stk[stk_top-1].v;
+                        fz_append_printf(ctx,new_buf,"%s\n",kw); stk_top=0; continue;
+                    }
+                    if (!strcmp(kw,"gs") && stk_top>=1 && stk[stk_top-1].s[0]=='/') {
+                        /* BT/ET 内で発行される gs (PDF仕様上、テキストオブジェクト内
+                         * でも合法な演算子。q/Q/cm と異なりBT外限定ではない)。
+                         * 従来はこの分岐が!in_textブロック内にしか無く、BT/ET内で
+                         * 発行されたgsはalpha_stackに一切反映されないままキーワードが
+                         * 素通りしていた(ExtGStateのca解決自体はpdf_dict_getsで
+                         * 正しく直っていても、そもそもこの位置のgsが処理対象に
+                         * 入っていなかった)。test_transparent2.pdfのような
+                         * 「BT / /F1 12 Tf / /gs_alpha0 gs / ... Tj / ET」という、
+                         * Tf直後にgsを置く一般的な出力パターンで、alpha_gate判定が
+                         * 常にcur_alpha=1.0(不透明)のまま失敗し、ca=0の透明テキストが
+                         * 一切blank対象と判定されなかった問題を修正する。 */
+                        const char *gsn = stk[stk_top-1].s + 1;
+                        if (extg_dict) {
+                            pdf_obj *gs_obj = pdf_dict_gets(ctx, extg_dict, gsn);
+                            pdf_obj *ca_obj = gs_obj ?
+                                pdf_dict_get(ctx, gs_obj, PDF_NAME(ca)) : NULL;
+                            if (ca_obj) alpha_stack[gs_sp] = pdf_to_real(ctx, ca_obj);
+                        }
                         fz_append_printf(ctx,new_buf,"%s\n",kw); stk_top=0; continue;
                     }
 
