@@ -7804,6 +7804,23 @@ void kozou_sanitize_hidden_text(
                     continue;
                 pi_targets[pi_n++] = targets[_fi];
             }
+            /* デバッグ用: このページに実際に渡されたターゲット一覧を丸ごと
+             * ダンプする。個別文字の不一致理由([KOZOU_PAGE_CHAR])を追う
+             * 前に、そもそも期待する座標のターゲットがpi_targetsに含まれて
+             * いるかどうか(GUI検出結果がsanitizeリクエストに正しく渡って
+             * いるか)を最初に確認できるようにする。 */
+            if (getenv("KOZOU_SANITIZE_DEBUG") != NULL) {
+                fprintf(stderr, "[KOZOU_PAGE_TARGETS] page=%d pi_n=%d\n", pi, pi_n);
+                for (int _pj = 0; _pj < pi_n; _pj++) {
+                    fprintf(stderr,
+                        "[KOZOU_PAGE_TARGETS]   i=%d cp=%d xy=(%.1f,%.1f) size=%.1f "
+                        "rvis=%d agate=%d font_class=%d xobj_xref=%d in_xobj=%d\n",
+                        _pj, pi_targets[_pj].codepoint, pi_targets[_pj].x, pi_targets[_pj].y,
+                        pi_targets[_pj].size, pi_targets[_pj].render_invisible,
+                        pi_targets[_pj].alpha_gate, pi_targets[_pj].font_class,
+                        pi_targets[_pj].xobj_xref, pi_targets[_pj].in_xobj);
+                }
+            }
             fz_try(ctx) {
                 page = pdf_load_page(ctx, pdf, pi);
                 /* 検出側の origin は fz_new_stext_page_from_page が生成する
@@ -8239,10 +8256,14 @@ void kozou_sanitize_hidden_text(
                             /* デバッグ用: KOZOU_XOBJ_CHAR と同じ発想の診断出力を、ページ
                              * 直下Tj経路にも用意する(XObject専用だったため、この経路の
                              * font_class/位置/identity不一致が従来まったく可視化できな
-                             * かった)。Type3文字のときだけ出力し、通常ビルドの挙動には
-                             * 一切影響しない。 */
-                            if (!this_blank && getenv("KOZOU_SANITIZE_DEBUG") != NULL &&
-                                kozou_font_is_type3(ctx,font_dict,cur_font)) {
+                             * かった)。Type3限定にしていたが、実際には非Type3の対象
+                             * (例: alpha=0の完全透明レイヤー)でも同じ問題が起こりうる
+                             * ため外した。ページ全体の非マッチ文字を無条件に出力すると
+                             * 通常の可視テキストまで大量にログが膨らむため、直近の
+                             * ターゲットまでの距離が tol2_est の4倍以内(=対象候補が
+                             * 近くに実在するのに何らかの条件で弾かれている「ニアミス」
+                             * ケース)のときだけ出力するよう絞る。 */
+                            if (!this_blank && getenv("KOZOU_SANITIZE_DEBUG") != NULL) {
                                 const char *dbg_fail = "no_target";
                                 int dbg_best_ti = -1; float dbg_best_d2 = -1.0f;
                                 kozou_sanitize_dbg_diagnose(pi_targets,pi_n,cp.x,cp.y,tol2_est,
@@ -8250,12 +8271,13 @@ void kozou_sanitize_hidden_text(
                                     alpha_stack[gs_sp],alpha_threshold,
                                     kozou_font_is_type3(ctx,font_dict,cur_font),
                                     &dbg_fail,&dbg_best_ti,&dbg_best_d2);
+                                if (dbg_best_ti >= 0 && dbg_best_d2 <= tol2_est * 4.0f) {
                                 fprintf(stderr,
                                     "[KOZOU_PAGE_CHAR] op=Tj font=%s cc=0x%02x g_ucs=%d "
                                     "have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f pi_n=%d "
                                     "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d "
                                     "best_xy=(%.1f,%.1f) best_rvis=%d best_agate=%d "
-                                    "cur_invisible=%d fail=%s\n",
+                                    "cur_invisible=%d cur_is_type3=%d fail=%s\n",
                                     cur_font ? cur_font : "?", (unsigned)cc2, g2_ucs, have_g2,
                                     cp.x, cp.y, tol2_est, pi_n,
                                     dbg_best_ti, dbg_best_ti>=0?(double)sqrtf(dbg_best_d2):-1.0,
@@ -8265,7 +8287,9 @@ void kozou_sanitize_hidden_text(
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].y:-1.0,
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].render_invisible:-99,
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].alpha_gate:-99,
-                                    kozou_tr_is_invisible(tr_mode), dbg_fail);
+                                    kozou_tr_is_invisible(tr_mode),
+                                    kozou_font_is_type3(ctx,font_dict,cur_font), dbg_fail);
+                                }
                             }
                             /* 幅差分補正用の幅は必ずフォントメトリクス(実際のPDF送り幅)を使う。
                              * quad マップの width_1000 は「文字の描画インクのbboxから逆算した
@@ -8414,8 +8438,7 @@ void kozou_sanitize_hidden_text(
                                             kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
                                             alpha_stack[gs_sp],alpha_threshold,
                                             kozou_font_is_type3(ctx,font_dict,cur_font));
-                                    if (!this_blank && getenv("KOZOU_SANITIZE_DEBUG") != NULL &&
-                                        kozou_font_is_type3(ctx,font_dict,cur_font)) {
+                                    if (!this_blank && getenv("KOZOU_SANITIZE_DEBUG") != NULL) {
                                         const char *dbg_fail = "no_target";
                                         int dbg_best_ti = -1; float dbg_best_d2 = -1.0f;
                                         kozou_sanitize_dbg_diagnose(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
@@ -8423,12 +8446,13 @@ void kozou_sanitize_hidden_text(
                                             alpha_stack[gs_sp],alpha_threshold,
                                             kozou_font_is_type3(ctx,font_dict,cur_font),
                                             &dbg_fail,&dbg_best_ti,&dbg_best_d2);
+                                        if (dbg_best_ti >= 0 && dbg_best_d2 <= tol2_est * 4.0f) {
                                         fprintf(stderr,
                                             "[KOZOU_PAGE_CHAR] op=TJ font=%s cc=0x%02x g_ucs=%d "
                                             "have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f pi_n=%d "
                                             "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d "
                                             "best_xy=(%.1f,%.1f) best_rvis=%d best_agate=%d "
-                                            "cur_invisible=%d fail=%s\n",
+                                            "cur_invisible=%d cur_is_type3=%d fail=%s\n",
                                             cur_font ? cur_font : "?", (unsigned)cc2, g3_ucs, have_g3,
                                             cp2.x, cp2.y, tol2_est, pi_n,
                                             dbg_best_ti, dbg_best_ti>=0?(double)sqrtf(dbg_best_d2):-1.0,
@@ -8438,7 +8462,9 @@ void kozou_sanitize_hidden_text(
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].y:-1.0,
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].render_invisible:-99,
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].alpha_gate:-99,
-                                            kozou_tr_is_invisible(tr_mode), dbg_fail);
+                                            kozou_tr_is_invisible(tr_mode),
+                                            kozou_font_is_type3(ctx,font_dict,cur_font), dbg_fail);
+                                        }
                                     }
                                     first_char_seen = 1;
                                     if (this_blank) any_blank = 1;
