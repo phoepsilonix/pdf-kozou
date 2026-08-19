@@ -5581,7 +5581,56 @@ static int kozou_sanitize_is_target(
     return 0;
 }
 
-/* XObject 内部座標 (Tm tx/ty) でのマッチング */
+/* kozou_sanitize_is_target のデバッグ専用版。マッチング条件は完全に同じ
+ * だが、remaining_ptr は消費(デクリメント)しない純粋な読み取り専用診断
+ * であり、実際の消去判定(kozou_sanitize_is_target)の後に追加で呼んでも
+ * 副作用が二重にならない。KOZOU_XOBJ_CHAR デバッグ出力(XObject内Type3の
+ * font_class/位置/identity不一致を可視化するもの)と同じ発想を、ページ
+ * 直下のTj/TJ経路にも用意したもの。best_ti(距離最小のターゲット)と、
+ * それが不一致になった理由(fail_reason)を返す。 */
+static void kozou_sanitize_dbg_diagnose(
+    const KozouSanitizeOrigin *t, int n, float x, float y, float tol2,
+    int cur_invisible,
+    int have_glyph, int g_ucs, float g_size,
+    float cur_alpha01, int alpha_threshold,
+    int cur_is_type3,
+    const char **out_fail_reason, int *out_best_ti, float *out_best_d2)
+{
+    const char *fail = "no_target";
+    int best_ti = -1;
+    float best_d2 = -1.0f;
+    for (int i = 0; i < n; i++) {
+        if (t[i].in_xobj) continue;
+        if (t[i].xobj_xref != 0) continue;
+        float dx0 = t[i].x - x, dy0 = t[i].y - y;
+        float d2 = dx0*dx0 + dy0*dy0;
+        if (best_ti < 0 || d2 < best_d2) { best_ti = i; best_d2 = d2; }
+        if (best_ti != i) continue; /* 以降は最近傍ターゲットの不一致理由だけ追跡する */
+        if (t[i].render_invisible >= 0 && t[i].render_invisible != cur_invisible) {
+            fail = "render_invisible"; continue;
+        }
+        if (t[i].font_class >= 0 && t[i].font_class != cur_is_type3) {
+            fail = "font_class"; continue;
+        }
+        if (t[i].alpha_gate) {
+            int cur_alpha255 = (int)(cur_alpha01 * 255.0f + 0.5f);
+            if (cur_alpha255 > alpha_threshold) { fail = "alpha_gate"; continue; }
+        }
+        if (d2 > tol2) { fail = "position"; continue; }
+        if (!kozou_identity_ok(t[i].codepoint, t[i].size, have_glyph, g_ucs, g_size)) {
+            fail = "identity"; continue;
+        }
+        if (t[i].remaining_ptr && *t[i].remaining_ptr <= 0) {
+            fail = "remaining_ptr"; continue;
+        }
+        fail = "matched";
+    }
+    *out_fail_reason = fail;
+    *out_best_ti = best_ti;
+    *out_best_d2 = best_d2;
+}
+
+
 static int kozou_sanitize_is_target_ix(
     const KozouSanitizeOrigin *t, int n, float ix, float iy, float tol2)
 {
@@ -8187,6 +8236,37 @@ void kozou_sanitize_hidden_text(
                                     kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size,
                                     alpha_stack[gs_sp],alpha_threshold,
                                     kozou_font_is_type3(ctx,font_dict,cur_font));
+                            /* デバッグ用: KOZOU_XOBJ_CHAR と同じ発想の診断出力を、ページ
+                             * 直下Tj経路にも用意する(XObject専用だったため、この経路の
+                             * font_class/位置/identity不一致が従来まったく可視化できな
+                             * かった)。Type3文字のときだけ出力し、通常ビルドの挙動には
+                             * 一切影響しない。 */
+                            if (!this_blank && getenv("KOZOU_SANITIZE_DEBUG") != NULL &&
+                                kozou_font_is_type3(ctx,font_dict,cur_font)) {
+                                const char *dbg_fail = "no_target";
+                                int dbg_best_ti = -1; float dbg_best_d2 = -1.0f;
+                                kozou_sanitize_dbg_diagnose(pi_targets,pi_n,cp.x,cp.y,tol2_est,
+                                    kozou_tr_is_invisible(tr_mode),have_g2,g2_ucs,g2_size,
+                                    alpha_stack[gs_sp],alpha_threshold,
+                                    kozou_font_is_type3(ctx,font_dict,cur_font),
+                                    &dbg_fail,&dbg_best_ti,&dbg_best_d2);
+                                fprintf(stderr,
+                                    "[KOZOU_PAGE_CHAR] op=Tj font=%s cc=0x%02x g_ucs=%d "
+                                    "have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f pi_n=%d "
+                                    "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d "
+                                    "best_xy=(%.1f,%.1f) best_rvis=%d best_agate=%d "
+                                    "cur_invisible=%d fail=%s\n",
+                                    cur_font ? cur_font : "?", (unsigned)cc2, g2_ucs, have_g2,
+                                    cp.x, cp.y, tol2_est, pi_n,
+                                    dbg_best_ti, dbg_best_ti>=0?(double)sqrtf(dbg_best_d2):-1.0,
+                                    dbg_best_ti>=0?pi_targets[dbg_best_ti].font_class:-99,
+                                    dbg_best_ti>=0?pi_targets[dbg_best_ti].codepoint:-1,
+                                    dbg_best_ti>=0?pi_targets[dbg_best_ti].x:-1.0,
+                                    dbg_best_ti>=0?pi_targets[dbg_best_ti].y:-1.0,
+                                    dbg_best_ti>=0?pi_targets[dbg_best_ti].render_invisible:-99,
+                                    dbg_best_ti>=0?pi_targets[dbg_best_ti].alpha_gate:-99,
+                                    kozou_tr_is_invisible(tr_mode), dbg_fail);
+                            }
                             /* 幅差分補正用の幅は必ずフォントメトリクス(実際のPDF送り幅)を使う。
                              * quad マップの width_1000 は「文字の描画インクのbboxから逆算した
                              * 幅」であり、送り幅(advance width)とは別物。スペースのように
@@ -8334,6 +8414,32 @@ void kozou_sanitize_hidden_text(
                                             kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
                                             alpha_stack[gs_sp],alpha_threshold,
                                             kozou_font_is_type3(ctx,font_dict,cur_font));
+                                    if (!this_blank && getenv("KOZOU_SANITIZE_DEBUG") != NULL &&
+                                        kozou_font_is_type3(ctx,font_dict,cur_font)) {
+                                        const char *dbg_fail = "no_target";
+                                        int dbg_best_ti = -1; float dbg_best_d2 = -1.0f;
+                                        kozou_sanitize_dbg_diagnose(pi_targets,pi_n,cp2.x,cp2.y,tol2_est,
+                                            kozou_tr_is_invisible(tr_mode),have_g3,g3_ucs,g3_size,
+                                            alpha_stack[gs_sp],alpha_threshold,
+                                            kozou_font_is_type3(ctx,font_dict,cur_font),
+                                            &dbg_fail,&dbg_best_ti,&dbg_best_d2);
+                                        fprintf(stderr,
+                                            "[KOZOU_PAGE_CHAR] op=TJ font=%s cc=0x%02x g_ucs=%d "
+                                            "have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f pi_n=%d "
+                                            "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d "
+                                            "best_xy=(%.1f,%.1f) best_rvis=%d best_agate=%d "
+                                            "cur_invisible=%d fail=%s\n",
+                                            cur_font ? cur_font : "?", (unsigned)cc2, g3_ucs, have_g3,
+                                            cp2.x, cp2.y, tol2_est, pi_n,
+                                            dbg_best_ti, dbg_best_ti>=0?(double)sqrtf(dbg_best_d2):-1.0,
+                                            dbg_best_ti>=0?pi_targets[dbg_best_ti].font_class:-99,
+                                            dbg_best_ti>=0?pi_targets[dbg_best_ti].codepoint:-1,
+                                            dbg_best_ti>=0?pi_targets[dbg_best_ti].x:-1.0,
+                                            dbg_best_ti>=0?pi_targets[dbg_best_ti].y:-1.0,
+                                            dbg_best_ti>=0?pi_targets[dbg_best_ti].render_invisible:-99,
+                                            dbg_best_ti>=0?pi_targets[dbg_best_ti].alpha_gate:-99,
+                                            kozou_tr_is_invisible(tr_mode), dbg_fail);
+                                    }
                                     first_char_seen = 1;
                                     if (this_blank) any_blank = 1;
                                     tj_adv += cw2;
