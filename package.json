@@ -28,7 +28,7 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
