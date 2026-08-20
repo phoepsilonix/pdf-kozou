@@ -3682,6 +3682,17 @@ static int kozou_find_background(
  * しない。むしろフチ取り効果の一部が欠けて見た目が乱れるだけの実害の
  * 方が大きい)。低コントラスト検出がこの種の装飾的重ね書きを拾わない
  * ようにするためのガード。 */
+/* 2x2線形部分の行列式の平方根から、等方スケール(拡大率)を推定する。
+ * ToUnicode優先で解決した文字のサイズを、content stream上の生の
+ * /Tf指定サイズ(テキスト空間)からデバイス空間の実効サイズへ換算する
+ * ために使う。回転やせん断が混ざっていても、単純な等方拡大近似として
+ * 十分実用的(mupdf自身のフォントサイズ推定と同じ考え方)。 */
+static float kozou_matrix_scale(fz_matrix m)
+{
+    float det = fabsf(m.a * m.d - m.b * m.c);
+    return det > 0.0f ? sqrtf(det) : 1.0f;
+}
+
 static int kozou_lc_is_shadow_duplicate(
     fz_stext_page *stext,
     fz_stext_char *self,
@@ -6984,10 +6995,24 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 int tu_ucs_c = (pdf && fobj_c) ? kozou_tounicode_lookup(
                                     ctx, pdf, fobj_c, tu_cache, &tu_cache_n, (unsigned int)cc_c) : -1;
                                 if (tu_ucs_c >= 0) {
-                                    g_c_ucs = tu_ucs_c; g_c_size = cur_font_size; have_g_c = 1;
+                                    g_c_ucs = tu_ucs_c;
+                                    /* cur_font_sizeはcontent stream上の生の/Tf指定
+                                     * (テキスト空間)。検出側のtarget.sizeはmupdf stextの
+                                     * ch->size(デバイス空間、CTM/FontMatrix/外側cm等を
+                                     * すべて反映済み)なので、生のcur_font_sizeをそのまま
+                                     * 比較するとスケールが食い違いidentityが常に不一致に
+                                     * なる(実機PDFで確認: ページに0.24倍のcmが掛かった
+                                     * XObject内のType3文字で、生サイズ15.6に対しdevice
+                                     * space実効サイズは別値になり、size ±25%許容を
+                                     * 外れて弾かれていた)。fullで実際に変換に使っている
+                                     * 行列からスケールを推定してデバイス空間相当に直す。 */
+                                    g_c_size = cur_font_size * kozou_matrix_scale(full_c);
+                                    have_g_c = 1;
                                 } else if (!is_mb_c && cc_c >= 0x20 && cc_c <= 0x7E) {
                                     /* ページ側と同じ理由(空間再検索での隣接グリフ取り違え防止) */
-                                    g_c_ucs = cc_c; g_c_size = cur_font_size; have_g_c = 1;
+                                    g_c_ucs = cc_c;
+                                    g_c_size = cur_font_size * kozou_matrix_scale(full_c);
+                                    have_g_c = 1;
                                 } else if (qmap) {
                                     have_g_c = kozou_quad_map_lookup_glyph(
                                         qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
@@ -7064,18 +7089,20 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 if (kozou_dbg_xobj && cur_is_type3_c) {
                                     fprintf(stderr,
                                         "[KOZOU_XOBJ_CHAR] font=%s cc=0x%02x tu_used=%d "
-                                        "g_ucs=%d have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f "
+                                        "g_ucs=%d g_size=%.2f have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f "
                                         "n_targets=%d best_ti=%d best_d=%.1f "
-                                        "best_font_class=%d best_cp=%d best_ox_oy=(%.1f,%.1f) "
+                                        "best_font_class=%d best_cp=%d best_size=%.2f "
+                                        "best_ox_oy=(%.1f,%.1f) "
                                         "best_rvis=%d best_agate=%d cur_invisible=%d "
                                         "fail=%s blank=%d\n",
                                         cur_font_name ? cur_font_name : "?",
-                                        (unsigned)cc_c, (tu_ucs_c >= 0), g_c_ucs, have_g_c,
+                                        (unsigned)cc_c, (tu_ucs_c >= 0), g_c_ucs, g_c_size, have_g_c,
                                         ch_dev_x, ch_dev_y, tol2_est,
                                         n_targets, kozou_dbg_best_ti,
                                         kozou_dbg_best_ti >= 0 ? (double)sqrtf(kozou_dbg_best_d2) : -1.0,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].font_class : -99,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].codepoint : -1,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].size : -1.0,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].ox : -1.0,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].oy : -1.0,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].render_invisible : -99,
@@ -8214,6 +8241,14 @@ void kozou_sanitize_hidden_text(
                             float cy = tm[5] + adv_pts * tm[1];
                             fz_point cp = fz_transform_point(fz_make_point(cx, cy), gs_stack[gs_sp]);
                             cp = fz_transform_point(cp, page_ctm);
+                            /* tm[]は生のテキスト行列(スケール成分含む)。ToUnicode解決時に
+                             * 生のfont_size(テキスト空間)をそのままg2_sizeに使うと、検出側の
+                             * デバイス空間サイズ(mupdf stextのch->size)とスケールが食い違う
+                             * (kozou_matrix_scaleのコメント参照)。ここでも同じ換算を行う。 */
+                            fz_matrix tm_m2 = {tm[0], tm[1], tm[2], tm[3], tm[4], tm[5]};
+                            float dev_scale2 =
+                                kozou_matrix_scale(
+                                    fz_concat(fz_concat(tm_m2, gs_stack[gs_sp]), page_ctm));
                             int g2_ucs = -1; float g2_size = 0.0f; int have_g2 = 0;
                             /* /ToUnicode があればフォント種別(単純/CID)を問わず最優先で使う。
                              * 単純フォントでも /Differences で独自グリフ名を割り当てている
@@ -8228,7 +8263,7 @@ void kozou_sanitize_hidden_text(
                                 ctx, pdf, fobj2, tu_cache, &tu_cache_n, (unsigned int)cc2) : -1;
                             if (tu_ucs >= 0) {
                                 g2_ucs = tu_ucs;
-                                g2_size = font_size;
+                                g2_size = font_size * dev_scale2;
                                 have_g2 = 1;
                             } else if (!is_mb2 && cc2 >= 0x20 && cc2 <= 0x7E) {
                                 /* 単純フォントの印字可能ASCII範囲は文字コードがそのまま
@@ -8241,7 +8276,7 @@ void kozou_sanitize_hidden_text(
                                  * 扱いになり無害化を逃れていた)。デコード済みの文字
                                  * コードを直接使い、この空間的な取り違えを避ける。 */
                                 g2_ucs = cc2;
-                                g2_size = font_size;
+                                g2_size = font_size * dev_scale2;
                                 have_g2 = 1;
                             } else {
                                 have_g2 = kozou_quad_map_lookup_glyph(qmap, cp.x, cp.y, tol2_est, &g2_ucs, &g2_size);
@@ -8273,16 +8308,17 @@ void kozou_sanitize_hidden_text(
                                     &dbg_fail,&dbg_best_ti,&dbg_best_d2);
                                 if (dbg_best_ti >= 0 && dbg_best_d2 <= tol2_est * 4.0f) {
                                 fprintf(stderr,
-                                    "[KOZOU_PAGE_CHAR] op=Tj font=%s cc=0x%02x g_ucs=%d "
+                                    "[KOZOU_PAGE_CHAR] op=Tj font=%s cc=0x%02x g_ucs=%d g_size=%.2f "
                                     "have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f pi_n=%d "
-                                    "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d "
+                                    "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d best_size=%.2f "
                                     "best_xy=(%.1f,%.1f) best_rvis=%d best_agate=%d "
                                     "cur_invisible=%d cur_is_type3=%d fail=%s\n",
-                                    cur_font ? cur_font : "?", (unsigned)cc2, g2_ucs, have_g2,
+                                    cur_font ? cur_font : "?", (unsigned)cc2, g2_ucs, g2_size, have_g2,
                                     cp.x, cp.y, tol2_est, pi_n,
                                     dbg_best_ti, dbg_best_ti>=0?(double)sqrtf(dbg_best_d2):-1.0,
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].font_class:-99,
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].codepoint:-1,
+                                    dbg_best_ti>=0?pi_targets[dbg_best_ti].size:-1.0,
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].x:-1.0,
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].y:-1.0,
                                     dbg_best_ti>=0?pi_targets[dbg_best_ti].render_invisible:-99,
@@ -8420,16 +8456,22 @@ void kozou_sanitize_hidden_text(
                                     fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                     cp2 = fz_transform_point(cp2, page_ctm);
                                     int g3_ucs = -1; float g3_size = 0.0f; int have_g3 = 0;
+                                    /* ToUnicode解決時のサイズをデバイス空間に換算する
+                                     * (kozou_matrix_scaleのコメント参照)。 */
+                                    fz_matrix tm_m3 = {tm[0], tm[1], tm[2], tm[3], tm[4], tm[5]};
+                                    float dev_scale3 =
+                                        kozou_matrix_scale(
+                                            fz_concat(fz_concat(tm_m3, gs_stack[gs_sp]), page_ctm));
                                     /* /ToUnicode があればフォント種別を問わず最優先(Type3等の
                                      * 独自エンコーディング単純フォント対策、詳細は上のTj処理
                                      * 側コメント参照) */
                                     { int tu_ucs = (pdf && fobj_tj) ? kozou_tounicode_lookup(
                                           ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2) : -1;
                                       if (tu_ucs >= 0) {
-                                          g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
+                                          g3_ucs = tu_ucs; g3_size = font_size * dev_scale3; have_g3 = 1;
                                       } else if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
                                           /* Tj と同じ理由(空間再検索での隣接グリフ取り違え防止) */
-                                          g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                          g3_ucs = cc2; g3_size = font_size * dev_scale3; have_g3 = 1;
                                       } else {
                                           have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
                                       } }
@@ -8448,16 +8490,17 @@ void kozou_sanitize_hidden_text(
                                             &dbg_fail,&dbg_best_ti,&dbg_best_d2);
                                         if (dbg_best_ti >= 0 && dbg_best_d2 <= tol2_est * 4.0f) {
                                         fprintf(stderr,
-                                            "[KOZOU_PAGE_CHAR] op=TJ font=%s cc=0x%02x g_ucs=%d "
+                                            "[KOZOU_PAGE_CHAR] op=TJ font=%s cc=0x%02x g_ucs=%d g_size=%.2f "
                                             "have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f pi_n=%d "
-                                            "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d "
+                                            "best_ti=%d best_d=%.1f best_font_class=%d best_cp=%d best_size=%.2f "
                                             "best_xy=(%.1f,%.1f) best_rvis=%d best_agate=%d "
                                             "cur_invisible=%d cur_is_type3=%d fail=%s\n",
-                                            cur_font ? cur_font : "?", (unsigned)cc2, g3_ucs, have_g3,
+                                            cur_font ? cur_font : "?", (unsigned)cc2, g3_ucs, g3_size, have_g3,
                                             cp2.x, cp2.y, tol2_est, pi_n,
                                             dbg_best_ti, dbg_best_ti>=0?(double)sqrtf(dbg_best_d2):-1.0,
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].font_class:-99,
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].codepoint:-1,
+                                            dbg_best_ti>=0?pi_targets[dbg_best_ti].size:-1.0,
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].x:-1.0,
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].y:-1.0,
                                             dbg_best_ti>=0?pi_targets[dbg_best_ti].render_invisible:-99,
@@ -8529,13 +8572,19 @@ void kozou_sanitize_hidden_text(
                                         fz_point cp2 = fz_transform_point(fz_make_point(cx2, cy2), gs_stack[gs_sp]);
                                         cp2 = fz_transform_point(cp2, page_ctm);
                                         int g3_ucs = -1; float g3_size = 0.0f; int have_g3 = 0;
+                                        /* ToUnicode解決時のサイズをデバイス空間に換算する
+                                         * (kozou_matrix_scaleのコメント参照)。 */
+                                        fz_matrix tm_m3b = {tm[0], tm[1], tm[2], tm[3], tm[4], tm[5]};
+                                        float dev_scale3b =
+                                            kozou_matrix_scale(
+                                                fz_concat(fz_concat(tm_m3b, gs_stack[gs_sp]), page_ctm));
                                         /* /ToUnicode 優先(詳細は上のTj処理側コメント参照) */
                                         { int tu_ucs = (pdf && fobj_tj) ? kozou_tounicode_lookup(
                                               ctx, pdf, fobj_tj, tu_cache, &tu_cache_n, (unsigned int)cc2) : -1;
                                           if (tu_ucs >= 0) {
-                                              g3_ucs = tu_ucs; g3_size = font_size; have_g3 = 1;
+                                              g3_ucs = tu_ucs; g3_size = font_size * dev_scale3b; have_g3 = 1;
                                           } else if (!is_mb_tj && cc2 >= 0x20 && cc2 <= 0x7E) {
-                                              g3_ucs = cc2; g3_size = font_size; have_g3 = 1;
+                                              g3_ucs = cc2; g3_size = font_size * dev_scale3b; have_g3 = 1;
                                           } else {
                                               have_g3 = kozou_quad_map_lookup_glyph(qmap, cp2.x, cp2.y, tol2_est, &g3_ucs, &g3_size);
                                           } }
