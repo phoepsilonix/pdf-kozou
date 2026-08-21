@@ -7086,7 +7086,15 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                         this_blank = 1; break;
                                     }
                                 }
-                                if (kozou_dbg_xobj && cur_is_type3_c) {
+                                /* 出力条件をType3限定から外す(0008と同じ理由: 対象が
+                                 * Type3でないケースでも同じ問題は起こりうるため)。ただし
+                                 * ページ全体の通常可視テキストで大量にログが膨らむのを
+                                 * 防ぐため、直近のターゲットまでの距離がtol2_estの4倍以内
+                                 * (=近くに候補があるのに何らかの条件で弾かれている
+                                 * 「ニアミス」)のときだけ出力する。 */
+                                if (kozou_dbg_xobj && !this_blank &&
+                                    kozou_dbg_best_ti >= 0 &&
+                                    kozou_dbg_best_d2 <= tol2_est * 4.0f) {
                                     fprintf(stderr,
                                         "[KOZOU_XOBJ_CHAR] font=%s cc=0x%02x tu_used=%d "
                                         "g_ucs=%d g_size=%.2f have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f "
@@ -7094,7 +7102,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                         "best_font_class=%d best_cp=%d best_size=%.2f "
                                         "best_ox_oy=(%.1f,%.1f) "
                                         "best_rvis=%d best_agate=%d cur_invisible=%d "
-                                        "fail=%s blank=%d\n",
+                                        "cur_is_type3=%d fail=%s blank=%d\n",
                                         cur_font_name ? cur_font_name : "?",
                                         (unsigned)cc_c, (tu_ucs_c >= 0), g_c_ucs, g_c_size, have_g_c,
                                         ch_dev_x, ch_dev_y, tol2_est,
@@ -7108,6 +7116,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].render_invisible : -99,
                                         kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].alpha_gate : -99,
                                         cur_invisible,
+                                        cur_is_type3_c,
                                         kozou_dbg_fail, this_blank);
                                 }
                                 /* 幅差分補正用の幅は必ずフォントメトリクスを使う
