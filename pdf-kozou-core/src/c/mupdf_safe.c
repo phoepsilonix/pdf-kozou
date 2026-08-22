@@ -6435,6 +6435,51 @@ static int kozou_get_xobj_place_ctm_all(
 
 /* ix/iyに一致するTj/TJを持つXObjectのxrefを再帰的に収集する内部実装。
  * 第一引数 xdict は対象の XObject リソース辞書。depth で無限再帰を防ぐ。 */
+/* kozou_find_all_xobjs_by_tm_dict の再帰候補ごとに kozou_get_xobj_place_ctm
+ * (ページ全体のcontent streamを毎回スキャンする、比較的重い処理) を毎回
+ * 呼ぶと、ターゲット数×候補XObject数のオーダーで再計算が発生し遅い。
+ * 同じ xref の配置CTMは1ページの処理中ずっと不変なので、ここで
+ * 呼び出し元(ページ単位)から使い回せる小さな線形キャッシュを持つ。 */
+#define KOZOU_XOBJ_PLACE_CACHE_MAX 256
+typedef struct {
+    int       xref;
+    fz_matrix ctm;
+    int       have; /* 1=配置CTMが求まった, 0=求まらなかった(も記憶して再試行を防ぐ) */
+} KozouXobjPlaceCacheEnt;
+typedef struct {
+    KozouXobjPlaceCacheEnt ent[KOZOU_XOBJ_PLACE_CACHE_MAX];
+    int n;
+} KozouXobjPlaceCache;
+
+/* xref の配置CTM(ページ→対象XObject内部座標系への変換)をキャッシュ経由で取得。
+ * 見つかった場合 1、求まらない場合 0 を返す。cache が NULL の場合は
+ * キャッシュせず毎回 kozou_get_xobj_place_ctm を呼ぶ(kozou_find_xobj_by_tm 等、
+ * 1回限りの呼び出し元向けのフォールバック)。 */
+static int kozou_xobj_place_cache_get(
+    fz_context *ctx, pdf_document *pdf, pdf_page *ppage,
+    KozouXobjPlaceCache *cache, int xref, fz_matrix *out_ctm)
+{
+    if (!cache) {
+        return kozou_get_xobj_place_ctm(ctx, pdf, ppage, xref, out_ctm);
+    }
+    for (int i = 0; i < cache->n; i++) {
+        if (cache->ent[i].xref == xref) {
+            if (cache->ent[i].have) *out_ctm = cache->ent[i].ctm;
+            return cache->ent[i].have;
+        }
+    }
+    fz_matrix ctm = fz_identity;
+    int have = kozou_get_xobj_place_ctm(ctx, pdf, ppage, xref, &ctm);
+    if (cache->n < KOZOU_XOBJ_PLACE_CACHE_MAX) {
+        cache->ent[cache->n].xref = xref;
+        cache->ent[cache->n].ctm  = ctm;
+        cache->ent[cache->n].have = have;
+        cache->n++;
+    }
+    if (have) *out_ctm = ctm;
+    return have;
+}
+
 static void kozou_find_all_xobjs_by_tm_dict(
     fz_context   *ctx,
     pdf_document *pdf,
@@ -6446,7 +6491,8 @@ static void kozou_find_all_xobjs_by_tm_dict(
     int          *out_xrefs,
     int          *n_out,
     int           max_out,
-    int           depth)
+    int           depth,
+    KozouXobjPlaceCache *pcache)
 {
     if (!xdict || depth > 8) return;
     int n = pdf_dict_len(ctx, xdict);
@@ -6554,22 +6600,26 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                               || src[le-2]=='T' && src[le-1]=='J')) {
                         float cur_x = tm_tx + td_x;
                         float cur_y = tm_ty + td_y;
-                        /* 実機検証の結果: place_ctmが求まったかどうか)は
-			 * 「この特定の文字に対して変換が正しいか」を一切
-			 * 保証しない(常に何かしら見つかってしまうため、
-                         * 事実上いつも「変換を信頼する」分岐に落ちていた)。
-                         * また、そもそも低コントラスト/透明テキスト等の
-                         * 主要な取りこぼしケースは検出時点のxobj_xref確定
-			 * (kozou_xobj_lookup)側で解決済みになり、
-                         * この関数(座標だけを頼りにした事後的な位置探索)は
-                         * "xobj_xrefが検出時点で分からなかった残りのケース"
-                         * だけを扱う経路になった。実機ログでは、この残りの
-                         * ケースについて生のTm/Td比較(変換なし)が一貫して
-                         * 正しく、place_ctm変換を使うと逆に一致しなくなる
-                         * (644件が生座標では一致、変換ロジック使用時は
-                         * ほぼ全滅)ことが確認されたため、変換による判定は
-                         * 行わず、生座標比較のみを判定に使う。
-			 */
+                        /* 実機検証の結果: 以前は「place_ctmが求まったかどうか」を
+                         * 変換の正しさの判定に使っており、これは常に真になって
+                         * しまうため事実上いつも変換を信頼する分岐に落ち、
+                         * 生のTm/Td比較(変換なし)の方が644件で一貫して正しい
+                         * ことが確認されたため、変換による判定を完全に無効化して
+                         * いた。しかしこれは、内部のTm/Tdが「ほぼそのままデバイス
+                         * 座標」であるケース(素の nested Form XObject 経由)にのみ
+                         * 当てはまる前提であり、要素が個別の子XObjectに分割されず
+                         * 巨大な1枚のページ全体XObject自身の content stream 内で
+                         * q/cmで直接スケール・平行移動されて描画される構造
+                         * (Canvaエクスポート等で頻出、例: 内部cmで3倍超の拡大)
+                         * では、生のTm/Td値とデバイス座標が数百pt単位で乖離し、
+                         * 生比較では絶対に一致しない。この場合に限り、この
+                         * BT/Tjが実際に置かれているcmスタック(local_stack)と
+                         * この候補XObject自身のページ配置CTM(place_ctm、
+                         * kozou_get_xobj_place_ctmで正しく求まる)を合成して
+                         * デバイス座標へ変換した上での再比較を「生比較が
+                         * 失敗した場合に限るフォールバック」として追加する。
+                         * 生比較で一致するケースは従来どおり変換を一切経由
+                         * しないため、既存の644件の挙動には影響しない。 */
                         int matched = 0;
                         {
                             float rdx = cur_x - ix, rdy = cur_y - iy;
@@ -6580,6 +6630,23 @@ static void kozou_find_all_xobjs_by_tm_dict(
                                 kozou_dbg_best_raw_xy[1] = cur_y;
                             }
                             if (rd2 <= tol2) matched = 1;
+                        }
+                        if (!matched) {
+                            fz_matrix place_ctm;
+                            if (kozou_xobj_place_cache_get(ctx, pdf, ppage,
+                                    pcache, xref, &place_ctm)) {
+                                fz_matrix full_ctm = fz_concat(local_stack[local_sp], place_ctm);
+                                fz_point pt = fz_transform_point(
+                                    fz_make_point(cur_x, cur_y), full_ctm);
+                                float xdx = pt.x - ix, xdy = pt.y - iy;
+                                float xd2 = xdx*xdx + xdy*xdy;
+                                if (kozou_dbg_best_xform_d2 < 0 || xd2 < kozou_dbg_best_xform_d2) {
+                                    kozou_dbg_best_xform_d2 = xd2;
+                                    kozou_dbg_best_xform_xy[0] = pt.x;
+                                    kozou_dbg_best_xform_xy[1] = pt.y;
+                                }
+                                if (xd2 <= tol2) matched = 1;
+                            }
                         }
                         if (matched) found = 1;
                     }
@@ -6613,7 +6680,8 @@ static void kozou_find_all_xobjs_by_tm_dict(
                 if (child_xdict)
                     kozou_find_all_xobjs_by_tm_dict(ctx, pdf, ppage, child_xdict,
                                                     ix, iy, tol2,
-                                                    out_xrefs, n_out, max_out, depth+1);
+                                                    out_xrefs, n_out, max_out, depth+1,
+                                                    pcache);
             }
         }
     }
@@ -6630,7 +6698,8 @@ static void kozou_find_all_xobjs_by_tm(
     float         tol,
     int          *out_xrefs,
     int          *n_out,
-    int           max_out)
+    int           max_out,
+    KozouXobjPlaceCache *pcache)
 {
     if (!ppage || !out_xrefs || !n_out) return;
     pdf_obj *res = pdf_page_resources(ctx, ppage);
@@ -6679,7 +6748,7 @@ static void kozou_find_all_xobjs_by_tm(
 
     float tol2 = tol * tol;
     kozou_find_all_xobjs_by_tm_dict(ctx, pdf, ppage, xdict, ix, iy, tol2,
-                                    out_xrefs, n_out, max_out, 0);
+                                    out_xrefs, n_out, max_out, 0, pcache);
 }
 
 static int kozou_find_xobj_by_tm(
@@ -6692,7 +6761,8 @@ static int kozou_find_xobj_by_tm(
 {
     int xrefs[1];
     int n = 0;
-    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, xrefs, &n, 1);
+    /* 1回限りの呼び出し: キャッシュなし(NULL)で毎回都度計算させる */
+    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, xrefs, &n, 1, NULL);
     return n > 0 ? xrefs[0] : 0;
 }
 
@@ -8768,6 +8838,11 @@ void kozou_sanitize_hidden_text(
              * 同じ kozou_xobj_lookup 経由で埋めているため、is_buried に関わらず
              * 内部Tm座標が有効な全ターゲットを対象にする。 */
             int n_xrefs = 0;
+            /* このページの間、xref→配置CTMの計算結果を使い回すキャッシュ。
+             * ターゲット数×候補XObject数ぶん kozou_get_xobj_place_ctm を
+             * 再計算すると遅いため、ページ単位で1つだけ確保する。 */
+            KozouXobjPlaceCache xobj_place_cache;
+            memset(&xobj_place_cache, 0, sizeof(xobj_place_cache));
             if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
                 if (targets[i].page_index >= 0 && targets[i].page_index != pi) continue;
@@ -8802,7 +8877,8 @@ void kozou_sanitize_hidden_text(
                 /* Tm 座標に一致する全XObjectを収集（複数コピーがある場合も漏れなく処理）*/
                 int tmp_xr[64]; int n_tmp = 0;
                 kozou_find_all_xobjs_by_tm(ctx, pdf, xobj_search_page,
-                                           ix, iy, 2.0f, tmp_xr, &n_tmp, 64);
+                                           ix, iy, 2.0f, tmp_xr, &n_tmp, 64,
+                                           &xobj_place_cache);
                 if (n_tmp > 0) {
                     targets[i].in_xobj = 1;
                     for (int k = 0; k < n_tmp; k++) {
