@@ -60,7 +60,7 @@ export function translate(locale: Locale, key: string, vars?: Record<string, str
   if (val !== undefined) return interpolate(val, vars);
   // フォールバック: en
   if (locale !== "en") {
-    const fb = getNestedValue(LOCALES["en"], key);
+    const fb = getNestedValue(LOCALES.en, key);
     if (fb !== undefined) return interpolate(fb, vars);
   }
   return key; // キーをそのまま返す（開発時デバッグ用）

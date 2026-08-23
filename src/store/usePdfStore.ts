@@ -256,7 +256,7 @@ export const usePdfStore = create<PdfStore>()(
       pageOrientation: "auto",
       impositionMode: "1up",
       setPageSize: (id, orientation) => {
-        set((state) => {
+        set((_state) => {
           return {
             pageSizeId: id,
             pageOrientation: orientation,

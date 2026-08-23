@@ -36,7 +36,7 @@ export interface Sheet {
  */
 export function calcBookletSheets(
   totalPages: number,
-  blankLabel = "Blank",
+  _blankLabel = "Blank",
   frontLabel = (n: number) => `Sheet ${n} Front`,
   backLabel = (n: number) => `Sheet ${n} Back`,
   rtl = false,

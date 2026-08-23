@@ -31,6 +31,7 @@
 /** トークンが「不透明なID（ハッシュ・ランダム英数字）」っぽいか */
 function isOpaqueId(tok: string): boolean {
   // 非ASCII（日本語・他言語）を含むものは自然読み（綴り対象外）
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: \x00 はASCII全域(0x00-0x7F)の下限を示す意図的な範囲指定
   if (/[^\x00-\x7F]/.test(tok)) return false;
   // 英字を含まない（数字のみ・記号のみ）は自然読み（数字はそのまま読める）
   if (!/[A-Za-z]/.test(tok)) return false;

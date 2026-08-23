@@ -196,7 +196,7 @@ function codepointOf(ch: string | undefined): number {
   return cp === undefined ? -1 : cp;
 }
 
-function buildLabel(type: DetectType, reason: string, chars: AnyHit[]): string {
+function buildLabel(type: DetectType, _reason: string, chars: AnyHit[]): string {
   if (type === "control_chars") return `${chars[0].char} (${chars[0].extra}) × ${chars.length}`;
   const text = chars.map((c) => (c.char === " " ? "·" : c.char)).join("");
   if (text.length <= 60) return `"${text}"`;

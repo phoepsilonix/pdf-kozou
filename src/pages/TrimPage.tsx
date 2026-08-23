@@ -106,7 +106,13 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
 }
 
 // ── バッチトリム ──────────────────────────────────────────────────────────────
-function TrimPageBatch({ files, firstPdfInfo }: { files: FileEntry[]; firstPdfInfo: PdfInfo }) {
+function TrimPageBatch({
+  files,
+  firstPdfInfo: _firstPdfInfo,
+}: {
+  files: FileEntry[];
+  firstPdfInfo: PdfInfo;
+}) {
   const { convertLayoutW, convertLayoutH, convertLayoutEm, pageSizeId, pageOrientation } =
     usePdfStore();
   const { announceSuccess } = useA11y();

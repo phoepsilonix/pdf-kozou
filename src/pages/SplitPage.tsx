@@ -456,7 +456,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   type: "Ranges",
                   ranges: ranges
                     .map(([s, e]) => [s, Math.min(e, info.page_count)] as [number, number])
-                    .filter(([s, e]) => s <= info.page_count),
+                    .filter(([s, _e]) => s <= info.page_count),
                 };
         // バッチは全ファイルを1フォルダへ出すため、必ず元名を付けて衝突回避
         //   例: 書類_分割_0001.pdf
@@ -562,7 +562,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
-        <Spinner />;
+        <Spinner />
       </div>
     );
 

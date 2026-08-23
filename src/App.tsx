@@ -705,167 +705,163 @@ export default function App() {
       )}
 
       {!photoOnlyMode && (
-        <>
-          <header style={s.header}>
-            {/* アプリ名エリア（常に不透明背景） */}
-            <div
-              style={{
-                width: "100%",
-                background: "var(--c-bg)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 8,
-                padding: "4px 8px 8px",
-                position: "relative",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <img
-                  src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
-                  style={{
-                    width: isNarrow ? "32px" : "48px",
-                    height: isNarrow ? "32px" : "48px",
-                    lineHeight: 2,
-                    gap: 6,
-                    borderRadius: 10,
-                  }}
-                  alt="logo"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = "/app-icon.svg";
-                  }}
-                />
-                <span
-                  style={
-                    isNarrow
-                      ? { ...s.logo, fontSize: "32px", height: "48px", lineHeight: "48px" }
-                      : s.logo
-                  }
-                >
-                  PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
-                </span>
-                {/* Aboutボタン */}
-                <button
-                  type="button"
-                  onClick={() => setActiveTool("about")}
-                  style={{
-                    background: "var(--c-bgSub)",
-                    border: "1px solid var(--c-border)",
-                    borderRadius: "18px",
-                    padding: "4px 4px",
-                    fontSize: "12px",
-                    color: "var(--c-textSub)",
-                    cursor: "pointer",
-                    marginTop: "24px",
-                    lineHeight: 2,
-                  }}
-                >
-                  ℹ️ About
-                </button>
-              </div>
-
-              {(THEMES[themeId].customBg && (
-                <div
-                  style={{
-                    display: "flex",
-                    height: "60px",
-                  }}
-                >
-                  <span style={{ ...s.tagline, position: "absolute", width: "70%", right: 0 }}>
-                    v{pkg.version}
-                  </span>
-                  {/* 背景画像クレジット */}
-                  {THEMES[themeId].customBg && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        right: 0,
-                        width: "50%",
-                        height: "54px",
-                      }}
-                    >
-                      {/* クレジット表示（ヘッダー画像の右下） */}
-                      {
-                        <div
-                          style={{
-                            position: "relative",
-                            right: "6px",
-                            bottom: "6px",
-                            padding: "6px 6px",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "flex-end",
-                            gap: 3,
-                            background: "rgba(0,0,0,0.45)",
-                            borderRadius: 8,
-                          }}
-                        >
-                          <span style={{ fontSize: "12px", color: "#fff", fontWeight: 700 }}>
-                            {t(`theme.${themeId}`)}
-                          </span>
-                          {THEMES[themeId].customIconCredit && (
-                            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
-                              {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
-                              {THEMES[themeId].customIconCreditURL ? (
-                                <span
-                                  onClick={async (e) => {
-                                    e.stopPropagation(); // 親要素へのイベント伝播を止める
-                                    await copyToClipboard(
-                                      THEMES[themeId].customIconCreditURL || "",
-                                    );
-                                  }}
-                                  style={{
-                                    color: "inherit",
-                                    textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
-                                    display: "inline-block", // クリック領域を確保
-                                    position: "relative", // 重なり順を安定させる
-                                    cursor: "pointer",
-                                  }}
-                                  title={THEMES[themeId].customIconCreditURL} // マウスホバーで説明を出す
-                                >
-                                  {THEMES[themeId].customIconCredit}
-                                </span>
-                              ) : (
-                                THEMES[themeId].customIconCredit
-                              )}
-                            </span>
-                          )}
-
-                          {THEMES[themeId].customBgCredit && (
-                            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
-                              {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
-                              {THEMES[themeId].customBgCreditURL ? (
-                                <span
-                                  onClick={async (e) => {
-                                    e.stopPropagation(); // 親要素へのイベント伝播を止める
-                                    await copyToClipboard(THEMES[themeId].customBgCreditURL || "");
-                                  }}
-                                  style={{
-                                    color: "inherit",
-                                    textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
-                                    display: "inline-block", // クリック領域を確保
-                                    position: "relative", // 重なり順を安定させる
-                                    cursor: "pointer",
-                                  }}
-                                  title={THEMES[themeId].customBgCreditURL} // マウスホバーで説明を出す
-                                >
-                                  {THEMES[themeId].customBgCredit}
-                                </span>
-                              ) : (
-                                THEMES[themeId].customBgCredit
-                              )}
-                            </span>
-                          )}
-                        </div>
-                      }
-                    </div>
-                  )}
-                </div>
-              )) || <span style={{ ...s.tagline, position: "relative" }}>v{pkg.version}</span>}
-              <span style={{ ...s.tagline }}>{t("app.tagline")}</span>
+        <header style={s.header}>
+          {/* アプリ名エリア（常に不透明背景） */}
+          <div
+            style={{
+              width: "100%",
+              background: "var(--c-bg)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
+              padding: "4px 8px 8px",
+              position: "relative",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <img
+                src={THEMES[themeId].customIcon ?? "/app-icon.svg"}
+                style={{
+                  width: isNarrow ? "32px" : "48px",
+                  height: isNarrow ? "32px" : "48px",
+                  lineHeight: 2,
+                  gap: 6,
+                  borderRadius: 10,
+                }}
+                alt="logo"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/app-icon.svg";
+                }}
+              />
+              <span
+                style={
+                  isNarrow
+                    ? { ...s.logo, fontSize: "32px", height: "48px", lineHeight: "48px" }
+                    : s.logo
+                }
+              >
+                PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
+              </span>
+              {/* Aboutボタン */}
+              <button
+                type="button"
+                onClick={() => setActiveTool("about")}
+                style={{
+                  background: "var(--c-bgSub)",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: "18px",
+                  padding: "4px 4px",
+                  fontSize: "12px",
+                  color: "var(--c-textSub)",
+                  cursor: "pointer",
+                  marginTop: "24px",
+                  lineHeight: 2,
+                }}
+              >
+                ℹ️ About
+              </button>
             </div>
-          </header>
-        </>
+
+            {(THEMES[themeId].customBg && (
+              <div
+                style={{
+                  display: "flex",
+                  height: "60px",
+                }}
+              >
+                <span style={{ ...s.tagline, position: "absolute", width: "70%", right: 0 }}>
+                  v{pkg.version}
+                </span>
+                {/* 背景画像クレジット */}
+                {THEMES[themeId].customBg && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      width: "50%",
+                      height: "54px",
+                    }}
+                  >
+                    {/* クレジット表示（ヘッダー画像の右下） */}
+                    {
+                      <div
+                        style={{
+                          position: "relative",
+                          right: "6px",
+                          bottom: "6px",
+                          padding: "6px 6px",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "flex-end",
+                          gap: 3,
+                          background: "rgba(0,0,0,0.45)",
+                          borderRadius: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: "12px", color: "#fff", fontWeight: 700 }}>
+                          {t(`theme.${themeId}`)}
+                        </span>
+                        {THEMES[themeId].customIconCredit && (
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+                            {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
+                            {THEMES[themeId].customIconCreditURL ? (
+                              <span
+                                onClick={async (e) => {
+                                  e.stopPropagation(); // 親要素へのイベント伝播を止める
+                                  await copyToClipboard(THEMES[themeId].customIconCreditURL || "");
+                                }}
+                                style={{
+                                  color: "inherit",
+                                  textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
+                                  display: "inline-block", // クリック領域を確保
+                                  position: "relative", // 重なり順を安定させる
+                                  cursor: "pointer",
+                                }}
+                                title={THEMES[themeId].customIconCreditURL} // マウスホバーで説明を出す
+                              >
+                                {THEMES[themeId].customIconCredit}
+                              </span>
+                            ) : (
+                              THEMES[themeId].customIconCredit
+                            )}
+                          </span>
+                        )}
+
+                        {THEMES[themeId].customBgCredit && (
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
+                            {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
+                            {THEMES[themeId].customBgCreditURL ? (
+                              <span
+                                onClick={async (e) => {
+                                  e.stopPropagation(); // 親要素へのイベント伝播を止める
+                                  await copyToClipboard(THEMES[themeId].customBgCreditURL || "");
+                                }}
+                                style={{
+                                  color: "inherit",
+                                  textDecoration: "dotted underline", // コピーであることを示すために点線にするのもあり
+                                  display: "inline-block", // クリック領域を確保
+                                  position: "relative", // 重なり順を安定させる
+                                  cursor: "pointer",
+                                }}
+                                title={THEMES[themeId].customBgCreditURL} // マウスホバーで説明を出す
+                              >
+                                {THEMES[themeId].customBgCredit}
+                              </span>
+                            ) : (
+                              THEMES[themeId].customBgCredit
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    }
+                  </div>
+                )}
+              </div>
+            )) || <span style={{ ...s.tagline, position: "relative" }}>v{pkg.version}</span>}
+            <span style={{ ...s.tagline }}>{t("app.tagline")}</span>
+          </div>
+        </header>
       )}
 
       {!photoOnlyMode && (

@@ -303,7 +303,7 @@ export function resolvePageSpec(spec: string, total: number): number[] {
   for (const part of parts) {
     if (part.startsWith("^")) {
       const n = parseInt(part.slice(1), 10);
-      if (!isNaN(n) && n >= 1 && n <= total) excluded.add(n - 1);
+      if (!Number.isNaN(n) && n >= 1 && n <= total) excluded.add(n - 1);
       continue;
     }
     if (part.includes("-")) {
@@ -313,7 +313,7 @@ export function resolvePageSpec(spec: string, total: number): number[] {
       for (let i = Math.max(0, from); i <= Math.min(total - 1, to); i++) included.push(i);
     } else {
       const n = parseInt(part, 10) - 1;
-      if (!isNaN(n) && n >= 0 && n < total) included.push(n);
+      if (!Number.isNaN(n) && n >= 0 && n < total) included.push(n);
     }
   }
   // 重複除去 + 除外適用
