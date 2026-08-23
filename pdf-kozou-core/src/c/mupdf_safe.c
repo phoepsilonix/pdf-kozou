@@ -3381,8 +3381,18 @@ void kozou_detect_transparent_text(
                         ch->size,
                         is_type3 ? "true" : "false",
                         xobj_info ? xobj_info->xobj_xref : 0,
-                        xobj_info ? xobj_info->ix : o.x,
-                        xobj_info ? xobj_info->iy : o.y
+                        /* internal_origin は常にデバイス座標(o.x,o.y)に統一する。
+                         * 以前はkozou_xobj_lookup成功時のみ、そのXObject内で
+                         * 再構成したローカルTm+Td座標(xobj_info->ix/iy)を使い、
+                         * 失敗時だけデバイス座標にフォールバックしていたが、
+                         * xobj_xrefは(下記の通り)実質常に0であり、この
+                         * ローカル座標が後段の高速パスで使われることは
+                         * なかった。ローカル/デバイスの混在は、後段の
+                         * XObject発見ロジックが「どちらの座標系で来たか」
+                         * を推測する必要を生み、それ自体が誤マッチの
+                         * 温床になっていたため、常にデバイス座標へ統一する。 */
+                        o.x,
+                        o.y
                     );
 
                     hit_count++;
@@ -4061,8 +4071,10 @@ void kozou_detect_low_contrast_text(
                         (double)(ch->size > 0 ? ch->size : 12.0f),
                         lc_is_type3 ? "true" : "false",
                         lc_xobj_info ? lc_xobj_info->xobj_xref : 0,
-                        lc_xobj_info ? (double)lc_xobj_info->ix : (double)ch->origin.x,
-                        lc_xobj_info ? (double)lc_xobj_info->iy : (double)ch->origin.y);
+                        /* internal_origin は常にデバイス座標に統一(理由は他の
+                         * detect_*関数内の同種コメントを参照) */
+                        (double)ch->origin.x,
+                        (double)ch->origin.y);
 
                     hit_count++;
                 }
@@ -4204,8 +4216,9 @@ void kozou_detect_tiny_text(
                         q.lr.x, q.lr.y,
                         tiny_is_type3 ? "true" : "false",
                         xobj_info ? xobj_info->xobj_xref : 0,
-                        xobj_info ? xobj_info->ix : o.x,
-                        xobj_info ? xobj_info->iy : o.y
+                        /* internal_origin は常にデバイス座標に統一 */
+                        o.x,
+                        o.y
                     );
                     hit_count++;
                 }
@@ -5287,8 +5300,9 @@ void kozou_detect_buried_text(
                         ? kozou_xobj_lookup(xobj_dev, o.x, o.y, 5.0f, ch->c, ch->size)
                         : NULL;
                     int b_xref = xobj_info ? xobj_info->xobj_xref : 0;
-                    float b_ix = xobj_info ? xobj_info->ix : o.x;
-                    float b_iy = xobj_info ? xobj_info->iy : o.y;
+                    /* internal_origin は常にデバイス座標に統一 */
+                    float b_ix = o.x;
+                    float b_iy = o.y;
                     fz_write_printf(ctx, out,
                         "{\"char\":\"%s\","
                         "\"color_rgb\":[%d,%d,%d],"
@@ -6435,260 +6449,224 @@ static int kozou_get_xobj_place_ctm_all(
 
 /* ix/iyに一致するTj/TJを持つXObjectのxrefを再帰的に収集する内部実装。
  * 第一引数 xdict は対象の XObject リソース辞書。depth で無限再帰を防ぐ。 */
-/* kozou_find_all_xobjs_by_tm_dict の再帰候補ごとに kozou_get_xobj_place_ctm
- * (ページ全体のcontent streamを毎回スキャンする、比較的重い処理) を毎回
- * 呼ぶと、ターゲット数×候補XObject数のオーダーで再計算が発生し遅い。
- * 同じ xref の配置CTMは1ページの処理中ずっと不変なので、ここで
- * 呼び出し元(ページ単位)から使い回せる小さな線形キャッシュを持つ。 */
-#define KOZOU_XOBJ_PLACE_CACHE_MAX 256
-typedef struct {
-    int       xref;
-    fz_matrix ctm;
-    int       have; /* 1=配置CTMが求まった, 0=求まらなかった(も記憶して再試行を防ぐ) */
-} KozouXobjPlaceCacheEnt;
-typedef struct {
-    KozouXobjPlaceCacheEnt ent[KOZOU_XOBJ_PLACE_CACHE_MAX];
-    int n;
-} KozouXobjPlaceCache;
-
-/* xref の配置CTM(ページ→対象XObject内部座標系への変換)をキャッシュ経由で取得。
- * 見つかった場合 1、求まらない場合 0 を返す。cache が NULL の場合は
- * キャッシュせず毎回 kozou_get_xobj_place_ctm を呼ぶ(kozou_find_xobj_by_tm 等、
- * 1回限りの呼び出し元向けのフォールバック)。 */
-static int kozou_xobj_place_cache_get(
-    fz_context *ctx, pdf_document *pdf, pdf_page *ppage,
-    KozouXobjPlaceCache *cache, int xref, fz_matrix *out_ctm)
-{
-    if (!cache) {
-        return kozou_get_xobj_place_ctm(ctx, pdf, ppage, xref, out_ctm);
-    }
-    for (int i = 0; i < cache->n; i++) {
-        if (cache->ent[i].xref == xref) {
-            if (cache->ent[i].have) *out_ctm = cache->ent[i].ctm;
-            return cache->ent[i].have;
-        }
-    }
-    fz_matrix ctm = fz_identity;
-    int have = kozou_get_xobj_place_ctm(ctx, pdf, ppage, xref, &ctm);
-    if (cache->n < KOZOU_XOBJ_PLACE_CACHE_MAX) {
-        cache->ent[cache->n].xref = xref;
-        cache->ent[cache->n].ctm  = ctm;
-        cache->ent[cache->n].have = have;
-        cache->n++;
-    }
-    if (have) *out_ctm = ctm;
-    return have;
-}
-
-static void kozou_find_all_xobjs_by_tm_dict(
+/* ページ全体を実際の /Name Do 呼び出しに沿って正しく再帰的に辿りながら、
+ * target (ix,iy) [常にデバイス座標] に一致する Tj/TJ を含む XObject の
+ * xref を探す。
+ *
+ * 以前の実装(kozou_find_all_xobjs_by_tm_dict)は、各候補XObjectの
+ * *宣言された* Resources/XObject 辞書を独立に再帰的に列挙し、それぞれの
+ * 候補について「そのXObject内のローカルTm+Td座標(cmによる変換なし)」を
+ * そのまま検出時のixiyと比較していた。これは
+ *   (1) 要素が個別の子XObjectに分割されず、巨大な1枚のページ全体
+ *       XObject自身の content stream 内で q/cm により直接スケール・
+ *       平行移動されて描画される構造(Canvaエクスポート等で頻出)では、
+ *       ローカル座標とデバイス座標が数百pt単位で乖離し原理的に一致
+ *       し得ない、
+ *   (2) 「宣言されている」ことと「今まさにこの呼び出し経路で実際に
+ *       描画に使われている」ことは同義ではなく、同じxrefが複数箇所
+ *       (別ページ・同ページ内の複数Do)で再利用されている場合、
+ *       どの配置のCTMを使うべきか原理的に決まらない、
+ * という2つの独立した問題を抱えていた。(2)は過去に「変換後座標を
+ * 全面的に信頼する」設計を試した際、複数配置を総当たりして最初に
+ * 一致したものを採用する実装だったため、無関係な配置への誤マッチが
+ * 頻発し644件規模の退行を起こしたことがある(コミット b3d1609 で
+ * revert 済み)。
+ *
+ * この関数は、実際に有効なXObject配置CTMの算出に使っている
+ * kozou_xobj_place_ctm_scan と全く同じ「Do呼び出しを実際に辿りながら
+ * CTMを合成していく」パターンを流用する。こうすることで:
+ *   - 比較は常にデバイス座標同士(統一済みのinternal_originと、
+ *     実際に辿った呼び出し経路で合成した正しいCTMによる変換後座標)
+ *     になり、ローカル/デバイスの混在が構造的に起こらない。
+ *   - 同じxrefが複数箇所で再利用されていても、「今まさに辿っている
+ *     その1つの呼び出し経路」に対応する、その時点で確定している
+ *     CTMだけを使うため、複数配置間の曖昧さも構造的に起こらない。
+ */
+static void kozou_scan_xobjs_for_target(
     fz_context   *ctx,
     pdf_document *pdf,
-    pdf_page     *ppage,
-    pdf_obj      *xdict,
+    const char   *src,
+    size_t        len,
+    pdf_obj      *resources,
+    fz_matrix     base,      /* このcontent streamのローカル座標→デバイス座標CTM */
+    int           self_xref, /* このcontent streamの主XObjectのxref。0=ページ自身 */
     float         ix,
     float         iy,
     float         tol2,
     int          *out_xrefs,
     int          *n_out,
     int           max_out,
-    int           depth,
-    KozouXobjPlaceCache *pcache)
+    int           depth)
 {
-    if (!xdict || depth > 8) return;
-    int n = pdf_dict_len(ctx, xdict);
+    if (depth > 10 || !src) return;
+    pdf_obj *xdict = resources ? pdf_dict_gets(ctx, resources, "XObject") : NULL;
 
-    for (int i = 0; i < n; i++) {
-        pdf_obj *val = pdf_dict_get_val(ctx, xdict, i);
-        int xref = pdf_is_indirect(ctx, val) ? pdf_to_num(ctx, val) : 0;
-        if (xref == 0) continue;
+    fz_matrix ctm_stack[64];
+    int sp = 0;
+    ctm_stack[0] = base;
 
-        /* 既に登録済みならスキップ（無限再帰 + 二重登録防止） */
-        int dup = 0;
-        for (int k = 0; k < *n_out; k++) {
-            if (out_xrefs[k] == xref) { dup = 1; break; }
-        }
+    int in_bt = 0;
+    float tm_tx = 0, tm_ty = 0, td_x = 0, td_y = 0;
+    int found_here = 0;
+    float dbg_best_d2 = -1.0f;
+    float dbg_best_xy[2] = {0, 0};
 
-        pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
-        if (!xobj) continue;
-        pdf_obj *subtype = pdf_dict_gets(ctx, xobj, "Subtype");
-        const char *subtype_name = pdf_is_name(ctx, subtype) ? pdf_to_name(ctx, subtype) : NULL;
-        if (!subtype_name || strcmp(subtype_name, "Form") != 0) continue;
+    size_t pos = 0;
+    while (pos < len) {
+        size_t ls = pos;
+        while (pos < len && src[pos] != '\n') pos++;
+        size_t le = pos;
+        if (pos < len) pos++;
 
-        fz_buffer *buf = NULL;
-        int found = 0;
-        float kozou_dbg_best_raw_d2 = -1.0f;
-        float kozou_dbg_best_xform_d2 = -1.0f;
-        float kozou_dbg_best_raw_xy[2] = {0,0};
-        float kozou_dbg_best_xform_xy[2] = {0,0};
-        fz_try(ctx) {
-            pdf_obj *xobj_ind = pdf_new_indirect(ctx, pdf, xref, 0);
-            buf = pdf_load_stream(ctx, xobj_ind);
-            pdf_drop_obj(ctx, xobj_ind);
-            if (!buf) fz_throw(ctx, FZ_ERROR_GENERIC, "no stream");
+        size_t ts = ls;
+        while (ts < le && (src[ts]==' '||src[ts]=='\t')) ts++;
+        size_t tl = le - ts;
+        if (tl < 1) continue;
 
-            unsigned char *d = NULL;
-            size_t len = fz_buffer_storage(ctx, buf, &d);
-            const char *src = (const char *)d;
-
-            int in_bt = 0;
-            float tm_tx = 0, tm_ty = 0;
-            float td_x = 0, td_y = 0;
-            fz_matrix local_stack[64];
-            int local_sp = 0;
-            local_stack[0] = fz_identity;
-
-            size_t pos = 0;
-            while (pos < len && !found) {
-                size_t ls = pos;
-                while (pos < len && src[pos] != '\n') pos++;
-                size_t le = pos;
-                if (pos < len) pos++;
-
-                size_t ts = ls;
-                while (ts < le && (src[ts]==' '||src[ts]=='\t')) ts++;
-                size_t trimlen = le - ts;
-                if (trimlen < 1) continue;
-
-                if (trimlen == 1 && src[ts]=='q') {
-                    if (local_sp < 63) {
-                        local_stack[local_sp+1] = local_stack[local_sp];
-                        local_sp++;
-                    }
-                    continue;
-                } else if (trimlen == 1 && src[ts]=='Q') {
-                    if (local_sp > 0) local_sp--;
-                    continue;
-                } else if (trimlen >= 2 && src[le-2]=='c' && src[le-1]=='m') {
-                    char cmline[160] = {0};
-                    size_t cl = trimlen < 159 ? trimlen : 159;
-                    memcpy(cmline, src+ts, cl);
-                    float a,b,c,d,e,f;
-                    if (sscanf(cmline,"%f %f %f %f %f %f cm",&a,&b,&c,&d,&e,&f)==6) {
-                        fz_matrix m = {a,b,c,d,e,f};
-                        local_stack[local_sp] = fz_concat(m, local_stack[local_sp]);
-                    }
-                    continue;
-                }
-                if (trimlen < 2) continue;
-
-                if (!in_bt) {
-                    if (trimlen == 2 && src[ts]=='B' && src[ts+1]=='T') {
-                        in_bt = 1;
-                        tm_tx = tm_ty = td_x = td_y = 0;
-                    }
-                } else {
-                    if (trimlen == 2 && src[ts]=='E' && src[ts+1]=='T') {
-                        in_bt = 0;
-                    } else if (trimlen >= 2 && src[le-2]=='T' && src[le-1]=='m') {
-                        char lb[128]={0};
-                        size_t cp = (le-ts)<127?(le-ts):127;
-                        memcpy(lb, src+ts, cp);
-                        float a,b,c,dv,tx,ty;
-                        if (sscanf(lb,"%f %f %f %f %f %f Tm",&a,&b,&c,&dv,&tx,&ty)==6) {
-                            tm_tx = tx; tm_ty = ty;
-                            td_x = 0; td_y = 0;
-                        }
-                    } else if (trimlen >= 2 && src[le-2]=='T' && src[le-1]=='d') {
-                        char lb[64]={0};
-                        size_t cp = (le-ts)<63?(le-ts):63;
-                        memcpy(lb, src+ts, cp);
-                        float tx, ty;
-                        if (sscanf(lb,"%f %f Td",&tx,&ty)==2) {
-                            td_x += tx; td_y += ty;
-                        }
-                    } else if (trimlen >= 2 && (src[le-2]=='T' && src[le-1]=='j'
-                                              || src[le-2]=='T' && src[le-1]=='J')) {
-                        float cur_x = tm_tx + td_x;
-                        float cur_y = tm_ty + td_y;
-                        /* 実機検証の結果: 以前は「place_ctmが求まったかどうか」を
-                         * 変換の正しさの判定に使っており、これは常に真になって
-                         * しまうため事実上いつも変換を信頼する分岐に落ち、
-                         * 生のTm/Td比較(変換なし)の方が644件で一貫して正しい
-                         * ことが確認されたため、変換による判定を完全に無効化して
-                         * いた。しかしこれは、内部のTm/Tdが「ほぼそのままデバイス
-                         * 座標」であるケース(素の nested Form XObject 経由)にのみ
-                         * 当てはまる前提であり、要素が個別の子XObjectに分割されず
-                         * 巨大な1枚のページ全体XObject自身の content stream 内で
-                         * q/cmで直接スケール・平行移動されて描画される構造
-                         * (Canvaエクスポート等で頻出、例: 内部cmで3倍超の拡大)
-                         * では、生のTm/Td値とデバイス座標が数百pt単位で乖離し、
-                         * 生比較では絶対に一致しない。この場合に限り、この
-                         * BT/Tjが実際に置かれているcmスタック(local_stack)と
-                         * この候補XObject自身のページ配置CTM(place_ctm、
-                         * kozou_get_xobj_place_ctmで正しく求まる)を合成して
-                         * デバイス座標へ変換した上での再比較を「生比較が
-                         * 失敗した場合に限るフォールバック」として追加する。
-                         * 生比較で一致するケースは従来どおり変換を一切経由
-                         * しないため、既存の644件の挙動には影響しない。 */
-                        int matched = 0;
-                        {
-                            float rdx = cur_x - ix, rdy = cur_y - iy;
-                            float rd2 = rdx*rdx + rdy*rdy;
-                            if (kozou_dbg_best_raw_d2 < 0 || rd2 < kozou_dbg_best_raw_d2) {
-                                kozou_dbg_best_raw_d2 = rd2;
-                                kozou_dbg_best_raw_xy[0] = cur_x;
-                                kozou_dbg_best_raw_xy[1] = cur_y;
-                            }
-                            if (rd2 <= tol2) matched = 1;
-                        }
-                        if (!matched) {
-                            fz_matrix place_ctm;
-                            if (kozou_xobj_place_cache_get(ctx, pdf, ppage,
-                                    pcache, xref, &place_ctm)) {
-                                fz_matrix full_ctm = fz_concat(local_stack[local_sp], place_ctm);
-                                fz_point pt = fz_transform_point(
-                                    fz_make_point(cur_x, cur_y), full_ctm);
-                                float xdx = pt.x - ix, xdy = pt.y - iy;
-                                float xd2 = xdx*xdx + xdy*xdy;
-                                if (kozou_dbg_best_xform_d2 < 0 || xd2 < kozou_dbg_best_xform_d2) {
-                                    kozou_dbg_best_xform_d2 = xd2;
-                                    kozou_dbg_best_xform_xy[0] = pt.x;
-                                    kozou_dbg_best_xform_xy[1] = pt.y;
+        if (tl == 1 && src[ts]=='q') {
+            if (sp < 63) { ctm_stack[sp+1] = ctm_stack[sp]; sp++; }
+            continue;
+        } else if (tl == 1 && src[ts]=='Q') {
+            if (sp > 0) sp--;
+            continue;
+        } else if (tl >= 2 && src[le-2]=='c' && src[le-1]=='m') {
+            char cmline[160] = {0};
+            size_t cl = tl < 159 ? tl : 159;
+            memcpy(cmline, src+ts, cl);
+            float a,b,c,d,e,f;
+            if (sscanf(cmline,"%f %f %f %f %f %f cm",&a,&b,&c,&d,&e,&f)==6) {
+                fz_matrix m = {a,b,c,d,e,f};
+                ctm_stack[sp] = fz_concat(m, ctm_stack[sp]);
+            }
+            continue;
+        } else if (tl >= 3 && src[le-2]=='D' && src[le-1]=='o' && src[ts]=='/') {
+            /* /Name Do : 名前を抽出して実際に子XObjectへ再帰する */
+            char name[64] = {0};
+            int ni = 0;
+            size_t p2 = ts + 1;
+            while (p2 < le && src[p2] != ' ' && src[p2] != '\t' &&
+                   src[p2] != '\r' && ni < 63) {
+                name[ni++] = src[p2++];
+            }
+            if (xdict) {
+                pdf_obj *val = pdf_dict_gets(ctx, xdict, name);
+                int xr = pdf_is_indirect(ctx, val) ? pdf_to_num(ctx, val) : 0;
+                if (xr != 0) {
+                    pdf_obj *xobj = pdf_resolve_indirect(ctx, val);
+                    pdf_obj *st = xobj ? pdf_dict_gets(ctx, xobj, "Subtype") : NULL;
+                    const char *st_name = (st && pdf_is_name(ctx, st)) ? pdf_to_name(ctx, st) : NULL;
+                    if (st_name && strcmp(st_name, "Form") == 0) {
+                        fz_buffer *cbuf = NULL;
+                        fz_var(cbuf);
+                        fz_try(ctx) {
+                            pdf_obj *ind = pdf_new_indirect(ctx, pdf, xr, 0);
+                            cbuf = pdf_load_stream(ctx, ind);
+                            pdf_drop_obj(ctx, ind);
+                            if (cbuf) {
+                                /* 呼び出された子XObject自身の /Matrix を適用してから
+                                 * 子の content stream 座標系の base とする。
+                                 * kozou_xobj_place_ctm_scan と対称の合成順。 */
+                                fz_matrix xm = fz_identity;
+                                pdf_obj *mo = pdf_dict_get(ctx, xobj, PDF_NAME(Matrix));
+                                if (pdf_is_array(ctx, mo) && pdf_array_len(ctx, mo) == 6) {
+                                    xm.a = pdf_to_real(ctx, pdf_array_get(ctx, mo, 0));
+                                    xm.b = pdf_to_real(ctx, pdf_array_get(ctx, mo, 1));
+                                    xm.c = pdf_to_real(ctx, pdf_array_get(ctx, mo, 2));
+                                    xm.d = pdf_to_real(ctx, pdf_array_get(ctx, mo, 3));
+                                    xm.e = pdf_to_real(ctx, pdf_array_get(ctx, mo, 4));
+                                    xm.f = pdf_to_real(ctx, pdf_array_get(ctx, mo, 5));
                                 }
-                                if (xd2 <= tol2) matched = 1;
+                                fz_matrix child_base = fz_concat(xm, ctm_stack[sp]);
+                                pdf_obj *xres = pdf_dict_gets(ctx, xobj, "Resources");
+                                if (!xres) xres = resources;
+                                unsigned char *cd = NULL;
+                                size_t clen = fz_buffer_storage(ctx, cbuf, &cd);
+                                if (cd) {
+                                    kozou_scan_xobjs_for_target(ctx, pdf,
+                                        (const char*)cd, clen, xres,
+                                        child_base, xr, ix, iy, tol2,
+                                        out_xrefs, n_out, max_out, depth+1);
+                                }
                             }
-                        }
-                        if (matched) found = 1;
+                        } fz_always(ctx) {
+                            if (cbuf) fz_drop_buffer(ctx, cbuf);
+                        } fz_catch(ctx) { }
                     }
                 }
             }
-            if (getenv("KOZOU_SANITIZE_DEBUG")) {
-                fprintf(stderr,
-                    "[KOZOU_XOBJ_TM_SCAN] xref=%d found=%d "
-                    "best_raw_d=%.2f best_raw_xy=(%.2f,%.2f) "
-                    "best_xform_d=%.2f best_xform_xy=(%.2f,%.2f) target(ix=%.2f,iy=%.2f)\n",
-                    xref, found,
-                    kozou_dbg_best_raw_d2 >= 0 ? (double)sqrtf(kozou_dbg_best_raw_d2) : -1.0,
-                    kozou_dbg_best_raw_xy[0], kozou_dbg_best_raw_xy[1],
-                    kozou_dbg_best_xform_d2 >= 0 ? (double)sqrtf(kozou_dbg_best_xform_d2) : -1.0,
-                    kozou_dbg_best_xform_xy[0], kozou_dbg_best_xform_xy[1],
-                    ix, iy);
-            }
-        } fz_always(ctx) {
-            if (buf) { fz_drop_buffer(ctx, buf); buf = NULL; }
-        } fz_catch(ctx) {}
-
-        if (found && !dup && *n_out < max_out) {
-            out_xrefs[(*n_out)++] = xref;
+            continue;
         }
+        if (tl < 2) continue;
 
-        /* このXObject自身の Resources を再帰的にスキャン（ネスト XObject 対応）*/
-        if (!dup) {
-            pdf_obj *child_res = pdf_dict_gets(ctx, xobj, "Resources");
-            if (child_res) {
-                pdf_obj *child_xdict = pdf_dict_gets(ctx, child_res, "XObject");
-                if (child_xdict)
-                    kozou_find_all_xobjs_by_tm_dict(ctx, pdf, ppage, child_xdict,
-                                                    ix, iy, tol2,
-                                                    out_xrefs, n_out, max_out, depth+1,
-                                                    pcache);
+        if (!in_bt) {
+            if (tl == 2 && src[ts]=='B' && src[ts+1]=='T') {
+                in_bt = 1;
+                tm_tx = tm_ty = td_x = td_y = 0;
+            }
+        } else {
+            if (tl == 2 && src[ts]=='E' && src[ts+1]=='T') {
+                in_bt = 0;
+            } else if (tl >= 2 && src[le-2]=='T' && src[le-1]=='m') {
+                char lb[128]={0};
+                size_t cp = tl<127?tl:127;
+                memcpy(lb, src+ts, cp);
+                float a,b,c,dv,tx,ty;
+                if (sscanf(lb,"%f %f %f %f %f %f Tm",&a,&b,&c,&dv,&tx,&ty)==6) {
+                    tm_tx = tx; tm_ty = ty;
+                    td_x = 0; td_y = 0;
+                }
+            } else if (tl >= 2 && src[le-2]=='T' && src[le-1]=='d') {
+                char lb[64]={0};
+                size_t cp = tl<63?tl:63;
+                memcpy(lb, src+ts, cp);
+                float tx, ty;
+                if (sscanf(lb,"%f %f Td",&tx,&ty)==2) {
+                    td_x += tx; td_y += ty;
+                }
+            } else if (tl >= 2 && (src[le-2]=='T' && src[le-1]=='j'
+                                  || src[le-2]=='T' && src[le-1]=='J')) {
+                float cur_x = tm_tx + td_x;
+                float cur_y = tm_ty + td_y;
+                /* ctm_stack[sp] は「今まさに辿っているこの呼び出し経路」に
+                 * 対応する、このcontent streamのローカルテキスト座標→
+                 * デバイス座標への、その場で確定している唯一のCTM。
+                 * ローカル/デバイスの変換違いも、複数配置の曖昧さも
+                 * ここには入り込まない。 */
+                fz_point pt = fz_transform_point(
+                    fz_make_point(cur_x, cur_y), ctm_stack[sp]);
+                float dx = pt.x - ix, dy = pt.y - iy;
+                float d2 = dx*dx + dy*dy;
+                if (dbg_best_d2 < 0 || d2 < dbg_best_d2) {
+                    dbg_best_d2 = d2;
+                    dbg_best_xy[0] = pt.x;
+                    dbg_best_xy[1] = pt.y;
+                }
+                if (d2 <= tol2) found_here = 1;
             }
         }
     }
+
+    if (getenv("KOZOU_SANITIZE_DEBUG") && self_xref != 0) {
+        fprintf(stderr,
+            "[KOZOU_XOBJ_TM_SCAN] xref=%d found=%d "
+            "best_d=%.2f best_xy=(%.2f,%.2f) target(ix=%.2f,iy=%.2f)\n",
+            self_xref, found_here,
+            dbg_best_d2 >= 0 ? (double)sqrtf(dbg_best_d2) : -1.0,
+            dbg_best_xy[0], dbg_best_xy[1], ix, iy);
+    }
+
+    if (self_xref != 0 && found_here && *n_out < max_out) {
+        int dup = 0;
+        for (int k = 0; k < *n_out; k++) {
+            if (out_xrefs[k] == self_xref) { dup = 1; break; }
+        }
+        if (!dup) out_xrefs[(*n_out)++] = self_xref;
+    }
 }
 
-/* ix/iy に一致する全XObjectのxrefをout_xrefsに追記する。
- * ページの直接 XObject だけでなく、ネストした子 XObject も再帰的に検索する。 */
+/* ix/iy [常にデバイス座標] に一致する全XObjectのxrefをout_xrefsに追記する。
+ * ページの content stream から実際の /Name Do 呼び出しを辿って正しい
+ * CTMを合成しながら再帰的に検索する(kozou_scan_xobjs_for_target参照)。 */
 static void kozou_find_all_xobjs_by_tm(
     fz_context   *ctx,
     pdf_document *pdf,
@@ -6698,57 +6676,62 @@ static void kozou_find_all_xobjs_by_tm(
     float         tol,
     int          *out_xrefs,
     int          *n_out,
-    int           max_out,
-    KozouXobjPlaceCache *pcache)
+    int           max_out)
 {
     if (!ppage || !out_xrefs || !n_out) return;
     pdf_obj *res = pdf_page_resources(ctx, ppage);
-    if (getenv("KOZOU_SANITIZE_DEBUG")) {
-        pdf_obj *xdict_dbg = res ? pdf_dict_gets(ctx, res, "XObject") : NULL;
-        fprintf(stderr,
-            "[KOZOU_XOBJ_TM_TOP] ix=%.2f iy=%.2f res=%p xdict=%p xdict_len=%d\n",
-            ix, iy, (void*)res, (void*)xdict_dbg,
-            xdict_dbg ? pdf_dict_len(ctx, xdict_dbg) : -1);
-        if (res) {
-            int rn = pdf_dict_len(ctx, res);
-            fprintf(stderr, "[KOZOU_XOBJ_TM_RESKEYS] res_dict_len=%d keys=[", rn);
-            for (int _k = 0; _k < rn; _k++) {
-                pdf_obj *key = pdf_dict_get_key(ctx, res, _k);
-                const char *kn = pdf_is_name(ctx, key) ? pdf_to_name(ctx, key) : "?";
-                fprintf(stderr, "%s%s", _k ? "," : "", kn);
-                if (kn && !strcmp(kn, "XObject")) {
-                    pdf_obj *raw_val = pdf_dict_get_val(ctx, res, _k);
-                    int is_ind = pdf_is_indirect(ctx, raw_val);
-                    int refnum = is_ind ? pdf_to_num(ctx, raw_val) : -1;
-                    pdf_obj *resolved = pdf_resolve_indirect(ctx, raw_val);
-                    fprintf(stderr,
-                        "\n[KOZOU_XOBJ_TM_XOBJVAL] raw_val=%p is_indirect=%d refnum=%d "
-                        "resolved=%p is_dict=%d is_null=%d resolved_len=%d\n",
-                        (void*)raw_val, is_ind, refnum, (void*)resolved,
-                        pdf_is_dict(ctx, resolved), pdf_is_null(ctx, resolved),
-                        (resolved && pdf_is_dict(ctx, resolved)) ? pdf_dict_len(ctx, resolved) : -1);
+    if (!res) return;
+
+    fz_buffer *cbuf = NULL;
+    fz_var(cbuf);
+    fz_try(ctx) {
+        pdf_obj *contents = pdf_page_contents(ctx, ppage);
+        cbuf = fz_new_buffer(ctx, 1024);
+        if (pdf_is_array(ctx, contents)) {
+            int cn = pdf_array_len(ctx, contents);
+            for (int ci = 0; ci < cn; ci++) {
+                pdf_obj *part = pdf_array_get(ctx, contents, ci);
+                fz_buffer *pb = pdf_load_stream(ctx, part);
+                if (pb) {
+                    unsigned char *pd = NULL;
+                    size_t pl = fz_buffer_storage(ctx, pb, &pd);
+                    if (pd && pl) {
+                        fz_append_data(ctx, cbuf, pd, pl);
+                        fz_append_byte(ctx, cbuf, '\n');
+                    }
+                    fz_drop_buffer(ctx, pb);
                 }
             }
-            fprintf(stderr, "]\n");
-            /* pdf_page_resources が空/不完全な場合に備え、page_obj からも
-             * 継承込みで Resources を取り直して比較する */
-            pdf_obj *pobj = ppage->obj;
-            pdf_obj *res2 = pobj ? pdf_dict_get_inheritable(ctx, pobj, PDF_NAME(Resources)) : NULL;
-            pdf_obj *xdict2 = res2 ? pdf_dict_get(ctx, res2, PDF_NAME(XObject)) : NULL;
-            fprintf(stderr,
-                "[KOZOU_XOBJ_TM_RES2] page_obj=%p res2(inheritable)=%p xdict2=%p xdict2_len=%d same_as_res=%d\n",
-                (void*)pobj, (void*)res2, (void*)xdict2,
-                xdict2 ? pdf_dict_len(ctx, xdict2) : -1,
-                res == res2);
+        } else if (contents) {
+            fz_buffer *pb = pdf_load_stream(ctx, contents);
+            if (pb) {
+                unsigned char *pd = NULL;
+                size_t pl = fz_buffer_storage(ctx, pb, &pd);
+                if (pd && pl) fz_append_data(ctx, cbuf, pd, pl);
+                fz_drop_buffer(ctx, pb);
+            }
         }
-    }
-    if (!res) return;
-    pdf_obj *xdict = pdf_dict_gets(ctx, res, "XObject");
-    if (!xdict) return;
+        unsigned char *cd = NULL;
+        size_t clen = fz_buffer_storage(ctx, cbuf, &cd);
 
-    float tol2 = tol * tol;
-    kozou_find_all_xobjs_by_tm_dict(ctx, pdf, ppage, xdict, ix, iy, tol2,
-                                    out_xrefs, n_out, max_out, 0, pcache);
+        /* ページの PDF native 座標 → MuPDF デバイス座標(top-left, Y下向き、
+         * 回転/CropBox原点を含む)への変換。検出側の internal_origin
+         * (kozou_xobj_fill_text の page_x/y, および現在は常にこれに統一
+         * された internal_origin)と同じ base を使うことで、比較の両辺を
+         * 完全にデバイス座標へ揃える。kozou_get_xobj_place_ctm と同一。 */
+        fz_rect mbox;
+        fz_matrix page_ctm = fz_identity;
+        pdf_page_transform(ctx, ppage, &mbox, &page_ctm);
+
+        float tol2 = tol * tol;
+        if (cd) {
+            kozou_scan_xobjs_for_target(ctx, pdf, (const char*)cd, clen,
+                res, page_ctm, /*self_xref=*/0,
+                ix, iy, tol2, out_xrefs, n_out, max_out, 0);
+        }
+    } fz_always(ctx) {
+        if (cbuf) fz_drop_buffer(ctx, cbuf);
+    } fz_catch(ctx) { }
 }
 
 static int kozou_find_xobj_by_tm(
@@ -6762,7 +6745,7 @@ static int kozou_find_xobj_by_tm(
     int xrefs[1];
     int n = 0;
     /* 1回限りの呼び出し: キャッシュなし(NULL)で毎回都度計算させる */
-    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, xrefs, &n, 1, NULL);
+    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, xrefs, &n, 1);
     return n > 0 ? xrefs[0] : 0;
 }
 
@@ -8838,29 +8821,19 @@ void kozou_sanitize_hidden_text(
              * 同じ kozou_xobj_lookup 経由で埋めているため、is_buried に関わらず
              * 内部Tm座標が有効な全ターゲットを対象にする。 */
             int n_xrefs = 0;
-            /* このページの間、xref→配置CTMの計算結果を使い回すキャッシュ。
-             * ターゲット数×候補XObject数ぶん kozou_get_xobj_place_ctm を
-             * 再計算すると遅いため、ページ単位で1つだけ確保する。 */
-            KozouXobjPlaceCache xobj_place_cache;
-            memset(&xobj_place_cache, 0, sizeof(xobj_place_cache));
             if (xobj_search_page) {
             for (int i = 0; i < n; i++) {
                 if (targets[i].page_index >= 0 && targets[i].page_index != pi) continue;
-                /* detect_* 側の internal_origin (ix,iy) は検出カテゴリによって
-                 * 意味が異なる:
-                 *  - low_contrast: mupdf stext の ch->origin (デバイス座標)。
-                 *    xobj_xref は検出時点では常に0で、どのXObjectに属するかは
-                 *    座標を頼りに位置探索(discovery)で特定する必要がある。
-                 *  - buried/tiny_text 等(KozouXObjDeviceで検出): span->trm の
-                 *    逆行列で復元したローカル Tm 空間の座標(生のTm+Tdと直接
-                 *    一致する値)であり、しかも所属XObjectのxrefは検出時点で
-                 *    既に確定している(dev->xobj_stack[...].xref)。
-                 * この2つを同じ「座標を変換して位置探索する」経路に一律で
-                 * 通すと、後者(ローカル座標)を誤ってデバイス座標として扱って
-                 * しまい、変換後の座標がずれて検出漏れになる。
-                 * xobj_xref が検出時点で既に分かっている場合は、位置探索
-                 * (kozou_find_all_xobjs_by_tm、座標変換前提)を一切経由せず、
-                 * その xref をそのまま使う。 */
+                /* detect_* 側の internal_origin (ix,iy) は検出カテゴリに関わらず
+                 * 常にデバイス座標(mupdf stext の ch->origin)に統一されている。
+                 * 以前は検出カテゴリによってローカルTm+Td座標とデバイス座標が
+                 * 混在しており、後段の位置探索がどちらの座標系で来たかを
+                 * 推測する必要があった。この混在自体が、位置探索での誤マッチ
+                 * (取り違え)の温床になっていたため、常にデバイス座標へ統一した。
+                 * xobj_xref は検出時点では常に0であり(検出時点でXObject識別を
+                 * 確定させる仕組みは現状存在しない)、どのXObjectに属するかは
+                 * kozou_find_all_xobjs_by_tm による位置探索(実際の /Do 呼び出しを
+                 * 辿りながらCTMを合成する、曖昧さのない探索)で特定する。 */
                 if (targets[i].xobj_xref != 0) {
                     targets[i].in_xobj = 1;
                     int dup = 0;
@@ -8877,8 +8850,7 @@ void kozou_sanitize_hidden_text(
                 /* Tm 座標に一致する全XObjectを収集（複数コピーがある場合も漏れなく処理）*/
                 int tmp_xr[64]; int n_tmp = 0;
                 kozou_find_all_xobjs_by_tm(ctx, pdf, xobj_search_page,
-                                           ix, iy, 2.0f, tmp_xr, &n_tmp, 64,
-                                           &xobj_place_cache);
+                                           ix, iy, 2.0f, tmp_xr, &n_tmp, 64);
                 if (n_tmp > 0) {
                     targets[i].in_xobj = 1;
                     for (int k = 0; k < n_tmp; k++) {
@@ -9213,8 +9185,9 @@ void kozou_detect_control_chars(
                         q.lr.x, q.lr.y,
                         ch->size,
                         cc_xobj_info ? cc_xobj_info->xobj_xref : 0,
-                        cc_xobj_info ? (double)cc_xobj_info->ix : (double)o.x,
-                        cc_xobj_info ? (double)cc_xobj_info->iy : (double)o.y
+                        /* internal_origin は常にデバイス座標に統一 */
+                        (double)o.x,
+                        (double)o.y
                     );
                     hit_count++;
                 }
