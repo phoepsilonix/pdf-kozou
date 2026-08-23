@@ -865,8 +865,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             all.push(
               ...toAnyHits(
                 "low_contrast",
-                (await detectLowContrastText(filePath, p, thr.contrast, thr.lcRatio))
-                  .hits,
+                (await detectLowContrastText(filePath, p, thr.contrast, thr.lcRatio)).hits,
                 p,
               ),
             );
@@ -1353,7 +1352,14 @@ function ThrPanel({
   // 共通で「厳格 ←→ 緩め」の文言をこのフラグに従って実際の向きに配置する
   // ことで、方向の矛盾を解消する。
   const sliders = [
-    { key: "alpha", label: t("hidden.threshold_alpha"), min: 0, max: 255, step: 1, strictAt: "min" },
+    {
+      key: "alpha",
+      label: t("hidden.threshold_alpha"),
+      min: 0,
+      max: 255,
+      step: 1,
+      strictAt: "min",
+    },
     {
       key: "contrast",
       label: t("hidden.threshold_contrast"),
@@ -1374,7 +1380,14 @@ function ThrPanel({
       step: 0.05,
       strictAt: "max",
     },
-    { key: "size", label: t("hidden.threshold_size"), min: 0.1, max: 10, step: 0.1, strictAt: "min" },
+    {
+      key: "size",
+      label: t("hidden.threshold_size"),
+      min: 0.1,
+      max: 10,
+      step: 0.1,
+      strictAt: "min",
+    },
     {
       key: "cover",
       label: t("hidden.threshold_cover"),
@@ -1429,8 +1442,12 @@ function ThrPanel({
             </span>
           </div>
           <div style={s.strictLooseRow}>
-            <span>{strictAt === "min" ? t("hidden.threshold_strict") : t("hidden.threshold_loose")}</span>
-            <span>{strictAt === "min" ? t("hidden.threshold_loose") : t("hidden.threshold_strict")}</span>
+            <span>
+              {strictAt === "min" ? t("hidden.threshold_strict") : t("hidden.threshold_loose")}
+            </span>
+            <span>
+              {strictAt === "min" ? t("hidden.threshold_loose") : t("hidden.threshold_strict")}
+            </span>
           </div>
         </label>
       ))}
