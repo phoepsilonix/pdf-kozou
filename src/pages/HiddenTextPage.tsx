@@ -888,14 +888,19 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         const visible = skipType3 ? all.filter((h) => !h.isType3) : all;
         const grps = groupHits(visible);
         setGroups(grps);
-        const autoSel = new Set(grps.filter((g) => !g.isWs).map((g) => g.id));
+        // 空白系(whitespace_only)は無害化対象から常に除外される(選択不可)ため、
+        // 検出件数/文字数の集計もここで揃える。空白系のみが検出された場合は
+        // 「検出なし」と同じ扱いにする(バッチ処理側の targets.length===0 判定と挙動を一致させる)。
+        const sanitizableGrps = grps.filter((g) => !g.isWs);
+        const sanitizableCharCount = sanitizableGrps.reduce((s, g) => s + g.chars.length, 0);
+        const autoSel = new Set(sanitizableGrps.map((g) => g.id));
         setSelectedIds(autoSel);
         setStatus(
-          visible.length === 0
+          sanitizableCharCount === 0
             ? t("hidden.batch_no_detection")
             : effectiveAllPages
-              ? `${grps.filter((g) => !g.isWs).length}件検出（${visible.length}文字、全${pages.length}ページ）`
-              : `${grps.filter((g) => !g.isWs).length}件検出（${visible.length}文字）`,
+              ? `${sanitizableGrps.length}件検出（${sanitizableCharCount}文字、全${pages.length}ページ）`
+              : `${sanitizableGrps.length}件検出（${sanitizableCharCount}文字）`,
         );
       } catch (e) {
         setStatus(`エラー: ${e}`);
