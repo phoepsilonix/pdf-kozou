@@ -6988,15 +6988,33 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                     int         n_ch_scanned = 0;
                     int         any_char_blank = 0;
                     const char *scan_str_start = NULL;
+                    int         scan_line_is_hex = 0;
 
                     if (pdf && font_dict) {
-                        /* Tj/TJ 行から文字列を抜き出す */
+                        /* Tj/TJ 行から文字列を抜き出す。リテラル文字列 (...) と
+                         * 16進文字列 <...> の両方に対応する。PDFの内容ストリーム
+                         * 生成系は、印字可能でないバイト値(制御文字や0x80以上)を
+                         * 含む文字は 16進 <XX> で、印字可能な値は簡潔なリテラル
+                         * (c) で出力する、という使い分けを行うことがある(実PDFで
+                         * 確認: 同一Type3フォントの同一BTブロック内で <0C> <04>
+                         * <0D> <AE> <8E> という16進表記と (i) (#) というリテラル
+                         * 表記が混在していた)。以前は '(' しか探していなかった
+                         * ため、16進表記の文字は文字単位スキャン自体が丸ごと
+                         * スキップされ(str_start が NULL のまま)、その結果
+                         * origin_is_target 判定(qmap の空間検索のみに頼る、
+                         * より粗い判定)に頼らざるを得ず、同一座標に複数レイヤーが
+                         * 重なる場合に identity 不一致で救済されず、無害化操作を
+                         * 何度実行しても対象が残り続けるという再現性のある
+                         * 検出漏れを引き起こしていた。 */
                         const char *line_p = (const char *)src + ts;
                         const char *str_start = NULL;
+                        int line_is_hex = 0;
                         for (size_t _ci = 0; _ci < trimmed_len; _ci++) {
-                            if (line_p[_ci] == '(') { str_start = line_p + _ci; break; }
+                            if (line_p[_ci] == '(') { str_start = line_p + _ci; line_is_hex = 0; break; }
+                            if (line_p[_ci] == '<') { str_start = line_p + _ci; line_is_hex = 1; break; }
                         }
-                        if (str_start) {
+                        scan_line_is_hex = line_is_hex;
+                        if (str_start && !line_is_hex) {
                             scan_str_start = str_start;
                             pdf_obj *fobj_c = pdf_dict_gets(ctx, font_dict, cur_font_name);
                             int is_mb_c = kozou_is_multibyte_font(ctx, fobj_c);
@@ -7183,6 +7201,169 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 n_ch_scanned++;
                                 adv_c += cw_c;
                             }
+                        } else if (str_start && line_is_hex) {
+                            /* 16進文字列 <XX...> 版。リテラル文字列版と同じ
+                             * identity/幅/照合ロジックを、バイト取得元だけ
+                             * 16進2桁(単純フォント)/4桁(2byte CIDフォント)の
+                             * 読み取りに変えて踏襲する。 */
+                            scan_str_start = str_start;
+                            pdf_obj *fobj_c = pdf_dict_gets(ctx, font_dict, cur_font_name);
+                            int is_mb_c = kozou_is_multibyte_font(ctx, fobj_c);
+                            float adv_c = 0.0f;
+                            const char *p_c = str_start + 1;
+#define KOZOU_HEXVAL(ch) \
+    (((ch)>='0'&&(ch)<='9') ? ((ch)-'0') : \
+     ((ch)>='a'&&(ch)<='f') ? ((ch)-'a'+10) : \
+     ((ch)>='A'&&(ch)<='F') ? ((ch)-'A'+10) : -1)
+                            while (*p_c && *p_c != '>' && n_ch_scanned < KOZOU_XOBJ_LINE_MAX_CH) {
+                                const char *cstart_c = p_c;
+                                while (*p_c==' '||*p_c=='\t'||*p_c=='\r'||*p_c=='\n') p_c++;
+                                if (!*p_c || *p_c == '>') break;
+                                int h1 = KOZOU_HEXVAL(*p_c);
+                                if (h1 < 0) break;
+                                p_c++;
+                                while (*p_c==' '||*p_c=='\t'||*p_c=='\r'||*p_c=='\n') p_c++;
+                                int h2 = KOZOU_HEXVAL(*p_c);
+                                int cc_c;
+                                if (h2 >= 0) { cc_c = h1*16 + h2; p_c++; }
+                                else { cc_c = h1*16; /* 奇数桁: 末尾を0とみなす(PDF仕様) */ }
+                                if (is_mb_c && *p_c && *p_c != '>') {
+                                    while (*p_c==' '||*p_c=='\t'||*p_c=='\r'||*p_c=='\n') p_c++;
+                                    int h3 = KOZOU_HEXVAL(*p_c);
+                                    if (h3 >= 0) {
+                                        p_c++;
+                                        while (*p_c==' '||*p_c=='\t'||*p_c=='\r'||*p_c=='\n') p_c++;
+                                        int h4 = KOZOU_HEXVAL(*p_c);
+                                        int lo_c;
+                                        if (h4 >= 0) { lo_c = h3*16 + h4; p_c++; }
+                                        else { lo_c = h3*16; }
+                                        cc_c = (cc_c << 8) | lo_c;
+                                    }
+                                }
+#undef KOZOU_HEXVAL
+                                float cw_c = kozou_get_char_width_1000(ctx, pdf, fobj_c, cc_c);
+                                float adv_pts_c = adv_c * cur_font_size / 1000.0f;
+                                fz_matrix txt_c = fz_concat(cur_td, cur_tm);
+                                fz_matrix m1_c  = fz_concat(txt_c, ctm_stack[ctm_sp]);
+                                fz_matrix full_c = fz_concat(m1_c, place_ctm);
+                                fz_point adv_dev = fz_transform_point(
+                                    fz_make_point(adv_pts_c, 0.0f), full_c);
+                                float ch_dev_x = adv_dev.x;
+                                float ch_dev_y = adv_dev.y;
+                                int g_c_ucs = -1; float g_c_size = 0.0f; int have_g_c = 0;
+                                int tu_ucs_c = (pdf && fobj_c) ? kozou_tounicode_lookup(
+                                    ctx, pdf, fobj_c, tu_cache, &tu_cache_n, (unsigned int)cc_c) : -1;
+                                if (tu_ucs_c >= 0) {
+                                    g_c_ucs = tu_ucs_c;
+                                    g_c_size = cur_font_size * kozou_matrix_scale(full_c);
+                                    have_g_c = 1;
+                                } else if (!is_mb_c && cc_c >= 0x20 && cc_c <= 0x7E) {
+                                    g_c_ucs = cc_c;
+                                    g_c_size = cur_font_size * kozou_matrix_scale(full_c);
+                                    have_g_c = 1;
+                                } else if (qmap) {
+                                    have_g_c = kozou_quad_map_lookup_glyph(
+                                        qmap, ch_dev_x, ch_dev_y, tol2_est, &g_c_ucs, &g_c_size);
+                                }
+                                int this_blank = (n_ch_scanned == 0 && origin_is_target);
+                                int kozou_dbg_xobj = getenv("KOZOU_SANITIZE_DEBUG") != NULL;
+                                int cur_is_type3_c = kozou_dbg_xobj
+                                    ? kozou_font_is_type3(ctx, font_dict, cur_font_name) : 0;
+                                float kozou_dbg_best_d2 = -1.0f;
+                                int   kozou_dbg_best_ti = -1;
+                                const char *kozou_dbg_fail = "no_target";
+                                if (!this_blank) {
+                                    for (int _ti2 = 0; _ti2 < n_targets; _ti2++) {
+                                        if (kozou_dbg_xobj) {
+                                            float ddx = targets[_ti2].ox - ch_dev_x;
+                                            float ddy = targets[_ti2].oy - ch_dev_y;
+                                            float dd2 = ddx*ddx + ddy*ddy;
+                                            if (kozou_dbg_best_ti < 0 || dd2 < kozou_dbg_best_d2) {
+                                                kozou_dbg_best_d2 = dd2; kozou_dbg_best_ti = _ti2;
+                                            }
+                                        }
+                                        if (targets[_ti2].render_invisible >= 0 &&
+                                            targets[_ti2].render_invisible != cur_invisible) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "render_invisible";
+                                            continue;
+                                        }
+                                        if (targets[_ti2].alpha_gate) {
+                                            int cur_a255 =
+                                                (int)(alpha_stack[ctm_sp] * 255.0f + 0.5f);
+                                            if (cur_a255 > alpha_threshold) {
+                                                if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                    kozou_dbg_fail = "alpha_gate";
+                                                continue;
+                                            }
+                                        }
+                                        if (targets[_ti2].font_class >= 0 &&
+                                            targets[_ti2].font_class !=
+                                                kozou_font_is_type3(ctx, font_dict, cur_font_name)) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "font_class";
+                                            continue;
+                                        }
+                                        float dx2 = targets[_ti2].ox - ch_dev_x;
+                                        float dy2 = targets[_ti2].oy - ch_dev_y;
+                                        if (dx2*dx2 + dy2*dy2 > tol2_est) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "position";
+                                            continue;
+                                        }
+                                        if (!kozou_identity_ok(targets[_ti2].codepoint,
+                                                targets[_ti2].size, have_g_c, g_c_ucs, g_c_size)) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "identity";
+                                            continue;
+                                        }
+                                        if (targets[_ti2].remaining_ptr) {
+                                            if (*targets[_ti2].remaining_ptr <= 0) {
+                                                if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                    kozou_dbg_fail = "remaining_ptr";
+                                                continue;
+                                            }
+                                            (*targets[_ti2].remaining_ptr)--;
+                                        }
+                                        if (kozou_dbg_xobj) kozou_dbg_fail = "matched";
+                                        this_blank = 1; break;
+                                    }
+                                }
+                                if (kozou_dbg_xobj && !this_blank &&
+                                    kozou_dbg_best_ti >= 0 &&
+                                    kozou_dbg_best_d2 <= tol2_est * 4.0f) {
+                                    fprintf(stderr,
+                                        "[KOZOU_XOBJ_CHAR_HEX] font=%s cc=0x%02x tu_used=%d "
+                                        "g_ucs=%d g_size=%.2f have_g=%d pos=(%.1f,%.1f) tol2_est=%.1f "
+                                        "n_targets=%d best_ti=%d best_d=%.1f "
+                                        "best_font_class=%d best_cp=%d best_size=%.2f "
+                                        "best_ox_oy=(%.1f,%.1f) "
+                                        "best_rvis=%d best_agate=%d cur_invisible=%d "
+                                        "cur_is_type3=%d fail=%s blank=%d\n",
+                                        cur_font_name ? cur_font_name : "?",
+                                        (unsigned)cc_c, (tu_ucs_c >= 0), g_c_ucs, g_c_size, have_g_c,
+                                        ch_dev_x, ch_dev_y, tol2_est,
+                                        n_targets, kozou_dbg_best_ti,
+                                        kozou_dbg_best_ti >= 0 ? (double)sqrtf(kozou_dbg_best_d2) : -1.0,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].font_class : -99,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].codepoint : -1,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].size : -1.0,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].ox : -1.0,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].oy : -1.0,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].render_invisible : -99,
+                                        kozou_dbg_best_ti >= 0 ? targets[kozou_dbg_best_ti].alpha_gate : -99,
+                                        cur_invisible,
+                                        cur_is_type3_c,
+                                        kozou_dbg_fail, this_blank);
+                                }
+                                ch_start[n_ch_scanned] = cstart_c;
+                                ch_end[n_ch_scanned]   = p_c;
+                                ch_blank[n_ch_scanned] = this_blank;
+                                ch_w[n_ch_scanned]     = cw_c;
+                                if (this_blank) any_char_blank = 1;
+                                n_ch_scanned++;
+                                adv_c += cw_c;
+                            }
                         }
                     }
 
@@ -7197,10 +7378,17 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                             int blank_run = ch_blank[i];
                             while (j < n_ch_scanned && ch_blank[j] == blank_run) j++;
                             if (!blank_run) {
-                                fz_append_byte(ctx,out_buf,'(');
-                                fz_append_data(ctx,out_buf, ch_start[i],
-                                    (size_t)(ch_end[j-1]-ch_start[i]));
-                                fz_append_string(ctx,out_buf,") Tj\n");
+                                if (scan_line_is_hex) {
+                                    fz_append_byte(ctx,out_buf,'<');
+                                    fz_append_data(ctx,out_buf, ch_start[i],
+                                        (size_t)(ch_end[j-1]-ch_start[i]));
+                                    fz_append_string(ctx,out_buf,"> Tj\n");
+                                } else {
+                                    fz_append_byte(ctx,out_buf,'(');
+                                    fz_append_data(ctx,out_buf, ch_start[i],
+                                        (size_t)(ch_end[j-1]-ch_start[i]));
+                                    fz_append_string(ctx,out_buf,") Tj\n");
+                                }
                             } else {
                                 int   run_n = j - i;
                                 float run_w = 0.0f;
