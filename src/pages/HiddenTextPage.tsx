@@ -1293,7 +1293,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             {running && allPagesMode ? <Spinner /> : t("hidden.detect_all_pages" as any)}
           </button>
         )}
-        {groups.length > 0 && (
+        {groups.some((g) => !g.isWs) && (
           <button type="button" style={s.sanBtn} onClick={runSanitize} disabled={sanitizing}>
             {sanitizing ? <Spinner /> : `🧹 無害化 (${selCharCount}字)`}
           </button>
