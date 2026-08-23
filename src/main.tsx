@@ -12,6 +12,7 @@ import { initUiScale } from "./lib/uiScale";
 // （高さ補正が初期レイアウトに間に合わないと一瞬崩れるため）
 initUiScale();
 
+// biome-ignore lint/style/noNonNullAssertion: index.htmlに常に<div id="root">が存在するVite/React標準の起動イディオム
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <I18nProvider>

@@ -551,6 +551,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       };
     }
     if (impositionMode !== "1up") {
+      // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
       const info = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
       // 面付け: シート = cols×rows のセルを並べたサイズ
       return {
@@ -719,6 +720,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       try {
         // 高DPI × 多ページのメモリ試算（600MB超は確認ダイアログ）
+        // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
         const modeInfo0 = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
         const estimatedMB = Math.round(
           (Math.round((595 * dpi) / 72) *
@@ -762,6 +764,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           sheets.length,
           sheets.map((s) => s.label),
         );
+        // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
         const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
         const fmt = format === "png" ? "png" : "jpeg";
         const ext = format === "png" ? "png" : "jpg";
@@ -855,6 +858,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
         // 面付けモード（2up/4up/booklet）: 各シートを1ページに合成した画像PDFを出力
         if (impositionMode !== "1up") {
+          // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
           const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
           // pages指定を反映した対象ページでシートを計算
           const pageSpec = resolvePageSpec(pages || "", total).map((i) => i + 1);
@@ -997,6 +1001,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     setMobileSavedFiles(null);
     setMobileSaveError(null);
 
+    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
     setPhase("processing");
     const progress: BatchProgress = {
@@ -1117,6 +1122,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           if (impositionMode !== "1up") {
             // 面付けPDF（rasterizeImposition）
+            // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
             const modeInfo = IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)!;
             const sheets = calcSheets(
               impositionMode,
@@ -1170,6 +1176,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         } else if (impositionMode !== "1up") {
           // 面付け画像（既存ロジックを維持）
           const subDir = joinPath(batchDir, stem);
+          // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
           const modeInfo = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
           const fmt = format === "png" ? "png" : "jpeg";
           const ext = format === "png" ? "png" : "jpg";
@@ -1586,7 +1593,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       <PageHeader>
         <span style={s.title}>
           {isBatch
-            ? t("image.title_batch", { count: String(batchFiles!.length) })
+            ? t("image.title_batch", { count: String(batchFiles?.length) })
             : t("image.title_single")}
         </span>
         {!isBatch && (
@@ -2025,10 +2032,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 {outDir
                   ? isBatch
                     ? outputMode === "pdf"
-                      ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
+                      ? t("image.execute_batch_pdf", { count: String(batchFiles?.length) })
                       : impositionMode !== "1up"
-                        ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
-                        : t("image.execute_batch", { count: String(batchFiles!.length) })
+                        ? `🖼 ${batchFiles?.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
+                        : t("image.execute_batch", { count: String(batchFiles?.length) })
                     : outputMode === "pdf"
                       ? t("image.execute_pdf")
                       : t("image.execute", {
@@ -2055,12 +2062,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             pageKey="image"
             label={
               isBatch
-                ? `${batchFiles![previewIdx]?.filename ?? ""} — ${
+                ? `${batchFiles?.[previewIdx]?.filename ?? ""} — ${
                     impositionMode !== "1up"
                       ? IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label
                       : t("common.pages", {
                           count: String(
-                            batchPreviewInfo?.page_count ?? batchFiles![previewIdx]?.pageCount ?? 0,
+                            batchPreviewInfo?.page_count ??
+                              batchFiles?.[previewIdx]?.pageCount ??
+                              0,
                           ),
                         })
                   }`
@@ -2073,7 +2082,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               >
                 {/* ファイル選択ストリップ（横スクロール・コンパクトな表紙のみ） */}
                 <div style={s.batchFileStrip}>
-                  {batchFiles!.map((f, i) => {
+                  {batchFiles?.map((f, i) => {
                     const fEff =
                       resolvePageSpec(pages || "", f.pageCount || 0).length || f.pageCount || 0;
                     const metaText =
@@ -2082,6 +2091,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                         : impositionMode !== "1up"
                           ? (() => {
                               const fSheets = calcSheets(impositionMode, fEff).length;
+                              // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
                               const mInfo = IMPOSITION_MODES_I18N.find(
                                 (m) => m.id === impositionMode,
                               )!;
@@ -2231,10 +2241,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             {outDir
               ? isBatch
                 ? outputMode === "pdf"
-                  ? t("image.execute_batch_pdf", { count: String(batchFiles!.length) })
+                  ? t("image.execute_batch_pdf", { count: String(batchFiles?.length) })
                   : impositionMode !== "1up"
-                    ? `🖼 ${batchFiles!.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
-                    : t("image.execute_batch", { count: String(batchFiles!.length) })
+                    ? `🖼 ${batchFiles?.length}件を${IMPOSITION_MODES_I18N.find((m) => m.id === impositionMode)?.label}で変換`
+                    : t("image.execute_batch", { count: String(batchFiles?.length) })
                 : outputMode === "pdf"
                   ? t("image.execute_pdf")
                   : t("image.execute", {
@@ -2283,8 +2293,9 @@ function ImpositionPreview({
   // effectiveTotal: pages指定を反映した実際の対象ページ数
   const sheets = calcSheets(impositionMode, effectiveTotal);
   const modeInfo = {
+    // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
     ...IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!,
-    label: t(IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!.labelKey as any),
+    label: t(IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)?.labelKey as any),
   };
   const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
@@ -2523,7 +2534,7 @@ function DeImpositionPreview({
           splitCells.forEach((c, idx) => {
             const key = c.page; // 0=空白, 1..n=入力シート
             if (!groupBySheet.has(key)) groupBySheet.set(key, []);
-            groupBySheet.get(key)!.push(idx);
+            groupBySheet.get(key)?.push(idx);
           });
 
           // 出力順を保つため、splitCells の登場順で unique な page を取り出す

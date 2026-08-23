@@ -98,6 +98,7 @@ export function TrimPage({ filePath, pdfInfo, batchFiles }: Props) {
   const isBatch = (batchFiles?.length ?? 0) > 1;
   if (isBatch) {
     console.log("[TrimPage] → バッチモードへ");
+    // biome-ignore lint/style/noNonNullAssertion: isBatchはbatchFiles.length由来なので必ず存在
     return <TrimPageBatch files={batchFiles!} firstPdfInfo={pdfInfo} />;
   } else {
     console.log("[TrimPage] → 単体モードへ");

@@ -88,6 +88,7 @@ export async function resolveGroupsSaveConflict(
   if (choice.action === "cancel") return null;
 
   for (const g of groups) {
+    // biome-ignore lint/style/noNonNullAssertion: 直前のループでgroups全件のtreeUriに対しexistingByGroup.setが必ず実行済み
     const existing = existingByGroup.get(g.treeUri)!;
     const m = new Map<string, ResolvedBatchEntry>();
 

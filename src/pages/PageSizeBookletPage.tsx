@@ -411,6 +411,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
+    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
     setMobileSavedFiles(null);
     setMobileSaveError(null);
@@ -732,7 +733,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       <PageHeader>
         <span style={s.title}>
           {isBatch
-            ? t("booklet.title_batch", { count: String(batchFiles!.length) })
+            ? t("booklet.title_batch", { count: String(batchFiles?.length) })
             : t("booklet.title")}
         </span>
       </PageHeader>
@@ -959,7 +960,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 disabled={isBatch ? false : totalPages <= 0}
               >
                 {isBatch
-                  ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
+                  ? t("booklet.execute_batch", { count: String(batchFiles?.length) })
                   : t("booklet.run")}
               </BtnPrimary>
             )}
@@ -1053,7 +1054,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             disabled={isBatch ? false : totalPages <= 0}
           >
             {isBatch
-              ? t("booklet.execute_batch", { count: String(batchFiles!.length) })
+              ? t("booklet.execute_batch", { count: String(batchFiles?.length) })
               : t("booklet.run")}
           </BtnPrimary>
         </FixedMobileNav>

@@ -101,7 +101,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // 現在表示中のファイル（バッチの場合はプレビュー用に切り替え可能）
   const [previewIdx, setPreviewIdx] = useState(0);
+  // biome-ignore lint/style/noNonNullAssertion: isBatchはbatchFiles有無から導出されているため、isBatch=trueならbatchFiles[previewIdx]は必ず存在
   const previewFile = isBatch ? batchFiles![previewIdx] : null;
+  // biome-ignore lint/style/noNonNullAssertion: isBatch分岐内でのみ参照されるため、previewFileは必ず非null
   const previewPath = isBatch ? previewFile!.path : filePath;
   const total = isBatch ? (previewFile?.pageCount ?? 1) : pdfInfo.page_count;
 
@@ -417,6 +419,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
+    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
     setMobileSavedFiles(null);
     setMobileSaveError(null);
@@ -763,7 +766,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
       {outDir
         ? isBatch
-          ? t("split.execute_batch", { count: String(batchFiles!.length) })
+          ? t("split.execute_batch", { count: String(batchFiles?.length) })
           : t("split.execute", { count: String(groups.length) })
         : t("common.no_dir_btn")}
     </BtnPrimary>
@@ -775,7 +778,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       <PageHeader>
         <span style={s.title}>
           {isBatch
-            ? t("split.title_batch", { count: String(batchFiles!.length) })
+            ? t("split.title_batch", { count: String(batchFiles?.length) })
             : t("split.title_single")}
         </span>
         {!isBatch && <span style={s.pageBadge}>{t("common.pages", { count: String(total) })}</span>}
@@ -1228,7 +1231,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             pageKey="split"
             label={
               isBatch
-                ? t("split.target_files", { count: String(batchFiles!.length) })
+                ? t("split.target_files", { count: String(batchFiles?.length) })
                 : t("split.preview_head", { count: String(groups.length) })
             }
             fill={!isNarrow}
@@ -1236,7 +1239,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             {isBatch ? (
               // バッチ: ファイル一覧 + 先頭ページサムネイル
               <div style={s.batchFileList}>
-                {batchFiles!.map((f, i) => (
+                {batchFiles?.map((f, i) => (
                   <div
                     key={f.id}
                     style={{ ...s.batchFileItem, ...(i === previewIdx ? s.batchFileItemOn : {}) }}

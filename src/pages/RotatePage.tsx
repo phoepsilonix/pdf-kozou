@@ -169,6 +169,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   });
 
   const [batchIdx, setBatchIdx] = useState(0);
+  // biome-ignore lint/style/noNonNullAssertion: isBatchはbatchFiles有無から導出されているため、isBatch=trueならbatchFiles[batchIdx]は必ず存在
   const curPath = isBatch ? batchFiles![batchIdx].path : filePath;
   const [curPageCount, setCurPageCount] = useState(pdfInfo.page_count);
 
@@ -185,6 +186,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
 
   useEffect(() => {
     if (!isBatch) return;
+    // biome-ignore lint/style/noNonNullAssertion: isBatchはbatchFiles有無から導出されているため、isBatch=trueならbatchFiles[batchIdx]は必ず存在
     const path = batchFiles![batchIdx].path;
     getPdfInfo(path, {
       layoutW: convertLayoutW,
@@ -386,6 +388,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
+    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
     setMobileSavedFiles(null);
     setMobileSaveError(null);
@@ -781,7 +784,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
   const executeBtn = isBatch ? (
     <BtnPrimary onClick={handleExecuteBatch} disabled={changedPages.length === 0}>
       {outDir
-        ? t("rotate.execute_batch", { count: String(batchFiles!.length) })
+        ? t("rotate.execute_batch", { count: String(batchFiles?.length) })
         : t("common.no_dir_btn")}
     </BtnPrimary>
   ) : (
@@ -798,7 +801,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       <PageHeader>
         <span style={s.title}>
           {isBatch
-            ? t("rotate.title_batch", { count: String(batchFiles!.length) })
+            ? t("rotate.title_batch", { count: String(batchFiles?.length) })
             : t("rotate.title_single")}
         </span>
         <span style={s.pageBadge}>{t("common.pages", { count: String(n) })}</span>
@@ -814,10 +817,10 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       {isBatch && (
         <div style={s.batchFileSelector}>
           <div style={s.secLabel}>
-            {t("rotate.target_files", { count: String(batchFiles!.length) })}
+            {t("rotate.target_files", { count: String(batchFiles?.length) })}
           </div>
           <div style={s.batchFileListHorizontal}>
-            {batchFiles!.map((f, i) => (
+            {batchFiles?.map((f, i) => (
               <button
                 key={f.id}
                 type="button"
@@ -848,7 +851,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         {/* 左パネル（対象ページ・個別設定・出力など） */}
         <div style={panelStyle} ref={settingsTopRef}>
           <div style={settingsScrollStyle}>
-            {(isBatch ? batchFiles!.some((f) => hasImage([f.filename])) : hasImage([filePath])) && (
+            {(isBatch ? batchFiles?.some((f) => hasImage([f.filename])) : hasImage([filePath])) && (
               <PageSizeSelector compact />
             )}
             <div style={s.secLabel}>{t("rotate.target_pages")}</div>

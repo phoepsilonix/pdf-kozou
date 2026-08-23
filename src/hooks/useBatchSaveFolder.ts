@@ -116,7 +116,7 @@ export function useBatchSaveFolder() {
       for (const p of filePaths) {
         const rel = dirName(p) === dir ? "" : baseName(dirName(p));
         if (!pathsByRel.has(rel)) pathsByRel.set(rel, []);
-        pathsByRel.get(rel)!.push(p);
+        pathsByRel.get(rel)?.push(p);
       }
 
       // rel → 実際の書き込み先 treeUri を解決(サブフォルダは無ければ作成)。
@@ -129,6 +129,7 @@ export function useBatchSaveFolder() {
       }
 
       const groups: PlannedGroup[] = Array.from(pathsByRel.entries()).map(([rel, paths]) => ({
+        // biome-ignore lint/style/noNonNullAssertion: 直前のループでpathsByRelの全keyに対しtreeUriByRel.setが必ず実行済み
         treeUri: treeUriByRel.get(rel)!,
         plannedNames: paths.map(baseName),
       }));
@@ -138,10 +139,13 @@ export function useBatchSaveFolder() {
 
       const allSaved: BatchSavedFileInfo[] = [];
       for (const [rel, paths] of pathsByRel) {
+        // biome-ignore lint/style/noNonNullAssertion: 直前のループでpathsByRelの全keyに対しtreeUriByRel.setが必ず実行済み
         const treeUri = treeUriByRel.get(rel)!;
+        // biome-ignore lint/style/noNonNullAssertion: resolvedはgroups(=treeUriByRelの全値)を基に生成されており、同じtreeUriが必ず存在
         const resolvedForGroup = resolved.get(treeUri)!;
         const entries: BatchFolderEntry[] = paths.map((p) => {
           const name = baseName(p);
+          // biome-ignore lint/style/noNonNullAssertion: resolvedForGroupはこのグループのpaths全件(=name全件)に対して解決済み
           const r = resolvedForGroup.get(name)!;
           return {
             sourcePath: p,

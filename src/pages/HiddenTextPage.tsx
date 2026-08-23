@@ -291,6 +291,7 @@ export function HiddenTextPage({
   }, []);
 
   return isBatch ? (
+    // biome-ignore lint/style/noNonNullAssertion: isBatchはbatchFiles有無から導出されているため必ず存在
     <BatchView batchFiles={batchFiles!} />
   ) : (
     <SingleView filePath={filePath} pdfInfo={pdfInfo} />

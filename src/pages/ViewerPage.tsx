@@ -189,6 +189,7 @@ function LinuxTextLayer({
         // 複数行ヒットした場合は x 方向でも最近傍を選ぶ
         let bestDx = Infinity;
         for (const li of inRow) {
+          // biome-ignore lint/style/noNonNullAssertion: inRowはlineRangesのkeyから構築されているため必ず存在
           const { start, end } = lineRanges.get(li)!;
           for (let i = start; i <= end; i++) {
             const dx = Math.abs(x - (allChars[i].x0 + allChars[i].x1) / 2);
@@ -210,6 +211,7 @@ function LinuxTextLayer({
       }
 
       if (hitLine < 0) return null;
+      // biome-ignore lint/style/noNonNullAssertion: hitLineはlineRangesのkey(inRowまたはforEach)から設定されるため必ず存在
       const { start, end } = lineRanges.get(hitLine)!;
       let best = start,
         bestDx = Infinity;
@@ -226,6 +228,7 @@ function LinuxTextLayer({
   );
 
   const relPos = useCallback((e: React.MouseEvent): [number, number] => {
+    // biome-ignore lint/style/noNonNullAssertion: マウスイベントハンドラ内で呼ばれるためcontainerは必ずマウント済み
     const r = containerRef.current!.getBoundingClientRect();
     // #root の zoom 下では rect / clientX とも視覚座標になるため、
     // zoom 倍率で割ってコンテナ内部座標（ズーム前 px）へ戻す。
@@ -587,6 +590,7 @@ function LinkLayer({
               link.dest_page != null
                 ? (e) => {
                     e.preventDefault();
+                    // biome-ignore lint/style/noNonNullAssertion: 直前のlink.dest_page != nullチェック済み分岐
                     onNavigate(link.dest_page!);
                   }
                 : undefined
@@ -1255,7 +1259,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const getOrRender = useCallback(
     async (path: string, page: number): Promise<string> => {
       if (!imgCache.current.has(path)) imgCache.current.set(path, new Map());
+      // biome-ignore lint/style/noNonNullAssertion: 直前のhas/setで必ずpathのMapが存在
       const pageMap = imgCache.current.get(path)!;
+      // biome-ignore lint/style/noNonNullAssertion: 直前のpageMap.has(page)チェック済み
       if (pageMap.has(page)) return pageMap.get(page)!;
       const b64 = await renderPage(path, page, RENDER_DPI, {
         layoutW: convertLayoutW,
@@ -1369,6 +1375,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     }
     let cancelled = false;
     (async () => {
+      // biome-ignore lint/style/noNonNullAssertion: 直前の分岐(cached有無)でthumbCache.current.setが必ず実行済み
       const cur = thumbCache.current.get(activePath)!;
       for (let i = 0; i < activeInfo.page_count; i++) {
         if (cur[i]) continue;

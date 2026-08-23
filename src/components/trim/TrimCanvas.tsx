@@ -249,6 +249,7 @@ export function TrimCanvas({
 
   // ── マウスイベント ────────────────────────────────────────────────────────
   const getPos = (e: React.PointerEvent) => {
+    // biome-ignore lint/style/noNonNullAssertion: canvasはマウント後のみポインタイベント対象になるため必ず存在
     const r = canvasRef.current!.getBoundingClientRect();
     // #root の zoom 下では rect / clientX とも視覚座標になるため、
     // zoom 倍率で割って canvas 内部座標（ズーム前 px）へ戻す。

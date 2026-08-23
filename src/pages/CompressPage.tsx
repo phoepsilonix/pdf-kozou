@@ -677,6 +677,7 @@ export function CompressPage({
     await new Promise((resolve) => setTimeout(resolve, 0));
     const prog = {
       cur: 0,
+      // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
       total: batchFiles!.length,
       curFile: "",
       done: [] as any[],
@@ -685,7 +686,9 @@ export function CompressPage({
     setBatchProg({ ...prog });
     const producedPaths: string[] = [];
 
+    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
     for (let i = 0; i < batchFiles!.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: 直上のfor条件でbatchFiles!.lengthを使っているため、iは常に範囲内
       const f = batchFiles![i];
       prog.cur = i + 1;
       prog.curFile = f.filename;
@@ -1595,8 +1598,8 @@ export function CompressPage({
               disabled={useGs && !gsPath}
             >
               {useGs
-                ? t("compress.batch_gs", { count: String(batchFiles!.length) })
-                : t("compress.batch_mupdf", { count: String(batchFiles!.length) })}
+                ? t("compress.batch_gs", { count: String(batchFiles?.length) })
+                : t("compress.batch_mupdf", { count: String(batchFiles?.length) })}
             </button>
           </div>
         ) : (
