@@ -6801,6 +6801,7 @@ static long kozou_count_tj_ops(fz_context *ctx, fz_buffer *buf)
 static void kozou_blank_all_bt_blocks_hv_ctm(
     fz_context                *ctx,
     pdf_document              *pdf,        /* フォント幅取得用 (NULL可) */
+    const int                 *orig_indices,
     pdf_obj                   *font_dict,  /* XObject の Resources/Font (NULL可) */
     pdf_obj                   *res_dict,   /* XObject の Resources (NULL可)。
                                              * ExtGState 解決 (/ca 追跡) 用。 */
@@ -7151,7 +7152,12 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                                     kozou_dbg_fail = "remaining_ptr";
                                                 continue;
                                             }
-                                            (*targets[_ti2].remaining_ptr)--;
+                                            if (orig_indices && orig_indices[_ti2] >= 0) {
+                                                int orig_ti2 = orig_indices[_ti2];
+                                                if (targets[orig_ti2].remaining_ptr == targets[_ti2].remaining_ptr) {
+                                                    (*targets[_ti2].remaining_ptr)--;
+                                                }
+                                            }
                                         }
                                         if (kozou_dbg_xobj) kozou_dbg_fail = "matched";
                                         this_blank = 1; break;
@@ -7323,7 +7329,12 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                                     kozou_dbg_fail = "remaining_ptr";
                                                 continue;
                                             }
-                                            (*targets[_ti2].remaining_ptr)--;
+                                            if (orig_indices && orig_indices[_ti2] >= 0) {
+                                                int orig_ti2 = orig_indices[_ti2];
+                                                if (targets[orig_ti2].remaining_ptr == targets[_ti2].remaining_ptr) {
+                                                    (*targets[_ti2].remaining_ptr)--;
+                                                }
+                                            }
                                         }
                                         if (kozou_dbg_xobj) kozou_dbg_fail = "matched";
                                         this_blank = 1; break;
@@ -9131,6 +9142,7 @@ void kozou_sanitize_hidden_text(
                     /* このページ pi 向けターゲットのみで XObject を書き換え */
                     {
                         int n_page = 0;
+                        int orig_indices[KOZOU_SANITIZE_MAX];
                         for (int _pi = 0; _pi < n && n_page < KOZOU_SANITIZE_MAX; _pi++) {
                             if (targets[_pi].page_index >= 0 && targets[_pi].page_index != pi) continue;
                             /* 上のXObject特定ループと同様、is_buried限定を撤廃。
@@ -9138,7 +9150,9 @@ void kozou_sanitize_hidden_text(
                              * XObjectにtransparent/low_contrast/tinyターゲットが
                              * 一切渡らず、実際の書き換えが空振りする。 */
                             if (!targets[_pi].in_xobj) continue; /* このXObjectで見つかったもののみ */
-                            page_targets[n_page++] = targets[_pi];
+                            page_targets[n_page] = targets[_pi];
+                            orig_indices[n_page] = _pi;
+                            n_page++;
                         }
                         /* n_page==0 のときは呼ばない（全BT blank を防ぐ）*/
                         if (n_page > 0) {
@@ -9151,7 +9165,7 @@ void kozou_sanitize_hidden_text(
                             int got = kozou_get_xobj_place_ctm(ctx, pdf,
                                 xobj_search_page, xref, &place_ctm);
                             if (got) {
-                                kozou_blank_all_bt_blocks_hv_ctm(ctx, pdf, xobj_fonts2, xobj_res2,
+                                kozou_blank_all_bt_blocks_hv_ctm(ctx, pdf, orig_indices, xobj_fonts2, xobj_res2,
                                     xobj_buf, new_xobj_buf, hv_ref2,
                                     page_targets, n_page, 4.0f, place_ctm, xqmap,
                                     alpha_threshold);
