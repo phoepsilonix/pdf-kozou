@@ -6935,6 +6935,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                 float dev_y = full.f;
                 int do_blank = blank_entire_bt;
                 int origin_is_target = 0;
+                int kozou_dbg_xobj_top = getenv("KOZOU_SANITIZE_DEBUG") != NULL;
                 if (!do_blank && n_targets > 0) {
                     int cur_invisible = kozou_tr_is_invisible(cur_tr);
                     /* この Tj が実際に描くグリフの identity を stext マップから取得。
@@ -6971,6 +6972,16 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         if (targets[_ti].remaining_ptr) {
                             if (*targets[_ti].remaining_ptr <= 0) continue;
                             (*targets[_ti].remaining_ptr)--;
+                        }
+                        if (kozou_dbg_xobj_top) {
+                            fprintf(stderr,
+                                "[KOZOU_ORIGIN_MATCH] ti=%d dev=(%.2f,%.2f) "
+                                "target_ox_oy=(%.2f,%.2f) target_cp=%d target_size=%.2f "
+                                "g_ucs=%d g_size=%.2f remaining_ptr=%p\n",
+                                _ti, dev_x, dev_y,
+                                targets[_ti].ox, targets[_ti].oy,
+                                targets[_ti].codepoint, targets[_ti].size,
+                                g_ucs, g_size, (void*)targets[_ti].remaining_ptr);
                         }
                         origin_is_target = 1; break;
                     }
@@ -7092,6 +7103,12 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 /* 先頭文字は Tm 原点そのものの判定(origin_is_target)も尊重する */
                                 int this_blank = (n_ch_scanned == 0 && origin_is_target);
                                 int kozou_dbg_xobj = getenv("KOZOU_SANITIZE_DEBUG") != NULL;
+                                if (kozou_dbg_xobj && this_blank) {
+                                    fprintf(stderr,
+                                        "[KOZOU_ORIGIN_BLANK_HEX] n_ch_scanned=%d cc=0x%02x "
+                                        "ch_dev=(%.2f,%.2f) origin_is_target=%d (先頭文字が無条件でblank化)\n",
+                                        n_ch_scanned, (unsigned)cc_c, ch_dev_x, ch_dev_y, origin_is_target);
+                                }
                                 int cur_is_type3_c = kozou_dbg_xobj
                                     ? kozou_font_is_type3(ctx, font_dict, cur_font_name) : 0;
                                 /* デバッグ用: 最も近いターゲット(距離順)とその不一致理由を
@@ -7159,7 +7176,18 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                                 }
                                             }
                                         }
-                                        if (kozou_dbg_xobj) kozou_dbg_fail = "matched";
+                                        if (kozou_dbg_xobj) {
+                                            kozou_dbg_fail = "matched";
+                                            fprintf(stderr,
+                                                "[KOZOU_PERCHAR_MATCH_HEX] ti=%d cc=0x%02x n_ch_scanned=%d "
+                                                "ch_dev=(%.2f,%.2f) target_ox_oy=(%.2f,%.2f) "
+                                                "target_cp=%d target_size=%.2f g_ucs=%d g_size=%.2f "
+                                                "remaining_ptr=%p\n",
+                                                _ti2, (unsigned)cc_c, n_ch_scanned, ch_dev_x, ch_dev_y,
+                                                targets[_ti2].ox, targets[_ti2].oy,
+                                                targets[_ti2].codepoint, targets[_ti2].size,
+                                                g_c_ucs, g_c_size, (void*)targets[_ti2].remaining_ptr);
+                                        }
                                         this_blank = 1; break;
                                     }
                                 }
@@ -7273,6 +7301,12 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                 }
                                 int this_blank = (n_ch_scanned == 0 && origin_is_target);
                                 int kozou_dbg_xobj = getenv("KOZOU_SANITIZE_DEBUG") != NULL;
+                                if (kozou_dbg_xobj && this_blank) {
+                                    fprintf(stderr,
+                                        "[KOZOU_ORIGIN_BLANK_LIT] n_ch_scanned=%d cc=0x%02x "
+                                        "ch_dev=(%.2f,%.2f) origin_is_target=%d (先頭文字が無条件でblank化)\n",
+                                        n_ch_scanned, (unsigned)cc_c, ch_dev_x, ch_dev_y, origin_is_target);
+                                }
                                 int cur_is_type3_c = kozou_dbg_xobj
                                     ? kozou_font_is_type3(ctx, font_dict, cur_font_name) : 0;
                                 float kozou_dbg_best_d2 = -1.0f;
@@ -7336,7 +7370,18 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                                 }
                                             }
                                         }
-                                        if (kozou_dbg_xobj) kozou_dbg_fail = "matched";
+                                        if (kozou_dbg_xobj) {
+                                            kozou_dbg_fail = "matched";
+                                            fprintf(stderr,
+                                                "[KOZOU_PERCHAR_MATCH_LIT] ti=%d cc=0x%02x n_ch_scanned=%d "
+                                                "ch_dev=(%.2f,%.2f) target_ox_oy=(%.2f,%.2f) "
+                                                "target_cp=%d target_size=%.2f g_ucs=%d g_size=%.2f "
+                                                "remaining_ptr=%p\n",
+                                                _ti2, (unsigned)cc_c, n_ch_scanned, ch_dev_x, ch_dev_y,
+                                                targets[_ti2].ox, targets[_ti2].oy,
+                                                targets[_ti2].codepoint, targets[_ti2].size,
+                                                g_c_ucs, g_c_size, (void*)targets[_ti2].remaining_ptr);
+                                        }
                                         this_blank = 1; break;
                                     }
                                 }
