@@ -8098,6 +8098,45 @@ void kozou_sanitize_hidden_text(
              * 一緒に解放する (kozou_dup_counters/kozou_dup_counter_n に退避)。 */
             kozou_dup_counters   = dup_counters;
             kozou_dup_counter_n  = dup_counter_n;
+
+            /* 単独ターゲット(クラスタ化されなかったもの)にも、1回だけの
+             * 消費制限を設ける。
+             *
+             * 【背景】書き換え時の座標許容(tol2_est、後段で算出、既定で
+             * 半径 4pt 相当だが tolerance 指定次第でさらに広がる)や
+             * サイズ許容(75%-125%)は、"Partially hidden text" 等の
+             * 既知の問題(文字送り幅の累積誤差でi以降が一致しなくなる)
+             * を回避するために意図的に広く取っている。この広い許容幅の
+             * 副作用として、「is_buried 検出されたのは1個だけだが、
+             * 実際には座標・サイズがわずかに異なる同一文字の可視コピー
+             * が別に存在する」PDF(編集履歴の残骸、袋文字等)において、
+             * その可視コピーまで誤ってマッチし消去してしまう「取り違い」
+             * が起こり得る(実機で確認: 4/1マスのみ2重描画された「買い
+             * 物」で、is_buried 検出された1個だけでなく、可視の別
+             * インスタンスまで一緒に消えてしまった)。
+             *
+             * 単独ターゲットは従来「remaining_ptr==NULL→毎回無条件で
+             * 消去」だったため、tol2_est/サイズ許容の範囲内に複数の
+             * 出現があると、その全てを消してしまっていた。ここで
+             * クラスタと同じ「残り消去許容数」の仕組み(値=1)を単独
+             * ターゲットにも適用し、1ターゲットにつき最初の1回の
+             * マッチだけを消去対象とする。2回目以降の出現(=座標や
+             * サイズがわずかに違う、is_buried 検出されなかった別
+             * インスタンス)は保護される。
+             *
+             * 複数レイヤーの is_buried 座標が cluster_tol2(半径1pt)
+             * を超えて離れているために、本来クラスタ化されるべきなのに
+             * されなかった(=is_buried側が複数あるのに片方しか検出され
+             * ていない)ケースでは、本ガードにより2個目以降の隠し
+             * テキストが1回分残ってしまう可能性はあるが、可視テキスト
+             * の誤消去という重大な副作用を避けるため安全側に倒す。 */
+            for (int i = 0; i < n; i++) {
+                if (targets[i].remaining_ptr) continue; /* 既にクラスタ済み */
+                int *counter = (int *)fz_malloc(ctx, sizeof(int));
+                *counter = 1;
+                kozou_dup_counters[kozou_dup_counter_n++] = counter;
+                targets[i].remaining_ptr = counter;
+            }
         }
         float tol2 = tolerance > 0 ? tolerance*tolerance : 1.0f;
         /* 文字単位スキャンで再計算する座標は「推定値」であり、mupdf 自身が
