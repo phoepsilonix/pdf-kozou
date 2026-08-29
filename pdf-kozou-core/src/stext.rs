@@ -828,6 +828,16 @@ pub struct BuriedChar {
     /// 所属 XObject の xref (0=トップレベル)
     #[serde(default)]
     pub xobj_xref: i32,
+    /// xobj_xref が指す XObject 自身の content stream 内で、この文字に
+    /// 対応する Tj/TJ コマンドが何番目(0起点)に出現するかの通し番号。
+    /// -1(既定)=未確定。検出時に一意に確定できた場合のみ設定される
+    /// (複数xrefが候補になった等、一意に決められない場合は -1 のまま)。
+    /// これを sanitize_hidden_text にそのまま渡すことで、無害化時に
+    /// 座標・サイズが偶然近いだけの、検出されなかった別の出現(同一
+    /// XObject内の袋文字の他レイヤー、編集残骸の可視コピー等)を、座標の
+    /// 近さに頼らず構造的に取り違えないようにできる。
+    #[serde(default = "default_minus_one")]
+    pub xobj_tj_seq: i32,
     /// XObject 内部座標
     #[serde(default)]
     pub internal_origin: [f32; 2],
@@ -1030,6 +1040,13 @@ pub struct SanitizeOrigin {
     /// では両者を区別できず本文フォント側まで巻き添えで消してしまうのを防ぐ。
     #[serde(default = "default_minus_one")]
     pub font_class: i32,
+    /// 所属 XObject 自身の content stream 内での、このターゲットに対応する
+    /// Tj/TJ コマンドの通し番号(0起点)。-1(既定)=未確定。detect_buried_text
+    /// の BuriedChar.xobj_tj_seq をそのまま渡すことを想定。値が確定して
+    /// いる場合、無害化時は座標・サイズがどれだけ近い別候補があっても、
+    /// この番号が完全一致するTj/TJコマンドだけを対象にする。
+    #[serde(default = "default_minus_one")]
+    pub xobj_tj_seq: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -1162,6 +1179,13 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
         .iter()
         .map(|o| o.font_class as std::os::raw::c_int)
         .collect();
+    // XObject内シーケンス番号(取り違え防止)の並列配列。
+    // 要素数は n_origins と一致する。
+    let xobj_tj_seq: Vec<std::os::raw::c_int> = req
+        .targets
+        .iter()
+        .map(|o| o.xobj_tj_seq as std::os::raw::c_int)
+        .collect();
     let n_origins = req.targets.len() as i32;
     let tolerance = req.tolerance.unwrap_or(1.0);
 
@@ -1185,6 +1209,7 @@ pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
             alpha_gate.as_ptr(),
             req.alpha_threshold.unwrap_or(13) as std::os::raw::c_int,
             font_class.as_ptr(),
+            xobj_tj_seq.as_ptr(),
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);

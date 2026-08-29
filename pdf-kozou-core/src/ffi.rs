@@ -198,6 +198,10 @@ unsafe extern "C" {
         // 並列配列: 各ターゲットが検出されたフォントの種別
         // (1=Type3, 0=Type3以外, -1=絞り込まない)。NULL可。
         target_font_class: *const c_int,
+        // 並列配列: 各ターゲットについて検出時に確定させた、所属XObject
+        // 自身のcontent stream内でのTj/TJコマンド通し番号(0起点)。
+        // -1=未確定(座標+identityのみでの従来照合にフォールバック)。NULL可。
+        target_xobj_tj_seq: *const c_int,
         result: *mut FfiResult,
     );
 

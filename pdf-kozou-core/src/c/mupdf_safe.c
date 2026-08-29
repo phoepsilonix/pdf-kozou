@@ -5141,6 +5141,21 @@ void kozou_collect_xobj_bboxes(
     }
 }
 
+/* 前方宣言: 定義は本ファイル後方(kozou_scan_xobjs_for_target のすぐ後)。
+ * 検出処理(kozou_detect_buried_text)からも、無害化処理と全く同じ
+ * 実装(実際の /Do 呼び出しを辿る、曖昧さのない探索)を使うために必要。 */
+static void kozou_find_all_xobjs_by_tm(
+    fz_context   *ctx,
+    pdf_document *pdf,
+    pdf_page     *ppage,
+    float         ix,
+    float         iy,
+    float         tol,
+    int          *out_xrefs,
+    int          *out_tj_seqs,
+    int          *n_out,
+    int           max_out);
+
 
 void kozou_detect_buried_text(
     fz_context  *ctx,
@@ -5300,6 +5315,37 @@ void kozou_detect_buried_text(
                         ? kozou_xobj_lookup(xobj_dev, o.x, o.y, 5.0f, ch->c, ch->size)
                         : NULL;
                     int b_xref = xobj_info ? xobj_info->xobj_xref : 0;
+                    int b_tj_seq = -1;
+                    /* xobj_dev(deviceベースの追跡)は実運用上 xref を確定
+                     * できていないことが多く(既知の限界)、b_xref==0のままの
+                     * ケースが大半を占める。無害化時に「座標が近いだけの
+                     * 別出現」を取り違えないための一意な照合情報として、
+                     * kozou_find_all_xobjs_by_tm(実際の /Do 呼び出しを辿る、
+                     * 曖昧さのない探索。無害化処理自身が使っているものと
+                     * 完全に同じ実装)で、この検出座標に対応する xref と、
+                     * そのXObject内でのTj/TJコマンド通し番号を、検出時点で
+                     * 1回だけ確定させておく。無害化時はこの2値の完全一致
+                     * だけで対象を特定でき、都度の座標近傍探索を繰り返さない。
+                     * 複数xrefが見つかった場合(同一内容が複数箇所に配置され
+                     * ている等)は、xobj_xref自体を一意に決められないため、
+                     * 従来通り b_xref=0(未確定)のままにして、無害化側の
+                     * 座標+identity判定にフォールバックさせる。 */
+                    {
+                        pdf_document *bt_pdf = (pdf_document *)doc;
+                        pdf_page *bt_ppage = (pdf_page *)page;
+                        if (bt_pdf && bt_ppage) {
+                            int seq_xrefs[4];
+                            int seq_tjs[4];
+                            int seq_n = 0;
+                            kozou_find_all_xobjs_by_tm(ctx, bt_pdf, bt_ppage,
+                                o.x, o.y, 2.0f,
+                                seq_xrefs, seq_tjs, &seq_n, 4);
+                            if (seq_n == 1) {
+                                b_xref = seq_xrefs[0];
+                                b_tj_seq = seq_tjs[0];
+                            }
+                        }
+                    }
                     /* internal_origin は常にデバイス座標に統一 */
                     float b_ix = o.x;
                     float b_iy = o.y;
@@ -5310,11 +5356,12 @@ void kozou_detect_buried_text(
                         "\"reason\":\"%s\","
                         "\"origin\":[%.3f,%.3f],"
                         "\"xobj_xref\":%d,"
+                        "\"xobj_tj_seq\":%d,"
                         "\"internal_origin\":[%.3f,%.3f],"
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
                         "\"is_type3\":%s}",
                         escaped, r, g, b, ch->size, buried_reason, o.x, o.y,
-                        b_xref, b_ix, b_iy,
+                        b_xref, b_tj_seq, b_ix, b_iy,
                         q.ul.x,q.ul.y,q.ur.x,q.ur.y,q.ll.x,q.ll.y,q.lr.x,q.lr.y,
                         buried_is_type3 ? "true" : "false");
                     hit_count++;
@@ -5487,6 +5534,16 @@ static int kozou_identity_ok(
 typedef struct {
     float x, y;          /* ページ座標系 (既存: ページ書き換えに使用) */
     int   xobj_xref;     /* 所属 XObject xref (0=トップレベル, 現状常に0) */
+    /* xobj_xref が指す XObject 自身の content stream 内で、このターゲット
+     * に対応する Tj/TJ コマンドが何番目(0起点)に出現するかの通し番号。
+     * -1 = 未確定(従来通り、座標+identityのみでの照合にフォールバック)。
+     * 検出時点で kozou_find_all_xobjs_by_tm(シーケンス番号対応版) を使って
+     * 確定させることで、書き換え時に「座標・サイズが偶然近いだけの、
+     * 検出されなかった別の出現(同一XObject内の袋文字の他レイヤー、
+     * 編集残骸の可視コピー等)」を誤ってマッチさせる取り違いを、座標の
+     * 近さに頼らず構造的に防ぐ。同一Tj/TJコマンド内の「何文字目か」
+     * までは区別しない(そこは引き続き識別子照合に委ねる)。 */
+    int   xobj_tj_seq;
     float ix, iy;        /* XObject 内部座標系 (Tm座標) */
     float ox, oy;        /* デバイス座標 (MuPDF Y下向き, XObject特定に使用) */
     int   in_xobj;       /* 1=XObject内で処理済み、ページ書き換えをスキップ */
@@ -6494,6 +6551,10 @@ static void kozou_scan_xobjs_for_target(
     float         iy,
     float         tol2,
     int          *out_xrefs,
+    int          *out_tj_seqs, /* out_xrefs と並行。各xref内でtarget(ix,iy)に
+                                 * 最も近かったTj/TJコマンドの、そのxref自身の
+                                 * content stream内での通し番号(0起点)。
+                                 * NULL可(不要なら渡さなくてよい)。 */
     int          *n_out,
     int           max_out,
     int           depth)
@@ -6510,6 +6571,12 @@ static void kozou_scan_xobjs_for_target(
     int found_here = 0;
     float dbg_best_d2 = -1.0f;
     float dbg_best_xy[2] = {0, 0};
+    /* このcontent stream(self_xref)自身の中でのTj/TJコマンド通し番号。
+     * 子XObjectへ再帰しても、この関数呼び出し(=1つのcontent stream)
+     * ごとに独立して0から数え直す。過去にどの出現をblank化したかとは
+     * 無関係に、常にストリーム上の出現順そのものを表す。 */
+    int tj_seq = 0;
+    int best_tj_seq = -1;
 
     size_t pos = 0;
     while (pos < len) {
@@ -6585,7 +6652,7 @@ static void kozou_scan_xobjs_for_target(
                                     kozou_scan_xobjs_for_target(ctx, pdf,
                                         (const char*)cd, clen, xres,
                                         child_base, xr, ix, iy, tol2,
-                                        out_xrefs, n_out, max_out, depth+1);
+                                        out_xrefs, out_tj_seqs, n_out, max_out, depth+1);
                                 }
                             }
                         } fz_always(ctx) {
@@ -6640,8 +6707,10 @@ static void kozou_scan_xobjs_for_target(
                     dbg_best_d2 = d2;
                     dbg_best_xy[0] = pt.x;
                     dbg_best_xy[1] = pt.y;
+                    best_tj_seq = tj_seq;
                 }
                 if (d2 <= tol2) found_here = 1;
+                tj_seq++;
             }
         }
     }
@@ -6649,10 +6718,10 @@ static void kozou_scan_xobjs_for_target(
     if (getenv("KOZOU_SANITIZE_DEBUG") && self_xref != 0) {
         fprintf(stderr,
             "[KOZOU_XOBJ_TM_SCAN] xref=%d found=%d "
-            "best_d=%.2f best_xy=(%.2f,%.2f) target(ix=%.2f,iy=%.2f)\n",
+            "best_d=%.2f best_xy=(%.2f,%.2f) best_tj_seq=%d target(ix=%.2f,iy=%.2f)\n",
             self_xref, found_here,
             dbg_best_d2 >= 0 ? (double)sqrtf(dbg_best_d2) : -1.0,
-            dbg_best_xy[0], dbg_best_xy[1], ix, iy);
+            dbg_best_xy[0], dbg_best_xy[1], best_tj_seq, ix, iy);
     }
 
     if (self_xref != 0 && found_here && *n_out < max_out) {
@@ -6660,7 +6729,11 @@ static void kozou_scan_xobjs_for_target(
         for (int k = 0; k < *n_out; k++) {
             if (out_xrefs[k] == self_xref) { dup = 1; break; }
         }
-        if (!dup) out_xrefs[(*n_out)++] = self_xref;
+        if (!dup) {
+            out_xrefs[*n_out] = self_xref;
+            if (out_tj_seqs) out_tj_seqs[*n_out] = best_tj_seq;
+            (*n_out)++;
+        }
     }
 }
 
@@ -6675,6 +6748,7 @@ static void kozou_find_all_xobjs_by_tm(
     float         iy,
     float         tol,
     int          *out_xrefs,
+    int          *out_tj_seqs, /* out_xrefs と並行。NULL可。 */
     int          *n_out,
     int           max_out)
 {
@@ -6727,7 +6801,7 @@ static void kozou_find_all_xobjs_by_tm(
         if (cd) {
             kozou_scan_xobjs_for_target(ctx, pdf, (const char*)cd, clen,
                 res, page_ctm, /*self_xref=*/0,
-                ix, iy, tol2, out_xrefs, n_out, max_out, 0);
+                ix, iy, tol2, out_xrefs, out_tj_seqs, n_out, max_out, 0);
         }
     } fz_always(ctx) {
         if (cbuf) fz_drop_buffer(ctx, cbuf);
@@ -6745,7 +6819,7 @@ static int kozou_find_xobj_by_tm(
     int xrefs[1];
     int n = 0;
     /* 1回限りの呼び出し: キャッシュなし(NULL)で毎回都度計算させる */
-    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, xrefs, &n, 1);
+    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, xrefs, NULL, &n, 1);
     return n > 0 ? xrefs[0] : 0;
 }
 
@@ -6860,6 +6934,15 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
     KozouToUnicodeCacheEntry tu_cache[KOZOU_TU_CACHE_MAX];
     int tu_cache_n = 0;
 
+    /* この content stream (= 呼び出し元が特定した1つのXObject) 自身の
+     * 中での Tj/TJ コマンド通し番号(0起点)。kozou_scan_xobjs_for_target
+     * の tj_seq と全く同じ数え方(BTブロックをまたいで通しでカウント、
+     * q/Q/cm/gs 等の非テキスト命令はカウントしない)で、検出時に確定した
+     * targets[].xobj_tj_seq とここで突き合わせることで、座標・サイズが
+     * 偶然近いだけの「検出されなかった別の出現」を取り違えることなく、
+     * 対象を一意に特定できる。 */
+    int cur_xobj_tj_seq = 0;
+
     while (pos < src_len) {
         size_t line_start = pos;
         while (pos < src_len && src[pos] != '\n') pos++;
@@ -6945,6 +7028,17 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         have_g = kozou_quad_map_lookup_glyph(
                             qmap, dev_x, dev_y, 4.0f, &g_ucs, &g_size);
                     for (int _ti = 0; _ti < n_targets; _ti++) {
+                        /* シーケンス番号照合(取り違え防止の最優先ガード):
+                         * 検出時に確定済み(>=0)なら、いま処理している
+                         * Tj/TJコマンド自身の通し番号と完全一致しない限り、
+                         * 座標やサイズがどれだけ近くても候補にしない。
+                         * 座標的な近さに依存しないため、同一XObject内の
+                         * 袋文字の他レイヤーや、編集残骸の可視コピー等を
+                         * 誤ってマッチさせることがない。未確定(-1)の場合は
+                         * 従来通り、後続の座標+identity判定に委ねる。 */
+                        if (targets[_ti].xobj_tj_seq >= 0 &&
+                            targets[_ti].xobj_tj_seq != cur_xobj_tj_seq)
+                            continue;
                         if (targets[_ti].render_invisible >= 0 &&
                             targets[_ti].render_invisible != cur_invisible)
                             continue;
@@ -7127,6 +7221,14 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                             if (kozou_dbg_best_ti < 0 || dd2 < kozou_dbg_best_d2) {
                                                 kozou_dbg_best_d2 = dd2; kozou_dbg_best_ti = _ti2;
                                             }
+                                        }
+                                        /* シーケンス番号照合(取り違え防止の最優先ガード)。
+                                         * origin_is_target側と同じ理由・同じ仕組み。 */
+                                        if (targets[_ti2].xobj_tj_seq >= 0 &&
+                                            targets[_ti2].xobj_tj_seq != cur_xobj_tj_seq) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "xobj_tj_seq";
+                                            continue;
                                         }
                                         if (targets[_ti2].render_invisible >= 0 &&
                                             targets[_ti2].render_invisible != cur_invisible) {
@@ -7322,6 +7424,14 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                                                 kozou_dbg_best_d2 = dd2; kozou_dbg_best_ti = _ti2;
                                             }
                                         }
+                                        /* シーケンス番号照合(取り違え防止の最優先ガード)。
+                                         * origin_is_target側と同じ理由・同じ仕組み。 */
+                                        if (targets[_ti2].xobj_tj_seq >= 0 &&
+                                            targets[_ti2].xobj_tj_seq != cur_xobj_tj_seq) {
+                                            if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
+                                                kozou_dbg_fail = "xobj_tj_seq";
+                                            continue;
+                                        }
                                         if (targets[_ti2].render_invisible >= 0 &&
                                             targets[_ti2].render_invisible != cur_invisible) {
                                             if (kozou_dbg_xobj && kozou_dbg_best_ti == _ti2)
@@ -7498,6 +7608,13 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         fz_append_string(ctx, out_buf, "( ) Tj\n");
                     }
                 }
+                /* このTj/TJコマンドの処理が完了した(文字単位で個別に出力
+                 * された最も一般的なケースを含む、全ての分岐が合流した
+                 * 直後)。過去にblank化したかどうかに関わらず、ストリーム
+                 * 上の出現順そのものとして常にインクリメントする
+                 * (kozou_scan_xobjs_for_target の tj_seq と完全に同じ
+                 * 数え方を維持するため)。 */
+                cur_xobj_tj_seq++;
             } else {
                 if (trimmed_len >= 2 && src[te-2] == 'T' && src[te-1] == 'm') {
                     char tmline[128] = {0};
@@ -7973,6 +8090,19 @@ void kozou_sanitize_hidden_text(
                                         * フォントの種別 (1=Type3, 0=Type3
                                         * 以外, -1=絞り込まない)。NULL 可
                                         * (全て -1 とみなし従来動作)。 */
+    const int   *target_xobj_tj_seq,  /* 並列配列: 各ターゲットについて
+                                        * 検出時に kozou_find_all_xobjs_by_tm
+                                        * (シーケンス番号対応版)で確定させた、
+                                        * 所属XObject自身のcontent stream内
+                                        * でのTj/TJコマンド通し番号(0起点)。
+                                        * -1=未確定(座標+identityのみでの
+                                        * 従来照合にフォールバック)。NULL可
+                                        * (全て-1とみなし従来動作、後方互換)。
+                                        * 座標・サイズが偶然近いだけの、
+                                        * 検出されなかった別の出現(同一
+                                        * XObject内の袋文字の他レイヤー、
+                                        * 編集残骸の可視コピー等)を、座標の
+                                        * 近さに頼らず構造的に除外できる。 */
     FfiResult   *result)
 {
     pdf_document *pdf = NULL;
@@ -8019,6 +8149,13 @@ void kozou_sanitize_hidden_text(
             /* 文字 identity (取り違え防止の本命)。codepoint<0 で従来動作。 */
             targets[i].codepoint  = (int)target_origins[i*11+9];
             targets[i].size       = target_origins[i*11+10];
+            /* XObject内シーケンス番号による厳密照合。FFI側がまだこの情報を
+             * 渡してこないため、現状は常に-1(未確定)。fz_calloc によるゼロ
+             * 初期化のままだと 0(=1番目のTj/TJコマンド)と区別がつかず
+             * 危険なため、ここで明示的に「未確定」の値を設定しておく。
+             * 並列配列が渡されていれば、そちらの値を優先する。 */
+            targets[i].xobj_tj_seq =
+                target_xobj_tj_seq ? target_xobj_tj_seq[i] : -1;
             /* 描画モード (取り違え防止)。並列配列が無ければ -1 (不明=従来動作)。 */
             targets[i].render_invisible =
                 target_render_class ? target_render_class[i] : -1;
@@ -8098,6 +8235,45 @@ void kozou_sanitize_hidden_text(
              * 一緒に解放する (kozou_dup_counters/kozou_dup_counter_n に退避)。 */
             kozou_dup_counters   = dup_counters;
             kozou_dup_counter_n  = dup_counter_n;
+
+            /* 単独ターゲット(クラスタ化されなかったもの)にも、1回だけの
+             * 消費制限を設ける。
+             *
+             * 【背景】書き換え時の座標許容(tol2_est、後段で算出、既定で
+             * 半径 4pt 相当だが tolerance 指定次第でさらに広がる)や
+             * サイズ許容(75%-125%)は、"Partially hidden text" 等の
+             * 既知の問題(文字送り幅の累積誤差でi以降が一致しなくなる)
+             * を回避するために意図的に広く取っている。この広い許容幅の
+             * 副作用として、「is_buried 検出されたのは1個だけだが、
+             * 実際には座標・サイズがわずかに異なる同一文字の可視コピー
+             * が別に存在する」PDF(編集履歴の残骸、袋文字等)において、
+             * その可視コピーまで誤ってマッチし消去してしまう「取り違い」
+             * が起こり得る(実機で確認: 4/1マスのみ2重描画された「買い
+             * 物」で、is_buried 検出された1個だけでなく、可視の別
+             * インスタンスまで一緒に消えてしまった)。
+             *
+             * 単独ターゲットは従来「remaining_ptr==NULL→毎回無条件で
+             * 消去」だったため、tol2_est/サイズ許容の範囲内に複数の
+             * 出現があると、その全てを消してしまっていた。ここで
+             * クラスタと同じ「残り消去許容数」の仕組み(値=1)を単独
+             * ターゲットにも適用し、1ターゲットにつき最初の1回の
+             * マッチだけを消去対象とする。2回目以降の出現(=座標や
+             * サイズがわずかに違う、is_buried 検出されなかった別
+             * インスタンス)は保護される。
+             *
+             * 複数レイヤーの is_buried 座標が cluster_tol2(半径1pt)
+             * を超えて離れているために、本来クラスタ化されるべきなのに
+             * されなかった(=is_buried側が複数あるのに片方しか検出され
+             * ていない)ケースでは、本ガードにより2個目以降の隠し
+             * テキストが1回分残ってしまう可能性はあるが、可視テキスト
+             * の誤消去という重大な副作用を避けるため安全側に倒す。 */
+            for (int i = 0; i < n; i++) {
+                if (targets[i].remaining_ptr) continue; /* 既にクラスタ済み */
+                int *counter = (int *)fz_malloc(ctx, sizeof(int));
+                *counter = 1;
+                kozou_dup_counters[kozou_dup_counter_n++] = counter;
+                targets[i].remaining_ptr = counter;
+            }
         }
         float tol2 = tolerance > 0 ? tolerance*tolerance : 1.0f;
         /* 文字単位スキャンで再計算する座標は「推定値」であり、mupdf 自身が
@@ -9094,7 +9270,7 @@ void kozou_sanitize_hidden_text(
                 /* Tm 座標に一致する全XObjectを収集（複数コピーがある場合も漏れなく処理）*/
                 int tmp_xr[64]; int n_tmp = 0;
                 kozou_find_all_xobjs_by_tm(ctx, pdf, xobj_search_page,
-                                           ix, iy, 2.0f, tmp_xr, &n_tmp, 64);
+                                           ix, iy, 2.0f, tmp_xr, NULL, &n_tmp, 64);
                 if (n_tmp > 0) {
                     targets[i].in_xobj = 1;
                     for (int k = 0; k < n_tmp; k++) {
