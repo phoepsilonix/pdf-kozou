@@ -117,6 +117,7 @@ type AnyHit = {
   extra: string;
   isType3: boolean;
   xobjXref: number; // 0 = トップレベル
+  xobjTjSeq: number; // 所属XObject内でのTj/TJコマンド通し番号。-1=未確定
   internalOrigin: [number, number]; // XObject 内部座標
   page: number; // 検出ページ番号（0始まり）
 };
@@ -162,6 +163,7 @@ function toAnyHits(type: DetectType, hits: any[], pageIdx = 0): AnyHit[] {
             : "",
     isType3: h.is_type3 ?? false,
     xobjXref: (h as any).xobj_xref ?? 0,
+    xobjTjSeq: (h as any).xobj_tj_seq ?? -1,
     internalOrigin: (h as any).internal_origin ?? [h.origin[0], h.origin[1]],
     page: pageIdx,
   }));
@@ -459,6 +461,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             size: h.size ?? 0,
             alpha_gate: alphaGateOf(h.reason),
             font_class: h.isType3 ? 1 : 0,
+            xobj_tj_seq: h.xobjTjSeq ?? -1,
           }));
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
@@ -934,6 +937,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             size: c.size ?? 0,
             alpha_gate: alphaGateOf(c.reason),
             font_class: c.isType3 ? 1 : 0,
+            xobj_tj_seq: c.xobjTjSeq ?? -1,
           })),
       );
     if (!targets.length) {

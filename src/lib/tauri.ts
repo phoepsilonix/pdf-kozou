@@ -205,6 +205,15 @@ export interface SanitizeOrigin {
   // 重ねて描画されるケースで、検出がType3側のみを拾った場合でも
   // 本文フォント側を巻き添えで消さないための対策。
   font_class?: number;
+  // 所属 XObject 自身の content stream 内での、このターゲットに対応する
+  // Tj/TJ コマンドの通し番号(0起点)。省略/-1=未確定(座標+identityのみ
+  // での従来照合にフォールバック)。detect_buried_text の hits が返す
+  // xobj_tj_seq をそのまま渡すことを想定。値が確定している場合、無害化
+  // 時は座標・サイズがどれだけ近い別候補があっても、この番号が完全一致
+  // するTj/TJコマンドだけを対象にし、座標の近さに依存した取り違えを
+  // 構造的に防ぐ(同一XObject内の袋文字の他レイヤー、編集残骸の可視
+  // コピー等)。
+  xobj_tj_seq?: number;
 }
 
 export interface SanitizeResponse {
