@@ -7115,8 +7115,11 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                          * 座標的な近さに依存しないため、同一XObject内の
                          * 袋文字の他レイヤーや、編集残骸の可視コピー等を
                          * 誤ってマッチさせることがない。未確定(-1)の場合は
-                         * 従来通り、後続の座標+identity判定に委ねる。 */
-                        if (targets[_ti].xobj_tj_seq >= 0 &&
+                         * 従来通り、後続の座標+identity判定に委ねる。
+                         * font_classが判明している場合には、そちらを優先し
+                         * てseqによるガードをスキップ。 */
+                        if (targets[_ti].font_class == -1 &&
+                            targets[_ti].xobj_tj_seq >= 0 &&
                             targets[_ti].xobj_tj_seq != cur_xobj_tj_seq)
                             continue;
                         if (targets[_ti].render_invisible >= 0 &&
