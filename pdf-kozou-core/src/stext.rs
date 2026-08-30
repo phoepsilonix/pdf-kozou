@@ -320,6 +320,12 @@ pub struct TransparentChar {
     pub is_type3: bool,
     #[serde(default)]
     pub xobj_xref: i32,
+    /// xobj_xref が指す XObject 自身の content stream 内で、この文字に
+    /// 対応する Tj/TJ コマンドが何番目(0起点)に出現するかの通し番号。
+    /// -1(既定)=未確定。sanitize_hidden_text にそのまま渡すことで、
+    /// 座標・サイズが偶然近いだけの別出現との取り違いを防げる。
+    #[serde(default = "default_minus_one")]
+    pub xobj_tj_seq: i32,
     #[serde(default)]
     pub internal_origin: [f32; 2],
 }
@@ -437,6 +443,8 @@ pub fn detect_transparent_text(
         is_type3: bool,
         #[serde(default)]
         xobj_xref: i32,
+        #[serde(default = "default_minus_one")]
+        xobj_tj_seq: i32,
         #[serde(default)]
         internal_origin: [f32; 2],
     }
@@ -467,6 +475,7 @@ pub fn detect_transparent_text(
                 size: h.size,
                 is_type3: h.is_type3,
                 xobj_xref: h.xobj_xref,
+                xobj_tj_seq: h.xobj_tj_seq,
                 internal_origin: h.internal_origin,
             })
             .collect(),
@@ -501,6 +510,14 @@ pub struct LowContrastChar {
     pub is_type3: bool,
     #[serde(default)]
     pub xobj_xref: i32,
+    /// xobj_xref が指す XObject 自身の content stream 内での、この文字に
+    /// 対応する Tj/TJ コマンドの通し番号(0起点)。-1(既定)=未確定。
+    /// コントラスト判定は計算コストが高く無害化時の再現が非現実的な
+    /// ため、座標近さ+identityのみに頼った場合の取り違いリスクが他
+    /// カテゴリより高い。これを渡すことで座標的な近さに依存しない
+    /// 一意な照合が可能になる。
+    #[serde(default = "default_minus_one")]
+    pub xobj_tj_seq: i32,
     #[serde(default)]
     pub internal_origin: [f32; 2],
 }
@@ -621,6 +638,8 @@ pub fn detect_low_contrast_text(
         is_type3: bool,
         #[serde(default)]
         xobj_xref: i32,
+        #[serde(default = "default_minus_one")]
+        xobj_tj_seq: i32,
         #[serde(default)]
         internal_origin: [f32; 2],
     }
@@ -652,6 +671,7 @@ pub fn detect_low_contrast_text(
                 size: h.size,
                 is_type3: h.is_type3,
                 xobj_xref: h.xobj_xref,
+                xobj_tj_seq: h.xobj_tj_seq,
                 internal_origin: h.internal_origin,
             })
             .collect(),
@@ -676,6 +696,10 @@ pub struct TinyChar {
     pub is_type3: bool,
     #[serde(default)]
     pub xobj_xref: i32,
+    /// xobj_xref が指す XObject 自身の content stream 内での、この文字に
+    /// 対応する Tj/TJ コマンドの通し番号(0起点)。-1(既定)=未確定。
+    #[serde(default = "default_minus_one")]
+    pub xobj_tj_seq: i32,
     #[serde(default)]
     pub internal_origin: [f32; 2],
 }
@@ -777,6 +801,8 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
         is_type3: bool,
         #[serde(default)]
         xobj_xref: i32,
+        #[serde(default = "default_minus_one")]
+        xobj_tj_seq: i32,
         #[serde(default)]
         internal_origin: [f32; 2],
     }
@@ -805,6 +831,7 @@ pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
                 quad: h.quad,
                 is_type3: h.is_type3,
                 xobj_xref: h.xobj_xref,
+                xobj_tj_seq: h.xobj_tj_seq,
                 internal_origin: h.internal_origin,
             })
             .collect(),

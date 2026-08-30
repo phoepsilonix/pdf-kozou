@@ -3209,6 +3209,29 @@ static const KozouCharXObj *kozou_xobj_lookup(
 /*   0 = 完全透明のみ検出                                              */
 /*  25 = alpha < 10% も検出                                            */
 /* ------------------------------------------------------------------ */
+
+/* 前方宣言: 定義は本ファイル後方(kozou_scan_xobjs_for_target のすぐ後)。
+ * 各種検出処理(kozou_detect_transparent_text, kozou_detect_low_contrast_text,
+ * kozou_detect_tiny_text, kozou_detect_buried_text)からも、無害化処理と
+ * 全く同じ実装(実際の /Do 呼び出しを辿る、曖昧さのない探索)を使うために
+ * 必要。座標的な近さ・サイズ許容だけに頼った取り違いを構造的に防ぐため、
+ * 検出時点でXObject自身のcontent stream内でのTj/TJコマンド通し番号を
+ * 1回だけ確定させ、無害化リクエストにそのまま引き継げるようにする
+ * (is_buried検出での導入がオリジナル。詳細はkozou_detect_buried_text
+ * 内のコメント、および kozou_blank_all_bt_blocks_hv_ctm 内の
+ * xobj_tj_seq 関連コメントを参照)。 */
+static void kozou_find_all_xobjs_by_tm(
+    fz_context   *ctx,
+    pdf_document *pdf,
+    pdf_page     *ppage,
+    float         ix,
+    float         iy,
+    float         tol,
+    int          *out_xrefs,
+    int          *out_tj_seqs,
+    int          *n_out,
+    int           max_out);
+
 void kozou_detect_transparent_text(
     fz_context  *ctx,
     const char  *path,
@@ -3356,6 +3379,29 @@ void kozou_detect_transparent_text(
                     /* XObject 情報ルックアップ */
                     const KozouCharXObj *xobj_info = kozou_xobj_lookup(
                         xobj_dev, o.x, o.y, 2.0f, ch->c, ch->size);
+                    int tp_xref = xobj_info ? xobj_info->xobj_xref : 0;
+                    int tp_tj_seq = -1;
+                    /* シーケンス番号による確定(is_buried検出と同一の方式)。
+                     * alpha_gateによる再チェックがあるため取り違いリスクは
+                     * 他カテゴリより低いが、同じ透明度の文字が近接して
+                     * 複数存在する場合の取り違いは、alpha_gateだけでは
+                     * 防げないため、こちらも確定させておく。 */
+                    {
+                        pdf_document *tp_pdf = (pdf_document *)doc;
+                        pdf_page *tp_ppage = (pdf_page *)page;
+                        if (tp_pdf && tp_ppage) {
+                            int seq_xrefs[4];
+                            int seq_tjs[4];
+                            int seq_n = 0;
+                            kozou_find_all_xobjs_by_tm(ctx, tp_pdf, tp_ppage,
+                                o.x, o.y, 2.0f,
+                                seq_xrefs, seq_tjs, &seq_n, 4);
+                            if (seq_n == 1) {
+                                tp_xref = seq_xrefs[0];
+                                tp_tj_seq = seq_tjs[0];
+                            }
+                        }
+                    }
 
                     fz_write_printf(ctx, out,
                         "{"
@@ -3369,6 +3415,7 @@ void kozou_detect_transparent_text(
                         "\"size\":%.3f,"
                         "\"is_type3\":%s,"
                         "\"xobj_xref\":%d,"
+                        "\"xobj_tj_seq\":%d,"
                         "\"internal_origin\":[%.3f,%.3f]"
                         "}",
                         escaped, alpha, r, g, b,
@@ -3380,7 +3427,8 @@ void kozou_detect_transparent_text(
                         q.lr.x, q.lr.y,
                         ch->size,
                         is_type3 ? "true" : "false",
-                        xobj_info ? xobj_info->xobj_xref : 0,
+                        tp_xref,
+                        tp_tj_seq,
                         /* internal_origin は常にデバイス座標(o.x,o.y)に統一する。
                          * 以前はkozou_xobj_lookup成功時のみ、そのXObject内で
                          * 再構成したローカルTm+Td座標(xobj_info->ix/iy)を使い、
@@ -4043,6 +4091,29 @@ void kozou_detect_low_contrast_text(
                     const KozouCharXObj *lc_xobj_info = kozou_xobj_lookup(
                         xobj_dev, ch->origin.x, ch->origin.y, 2.0f,
                         ch->c, ch->size);
+                    int lc_xref = lc_xobj_info ? lc_xobj_info->xobj_xref : 0;
+                    int lc_tj_seq = -1;
+                    /* シーケンス番号による確定(is_buried検出と同一の方式・
+                     * 同一の理由。座標的な近さ・サイズ許容だけでは、低
+                     * コントラスト判定は特にコストが高く無害化時の再現が
+                     * 非現実的なため、座標+identityのみに頼った場合の
+                     * 取り違いリスクが他カテゴリより高い)。 */
+                    {
+                        pdf_document *lc_pdf = (pdf_document *)doc;
+                        pdf_page *lc_ppage = (pdf_page *)page;
+                        if (lc_pdf && lc_ppage) {
+                            int seq_xrefs[4];
+                            int seq_tjs[4];
+                            int seq_n = 0;
+                            kozou_find_all_xobjs_by_tm(ctx, lc_pdf, lc_ppage,
+                                ch->origin.x, ch->origin.y, 2.0f,
+                                seq_xrefs, seq_tjs, &seq_n, 4);
+                            if (seq_n == 1) {
+                                lc_xref = seq_xrefs[0];
+                                lc_tj_seq = seq_tjs[0];
+                            }
+                        }
+                    }
 
                     fz_write_printf(ctx, out,
                         "{\"char\":\"%s\","
@@ -4056,6 +4127,7 @@ void kozou_detect_low_contrast_text(
                         "\"size\":%.3f,"
                         "\"is_type3\":%s,"
                         "\"xobj_xref\":%d,"
+                        "\"xobj_tj_seq\":%d,"
                         "\"internal_origin\":[%.3f,%.3f]}",
                         escaped,
                         (int)(fg_r * 255), (int)(fg_g * 255), (int)(fg_b * 255),
@@ -4070,7 +4142,8 @@ void kozou_detect_low_contrast_text(
                         (double)lq.lr.x, (double)lq.lr.y,
                         (double)(ch->size > 0 ? ch->size : 12.0f),
                         lc_is_type3 ? "true" : "false",
-                        lc_xobj_info ? lc_xobj_info->xobj_xref : 0,
+                        lc_xref,
+                        lc_tj_seq,
                         /* internal_origin は常にデバイス座標に統一(理由は他の
                          * detect_*関数内の同種コメントを参照) */
                         (double)ch->origin.x,
@@ -4192,6 +4265,27 @@ void kozou_detect_tiny_text(
                     /* XObject 情報ルックアップ */
                     const KozouCharXObj *xobj_info = kozou_xobj_lookup(
                         xobj_dev, o.x, o.y, 2.0f, ch->c, ch->size);
+                    int tiny_xref = xobj_info ? xobj_info->xobj_xref : 0;
+                    int tiny_tj_seq = -1;
+                    /* シーケンス番号による確定(is_buried検出と同一の方式)。
+                     * サイズ閾値付近に複数の候補が近接している場合の
+                     * 取り違いを構造的に防ぐ。 */
+                    {
+                        pdf_document *tn_pdf = (pdf_document *)doc;
+                        pdf_page *tn_ppage = (pdf_page *)page;
+                        if (tn_pdf && tn_ppage) {
+                            int seq_xrefs[4];
+                            int seq_tjs[4];
+                            int seq_n = 0;
+                            kozou_find_all_xobjs_by_tm(ctx, tn_pdf, tn_ppage,
+                                o.x, o.y, 2.0f,
+                                seq_xrefs, seq_tjs, &seq_n, 4);
+                            if (seq_n == 1) {
+                                tiny_xref = seq_xrefs[0];
+                                tiny_tj_seq = seq_tjs[0];
+                            }
+                        }
+                    }
 
                     fz_write_printf(ctx, out,
                         "{"
@@ -4203,6 +4297,7 @@ void kozou_detect_tiny_text(
                         "\"quad\":[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f],"
                         "\"is_type3\":%s,"
                         "\"xobj_xref\":%d,"
+                        "\"xobj_tj_seq\":%d,"
                         "\"internal_origin\":[%.3f,%.3f]"
                         "}",
                         escaped,
@@ -4215,7 +4310,8 @@ void kozou_detect_tiny_text(
                         q.ll.x, q.ll.y,
                         q.lr.x, q.lr.y,
                         tiny_is_type3 ? "true" : "false",
-                        xobj_info ? xobj_info->xobj_xref : 0,
+                        tiny_xref,
+                        tiny_tj_seq,
                         /* internal_origin は常にデバイス座標に統一 */
                         o.x,
                         o.y
@@ -5140,22 +5236,6 @@ void kozou_collect_xobj_bboxes(
         set_err(result, fz_caught_message(ctx));
     }
 }
-
-/* 前方宣言: 定義は本ファイル後方(kozou_scan_xobjs_for_target のすぐ後)。
- * 検出処理(kozou_detect_buried_text)からも、無害化処理と全く同じ
- * 実装(実際の /Do 呼び出しを辿る、曖昧さのない探索)を使うために必要。 */
-static void kozou_find_all_xobjs_by_tm(
-    fz_context   *ctx,
-    pdf_document *pdf,
-    pdf_page     *ppage,
-    float         ix,
-    float         iy,
-    float         tol,
-    int          *out_xrefs,
-    int          *out_tj_seqs,
-    int          *n_out,
-    int           max_out);
-
 
 void kozou_detect_buried_text(
     fz_context  *ctx,
