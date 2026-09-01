@@ -3785,6 +3785,66 @@ static int kozou_lc_is_shadow_duplicate(
     return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* kozou_json_escape_cp                                                */
+/* ------------------------------------------------------------------ */
+/* Unicodeコードポイント cp 1個分を、JSON文字列リテラルの内容として     */
+/* そのまま埋め込める形に変換して escaped (呼び出し元が用意する char[32]) */
+/* に書き込む。                                                         */
+/*                                                                      */
+/* kozou_detect_low_contrast_text / kozou_detect_tiny_text /            */
+/* kozou_detect_buried_text は、以前は制御文字だけでなく cp > 0x7E の    */
+/* 非ASCII文字全てを "\u%04X" 形式でエスケープしていた。%04X は「最小    */
+/* 4桁」であって上限ではないため、U+10000以上(絵文字等の追加面文字、     */
+/* 例: U+1F338 桜)を渡すと "\u1F338" という *5桁* の文字列を出力して     */
+/* しまう。JSON仕様の \uXXXX は厳密に4桁でなければならず、これを読んだ   */
+/* 標準的なJSONパーサは "\u1F33"(4桁, たまたま実在するギリシャ文字       */
+/* U+1F33 "ἳ" になる)を1文字として確定させ、残る "8" を独立した次の      */
+/* 文字として解釈してしまう(実機で確認: 桜の絵文字(U+1F338)を検出した    */
+/* 際、GUI上の検出結果表示が「ἳ8」という無関係な2文字に化けた。これは    */
+/* たまたまの表示崩れではなく、この時点でJSON自体が壊れて2文字に分裂     */
+/* している)。                                                          */
+/*                                                                      */
+/* kozou_detect_transparent_text (本関数の少し前で定義) は当初から       */
+/* 非ASCII文字を生のUTF-8バイト列としてJSON文字列にそのまま埋め込み      */
+/* (JSON文字列はUTF-8を直接含められる)、\uXXXX エスケープは制御文字      */
+/* (cp < 0x20、常に4桁に収まるため安全)専用にしていた。ここではその      */
+/* 正しい実装を共通化し、低コントラスト/極小フォント/オブジェクト裏      */
+/* 検出の3箇所に適用する。 */
+static void kozou_json_escape_cp(int cp, char escaped[32])
+{
+    memset(escaped, 0, 32);
+    if (cp == '"')       { escaped[0]='\\'; escaped[1]='"';  }
+    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
+    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
+    else if (cp == '\r') { escaped[0]='\\'; escaped[1]='r';  }
+    else if (cp == '\t') { escaped[0]='\\'; escaped[1]='t';  }
+    else if (cp < 0x20) {
+        /* 制御文字のみ \uXXXX (常に4桁に収まる) */
+        snprintf(escaped, 32, "\\u%04X", (unsigned int)cp);
+    } else {
+        /* 非ASCIIも含め、UTF-8バイト列としてそのまま埋め込む
+         * (JSON文字列リテラルはUTF-8を直接含められるため正当)。
+         * 追加面文字(cp >= 0x10000)も \uXXXX による疑似エスケープを
+         * 経由しないので、桁あふれで壊れることがない。 */
+        if (cp < 0x80) {
+            escaped[0] = (char)cp;
+        } else if (cp < 0x800) {
+            escaped[0] = (char)(0xC0 | (cp >> 6));
+            escaped[1] = (char)(0x80 | (cp & 0x3F));
+        } else if (cp < 0x10000) {
+            escaped[0] = (char)(0xE0 | (cp >> 12));
+            escaped[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            escaped[2] = (char)(0x80 | (cp & 0x3F));
+        } else {
+            escaped[0] = (char)(0xF0 | (cp >> 18));
+            escaped[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+            escaped[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            escaped[3] = (char)(0x80 | (cp & 0x3F));
+        }
+    }
+}
+
 void kozou_detect_low_contrast_text(
     fz_context  *ctx,
     const char  *path,
@@ -4064,15 +4124,8 @@ void kozou_detect_low_contrast_text(
 
                     /* JSON出力 */
                     int cp = ch->c;
-                    char escaped[32] = {0};
-                    if (cp == '"')       { escaped[0]='\\'; escaped[1]='"';  }
-                    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
-                    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
-                    else if (cp < 0x20 || cp > 0x7E) {
-                        snprintf(escaped, sizeof(escaped), "\\u%04X", cp);
-                    } else {
-                        escaped[0] = (char)cp;
-                    }
+                    char escaped[32];
+                    kozou_json_escape_cp(cp, escaped);
 
                     const char *lc_font_name = fz_font_name(ctx, ch->font);
                     int lc_is_type3 = (lc_font_name &&
@@ -4245,15 +4298,8 @@ void kozou_detect_tiny_text(
 
                     /* JSON エスケープ */
                     int cp = ch->c;
-                    char escaped[32] = {0};
-                    if      (cp == '"')  { escaped[0]='\\'; escaped[1]='"';  }
-                    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
-                    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
-                    else if (cp < 0x20 || cp > 0x7E) {
-                        snprintf(escaped, sizeof(escaped), "\\u%04X", cp);
-                    } else {
-                        escaped[0] = (char)cp;
-                    }
+                    char escaped[32];
+                    kozou_json_escape_cp(cp, escaped);
 
                     fz_quad  q = ch->quad;
                     fz_point o = ch->origin;
@@ -5375,13 +5421,8 @@ void kozou_detect_buried_text(
                         : "buried";
 
                     /* JSON エスケープ */
-                    char escaped[32] = {0};
-                    if      (cp == '"')  { escaped[0]='\\'; escaped[1]='"';  }
-                    else if (cp == '\\') { escaped[0]='\\'; escaped[1]='\\'; }
-                    else if (cp == '\n') { escaped[0]='\\'; escaped[1]='n';  }
-                    else if (cp < 0x20 || cp > 0x7E) {
-                        snprintf(escaped, sizeof(escaped), "\\u%04X", cp);
-                    } else { escaped[0] = (char)cp; }
+                    char escaped[32];
+                    kozou_json_escape_cp(cp, escaped);
 
                     unsigned int packed = (unsigned int)ch->argb;
                     int r = (packed>>16)&0xFF, g = (packed>>8)&0xFF, b = packed&0xFF;
