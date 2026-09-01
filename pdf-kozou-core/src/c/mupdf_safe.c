@@ -3227,6 +3227,7 @@ static void kozou_find_all_xobjs_by_tm(
     float         ix,
     float         iy,
     float         tol,
+    int           want_font_class,
     int          *out_xrefs,
     int          *out_tj_seqs,
     int          *n_out,
@@ -3394,7 +3395,7 @@ void kozou_detect_transparent_text(
                             int seq_tjs[4];
                             int seq_n = 0;
                             kozou_find_all_xobjs_by_tm(ctx, tp_pdf, tp_ppage,
-                                o.x, o.y, 2.0f,
+                                o.x, o.y, 2.0f, is_type3 ? 1 : 0,
                                 seq_xrefs, seq_tjs, &seq_n, 4);
                             if (seq_n == 1) {
                                 tp_xref = seq_xrefs[0];
@@ -4106,7 +4107,7 @@ void kozou_detect_low_contrast_text(
                             int seq_tjs[4];
                             int seq_n = 0;
                             kozou_find_all_xobjs_by_tm(ctx, lc_pdf, lc_ppage,
-                                ch->origin.x, ch->origin.y, 2.0f,
+                                ch->origin.x, ch->origin.y, 2.0f, lc_is_type3 ? 1 : 0,
                                 seq_xrefs, seq_tjs, &seq_n, 4);
                             if (seq_n == 1) {
                                 lc_xref = seq_xrefs[0];
@@ -4278,7 +4279,7 @@ void kozou_detect_tiny_text(
                             int seq_tjs[4];
                             int seq_n = 0;
                             kozou_find_all_xobjs_by_tm(ctx, tn_pdf, tn_ppage,
-                                o.x, o.y, 2.0f,
+                                o.x, o.y, 2.0f, tiny_is_type3 ? 1 : 0,
                                 seq_xrefs, seq_tjs, &seq_n, 4);
                             if (seq_n == 1) {
                                 tiny_xref = seq_xrefs[0];
@@ -5418,7 +5419,7 @@ void kozou_detect_buried_text(
                             int seq_tjs[4];
                             int seq_n = 0;
                             kozou_find_all_xobjs_by_tm(ctx, bt_pdf, bt_ppage,
-                                o.x, o.y, 2.0f,
+                                o.x, o.y, 2.0f, buried_is_type3 ? 1 : 0,
                                 seq_xrefs, seq_tjs, &seq_n, 4);
                             if (seq_n == 1) {
                                 b_xref = seq_xrefs[0];
@@ -6630,6 +6631,20 @@ static void kozou_scan_xobjs_for_target(
     float         ix,
     float         iy,
     float         tol2,
+    int           want_font_class, /* 絞り込みたいフォント種別。
+                                     * -1=絞り込まない(従来動作)。
+                                     *  0=Type3以外のフォントで描画された
+                                     *     Tj/TJのみを候補にする。
+                                     *  1=Type3フォントで描画されたTj/TJの
+                                     *     みを候補にする。
+                                     * 検出時に実際に見つかった文字の
+                                     * フォント種別をそのまま渡すことで、
+                                     * 「同一座標にType3輪郭フォント版と
+                                     * 本文フォント版が重複配置されている」
+                                     * PDFで、検出ロジックが実際に見ていた
+                                     * のと異なる種類のTj/TJコマンドを、
+                                     * シーケンス番号として誤って確定させて
+                                     * しまうことを防ぐ。 */
     int          *out_xrefs,
     int          *out_tj_seqs, /* out_xrefs と並行。各xref内でtarget(ix,iy)に
                                  * 最も近かったTj/TJコマンドの、そのxref自身の
@@ -6641,6 +6656,7 @@ static void kozou_scan_xobjs_for_target(
 {
     if (depth > 10 || !src) return;
     pdf_obj *xdict = resources ? pdf_dict_gets(ctx, resources, "XObject") : NULL;
+    pdf_obj *font_dict = resources ? pdf_dict_gets(ctx, resources, "Font") : NULL;
 
     fz_matrix ctm_stack[64];
     int sp = 0;
@@ -6651,10 +6667,15 @@ static void kozou_scan_xobjs_for_target(
     int found_here = 0;
     float dbg_best_d2 = -1.0f;
     float dbg_best_xy[2] = {0, 0};
+    /* 直近の Tf で選択されたフォント名。BT〜ET の外でもPDF仕様上は
+     * 状態として持続するため、in_bt の切り替えではリセットしない。 */
+    char cur_font_name[64] = {0};
     /* このcontent stream(self_xref)自身の中でのTj/TJコマンド通し番号。
      * 子XObjectへ再帰しても、この関数呼び出し(=1つのcontent stream)
      * ごとに独立して0から数え直す。過去にどの出現をblank化したかとは
-     * 無関係に、常にストリーム上の出現順そのものを表す。 */
+     * 無関係に、常にストリーム上の出現順そのものを表す。
+     * want_font_class によるフィルタで除外されたTj/TJも、番号としては
+     * 消費する(無害化側 cur_xobj_tj_seq の数え方と一致させるため)。 */
     int tj_seq = 0;
     int best_tj_seq = -1;
 
@@ -6732,6 +6753,7 @@ static void kozou_scan_xobjs_for_target(
                                     kozou_scan_xobjs_for_target(ctx, pdf,
                                         (const char*)cd, clen, xres,
                                         child_base, xr, ix, iy, tol2,
+                                        want_font_class,
                                         out_xrefs, out_tj_seqs, n_out, max_out, depth+1);
                                 }
                             }
@@ -6749,10 +6771,30 @@ static void kozou_scan_xobjs_for_target(
             if (tl == 2 && src[ts]=='B' && src[ts+1]=='T') {
                 in_bt = 1;
                 tm_tx = tm_ty = td_x = td_y = 0;
+            } else if (tl >= 2 && src[le-2]=='T' && src[le-1]=='f' && src[ts]=='/') {
+                /* /FontName size Tf : PDF仕様上はBT外でも許容されるため、
+                 * in_bt の内外どちらでも検出する。BT/ETをまたいでも
+                 * フォント選択状態は持続するので、in_bt切り替え時には
+                 * リセットしない。 */
+                size_t p2 = ts + 1;
+                int ni = 0;
+                while (p2 < le && src[p2] != ' ' && src[p2] != '\t' &&
+                       ni < (int)sizeof(cur_font_name) - 1) {
+                    cur_font_name[ni++] = src[p2++];
+                }
+                cur_font_name[ni] = '\0';
             }
         } else {
             if (tl == 2 && src[ts]=='E' && src[ts+1]=='T') {
                 in_bt = 0;
+            } else if (tl >= 2 && src[le-2]=='T' && src[le-1]=='f' && src[ts]=='/') {
+                size_t p2 = ts + 1;
+                int ni = 0;
+                while (p2 < le && src[p2] != ' ' && src[p2] != '\t' &&
+                       ni < (int)sizeof(cur_font_name) - 1) {
+                    cur_font_name[ni++] = src[p2++];
+                }
+                cur_font_name[ni] = '\0';
             } else if (tl >= 2 && src[le-2]=='T' && src[le-1]=='m') {
                 char lb[128]={0};
                 size_t cp = tl<127?tl:127;
@@ -6772,24 +6814,37 @@ static void kozou_scan_xobjs_for_target(
                 }
             } else if (tl >= 2 && (src[le-2]=='T' && src[le-1]=='j'
                                   || src[le-2]=='T' && src[le-1]=='J')) {
-                float cur_x = tm_tx + td_x;
-                float cur_y = tm_ty + td_y;
-                /* ctm_stack[sp] は「今まさに辿っているこの呼び出し経路」に
-                 * 対応する、このcontent streamのローカルテキスト座標→
-                 * デバイス座標への、その場で確定している唯一のCTM。
-                 * ローカル/デバイスの変換違いも、複数配置の曖昧さも
-                 * ここには入り込まない。 */
-                fz_point pt = fz_transform_point(
-                    fz_make_point(cur_x, cur_y), ctm_stack[sp]);
-                float dx = pt.x - ix, dy = pt.y - iy;
-                float d2 = dx*dx + dy*dy;
-                if (dbg_best_d2 < 0 || d2 < dbg_best_d2) {
-                    dbg_best_d2 = d2;
-                    dbg_best_xy[0] = pt.x;
-                    dbg_best_xy[1] = pt.y;
-                    best_tj_seq = tj_seq;
+                /* want_font_class によるフィルタ: 絞り込み条件が指定されて
+                 * いる場合、いま選択されているフォントのType3判定が
+                 * 一致しない出現は、距離判定・候補選定の対象から除外する。
+                 * ただし tj_seq のカウント自体は除外の有無に関わらず進める
+                 * (無害化側 cur_xobj_tj_seq は全Tj/TJを対象に数えており、
+                 * 双方の数え方を一致させる必要があるため)。 */
+                int font_ok = 1;
+                if (want_font_class >= 0) {
+                    int is_t3 = kozou_font_is_type3(ctx, font_dict, cur_font_name);
+                    font_ok = (is_t3 == want_font_class);
                 }
-                if (d2 <= tol2) found_here = 1;
+                if (font_ok) {
+                    float cur_x = tm_tx + td_x;
+                    float cur_y = tm_ty + td_y;
+                    /* ctm_stack[sp] は「今まさに辿っているこの呼び出し経路」に
+                     * 対応する、このcontent streamのローカルテキスト座標→
+                     * デバイス座標への、その場で確定している唯一のCTM。
+                     * ローカル/デバイスの変換違いも、複数配置の曖昧さも
+                     * ここには入り込まない。 */
+                    fz_point pt = fz_transform_point(
+                        fz_make_point(cur_x, cur_y), ctm_stack[sp]);
+                    float dx = pt.x - ix, dy = pt.y - iy;
+                    float d2 = dx*dx + dy*dy;
+                    if (dbg_best_d2 < 0 || d2 < dbg_best_d2) {
+                        dbg_best_d2 = d2;
+                        dbg_best_xy[0] = pt.x;
+                        dbg_best_xy[1] = pt.y;
+                        best_tj_seq = tj_seq;
+                    }
+                    if (d2 <= tol2) found_here = 1;
+                }
                 tj_seq++;
             }
         }
@@ -6827,6 +6882,7 @@ static void kozou_find_all_xobjs_by_tm(
     float         ix,
     float         iy,
     float         tol,
+    int           want_font_class,
     int          *out_xrefs,
     int          *out_tj_seqs, /* out_xrefs と並行。NULL可。 */
     int          *n_out,
@@ -6881,7 +6937,7 @@ static void kozou_find_all_xobjs_by_tm(
         if (cd) {
             kozou_scan_xobjs_for_target(ctx, pdf, (const char*)cd, clen,
                 res, page_ctm, /*self_xref=*/0,
-                ix, iy, tol2, out_xrefs, out_tj_seqs, n_out, max_out, 0);
+                ix, iy, tol2, want_font_class, out_xrefs, out_tj_seqs, n_out, max_out, 0);
         }
     } fz_always(ctx) {
         if (cbuf) fz_drop_buffer(ctx, cbuf);
@@ -6898,8 +6954,9 @@ static int kozou_find_xobj_by_tm(
 {
     int xrefs[1];
     int n = 0;
-    /* 1回限りの呼び出し: キャッシュなし(NULL)で毎回都度計算させる */
-    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, xrefs, NULL, &n, 1);
+    /* 1回限りの呼び出し: キャッシュなし(NULL)で毎回都度計算させる。
+     * フォント種別による絞り込みは行わない(-1)。 */
+    kozou_find_all_xobjs_by_tm(ctx, pdf, ppage, ix, iy, tol, -1, xrefs, NULL, &n, 1);
     return n > 0 ? xrefs[0] : 0;
 }
 
@@ -7116,10 +7173,26 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                          * 袋文字の他レイヤーや、編集残骸の可視コピー等を
                          * 誤ってマッチさせることがない。未確定(-1)の場合は
                          * 従来通り、後続の座標+identity判定に委ねる。
-                         * font_classが判明している場合には、そちらを優先し
-                         * てseqによるガードをスキップ。 */
-                        if (targets[_ti].font_class == -1 &&
-                            targets[_ti].xobj_tj_seq >= 0 &&
+                         *
+                         * 【経緯】以前ここに「font_classが判明している
+                         * 場合はそちらを優先してseqガードをスキップする」
+                         * という仮対処を入れていたが撤回した。GUIが送る
+                         * font_classは実質的に常に0か1で確定しており
+                         * (「Type3ではない」という消極的な指定も0として
+                         * 送られるため、-1=絞り込みなしにはほぼならない)、
+                         * この条件は実質的に常にseqガードを無効化して
+                         * いた。is_buriedの表裏判定のように、同じ
+                         * font_class値を持つ複数候補をseqで区別する
+                         * 必要があるケースでは、この仮対処によって
+                         * 表側まで誤って消去される退行を引き起こした。
+                         * 根本対応として、kozou_find_all_xobjs_by_tm /
+                         * kozou_scan_xobjs_for_target 側にフォント種別
+                         * (Type3か否か)による絞り込みを持たせ、検出時に
+                         * 確定するxobj_tj_seq自体を、実際に検出された
+                         * 出現のフォント種別と正しく対応させることで、
+                         * font_classとseqガードのどちらも妥協せずに
+                         * 両立させている。 */
+                        if (targets[_ti].xobj_tj_seq >= 0 &&
                             targets[_ti].xobj_tj_seq != cur_xobj_tj_seq)
                             continue;
                         if (targets[_ti].render_invisible >= 0 &&
@@ -9353,7 +9426,7 @@ void kozou_sanitize_hidden_text(
                 /* Tm 座標に一致する全XObjectを収集（複数コピーがある場合も漏れなく処理）*/
                 int tmp_xr[64]; int n_tmp = 0;
                 kozou_find_all_xobjs_by_tm(ctx, pdf, xobj_search_page,
-                                           ix, iy, 2.0f, tmp_xr, NULL, &n_tmp, 64);
+                                           ix, iy, 2.0f, -1, tmp_xr, NULL, &n_tmp, 64);
                 if (n_tmp > 0) {
                     targets[i].in_xobj = 1;
                     for (int k = 0; k < n_tmp; k++) {
