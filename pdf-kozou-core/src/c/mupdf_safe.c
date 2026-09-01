@@ -6804,12 +6804,33 @@ static void kozou_scan_xobjs_for_target(
                     tm_tx = tx; tm_ty = ty;
                     td_x = 0; td_y = 0;
                 }
-            } else if (tl >= 2 && src[le-2]=='T' && src[le-1]=='d') {
+            } else if (tl >= 2 && src[le-2]=='T' &&
+                       (src[le-1]=='d' || src[le-1]=='D')) {
+                /* Td/TD 両方をテキスト空間の平行移動として累積する。
+                 * TD は Td と全く同じ移動を行い、加えてリーディング
+                 * (TL相当)を設定する演算子だが、位置追跡だけが目的の
+                 * ここでは TD の副作用(リーディング設定)は無関係であり、
+                 * Td と同じ移動量として扱ってよい。
+                 *
+                 * 以前は 'd' (小文字) のみを見ており、'D' (大文字) の
+                 * TD 行は無視されていた。無害化本体側の座標追跡
+                 * (kozou_sanitize_hidden_text_in_xobj、7789行目付近)は
+                 * 既に Td/TD 両方を "%f %f T%*c" で区別なく処理して
+                 * おり、この検出側スキャナ (kozou_scan_xobjs_for_target)
+                 * だけがTDを見落としていた。この非対称により、TDを含む
+                 * テキストブロックでは検出側のtd_x/td_yがTD以降ずれた
+                 * ままになり、そのブロック内のTj/TJのデバイス座標推定が
+                 * 無害化側の実際の座標と乖離して、xobj_tj_seqの誤確定
+                 * (別出現との取り違え、または一致なしでの未確定化)を
+                 * 引き起こしていた(実機PDFで確認: 複数行にわたる低
+                 * コントラストテキストで、無害化1回目は一部の文字が
+                 * 無害化されずに残存し、再検出後の2回目でも一部しか
+                 * 無害化できなかった)。 */
                 char lb[64]={0};
                 size_t cp = tl<63?tl:63;
                 memcpy(lb, src+ts, cp);
                 float tx, ty;
-                if (sscanf(lb,"%f %f Td",&tx,&ty)==2) {
+                if (sscanf(lb,"%f %f T%*c",&tx,&ty)==2) {
                     td_x += tx; td_y += ty;
                 }
             } else if (tl >= 2 && (src[le-2]=='T' && src[le-1]=='j'
