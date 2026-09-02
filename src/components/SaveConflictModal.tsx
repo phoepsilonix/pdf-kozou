@@ -4,7 +4,7 @@
 // useSaveConflictStore 経由で useSaveDialog から要求され、選択結果を
 // Promise の解決として返す(モーダル自身は保存処理を知らない)。
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
@@ -15,6 +15,7 @@ export function SaveConflictModal() {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (request) {
@@ -22,6 +23,14 @@ export function SaveConflictModal() {
       setNameInput(request.fileName);
     }
   }, [request]);
+
+  // リネーム入力欄に切り替わったタイミングで、autoFocus 属性を使わずに
+  // 明示的にフォーカスを当てる(a11y lint 対策 + 確実な挙動のため)。
+  useEffect(() => {
+    if (editing) {
+      renameInputRef.current?.focus();
+    }
+  }, [editing]);
 
   if (!request) return null;
 
@@ -70,12 +79,12 @@ export function SaveConflictModal() {
                 {t("save_conflict.rename_input_label")}
               </label>
               <input
+                ref={renameInputRef}
                 id="save-conflict-rename"
                 style={s.input}
                 type="text"
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
-                autoFocus
               />
               <div style={s.renameBtnRow}>
                 <button type="button" style={s.backBtn} onClick={() => setEditing(false)}>

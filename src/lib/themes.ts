@@ -363,7 +363,7 @@ export function setTheme(id: ThemeId) {
 // Proxy は _current を動的に引くため、setTheme() 後に最新値を返す
 export const C: Theme = new Proxy({} as Theme, {
   get(_: Theme, key: string) {
-    return (_current as any)[key];
+    return _current[key as keyof Theme];
   },
 });
 

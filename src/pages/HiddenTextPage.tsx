@@ -576,9 +576,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             <div style={s.statusBox}>
               {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
             </div>
-            {succeeded > 0 && (
-              <div style={s.statusBox}>{t("hidden.batch_rescan_note" as any)}</div>
-            )}
+            {succeeded > 0 && <div style={s.statusBox}>{t("hidden.batch_rescan_note" as any)}</div>}
             <div style={s.statusBox}>
               {t("hidden.batch_skipped" as any, { count: String(skipped) })}
             </div>

@@ -84,7 +84,7 @@ function applyToRoot() {
   if (typeof document === "undefined") return;
   const root = document.getElementById("root");
   if (!root) return;
-  const style = root.style as any;
+  const style = root.style as CSSStyleDeclaration & { zoom?: string };
 
   // #root を viewport に直接固定する。
   // 旧実装は documentElement.clientWidth/Height を JS で計測し、

@@ -94,9 +94,15 @@ export function ThemeSwitcher({ currentId, onChange }: Props) {
             >
               {/* カラースウォッチ */}
               <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-                {[theme.bg, theme.bgCard, theme.accent].map((col, i) => (
+                {(
+                  [
+                    ["bg", theme.bg],
+                    ["bgCard", theme.bgCard],
+                    ["accent", theme.accent],
+                  ] as const
+                ).map(([label, col]) => (
                   <div
-                    key={i}
+                    key={label}
                     style={{
                       width: 11,
                       height: 11,

@@ -220,6 +220,7 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
   if (!open || !pos || typeof document === "undefined") return null;
 
   return createPortal(
+    // biome-ignore lint/a11y/noStaticElementInteractions: パネルの role は内容により様々なため固定できない。onKeyDown はフォーカストラップ用途のみ。
     <div
       ref={panelRef}
       {...{ [PANEL_MARKER]: true }}

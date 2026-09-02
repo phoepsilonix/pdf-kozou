@@ -4,7 +4,7 @@
 
 // src/components/common.tsx — 共通 UI コンポーネント
 //import { C, F } from "../lib/theme";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
 import { useI18n } from "../lib/i18n";
 import { F } from "../lib/theme";
@@ -260,12 +260,22 @@ export function BtnPrimary({
   autoFocus?: boolean;
   ariaLabel?: string;
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  // autoFocus 属性の代わりに、マウント時に明示的にフォーカスする
+  // (a11y lint 対策 + StrictMode 二重マウント等でも確実に効かせるため)。
+  useEffect(() => {
+    if (autoFocus) {
+      btnRef.current?.focus();
+    }
+  }, [autoFocus]);
+
   return (
     <button
+      ref={btnRef}
       type="button"
       onClick={onClick}
       disabled={disabled}
-      autoFocus={autoFocus}
       aria-label={ariaLabel}
       style={{
         padding: "11px 28px",
