@@ -3925,8 +3925,21 @@ void kozou_detect_low_contrast_text(
             for (fz_stext_line *line = block->u.t.first_line;
                  line; line = line->next) {
 
+                /* 同一行内で「1つ前の文字」を追跡する。ring_rx の
+                 * クランプ(下記)に、実際の字送り幅を使うため。 */
+                fz_stext_char *prev_ch = NULL;
+
                 for (fz_stext_char *ch = line->first_char;
                      ch; ch = ch->next) {
+
+                    /* このイテレーションでの「1つ前の文字」を確定してから
+                     * すぐに prev_ch を更新する。以降のどの continue; を
+                     * 通っても、次のイテレーションで prev_ch が正しく
+                     * 「実際に直前にあった文字」を指すようにするため
+                     * (ループ末尾での更新だと continue で飛ばされ、
+                     *  ずっと前の文字が prev のままになってしまう)。 */
+                    fz_stext_char *this_prev_ch = prev_ch;
+                    prev_ch = ch;
 
                     /* alpha=0 の文字は透明テキスト検出で扱う */
                     unsigned int packed = (unsigned int)ch->argb;
@@ -4029,6 +4042,81 @@ void kozou_detect_low_contrast_text(
                      * ともに縮小する。 */
                     float ring_rx = char_w * 0.5f + char_h * 0.3f + 1.5f;
                     float ring_ry = char_h * 0.5f + char_h * 0.3f + 1.5f;
+
+                    /* ── 字送り幅/行間を考慮したリング半径のクランプ ──
+                     * 上記の ring_rx/ring_ry はその文字自身の大きさだけ
+                     * から決まり、実際に隣の文字までどれだけ距離が
+                     * あるかを見ていない。字送り幅がリング直径より
+                     * 狭い(詰めて組まれたCJK本文等)場合、リングが自分の
+                     * グリフの外側だけでなく隣の文字の中心を越えてその
+                     * 奥まで届いてしまう。
+                     *
+                     * 実機PDFで確認した具体例: 字送り14.0pt・
+                     * ring_rx=14.6pt の本文で、ある文字(A)を無害化(空白
+                     * へ置換)すると、そのアンチエイリアス縁のごく僅かな
+                     * 変化(全ピクセル中わずか1/256階調)が、隣の文字(B)
+                     * のリングサンプリングに含まれてしまい、無害化前は
+                     * 検出されなかったBが、Aを無害化した後の再検出では
+                     * 新たに低コントラストとして検出されるようになった。
+                     * これはノイズでもラスタライズ方式の問題でもなく、
+                     * 「Bの隠蔽性を、Bとは別のAの描画結果で判定して
+                     * しまう」という設計上の不整合が原因。
+                     *
+                     * ここでは、同一行内の直前/直後の文字の origin.x、
+                     * および直前/直後の行の bbox.y0 との距離を実測し、
+                     * その中間点(双方の文字が対等に自分の側だけを
+                     * 参照できるよう、境界にごく小さな安全マージンを
+                     * 残す)を超えないようリングを縮める。半径は上下左右
+                     * で共通の1つの値(円/楕円)のままなので、片側だけが
+                     * 狭い場合にもう片側まで一律に縮んでしまう点は
+                     * 保守的な簡易対応であり、方向ごとに別半径を持たせる
+                     * (真に非対称なリング)方がより精密だが、実装・検証
+                     * コストと比べてこの対称クランプで実機の不具合は
+                     * 解消するため、まずこちらを採用する。
+                     * 近傍の文字/行が無い(行頭行末・ページ端の行等)場合
+                     * は従来通り。 */
+                    {
+                        const float KOZOU_RING_NEIGHBOR_MARGIN = 1.0f;
+                        /* 字送りが極端に詰まっている場合でも判定が
+                         * 完全に無効化されないよう、下限だけは残す。 */
+                        const float KOZOU_RING_MIN_RX = char_w * 0.15f + 0.5f;
+                        const float KOZOU_RING_MIN_RY = char_h * 0.15f + 0.5f;
+
+                        if (this_prev_ch &&
+                            fabsf(this_prev_ch->origin.y - ch->origin.y) < char_h * 0.5f) {
+                            float gap = ch->origin.x - this_prev_ch->origin.x;
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_rx) ring_rx = half;
+                            }
+                        }
+                        if (ch->next &&
+                            fabsf(ch->next->origin.y - ch->origin.y) < char_h * 0.5f) {
+                            float gap = ch->next->origin.x - ch->origin.x;
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_rx) ring_rx = half;
+                            }
+                        }
+                        if (line->prev) {
+                            float gap = fabsf(line->bbox.y0 - line->prev->bbox.y0);
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_ry) ring_ry = half;
+                            }
+                        }
+                        if (line->next) {
+                            float gap = fabsf(line->next->bbox.y0 - line->bbox.y0);
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_ry) ring_ry = half;
+                            }
+                        }
+
+                        if (ring_rx < KOZOU_RING_MIN_RX) ring_rx = KOZOU_RING_MIN_RX;
+                        if (ring_ry < KOZOU_RING_MIN_RY) ring_ry = KOZOU_RING_MIN_RY;
+                    }
+
                     int   ring_total = 0;      /* pixmap範囲内でサンプリングできた点数 */
                     int   low_count  = 0;      /* 低コントラストと判定された点数 */
                     int   bg_r_sum = 0, bg_g_sum = 0, bg_b_sum = 0;
