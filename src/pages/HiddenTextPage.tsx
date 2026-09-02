@@ -576,6 +576,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
             <div style={s.statusBox}>
               {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
             </div>
+            {succeeded > 0 && (
+              <div style={s.statusBox}>{t("hidden.batch_rescan_note" as any)}</div>
+            )}
             <div style={s.statusBox}>
               {t("hidden.batch_skipped" as any, { count: String(skipped) })}
             </div>
@@ -959,7 +962,16 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       });
       await commitSave(outPath);
       const doneName = outPath.split(/[/\\]/).pop() ?? "";
-      setStatus(t("hidden.sanitize_done", { name: doneName }));
+      // 無害化(空白置き換え)は近接する未選択文字の見え方(特にラスタベースの
+      // 低コントラスト判定)に影響しうるため、再検出を促す注記を毎回添える。
+      // 詳細: ドキュメント全体を白レイヤー+可視レイヤーで完全に重ねて複製する
+      // ようなPDFでは、リングサンプリングによる低コントラスト判定が閾値
+      // ギリギリで不安定になり、隣接文字を空白化した結果、それまで検出
+      // されていなかった文字が次の検出で新たに見つかることがある(既知の
+      // 挙動。自動ループはGUIでの人手確認という設計方針上、行わない)。
+      setStatus(
+        `${t("hidden.sanitize_done", { name: doneName })}\n${t("hidden.sanitize_rescan_note" as any)}`,
+      );
       announceSuccess("hidden.sanitize_done", { name: doneName });
     } catch (e) {
       const msg = typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
@@ -1709,6 +1721,10 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     borderRadius: 4,
     wordBreak: "break-all",
+    // sanitize_rescan_note 等、複数行にわたる注記メッセージを
+    // \n 区切りで渡した際に改行として表示するため。単発の一行
+    // ステータス文字列の見た目には影響しない。
+    whiteSpace: "pre-line",
   },
   currentFileBox: {
     fontSize: FS.small,
