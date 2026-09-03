@@ -1130,7 +1130,7 @@ export interface CompressResponse {
   input_bytes: number;
   output_bytes: number;
   ratio: number;
-  params_used: {
+  params_used?: {
     compress_images: boolean;
     compress_fonts: boolean;
     garbage_level: number;

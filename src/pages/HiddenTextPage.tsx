@@ -145,7 +145,23 @@ type BatchProgress = {
   errors: { file: string; msg: string }[];
 };
 
-function toAnyHits(type: DetectType, hits: any[], pageIdx = 0): AnyHit[] {
+// バックエンド(mupdf-core)から返る生の検出結果(snake_case)
+type RawHit = {
+  char?: string;
+  reason?: string;
+  origin?: [number, number];
+  quad?: [number, number, number, number, number, number, number, number];
+  size?: number;
+  alpha?: number;
+  contrast?: number;
+  category?: string;
+  is_type3?: boolean;
+  xobj_xref?: number;
+  xobj_tj_seq?: number;
+  internal_origin?: [number, number];
+};
+
+function toAnyHits(type: DetectType, hits: RawHit[], pageIdx = 0): AnyHit[] {
   return hits.map((h) => ({
     type,
     char: h.char ?? "",
@@ -162,9 +178,9 @@ function toAnyHits(type: DetectType, hits: any[], pageIdx = 0): AnyHit[] {
             ? (h.category ?? "")
             : "",
     isType3: h.is_type3 ?? false,
-    xobjXref: (h as any).xobj_xref ?? 0,
-    xobjTjSeq: (h as any).xobj_tj_seq ?? -1,
-    internalOrigin: (h as any).internal_origin ?? [h.origin[0], h.origin[1]],
+    xobjXref: h.xobj_xref ?? 0,
+    xobjTjSeq: h.xobj_tj_seq ?? -1,
+    internalOrigin: h.internal_origin ?? [h.origin?.[0] ?? 0, h.origin?.[1] ?? 0],
     page: pageIdx,
   }));
 }
@@ -1438,14 +1454,14 @@ function ThrPanel({
               min={min}
               max={max}
               step={step}
-              value={(thr as any)[key]}
+              value={thr[key as keyof Thr]}
               onChange={(e) => setThr((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
               style={{ width: "100%" }}
             />
             <span style={s.badge}>
               {key === "alpha"
-                ? Math.round((thr as any)[key])
-                : (thr as any)[key].toFixed(step < 0.1 ? 2 : 1)}
+                ? Math.round(thr[key as keyof Thr])
+                : thr[key as keyof Thr].toFixed(step < 0.1 ? 2 : 1)}
             </span>
           </div>
           <div style={s.strictLooseRow}>

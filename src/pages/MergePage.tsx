@@ -25,7 +25,7 @@ import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
 import { buildName, opSuffix, stem } from "../lib/filename";
-import { hasImage, isMupdfExtension } from "../lib/fileTypes";
+import { type FileWithPath, hasImage, isMupdfExtension } from "../lib/fileTypes";
 import { useI18n } from "../lib/i18n";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { formatFilenameForSpeech } from "../lib/speakName";
@@ -227,7 +227,7 @@ const handleDrop = useCallback(
     // e.dataTransfer.files からパスを取り出す
     const ps = Array.from(e.dataTransfer.files)
       .filter((f) => isMupdfExtension(f.name))
-      .map((f) => (f as any).path as string) // Tauri環境ではこれで絶対パスが取れる
+      .map((f) => (f as FileWithPath).path ?? "") // Tauri環境ではこれで絶対パスが取れる
       .filter(Boolean);
 
     if (ps.length) loadPaths(ps);
@@ -731,7 +731,7 @@ useEffect(() => {
               dragCounter.current = 0;
               const ps = Array.from(e.dataTransfer.files)
                 .filter((f) => isMupdfExtension(f.name))
-                .map((f) => (f as any).path as string)
+                .map((f) => (f as FileWithPath).path ?? "")
                 .filter(Boolean);
               if (ps.length) loadPaths(ps);
             }}
@@ -871,7 +871,7 @@ useEffect(() => {
                     .filter((f) => isMupdfExtension(f.name))
                     .map((f) => {
                       // Tauri環境下では、Fileオブジェクトに 'path' というプロパティが注入されています
-                      return (f as any).path || (f as any).webkitRelativePath || "";
+                      return (f as FileWithPath).path || f.webkitRelativePath || "";
                     })
                     .filter((p) => p !== ""); // 空のパスを除外
 

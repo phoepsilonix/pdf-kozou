@@ -452,7 +452,7 @@ export function CompressPage({
           input_bytes: inSize,
           output_bytes: outSize,
           ratio: ratioVal,
-          params_used: undefined as any,
+          params_used: undefined,
         });
       } else {
         const res = await compressPdf(inputFile, tmp, {
@@ -680,8 +680,8 @@ export function CompressPage({
       // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
       total: batchFiles!.length,
       curFile: "",
-      done: [] as any[],
-      errors: [] as any[],
+      done: [] as { file: string; pct: number; saved: string }[],
+      errors: [] as { file: string; msg: string }[],
     };
     setBatchProg({ ...prog });
     const producedPaths: string[] = [];

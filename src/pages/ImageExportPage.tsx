@@ -107,7 +107,7 @@ function buildOpToken({
   impositionMode: string;
   outputMode: string;
   deimpIndex: number;
-  t: any;
+  t: (key: string, vars?: Record<string, string>) => string;
 }) {
   const opTokenKey =
     processDir === "deimpose"

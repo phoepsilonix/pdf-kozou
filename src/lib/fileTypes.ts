@@ -1,6 +1,13 @@
 // src/lib/fileTypes.ts
 // MuPDF が対応するファイル形式の定義
 
+/**
+ * Tauri のドラッグ&ドロップ/ファイル選択で受け取る File オブジェクトには、
+ * ブラウザ標準の File 型にはない絶対パス文字列が `path` プロパティとして
+ * 付与される。webkitRelativePath はブラウザ標準（File 型に既存）。
+ */
+export type FileWithPath = File & { path?: string };
+
 /** MuPDF が対応するファイル拡張子（小文字） */
 export const MUPDF_EXTENSIONS = [
   "pdf",

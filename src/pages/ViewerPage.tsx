@@ -42,7 +42,7 @@ const RENDER_DPI = 96; // 固定。ズームは CSS transform で対応
 function pageAspect(info: PdfInfo | null, i: number): number {
   if (!info?.pages[i]) return 1 / Math.SQRT2;
   const p = info.pages[i];
-  return (p as any).rotate === 90 || (p as any).rotate === 270 ? p.h / p.w : p.w / p.h;
+  return p.rotate === 90 || p.rotate === 270 ? p.h / p.w : p.w / p.h;
 }
 function ptToMm(pt: number) {
   return ((pt * 25.4) / 72).toFixed(1);

@@ -367,7 +367,7 @@ export default function App() {
       setDragOver(false);
       const paths = Array.from(e.dataTransfer.files)
         .filter((f) => isMupdfExtension(f.name))
-        .map((f) => (f as any).path as string)
+        .map((f) => (f as FileWithPath).path as string)
         .filter(Boolean);
       if (paths.length) await handleAddPaths(paths);
     },
