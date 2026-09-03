@@ -23,3 +23,5 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
   - nanoid@3.3.18
+allowBuilds:
+  pnpm: set this to true or false
