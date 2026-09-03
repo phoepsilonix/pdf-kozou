@@ -657,6 +657,8 @@
     "margin_right": "右の余白（ミリメートル）",
     "margin_bottom": "下の余白（ミリメートル）",
     "output_dir_btn": "出力先フォルダを選択。Alt+Dで開く",
+    "pdf_link": "リンク",
+    "pdf_link_page": "{page}ページ目へのリンク",
     "output_dir_display": "出力先フォルダ。Alt+Dで変更",
     "every_n_input": "分割の枚数",
     "dpi_input": "解像度（DPI）。矢印キーまたは数値入力",

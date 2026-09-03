@@ -378,6 +378,7 @@ function LinuxTextLayer({
   }, [selStart, selEnd, allChars]);
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: PDFページ上のテキストをマウスドラッグで選択するための透明オーバーレイ層。tabIndex=-1でタブ移動対象外にしており、キーボード操作を提供する対象ではない。
     <div
       ref={containerRef}
       style={{
@@ -576,6 +577,7 @@ function LinkLayer({
   onNavigate: (p: number) => void;
   zoom?: number;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {links.map((link) => {
@@ -605,7 +607,27 @@ function LinkLayer({
               display: "block",
             }}
             title={link.uri}
-          />
+            aria-label={
+              link.dest_page != null
+                ? t("aria.pdf_link_page", { page: String(link.dest_page + 1) })
+                : (link.uri ?? t("aria.pdf_link"))
+            }
+          >
+            <span
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                overflow: "hidden",
+                clip: "rect(0,0,0,0)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {link.dest_page != null
+                ? t("aria.pdf_link_page", { page: String(link.dest_page + 1) })
+                : (link.uri ?? t("aria.pdf_link"))}
+            </span>
+          </a>
         );
       })}
     </>
@@ -950,6 +972,11 @@ function SearchBar({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 検索バー表示時に入力欄へフォーカスする(autoFocus属性の代わり)。
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
   const handleClose = () => {
     setQ("");
     setAllHits([]);
@@ -988,7 +1015,6 @@ function SearchBar({
         }}
         placeholder={t("viewer.search_placeholder")}
         className="search-input"
-        autoFocus
       />
       {searching && (
         <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>
@@ -1707,9 +1733,11 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
           {/* メインビュー + ドロワー */}
           <div style={s.mainView}>
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: PDFページ表示用のスクロール可能なビューポート。Ctrl+/-/0でのズーム操作のためtabIndexでフォーカス可能にしている。標準のARIA roleでは表現しきれない専用ウィジェットのため、role指定は行わない。 */}
             <div
               style={s.viewScroll}
               ref={scrollRef}
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: 同上。キーボードでのズーム操作を受け付けるために必要。
               tabIndex={0}
               onKeyDown={(e) => {
                 if (!e.ctrlKey) return;

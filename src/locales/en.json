@@ -657,6 +657,8 @@
     "margin_right": "Right margin in mm",
     "margin_bottom": "Bottom margin in mm",
     "output_dir_btn": "Select output folder. Alt+D to open",
+    "pdf_link": "Link",
+    "pdf_link_page": "Link to page {page}",
     "output_dir_display": "Output folder. Alt+D to change",
     "every_n_input": "Pages per file",
     "dpi_input": "Resolution in DPI. Use arrow keys or type",
