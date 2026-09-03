@@ -1110,9 +1110,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               androidUI ? (
                 <div style={s.dirRow}>
                   <div style={s.dirPath} title={androidFolder?.folderName ?? ""}>
-                    <span aria-label={t("aria.output_dir_btn")}>
-                      {androidFolder?.folderName || t("common.select_dir")}
-                    </span>
+                    <span>{androidFolder?.folderName || t("common.select_dir")}</span>
                   </div>
                   <button
                     type="button"
@@ -1138,9 +1136,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ) : (
               <div style={s.dirRow}>
                 <div style={s.dirPath} title={outDir}>
-                  <span aria-label={t("aria.output_dir_btn")}>
-                    {outDir || t("common.select_dir")}
-                  </span>
+                  <span>{outDir || t("common.select_dir")}</span>
                 </div>
                 <button
                   type="button"
@@ -1230,9 +1226,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               // バッチ: ファイル一覧 + 先頭ページサムネイル
               <div style={s.batchFileList}>
                 {batchFiles?.map((f, i) => (
-                  <div
+                  <button
+                    type="button"
                     key={f.id}
-                    style={{ ...s.batchFileItem, ...(i === previewIdx ? s.batchFileItemOn : {}) }}
+                    style={{
+                      ...s.batchFileItem,
+                      ...(i === previewIdx ? s.batchFileItemOn : {}),
+                      width: "100%",
+                      textAlign: "left",
+                      background: i === previewIdx ? s.batchFileItemOn.background : "transparent",
+                      border: "none",
+                      borderBottom: s.batchFileItem.borderBottom,
+                      borderLeft: i === previewIdx ? s.batchFileItemOn.borderLeft : "none",
+                      font: "inherit",
+                    }}
                     onClick={() => setPreviewIdx(i)}
                   >
                     {batchThumbs[i] ? (
@@ -1257,7 +1264,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                             : t("split.select_as_ranges")}
                       </span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : (
