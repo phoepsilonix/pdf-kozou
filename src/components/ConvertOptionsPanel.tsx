@@ -83,8 +83,11 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
 
       {/* プリセット選択 */}
       <div style={s.row}>
-        <label style={s.label}>{t("convert_options.preset_label")}</label>
+        <label style={s.label} htmlFor="convert-preset-select">
+          {t("convert_options.preset_label")}
+        </label>
         <select
+          id="convert-preset-select"
           style={s.select}
           value={matchedPreset >= 0 ? matchedPreset : "custom"}
           onChange={(e) => {
@@ -93,7 +96,7 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
           }}
         >
           {PRESETS.map((p, i) => (
-            <option key={i} value={i}>
+            <option key={p.label} value={i}>
               {p.label}
             </option>
           ))}
@@ -103,8 +106,11 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
 
       {/* 幅 / 高さ / em — 入力中は内部 state のみ更新、確定後に onChange */}
       <div style={s.row}>
-        <label style={s.label}>{t("convert_options.width_pt")}</label>
+        <label style={s.label} htmlFor="convert-width-input">
+          {t("convert_options.width_pt")}
+        </label>
         <input
+          id="convert-width-input"
           type="number"
           style={s.numInput}
           min={100}
@@ -117,8 +123,11 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
             emitDebounced(v, localH, localEm);
           }}
         />
-        <label style={{ ...s.label, marginLeft: 12 }}>{t("convert_options.height_pt")}</label>
+        <label style={{ ...s.label, marginLeft: 12 }} htmlFor="convert-height-input">
+          {t("convert_options.height_pt")}
+        </label>
         <input
+          id="convert-height-input"
           type="number"
           style={s.numInput}
           min={100}
@@ -133,8 +142,11 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
         />
       </div>
       <div style={s.row}>
-        <label style={{ ...s.label, marginLeft: 12 }}>{t("convert_options.font_pt")}</label>
+        <label style={{ ...s.label, marginLeft: 12 }} htmlFor="convert-font-input">
+          {t("convert_options.font_pt")}
+        </label>
         <input
+          id="convert-font-input"
           type="number"
           style={s.numInput}
           min={6}

@@ -49,7 +49,7 @@ export function PageSelector({
   const { t } = useI18n();
   //const C = getTheme();
   const F = "'JetBrains Mono','Noto Sans JP',monospace";
-  let mode;
+  let mode: Mode;
   if (type === "1") {
     mode = modeOf(value);
   } else {
@@ -57,50 +57,26 @@ export function PageSelector({
   }
 
   const [rangeText, setRangeText] = useState(mode === "range" ? value : "");
-  let handleMode;
-  if (type === "1") {
-    handleMode = useCallback(
-      (m: Mode) => {
-        if (m === "") {
-          onChange("all");
-        }
-        if (m === "all") {
-          onChange("all");
-        }
-        if (m === "odd") {
-          onChange("odd");
-        }
-        if (m === "even") {
-          onChange("even");
-        }
-        if (m === "range") {
-          onChange(rangeText || "1");
-        }
-      },
-      [rangeText, onChange],
-    );
-  } else {
-    handleMode = useCallback(
-      (m: Mode) => {
-        if (m === "") {
-          onChange("");
-        }
-        if (m === "all") {
-          onChange("all");
-        }
-        if (m === "odd") {
-          onChange("odd");
-        }
-        if (m === "even") {
-          onChange("even");
-        }
-        if (m === "range") {
-          onChange(rangeText || "1");
-        }
-      },
-      [rangeText, onChange],
-    );
-  }
+  const handleMode = useCallback(
+    (m: Mode) => {
+      if (m === "") {
+        onChange(type === "1" ? "all" : "");
+      }
+      if (m === "all") {
+        onChange("all");
+      }
+      if (m === "odd") {
+        onChange("odd");
+      }
+      if (m === "even") {
+        onChange("even");
+      }
+      if (m === "range") {
+        onChange(rangeText || "1");
+      }
+    },
+    [rangeText, onChange, type],
+  );
   const handleRange = useCallback(
     (v: string) => {
       setRangeText(v);

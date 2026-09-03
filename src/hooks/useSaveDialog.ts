@@ -42,7 +42,7 @@ export function useSaveDialog() {
         .then((dir) => setLastSaveDir(dir))
         .catch(() => {});
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lastSaveDir, setLastSaveDir]);
 
   const pickSave = useCallback(
     async (defaultName: string): Promise<string | null> => {

@@ -40,7 +40,7 @@ export function useSectionToggle(
     const atTop = container.scrollTop <= 4;
     // 少しの余裕を持たせる（ヘッダーや padding の影響を吸収）
     setShowingB(!atTop && relativeTop <= 360); // 40 → 360 に緩和
-  }, []);
+  }, [scrollContainerRef, sectionBRef]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -61,7 +61,7 @@ export function useSectionToggle(
       window.removeEventListener("resize", rafUpdate);
       observer.disconnect();
     };
-  }, [update]);
+  }, [update, scrollContainerRef]);
 
   const scrollToA = () => {
     // scrollTo({behavior:"smooth"}) は WebKitGTK 環境ではアニメーション中に
