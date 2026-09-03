@@ -397,9 +397,9 @@ function LinuxTextLayer({
       onMouseLeave={handleMouseUp}
     >
       {/* 選択ハイライト（char.quad 座標で正確に描画） */}
-      {selRects.map((r, i) => (
+      {selRects.map((r) => (
         <div
-          key={`sel-${i}`}
+          key={`sel-${r.x0}-${r.y0}-${r.x1}-${r.y1}`}
           style={{
             position: "absolute",
             left: r.x0,
@@ -413,7 +413,7 @@ function LinuxTextLayer({
       ))}
 
       {/* 検索ハイライト */}
-      {searchHits.map((hit, i) => {
+      {searchHits.map((hit) => {
         const [ulx, uly, urx, , , lly] = hit.quad;
         const isCurrent =
           currentHit &&
@@ -422,7 +422,7 @@ function LinuxTextLayer({
           hit.quad[1] === currentHit.quad[1];
         return (
           <div
-            key={i}
+            key={`${hit.page}-${hit.quad.join(",")}`}
             style={{
               position: "absolute",
               left: ulx * zoom,
@@ -471,9 +471,9 @@ function NativeTextLayer({
         .sort((a, b) =>
           Math.abs(a.bbox.y0 - b.bbox.y0) > 5 ? a.bbox.y0 - b.bbox.y0 : a.bbox.x0 - b.bbox.x0,
         )
-        .map((block, bi) => (
+        .map((block) => (
           <div
-            key={`block-${bi}`}
+            key={`block-${block.bbox.x0}-${block.bbox.y0}-${block.bbox.x1}-${block.bbox.y1}`}
             style={{
               position: "absolute",
               left: 0,
@@ -487,7 +487,7 @@ function NativeTextLayer({
           >
             {[...block.lines]
               .sort((a, b) => a.bbox.y0 - b.bbox.y0)
-              .map((line, li) => {
+              .map((line) => {
                 const text = [...line.chars]
                   .sort((a, b) => a.quad[0] - b.quad[0])
                   .map((c) => c.c)
@@ -505,7 +505,7 @@ function NativeTextLayer({
                 }
                 return (
                   <div
-                    key={`line-${li}`}
+                    key={`line-${x0}-${y0}-${x1}-${y1}`}
                     style={{
                       position: "absolute",
                       left: x0 * zoom,
@@ -533,7 +533,7 @@ function NativeTextLayer({
           </div>
         ))}
       {/* 検索ハイライト */}
-      {searchHits.map((hit, i) => {
+      {searchHits.map((hit) => {
         const [ulx, uly, urx, , , lly] = hit.quad;
         const isCurrent =
           currentHit &&
@@ -542,7 +542,7 @@ function NativeTextLayer({
           hit.quad[1] === currentHit.quad[1];
         return (
           <div
-            key={i}
+            key={`${hit.page}-${hit.quad.join(",")}`}
             style={{
               position: "absolute",
               left: ulx * zoom,
@@ -578,11 +578,11 @@ function LinkLayer({
 }) {
   return (
     <>
-      {links.map((link, i) => {
+      {links.map((link) => {
         const { x0, y0, x1, y1 } = link.bbox;
         return (
           <a
-            key={i}
+            key={`${x0}-${y0}-${x1}-${y1}`}
             href={link.dest_page != null ? undefined : link.uri}
             target={link.dest_page != null ? undefined : "_blank"}
             rel="noopener noreferrer"
@@ -1666,6 +1666,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                     return (
                       <button
                         type="button"
+                        // biome-ignore lint/suspicious/noArrayIndexKey: iはページ番号そのもの。total件を毎回全件生成するため並び替え・挿抜は起きない。
                         key={i}
                         style={{ ...thumbItemStyle, ...(i === viewPage ? s.thumbItemOn : {}) }}
                         onClick={() => setViewPage(i)}

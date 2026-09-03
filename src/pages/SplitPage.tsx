@@ -547,8 +547,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             style={s.bpCurrent}
           />
           <div style={s.bpLog}>
-            {batchProgress.done.map((d, i) => (
-              <div key={i} style={s.bpLogRow}>
+            {batchProgress.done.map((d) => (
+              <div key={d.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file}</span>
                 <span style={s.bpLogMeta}>
@@ -556,8 +556,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e, i) => (
-              <div key={i} style={{ ...s.bpLogRow }}>
+            {batchProgress.errors.map((e) => (
+              <div key={e.file} style={{ ...s.bpLogRow }}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -625,8 +625,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
           )}
           <div style={s.bpLog}>
-            {batchProgress.done.map((d, i) => (
-              <div key={i} style={s.bpLogRow}>
+            {batchProgress.done.map((d) => (
+              <div key={d.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file}</span>
                 <span style={s.bpLogMeta}>
@@ -634,8 +634,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e, i) => (
-              <div key={`e${i}`} style={s.bpLogRow}>
+            {batchProgress.errors.map((e) => (
+              <div key={e.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -686,8 +686,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={s.resultDir}>{savedDir}</div>
           )}
           <div style={s.fileList}>
-            {result.files.slice(0, 20).map((f, i) => (
-              <div key={i} style={s.fileRow}>
+            {result.files.slice(0, 20).map((f) => (
+              <div key={f} style={s.fileRow}>
                 <span>📄</span>
                 <span style={s.fileName}>{displayNameFor(f)}</span>
               </div>
@@ -883,6 +883,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               <>
                 <div style={s.secLabel}>{t("split.range_label")}</div>
                 {ranges.map((rng, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: rangesはid無しの[number,number]配列のため、順序=範囲番号(#i+1)をそのままkeyに用いる。
                   <div key={i} style={s.rangeRow}>
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
@@ -983,6 +984,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               <>
                 <div style={s.batchRangeNote}>{t("split.batch_clip_hint")}</div>
                 {ranges.map((rng, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: rangesはid無しの[number,number]配列のため、順序=範囲番号(#i+1)をそのままkeyに用いる。
                   <div key={i} style={s.rangeRow}>
                     <span style={s.rangeIdx}>#{i + 1}</span>
                     <div style={s.rangeGroup}>
@@ -1262,6 +1264,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               // 単体: グループプレビュー
               <div style={s.groupList}>
                 {groups.map((pages, gi) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: groupsは分割設定から毎回再計算される派生データで、giはグループ番号(#gi+1)そのもの。
                   <div key={gi} style={s.group}>
                     <div style={s.groupLabel}>
                       <span style={s.groupNum}>#{gi + 1}</span>
