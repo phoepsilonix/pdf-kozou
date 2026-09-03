@@ -1215,21 +1215,25 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                         borderBottom: "1px solid var(--c-border)",
                         background: sel ? "var(--c-accentBg)" : undefined,
                       }}
-                      role={g.isWs ? undefined : "button"}
-                      tabIndex={g.isWs ? -1 : 0}
-                      onClick={() => !g.isWs && toggleGroup(g.id)}
-                      onKeyDown={(e) => {
-                        if (!g.isWs && (e.key === "Enter" || e.key === " ")) {
-                          e.preventDefault();
-                          toggleGroup(g.id);
-                        }
-                      }}
-                      aria-label={t("aria.hidden_group", {
-                        label: g.label.slice(0, 40),
-                        reason: t(REASON_KEY[g.reason] ?? "hidden.reason_whitespace"),
-                        count: String(g.chars.length),
-                      })}
-                      aria-pressed={g.isWs ? undefined : sel}
+                      {...(g.isWs
+                        ? {}
+                        : {
+                            role: "button" as const,
+                            tabIndex: 0,
+                            onClick: () => toggleGroup(g.id),
+                            onKeyDown: (e: React.KeyboardEvent) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                toggleGroup(g.id);
+                              }
+                            },
+                            "aria-label": t("aria.hidden_group", {
+                              label: g.label.slice(0, 40),
+                              reason: t(REASON_KEY[g.reason] ?? "hidden.reason_whitespace"),
+                              count: String(g.chars.length),
+                            }),
+                            "aria-pressed": sel,
+                          })}
                     >
                       {!g.isWs ? (
                         <input
