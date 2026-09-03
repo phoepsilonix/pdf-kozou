@@ -521,8 +521,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
           />
           <Spinner />
           <div style={s.bpLog}>
-            {batchProgress.done.map((d, i) => (
-              <div key={i} style={s.bpLogRow}>
+            {batchProgress.done.map((d) => (
+              <div key={d.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
@@ -533,8 +533,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e, i) => (
-              <div key={`e${i}`} style={s.bpLogRow}>
+            {batchProgress.errors.map((e) => (
+              <div key={e.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -598,8 +598,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             )}
           </div>
           <div style={s.bpLog}>
-            {batchProgress.done.map((d, i) => (
-              <div key={i} style={s.bpLogRow}>
+            {batchProgress.done.map((d) => (
+              <div key={d.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
@@ -610,8 +610,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e, i) => (
-              <div key={`e${i}`} style={s.bpLogRow}>
+            {batchProgress.errors.map((e) => (
+              <div key={e.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -989,7 +989,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 }
                 const scale = W / sPt.w;
                 return (
-                  <div key={si} style={s.sheetCol}>
+                  <div key={sh.pages[0] ?? si} style={s.sheetCol}>
                     <div
                       style={{
                         width: W,
@@ -1009,6 +1009,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                         const p = sh.pages[c] ?? 0;
                         const thumb = p > 0 ? thumbCache.current.get(p - 1) : undefined;
                         return (
+                          // biome-ignore lint/suspicious/noArrayIndexKey: cはcols×rowsグリッド上の固定セル位置。並び替え・挿抜は起きない。
                           <div key={c} style={s.cell}>
                             {thumb && (
                               <img
