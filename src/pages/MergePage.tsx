@@ -132,7 +132,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   // 編集画面のサムネとプレビューは同一DPI(60)なので共用でき、
   // プレビューを押すたびに再レンダリングするのを防ぐ。
   const thumbCache = useRef<Map<string, string>>(new Map());
-  const tkey = (path: string, i: number) => `${path}#${i}`;
+  const tkey = useCallback((path: string, i: number) => `${path}#${i}`, []);
   // 既に取り込み済みのパス集合。ファイル追加時に「実際に追加された分」だけを
   // 音声ガイドで読み上げるため、重複・既存を同期的に判定するのに使う。
   // entries の変化（削除を含む）に追従させる。
@@ -142,11 +142,12 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   }, [entries]);
 
   // ── initPaths: マウント時に1回だけ ──────────────────────────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 依存配列は空: マウント時のみ
   useEffect(() => {
     if (initLoaded.current || initPaths.length === 0) return;
     initLoaded.current = true;
     loadPaths(initPaths).finally(() => setInitLoading(false));
-  }, []); // 依存配列は空: マウント時のみ
+  }, []);
 
   // ── ファイル追加 ─────────────────────────────────────────────────────────
   const loadPaths = useCallback(
@@ -210,7 +211,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
         });
       }
     },
-    [setError, convertLayoutW, convertLayoutH, convertLayoutEm, announceSuccess],
+    [setError, convertLayoutW, convertLayoutH, convertLayoutEm, announceSuccess, tkey],
   );
 
   const pickFiles = useCallback(async () => {
@@ -338,7 +339,7 @@ useEffect(() => {
     }
     setPreviewThumbs(all);
     announceSuccess("voice.preview_shown");
-  }, [entries, convertLayoutW, convertLayoutH, convertLayoutEm, announceSuccess]);
+  }, [entries, convertLayoutW, convertLayoutH, convertLayoutEm, announceSuccess, tkey]);
 
   // ── 保存 ─────────────────────────────────────────────────────────────────
   const [tmpMergedPath, setTmpMergedPath] = useState("");

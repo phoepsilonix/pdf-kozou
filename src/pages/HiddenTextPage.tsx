@@ -996,6 +996,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     skipType3,
     announceSuccess,
     announceError,
+    thr.alpha,
   ]);
 
   const toggleGroup = useCallback((id: string) => {

@@ -246,7 +246,15 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [previewPath, isBatch, previewEnabled]);
+  }, [
+    previewPath,
+    isBatch,
+    previewEnabled,
+    pdfInfo,
+    convertLayoutH,
+    convertLayoutW,
+    convertLayoutEm,
+  ]);
 
   // ── バッチ用: 各ファイルの先頭ページサムネイル ──────────────────────────
   useEffect(() => {
@@ -279,7 +287,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isBatch, batchFiles, previewEnabled]);
+  }, [isBatch, batchFiles, previewEnabled, convertLayoutEm, convertLayoutW, convertLayoutH]);
 
   const pickDir = useCallback(async (): Promise<string | null> => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
@@ -408,6 +416,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     announceSuccess,
     announceError,
     finalizeMobileOutput,
+    t,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
   ]);
 
   // ── 実行（バッチ）──────────────────────────────────────────────────────────
@@ -496,6 +508,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     overrideMetadata,
     announceSuccess,
     finalizeMobileOutput,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
   ]);
 
   // ── グループプレビュー計算 ────────────────────────────────────────────────

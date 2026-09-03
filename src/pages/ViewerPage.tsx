@@ -958,7 +958,7 @@ function SearchBar({
         }
       }
     },
-    [path, totalPages, onNavigate, onAllHits],
+    [path, totalPages, onNavigate, onAllHits, currentPage],
   );
 
   const go = (delta: number) => {
@@ -1196,7 +1196,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     // pendingScrollHit がある場合は onLoad 側で処理（別ページジャンプ直後）
     if (pendingScrollHit.current) return;
     scrollToHit(currentHit);
-  }, [currentHit, zoom]);
+  }, [currentHit, scrollToHit]);
 
   // ページジャンプ後、キャッシュ済み画像では onLoad が発火しない場合のフォールバック
   useEffect(() => {
@@ -1211,7 +1211,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       }
     }, 80);
     return () => clearTimeout(timer);
-  }, [viewPage]);
+  }, [viewPage, scrollToHit]);
 
   // ── 1. ページ情報 ──────────────────────────────────────────────────────────
   // パスまたはレイアウトが変わったときのみ getPdfInfo を呼ぶ
@@ -1428,7 +1428,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activePath, activeInfo]);
+  }, [activePath, activeInfo, convertLayoutEm, convertLayoutH, convertLayoutW]);
 
   // ── 5. ファイルカバー ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1453,7 +1453,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
       }
       if (changed) setFileCoverThumbs(new Map(m));
     })();
-  }, [fileList]);
+  }, [fileList, convertLayoutW, convertLayoutH, fileCoverThumbs, convertLayoutEm]);
 
   // ── Ctrl+ホイール でズーム（non-passive で preventDefault を効かせる）──────
   useEffect(() => {

@@ -371,7 +371,7 @@ export function CompressPage({
         setGsPath(null);
         setGsAvailable(false);
       });
-  }, [customGsPath]); // customGsPath が変わったら再検出
+  }, [customGsPath, setGsAvailable]); // customGsPath が変わったら再検出
   // ----------------
 
   const pickDir = useCallback(async (): Promise<string | null> => {
@@ -495,7 +495,6 @@ export function CompressPage({
       setError(String(e));
     }
   }, [
-    currentSource,
     useGs,
     gsPath,
     inputFile,
@@ -509,8 +508,13 @@ export function CompressPage({
     imageDpi,
     imageJpegQuality,
     cropToVisibleImageArea,
-    pdfInfo,
     setError,
+    t,
+    convertLayoutEm,
+    announceSuccess,
+    convertLayoutW,
+    convertLayoutH,
+    announceError,
   ]);
 
   const handleChainNext = useCallback(async () => {
@@ -539,7 +543,7 @@ export function CompressPage({
     } catch (e) {
       setError(t("compress.err_chain_failed") + String(e));
     }
-  }, [tmpFile, useGs, setError]);
+  }, [tmpFile, useGs, setError, t]);
 
   const handleResetSource = useCallback(async () => {
     // 連携で作成した一時ファイルを削除する
@@ -635,6 +639,10 @@ export function CompressPage({
     commitSave,
     setError,
     outputBaseName,
+    convertLayoutH,
+    convertLayoutW,
+    announceSuccess,
+    convertLayoutEm,
   ]);
 
   const handleSaveOriginal = useCallback(async () => {
@@ -655,7 +663,7 @@ export function CompressPage({
     } finally {
       setSaving(false);
     }
-  }, [inputFile, filePath, pickSave, commitSave, setError, outputBaseName]);
+  }, [inputFile, filePath, pickSave, commitSave, setError, outputBaseName, announceSuccess]);
 
   const handleBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
@@ -774,6 +782,10 @@ export function CompressPage({
     ensureAndroidFolder,
     setError,
     finalizeMobileOutput,
+    t,
+    convertLayoutH,
+    convertLayoutW,
+    convertLayoutEm,
   ]);
 
   // 圧縮・保存が長引くときは音声で「処理中です」と知らせる（独自スピナー使用のため個別に計測）。

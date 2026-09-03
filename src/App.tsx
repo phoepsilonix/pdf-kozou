@@ -296,7 +296,16 @@ export default function App() {
         });
       }
     },
-    [addFiles, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
+    [
+      addFiles,
+      setError,
+      convertLayoutW,
+      convertLayoutH,
+      convertLayoutEm, // 読み上げはハッシュ等の不透明名を綴り読みに整形（表示はそのまま）
+      announceSuccess,
+      t,
+      announceError,
+    ],
   );
 
   useEffect(() => {
@@ -357,7 +366,7 @@ export default function App() {
       return;
     }
     if (paths.length) await handleAddPaths(paths);
-  }, [handleAddPaths, setError]);
+  }, [handleAddPaths, setError, announceError]);
 
   /*
   const handleDrop = useCallback(
@@ -434,16 +443,7 @@ export default function App() {
       setActiveTool(t);
       saveLastTool(t);
     },
-    [
-      toolFiles,
-      fileList,
-      setFile,
-      setError,
-      setToolFiles,
-      convertLayoutW,
-      convertLayoutH,
-      convertLayoutEm,
-    ],
+    [toolFiles, fileList, setFile, setError, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
 
   // ツール番号ショートカット（Alt+1〜9）
@@ -526,7 +526,7 @@ export default function App() {
     };
 
     syncSelectedFileInfo();
-  }, [fileList, filePath, setFile]);
+  }, [fileList, filePath, setFile, convertLayoutEm, convertLayoutW, convertLayoutH]);
 
   console.log("App: filePath, pdfInfo", filePath, pdfInfo);
 
@@ -1368,6 +1368,7 @@ function ToolShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
   // 画面（アクティブツール）が変わったらフローティングメニューは自動で閉じる
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeToolは本文で未参照だが変更を検知するための意図的な依存
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [activeTool]);

@@ -68,23 +68,29 @@ export function TrimCanvas({
   const displayHeight = Math.round(pageHeightPt * scale);
 
   // pt → px
-  const toPx = (pt: number) => pt * scale;
+  const _toPx = (pt: number) => pt * scale;
   // px → pt (clamp >= MIN_PT)
   //const toPt = (px: number) => Math.max(MIN_PT, px / scale);
   // スナップ: 0に近ければ0にスナップ (ページ端吸着)
-  const snapPt = (pt: number, maxPt: number) => {
-    if (pt < SNAP_PX / scale) return 0; // ページ端へスナップ
-    if (pt > maxPt - SNAP_PX / scale) return maxPt; // もう一方の端
-    return pt;
-  };
+  const snapPt = useCallback(
+    (pt: number, maxPt: number) => {
+      if (pt < SNAP_PX / scale) return 0; // ページ端へスナップ
+      if (pt > maxPt - SNAP_PX / scale) return maxPt; // もう一方の端
+      return pt;
+    },
+    [scale],
+  );
 
   // margins → canvas上の矩形 (クロップ領域)
-  const getRect = (m: TrimMargins) => ({
-    x: toPx(m.left),
-    y: toPx(m.top),
-    x2: displayWidth - toPx(m.right),
-    y2: displayHeight - toPx(m.bottom),
-  });
+  const getRect = useCallback(
+    (m: TrimMargins) => ({
+      x: m.left * scale,
+      y: m.top * scale,
+      x2: displayWidth - m.right * scale,
+      y2: displayHeight - m.bottom * scale,
+    }),
+    [displayWidth, displayHeight, scale],
+  );
 
   // ── 描画 ──────────────────────────────────────────────────────────────────
   const draw = useCallback(
@@ -182,7 +188,7 @@ export function TrimCanvas({
       if (m.left > 3) ctx.fillText(`${ptToMm(m.left)}mm`, 4, y + h / 2 + 4);
       if (m.right > 3) ctx.fillText(`${ptToMm(m.right)}mm`, x2 + 4, y + h / 2 + 4);
     },
-    [displayWidth, displayHeight, scale],
+    [displayWidth, displayHeight, getRect],
   ); // eslint-disable-line
 
   // 画像ロード
@@ -193,7 +199,7 @@ export function TrimCanvas({
       draw(margins);
     };
     img.src = `data:image/jpeg;base64,${pageImageB64}`;
-  }, [pageImageB64]); // eslint-disable-line
+  }, [pageImageB64, margins, draw]); // eslint-disable-line
 
   // margins 変更時に再描画
   useEffect(() => {
@@ -222,11 +228,11 @@ export function TrimCanvas({
       if (px > x && px < x2 && py > y && py < y2) return "move";
       return null;
     },
-    [scale, displayWidth, displayHeight],
+    [getRect],
   ); // eslint-disable-line
 
   // ── カーソル ──────────────────────────────────────────────────────────────
-  const getCursor = (t: DragTarget): string => {
+  const getCursor = useCallback((t: DragTarget): string => {
     switch (t) {
       case "corner-nw":
       case "corner-se":
@@ -245,17 +251,17 @@ export function TrimCanvas({
       default:
         return "crosshair";
     }
-  };
+  }, []);
 
   // ── マウスイベント ────────────────────────────────────────────────────────
-  const getPos = (e: React.PointerEvent) => {
+  const getPos = useCallback((e: React.PointerEvent) => {
     // biome-ignore lint/style/noNonNullAssertion: canvasはマウント後のみポインタイベント対象になるため必ず存在
     const r = canvasRef.current!.getBoundingClientRect();
     // #root の zoom 下では rect / clientX とも視覚座標になるため、
     // zoom 倍率で割って canvas 内部座標（ズーム前 px）へ戻す。
     const z = getUiScale();
     return { x: (e.clientX - r.left) / z, y: (e.clientY - r.top) / z };
-  };
+  }, []);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -265,7 +271,7 @@ export function TrimCanvas({
       dragging.current = target;
       dragStart.current = { x, y, margins: { ...margins } };
     },
-    [margins, hitTest],
+    [margins, hitTest, getPos],
   );
 
   const onPointerMove = useCallback(
@@ -318,7 +324,7 @@ export function TrimCanvas({
       draw(nm);
       onChange(nm);
     },
-    [margins, scale, pageWidthPt, pageHeightPt, hitTest, draw, onChange],
+    [margins, scale, pageWidthPt, pageHeightPt, hitTest, draw, onChange, getPos, getCursor],
   );
 
   const onPointerUp = useCallback(() => {
@@ -350,7 +356,7 @@ export function TrimCanvas({
     }
     movedRef.current = false;
     dragging.current = null;
-  }, [pageWidthPt, pageHeightPt, draw, onChange, onCommit]);
+  }, [pageWidthPt, pageHeightPt, draw, onChange, onCommit, snapPt]);
 
   return (
     <canvas

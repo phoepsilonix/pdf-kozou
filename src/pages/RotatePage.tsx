@@ -199,7 +199,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
         setThumbs([]);
       })
       .catch(() => {});
-  }, [batchIdx, isBatch]);
+  }, [batchIdx, isBatch, convertLayoutEm, batchFiles, convertLayoutW, globalRot, convertLayoutH]);
 
   useEffect(() => {
     if (!previewEnabled) {
@@ -229,7 +229,16 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [curPath, curPageCount, previewEnabled]);
+  }, [
+    curPath,
+    curPageCount,
+    previewEnabled,
+    convertLayoutEm,
+    pdfInfo.page_count,
+    convertLayoutW,
+    isBatch,
+    convertLayoutH,
+  ]);
 
   useEffect(() => {
     if (!isBatch || !batchFiles) return;
@@ -259,7 +268,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isBatch, batchFiles, previewEnabled]);
+  }, [isBatch, batchFiles, previewEnabled, convertLayoutW, convertLayoutEm, convertLayoutH]);
 
   const n = isBatch ? curPageCount : pdfInfo.page_count;
 
@@ -378,7 +387,19 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       setPhase("error");
       setError(String(e));
     }
-  }, [filePath, changedPages, setError, announceError, pageSizeId, pageOrientation]);
+  }, [
+    filePath,
+    changedPages,
+    setError,
+    announceError,
+    pageSizeId,
+    pageOrientation,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm, // 回転実行後の画面は画像プレビューではなく「保存方法の選択」。
+    // そのため「プレビュー表示」ではなく、回転完了と次の操作を読み上げる。
+    announceSuccess,
+  ]);
 
   const handleExecuteBatch = useCallback(async () => {
     const resolvedDir = outDir || (await pickDir());
@@ -458,6 +479,10 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     pageSizeId,
     pageOrientation,
     finalizeMobileOutput,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+    changedPages.length,
   ]);
 
   // ── フェーズ ──────────────────────────────────────────────────────────────

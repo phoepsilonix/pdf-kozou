@@ -238,7 +238,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       setMode(mode);
       setImpositionMode(mode);
     }
-  }, [impositionMode]);
+  }, [impositionMode, setImpositionMode, mode]);
 
   // モード変更時に向きの初期値を自動調整（2up/booklet は横、1up/4up は縦）
   const onModeChange = (m: ImpositionMode) => {

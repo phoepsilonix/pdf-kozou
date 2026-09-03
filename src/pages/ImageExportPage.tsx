@@ -183,11 +183,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   });
   const isBatch = (batchFiles?.length ?? 0) > 1;
   // i18n対応の面付けモード（label/descを翻訳済みで上書き）
-  const IMPOSITION_MODES_I18N = IMPOSITION_MODE_DEFS.map((m) => ({
-    ...m,
-    label: t(m.labelKey),
-    desc: t(m.descKey),
-  }));
+  const IMPOSITION_MODES_I18N = useMemo(
+    () =>
+      IMPOSITION_MODE_DEFS.map((m) => ({
+        ...m,
+        label: t(m.labelKey),
+        desc: t(m.descKey),
+      })),
+    [t],
+  );
   const { enabled: previewEnabled } = usePreview("image");
   const { isNarrow } = useViewport();
   const mobilePlatform = useIsMobilePlatform();
@@ -367,7 +371,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     };
 
     checkConflict();
-  }, [outputMode, outDir, pdfName, filePath, isBatch, batchFiles]);
+  }, [outputMode, outDir, pdfName, filePath, isBatch]);
 
   const [images, setImages] = useState<string[]>([]);
   const [pdfOutPath, setPdfOutPath] = useState("");
@@ -415,7 +419,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [filePath, isBatch, previewEnabled]);
+  }, [filePath, isBatch, previewEnabled, convertLayoutH, convertLayoutW, total, convertLayoutEm]);
 
   // バッチ: ファイル一覧の表紙サムネイル（先頭ページのみ・件数上限あり）
   useEffect(() => {
@@ -447,7 +451,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isBatch, batchFiles, previewEnabled]);
+  }, [isBatch, batchFiles, previewEnabled, convertLayoutW, convertLayoutH, convertLayoutEm]);
 
   // バッチ: 選択中ファイルの詳細プレビュー（単体と同じ面付け/面付け解除の
   // 合成プレビュー用に、選択ファイルの PdfInfo と全ページサムネイルを取得）。
@@ -533,7 +537,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
       }
     },
-    [mobile, mobileRelativeDir, commitMobileOutput],
+    [mobile, mobileRelativeDir, commitMobileOutput, t],
   );
 
   // サイズ概算（目安）。入力1ページの基準サイズ（A4 595×842pt）を基に、
@@ -957,7 +961,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     outputMode,
     impositionMode,
     isBatch,
-    pdfName,
     format,
     dpi,
     quality,
@@ -983,6 +986,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
+    t,
+    IMPOSITION_MODES_I18N,
   ]);
 
   // バッチ実行
@@ -1270,6 +1275,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
+    total,
+    mobile,
+    IMPOSITION_MODES_I18N,
   ]);
 
   // ─────────── フェーズ ───────────

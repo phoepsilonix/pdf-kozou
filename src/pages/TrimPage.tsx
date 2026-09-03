@@ -241,9 +241,10 @@ function TrimPageBatch({
     return () => {
       cancelled = true;
     };
-  }, [files]);
+  }, [files, convertLayoutH, convertLayoutW, convertLayoutEm]);
 
   // {t("trim.preview_target")}ファイルの情報 + 画像取得
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewIdxは本文で未参照だが切替検知のための意図的な依存
   useEffect(() => {
     // ファイルが切り替わったらページ番号を先頭にリセットする
     setPreviewPage(0);
@@ -281,7 +282,7 @@ function TrimPageBatch({
     return () => {
       cancelled = true;
     };
-  }, [files, previewIdx, previewPage]);
+  }, [files, previewIdx, previewPage, convertLayoutH, convertLayoutW, convertLayoutEm]);
 
   const pickDir = useCallback(async (): Promise<string | null> => {
     const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
@@ -400,6 +401,7 @@ function TrimPageBatch({
       convertLayoutEm,
       cropCleanup,
       finalizeMobileOutput,
+      announceSuccess,
     ],
   );
 
@@ -1013,7 +1015,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   );
   const [isSaving, setIsSaving] = useState(false);
   const [resultImgs, setResultImgs] = useState<string[]>([]);
-  const [tmpPageInfo, setTmpPageInfo] = useState<PdfInfo | null>(null);
+  const [_tmpPageInfo, setTmpPageInfo] = useState<PdfInfo | null>(null);
   // 左ペイン各ページのサムネイル
   const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
 
@@ -1042,7 +1044,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     })
       .then(setPageImage)
       .catch(() => setPageImage(""));
-  }, [filePath, previewPage, pageImage]);
+  }, [filePath, previewPage, convertLayoutEm, convertLayoutH, convertLayoutW]);
 
   const { enabled: previewEnabled } = usePreview("trim");
 
@@ -1074,7 +1076,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     return () => {
       cancelled = true;
     };
-  }, [filePath, pdfInfo.page_count, previewEnabled]);
+  }, [
+    filePath,
+    pdfInfo.page_count,
+    previewEnabled,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+  ]);
 
   // Ctrl+ホイール / Ctrl+キーボードでキャンバスズーム（document レベルで捕捉）
   useEffect(() => {
@@ -1201,17 +1210,22 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     }
   }, [
     filePath,
-    outTmp,
     trimMargins,
     trimPages,
     excludeSpec,
     extractSpec,
     pdfInfo.page_count,
-    tmpPageInfo,
     Pages,
     setError,
     pageSizeId,
     pageOrientation,
+    cropCleanup,
+    convertLayoutH,
+    setPages,
+    convertLayoutW,
+    convertLayoutEm, //setSavedPath(outTmp);
+    announceSuccess,
+    announceError,
   ]);
 
   const handleSave = async () => {
