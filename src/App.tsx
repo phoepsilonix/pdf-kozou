@@ -596,6 +596,7 @@ export default function App() {
   const narrowContentWidth = Math.max(240, Math.min(720, viewportWidth - 48));
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: アプリ全体のファイルドロップ受け皿。クリック操作は各ページ内のボタン等が担う。
     <div
       key={themeId}
       style={{ ...s.root, ...(dragOver ? s.rootDrag : {}) }}
@@ -806,7 +807,8 @@ export default function App() {
                           <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
                             {t("theme.icon")} © {THEMES[themeId].customIconYear}{" "}
                             {THEMES[themeId].customIconCreditURL ? (
-                              <span
+                              <button
+                                type="button"
                                 onClick={async (e) => {
                                   e.stopPropagation(); // 親要素へのイベント伝播を止める
                                   await copyToClipboard(THEMES[themeId].customIconCreditURL || "");
@@ -817,11 +819,15 @@ export default function App() {
                                   display: "inline-block", // クリック領域を確保
                                   position: "relative", // 重なり順を安定させる
                                   cursor: "pointer",
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  font: "inherit",
                                 }}
                                 title={THEMES[themeId].customIconCreditURL} // マウスホバーで説明を出す
                               >
                                 {THEMES[themeId].customIconCredit}
-                              </span>
+                              </button>
                             ) : (
                               THEMES[themeId].customIconCredit
                             )}
@@ -832,7 +838,8 @@ export default function App() {
                           <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.8)" }}>
                             {t("theme.bg")} © {THEMES[themeId].customBgYear}{" "}
                             {THEMES[themeId].customBgCreditURL ? (
-                              <span
+                              <button
+                                type="button"
                                 onClick={async (e) => {
                                   e.stopPropagation(); // 親要素へのイベント伝播を止める
                                   await copyToClipboard(THEMES[themeId].customBgCreditURL || "");
@@ -843,11 +850,15 @@ export default function App() {
                                   display: "inline-block", // クリック領域を確保
                                   position: "relative", // 重なり順を安定させる
                                   cursor: "pointer",
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  font: "inherit",
                                 }}
                                 title={THEMES[themeId].customBgCreditURL} // マウスホバーで説明を出す
                               >
                                 {THEMES[themeId].customBgCredit}
-                              </span>
+                              </button>
                             ) : (
                               THEMES[themeId].customBgCredit
                             )}
@@ -975,7 +986,7 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    <div style={s.fileRows}>
+                    <ul style={{ ...s.fileRows, listStyle: "none", margin: 0, padding: 0 }}>
                       {fileList.map((f, i) => (
                         <FileRow
                           key={f.id}
@@ -1003,7 +1014,7 @@ export default function App() {
                           onDragReorder={reorderFiles}
                         />
                       ))}
-                    </div>
+                    </ul>
                     <div style={s.listFooter}>
                       <button type="button" style={s.btnAdd} onClick={handlePickFiles}>
                         {t("file.add")}
@@ -1144,6 +1155,7 @@ export default function App() {
       )}
 
       {THEMES[themeId].customBg && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: 背景画像クレジット表示のホバー検出専用オーバーレイ。クリック可能な要素は内部に別途配置される。
         <div
           onMouseEnter={() => setPhotoOverlayHover(true)}
           onMouseLeave={() => setPhotoOverlayHover(false)}
@@ -1213,9 +1225,9 @@ function FileRow({
   const [isDragging, setIsDragging] = useState(false);
   const mb = entry.sizeBytes > 0 ? `${(entry.sizeBytes / 1048576).toFixed(1)} MB` : "";
   return (
-    <div
+    <li
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: 各行はフォーカス時にファイル情報を読み上げ、ドラッグでの並び替えにも対応する操作対象。選択/削除自体は内部のボタンが担う。
       tabIndex={0}
-      role="listitem"
       draggable
       // 行・チェック・✘ の汎用読み上げは抑止し、行は下の onFocus（整形済み
       // ファイル名）、チェック/✘ は操作ハンドラの明示読み上げに一本化する。
@@ -1248,8 +1260,10 @@ function FileRow({
         ...(entry.selected ? fr.rowSel : {}),
         ...(isDragOver ? fr.rowDO : {}),
         ...(isDragging ? fr.rowDrag : {}),
+        listStyle: "none",
       }}
     >
+      {/* biome-ignore lint/a11y/useSemanticElements: button+role="checkbox"はカスタムチェックボックスの正当なARIAパターン。独自のチェックマーク表示のためnative inputは使わない。 */}
       <button
         type="button"
         style={{ ...fr.check, ...(entry.selected ? fr.checkOn : {}) }}
@@ -1291,7 +1305,7 @@ function FileRow({
       >
         ✘
       </button>
-    </div>
+    </li>
   );
 }
 
