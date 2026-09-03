@@ -8,7 +8,7 @@
 // 新規作成にも対応しているため、「サブフォルダを作って保存したい」場合も
 // ここから行える。
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { persistAndroidSaveFolder } from "../lib/androidSaveFolder";
 import { useI18n } from "../lib/i18n";
 import { type PickedFolder, pickSaveFolder } from "../lib/tauri";
@@ -21,11 +21,19 @@ export function SaveNamePromptModal() {
   const { t } = useI18n();
   const [nameInput, setNameInput] = useState("");
   const [folder, setFolder] = useState<PickedFolder | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (request) {
       setNameInput(request.suggestedName);
       setFolder(request.folder);
+    }
+  }, [request]);
+
+  // モーダル表示直後に入力欄へフォーカスする(autoFocus属性の代わり)。
+  useEffect(() => {
+    if (request) {
+      nameInputRef.current?.focus();
     }
   }, [request]);
 
@@ -54,8 +62,10 @@ export function SaveNamePromptModal() {
         </div>
 
         <div style={s.body}>
-          <div style={s.form}>
-            <label style={s.label}>{t("save_name_prompt.folder_label")}</label>
+          <fieldset style={s.fieldset}>
+            <legend style={{ ...s.label, padding: 0, border: "none", width: "100%" }}>
+              {t("save_name_prompt.folder_label")}
+            </legend>
             <div style={s.folderRow}>
               <div style={s.folderPath} title={folder?.folderName ?? ""}>
                 {folder?.folderName ?? ""}
@@ -64,12 +74,13 @@ export function SaveNamePromptModal() {
                 {t("save_name_prompt.change_folder")}
               </button>
             </div>
-          </div>
+          </fieldset>
           <div style={s.form}>
             <label style={s.label} htmlFor="save-name-prompt-input">
               {t("save_name_prompt.input_label")}
             </label>
             <input
+              ref={nameInputRef}
               id="save-name-prompt-input"
               style={s.input}
               type="text"
@@ -78,7 +89,6 @@ export function SaveNamePromptModal() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") confirm();
               }}
-              autoFocus
             />
           </div>
           <div style={s.btnRow}>
@@ -148,6 +158,14 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
+  },
+  fieldset: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    border: "none",
+    padding: 0,
+    margin: 0,
   },
   label: {
     fontSize: FS.caption,
