@@ -1312,8 +1312,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             style={s.bpCurrent}
           />
           <div style={s.bpLog}>
-            {batchProgress.done.map((d, i) => (
-              <div key={i} style={s.bpRow}>
+            {batchProgress.done.map((d) => (
+              <div key={d.file} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
                 {d.pdfPath ? (
@@ -1409,8 +1409,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
           )}
           <div style={s.bpLog}>
-            {batchProgress.done.map((d, i) => (
-              <div key={i} style={s.bpRow}>
+            {batchProgress.done.map((d) => (
+              <div key={d.file} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
                 {d.pdfPath ? (
@@ -1434,9 +1434,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 )}
               </div>
             ))}
-            {batchProgress.errors.map((e, i) => (
+            {batchProgress.errors.map((e) => (
               <div
-                key={`e${i}`}
+                key={e.file}
                 style={{ ...s.bpRow, background: "var(--c-errBg)", borderColor: "var(--c-errBd)" }}
               >
                 <span style={{ color: "var(--c-err)" }}>✕</span>
@@ -1527,8 +1527,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
               )}
               <div style={s.bpLog}>
-                {images.slice(0, 20).map((f, i) => (
-                  <div key={i} style={s.bpRow}>
+                {images.slice(0, 20).map((f) => (
+                  <div key={f} style={s.bpRow}>
                     <span>🖼</span>
                     <span style={s.bpFile}>{displayNameFor(f)}</span>
                   </div>
@@ -1787,7 +1787,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   {DE_IMPOSITION_MODE_DEFS.map((m, idx) => (
                     <button
                       type="button"
-                      key={idx}
+                      key={m.id}
                       aria-label={t(m.labelKey)}
                       aria-pressed={deimpIndex === idx}
                       onClick={(e) => {
@@ -2340,8 +2340,8 @@ function ImpositionPreview({
         )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {sheets.map((sheet, si) => (
-          <div key={si}>
+        {sheets.map((sheet) => (
+          <div key={sheet.label}>
             <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginBottom: 4 }}>
               {sheet.label}
             </div>
@@ -2380,6 +2380,7 @@ function ImpositionPreview({
                 const b64 = pageNo > 0 ? thumbs[pageNo - 1] : undefined;
                 return (
                   <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: ciはcols×rowsグリッド上の固定セル位置。並び替え・挿抜は起きない。
                     key={ci}
                     style={{
                       width: CELL_W,
@@ -2579,6 +2580,7 @@ function DeImpositionPreview({
                 }}
               >
                 {badgesByRow[row].map((outPage, col) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: colはdef.cols列グリッド上の固定列位置。並び替え・挿抜は起きない。
                   <div key={col} style={{ textAlign: "center" }}>
                     <span style={s.deimpPageBadge}>
                       {t("image.deimp_cell_prefix")}
@@ -2663,6 +2665,7 @@ function DeImpositionPreview({
                     >
                       {Array.from({ length: def.cols * def.rows }).map((_, k) => (
                         <div
+                          // biome-ignore lint/suspicious/noArrayIndexKey: kはdef.cols×def.rowsグリッド上の固定セル位置。並び替え・挿抜は起きない。
                           key={k}
                           style={{
                             border: "1px dashed var(--c-accent, #e0457b)",
