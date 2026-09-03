@@ -1108,9 +1108,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const { isNarrow } = useViewport();
 
   // 画面表示時の読み上げ
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時に一度だけ画面名を読み上げる意図。
   useEffect(() => {
     announceScreen("screen.viewer");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ショートカット（ビューワー固有）
@@ -1260,8 +1260,16 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
           setTotal(pdfInfo.page_count);
         }
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIdx, isMulti, activePath, convertLayoutW, convertLayoutH, convertLayoutEm]);
+  }, [
+    activeIdx,
+    isMulti,
+    activePath,
+    convertLayoutW,
+    convertLayoutH,
+    convertLayoutEm,
+    fileList,
+    pdfInfo,
+  ]);
 
   // レイアウト変更時にレンダリングキャッシュをクリア（非 PDF 用）
   const lastLayoutKey = useRef(`${convertLayoutW}x${convertLayoutH}em${convertLayoutEm}`);
@@ -1380,11 +1388,11 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
   // ── 4. サムネイル ──────────────────────────────────────────────────────────
   // ページ移動時に読み上げ
+  // biome-ignore lint/correctness/useExhaustiveDependencies: viewPageの変化(ページ移動)時のみ読み上げたい。totalの変化(ファイル読み込み等)では再読み上げしない意図でtotal/t/announceは除外。
   useEffect(() => {
     if (total > 0) {
       announce(t("viewer.announce_page", { n: String(viewPage + 1) }), false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewPage]);
 
   useEffect(() => {

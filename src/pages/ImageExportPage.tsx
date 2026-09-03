@@ -152,9 +152,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     [t],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時に一度だけ画面名を読み上げる意図。
   useEffect(() => {
     announceScreen("screen.image");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pagesInputRef = useRef<HTMLInputElement | null>(null);
@@ -256,6 +256,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     ensureAndroidFolder,
     commitMobileOutput,
   } = useMobileBatchOutput();
+  // batchFiles/srcStem の参照が変わるたびに再生成すると保存のたびに違う
+  // フォルダ名になってしまうため、識別に必要な情報のみを依存にする。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 上記コメント参照。
   const mobileRelativeDir = useMemo(() => {
     const label =
       batchFiles && batchFiles.length > 0
@@ -264,9 +267,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           : `${batchFiles.length}件`
         : srcStem;
     return buildMobileOutputSubfolder(label);
-    // batchFiles/srcStem の参照が変わるたびに再生成すると保存のたびに違う
-    // フォルダ名になってしまうため、識別に必要な情報のみを依存にする。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchFiles?.length, batchFiles?.[0]?.filename, srcStem]);
   const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
   // 自動連番等で実際の保存名がローカルの一時ファイル名と異なる場合があるため、

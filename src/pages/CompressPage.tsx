@@ -251,9 +251,9 @@ export function CompressPage({
   );
 
   // 画面表示時の読み上げ
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時に一度だけ画面名を読み上げる意図。
   useEffect(() => {
     announceScreen("screen.compress");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ショートカット

@@ -215,9 +215,9 @@ export default function App() {
   }, [uiScale]);
 
   // ホーム画面表示時に読み上げ
+  // biome-ignore lint/correctness/useExhaustiveDependencies: announceScreenは意図的に依存から除外。activeToolがfalsyになった時のみ読み上げたいため。
   useEffect(() => {
     if (!activeTool) announceScreen("screen.home");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTool]);
 
   useEffect(() => {

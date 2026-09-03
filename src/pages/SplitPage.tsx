@@ -186,11 +186,11 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     ensureAndroidFolder,
     commitMobileOutput,
   } = useMobileBatchOutput();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: batchFiles参照が変わるたびに再生成すると保存のたびに違うフォルダ名になってしまうため、識別に必要なlengthのみを依存にする意図。
   const mobileRelativeDir = useMemo(() => {
     const label =
       isBatch && batchFiles && batchFiles.length > 0 ? `${batchFiles.length}件` : srcStem;
     return buildMobileOutputSubfolder(label);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBatch, batchFiles?.length, srcStem]);
   const [mobileSavedFiles, setMobileSavedFiles] = useState<MobileSavedFileInfo[] | null>(null);
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
@@ -315,9 +315,9 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   );
 
   // 画面表示時の読み上げ
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時に一度だけ画面名を読み上げる意図。
   useEffect(() => {
     announceScreen("screen.split");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ショートカット

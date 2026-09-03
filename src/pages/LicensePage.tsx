@@ -214,6 +214,7 @@ const LicensePage: React.FC = () => {
     await checkGs("");
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時に一度だけGhostscriptの状態を確認する意図。checkGsはuseCallback化されていない通常関数のため、依存に加えると無限ループになる。
   useEffect(() => {
     checkGs();
     // OS のデフォルト候補を取得

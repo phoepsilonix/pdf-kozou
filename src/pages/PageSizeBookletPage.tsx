@@ -189,9 +189,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const [building, setBuilding] = useState(false);
 
   // 画面読み上げ＋ショートカット（他ツールと同様）
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時に一度だけ画面名を読み上げる意図。
   useEffect(() => {
     announceScreen("screen.booklet");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useKeyboardShortcuts({
     "Ctrl+Enter": () => {

@@ -303,9 +303,9 @@ export function HiddenTextPage({
 }) {
   const isBatch = (batchFiles?.length ?? 0) > 1;
   const { announceScreen } = useA11y();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: マウント時に一度だけ画面名を読み上げる意図。
   useEffect(() => {
     announceScreen("screen.hidden");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return isBatch ? (
