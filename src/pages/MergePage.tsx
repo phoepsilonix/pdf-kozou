@@ -715,6 +715,7 @@ useEffect(() => {
       <div style={s.body}>
         {entries.length === 0 ? (
           <div
+            // biome-ignore lint/a11y/noStaticElementInteractions: ドラッグ&ドロップの受け皿。クリック操作は内部の「ファイルを選択」ボタンが担うため、この要素自体にキーボード操作を持たせる必要はない。
             style={{ ...s.dropZone, ...(dropOver ? s.dropZoneOn : {}) }}
             onDragOver={(e) => e.preventDefault()}
             onDragEnter={(e) => {
@@ -752,6 +753,7 @@ useEffect(() => {
               {entries.map((entry, i) => (
                 <div
                   key={entry.id}
+                  // biome-ignore lint/a11y/noStaticElementInteractions: マウスドラッグによる並び替え用ハンドル。項目の削除・選択等の操作は内部のボタン等が担う。
                   draggable
                   onDragStart={(e) => {
                     e.stopPropagation();
@@ -845,6 +847,7 @@ useEffect(() => {
               ))}
 
               <div
+                // biome-ignore lint/a11y/noStaticElementInteractions: ファイル追加用のドロップゾーン。クリック操作は別途用意されたボタンが担う。
                 style={{ ...s.addZone, ...(dropOver ? s.addZoneOn : {}) }}
                 onDragOver={(e) => {
                   e.preventDefault();
