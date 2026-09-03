@@ -7,11 +7,17 @@
   --safe-right: env(safe-area-inset-right);
 }
 
+/* #root はReactマウント先で、各ページがルート要素に独自のinline paddingを指定することがあるため、
+   notch等のsafe-area paddingを確実に上書きさせないようにするには!importantが必要。 */
 .app-root,
 #root {
+  /* biome-ignore lint/complexity/noImportantStyles: 上記コメント参照 */
   padding-top: var(--safe-top) !important;
+  /* biome-ignore lint/complexity/noImportantStyles: 上記コメント参照 */
   padding-bottom: var(--safe-bottom) !important;
+  /* biome-ignore lint/complexity/noImportantStyles: 上記コメント参照 */
   padding-left: var(--safe-left) !important;
+  /* biome-ignore lint/complexity/noImportantStyles: 上記コメント参照 */
   padding-right: var(--safe-right) !important;
   box-sizing: border-box;
   overflow: hidden;

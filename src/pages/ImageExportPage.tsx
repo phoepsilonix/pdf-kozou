@@ -2287,10 +2287,11 @@ function ImpositionPreview({
   const { isNarrow } = useViewport();
   // effectiveTotal: pages指定を反映した実際の対象ページ数
   const sheets = calcSheets(impositionMode, effectiveTotal);
+  // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
+  const impositionDef = IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!;
   const modeInfo = {
-    // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
-    ...IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!,
-    label: t(IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!.labelKey),
+    ...impositionDef,
+    label: t(impositionDef.labelKey),
   };
   const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
