@@ -813,8 +813,8 @@ export function CompressPage({
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
         <Spinner label={t("compress.processing")} />
         <div style={c.bpLog}>
-          {batchProg.done.map((d, i) => (
-            <div key={i} style={c.bpRow}>
+          {batchProg.done.map((d) => (
+            <div key={d.file} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file} → </span>
               <span style={c.bpFile2}>{d.saved}</span>
@@ -825,8 +825,8 @@ export function CompressPage({
               )}
             </div>
           ))}
-          {batchProg.errors.map((e, i) => (
-            <div key={i} style={c.bpRow}>
+          {batchProg.errors.map((e) => (
+            <div key={e.file} style={c.bpRow}>
               <span style={{ color: "var(--c-err)" }}>✕</span>
               <span style={c.bpFile}>{e.file}</span>
               <span style={c.bpErrMsg}>{e.msg}</span>
@@ -898,8 +898,8 @@ export function CompressPage({
         )}
         <div style={{ height: 10 }} />
         <div style={c.bpLog}>
-          {batchProg.done.map((d, i) => (
-            <div key={i} style={c.bpRow}>
+          {batchProg.done.map((d) => (
+            <div key={d.file} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file} → </span>
               <span style={c.bpFile2}>{d.saved}</span>
@@ -910,8 +910,8 @@ export function CompressPage({
               )}
             </div>
           ))}
-          {batchProg.errors.map((e, i) => (
-            <div key={i} style={c.bpRow}>
+          {batchProg.errors.map((e) => (
+            <div key={e.file} style={c.bpRow}>
               <span style={{ color: "var(--c-err)" }}>✕</span>
               <span style={c.bpFile}>{e.file}</span>
               <span style={c.bpErrMsg}>{e.msg}</span>
