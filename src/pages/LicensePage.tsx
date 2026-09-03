@@ -63,20 +63,20 @@ function ShortcutGroup({
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: FS.body }}>
         <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} style={{ borderBottom: "1px solid var(--c-border)" }}>
+          {rows.map((row) => (
+            <tr key={row.desc} style={{ borderBottom: "1px solid var(--c-border)" }}>
               <td style={{ padding: "5px 0", width: "44%", verticalAlign: "middle" }}>
-                {row.keys.map((k, j) =>
+                {row.keys.map((k) =>
                   k === "〜" || k === "/" ? (
                     <span
-                      key={j}
+                      key={`${row.desc}-${k}`}
                       style={{ fontSize: FS.caption, color: "var(--c-textDim)", margin: "0 3px" }}
                     >
                       {k}
                     </span>
                   ) : (
                     <kbd
-                      key={j}
+                      key={`${row.desc}-${k}`}
                       style={{
                         display: "inline-block",
                         padding: "2px 7px",

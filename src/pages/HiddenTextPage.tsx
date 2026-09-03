@@ -1169,7 +1169,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                     viewBox={`0 0 ${imgNatW} ${imgNatH}`}
                   >
                     {displayGroups.map((g) =>
-                      g.chars.map((c, ci) => {
+                      g.chars.map((c) => {
                         const q = c.quad;
                         const pts = [
                           `${q[0] * scaleX},${q[1] * scaleY}`,
@@ -1179,7 +1179,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                         ].join(" ");
                         return (
                           <polygon
-                            key={`${g.id}-${ci}`}
+                            key={`${g.id}-${q.join(",")}`}
                             points={pts}
                             fill="none"
                             stroke={selectedIds.has(g.id) ? "#22c55e" : typeColor(g.type)}
@@ -1262,8 +1262,8 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                       </button>
                       {g.expanded && (
                         <div style={s.charList}>
-                          {g.chars.map((c, ci) => (
-                            <div key={ci} style={s.charRow}>
+                          {g.chars.map((c) => (
+                            <div key={`${g.id}-${c.quad.join(",")}`} style={s.charRow}>
                               <span style={s.charCell}>{c.char === " " ? "·" : c.char || "?"}</span>
                               <span>
                                 U+

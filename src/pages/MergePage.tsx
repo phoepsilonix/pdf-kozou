@@ -602,7 +602,10 @@ useEffect(() => {
             </div>
             {/* ファイルごとのブロック */}
             {segments.map((seg, si) => (
-              <div key={si} style={{ marginBottom: si < segments.length - 1 ? 10 : 0 }}>
+              <div
+                key={seg.pages[0]?.globalNum ?? si}
+                style={{ marginBottom: si < segments.length - 1 ? 10 : 0 }}
+              >
                 {/* ファイル区切り帯 */}
                 <div style={s.segDivider}>
                   <div style={s.segLine} />
@@ -776,7 +779,8 @@ useEffect(() => {
                       const aspect = pb ? pb.w / pb.h : undefined;
                       return (
                         <ThumbCard
-                          key={ti}
+                          // biome-ignore lint/suspicious/noArrayIndexKey: entry.thumbsはページ順固定配列で並び替え・挿抜が起きないため、ページ位置(ti)の使用は安全。
+                          key={`${entry.id}-${ti}`}
                           b64={b64}
                           pageNum={ti + 1}
                           width={thumbWidth}
