@@ -798,9 +798,11 @@ function TrimPageBatch({
               </span>
             )}
           </div>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: PDFプレビュー用のスクロール可能なキャンバスビューポート。Ctrl+/-/0でのズーム操作のためtabIndexでフォーカス可能にしている。標準のARIA roleでは表現しきれない専用ウィジェットのため、role指定は行わない。 */}
           <div
             style={{ ...s.canvasWrap, overflow: "auto" }}
             ref={canvasWrapRef}
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: 同上。キーボードでのズーム操作を受け付けるために必要。
             tabIndex={0}
             onKeyDown={(e) => {
               if (!e.ctrlKey) return;
@@ -1498,9 +1500,11 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             </button>
           </div>
         </div>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: PDFプレビュー用のスクロール可能なキャンバスビューポート。Ctrl+/-/0でのズーム操作のためtabIndexでフォーカス可能にしている。標準のARIA roleでは表現しきれない専用ウィジェットのため、role指定は行わない。 */}
         <div
           style={{ ...s.canvasWrap, overflow: "auto" }}
           ref={canvasWrapRef}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: 同上。キーボードでのズーム操作を受け付けるために必要。
           tabIndex={0}
           onKeyDown={handleCanvasKeyDown}
         >
