@@ -304,14 +304,14 @@ function TrimPageBatch({
       try {
         const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
         if (saved === null) {
-          setMobileSaveError(t("mobile.save_cancelled" as any));
+          setMobileSaveError(t("mobile.save_cancelled"));
           return;
         }
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(
           e instanceof Error && e.message === ANDROID_FOLDER_MISSING
-            ? t("mobile.save_unsupported" as any)
+            ? t("mobile.save_unsupported")
             : String(e),
         );
       }
@@ -463,23 +463,20 @@ function TrimPageBatch({
             ) : mobileSavedFiles ? (
               <>
                 <div>
-                  {t("mobile.save_done_summary_folder" as any, {
+                  {t("mobile.save_done_summary_folder", {
                     count: String(mobileSavedFiles.length),
                   })}
                 </div>
                 <div>
-                  {t("mobile.save_location" as any, {
+                  {t("mobile.save_location", {
                     path: androidUI
                       ? (androidFolder?.folderName ?? "")
-                      : mobileOutputPreviewLabel(
-                          mobileRelativeDir,
-                          t("mobile.downloads_root" as any),
-                        ),
+                      : mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                   })}
                 </div>
               </>
             ) : (
-              t("mobile.save_preview_pending" as any)
+              t("mobile.save_preview_pending")
             )
           ) : (
             usePdfStore.getState().lastSaveDir
@@ -879,11 +876,8 @@ function TrimPageBatch({
             />
             {mobile && !androidUI && (
               <div style={{ fontSize: FS.caption, color: "var(--c-textDim)", padding: "0 4px" }}>
-                {t("mobile.save_preview" as any, {
-                  path: mobileOutputPreviewLabel(
-                    mobileRelativeDir,
-                    t("mobile.downloads_root" as any),
-                  ),
+                {t("mobile.save_preview", {
+                  path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                 })}
               </div>
             )}

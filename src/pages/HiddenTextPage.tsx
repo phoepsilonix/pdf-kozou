@@ -306,7 +306,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const { t } = useI18n();
   const { isNarrow } = useViewport();
   const mobilePlatform = useIsMobilePlatform();
-  const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey as any) }));
+  const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey) }));
   const [enabled, setEnabled] = useState<Set<DetectType>>(
     new Set(DETECT_TYPE_DEFS.map((d) => d.id)),
   );
@@ -371,7 +371,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     }
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const dir = await open({ directory: true, title: t("hidden.output_dir_dialog" as any) });
+      const dir = await open({ directory: true, title: t("hidden.output_dir_dialog") });
       const resolved = dir ? (typeof dir === "string" ? dir : dir[0]) : null;
       if (resolved) setOutDir(resolved);
       return resolved;
@@ -393,14 +393,14 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       try {
         const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
         if (saved === null) {
-          setMobileSaveError(t("mobile.save_cancelled" as any));
+          setMobileSaveError(t("mobile.save_cancelled"));
           return;
         }
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(
           e instanceof Error && e.message === ANDROID_FOLDER_MISSING
-            ? t("mobile.save_unsupported" as any)
+            ? t("mobile.save_unsupported")
             : String(e),
         );
       }
@@ -574,15 +574,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <div style={s.left}>
             <div style={s.statusBox}>{t("hidden.batch_done")}</div>
             <div style={s.statusBox}>
-              {t("hidden.batch_sanitized" as any, { count: String(succeeded) })}
+              {t("hidden.batch_sanitized", { count: String(succeeded) })}
             </div>
-            {succeeded > 0 && <div style={s.statusBox}>{t("hidden.batch_rescan_note" as any)}</div>}
-            <div style={s.statusBox}>
-              {t("hidden.batch_skipped" as any, { count: String(skipped) })}
-            </div>
+            {succeeded > 0 && <div style={s.statusBox}>{t("hidden.batch_rescan_note")}</div>}
+            <div style={s.statusBox}>{t("hidden.batch_skipped", { count: String(skipped) })}</div>
             {progress.errors.length > 0 && (
               <div style={s.statusBox}>
-                {t("hidden.batch_errors" as any, { count: String(progress.errors.length) })}
+                {t("hidden.batch_errors", { count: String(progress.errors.length) })}
               </div>
             )}
             {mobile &&
@@ -591,23 +589,20 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               ) : mobileSavedFiles ? (
                 <>
                   <div style={s.statusBox}>
-                    {t("mobile.save_done_summary_folder" as any, {
+                    {t("mobile.save_done_summary_folder", {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div style={s.statusBox}>
-                    {t("mobile.save_location" as any, {
+                    {t("mobile.save_location", {
                       path: androidUI
                         ? (androidFolder?.folderName ?? "")
-                        : mobileOutputPreviewLabel(
-                            mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
-                          ),
+                        : mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                     })}
                   </div>
                 </>
               ) : (
-                <div style={s.statusBox}>{t("mobile.save_preview_pending" as any)}</div>
+                <div style={s.statusBox}>{t("mobile.save_preview_pending")}</div>
               ))}
             <button
               type="button"
@@ -693,7 +688,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   checked={skipType3}
                   onChange={(e) => setSkipType3(e.target.checked)}
                 />
-                {t("hidden.skip_type3" as any)}
+                {t("hidden.skip_type3")}
               </label>
             </div>
           }
@@ -707,16 +702,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                     {androidFolder?.folderName || t("hidden.output_dir_empty")}
                   </div>
                   <button type="button" style={s.navBtn} onClick={() => pickAndroidFolder()}>
-                    {t("hidden.output_dir_pick" as any)}
+                    {t("hidden.output_dir_pick")}
                   </button>
                 </>
               ) : (
                 <div style={s.statusBox}>
-                  {t("mobile.save_preview" as any, {
-                    path: mobileOutputPreviewLabel(
-                      mobileRelativeDir,
-                      t("mobile.downloads_root" as any),
-                    ),
+                  {t("mobile.save_preview", {
+                    path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                   })}
                 </div>
               )
@@ -724,7 +716,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               <>
                 <div style={s.statusBox}>{outDir || t("hidden.output_dir_empty")}</div>
                 <button type="button" style={s.navBtn} onClick={pickDir}>
-                  {t("hidden.output_dir_pick" as any)}
+                  {t("hidden.output_dir_pick")}
                 </button>
               </>
             )}
@@ -738,7 +730,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <div style={s.preview}>
             <div style={s.sec}>
               <div style={s.secTitle}>
-                {t("hidden.batch_files_label" as any, { count: String(batchFiles.length) })}
+                {t("hidden.batch_files_label", { count: String(batchFiles.length) })}
               </div>
               {batchFiles.map((f, i) => (
                 <div key={f.path} style={s.statusBox}>
@@ -758,7 +750,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                 {running ? (
                   <Spinner />
                 ) : (
-                  t("hidden.batch_run_btn" as any, { count: String(batchFiles.length) })
+                  t("hidden.batch_run_btn", { count: String(batchFiles.length) })
                 )}
               </button>
               {/* 注意書き */}
@@ -776,7 +768,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
 function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
   const { t } = useI18n();
   const { isNarrow } = useViewport();
-  const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey as any) }));
+  const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey) }));
   const [pageIndex, setPageIndex] = useState(0);
   const [allPagesMode, setAllPagesMode] = useState(false);
   const [enabled, setEnabled] = useState<Set<DetectType>>(
@@ -942,7 +934,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
           })),
       );
     if (!targets.length) {
-      setStatus(t("hidden.no_targets" as any));
+      setStatus(t("hidden.no_targets"));
       return;
     }
 
@@ -968,7 +960,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       // されていなかった文字が次の検出で新たに見つかることがある(既知の
       // 挙動。自動ループはGUIでの人手確認という設計方針上、行わない)。
       setStatus(
-        `${t("hidden.sanitize_done", { name: doneName })}\n${t("hidden.sanitize_rescan_note" as any)}`,
+        `${t("hidden.sanitize_done", { name: doneName })}\n${t("hidden.sanitize_rescan_note")}`,
       );
       announceSuccess("hidden.sanitize_done", { name: doneName });
     } catch (e) {
@@ -1124,7 +1116,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                     checked={skipType3}
                     onChange={(e) => setSkipType3(e.target.checked)}
                   />
-                  {t("hidden.skip_type3" as any)}
+                  {t("hidden.skip_type3")}
                 </label>
               </div>
             }
@@ -1216,9 +1208,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                           toggleGroup(g.id);
                         }
                       }}
-                      aria-label={t("aria.hidden_group" as any, {
+                      aria-label={t("aria.hidden_group", {
                         label: g.label.slice(0, 40),
-                        reason: t((REASON_KEY[g.reason] ?? "hidden.reason_whitespace") as any),
+                        reason: t(REASON_KEY[g.reason] ?? "hidden.reason_whitespace"),
                         count: String(g.chars.length),
                       })}
                       aria-pressed={g.isWs ? undefined : sel}
@@ -1237,7 +1229,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                       <span>{icon}</span>
                       <span style={s.groupLabel}>{g.label}</span>
                       <span style={s.groupReason}>
-                        {t((REASON_KEY[g.reason] ?? "hidden.reason_whitespace") as any)}
+                        {t(REASON_KEY[g.reason] ?? "hidden.reason_whitespace")}
                       </span>
                       <span style={s.groupCount}>{g.chars.length}字</span>
                       <button
@@ -1247,7 +1239,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                           e.stopPropagation();
                           toggleExpand(g.id);
                         }}
-                        aria-label={t("aria.hidden_expand" as any, { label: g.label.slice(0, 30) })}
+                        aria-label={t("aria.hidden_expand", { label: g.label.slice(0, 30) })}
                         aria-expanded={g.expanded}
                       >
                         {g.expanded ? "▲" : "▼"}
@@ -1303,9 +1295,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               runDetect(true);
             }}
             disabled={running}
-            aria-label={t("aria.hidden_detect_all_btn" as any)}
+            aria-label={t("aria.hidden_detect_all_btn")}
           >
-            {running && allPagesMode ? <Spinner /> : t("hidden.detect_all_pages" as any)}
+            {running && allPagesMode ? <Spinner /> : t("hidden.detect_all_pages")}
           </button>
         )}
         {groups.some((g) => !g.isWs) && (
@@ -1426,7 +1418,7 @@ function ThrPanel({
               style={{ ...s.smBtn, fontWeight: active ? 700 : 400 }}
               onClick={() => setThr(() => p.thr)}
             >
-              {t(p.labelKey as any)}
+              {t(p.labelKey)}
             </button>
           );
         })}

@@ -185,8 +185,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // i18n対応の面付けモード（label/descを翻訳済みで上書き）
   const IMPOSITION_MODES_I18N = IMPOSITION_MODE_DEFS.map((m) => ({
     ...m,
-    label: t(m.labelKey as any),
-    desc: t(m.descKey as any),
+    label: t(m.labelKey),
+    desc: t(m.descKey),
   }));
   const { enabled: previewEnabled } = usePreview("image");
   const { isNarrow } = useViewport();
@@ -521,14 +521,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
         if (saved === null) {
           // 衝突確認モーダルでキャンセル: 処理結果は一時領域に残るが保存はしない
-          setMobileSaveError(t("mobile.save_cancelled" as any));
+          setMobileSaveError(t("mobile.save_cancelled"));
           return;
         }
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(
           e instanceof Error && e.message === ANDROID_FOLDER_MISSING
-            ? t("mobile.save_unsupported" as any)
+            ? t("mobile.save_unsupported")
             : String(e),
         );
       }
@@ -582,7 +582,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
       const sheetCount = sheetPageNums.length;
       if (sheetCount === 0) {
-        setStatusMsg(t("image.deimp_no_pages" as any));
+        setStatusMsg(t("image.deimp_no_pages"));
         return;
       }
 
@@ -626,7 +626,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           setPdfPageCount(cells.length);
           setPdfName("");
           // 画像PDFなのでテキスト消失の注意を表示
-          setStatusMsg(t("image.rasterize_warning" as any));
+          setStatusMsg(t("image.rasterize_warning"));
           announceSuccess("done.image");
           setPhase("result");
         } catch (e) {
@@ -654,7 +654,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         for (let k = 0; k < cells.length; k++) {
           const [pg, row, col] = cells[k];
           setStatusMsg(
-            t("image.deimp_rendering" as any, {
+            t("image.deimp_rendering", {
               n: String(k + 1),
               total: String(cells.length),
             }),
@@ -715,7 +715,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
       setPhase("processing");
-      setStatusMsg(t("image.imposition_rendering_init" as any));
+      setStatusMsg(t("image.imposition_rendering_init"));
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 0));
       try {
@@ -733,7 +733,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         );
         if (estimatedMB > 600) {
           const ok = window.confirm(
-            t("image.imposition_memory_warn" as any, {
+            t("image.imposition_memory_warn", {
               mb: String(estimatedMB),
               dpi: String(dpi),
               mode:
@@ -753,9 +753,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         const sheets = calcSheets(
           impositionMode,
           effectiveCount,
-          t("common.imposition_blank_page" as any),
-          (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
-          (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+          t("common.imposition_blank_page"),
+          (n) => t("image.imposition_sheet_front", { n: String(n) }),
+          (n) => t("image.imposition_sheet_back", { n: String(n) }),
         );
         console.log(
           "[imposition] effectiveCount:",
@@ -778,7 +778,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           // 進捗: レンダリング開始前に表示
           setStatusMsg(
-            t("image.imposition_rendering" as any, {
+            t("image.imposition_rendering", {
               current: String(si + 1),
               total: String(totalSheets),
               label: sheet.label,
@@ -800,7 +800,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           const outName = imageName(srcStem, keepOriginalName, si + 1, ext);
           const outPath = joinPath(resolvedDir, outName);
           setStatusMsg(
-            t("image.imposition_saving" as any, {
+            t("image.imposition_saving", {
               current: String(si + 1),
               total: String(totalSheets),
               name: outName,
@@ -816,9 +816,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         setImages(savedFiles);
         await finalizeMobileOutput(resolvedDir, savedFiles, androidFolderForRun);
         setPhase("result");
-        setStatusMsg(
-          t("image.imposition_done" as any, { count: String(totalSheets), dir: resolvedDir }),
-        );
+        setStatusMsg(t("image.imposition_done", { count: String(totalSheets), dir: resolvedDir }));
       } catch (e) {
         setPhase("error");
         setError(String(e));
@@ -867,9 +865,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           const sheets = calcSheets(
             impositionMode,
             effectiveCount,
-            t("common.imposition_blank_page" as any),
-            (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
-            (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+            t("common.imposition_blank_page"),
+            (n) => t("image.imposition_sheet_front", { n: String(n) }),
+            (n) => t("image.imposition_sheet_back", { n: String(n) }),
           );
           const cells = modeInfo.cols * modeInfo.rows;
           // ページ指定の有無
@@ -908,7 +906,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           setPdfName("");
           // 面付け画像PDFも各ページが画像化されるため、
           // 1ページごとの画像PDFと同様にテキスト消失の注意を表示する
-          setStatusMsg(t("image.rasterize_warning" as any));
+          setStatusMsg(t("image.rasterize_warning"));
           announceSuccess("done.image");
           setPhase("result");
           return;
@@ -1046,7 +1044,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           const sheetCount = sheetPageNums.length;
           if (sheetCount === 0) {
-            setStatusMsg(t("image.deimp_no_pages" as any));
+            setStatusMsg(t("image.deimp_no_pages"));
             return;
           }
 
@@ -1127,9 +1125,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             const sheets = calcSheets(
               impositionMode,
               fileEffective,
-              t("common.imposition_blank_page" as any),
-              (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
-              (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+              t("common.imposition_blank_page"),
+              (n) => t("image.imposition_sheet_front", { n: String(n) }),
+              (n) => t("image.imposition_sheet_back", { n: String(n) }),
             );
             const cells = modeInfo.cols * modeInfo.rows;
             const hasPageFilter = filePageSpec.length > 0;
@@ -1183,9 +1181,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           const sheets = calcSheets(
             impositionMode,
             fileEffective,
-            t("common.imposition_blank_page" as any),
-            (n) => t("image.imposition_sheet_front" as any, { n: String(n) }),
-            (n) => t("image.imposition_sheet_back" as any, { n: String(n) }),
+            t("common.imposition_blank_page"),
+            (n) => t("image.imposition_sheet_front", { n: String(n) }),
+            (n) => t("image.imposition_sheet_back", { n: String(n) }),
           );
           const savedFiles: string[] = [];
 
@@ -1391,23 +1389,20 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary_folder" as any, {
+                    {t("mobile.save_done_summary_folder", {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
-                    {t("mobile.save_location" as any, {
+                    {t("mobile.save_location", {
                       path: androidUI
                         ? (androidFolder?.folderName ?? "")
-                        : mobileOutputPreviewLabel(
-                            mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
-                          ),
+                        : mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                     })}
                   </div>
                 </>
               ) : (
-                t("mobile.save_preview_pending" as any)
+                t("mobile.save_preview_pending")
               )}
             </div>
           ) : (
@@ -1509,23 +1504,23 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   ) : mobileSavedFiles ? (
                     <>
                       <div>
-                        {t("mobile.save_done_summary_folder" as any, {
+                        {t("mobile.save_done_summary_folder", {
                           count: String(mobileSavedFiles.length),
                         })}
                       </div>
                       <div>
-                        {t("mobile.save_location" as any, {
+                        {t("mobile.save_location", {
                           path: androidUI
                             ? (androidFolder?.folderName ?? "")
                             : mobileOutputPreviewLabel(
                                 mobileRelativeDir,
-                                t("mobile.downloads_root" as any),
+                                t("mobile.downloads_root"),
                               ),
                         })}
                       </div>
                     </>
                   ) : (
-                    t("mobile.save_preview_pending" as any)
+                    t("mobile.save_preview_pending")
                   )}
                 </div>
               ) : (
@@ -1604,9 +1599,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           <span style={s.outBadge}>
             → {format.toUpperCase()} {pw}×{ph}px
             {processDir === "deimpose"
-              ? ` (${t("image.est_per_cell" as any)})`
+              ? ` (${t("image.est_per_cell")})`
               : impositionMode !== "1up"
-                ? ` (${t("image.est_per_sheet" as any)})`
+                ? ` (${t("image.est_per_sheet")})`
                 : ""}
           </span>
         )}
@@ -1648,19 +1643,19 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               <div style={s.outBadgeInline}>
                 → {format.toUpperCase()} {pw}×{ph}px
                 {processDir === "deimpose"
-                  ? ` (${t("image.est_per_cell" as any)})`
+                  ? ` (${t("image.est_per_cell")})`
                   : impositionMode !== "1up"
-                    ? ` (${t("image.est_per_sheet" as any)})`
+                    ? ` (${t("image.est_per_sheet")})`
                     : ""}
               </div>
             )}
 
             {/* 処理方向: 通常変換/面付け ⇔ 面付け解除/分割 */}
-            <div style={s.secLabel}>{t("image.process_dir_label" as any)}</div>
+            <div style={s.secLabel}>{t("image.process_dir_label")}</div>
             <div style={s.fmtRow}>
               <button
                 type="button"
-                aria-label={t("image.process_dir_normal" as any)}
+                aria-label={t("image.process_dir_normal")}
                 aria-pressed={processDir === "normal"}
                 onClick={(e) => {
                   setProcessDir("normal");
@@ -1669,12 +1664,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 }}
                 style={{ ...s.modeBtn, ...(processDir === "normal" ? s.modeBtnOn : {}) }}
               >
-                <span style={s.fmtName}>{t("image.process_dir_normal" as any)}</span>
-                <span style={s.fmtDesc}>{t("image.process_dir_normal_sub" as any)}</span>
+                <span style={s.fmtName}>{t("image.process_dir_normal")}</span>
+                <span style={s.fmtDesc}>{t("image.process_dir_normal_sub")}</span>
               </button>
               <button
                 type="button"
-                aria-label={t("image.process_dir_split" as any)}
+                aria-label={t("image.process_dir_split")}
                 aria-pressed={processDir === "deimpose"}
                 onClick={(e) => {
                   setProcessDir("deimpose");
@@ -1690,8 +1685,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     : {}),
                 }}
               >
-                <span style={s.fmtName}>{t("image.process_dir_split" as any)}</span>
-                <span style={s.fmtDesc}>{t("image.process_dir_split_sub" as any)}</span>
+                <span style={s.fmtName}>{t("image.process_dir_split")}</span>
+                <span style={s.fmtDesc}>{t("image.process_dir_split_sub")}</span>
               </button>
             </div>
 
@@ -1735,7 +1730,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
             {processDir === "normal" && format !== "svg" && (
               <>
-                <div style={s.secLabel}>{t("image.imposition_section_label" as any)}</div>
+                <div style={s.secLabel}>{t("image.imposition_section_label")}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {IMPOSITION_MODES_I18N.map((m) => (
                     <button
@@ -1767,14 +1762,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       const sheetCount = calcSheets(impositionMode, n).length;
                       const pageLabel =
                         n !== total
-                          ? t("image.imposition_page_label_filtered" as any, { n: String(n) })
-                          : t("image.imposition_page_label_all" as any, { total: String(total) });
+                          ? t("image.imposition_page_label_filtered", { n: String(n) })
+                          : t("image.imposition_page_label_all", { total: String(total) });
                       return impositionMode === "booklet" || impositionMode === "booklet-rtl"
-                        ? t("image.imposition_sheet_count_booklet" as any, {
+                        ? t("image.imposition_sheet_count_booklet", {
                             count: String(sheetCount),
                             pages: pageLabel,
                           })
-                        : t("image.imposition_sheet_count" as any, {
+                        : t("image.imposition_sheet_count", {
                             count: String(sheetCount),
                             pages: String(n),
                           });
@@ -1787,13 +1782,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             {/* 面付け解除モード（分割時） */}
             {processDir === "deimpose" && (
               <>
-                <div style={s.secLabel}>{t("image.deimp_section_label" as any)}</div>
+                <div style={s.secLabel}>{t("image.deimp_section_label")}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {DE_IMPOSITION_MODE_DEFS.map((m, idx) => (
                     <button
                       type="button"
                       key={idx}
-                      aria-label={t(m.labelKey as any)}
+                      aria-label={t(m.labelKey)}
                       aria-pressed={deimpIndex === idx}
                       onClick={(e) => {
                         setDeimpIndex(idx);
@@ -1807,8 +1802,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                       }}
                     >
                       <span style={s.fmtIcon}>{m.icon}</span>
-                      <span style={s.fmtName}>{t(m.labelKey as any)}</span>
-                      <span style={s.fmtDesc}>{t(m.descKey as any)}</span>
+                      <span style={s.fmtName}>{t(m.labelKey)}</span>
+                      <span style={s.fmtDesc}>{t(m.descKey)}</span>
                     </button>
                   ))}
                 </div>
@@ -1817,7 +1812,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
                     const n = resolvedPageCount || total;
                     const outCount = n * def.cols * def.rows;
-                    return t("image.deimp_page_count" as any, {
+                    return t("image.deimp_page_count", {
                       sheets: String(n),
                       pages: String(outCount),
                     });
@@ -1992,13 +1987,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                         style={s.dirPath}
                         title={mobileOutputPreviewLabel(
                           mobileRelativeDir,
-                          t("mobile.downloads_root" as any),
+                          t("mobile.downloads_root"),
                         )}
                       >
-                        {t("mobile.save_preview" as any, {
+                        {t("mobile.save_preview", {
                           path: mobileOutputPreviewLabel(
                             mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
+                            t("mobile.downloads_root"),
                           ),
                         })}
                       </div>
@@ -2095,7 +2090,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                               const mInfo = IMPOSITION_MODES_I18N.find(
                                 (m) => m.id === impositionMode,
                               )!;
-                              return t("image.imposition_batch_mode_sheets" as any, {
+                              return t("image.imposition_batch_mode_sheets", {
                                 icon: mInfo.icon,
                                 mode: mInfo.label,
                                 sheets: String(fSheets),
@@ -2295,7 +2290,7 @@ function ImpositionPreview({
   const modeInfo = {
     // biome-ignore lint/style/noNonNullAssertion: impositionModeは既知のモードID集合のみを取り得るため、対応するdefは必ず存在
     ...IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!,
-    label: t(IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)?.labelKey as any),
+    label: t(IMPOSITION_MODE_DEFS.find((m) => m.id === impositionMode)!.labelKey),
   };
   const pageSet = new Set(resolvePageSpec(pages || "", total).map((i) => i + 1));
 
@@ -2328,19 +2323,19 @@ function ImpositionPreview({
   return (
     <div style={{ padding: 10, overflowY: "auto", overflowX: "auto", width: "100%" }}>
       <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
-        {t("image.imposition_preview_header" as any, {
+        {t("image.imposition_preview_header", {
           icon: modeInfo.icon,
           mode: modeInfo.label,
           sheets: String(sheets.length),
         })}
         {effectiveTotal !== total && (
           <span style={{ marginLeft: 4, color: "var(--c-textDim)" }}>
-            {t("image.imposition_preview_filtered" as any, { n: String(effectiveTotal) })}
+            {t("image.imposition_preview_filtered", { n: String(effectiveTotal) })}
           </span>
         )}
         {(impositionMode === "booklet" || impositionMode === "booklet-rtl") && (
           <span style={{ marginLeft: 6, color: "var(--c-textDim)" }}>
-            {t("image.imposition_booklet_note" as any)}
+            {t("image.imposition_booklet_note")}
           </span>
         )}
       </div>
@@ -2508,8 +2503,8 @@ function DeImpositionPreview({
   return (
     <div style={{ padding: 10, overflowY: "auto", overflowX: "auto", width: "100%" }}>
       <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
-        {def.icon} {t(def.labelKey as any)} —{" "}
-        {t("image.deimp_page_count" as any, {
+        {def.icon} {t(def.labelKey)} —{" "}
+        {t("image.deimp_page_count", {
           sheets: String(sheetIdx.length),
           pages: String(outCount),
         })}
@@ -2523,7 +2518,7 @@ function DeImpositionPreview({
           textAlign: "center",
         }}
       >
-        {t("image.deimp_cell_legend" as any)}
+        {t("image.deimp_cell_legend")}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
         {/* 出力ページ順（splitCells の並び）でシートカードを表示。
@@ -2586,7 +2581,7 @@ function DeImpositionPreview({
                 {badgesByRow[row].map((outPage, col) => (
                   <div key={col} style={{ textAlign: "center" }}>
                     <span style={s.deimpPageBadge}>
-                      {t("image.deimp_cell_prefix" as any)}
+                      {t("image.deimp_cell_prefix")}
                       {outPage ?? "—"}
                     </span>
                   </div>
@@ -2616,13 +2611,13 @@ function DeImpositionPreview({
                       fontSize: FS.caption,
                     }}
                   >
-                    {t("common.imposition_blank_page" as any)}
+                    {t("common.imposition_blank_page")}
                   </div>
                   {def.rows > 1 && numberBar(def.rows - 1)}
                   <div
                     style={{ textAlign: "center", fontSize: FS.caption, color: "var(--c-textDim)" }}
                   >
-                    {t("common.imposition_blank_page" as any)}
+                    {t("common.imposition_blank_page")}
                   </div>
                 </div>
               );
@@ -2681,7 +2676,7 @@ function DeImpositionPreview({
                   <div
                     style={{ textAlign: "center", fontSize: FS.caption, color: "var(--c-textSub)" }}
                   >
-                    {t("common.page_n" as any, { n: String(inputPageIdx + 1) })}
+                    {t("common.page_n", { n: String(inputPageIdx + 1) })}
                   </div>
                 </div>
               );

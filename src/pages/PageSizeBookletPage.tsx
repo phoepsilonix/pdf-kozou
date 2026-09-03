@@ -159,7 +159,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   //   n-up・製本=ページサイズ＋面数トークン（例 A4_2面 / A4_中綴じ）
   const defaultLabel = useMemo(() => {
     if (mode === "1up") return sizeId;
-    return `${sizeId}_${t(`filename.label.${mode}` as any)}`;
+    return `${sizeId}_${t(`filename.label.${mode}`)}`;
   }, [mode, sizeId, t]);
   // 実効ラベルはレンダリング中に派生（state同期のeffectを使わない）。
   // 未編集なら defaultLabel（mode/サイズ/言語に追従）、編集済みなら手入力値 label。
@@ -330,14 +330,14 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       try {
         const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
         if (saved === null) {
-          setMobileSaveError(t("mobile.save_cancelled" as any));
+          setMobileSaveError(t("mobile.save_cancelled"));
           return;
         }
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(
           e instanceof Error && e.message === ANDROID_FOLDER_MISSING
-            ? t("mobile.save_unsupported" as any)
+            ? t("mobile.save_unsupported")
             : String(e),
         );
       }
@@ -578,23 +578,20 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary_folder" as any, {
+                    {t("mobile.save_done_summary_folder", {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
-                    {t("mobile.save_location" as any, {
+                    {t("mobile.save_location", {
                       path: androidUI
                         ? (androidFolder?.folderName ?? "")
-                        : mobileOutputPreviewLabel(
-                            mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
-                          ),
+                        : mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                     })}
                   </div>
                 </>
               ) : (
-                t("mobile.save_preview_pending" as any)
+                t("mobile.save_preview_pending")
               )
             ) : (
               outDir
@@ -890,13 +887,13 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                         style={s.dirPath}
                         title={mobileOutputPreviewLabel(
                           mobileRelativeDir,
-                          t("mobile.downloads_root" as any),
+                          t("mobile.downloads_root"),
                         )}
                       >
-                        {t("mobile.save_preview" as any, {
+                        {t("mobile.save_preview", {
                           path: mobileOutputPreviewLabel(
                             mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
+                            t("mobile.downloads_root"),
                           ),
                         })}
                       </div>

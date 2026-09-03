@@ -260,7 +260,7 @@ export function TrimControls({
             style={{ marginTop: 2, flexShrink: 0 }}
           />
           <span>
-            <span style={{ fontSize: FS.caption }}>{t("trim.crop_cleanup" as any)}</span>
+            <span style={{ fontSize: FS.caption }}>{t("trim.crop_cleanup")}</span>
             <span
               style={{
                 display: "block",
@@ -270,7 +270,7 @@ export function TrimControls({
                 marginTop: 2,
               }}
             >
-              {t("trim.crop_cleanup_note" as any)}
+              {t("trim.crop_cleanup_note")}
             </span>
           </span>
         </label>

@@ -22,16 +22,16 @@ export function BatchSaveConflictModal() {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={t("batch_save_conflict.title" as any)}
+        aria-label={t("batch_save_conflict.title")}
         style={s.modal}
       >
         <div style={s.header}>
-          <span style={s.headerTitle}>⚠️ {t("batch_save_conflict.title" as any)}</span>
+          <span style={s.headerTitle}>⚠️ {t("batch_save_conflict.title")}</span>
         </div>
 
         <div style={s.body}>
           <p style={s.message}>
-            {t("batch_save_conflict.message" as any, {
+            {t("batch_save_conflict.message", {
               count: String(request.conflictCount),
               folder: request.folderName,
             })}
@@ -43,17 +43,17 @@ export function BatchSaveConflictModal() {
               style={s.choiceBtn}
               onClick={() => resolve({ action: "overwrite" })}
             >
-              {t("batch_save_conflict.overwrite" as any)}
+              {t("batch_save_conflict.overwrite")}
             </button>
             <button type="button" style={s.choiceBtn} onClick={() => resolve({ action: "auto" })}>
-              {t("batch_save_conflict.auto_rename" as any)}
+              {t("batch_save_conflict.auto_rename")}
             </button>
             <button
               type="button"
               style={{ ...s.choiceBtn, ...s.cancelBtn }}
               onClick={() => resolve({ action: "cancel" })}
             >
-              {t("batch_save_conflict.cancel" as any)}
+              {t("batch_save_conflict.cancel")}
             </button>
           </div>
         </div>

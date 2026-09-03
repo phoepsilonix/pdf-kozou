@@ -25,17 +25,17 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
       }}
     >
       <div style={{ fontSize: FS.body, fontWeight: 600, marginBottom: 2 }}>
-        {t("pagesize.title" as any)}
+        {t("pagesize.title")}
       </div>
       <div style={{ fontSize: FS.caption, color: "var(--c-textSub)", marginBottom: 8 }}>
-        {t("pagesize.hint" as any)}
+        {t("pagesize.hint")}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
         {PAGE_SIZE_DEFS.map((ps) => (
           <button
             type="button"
             key={ps.id}
-            aria-label={t(ps.labelKey as any)}
+            aria-label={t(ps.labelKey)}
             aria-pressed={pageSizeId === ps.id}
             onClick={(e) => {
               setPageSize(ps.id, pageOrientation);
@@ -52,19 +52,19 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
               cursor: "pointer",
             }}
           >
-            {t(ps.labelKey as any)}
+            {t(ps.labelKey)}
           </button>
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>
-          {t("pagesize.orientation" as any)}:
+          {t("pagesize.orientation")}:
         </span>
         {PAGE_ORIENTATION_DEFS.map((o) => (
           <button
             type="button"
             key={o.id}
-            aria-label={t(o.labelKey as any)}
+            aria-label={t(o.labelKey)}
             aria-pressed={pageOrientation === o.id && pageSizeId !== "image"}
             disabled={pageSizeId === "image"}
             onClick={(e) => {
@@ -90,7 +90,7 @@ export function PageSizeSelector({ compact = false }: { compact?: boolean }) {
               opacity: pageSizeId === "image" ? 0.5 : 1,
             }}
           >
-            {t(o.labelKey as any)}
+            {t(o.labelKey)}
           </button>
         ))}
       </div>

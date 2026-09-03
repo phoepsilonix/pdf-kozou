@@ -151,7 +151,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     [filePath],
   );
   // 既定ラベル（分割 / split）。未編集なら言語切替に追従。
-  const defaultLabel = t("filename.label.split" as any);
+  const defaultLabel = t("filename.label.split");
   // 実効ラベルはレンダリング中に派生（state同期のeffectを使わない）。
   // 未編集なら defaultLabel、編集済みなら手入力値 label。初回や言語切替でも
   // 同一レンダリングで一致するため取りこぼしが起きない。
@@ -299,14 +299,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       try {
         const saved = await commitMobileOutput(dir, filePaths, mobileRelativeDir, folderOverride);
         if (saved === null) {
-          setMobileSaveError(t("mobile.save_cancelled" as any));
+          setMobileSaveError(t("mobile.save_cancelled"));
           return;
         }
         setMobileSavedFiles(saved);
       } catch (e) {
         setMobileSaveError(
           e instanceof Error && e.message === ANDROID_FOLDER_MISSING
-            ? t("mobile.save_unsupported" as any)
+            ? t("mobile.save_unsupported")
             : String(e),
         );
       }
@@ -607,23 +607,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary_folder" as any, {
+                    {t("mobile.save_done_summary_folder", {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
-                    {t("mobile.save_location" as any, {
+                    {t("mobile.save_location", {
                       path: androidUI
                         ? (androidFolder?.folderName ?? "")
-                        : mobileOutputPreviewLabel(
-                            mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
-                          ),
+                        : mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                     })}
                   </div>
                 </>
               ) : (
-                t("mobile.save_preview_pending" as any)
+                t("mobile.save_preview_pending")
               )}
             </div>
           )}
@@ -669,23 +666,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               ) : mobileSavedFiles ? (
                 <>
                   <div>
-                    {t("mobile.save_done_summary_folder" as any, {
+                    {t("mobile.save_done_summary_folder", {
                       count: String(mobileSavedFiles.length),
                     })}
                   </div>
                   <div>
-                    {t("mobile.save_location" as any, {
+                    {t("mobile.save_location", {
                       path: androidUI
                         ? (androidFolder?.folderName ?? "")
-                        : mobileOutputPreviewLabel(
-                            mobileRelativeDir,
-                            t("mobile.downloads_root" as any),
-                          ),
+                        : mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                     })}
                   </div>
                 </>
               ) : (
-                t("mobile.save_preview_pending" as any)
+                t("mobile.save_preview_pending")
               )}
             </div>
           ) : (
@@ -1131,16 +1125,10 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.dirRow}>
                   <div
                     style={s.dirPath}
-                    title={mobileOutputPreviewLabel(
-                      mobileRelativeDir,
-                      t("mobile.downloads_root" as any),
-                    )}
+                    title={mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root"))}
                   >
-                    {t("mobile.save_preview" as any, {
-                      path: mobileOutputPreviewLabel(
-                        mobileRelativeDir,
-                        t("mobile.downloads_root" as any),
-                      ),
+                    {t("mobile.save_preview", {
+                      path: mobileOutputPreviewLabel(mobileRelativeDir, t("mobile.downloads_root")),
                     })}
                   </div>
                 </div>

@@ -48,31 +48,26 @@ export function SaveNamePromptModal() {
   return (
     <>
       <div style={s.overlay} aria-hidden />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("save_name_prompt.title" as any)}
-        style={s.modal}
-      >
+      <div role="dialog" aria-modal="true" aria-label={t("save_name_prompt.title")} style={s.modal}>
         <div style={s.header}>
-          <span style={s.headerTitle}>{t("save_name_prompt.title" as any)}</span>
+          <span style={s.headerTitle}>{t("save_name_prompt.title")}</span>
         </div>
 
         <div style={s.body}>
           <div style={s.form}>
-            <label style={s.label}>{t("save_name_prompt.folder_label" as any)}</label>
+            <label style={s.label}>{t("save_name_prompt.folder_label")}</label>
             <div style={s.folderRow}>
               <div style={s.folderPath} title={folder?.folderName ?? ""}>
                 {folder?.folderName ?? ""}
               </div>
               <button type="button" style={s.changeBtn} onClick={changeFolder}>
-                {t("save_name_prompt.change_folder" as any)}
+                {t("save_name_prompt.change_folder")}
               </button>
             </div>
           </div>
           <div style={s.form}>
             <label style={s.label} htmlFor="save-name-prompt-input">
-              {t("save_name_prompt.input_label" as any)}
+              {t("save_name_prompt.input_label")}
             </label>
             <input
               id="save-name-prompt-input"
@@ -88,7 +83,7 @@ export function SaveNamePromptModal() {
           </div>
           <div style={s.btnRow}>
             <button type="button" style={s.cancelBtn} onClick={() => resolve(null)}>
-              {t("save_name_prompt.cancel" as any)}
+              {t("save_name_prompt.cancel")}
             </button>
             <button
               type="button"
@@ -96,7 +91,7 @@ export function SaveNamePromptModal() {
               disabled={!nameInput.trim()}
               onClick={confirm}
             >
-              {t("save_name_prompt.save" as any)}
+              {t("save_name_prompt.save")}
             </button>
           </div>
         </div>
