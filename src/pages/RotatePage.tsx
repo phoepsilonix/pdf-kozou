@@ -491,8 +491,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             style={s.bpCurrent}
           />
           <div style={s.bpLog}>
-            {batchProgress.done.map((d, i) => (
-              <div key={i} style={s.bpRow}>
+            {batchProgress.done.map((d) => (
+              <div key={d.file} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
                 <span
@@ -504,8 +504,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e, i) => (
-              <div key={`e${i}`} style={s.bpRow}>
+            {batchProgress.errors.map((e) => (
+              <div key={e.file} style={s.bpRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpFile}>{e.file}</span>
                 <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -700,8 +700,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 )}
               </div>
               <div style={s.bpLog}>
-                {batchProgress.done.map((d, i) => (
-                  <div key={i} style={s.bpRow}>
+                {batchProgress.done.map((d) => (
+                  <div key={d.file} style={s.bpRow}>
                     <span style={{ color: "var(--c-accent)" }}>✓</span>
                     <span style={s.bpFile}>{d.file} → </span>
                     <span
@@ -715,8 +715,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                     </span>
                   </div>
                 ))}
-                {batchProgress.errors.map((e, i) => (
-                  <div key={`e${i}`} style={s.bpRow}>
+                {batchProgress.errors.map((e) => (
+                  <div key={e.file} style={s.bpRow}>
                     <span style={{ color: "var(--c-err)" }}>✕</span>
                     <span style={s.bpFile}>{e.file}</span>
                     <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -992,6 +992,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
 
                 return (
                   <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: iはページ番号そのもの。nページ分を毎回全件生成するため配列の並び替え・挿抜は起きない。
                     key={i}
                     style={{
                       ...s.pageCard,

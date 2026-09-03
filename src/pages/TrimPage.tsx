@@ -428,8 +428,8 @@ function TrimPageBatch({
           <div style={{ ...b.bar, width: `${pct}%` }} />
         </div>
         <div style={b.log}>
-          {progress.done.map((d, i) => (
-            <div key={i} style={b.logRow}>
+          {progress.done.map((d) => (
+            <div key={d.f} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={b.logFile}>{d.f} → </span>
               <span style={b.logMeta}>{d.saved}</span>
@@ -483,16 +483,16 @@ function TrimPageBatch({
           )}
         </div>
         <div style={b.log}>
-          {progress.done.map((d, i) => (
-            <div key={i} style={b.logRow}>
+          {progress.done.map((d) => (
+            <div key={d.f} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={b.logFile}>{d.f} → </span>
               <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}
-          {progress.errors.map((e, i) => (
+          {progress.errors.map((e) => (
             <div
-              key={`e${i}`}
+              key={e.f}
               style={{
                 ...b.logRow,
                 background: "var(--c-errBg)",
@@ -1407,6 +1407,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
               {Array.from({ length: pdfInfo.page_count }, (_, i) => (
                 <button
                   type="button"
+                  // biome-ignore lint/suspicious/noArrayIndexKey: iはページ番号そのもの。page_count分を毎回全件生成するため並び替え・挿抜は起きない。
                   key={i}
                   style={{
                     ...s.thumb,
@@ -1683,6 +1684,7 @@ function ResultView({
 
       <div style={r.gallery} ref={galleryRef}>
         {images.map((b64, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: imagesは処理結果のページ順固定配列で並び替え・挿抜は起きない。
           <div key={i} style={r.card}>
             <span style={r.pageN}>{t("common.page_n", { n: String(i + 1) })}</span>
             {b64 ? (
