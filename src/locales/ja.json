@@ -925,7 +925,11 @@
     "detect_current_page": "🔍 {page}ページ検出",
     "detect_all_pages": "🔍 全ページ検出",
     "threshold_contrast_hint": "1.0=完全同色のみ / 1.2=標準 / 1.5=緩め",
-    "threshold_lc_ratio_hint": "0.5=緩め(誤検出増/見逃し減) / 0.75=標準 / 0.9=厳格(誤検出減/見逃し増)"
+    "threshold_lc_ratio_hint": "0.5=緩め(誤検出増/見逃し減) / 0.75=標準 / 0.9=厳格(誤検出減/見逃し増)",
+    "zoom_in": "拡大",
+    "zoom_out": "縮小",
+    "zoom_fit": "画面に合わせる",
+    "zoom_fit_short": "自動"
   },
   "filename": {
     "suffix": {

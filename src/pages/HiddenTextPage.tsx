@@ -3,7 +3,7 @@
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
 
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, Spinner, TapRevealText } from "../components/common";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -48,6 +48,16 @@ const DETECT_TYPE_DEFS: { id: DetectType; labelKey: string; icon: string; color:
   { id: "buried", labelKey: "hidden.buried", icon: "🪦", color: "#ef4444" },
   { id: "control_chars", labelKey: "hidden.control_chars", icon: "⚡", color: "#3b82f6" },
 ];
+
+// ── プレビューのズーム設定 ──────────────────────────────────────────────────
+// "fit" = プレビュー領域に収まるよう自動縮小（従来どおりの挙動）。
+// 数値 = 画像の原寸(natural size)に対する倍率。ズーム時はプレビュー領域内で
+// 上下左右にスクロールして閲覧する。
+type ZoomLevel = "fit" | number;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.25;
+const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
 const REASON_KEY: Record<string, string> = {
   invisible_mode: "hidden.reason_invisible",
@@ -804,6 +814,93 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const { announceSuccess, announceError, announceKey } = useA11y();
   const [skipType3, setSkipType3] = useState(false);
 
+  // ── プレビューのズーム／スクロール ──────────────────────────────────────
+  const [zoom, setZoom] = useState<ZoomLevel>("fit");
+  const imgRef = useRef<HTMLImageElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const panState = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+
+  // "fit"表示中に実際に描画されているスケール（原寸比）を求める。
+  // ズームボタンは「今見えている大きさ」からの相対的な拡大/縮小として
+  // 振る舞わせたいため、fit→数値切り替え時にジャンプしないようにする。
+  const currentRenderScale = useCallback((): number => {
+    if (typeof zoom === "number") return zoom;
+    const el = imgRef.current;
+    if (el && imgNatW > 1) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0) return rect.width / imgNatW;
+    }
+    return 1;
+  }, [zoom, imgNatW]);
+
+  const zoomIn = useCallback(
+    () => setZoom(clampZoom(currentRenderScale() + ZOOM_STEP)),
+    [currentRenderScale],
+  );
+  const zoomOut = useCallback(
+    () => setZoom(clampZoom(currentRenderScale() - ZOOM_STEP)),
+    [currentRenderScale],
+  );
+  const zoomFit = useCallback(() => setZoom("fit"), []);
+
+  // Ctrl/Cmd+ホイールでカーソル位置を中心にズーム（デスクトップの補助操作）。
+  const handleWheelZoom = useCallback(
+    (e: React.WheelEvent<HTMLDivElement>) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const next = clampZoom(currentRenderScale() + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+      setZoom(next);
+    },
+    [currentRenderScale],
+  );
+
+  // マウスドラッグでのパン（上下左右スクロール）。タッチ端末はネイティブの
+  // スクロール操作をそのまま使えるため、pointer type が mouse の場合のみ有効化する。
+  const handlePanPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    const el = previewRef.current;
+    if (!el) return;
+    panState.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop };
+    setIsPanning(true);
+    el.setPointerCapture(e.pointerId);
+  }, []);
+  const handlePanPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const start = panState.current;
+    const el = previewRef.current;
+    if (!start || !el) return;
+    el.scrollLeft = start.left - (e.clientX - start.x);
+    el.scrollTop = start.top - (e.clientY - start.y);
+  }, []);
+  const endPan = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    panState.current = null;
+    setIsPanning(false);
+    previewRef.current?.releasePointerCapture(e.pointerId);
+  }, []);
+
+  // ページ／ファイルを切り替えたら毎回フィット表示に戻す（スクロール位置も
+  // 自動でリセットされ、前ページのズーム状態を引きずらない）。filePath は
+  // 別ファイルを開いた場合にもリセットするための意図的な依存。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 上記コメントの通り
+  useEffect(() => {
+    setZoom("fit");
+    const el = previewRef.current;
+    if (el) {
+      el.scrollLeft = 0;
+      el.scrollTop = 0;
+    }
+  }, [pageIndex, filePath]);
+  // ズーム倍率が変わるたびにスクロール位置を左上へ戻す（zoom 自体は本文で
+  // 参照しないが、変更のたびに再実行したい意図的な依存）
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 上記コメントの通り
+  useEffect(() => {
+    const el = previewRef.current;
+    if (el) {
+      el.scrollLeft = 0;
+      el.scrollTop = 0;
+    }
+  }, [zoom]);
+
   const layoutStyle: React.CSSProperties = isNarrow
     ? { display: "flex", flex: 1, flexDirection: "column", overflow: "hidden", minHeight: 0 }
     : s.layout;
@@ -848,6 +945,15 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const displayGroups = useMemo(
     () => groups.filter((g) => g.chars.length > 0 && g.chars[0].page === pageIndex),
     [groups, pageIndex],
+  );
+  // 検出タイプのチェックボックスは「次回の検出実行対象」を決めるものだが、
+  // 既に検出済みのプレビュー上のハイライトについても同じチェックボックスで
+  // 即座に表示/非表示を切り替えられるようにする（再検出せずに見たいタイプ
+  // だけを視認しやすくするため）。一覧側は行を消さずに減光表示に留め、
+  // 選択状態(selectedIds)や無害化対象には影響しない。
+  const overlayGroups = useMemo(
+    () => displayGroups.filter((g) => enabled.has(g.type)),
+    [displayGroups, enabled],
   );
 
   const runDetect = useCallback(
@@ -1029,6 +1135,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
 
   const scaleX = pageInfo ? imgNatW / pageInfo.w : 1;
   const scaleY = pageInfo ? imgNatH / pageInfo.h : 1;
+  const renderScale = currentRenderScale();
   const typeColor = (t: DetectType) => DETECT_TYPES.find((d) => d.id === t)?.color ?? "#888";
   const typeSummary = DETECT_TYPES.map((dt) => ({
     ...dt,
@@ -1101,21 +1208,44 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                   { flex: 1, flexDirection: "column", display: "flex", overflow: "auto" }
                 }
               >
-                {DETECT_TYPES.map((dt) => (
-                  <label key={dt.id} style={s.chkRow}>
-                    <input
-                      type="checkbox"
-                      checked={enabled.has(dt.id)}
-                      onChange={(e) => {
-                        const n = new Set(enabled);
-                        e.target.checked ? n.add(dt.id) : n.delete(dt.id);
-                        setEnabled(n);
-                      }}
-                    />
-                    <span>{dt.icon}</span>
-                    <span>{dt.label}</span>
-                  </label>
-                ))}
+                {DETECT_TYPES.map((dt) => {
+                  const on = enabled.has(dt.id);
+                  const dtCount = groups.filter((g) => g.type === dt.id && !g.isWs).length;
+                  return (
+                    <label
+                      key={dt.id}
+                      style={s.chkRow}
+                      title={
+                        dtCount > 0
+                          ? on
+                            ? "チェックを外すとプレビューのハイライトを一時的に非表示にします"
+                            : "チェックするとプレビューのハイライトを再表示します"
+                          : undefined
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={(e) => {
+                          const n = new Set(enabled);
+                          e.target.checked ? n.add(dt.id) : n.delete(dt.id);
+                          setEnabled(n);
+                        }}
+                      />
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          ...s.typeSwatch,
+                          background: dt.color,
+                          opacity: on ? 1 : 0.25,
+                        }}
+                      />
+                      <span style={{ opacity: on ? 1 : 0.5 }}>{dt.icon}</span>
+                      <span style={{ opacity: on ? 1 : 0.5 }}>{dt.label}</span>
+                      {dtCount > 0 && <span style={s.typeCount}>{dtCount}</span>}
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
@@ -1144,55 +1274,134 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             </div>
           </div>
 
-          <div style={s.preview}>
-            {imgSrc ? (
-              <div style={{ position: "relative", display: "inline-block" }}>
-                <img
-                  src={imgSrc}
-                  onLoad={(e) => {
-                    setImgNatW(e.currentTarget.naturalWidth);
-                    setImgNatH(e.currentTarget.naturalHeight);
-                  }}
-                  style={{ display: "block", maxWidth: "100%", maxHeight: "calc(100dvh - 240px)" }}
-                  alt={`p${pageIndex + 1}`}
-                />
-                {groups.length > 0 && imgNatW > 1 && (
-                  <svg
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      pointerEvents: "none",
-                      overflow: "visible",
+          <div style={s.previewCol}>
+            <div style={s.zoomBar}>
+              <button
+                type="button"
+                style={s.zoomBtn}
+                onClick={zoomOut}
+                disabled={!imgSrc || renderScale <= ZOOM_MIN}
+                aria-label={t("hidden.zoom_out")}
+                title={t("hidden.zoom_out")}
+              >
+                －
+              </button>
+              <button
+                type="button"
+                style={{ ...s.zoomBtn, minWidth: 56 }}
+                onClick={zoomFit}
+                disabled={!imgSrc}
+                aria-label={t("hidden.zoom_fit")}
+                title={t("hidden.zoom_fit")}
+              >
+                {zoom === "fit" ? t("hidden.zoom_fit_short") : `${Math.round(renderScale * 100)}%`}
+              </button>
+              <button
+                type="button"
+                style={s.zoomBtn}
+                onClick={zoomIn}
+                disabled={!imgSrc || renderScale >= ZOOM_MAX}
+                aria-label={t("hidden.zoom_in")}
+                title={t("hidden.zoom_in")}
+              >
+                ＋
+              </button>
+            </div>
+            <div
+              ref={previewRef}
+              style={{
+                ...s.preview,
+                // ズーム時は中央寄せのままだとブラウザによっては左/上端側へ
+                // スクロールしきれないため、拡大中は左上基準に切り替える
+                justifyContent: zoom === "fit" ? "center" : "flex-start",
+                cursor: isPanning ? "grabbing" : imgSrc ? "grab" : "default",
+              }}
+              onWheel={handleWheelZoom}
+              onPointerDown={handlePanPointerDown}
+              onPointerMove={handlePanPointerMove}
+              onPointerUp={endPan}
+              onPointerLeave={endPan}
+              onPointerCancel={endPan}
+            >
+              {imgSrc ? (
+                <div
+                  style={
+                    zoom === "fit"
+                      ? { position: "relative", display: "inline-block" }
+                      : {
+                          position: "relative",
+                          display: "inline-block",
+                          width: imgNatW * zoom,
+                          height: imgNatH * zoom,
+                          flexShrink: 0,
+                        }
+                  }
+                >
+                  <img
+                    ref={imgRef}
+                    src={imgSrc}
+                    onLoad={(e) => {
+                      setImgNatW(e.currentTarget.naturalWidth);
+                      setImgNatH(e.currentTarget.naturalHeight);
                     }}
-                    width="100%"
-                    height="100%"
-                    viewBox={`0 0 ${imgNatW} ${imgNatH}`}
-                  >
-                    {displayGroups.map((g) =>
-                      g.chars.map((c) => {
-                        const q = c.quad;
-                        const pts = [
-                          `${q[0] * scaleX},${q[1] * scaleY}`,
-                          `${q[2] * scaleX},${q[3] * scaleY}`,
-                          `${q[6] * scaleX},${q[7] * scaleY}`,
-                          `${q[4] * scaleX},${q[5] * scaleY}`,
-                        ].join(" ");
-                        return (
-                          <polygon
-                            key={`${g.id}-${q.join(",")}`}
-                            points={pts}
-                            fill="none"
-                            stroke={selectedIds.has(g.id) ? "#22c55e" : typeColor(g.type)}
-                            strokeWidth={selectedIds.has(g.id) ? 3 : 2}
-                          />
-                        );
-                      }),
-                    )}
-                  </svg>
-                )}
-              </div>
-            ) : null}
+                    draggable={false}
+                    style={
+                      zoom === "fit"
+                        ? {
+                            display: "block",
+                            maxWidth: "100%",
+                            maxHeight: "100%",
+                            userSelect: "none",
+                          }
+                        : {
+                            display: "block",
+                            width: "100%",
+                            height: "100%",
+                            userSelect: "none",
+                          }
+                    }
+                    alt={`p${pageIndex + 1}`}
+                  />
+                  {groups.length > 0 && imgNatW > 1 && (
+                    <svg
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        pointerEvents: "none",
+                        overflow: "visible",
+                      }}
+                      width="100%"
+                      height="100%"
+                      viewBox={`0 0 ${imgNatW} ${imgNatH}`}
+                    >
+                      {overlayGroups.map((g) =>
+                        g.chars.map((c) => {
+                          const q = c.quad;
+                          const pts = [
+                            `${q[0] * scaleX},${q[1] * scaleY}`,
+                            `${q[2] * scaleX},${q[3] * scaleY}`,
+                            `${q[6] * scaleX},${q[7] * scaleY}`,
+                            `${q[4] * scaleX},${q[5] * scaleY}`,
+                          ].join(" ");
+                          return (
+                            <polygon
+                              key={`${g.id}-${q.join(",")}`}
+                              points={pts}
+                              fill="none"
+                              stroke={selectedIds.has(g.id) ? "#22c55e" : typeColor(g.type)}
+                              strokeWidth={
+                                (selectedIds.has(g.id) ? 3 : 2) / Math.max(renderScale, 0.5)
+                              }
+                            />
+                          );
+                        }),
+                      )}
+                    </svg>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div style={groupListStyle}>
@@ -1208,6 +1417,10 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                 {groups.map((g) => {
                   const sel = selectedIds.has(g.id);
                   const icon = DETECT_TYPES.find((d) => d.id === g.type)?.icon ?? "";
+                  // 検出タイプのチェックボックスをオフにした行はプレビュー上のハイライト
+                  // も非表示になるため、一覧側も減光して現在の表示状態と一致させる
+                  // （選択状態やチェック自体は変えない＝再度チェックすれば復元）。
+                  const typeHidden = !g.isWs && !enabled.has(g.type);
                   return (
                     <div
                       key={g.id}
@@ -1215,6 +1428,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                         ...s.groupRow,
                         borderBottom: "1px solid var(--c-border)",
                         background: sel ? "var(--c-accentBg)" : undefined,
+                        opacity: typeHidden ? 0.4 : 1,
                       }}
                       {...(g.isWs
                         ? {}
@@ -1531,16 +1745,48 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   right: { flex: 1, display: "flex", flexDirection: "column", overflow: "auto" },
-  preview: {
+  // ズームバー＋プレビュー本体をまとめる列。preview 本体は flex:1 + minHeight:0
+  // にして、ズーム時にはみ出た画像をこの中だけでスクロールさせる
+  // （外側レイアウト全体が伸びてページごとスクロールしてしまうのを防ぐ）。
+  previewCol: {
     flex: 2,
     minWidth: 0,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  zoomBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 8px",
+    flexShrink: 0,
+    borderBottom: "1px solid var(--c-border)",
+    background: "var(--c-bgSub)",
+  },
+  zoomBtn: {
+    padding: "3px 10px",
+    background: "var(--c-bgCard)",
+    border: "1px solid var(--c-border)",
+    borderRadius: 4,
+    cursor: "pointer",
+    color: "var(--c-text)",
+    fontFamily: F,
+    fontSize: FS.body,
+    minWidth: 30,
+    fontVariantNumeric: "tabular-nums",
+  },
+  preview: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
     overflow: "auto",
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "center",
     padding: 10,
     background: "var(--c-bgSub)",
-    minHeight: "calc(100dvh - 240px)",
+    touchAction: "pan-x pan-y",
   },
   groupList: {
     minHeight: 0,
@@ -1643,6 +1889,19 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: FS.body,
     cursor: "pointer",
     padding: "1px 0",
+  },
+  typeSwatch: {
+    display: "inline-block",
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    flexShrink: 0,
+  },
+  typeCount: {
+    marginLeft: "auto",
+    fontSize: FS.caption,
+    color: "var(--c-textDim)",
+    fontVariantNumeric: "tabular-nums",
   },
   thrToggle: {
     padding: "4px 8px",
