@@ -3845,15 +3845,6 @@ static void kozou_json_escape_cp(int cp, char escaped[32])
     }
 }
 
-/* KozouLcCharBox: kozou_detect_low_contrast_text 用。ページ内の全文字の
- * bbox(pt空間)を1回だけ収集しておき、各文字のリングサンプリング時に
- * 「近くに他の文字がないか」を高速に問い合わせるための平坦配列。
- * ch は自分自身除外のための同一性比較にのみ使う(中身は読まない)。 */
-typedef struct {
-    float x0, y0, x1, y1;
-    fz_stext_char *ch;
-} KozouLcCharBox;
-
 void kozou_detect_low_contrast_text(
     fz_context  *ctx,
     const char  *path,
@@ -3870,11 +3861,7 @@ void kozou_detect_low_contrast_text(
     fz_page       *page   = NULL;
     fz_stext_page *stext  = NULL;
     fz_pixmap     *pixmap = NULL;
-    /* lc_boxes: ページ内全文字の bbox 平坦配列 (近傍文字の境界帯除外用)。
-     * fz_malloc で確保するため fz_free で解放する (fz_drop_* ではない)。 */
-    KozouLcCharBox *lc_boxes   = NULL;
-    int             lc_boxes_n = 0;
-    fz_var(doc); fz_var(page); fz_var(stext); fz_var(pixmap); fz_var(lc_boxes);
+    fz_var(doc); fz_var(page); fz_var(stext); fz_var(pixmap);
 
     KozouXObjDevice *xobj_dev = NULL;
     fz_var(xobj_dev);
@@ -3910,54 +3897,6 @@ void kozou_detect_low_contrast_text(
 
         stext = fz_new_stext_page_from_page(ctx, page, &opts);
 
-        /* lc_boxes を構築: メインループと同じ「有効な文字」の条件
-         * (alpha!=0 かつ char_w/char_h >= 0.5pt) で2回走査し、
-         * (数え上げ→確保→格納) する。ここに載る文字だけが後段の
-         * 「近傍文字の境界帯除外」の対象になる。 */
-        {
-            int cnt = 0;
-            for (fz_stext_block *b0 = stext->first_block; b0; b0 = b0->next) {
-                if (b0->type != FZ_STEXT_BLOCK_TEXT) continue;
-                for (fz_stext_line *l0 = b0->u.t.first_line; l0; l0 = l0->next) {
-                    for (fz_stext_char *c0 = l0->first_char; c0; c0 = c0->next) {
-                        unsigned int pk0 = (unsigned int)c0->argb;
-                        if (((pk0 >> 24) & 0xFF) == 0) continue;
-                        fz_quad q0 = c0->quad;
-                        float x0 = q0.ul.x < q0.ll.x ? q0.ul.x : q0.ll.x;
-                        float x1 = q0.ur.x > q0.lr.x ? q0.ur.x : q0.lr.x;
-                        float y0 = q0.ul.y < q0.ur.y ? q0.ul.y : q0.ur.y;
-                        float y1 = q0.ll.y > q0.lr.y ? q0.ll.y : q0.lr.y;
-                        if (x1 - x0 < 0.5f || y1 - y0 < 0.5f) continue;
-                        cnt++;
-                    }
-                }
-            }
-            if (cnt > 0) {
-                lc_boxes = (KozouLcCharBox *)fz_malloc(ctx, sizeof(KozouLcCharBox) * (size_t)cnt);
-                int k = 0;
-                for (fz_stext_block *b0 = stext->first_block; b0; b0 = b0->next) {
-                    if (b0->type != FZ_STEXT_BLOCK_TEXT) continue;
-                    for (fz_stext_line *l0 = b0->u.t.first_line; l0; l0 = l0->next) {
-                        for (fz_stext_char *c0 = l0->first_char; c0; c0 = c0->next) {
-                            unsigned int pk0 = (unsigned int)c0->argb;
-                            if (((pk0 >> 24) & 0xFF) == 0) continue;
-                            fz_quad q0 = c0->quad;
-                            float x0 = q0.ul.x < q0.ll.x ? q0.ul.x : q0.ll.x;
-                            float x1 = q0.ur.x > q0.lr.x ? q0.ur.x : q0.lr.x;
-                            float y0 = q0.ul.y < q0.ur.y ? q0.ul.y : q0.ur.y;
-                            float y1 = q0.ll.y > q0.lr.y ? q0.ll.y : q0.lr.y;
-                            if (x1 - x0 < 0.5f || y1 - y0 < 0.5f) continue;
-                            lc_boxes[k].x0 = x0; lc_boxes[k].y0 = y0;
-                            lc_boxes[k].x1 = x1; lc_boxes[k].y1 = y1;
-                            lc_boxes[k].ch = c0;
-                            k++;
-                        }
-                    }
-                }
-                lc_boxes_n = k;
-            }
-        }
-
         /* XObject 追跡スキャン: transparent_text/tiny_text/buried_text と
          * 同じ手法で、文字ごとの所属XObject xref とローカルTm座標
          * (=生のTm+Tdと直接一致する値) を検出時点で確定させる。従来は
@@ -3986,8 +3925,21 @@ void kozou_detect_low_contrast_text(
             for (fz_stext_line *line = block->u.t.first_line;
                  line; line = line->next) {
 
+                /* 同一行内で「1つ前の文字」を追跡する。ring_rx の
+                 * クランプ(下記)に、実際の字送り幅を使うため。 */
+                fz_stext_char *prev_ch = NULL;
+
                 for (fz_stext_char *ch = line->first_char;
                      ch; ch = ch->next) {
+
+                    /* このイテレーションでの「1つ前の文字」を確定してから
+                     * すぐに prev_ch を更新する。以降のどの continue; を
+                     * 通っても、次のイテレーションで prev_ch が正しく
+                     * 「実際に直前にあった文字」を指すようにするため
+                     * (ループ末尾での更新だと continue で飛ばされ、
+                     *  ずっと前の文字が prev のままになってしまう)。 */
+                    fz_stext_char *this_prev_ch = prev_ch;
+                    prev_ch = ch;
 
                     /* alpha=0 の文字は透明テキスト検出で扱う */
                     unsigned int packed = (unsigned int)ch->argb;
@@ -4091,116 +4043,109 @@ void kozou_detect_low_contrast_text(
                     float ring_rx = char_w * 0.5f + char_h * 0.3f + 1.5f;
                     float ring_ry = char_h * 0.5f + char_h * 0.3f + 1.5f;
 
-                    /* ── 近傍文字の"境界帯"だけをリング候補から除外する ──
-                     * (旧実装からの設計変更)
+                    /* ── 字送り幅/行間を考慮したリング半径のクランプ ──
+                     * 上記の ring_rx/ring_ry はその文字自身の大きさだけ
+                     * から決まり、実際に隣の文字までどれだけ距離が
+                     * あるかを見ていない。字送り幅がリング直径より
+                     * 狭い(詰めて組まれたCJK本文等)場合、リングが自分の
+                     * グリフの外側だけでなく隣の文字の中心を越えてその
+                     * 奥まで届いてしまう。
                      *
-                     * 旧実装は ring_rx/ring_ry そのものを、同一行の
-                     * 直前/直後の1文字・直前/直後の1行との距離だけを見て
-                     * 一律に縮めていた。これには2つの問題があった。
+                     * 実機PDFで確認した具体例: 字送り14.0pt・
+                     * ring_rx=14.6pt の本文で、ある文字(A)を無害化(空白
+                     * へ置換)すると、そのアンチエイリアス縁のごく僅かな
+                     * 変化(全ピクセル中わずか1/256階調)が、隣の文字(B)
+                     * のリングサンプリングに含まれてしまい、無害化前は
+                     * 検出されなかったBが、Aを無害化した後の再検出では
+                     * 新たに低コントラストとして検出されるようになった。
+                     * これはノイズでもラスタライズ方式の問題でもなく、
+                     * 「Bの隠蔽性を、Bとは別のAの描画結果で判定して
+                     * しまう」という設計上の不整合が原因。
                      *
-                     * (1) 斜め方向の死角: 装飾レイアウト(吹き出し・回転
-                     *     テキスト等)では「同一行」「隣接行」という概念
-                     *     自体が実態と合わず、斜め方向にある別ブロックの
-                     *     文字までは一切考慮されていなかった。
-                     * (2) 重なりレイアウトへの過剰反応: リング半径を丸ごと
-                     *     縮めてしまうため、「別の文字と本当に重なって
-                     *     おり、そのインクとの対比を測るべき」ケースまで
-                     *     機械的に排除しかねない設計だった(この対称
-                     *     クランプ自体は当時それを引き起こす具体例までは
-                     *     確認していなかったが、原理的なリスクとして残る)。
-                     *     文字同士が重なるレイアウトでは、まず
-                     *     kozou_detect_buried_text(描画順による被覆判定)
-                     *     が検出することが期待されるが、同系色の文字が
-                     *     重なっている場合は重なりの度合いに応じて本
-                     *     low_contrast_text 側でも「背景(=重なっている
-                     *     他の文字のインク)と同化している」と判定される
-                     *     ことが正しく期待される。リング半径を一律に
-                     *     縮めてしまうと、この正当な検出経路まで塞いで
-                     *     しまう。
-                     *
-                     * そこで、ring_rx/ring_ry 自体は文字固有の値のまま
-                     * 縮めず、下記のリング32点それぞれについて個別に
-                     * 「他の文字の境界帯(=アンチエイリアス縁があり得る
-                     * ごく狭い帯)に入っているか」を判定する方式に変更
-                     * した。判定は3通り:
-                     *   - 他の文字の"内部"に確実に入っている(境界帯より
-                     *     さらに奥) → 本物の重なりとみなし、その点は
-                     *     普通にサンプリングする(=重なりの度合いに応じた
-                     *     低コントラスト判定にそのまま反映される)。
-                     *   - 他の文字の輪郭ぎりぎり(境界帯)にだけ入っている
-                     *     → アンチエイリアスで階調が読み取りごとに微妙に
-                     *     揺れうる不安定な点とみなし、その1点だけを
-                     *     ring_total から除外する(リング全体を諦めるの
-                     *     ではなく、その点だけをスキップする)。
-                     *   - どちらでもない → 通常どおり(自グリフ以外の
-                     *     文字の影響なし)。
-                     * ページ内の全文字が対象になるため、同一行/隣接行に
-                     * 限らずどの方向の近傍も等しく扱える。
-                     *
-                     * 近傍探索を高速化するため、まず現在の文字の周辺の
-                     * 「候補」だけを lc_boxes から絞り込んでおき(1文字
-                     * につき最大 KOZOU_LC_NEARBY_MAX 件)、リング32点の
-                     * 判定はこの絞り込み済みの少数の候補に対してのみ
-                     * 行う。
-                     *
-                     * ただし「近傍文字」と一括りにしても、実際には性質の
-                     * 異なる2種類がある。
-                     *   (a) 本当に自分自身の bbox と重なっている文字
-                     *       (=意図的な重ね書きレイアウト)
-                     *   (b) 単に字送り/行間が詰まっていて、リング半径が
-                     *       自分の bbox を越えて届いてしまっただけの、
-                     *       ごく普通の隣接文字(重なってはいない)
-                     * (a) は「重なりの度合いに応じて低コントラストと
-                     * 判定されるべき」正当な対象だが、(b) は普通の地色
-                     * (白地に黒文字が並んでいるだけ)の一部に過ぎず、
-                     *隣の文字のインクを「自分の背景」として扱う理由が
-                     * ない(そうしてしまうと、行間/字間が詰まった通常の
-                     * 本文がすべて「低コントラスト」判定されかねない)。
-                     * そこで、lc_nearby の各候補について、自分自身の
-                     * bbox(qx0..qx1, qy0..qy1) とどれだけ重なっているか を
-                     * 先に判定し、(a)/(b) を区別しておく。 */
-                    #define KOZOU_LC_NEARBY_MAX 32
-                    const KozouLcCharBox *lc_nearby[KOZOU_LC_NEARBY_MAX];
-                    int  lc_nearby_overlaps_self[KOZOU_LC_NEARBY_MAX];
-                    int lc_nearby_n = 0;
+                     * ここでは、同一行内の直前/直後の文字の origin.x、
+                     * および直前/直後の行の bbox.y0 との距離を実測し、
+                     * その中間点(双方の文字が対等に自分の側だけを
+                     * 参照できるよう、境界にごく小さな安全マージンを
+                     * 残す)を超えないようリングを縮める。半径は上下左右
+                     * で共通の1つの値(円/楕円)のままなので、片側だけが
+                     * 狭い場合にもう片側まで一律に縮んでしまう点は
+                     * 保守的な簡易対応であり、方向ごとに別半径を持たせる
+                     * (真に非対称なリング)方がより精密だが、実装・検証
+                     * コストと比べてこの対称クランプで実機の不具合は
+                     * 解消するため、まずこちらを採用する。
+                     * 近傍の文字/行が無い(行頭行末・ページ端の行等)場合
+                     * は従来通り。 */
                     {
-                        float max_ring_r = ring_rx > ring_ry ? ring_rx : ring_ry;
-                        float search_r  = max_ring_r + 6.0f; /* 余裕込み */
-                        float search_r2 = search_r * search_r;
-                        float own_area = (qx1 - qx0) * (qy1 - qy0);
-                        for (int bi = 0; bi < lc_boxes_n && lc_nearby_n < KOZOU_LC_NEARBY_MAX; bi++) {
-                            if (lc_boxes[bi].ch == ch) continue; /* 自分自身は除外 */
-                            float bx = (lc_boxes[bi].x0 + lc_boxes[bi].x1) * 0.5f;
-                            float by = (lc_boxes[bi].y0 + lc_boxes[bi].y1) * 0.5f;
-                            float dx = bx - cx, dy = by - cy;
-                            if (dx * dx + dy * dy > search_r2) continue;
+                        const float KOZOU_RING_NEIGHBOR_MARGIN = 1.0f;
+                        /* 下限は「文字自身のグリフを覆うのに最低限必要な
+                         * 半径」(=修正前の ring_rx が本来担っていた
+                         * char_w*0.5 / char_h*0.5 の成分)を下回らせない。
+                         *
+                         * 当初の実装では下限を char_w*0.15+0.5 としていたが、
+                         * これは近傍クランプが effective になった場合に
+                         * 文字自身の半幅(char_w*0.5)より小さくなりうる値
+                         * だった。実測で確認: 字送り15.44pt・char_w=15.00pt
+                         * の文字(「よ」)では、近傍クランプ後の値が6.72pt
+                         * となり、文字自身の半幅7.50ptを下回っていた。
+                         * この場合、リングの一部が背景ではなく文字自身の
+                         * ストローク(インク)の内側を通ってしまい、
+                         * 「背景との対比」ではなく実質「自分自身との対比」
+                         * をサンプリングしてしまう恐れがある(同色との
+                         * 比較になるため、誤って高コントラスト側/低
+                         * コントラスト側いずれにも判定をぶれさせうる)。
+                         *
+                         * 下限を char_w*0.5 (自グリフを覆うのに必要な
+                         * 最小量) + 定数マージンに引き上げることで、
+                         * 近傍がどれほど近くても自グリフの内側を
+                         * サンプリングしない。これにより、字送りが
+                         * 極端に狭く「自グリフを覆いつつ隣にも届かない」
+                         * 半径が存在しない場合は、隣接クランプは事実上
+                         * 効かなくなり(自グリフ保護を優先し、従来通り
+                         * 隣に多少届くリングのまま)、隣接文字への越境を
+                         * 完全には防げないケースが残る。これは「隣の
+                         * 文字の描画結果を誤って拾う」リスクと「自分
+                         * 自身のインクを誤って拾う」リスクのどちらも
+                         * ゼロにはできない場合のトレードオフで、後者
+                         * (自分自身のインクを拾う)の方が判定の意味を
+                         * 破壊する度合いが大きいため、自グリフ保護を
+                         * 優先する。 */
+                        const float KOZOU_RING_MIN_RX = char_w * 0.5f + 1.0f;
+                        const float KOZOU_RING_MIN_RY = char_h * 0.5f + 1.0f;
 
-                            /* 自分自身の bbox との重なり面積比を判定。
-                             * "触れている程度"(丸め誤差起因の微小な
-                             * 重なり)を(a)扱いしないよう、重なり面積が
-                             * 小さい方の面積の15%以上を占める場合だけ
-                             * "本当に重なっている"とみなす。 */
-                            int overlaps_self = 0;
-                            float ox0 = lc_boxes[bi].x0 > qx0 ? lc_boxes[bi].x0 : qx0;
-                            float oy0 = lc_boxes[bi].y0 > qy0 ? lc_boxes[bi].y0 : qy0;
-                            float ox1 = lc_boxes[bi].x1 < qx1 ? lc_boxes[bi].x1 : qx1;
-                            float oy1 = lc_boxes[bi].y1 < qy1 ? lc_boxes[bi].y1 : qy1;
-                            if (ox1 > ox0 && oy1 > oy0) {
-                                float ov_area = (ox1 - ox0) * (oy1 - oy0);
-                                float b_area = (lc_boxes[bi].x1 - lc_boxes[bi].x0) *
-                                               (lc_boxes[bi].y1 - lc_boxes[bi].y0);
-                                float min_area = own_area < b_area ? own_area : b_area;
-                                if (min_area > 0.0f && ov_area / min_area >= 0.15f) {
-                                    overlaps_self = 1;
-                                }
+                        if (this_prev_ch &&
+                            fabsf(this_prev_ch->origin.y - ch->origin.y) < char_h * 0.5f) {
+                            float gap = ch->origin.x - this_prev_ch->origin.x;
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_rx) ring_rx = half;
                             }
-
-                            lc_nearby[lc_nearby_n] = &lc_boxes[bi];
-                            lc_nearby_overlaps_self[lc_nearby_n] = overlaps_self;
-                            lc_nearby_n++;
                         }
+                        if (ch->next &&
+                            fabsf(ch->next->origin.y - ch->origin.y) < char_h * 0.5f) {
+                            float gap = ch->next->origin.x - ch->origin.x;
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_rx) ring_rx = half;
+                            }
+                        }
+                        if (line->prev) {
+                            float gap = fabsf(line->bbox.y0 - line->prev->bbox.y0);
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_ry) ring_ry = half;
+                            }
+                        }
+                        if (line->next) {
+                            float gap = fabsf(line->next->bbox.y0 - line->bbox.y0);
+                            if (gap > 0.0f) {
+                                float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
+                                if (half < ring_ry) ring_ry = half;
+                            }
+                        }
+
+                        if (ring_rx < KOZOU_RING_MIN_RX) ring_rx = KOZOU_RING_MIN_RX;
+                        if (ring_ry < KOZOU_RING_MIN_RY) ring_ry = KOZOU_RING_MIN_RY;
                     }
-                    #undef KOZOU_LC_NEARBY_MAX
 
                     int   ring_total = 0;      /* pixmap範囲内でサンプリングできた点数 */
                     int   low_count  = 0;      /* 低コントラストと判定された点数 */
@@ -4209,40 +4154,8 @@ void kozou_detect_low_contrast_text(
                     float cr_sum = 0.0f;
                     for (int ri = 0; ri < 32; ri++) {
                         float angle = (float)(2.0 * 3.14159265358979 * ri / 32);
-                        float px_pt = cx + ring_rx * cosf(angle);
-                        float py_pt = cy + ring_ry * sinf(angle);
-
-                        /* 近傍文字による除外。lc_nearby_overlaps_self[ni] が
-                         * 真(自分自身の bbox と実際に重なっている文字)の
-                         * 場合は、その文字のインクは正当な「重なりの背景」
-                         * なので一切除外しない(bbox内側だろうと境界だろうと
-                         * サンプリングする)。
-                         * 偽(単に隣接しているだけの、重なっていない普通の
-                         * 文字)の場合は、その文字の bbox 全体
-                         * (± KOZOU_LC_AA_MARGIN の余裕込み)に入る点は
-                         * "本来ここまでリングが届くべきではなかった"
-                         * 越境サンプルとしてまるごと除外する。境界だけで
-                         * なく内部も除外するのは、字送りの詰まった通常の
-                         * 本文(隣も自分と同じ色の文字)を「低コントラスト」
-                         * と誤検出しないため。 */
-                        {
-                            const float KOZOU_LC_AA_MARGIN = 0.6f; /* pt */
-                            int skip_point = 0;
-                            for (int ni = 0; ni < lc_nearby_n; ni++) {
-                                if (lc_nearby_overlaps_self[ni]) continue;
-                                const KozouLcCharBox *b = lc_nearby[ni];
-                                int in_padded_bbox =
-                                    px_pt > b->x0 - KOZOU_LC_AA_MARGIN &&
-                                    px_pt < b->x1 + KOZOU_LC_AA_MARGIN &&
-                                    py_pt > b->y0 - KOZOU_LC_AA_MARGIN &&
-                                    py_pt < b->y1 + KOZOU_LC_AA_MARGIN;
-                                if (in_padded_bbox) { skip_point = 1; break; }
-                            }
-                            if (skip_point) continue;
-                        }
-
-                        int cxpx = (int)(px_pt * RENDER_SCALE);
-                        int cypx = (int)(py_pt * RENDER_SCALE);
+                        int cxpx = (int)((cx + ring_rx * cosf(angle)) * RENDER_SCALE);
+                        int cypx = (int)((cy + ring_ry * sinf(angle)) * RENDER_SCALE);
                         if (cxpx < 0 || cxpx >= pixmap->w ||
                             cypx < 0 || cypx >= pixmap->h) continue;
                         /* 単一ピクセルではなく、周囲 3x3 の平均色を使う。
@@ -4418,7 +4331,6 @@ void kozou_detect_low_contrast_text(
     }
     fz_always(ctx) {
         if (xobj_dev) fz_drop_device(ctx, (fz_device *)xobj_dev);
-        if (lc_boxes) fz_free(ctx, lc_boxes);
         if (pixmap) fz_drop_pixmap(ctx, pixmap);
         if (stext)  fz_drop_stext_page(ctx, stext);
         if (page)   fz_drop_page(ctx, page);
