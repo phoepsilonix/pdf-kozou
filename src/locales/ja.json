@@ -846,6 +846,7 @@
   },
   "hidden": {
     "title_single": "隠しテキスト検出",
+    "settings_pane": "設定",
     "title_batch": "隠しテキスト一括検出 — {{count}}件",
     "experimental_title": "試験的機能 — 隠しテキスト検出・無害化（単一ファイル）",
     "experimental_batch_title": "試験的機能 — 隠しテキスト一括検出・無害化",

@@ -846,6 +846,7 @@
   },
   "hidden": {
     "title_single": "Hidden Text Detection",
+    "settings_pane": "Settings",
     "title_batch": "Hidden Text Batch Detection — {{count}}",
     "experimental_title": "Experimental — Hidden Text Detection & Sanitization",
     "experimental_batch_title": "Experimental — Batch Hidden Text Detection & Sanitization",

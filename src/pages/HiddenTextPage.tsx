@@ -794,6 +794,26 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
 function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
   const { t } = useI18n();
   const { isNarrow } = useViewport();
+  // 横長画面（isNarrow===false）でのみ、設定タブを手動で折りたためるようにする。
+  // 折りたたむと設定タブの分の幅が空くので、プレビュー(検出したテキストの
+  // 表示領域)は flex 指定により自動的にその分だけ広がる。狭幅画面では
+  // 従来通り常に表示する（ここでは操作させない）。
+  const [settingsCollapsed, setSettingsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("pdf-kozou-hiddentext-settings-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSettingsPane = useCallback(() => {
+    setSettingsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("pdf-kozou-hiddentext-settings-collapsed", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }, []);
   const DETECT_TYPES = DETECT_TYPE_DEFS.map((d) => ({ ...d, label: t(d.labelKey) }));
   const [pageIndex, setPageIndex] = useState(0);
   const [allPagesMode, setAllPagesMode] = useState(false);
@@ -1160,119 +1180,145 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
               : { flex: 1, flexDirection: "row", display: "flex", overflow: "auto" }
           }
         >
-          <div style={leftStyle}>
-            <div style={s.sec}>
-              <div style={s.secTitle}>ページ</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button
-                  type="button"
-                  style={s.navBtn}
-                  onClick={() => {
-                    setPageIndex((p) => Math.max(0, p - 1));
-                    if (!allPagesMode) {
-                      setGroups([]);
-                      setSelectedIds(new Set());
-                      setStatus("");
-                    }
-                  }}
-                  disabled={pageIndex === 0}
-                >
-                  ◀
-                </button>
-                <div style={s.pageLbl}>
-                  {pageIndex + 1} / {pageCount}
-                </div>
-                <button
-                  type="button"
-                  style={s.navBtn}
-                  onClick={() => {
-                    setPageIndex((p) => Math.min(pageCount - 1, p + 1));
-                    if (!allPagesMode) {
-                      setGroups([]);
-                      setSelectedIds(new Set());
-                      setStatus("");
-                    }
-                  }}
-                  disabled={pageIndex >= pageCount - 1}
-                >
-                  ▶
-                </button>
-              </div>
-            </div>
-            <div>
-              <div>検出タイプ</div>
-              <div
-                style={
-                  // 狭幅時のみ横並びにしていたが、英語ラベルなどで横スクロール
-                  // が発生してしまうため撤回し、常に横長表示と同じ縦並びにする
-                  { flex: 1, flexDirection: "column", display: "flex", overflow: "auto" }
-                }
-              >
-                {DETECT_TYPES.map((dt) => {
-                  const on = enabled.has(dt.id);
-                  const dtCount = groups.filter((g) => g.type === dt.id && !g.isWs).length;
-                  return (
-                    <label
-                      key={dt.id}
-                      style={s.chkRow}
-                      title={
-                        dtCount > 0
-                          ? on
-                            ? "チェックを外すとプレビューのハイライトを一時的に非表示にします"
-                            : "チェックするとプレビューのハイライトを再表示します"
-                          : undefined
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={(e) => {
-                          const n = new Set(enabled);
-                          e.target.checked ? n.add(dt.id) : n.delete(dt.id);
-                          setEnabled(n);
-                        }}
-                      />
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          ...s.typeSwatch,
-                          background: dt.color,
-                          opacity: on ? 1 : 0.25,
-                        }}
-                      />
-                      <span style={{ opacity: on ? 1 : 0.5 }}>{dt.icon}</span>
-                      <span style={{ opacity: on ? 1 : 0.5 }}>{dt.label}</span>
-                      {dtCount > 0 && <span style={s.typeCount}>{dtCount}</span>}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            <button type="button" style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
-              ⚙ 閾値設定 {showThr ? "▲" : "▼"}
+          {!isNarrow && settingsCollapsed ? (
+            <button
+              type="button"
+              style={s.paneCollapsedBar}
+              onClick={toggleSettingsPane}
+              title={t("hidden.settings_pane")}
+              aria-label={t("hidden.settings_pane")}
+            >
+              ▶
             </button>
-            {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
-
-            {
+          ) : (
+            <div style={leftStyle}>
+              {!isNarrow && (
+                <div style={s.paneHead}>
+                  <span style={{ flex: 1 }}>{t("hidden.settings_pane")}</span>
+                  <button
+                    type="button"
+                    style={s.paneCollapseBtn}
+                    onClick={toggleSettingsPane}
+                    title={t("common.collapse_pane")}
+                    aria-label={t("common.collapse_pane")}
+                  >
+                    ◀
+                  </button>
+                </div>
+              )}
               <div style={s.sec}>
-                <div style={s.secTitle}>Type3</div>
-                <label style={s.chkRow}>
-                  <input
-                    type="checkbox"
-                    checked={skipType3}
-                    onChange={(e) => setSkipType3(e.target.checked)}
-                  />
-                  {t("hidden.skip_type3")}
-                </label>
+                <div style={s.secTitle}>ページ</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button
+                    type="button"
+                    style={s.navBtn}
+                    onClick={() => {
+                      setPageIndex((p) => Math.max(0, p - 1));
+                      if (!allPagesMode) {
+                        setGroups([]);
+                        setSelectedIds(new Set());
+                        setStatus("");
+                      }
+                    }}
+                    disabled={pageIndex === 0}
+                  >
+                    ◀
+                  </button>
+                  <div style={s.pageLbl}>
+                    {pageIndex + 1} / {pageCount}
+                  </div>
+                  <button
+                    type="button"
+                    style={s.navBtn}
+                    onClick={() => {
+                      setPageIndex((p) => Math.min(pageCount - 1, p + 1));
+                      if (!allPagesMode) {
+                        setGroups([]);
+                        setSelectedIds(new Set());
+                        setStatus("");
+                      }
+                    }}
+                    disabled={pageIndex >= pageCount - 1}
+                  >
+                    ▶
+                  </button>
+                </div>
               </div>
-            }
+              <div>
+                <div>検出タイプ</div>
+                <div
+                  style={
+                    // 狭幅時のみ横並びにしていたが、英語ラベルなどで横スクロール
+                    // が発生してしまうため撤回し、常に横長表示と同じ縦並びにする
+                    { flex: 1, flexDirection: "column", display: "flex", overflow: "auto" }
+                  }
+                >
+                  {DETECT_TYPES.map((dt) => {
+                    const on = enabled.has(dt.id);
+                    const dtCount = groups.filter((g) => g.type === dt.id && !g.isWs).length;
+                    return (
+                      <label
+                        key={dt.id}
+                        style={s.chkRow}
+                        title={
+                          dtCount > 0
+                            ? on
+                              ? "チェックを外すとプレビューのハイライトを一時的に非表示にします"
+                              : "チェックするとプレビューのハイライトを再表示します"
+                            : undefined
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) => {
+                            const n = new Set(enabled);
+                            e.target.checked ? n.add(dt.id) : n.delete(dt.id);
+                            setEnabled(n);
+                          }}
+                        />
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            ...s.typeSwatch,
+                            background: dt.color,
+                            opacity: on ? 1 : 0.25,
+                          }}
+                        />
+                        <span style={{ opacity: on ? 1 : 0.5 }}>{dt.icon}</span>
+                        <span style={{ opacity: on ? 1 : 0.5 }}>{dt.label}</span>
+                        {dtCount > 0 && <span style={s.typeCount}>{dtCount}</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
 
-            <div style={s.sec}>
-              <div style={s.secTitle}>実行</div>
-              {status && <div style={s.statusBox}>{status}</div>}
+              <button type="button" style={s.thrToggle} onClick={() => setShowThr((v) => !v)}>
+                ⚙ 閾値設定 {showThr ? "▲" : "▼"}
+              </button>
+              {showThr && <ThrPanel thr={thr} setThr={setThr} t={t} />}
+
+              {
+                <div style={s.sec}>
+                  <div style={s.secTitle}>Type3</div>
+                  <label style={s.chkRow}>
+                    <input
+                      type="checkbox"
+                      checked={skipType3}
+                      onChange={(e) => setSkipType3(e.target.checked)}
+                    />
+                    {t("hidden.skip_type3")}
+                  </label>
+                </div>
+              }
+
+              <div style={s.sec}>
+                <div style={s.secTitle}>実行</div>
+                {status && <div style={s.statusBox}>{status}</div>}
+              </div>
             </div>
-          </div>
+          )}
 
           <div style={s.previewCol}>
             <div style={s.zoomBar}>
@@ -1745,6 +1791,50 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   right: { flex: 1, display: "flex", flexDirection: "column", overflow: "auto" },
+  // 設定タブ（左ペイン）の折りたたみヘッダーと、折りたたみ時に残す帯。
+  // 横長画面でのみ使用する（狭幅では左ペインは常時表示のまま）。折りたたむと
+  // 左ペイン分の幅が空き、隣接する previewCol は flex 指定により自動的に
+  // その空いた分だけ広がる（＝検出したテキストの表示領域として確保される）。
+  paneHead: {
+    display: "flex",
+    alignItems: "center",
+    fontSize: FS.caption,
+    fontWeight: 700,
+    padding: "2px 2px 6px 2px",
+    color: "var(--c-textDim)",
+    borderBottom: "1px solid var(--c-border)",
+  },
+  paneCollapseBtn: {
+    flexShrink: 0,
+    width: 24,
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "transparent",
+    border: "none",
+    color: "var(--c-textDim)",
+    cursor: "pointer",
+    borderRadius: 4,
+    fontSize: 11,
+  },
+  paneCollapsedBar: {
+    flexShrink: 0,
+    width: 18,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--c-bgCard)",
+    borderRight: "1px solid var(--c-border)",
+    border: "none",
+    borderLeft: "none",
+    borderTop: "none",
+    borderBottom: "none",
+    cursor: "pointer",
+    color: "var(--c-textDim)",
+    fontSize: 10,
+    padding: 0,
+  },
   // ズームバー＋プレビュー本体をまとめる列。preview 本体は flex:1 + minHeight:0
   // にして、ズーム時にはみ出た画像をこの中だけでスクロールさせる
   // （外側レイアウト全体が伸びてページごとスクロールしてしまうのを防ぐ）。
