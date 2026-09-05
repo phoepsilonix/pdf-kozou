@@ -947,18 +947,63 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         borderBottom: "1px solid var(--c-border)",
       }
     : s.left;
-  // 横並び時、検出結果リストは幅を固定して自身でスクロールさせる。
-  // 以前は幅指定がなく、検出件数が多いとリストの内容幅なりに広がって
-  // プレビュー領域(s.preview)を圧迫し、消えてしまっていた。
+
+  // ── 横長画面: プレビュー列(previewCol) / 検出結果一覧(groupList) の幅配分 ──
+  // 検出結果一覧は「隠しテキストに何が埋め込まれていたか」を確認するための
+  // 領域であり、プレビューの画像そのものより優先して幅を確保したい。
+  // 以前は下記2点が原因で、設定タブを折りたたんでもプレビューだけが広がり、
+  // 検出結果一覧の幅はまったく変わらなかった:
+  //  (a) 設定タブ折りたたみで空いた分を previewCol(flex:2) だけが吸収し、
+  //      groupList は幅固定(280px)で伸びなかった。
+  //  (b) ズームで画像を縮小しても previewCol 自体の箱は縮まないため、
+  //      画像の周りに余白ができるだけで groupList には何も回らなかった。
+  // ここでは、設定タブを折りたたんだ分はそのまま groupList の幅に加算し、
+  // さらに数値ズーム時(="fit"以外)は previewCol を「現在の倍率で画像を
+  // 表示するのに必要な幅」までに制限し、余った分を groupList 側の伸長
+  // (flexGrow)で吸収させる。"fit" 表示中は画像自体がプレビュー領域いっぱいに
+  // 自動で収まるため、previewCol は従来通り flex:2 で残りスペースを占有する。
+  const SETTINGS_PANE_WIDTH = 230; // s.left.width と合わせる
+  const SETTINGS_COLLAPSED_BAR_WIDTH = 18; // s.paneCollapsedBar.width と合わせる
+  const SETTINGS_FREED_WIDTH = SETTINGS_PANE_WIDTH - SETTINGS_COLLAPSED_BAR_WIDTH;
+  const GROUP_LIST_BASE_WIDTH = 280;
+  const PREVIEW_MIN_WIDTH = 260; // ズームアウト時でもズームバー等が窮屈にならない下限
+  const PREVIEW_HORIZONTAL_PAD = 44; // s.preview の左右 padding(10×2)+余裕分
+
+  // 数値ズーム時、画像の実表示幅(自然サイズ×倍率)を基準に previewCol の
+  // 必要幅を概算する。"fit" のときは null にして previewCol を従来通り
+  // flex:2 のまま(=残りスペースを自動で占有)にする。
+  const previewFlexBasis: number | null =
+    typeof zoom === "number" && imgNatW > 1
+      ? Math.max(PREVIEW_MIN_WIDTH, Math.round(imgNatW * zoom) + PREVIEW_HORIZONTAL_PAD)
+      : null;
+
+  const previewColStyle: React.CSSProperties =
+    isNarrow || previewFlexBasis === null
+      ? s.previewCol
+      : { ...s.previewCol, flex: `0 1 ${previewFlexBasis}px`, maxWidth: previewFlexBasis };
+
+  // 設定タブ折りたたみで空いた分をそのまま底上げする基準幅。
+  const groupListBaseWidth = GROUP_LIST_BASE_WIDTH + (settingsCollapsed ? SETTINGS_FREED_WIDTH : 0);
+
   const groupListStyle: React.CSSProperties = isNarrow
     ? { ...s.groupList, height: 160 }
-    : {
-        ...s.groupList,
-        width: 280,
-        flexShrink: 0,
-        borderTop: "none",
-        borderLeft: "1px solid var(--c-border)",
-      };
+    : previewFlexBasis === null
+      ? {
+          // "fit" 表示中: 従来通り幅固定(設定タブ折りたたみ分のみ加算)。
+          ...s.groupList,
+          width: groupListBaseWidth,
+          flexShrink: 0,
+          borderTop: "none",
+          borderLeft: "1px solid var(--c-border)",
+        }
+      : {
+          // 数値ズーム中: previewCol が縮んだ分をここで吸収して伸びる。
+          ...s.groupList,
+          flex: "1 1 auto",
+          minWidth: groupListBaseWidth,
+          borderTop: "none",
+          borderLeft: "1px solid var(--c-border)",
+        };
 
   const pageCount = pdfInfo.page_count;
   const pageInfo = pdfInfo.pages?.[pageIndex];
@@ -1334,7 +1379,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
             </div>
           )}
 
-          <div style={s.previewCol}>
+          <div style={previewColStyle}>
             <div style={s.zoomBar}>
               <button
                 type="button"
@@ -1814,8 +1859,9 @@ const s: Record<string, React.CSSProperties> = {
   right: { flex: 1, display: "flex", flexDirection: "column", overflow: "auto" },
   // 設定タブ（左ペイン）の折りたたみヘッダーと、折りたたみ時に残す帯。
   // 横長画面でのみ使用する（狭幅では左ペインは常時表示のまま）。折りたたむと
-  // 左ペイン分の幅が空き、隣接する previewCol は flex 指定により自動的に
-  // その空いた分だけ広がる（＝検出したテキストの表示領域として確保される）。
+  // 左ペイン分の幅が空くが、その空いた分は SingleView 側(previewColStyle /
+  // groupListStyle の計算)で検出結果一覧(groupList＝検出したテキストの
+  // 表示領域)の幅にそのまま加算される。previewCol の見た目の幅は変わらない。
   paneHead: {
     display: "flex",
     alignItems: "center",
@@ -1859,6 +1905,9 @@ const s: Record<string, React.CSSProperties> = {
   // ズームバー＋プレビュー本体をまとめる列。preview 本体は flex:1 + minHeight:0
   // にして、ズーム時にはみ出た画像をこの中だけでスクロールさせる
   // （外側レイアウト全体が伸びてページごとスクロールしてしまうのを防ぐ）。
+  // ここでの flex:2 は "fit" 表示時のデフォルト値。数値ズーム時は
+  // SingleView 側の previewColStyle が flex を上書きし、画像の実表示幅相当
+  // までに制限した上で、余った幅を groupList(検出結果一覧)に譲る。
   previewCol: {
     flex: 2,
     minWidth: 0,
@@ -1899,6 +1948,8 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgSub)",
     touchAction: "pan-x pan-y",
   },
+  // 基本スタイル。実際の幅/flex 挙動は SingleView 側の groupListStyle が
+  // 状況（狭幅／設定タブ折りたたみ／ズーム倍率）に応じて上書きする。
   groupList: {
     minHeight: 0,
     overflowY: "auto",
