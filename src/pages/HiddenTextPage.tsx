@@ -137,6 +137,7 @@ type HitGroup = {
   type: DetectType;
   reason: string;
   label: string;
+  fullLabel: string;
   chars: AnyHit[];
   y: number;
   isWs: boolean;
@@ -231,6 +232,16 @@ function buildLabel(type: DetectType, _reason: string, chars: AnyHit[]): string 
   return `"${text.slice(0, 57)}…"`;
 }
 
+// buildLabel の省略なし版。一覧では60字で切り詰めた label をそのまま表示し、
+// ellipsis や幅の都合で表示しきれない分は、この fullLabel をポップアップ
+// (TapRevealText、ファイル名表示と同じ共通コンポーネント)で確認できるようにする。
+// control_chars は元々1文字+件数の短い表示なので、label と同じでよい。
+function buildFullLabel(type: DetectType, _reason: string, chars: AnyHit[]): string {
+  if (type === "control_chars") return `${chars[0].char} (${chars[0].extra}) × ${chars.length}`;
+  const text = chars.map((c) => (c.char === " " ? "·" : c.char)).join("");
+  return `"${text}"`;
+}
+
 function groupHits(hits: AnyHit[]): HitGroup[] {
   const groups: HitGroup[] = [];
   let gid = 0;
@@ -246,12 +257,14 @@ function groupHits(hits: AnyHit[]): HitGroup[] {
     if (existing) {
       existing.chars.push(hit);
       existing.label = buildLabel(existing.type, existing.reason, existing.chars);
+      existing.fullLabel = buildFullLabel(existing.type, existing.reason, existing.chars);
     } else {
       groups.push({
         id: `${groupKey}::${gid++}::${hit.origin[1].toFixed(0)}`,
         type: hit.type,
         reason: hit.reason,
         label: buildLabel(hit.type, hit.reason, [hit]),
+        fullLabel: buildFullLabel(hit.type, hit.reason, [hit]),
         chars: [hit],
         y: hit.origin[1],
         isWs: hit.reason === "whitespace_only",
@@ -794,6 +807,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
 function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo }) {
   const { t } = useI18n();
   const { isNarrow } = useViewport();
+  const mobilePlatform = useIsMobilePlatform();
   // 横長画面（isNarrow===false）でのみ、設定タブを手動で折りたためるようにする。
   // 折りたたむと設定タブの分の幅が空くので、プレビュー(検出したテキストの
   // 表示領域)は flex 指定により自動的にその分だけ広がる。狭幅画面では
@@ -1508,7 +1522,14 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
                         <span style={{ width: 16, flexShrink: 0 }} />
                       )}
                       <span>{icon}</span>
-                      <span style={s.groupLabel}>{g.label}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <TapRevealText
+                          text={g.label}
+                          fullText={g.fullLabel}
+                          mobilePlatform={mobilePlatform}
+                          style={s.groupLabel}
+                        />
+                      </span>
                       <span style={s.groupReason}>
                         {t(REASON_KEY[g.reason] ?? "hidden.reason_whitespace")}
                       </span>
