@@ -3768,8 +3768,23 @@ static int kozou_lc_is_shadow_duplicate(
                 /* 明らかに自分より不透明(=より前面に見えている)側だけを
                  * 「隠している側」の候補とする。両方とも同程度の
                  * 不透明度なら通常の重複描画や合字の可能性があり、
-                 * ここでは対象にしない。 */
-                if (oalpha - self_alpha < 50) continue;
+                 * ここでは対象にしない…はずだったが、実機で
+                 * 「不透明(alpha=255)な白フチ取り層 + 不透明(alpha=255)な
+                 * 本体色文字」という、フチ取りも本体も完全不透明な組み
+                 * 合わせ(Canva等の"くっきり見える"装飾スタイル)を確認した。
+                 * この場合 oalpha - self_alpha は常に0になり、本来
+                 * 除外すべき装飾的重ね書きなのにガードが素通りしてしまう。
+                 * 「相手が自分より不透明」だけでなく「両方とも十分不透明
+                 * (=どちらも半透明のフチ取りではなく、はっきり塗られた
+                 * 本体どうしが重なっている)」場合も装飾的重ね書きとして
+                 * 扱う。半透明フチ取りの元々の想定ケースは従来通りカバー
+                 * したまま、alpha=255同士の重なりも追加でカバーする。 */
+                {
+                    const int KOZOU_LC_OPAQUE_ALPHA = 200;
+                    int both_opaque = (self_alpha >= KOZOU_LC_OPAQUE_ALPHA) &&
+                                       (oalpha      >= KOZOU_LC_OPAQUE_ALPHA);
+                    if (oalpha - self_alpha < 50 && !both_opaque) continue;
+                }
                 fz_quad oq = o->quad;
                 float ox0 = oq.ul.x < oq.ll.x ? oq.ul.x : oq.ll.x;
                 float ox1 = oq.ur.x > oq.lr.x ? oq.ur.x : oq.lr.x;
@@ -4112,12 +4127,19 @@ void kozou_detect_low_contrast_text(
                         const float KOZOU_RING_MIN_RX = char_w * 0.5f + 1.0f;
                         const float KOZOU_RING_MIN_RY = char_h * 0.5f + 1.0f;
 
+                        /* 斜め方向の微修正用: 横方向(同一行)・縦方向(隣接行)
+                         * の少なくとも一方が実際に縮んだかどうかを覚えて
+                         * おく。両方が実際に縮んだ場合だけ、下で斜め45°
+                         * 方向への追加クランプを行う(詳細は下記コメント)。 */
+                        int rx_was_clamped = 0;
+                        int ry_was_clamped = 0;
+
                         if (this_prev_ch &&
                             fabsf(this_prev_ch->origin.y - ch->origin.y) < char_h * 0.5f) {
                             float gap = ch->origin.x - this_prev_ch->origin.x;
                             if (gap > 0.0f) {
                                 float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
-                                if (half < ring_rx) ring_rx = half;
+                                if (half < ring_rx) { ring_rx = half; rx_was_clamped = 1; }
                             }
                         }
                         if (ch->next &&
@@ -4125,21 +4147,51 @@ void kozou_detect_low_contrast_text(
                             float gap = ch->next->origin.x - ch->origin.x;
                             if (gap > 0.0f) {
                                 float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
-                                if (half < ring_rx) ring_rx = half;
+                                if (half < ring_rx) { ring_rx = half; rx_was_clamped = 1; }
                             }
                         }
                         if (line->prev) {
                             float gap = fabsf(line->bbox.y0 - line->prev->bbox.y0);
                             if (gap > 0.0f) {
                                 float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
-                                if (half < ring_ry) ring_ry = half;
+                                if (half < ring_ry) { ring_ry = half; ry_was_clamped = 1; }
                             }
                         }
                         if (line->next) {
                             float gap = fabsf(line->next->bbox.y0 - line->bbox.y0);
                             if (gap > 0.0f) {
                                 float half = gap * 0.5f - KOZOU_RING_NEIGHBOR_MARGIN;
-                                if (half < ring_ry) ring_ry = half;
+                                if (half < ring_ry) { ring_ry = half; ry_was_clamped = 1; }
+                            }
+                        }
+
+                        /* ── 斜め方向の微修正 ──
+                         * 上記4つのクランプは水平方向・垂直方向それぞれ
+                         * 単独にしか働かず、楕円の斜め45°付近の点が、
+                         * 縮めきれていない斜め方向の近傍(隣接行の中の、
+                         * 同一行の隣接文字とは別の位置にある文字など)に
+                         * まで届いてしまう死角が残る。
+                         * 真の斜め近傍文字までの距離を正確に求めるのは
+                         * 大掛かりな変更になるため、ここでは保守的な
+                         * 近似だけを追加する: 横方向・縦方向の両方が
+                         * 実際に(近傍の存在により)縮んだ場合に限り、
+                         * min(ring_rx, ring_ry) を安全半径とみなし、
+                         * 斜め45°方向の到達距離がそれを超えないよう
+                         * ring_rx/ring_ry を同じ比率で縮める。
+                         * 片方しか縮んでいない場合(=行頭行末やページ端
+                         * など、実際には斜め方向にも近傍が無い可能性が
+                         * 高い場合)は、この追加クランプは効かせない。 */
+                        if (rx_was_clamped && ry_was_clamped) {
+                            const float KOZOU_SQRT1_2 = 0.70710678f;
+                            float diag_reach = sqrtf(
+                                (ring_rx * KOZOU_SQRT1_2) * (ring_rx * KOZOU_SQRT1_2) +
+                                (ring_ry * KOZOU_SQRT1_2) * (ring_ry * KOZOU_SQRT1_2));
+                            float diag_safe =
+                                (ring_rx < ring_ry ? ring_rx : ring_ry) * KOZOU_SQRT1_2;
+                            if (diag_reach > diag_safe && diag_reach > 0.0f) {
+                                float scale = diag_safe / diag_reach;
+                                ring_rx *= scale;
+                                ring_ry *= scale;
                             }
                         }
 
