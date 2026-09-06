@@ -74,6 +74,56 @@ interface Props {
 
 type Phase = "edit" | "processing" | "result" | "error";
 type OutputMode = "images" | "pdf";
+
+// ── 前回の出力設定の記憶 ─────────────────────────────────────────────────
+// 画像変換ページは他の機能ページと異なり、出力形式・出力モード
+// (画像/画像化PDF)・面付けモードのいずれも前回選択が引き継がれて
+// いなかった(以前のリリースから未実装のまま放置されていた)ため、
+// HiddenTextPage.tsx の LAST_THR_KEY と同じ localStorage パターンで
+// 補完する。
+const LAST_IMAGE_FORMAT_KEY = "image_export_last_format";
+const LAST_OUTPUT_MODE_KEY = "image_export_last_output_mode";
+const LAST_IMPOSITION_MODE_KEY = "image_export_last_imposition_mode";
+
+function loadLastImageFormat(): ImageFormat | null {
+  try {
+    const v = localStorage.getItem(LAST_IMAGE_FORMAT_KEY);
+    if (v === "jpeg" || v === "png" || v === "svg") return v;
+  } catch {}
+  return null;
+}
+function saveLastImageFormat(v: ImageFormat) {
+  try {
+    localStorage.setItem(LAST_IMAGE_FORMAT_KEY, v);
+  } catch {}
+}
+
+function loadLastOutputMode(): OutputMode | null {
+  try {
+    const v = localStorage.getItem(LAST_OUTPUT_MODE_KEY);
+    if (v === "images" || v === "pdf") return v;
+  } catch {}
+  return null;
+}
+function saveLastOutputMode(v: OutputMode) {
+  try {
+    localStorage.setItem(LAST_OUTPUT_MODE_KEY, v);
+  } catch {}
+}
+
+function loadLastImpositionMode(): ImpositionMode | null {
+  try {
+    const v = localStorage.getItem(LAST_IMPOSITION_MODE_KEY);
+    if (v === "1up" || v === "2up" || v === "4up" || v === "booklet" || v === "booklet-rtl")
+      return v;
+  } catch {}
+  return null;
+}
+function saveLastImpositionMode(v: ImpositionMode) {
+  try {
+    localStorage.setItem(LAST_IMPOSITION_MODE_KEY, v);
+  } catch {}
+}
 const THUMB_DPI = 56;
 
 // DPI プリセット (desc は翻訳キー)
@@ -210,12 +260,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [phase, setPhase] = useState<Phase>("edit");
   // 処理方向: "normal"=通常変換/面付け, "deimpose"=面付け解除/分割
   const [processDir, setProcessDir] = useState<"normal" | "deimpose">("normal");
-  // 面付けモード
-  const [impositionMode, setImpositionMode] = useState<ImpositionMode>("1up");
+  // 面付けモード（前回選択を記憶。無ければ既定の "1up"）
+  const [impositionMode, setImpositionMode] = useState<ImpositionMode>(
+    () => loadLastImpositionMode() ?? "1up",
+  );
   // 面付け解除の選択（DE_IMPOSITION_MODE_DEFS のインデックス）
   const [deimpIndex, setDeimpIndex] = useState(0);
   const [thumbs, setThumbs] = useState<(string | undefined)[]>([]);
-  const [format, setFormat] = useState<ImageFormat>("jpeg");
+  // 画像形式（前回選択を記憶。無ければ既定の "jpeg"）
+  const [format, setFormat] = useState<ImageFormat>(() => loadLastImageFormat() ?? "jpeg");
   const [dpi, setDpi] = useState(144);
   const [quality, setQuality] = useState(85);
   // 出力ファイル名の中間ラベル（初期値はモードの操作トークン。空可・自由入力可）
@@ -224,7 +277,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [labelEdited, setLabelEdited] = useState(false);
   // 先頭に元ファイル名を付けるか（単体・手動処理での衝突回避と追跡用。初期ON）
   const [keepOriginalName, setKeepOriginalName] = useState(true);
-  const [outputMode, setOutputMode] = useState<OutputMode>("images");
+  // 出力モード：画像 or 画像化PDF（前回選択を記憶。無ければ既定の "images"）
+  const [outputMode, setOutputMode] = useState<OutputMode>(() => loadLastOutputMode() ?? "images");
   // 画像PDF化(フォント保持版)テスト用トグル。GUIには通常表示しない
   // 実験的機能で、compose_image_pdf_keep_text (Stage2) の動作確認用。
   // デフォルトはOFF、面付けモードでは非対応。
@@ -233,6 +287,19 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [outDir, setOutDir] = useState("");
 
   const [pages, setPages] = useState(""); // "" = 全ページ
+
+  // 出力形式・出力モード・面付けモードは、選択が変わるたびに記憶する
+  // （実行ボタンを押さずページを離れても次回に引き継がれるようにする）。
+  useEffect(() => {
+    saveLastImageFormat(format);
+  }, [format]);
+  useEffect(() => {
+    saveLastOutputMode(outputMode);
+  }, [outputMode]);
+  useEffect(() => {
+    saveLastImpositionMode(impositionMode);
+  }, [impositionMode]);
+
   // pages 指定を正確に展開したページ数（odd/even/末尾省略も対応）
   const resolvedPageCount = useMemo(
     () => resolvePageSpec(pages || "", total).length,
@@ -991,6 +1058,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
+    keepTextExperimental,
     t,
     IMPOSITION_MODES_I18N,
   ]);
@@ -1280,6 +1348,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
+    keepTextExperimental,
     total,
     mobile,
     IMPOSITION_MODES_I18N,
