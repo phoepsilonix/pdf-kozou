@@ -2158,20 +2158,51 @@ void kozou_compose_image_pdf_keep_text(
                 float ph_pt = bounds.y1 - bounds.y0;
 
                 /* 重要: fz_bound_page が返す bounds は (0,0) 起点に
-                 * 正規化されている場合があり、ページの実際の /MediaBox
-                 * 原点(0以外のことがある — 実機で [0, 7.82998, 595.5,
-                 * 850.08] のようなケースが確認された)とは一致しない。
-                 * 元ページのコンテンツストリームは実際の /MediaBox の
-                 * 座標系に合わせて作られているため、背景画像の配置には
-                 * bounds.x0/y0 ではなく実際の /MediaBox 原点を使う
-                 * 必要がある(使わないと背景画像だけが数ポイント
-                 * ズレて、前面のテキストと噛み合わなくなる)。 */
+                 * 正規化されている(MuPDF: pdf_page_transform_box が
+                 * 「/CropBox(無ければ /MediaBox で代用し、必ず
+                 * /MediaBox と intersect して正規化したもの)」の
+                 * 左下座標を (0,0) に平行移動してからレンダリングして
+                 * いるため)。つまり背景画像のピクセルは常にこの
+                 * 「解決済み CropBox」相当の可視範囲を切り取ったもの
+                 * になる。
+                 *
+                 * 元ページのコンテンツストリームは実際の座標系
+                 * (/MediaBox 原点を基準とした絶対座標)に合わせて
+                 * 作られているため、背景画像の配置には bounds.x0/y0
+                 * ではなく、レンダリング時にMuPDFが実際に使ったのと
+                 * 同じ「解決済みCropBoxの左下座標」を使う必要がある。
+                 *
+                 * 以前は /MediaBox の原点だけを見ており、/CropBox が
+                 * /MediaBox と異なるページ(スキャンPDFの余白カット、
+                 * 印刷用ブリードなど実務でよくあるケース。実機で
+                 * MediaBox=[0,0,595.5,850.08] に対し CropBox が数pt
+                 * 内側に切り込まれているケースが確認された)では
+                 * 背景画像だけが数ポイントズレて前面のテキストと
+                 * 噛み合わなくなっていた(症状: ページの上端・左端
+                 * 付近でのみ目立つ、わずかな位置ズレ)。 */
                 float mb_x0 = bounds.x0, mb_y0 = bounds.y0;
                 {
-                    pdf_obj *mb = pdf_dict_get_inheritable(ctx, src_page, PDF_NAME(MediaBox));
-                    if (mb && pdf_is_array(ctx, mb) && pdf_array_len(ctx, mb) == 4) {
-                        mb_x0 = pdf_to_real(ctx, pdf_array_get(ctx, mb, 0));
-                        mb_y0 = pdf_to_real(ctx, pdf_array_get(ctx, mb, 1));
+                    pdf_obj *mb_obj = pdf_dict_get_inheritable(ctx, src_page, PDF_NAME(MediaBox));
+                    fz_rect media = (mb_obj && pdf_is_array(ctx, mb_obj) && pdf_array_len(ctx, mb_obj) == 4)
+                        ? pdf_to_rect(ctx, mb_obj)
+                        : fz_infinite_rect;
+
+                    fz_rect effective = media;
+                    if (!fz_is_infinite_rect(media)) {
+                        pdf_obj *cb_obj = pdf_dict_get_inheritable(ctx, src_page, PDF_NAME(CropBox));
+                        if (cb_obj && pdf_is_array(ctx, cb_obj) && pdf_array_len(ctx, cb_obj) == 4) {
+                            fz_rect crop = pdf_to_rect(ctx, cb_obj);
+                            crop = fz_intersect_rect(crop, media);
+                            if (!fz_is_empty_rect(crop))
+                                effective = crop;
+                        }
+                    }
+
+                    if (!fz_is_infinite_rect(effective) && !fz_is_empty_rect(effective)) {
+                        /* pdf_page_transform_box と同様、座標の大小が
+                         * 入れ替わっているケースを正規化してから使う。 */
+                        mb_x0 = fz_min(effective.x0, effective.x1);
+                        mb_y0 = fz_min(effective.y0, effective.y1);
                     }
                 }
 
