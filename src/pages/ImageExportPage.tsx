@@ -46,6 +46,7 @@ import {
 import {
   checkPathConflict,
   exportImagePdf,
+  exportImagePdfKeepText,
   exportImages,
   getPdfInfo,
   type ImageFormat,
@@ -224,6 +225,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 先頭に元ファイル名を付けるか（単体・手動処理での衝突回避と追跡用。初期ON）
   const [keepOriginalName, setKeepOriginalName] = useState(true);
   const [outputMode, setOutputMode] = useState<OutputMode>("images");
+  // 画像PDF化(フォント保持版)テスト用トグル。GUIには通常表示しない
+  // 実験的機能で、compose_image_pdf_keep_text (Stage2) の動作確認用。
+  // デフォルトはOFF、面付けモードでは非対応。
+  const [keepTextExperimental, setKeepTextExperimental] = useState(false);
   const [pdfName, setPdfName] = useState("");
   const [outDir, setOutDir] = useState("");
 
@@ -916,7 +921,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           return;
         }
 
-        const res = await exportImagePdf(
+        const res = await (keepTextExperimental ? exportImagePdfKeepText : exportImagePdf)(
           filePath,
           outPath,
           dpi,
@@ -1163,7 +1168,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             progress.done.push({ file: f.filename, count: sheets.length, pdfPath: outPath });
           } else {
             // 1up PDF
-            const res = await exportImagePdf(
+            const res = await (keepTextExperimental ? exportImagePdfKeepText : exportImagePdf)(
               f.path,
               outPath,
               dpi,
@@ -1734,6 +1739,36 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <span style={s.fmtDesc}>{t("image.mode_pdf_sub_2")}</span>
               </button>
             </div>
+
+            {/* [テスト用/実験的機能] 画像PDF化(フォント保持版) Stage2 の
+                動作確認トグル。compose_image_pdf_keep_text を直接叩く。
+                面付けモード(1up以外)には未対応のため、その場合は無効。
+                一般ユーザー向けの完成機能ではないため、常設のGUI項目とは
+                見た目を明確に区別している(黄枠+固定文言、i18n未対応)。 */}
+            {outputMode === "pdf" && impositionMode === "1up" && (
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: FS.caption,
+                  color: "var(--c-textDim)",
+                  border: "1px dashed #c9a227",
+                  borderRadius: 6,
+                  padding: "4px 8px",
+                  marginTop: 4,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={keepTextExperimental}
+                  onChange={(e) => setKeepTextExperimental(e.target.checked)}
+                />
+                <span>
+                  [実験的/テスト用] 背景を画像化しテキストは保持する (compose_image_pdf_keep_text)
+                </span>
+              </label>
+            )}
 
             {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
             {processDir === "normal" && format !== "svg" && (

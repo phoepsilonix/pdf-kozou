@@ -165,6 +165,7 @@ pub fn run() {
             core::rotate_pdf,
             core::export_images,
             core::export_image_pdf,
+            core::export_image_pdf_keep_text,
             core::get_temp_path,
             core::get_unique_temp_path,
             core::move_file,

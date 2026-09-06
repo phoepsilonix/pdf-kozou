@@ -1323,6 +1323,33 @@ export async function exportImagePdf(
   });
 }
 
+/// 画像PDF化(フォント保持版・実験的機能)。
+///
+/// exportImagePdf と異なり、非テキスト要素のみを1枚の背景画像に焼き込み、
+/// 前面のテキスト(Type3含む)はベクターのまま保持する。
+/// GUIには通常表示されないテスト用コマンド(export_image_pdf_keep_text)。
+export async function exportImagePdfKeepText(
+  path: string,
+  outPath: string,
+  dpi: number,
+  quality: number,
+  usePng: boolean,
+  pages?: string,
+  options?: ConvertOptions,
+): Promise<ExportImagePdfResponse> {
+  return invoke<ExportImagePdfResponse>("export_image_pdf_keep_text", {
+    path,
+    outPath,
+    dpi,
+    quality,
+    usePng,
+    pages: pages ?? null,
+    layoutW: options?.layoutW ?? null,
+    layoutH: options?.layoutH ?? null,
+    layoutEm: options?.layoutEm ?? null,
+  });
+}
+
 // ── ファイル操作ユーティリティ ──────────────────────────────────────────────
 
 export async function moveFile(src: string, dst: string): Promise<void> {

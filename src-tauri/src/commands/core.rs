@@ -608,6 +608,51 @@ pub async fn export_image_pdf(
     call_core_json("rasterize", request).await
 }
 
+/// 画像PDF化(フォント保持版・実験的機能)。
+///
+/// export_image_pdf と異なり、非テキスト要素のみを背景画像に焼き込み、
+/// 前面テキスト(Type3含む)はベクターのまま保持する
+/// (kozou_compose_image_pdf_keep_text / compose_image_pdf_keep_text)。
+///
+/// GUIには通常表示されないテスト用コマンド。既知の制限:
+/// - Form XObject 内部の描画命令は失われる(背景画像に焼き込み済みのため
+///   視覚的な欠落はない)
+/// - /Rotate != 0 のページは自動的に通常の全面ラスタライズにフォールバック
+#[tauri::command]
+pub async fn export_image_pdf_keep_text(
+    path: String,
+    out_path: String,
+    dpi: Option<f32>,
+    quality: Option<i32>,
+    use_png: Option<bool>,
+    pages: Option<String>,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+    layout_em: Option<f32>,
+) -> Result<Value> {
+    use serde_json::json;
+
+    if let Some(parent) = std::path::Path::new(&out_path).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
+    }
+
+    let request = json!({
+        "input":   path,
+        "output":  out_path,
+        "dpi":     dpi.unwrap_or(150.0),
+        "quality": quality.unwrap_or(85),
+        "use_png": use_png.unwrap_or(false),
+        "pages":   pages,
+        "layout_w":  layout_w,
+        "layout_h":  layout_h,
+        "layout_em": layout_em,
+    });
+
+    call_core_json("compose_image_pdf_keep_text", request).await
+}
+
 #[tauri::command]
 pub async fn check_path_conflict(
     input_path: String,
