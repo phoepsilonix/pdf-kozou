@@ -180,7 +180,15 @@ export function TapRevealText({
           ...style,
         }}
         title={fullText}
-        onClick={() => {
+        onClick={(e) => {
+          // 親要素(一覧の行など)がクリックで別の操作(選択トグル等)を持って
+          // いる場合、このタップは「全文をポップアップ表示する」だけに
+          // とどめたいため、バブリングを止める。これが無いと、例えば
+          // HiddenTextPage の検出結果一覧のように行全体がチェックボックスの
+          // オン/オフをトグルする onClick を持つ場所では、ポップアップ表示の
+          // タップがそのまま行の onClick まで伝播し、意図せずチェックの
+          // オン/オフも一緒に切り替わってしまう。
+          e.stopPropagation();
           setToastOpen(true);
           window.setTimeout(() => setToastOpen(false), toastMs);
         }}
