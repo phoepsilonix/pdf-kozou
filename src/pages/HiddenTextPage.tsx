@@ -977,8 +977,20 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
       ? Math.max(PREVIEW_MIN_WIDTH, Math.round(imgNatW * zoom) + PREVIEW_HORIZONTAL_PAD)
       : null;
 
-  const previewColStyle: React.CSSProperties =
-    isNarrow || previewFlexBasis === null
+  const previewColStyle: React.CSSProperties = isNarrow
+    ? {
+        // 縦積み(狭幅)時、previewCol は flex:2/flex-basis:0% のままだと、
+        // 設定パネル(leftStyle, 最大42vh)や検出結果一覧(groupList, 高さ160px
+        // 固定)の分だけで画面の縦スペースを使い切ってしまう小さめの端末では、
+        // flexboxの縮小計算上プレビュー列がほぼ0の高さまで潰れて消えてしまう
+        // （flex-basis:0%の項目はflex-shrinkの重み計算で真っ先に潰されるため）。
+        // これを防ぐため、最低限プレビューが見える高さを minHeight で保証する。
+        // それでも全体が収まらない場合は、外側のラッパー(overflow:auto)側で
+        // 縦スクロールさせる。
+        ...s.previewCol,
+        minHeight: 220,
+      }
+    : previewFlexBasis === null
       ? s.previewCol
       : { ...s.previewCol, flex: `0 1 ${previewFlexBasis}px`, maxWidth: previewFlexBasis };
 
