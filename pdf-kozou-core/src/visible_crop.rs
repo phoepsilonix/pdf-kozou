@@ -520,12 +520,21 @@ fn set_flate_content(stream: &mut lopdf::Stream, bytes: Vec<u8>) {
 
 /// 画像 xref のピクセルデータを uv (ローカル UV [0,1]^2) の範囲だけに
 /// 切り出す。対応フォーマットは image_recompress::classify_source と同じ。
+///
+/// 戻り値は実際に切り出したピクセル矩形 (col0,row0,col1,row1) を UV
+/// 座標系に変換し直したもの。CROP_MARGIN_PX による安全マージンや、
+/// 画像端でのクランプにより、実際に切り出された範囲は引数 `uv` とは
+/// (通常わずかに) 異なる。呼び出し元はこの実際の矩形を使って配置の
+/// 補正 "cm" を組み立てる必要がある — 引数 `uv` をそのまま使うと、
+/// マージン分だけ多く残った画素が、マージン無しの矩形サイズに
+/// 押し込められて表示され、画像が微妙に縮小・位置ずれして見える
+/// (非対称クランプ時は縦横で歪みの度合いが変わる)。
 fn crop_image_pixels(
     doc: &mut Document,
     xref: ObjectId,
     uv: Rect,
     jpeg_quality: u8,
-) -> Result<(), String> {
+) -> Result<Rect, String> {
     use image::codecs::jpeg::JpegEncoder;
     use image::{ColorType, GenericImageView, ImageEncoder};
 
@@ -571,6 +580,17 @@ fn crop_image_pixels(
     if new_w as i64 >= native_w && new_h as i64 >= native_h {
         return Err("crop rect covers entire image, not worth it".to_string());
     }
+
+    // 実際に切り出したピクセル矩形 (col0,row0)-(col1,row1) を UV へ変換し
+    // 直す。row/col は上の floor/ceil + マージン + clamp を経ているため、
+    // 引数の `uv` とは (通常わずかに) 異なる。行方向は上端が v=1 の
+    // 変換であることに注意 (row0 が大きい v に対応)。
+    let actual_uv = Rect {
+        x0: col0 as f32 / nw,
+        x1: col1 as f32 / nw,
+        y0: 1.0 - (row1 as f32 / nh),
+        y1: 1.0 - (row0 as f32 / nh),
+    };
 
     match kind {
         SourceKind::Dct | SourceKind::DctFlateWrapped => {
@@ -662,7 +682,7 @@ fn crop_image_pixels(
         }
     }
 
-    Ok(())
+    Ok(actual_uv)
 }
 
 /// 指定した箇所の直前に、切り出し後の画像でも同じ見た目を再現するための
@@ -783,15 +803,19 @@ pub fn crop_to_visible_area(doc: &mut Document, jpeg_quality: u8) -> VisibleCrop
     let mut by_stream: HashMap<ObjectId, HashMap<usize, Matrix>> = HashMap::new();
     for (xref, uv) in &crop_plans {
         match crop_image_pixels(doc, *xref, *uv, jpeg_quality) {
-            Ok(()) => {
+            Ok(actual_uv) => {
                 stats.images_cropped += 1;
+                // マージン/クランプ後に実際に切り出されたピクセル範囲
+                // (actual_uv) を使って補正行列を組む。引数だった `uv` を
+                // そのまま使うと、実際より小さい矩形に押し込めて表示する
+                // ことになり、画像が微妙に縮小・位置ずれして見える。
                 let s = Matrix {
-                    a: uv.x1 - uv.x0,
+                    a: actual_uv.x1 - actual_uv.x0,
                     b: 0.0,
                     c: 0.0,
-                    d: uv.y1 - uv.y0,
-                    e: uv.x0,
-                    f: uv.y0,
+                    d: actual_uv.y1 - actual_uv.y0,
+                    e: actual_uv.x0,
+                    f: actual_uv.y0,
                 };
                 if let Some(sites) = analysis.do_sites.get(xref) {
                     for (stream_id, op_index) in sites {
