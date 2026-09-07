@@ -1915,7 +1915,14 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
         }
     }
 
-    char *drop = (char *)calloc(ntok ? ntok : 1, 1);
+    /* action: 0 = そのまま残す, 1 = 完全に削除する(バイトごと消す),
+     * 2 = 'n' 1文字に置換する(パスを消費するだけで何も描画しない
+     * no-op 演算子。塗り/線引き演算子を単純に削除すると、その直前の
+     * パス構築演算子(re 等)が「未消費のパス」として残ってしまい、
+     * 後続の W/W* クリップ演算に予期せず巻き込まれてクリップ領域が
+     * 壊れる不具合が実機で確認された。'n' に置換することでパスを
+     * 正しく消費しつつ何も描画しない、という元の意図を維持する)。 */
+    char *action = (char *)calloc(ntok ? ntok : 1, 1);
     int in_bt = 0;
 
     for (size_t i = 0; i < ntok; i++) {
@@ -1935,10 +1942,10 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
         int is_do = (tlen == 2 && tp[0]=='D' && tp[1]=='o');
 
         if (is_paint0) {
-            drop[i] = 1;
+            action[i] = 2; /* 'n' に置換してパスを消費 */
         } else if (is_sh) {
-            drop[i] = 1;
-            if (i > 0) drop[i-1] = 1; /* シェーディング名オペランド */
+            action[i] = 1;
+            if (i > 0) action[i-1] = 1; /* シェーディング名オペランド */
         } else if (is_do) {
             int keep_for_form = 0;
             if (i > 0) {
@@ -1947,20 +1954,29 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
                 keep_for_form = kozou_do_name_targets_form(ctx, xobj_dict, np, nlen);
             }
             if (!keep_for_form) {
-                drop[i] = 1;
-                if (i > 0) drop[i-1] = 1; /* XObject名オペランド */
+                action[i] = 1;
+                if (i > 0) action[i-1] = 1; /* XObject名オペランド */
             }
         }
     }
 
-    /* 連続する drop トークン列をまとめて、その範囲のバイトだけを
-     * 出力からスキップする(それ以外は元のバイト列をそのままコピー
-     * するので、間の空白・改行やq/Q等は一切変更されない)。 */
+    /* 削除(action==1)は連続範囲をまとめてバイトごとスキップし、
+     * それ以外(action==0 のバイト、および action==2 のトークンを
+     * 'n' 1バイトに差し替えたもの)は元のバイト列をそのままコピーする
+     * ので、間の空白・改行やq/Q等は一切変更されない。 */
     size_t cur = 0, i = 0;
     while (i < ntok) {
-        if (!drop[i]) { i++; continue; }
+        if (action[i] == 0) { i++; continue; }
+        if (action[i] == 2) {
+            if (toks[i].start > cur) fz_append_data(ctx, out, src + cur, toks[i].start - cur);
+            fz_append_data(ctx, out, "n", 1);
+            cur = toks[i].end;
+            i++;
+            continue;
+        }
+        /* action[i] == 1: 連続する削除トークン列をまとめて削る */
         size_t j = i;
-        while (j < ntok && drop[j]) j++;
+        while (j < ntok && action[j] == 1) j++;
         size_t del_start = toks[i].start;
         size_t del_end   = toks[j-1].end;
         if (del_start > cur) fz_append_data(ctx, out, src + cur, del_start - cur);
@@ -1969,7 +1985,7 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
     }
     if (cur < src_len) fz_append_data(ctx, out, src + cur, src_len - cur);
 
-    free(drop);
+    free(action);
     free(toks);
     return out;
 }
