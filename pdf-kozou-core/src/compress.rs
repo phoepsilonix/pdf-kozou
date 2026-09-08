@@ -1514,6 +1514,123 @@ pub fn rasterize_no_text_with_quality(
 ///   ラスタライズ(テキスト含む)に自動フォールバックする。
 ///
 /// pages: 1ベースのページ番号リスト。None の場合は全ページ。
+/// keep text 版画像化PDFの前処理: オブジェクト裏に完全に隠れている
+/// テキスト (kozou_detect_buried_text の reason=="buried") を、既存の
+/// 隠しテキスト検出・無害化機構 (detect_buried_text / sanitize_hidden_text)
+/// を使って幅保持のまま除去した一時ファイルを作る。
+///
+/// 背景: kozou_compose_image_pdf_keep_text は「非テキスト要素を1枚の
+/// 背景画像に平坦化し、保持したテキストは常にその上に重ねて描く」という
+/// 設計のため、元のPDFで「後から不透明な図形/画像を重ねて隠す」ことで
+/// 隠されていたテキストがあると、その隠す側の図形は非テキストとして
+/// 背景画像に(正しく)焼き込まれる一方、テキスト側は常に最前面レイヤーに
+/// 昇格してしまい、本来隠されているべきテキストが前面に単独で現れてしまう
+/// (この関数の warning に元々明記されていた既知の問題)。
+///
+/// detect_buried_text は「後から描かれた不透明な図形/画像でどれだけ
+/// 覆われているか」を cover_ratio 閾値(既定0.8)で判定できる、まさに
+/// この判断のために既に存在する検出器なので、それをそのまま流用する。
+/// 対象はデフォルト閾値で「実質的に完全に隠れている」と判定された文字
+/// (reason=="buried")のみに限定し、閾値未満の部分的な重なりは対象外
+/// (現状は無傷のまま保持) — 誤って可視テキストまで消してしまう方が
+/// 実害が大きいため、安全側に倒す。部分的に隠れているテキストの上に
+/// 覆い画像を alpha 付きで再度重ねて隠し直す対応は、別途の設計・実装が
+/// 必要な拡張として今後の課題とする。
+///
+/// 検出/無害化に失敗した場合や対象が無い場合は None を返し、呼び出し元は
+/// 元の input をそのまま使う (従来動作にフォールバックするだけで、
+/// この前処理が無くても compose 自体は今まで通り動作する)。
+fn strip_fully_buried_text_for_keep_text(
+    input: &str,
+    tmp_dir: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    use crate::stext::{
+        DetectBuriedRequest, SanitizeOrigin, SanitizeRequest, detect_buried_text,
+        sanitize_hidden_text,
+    };
+
+    let page_count = mupdf::pdf::PdfDocument::open(input)
+        .ok()
+        .and_then(|d| d.page_count().ok())
+        .unwrap_or(0);
+    if page_count <= 0 {
+        return None;
+    }
+
+    let mut targets: Vec<SanitizeOrigin> = Vec::new();
+    for page in 0..page_count {
+        let req = DetectBuriedRequest {
+            path: input.to_string(),
+            page,
+            // 既定 0.8: 隠しテキストレビュー機能 (HiddenTextPage) が
+            // 「buried」として表示するのと同じ基準に揃える。
+            cover_ratio: None,
+            image_alpha_threshold: None,
+            layout_w: None,
+            layout_h: None,
+            layout_em: None,
+        };
+        let resp = match detect_buried_text(&req) {
+            Ok(r) => r,
+            // 検出失敗時は安全側 (前処理なし=従来動作) にフォールバック。
+            Err(_) => continue,
+        };
+        for hit in resp.hits {
+            // "clipped" (クリップによる隠蔽) と "whitespace_only" は
+            // このバグの対象外 (前者は覆う図形が無い別の隠蔽経路、
+            // 後者はそもそも空白なので前面化しても実害がない)。
+            if hit.reason != "buried" {
+                continue;
+            }
+            let codepoint = hit.char.chars().next().map(|c| c as i32).unwrap_or(-1);
+            targets.push(SanitizeOrigin {
+                x: hit.origin[0],
+                y: hit.origin[1],
+                page,
+                xobj_xref: hit.xobj_xref,
+                internal_x: hit.internal_origin[0],
+                internal_y: hit.internal_origin[1],
+                ox: hit.origin[0],
+                oy: hit.origin[1],
+                is_buried: 1,
+                render_invisible: -1,
+                codepoint,
+                size: hit.size,
+                alpha_gate: 0,
+                font_class: if hit.is_type3 { 1 } else { -1 },
+                xobj_tj_seq: hit.xobj_tj_seq,
+            });
+        }
+    }
+
+    if targets.is_empty() {
+        return None;
+    }
+
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp_path = tmp_dir.join(format!(
+        "kozou_keeptext_buried_stripped_{}_{unique:x}.pdf",
+        std::process::id()
+    ));
+    let sreq = SanitizeRequest {
+        input: input.to_string(),
+        output: tmp_path.to_string_lossy().into_owned(),
+        targets,
+        tolerance: None,
+        layout_w: None,
+        layout_h: None,
+        layout_em: None,
+        alpha_threshold: None,
+    };
+    match sanitize_hidden_text(&sreq) {
+        Ok(r) if r.ok && r.replaced > 0 => Some(tmp_path),
+        _ => None,
+    }
+}
+
 pub fn compose_image_pdf_keep_text_with_quality(
     input: &str,
     output: &str,
@@ -1530,16 +1647,28 @@ pub fn compose_image_pdf_keep_text_with_quality(
 
     let metadata = collect_metadata(input);
 
-    let c_input =
-        CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
-    let c_output =
-        CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
-
     let tmp_dir = {
         let base = std::env::temp_dir().join("pdf-kozou");
         let _ = std::fs::create_dir_all(&base);
         base
     };
+
+    // オブジェクト裏に完全に隠れているテキストが前面レイヤーに誤って
+    // 現れる問題への対処 (詳細は strip_fully_buried_text_for_keep_text の
+    // コメント参照)。前処理済みの一時ファイルがあればそちらを compose の
+    // 実際の入力として使う。前処理は失敗しても None を返すだけなので、
+    // 対象なし/検出失敗時は常に元の input にフォールバックする。
+    let buried_stripped = strip_fully_buried_text_for_keep_text(input, &tmp_dir);
+    let compose_input: &str = buried_stripped
+        .as_deref()
+        .and_then(|p| p.to_str())
+        .unwrap_or(input);
+
+    let c_input = CString::new(compose_input)
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output =
+        CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
     let c_tmp_dir = CString::new(tmp_dir.to_string_lossy().as_ref())
         .map_err(|_| CoreError::InvalidArg("invalid tmp_dir path".into()))?;
 
@@ -1555,6 +1684,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         )
     };
 
+    let mut compose_err: Option<CoreError> = None;
     unsafe {
         let ctx = kozou_new_context();
         if ctx.is_null() {
@@ -1575,8 +1705,17 @@ pub fn compose_image_pdf_keep_text_with_quality(
         );
         mupdf_sys::fz_drop_context(ctx);
         if res.ok == 0 {
-            return Err(CoreError::MuPdf(format!("{res}")));
+            compose_err = Some(CoreError::MuPdf(format!("{res}")));
         }
+    }
+
+    // 前処理で作った一時ファイルは compose の成否に関わらず必ず削除する。
+    if let Some(p) = &buried_stripped {
+        let _ = std::fs::remove_file(p);
+    }
+
+    if let Some(e) = compose_err {
+        return Err(e);
     }
 
     copy_metadata_after_write(output, &metadata);
@@ -1607,7 +1746,8 @@ pub fn compose_image_pdf_keep_text_with_quality(
         },
         warning: Some(format!(
             "画像PDF化(フォント保持版) Stage 2: {dpi}dpi 背景画像＋前面テキスト(Type3含む、ネストしたForm XObject内も含む)を保持。\
-             画像の陰に隠れていたテキストは前面に単独で現れる場合があります。/Rotate!=0のページは全面ラスタライズにフォールバックしています。"
+             オブジェクト裏に完全に隠れているテキストは前面レイヤーから除外します(検出できた場合のみ。完全な網羅は保証しません)。\
+             部分的にしか隠れていないテキストは現状まだ前面に現れる場合があります。/Rotate!=0のページは全面ラスタライズにフォールバックしています。"
         )),
     })
 }
