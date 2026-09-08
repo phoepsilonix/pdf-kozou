@@ -2555,21 +2555,61 @@ void kozou_compose_image_pdf_keep_text(
                         pdf_drop_obj(ctx, bgname);
                     }
 
-                    char cs_prefix[256];
+                    /* KzBgImg + 保持したテキストの全体を、解決済み
+                     * CropBox の範囲にハードクリップする。
+                     *
+                     * 背景: 「保持したテキスト」レイヤー (stripped) は
+                     * 元ページの content をそのまま (非テキスト部分だけ
+                     * 除去して) 引き継いだものなので、元ページの
+                     * /CropBox 外にある要素 (このPDFで言えば上半分の
+                     * 別レイアウト部分) の描画命令もそのまま残っている。
+                     * 背景画像 (KzBgImg) 自体は resolved CropBox だけを
+                     * capture しているので無関係だが、テキスト側は
+                     * 無関係のまま素通しになっていた。
+                     *
+                     * kozou_rasterize 系や圧縮(redact)では、この
+                     * トリミング外の要素は既に除去されているのに対し、
+                     * keep_text だけこれが起きていなかった
+                     * (「/CropBox をビューワが尊重してくれる」という
+                     * 前提に頼っていたため、/CropBox を見ない/正しく
+                     * 扱わないビューワでは古い下書き等が漏れて見える)。
+                     *
+                     * /CropBox の解釈をビューワに委ねず、コンテンツ
+                     * ストリーム自身のクリップパスとして確実に除去する。
+                     * さらに /MediaBox 自体も解決済み CropBox に縮小し
+                     * /CropBox は削除する。以後「/MediaBox = 可視範囲」
+                     * という単一の表現に統一することで、一般的な
+                     * ブラウザ内蔵PDFビューワ(/CropBoxを尊重する)と、
+                     * /CropBoxを見ない/無視するビューワとで表示結果が
+                     * 食い違わないようにする。 */
+                    char cs_prefix[320];
                     int  cs_prefix_len = snprintf(cs_prefix, sizeof(cs_prefix),
+                        "q\n%.4f %.4f %.4f %.4f re\nW n\n"
                         "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/KzBgImg Do\nQ\n",
+                        mb_x0, mb_y0, pw_pt, ph_pt,
                         pw_pt, ph_pt, mb_x0, mb_y0);
 
                     final_buf = fz_new_buffer(ctx,
-                        (size_t)cs_prefix_len + fz_buffer_storage(ctx, stripped, NULL) + 8);
+                        (size_t)cs_prefix_len + fz_buffer_storage(ctx, stripped, NULL) + 16);
                     fz_append_data(ctx, final_buf, cs_prefix, (size_t)cs_prefix_len);
                     fz_append_buffer(ctx, final_buf, stripped);
+                    fz_append_string(ctx, final_buf, "\nQ\n");
 
                     kozou_debug_dump_buffer(ctx, output, i, "final", final_buf);
 
                     pdf_obj *new_stm = pdf_add_stream(ctx, dst, final_buf, NULL, 0);
                     pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), new_stm);
                     pdf_drop_obj(ctx, new_stm);
+
+                    {
+                        pdf_obj *mb = pdf_new_array(ctx, dst, 4);
+                        pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, mb_x0));
+                        pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, mb_y0));
+                        pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, mb_x0 + pw_pt));
+                        pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, mb_y0 + ph_pt));
+                        pdf_dict_put_drop(ctx, page_obj, PDF_NAME(MediaBox), mb);
+                        pdf_dict_del(ctx, page_obj, PDF_NAME(CropBox));
+                    }
                 }
             }
             fz_always(ctx) {
