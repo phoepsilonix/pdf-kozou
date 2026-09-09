@@ -1587,6 +1587,9 @@ void kozou_rasterize(
         opts.do_compress_images = use_png ? 0 : 1;
         opts.do_garbage         = 0;
         opts.do_clean           = 0;
+        /* オブジェクトストリームを使用してxrefテーブル自体を圧縮する
+         * (PDF小僧の標準圧縮でONにした場合と同等の効果)。 */
+        opts.do_use_objstms     = 1;
         pdf_save_document(ctx, pdfout, output, &opts);
 
         if (allocated) free(pages_to_render);
@@ -1807,6 +1810,9 @@ void kozou_rasterize_no_text(
         opts.do_compress_images = use_png ? 0 : 1;
         opts.do_garbage         = 0;
         opts.do_clean           = 0;
+        /* オブジェクトストリームを使用してxrefテーブル自体を圧縮する
+         * (PDF小僧の標準圧縮でONにした場合と同等の効果)。 */
+        opts.do_use_objstms     = 1;
         pdf_save_document(ctx, pdfout, output, &opts);
 
         if (allocated) free(pages_to_render);
@@ -2644,6 +2650,12 @@ void kozou_compose_image_pdf_keep_text(
          * 可能性が高いと判断し、安全な範囲に戻した。 */
         opts.do_garbage         = 2;
         opts.do_clean           = 0;
+        /* オブジェクトストリームを使用してxrefテーブル自体を圧縮する
+         * (PDF小僧の標準圧縮でONにした場合と同等の効果)。
+         * enable_objstms() で既に do_use_objstms=1 単体は安全側だと
+         * 確認済み (do_appearance/do_pretty 等は逆に肥大化/無効だった
+         * ため未使用のまま)。 */
+        opts.do_use_objstms     = 1;
         pdf_save_document(ctx, dst, output, &opts);
 
         if (allocated) free(pages_to_do);
