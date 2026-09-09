@@ -2076,6 +2076,117 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
     return out;
 }
 
+/* KozouNameSet: 重複なしの名前(NUL終端文字列)の可変長集合。
+ * フォントリソース名 (先頭の '/' を除いたもの) の収集に使う。 */
+typedef struct {
+    char **names;
+    size_t count, cap;
+} KozouNameSet;
+
+static void kozou_nameset_init(KozouNameSet *s) {
+    s->names = NULL; s->count = 0; s->cap = 0;
+}
+static int kozou_nameset_contains(const KozouNameSet *s, const char *name, size_t len) {
+    for (size_t i = 0; i < s->count; i++) {
+        if (strlen(s->names[i]) == len && memcmp(s->names[i], name, len) == 0) return 1;
+    }
+    return 0;
+}
+static void kozou_nameset_add(KozouNameSet *s, const char *name, size_t len) {
+    if (kozou_nameset_contains(s, name, len)) return;
+    if (s->count == s->cap) {
+        s->cap = s->cap ? s->cap * 2 : 8;
+        s->names = (char **)realloc(s->names, sizeof(char *) * s->cap);
+    }
+    char *copy = (char *)malloc(len + 1);
+    memcpy(copy, name, len);
+    copy[len] = '\0';
+    s->names[s->count++] = copy;
+}
+static void kozou_nameset_free(KozouNameSet *s) {
+    for (size_t i = 0; i < s->count; i++) free(s->names[i]);
+    free(s->names);
+    s->names = NULL; s->count = 0; s->cap = 0;
+}
+
+/* コンテンツストリーム中で実際に "/FontName ... Tf" として使われている
+ * フォントリソース名 (先頭の '/' を除いた文字列) を集める。
+ *
+ * 背景: kozou_build_text_only_form は Form ごとに新しい /Resources を
+ * 作る際、元の /Resources/Font 辞書を丸ごとグラフトしていた。PDF
+ * ジェネレータは /Font 辞書をページ/Form 間で共有することが多く、
+ * 文書全体で使われている全フォント (このケースでは171個、埋め込み
+ * フォントプログラムだけで約450KB) が、実際にはその Form 内で1個も
+ * 使われていなくても丸ごと引き継がれてしまい、テキスト保持画像化PDF
+ * のファイルサイズが元のPDFより大きくなる原因になっていた。
+ *
+ * この関数で実際に Tf された名前だけを集め、呼び出し側で /Font
+ * 辞書をその名前だけに絞り込む (見た目に影響しない範囲でのみ削減)。 */
+static void kozou_collect_used_fonts(fz_context *ctx, fz_buffer *buf, KozouNameSet *out)
+{
+    unsigned char *data = NULL;
+    size_t len = fz_buffer_storage(ctx, buf, &data);
+    if (!data || len == 0) return;
+    const char *src = (const char *)data;
+
+    size_t cap = 256, ntok = 0;
+    kozou_tok *toks = (kozou_tok *)malloc(sizeof(kozou_tok) * cap);
+    {
+        size_t pos = 0;
+        while (pos < len) {
+            kozou_tok t;
+            size_t next = kozou_next_token(src, len, pos, &t);
+            if (t.start == t.end) break;
+            if (ntok == cap) { cap *= 2; toks = (kozou_tok *)realloc(toks, sizeof(kozou_tok) * cap); }
+            toks[ntok++] = t;
+            pos = next;
+        }
+    }
+
+    for (size_t i = 0; i < ntok; i++) {
+        size_t tlen = toks[i].end - toks[i].start;
+        const char *tp = src + toks[i].start;
+        if (tlen == 2 && tp[0] == 'T' && tp[1] == 'f' && i > 0) {
+            size_t nlen = toks[i-1].end - toks[i-1].start;
+            const char *np = src + toks[i-1].start;
+            if (nlen > 1 && np[0] == '/') {
+                kozou_nameset_add(out, np + 1, nlen - 1);
+            }
+        }
+    }
+    free(toks);
+}
+
+/* stripped コンテンツ内に実際にテキスト表示演算子 (Tj TJ ' ") が
+ * 存在するかどうかを調べる。kozou_collect_used_fonts で Tf が1つも
+ * 見つからなかった場合 (通常はこの Form にテキストが無いだけだが、
+ * ごく稀に「呼び出し元から継承したフォント状態のまま、この Form
+ * 内では独自の Tf を発行しない」ケースもPDF仕様上あり得る) に、
+ * 安全側 (元の /Font 辞書を丸ごと維持する旧来の動作) へフォール
+ * バックすべきかどうかの判定に使う。 */
+static int kozou_has_text_show_ops(fz_context *ctx, fz_buffer *buf)
+{
+    unsigned char *data = NULL;
+    size_t len = fz_buffer_storage(ctx, buf, &data);
+    if (!data || len == 0) return 0;
+    const char *src = (const char *)data;
+
+    size_t pos = 0;
+    while (pos < len) {
+        kozou_tok t;
+        size_t next = kozou_next_token(src, len, pos, &t);
+        if (t.start == t.end) break;
+        size_t tlen = t.end - t.start;
+        const char *tp = src + t.start;
+        if ((tlen == 2 && tp[0]=='T' && (tp[1]=='j' || tp[1]=='J')) ||
+            (tlen == 1 && (tp[0]=='\'' || tp[0]=='"'))) {
+            return 1;
+        }
+        pos = next;
+    }
+    return 0;
+}
+
 /* デバッグ用: 環境変数 KOZOU_COMPOSE_DEBUG=1 が設定されている場合のみ、
  * 指定バッファの内容を <output>.p<page>.<tag>.txt として書き出す。
  * 実機での位置ずれ/サイズ問題の切り分け用(該当ページの実際の
@@ -2737,10 +2848,34 @@ static pdf_obj *kozou_build_text_only_form(
          *  再露出を防ぐ)。 */
         pdf_obj *new_res = pdf_new_dict(ctx, dst, 2);
         if (src_res) {
+            /* /Font は丸ごとグラフトせず、この Form の stripped
+             * コンテンツで実際に Tf された名前だけに絞り込んでグラフト
+             * する (見た目に影響しない範囲でのみファイルサイズを削減。
+             * 詳細は kozou_collect_used_fonts のコメント参照)。 */
             pdf_obj *src_font = pdf_dict_get(ctx, src_res, PDF_NAME(Font));
             if (src_font) {
-                pdf_dict_put(ctx, new_res, PDF_NAME(Font),
-                             pdf_graft_mapped_object(ctx, gmap, src_font));
+                KozouNameSet used_fonts;
+                kozou_nameset_init(&used_fonts);
+                kozou_collect_used_fonts(ctx, stripped, &used_fonts);
+                if (used_fonts.count > 0) {
+                    pdf_obj *new_font = pdf_new_dict(ctx, dst, (int)used_fonts.count);
+                    for (size_t fi = 0; fi < used_fonts.count; fi++) {
+                        pdf_obj *font_obj = pdf_dict_gets(ctx, src_font, used_fonts.names[fi]);
+                        if (font_obj) {
+                            pdf_dict_puts(ctx, new_font, used_fonts.names[fi],
+                                          pdf_graft_mapped_object(ctx, gmap, font_obj));
+                        }
+                    }
+                    pdf_dict_put_drop(ctx, new_res, PDF_NAME(Font), new_font);
+                } else if (kozou_has_text_show_ops(ctx, stripped)) {
+                    /* このFormにテキスト表示演算子はあるのに、その
+                     * フォントを選ぶ Tf がローカルに1つも見つからない
+                     * (呼び出し元からフォント状態を継承している可能性)。
+                     * 安全側に倒し、元の /Font 辞書を丸ごと維持する。 */
+                    pdf_dict_put(ctx, new_res, PDF_NAME(Font),
+                                 pdf_graft_mapped_object(ctx, gmap, src_font));
+                }
+                kozou_nameset_free(&used_fonts);
             }
             pdf_obj *src_gs = pdf_dict_get(ctx, src_res, PDF_NAME(ExtGState));
             if (src_gs) {
