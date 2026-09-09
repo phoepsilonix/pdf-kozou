@@ -1564,8 +1564,7 @@ fn strip_fully_buried_text_for_keep_text(
             page,
             // 既定 0.8: 隠しテキストレビュー機能 (HiddenTextPage) が
             // 「buried」として表示するのと同じ基準に揃える。
-            // cover_ratio: None,
-            cover_ratio: Some(1.0f32),
+            cover_ratio: None,
             image_alpha_threshold: None,
             layout_w: None,
             layout_h: None,
