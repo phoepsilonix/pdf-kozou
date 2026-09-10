@@ -1961,17 +1961,32 @@ static pdf_obj *kozou_build_text_only_form(
  * (トークン解析ベース。1行に複数演算子が書かれていても、対象の
  *  演算子とその演算子自身のオペランドだけを正確に取り除き、
  *  同じ行にある q/Q や他の演算子は一切変更しない)。
- * 対象 (ページに実際にピクセルを描く演算子のみ、オペランドは0個):
- *   f F f* S s B B* b b*  (パスの塗り/線)
+ *
+ * パス構築(m l c v y h re)・クリップ確定(W W*)・パス終端演算子
+ * (f F f* S s B B* b b* n) は「パス単位」でまとめて判定する:
+ *   - そのパスが W/W* によるクリップに一度も使われていない場合、
+ *     パス構築演算子・オペランド・終端演算子を丸ごと削除する。
+ *     背景側は既に画像として焼き込まれており、このテキスト専用
+ *     Form 側では見た目にも構造(クリップスタック)にも一切影響
+ *     しないため、完全に削除して良い。装飾用の複雑なベジェ曲線
+ *     イラスト等はこれでファイルサイズを大きく削減できる。
+ *   - そのパスが W/W* によるクリップに使われている場合は、パス
+ *     構築演算子・W/W* は温存し、実際に塗る/線を引く終端演算子
+ *     (f 等)だけを 'n' に置換する(従来の挙動)。クリップ領域の
+ *     確定自体は描画を伴わないため安全。単純に削除すると、
+ *     直前のパス構築演算子が「未消費のパス」として残ってしまい、
+ *     後続の W/W* に予期せず巻き込まれてクリップ領域が壊れる
+ *     不具合が実機で確認されているため、この場合は必ず 'n' に
+ *     置換してパスを正しく消費する。
+ *   - パスの途中に上記以外の未知の演算子(cm/gs/色設定系など)を
+ *     挟んでいる場合は、判定を安全側にフォールバックし、従来通り
+ *     終端演算子のみ 'n' に置換する(パス構築側は一切変更しない)。
+ *
  * 対象 (オペランド1個: 直前の名前トークンも一緒に除去):
  *   sh                    (シェーディング)
  *   Do                    ただし Image XObject を指す場合のみ除去する。
  *     Form XObject を指す場合は演算子・オペランドとも残す。
  * 対象外 (温存する):
- *   パス構築 (m l c v y h re) : 単独では何も描かないため無害。
- *     後続の W n によるクリップに使われている場合があるため、
- *     パスそのものは残し、実際に「塗る/描く」演算子だけを除去する。
- *   W W* n                : クリップの確定は描画を伴わないため無害。
  *   q Q cm gs 色設定系      : テキストの位置・色にも影響するため必須。
  * BT ～ ET の内側は無条件でそのまま温存する。
  *
@@ -2003,36 +2018,53 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
 
     /* action: 0 = そのまま残す, 1 = 完全に削除する(バイトごと消す),
      * 2 = 'n' 1文字に置換する(パスを消費するだけで何も描画しない
-     * no-op 演算子。塗り/線引き演算子を単純に削除すると、その直前の
-     * パス構築演算子(re 等)が「未消費のパス」として残ってしまい、
-     * 後続の W/W* クリップ演算に予期せず巻き込まれてクリップ領域が
-     * 壊れる不具合が実機で確認された。'n' に置換することでパスを
-     * 正しく消費しつつ何も描画しない、という元の意図を維持する)。 */
+     * no-op 演算子)。
+     *
+     * run_start / run_has_clip: パス構築演算子(m l c v y h re)・
+     * クリップ確定(W W*)・数値オペランドだけが連続している区間を
+     * 「パス1本分の run」として蓄積し、その run を終端演算子
+     * (f 等 または n)に到達した時点でまとめて判定する。
+     * run の途中に他の演算子(q/Q/cm/gs/色設定系など)が挟まった
+     * 場合は run_start を -1 に戻し、安全側(従来通り終端演算子の
+     * みを 'n' に置換)にフォールバックする。 */
     char *action = (char *)calloc(ntok ? ntok : 1, 1);
     int in_bt = 0;
+    long run_start = -1;
+    int run_has_clip = 0;
 
     for (size_t i = 0; i < ntok; i++) {
         size_t tlen = toks[i].end - toks[i].start;
         const char *tp = src + toks[i].start;
 
-        if (tlen == 2 && tp[0] == 'B' && tp[1] == 'T') { in_bt = 1; continue; }
+        if (tlen == 2 && tp[0] == 'B' && tp[1] == 'T') { in_bt = 1; run_start = -1; run_has_clip = 0; continue; }
         if (tlen == 2 && tp[0] == 'E' && tp[1] == 'T') { in_bt = 0; continue; }
         if (in_bt) continue;
 
+        int is_path_construct =
+            (tlen == 1 && (tp[0]=='m'||tp[0]=='l'||tp[0]=='c'||tp[0]=='v'||tp[0]=='y'||tp[0]=='h')) ||
+            (tlen == 2 && tp[0]=='r' && tp[1]=='e');
+        int is_clipmark =
+            (tlen == 1 && tp[0]=='W') ||
+            (tlen == 2 && tp[0]=='W' && tp[1]=='*');
         int is_paint0 =
             (tlen == 1 && (tp[0]=='f'||tp[0]=='F'||tp[0]=='S'||tp[0]=='s'||tp[0]=='B'||tp[0]=='b')) ||
             (tlen == 2 && tp[0]=='f' && tp[1]=='*') ||
             (tlen == 2 && tp[0]=='B' && tp[1]=='*') ||
             (tlen == 2 && tp[0]=='b' && tp[1]=='*');
+        int is_endpath_noop = (tlen == 1 && tp[0]=='n');
+        int is_terminal = is_paint0 || is_endpath_noop;
         int is_sh = (tlen == 2 && tp[0]=='s' && tp[1]=='h');
         int is_do = (tlen == 2 && tp[0]=='D' && tp[1]=='o');
+        int is_numeric = (tlen > 0 && (tp[0]=='+'||tp[0]=='-'||tp[0]=='.'||(tp[0]>='0'&&tp[0]<='9')));
 
-        if (is_paint0) {
-            action[i] = 2; /* 'n' に置換してパスを消費 */
-        } else if (is_sh) {
+        if (is_sh) {
+            run_start = -1; run_has_clip = 0;
             action[i] = 1;
             if (i > 0) action[i-1] = 1; /* シェーディング名オペランド */
-        } else if (is_do) {
+            continue;
+        }
+        if (is_do) {
+            run_start = -1; run_has_clip = 0;
             int keep_for_form = 0;
             if (i > 0) {
                 size_t nlen = toks[i-1].end - toks[i-1].start;
@@ -2043,7 +2075,50 @@ static fz_buffer *kozou_strip_nontext_paint_ops(fz_context *ctx, fz_buffer *in_b
                 action[i] = 1;
                 if (i > 0) action[i-1] = 1; /* XObject名オペランド */
             }
+            continue;
         }
+
+        if (is_numeric || is_path_construct || is_clipmark) {
+            /* パス構築中のオペランド・演算子、または W/W*。
+             * この時点では確定させず、終端演算子が来るまで蓄積する。 */
+            if (run_start < 0) run_start = (long)i;
+            if (is_clipmark) run_has_clip = 1;
+            continue;
+        }
+
+        if (is_terminal) {
+            if (run_start >= 0) {
+                /* run_start からここまでは数値・パス構築・クリップ確定
+                 * だけで構成された「きれいな」1本のパス。 */
+                if (run_has_clip) {
+                    /* クリップに使われているためパス自体は消せない。
+                     * 塗り/線引き演算子だけ 'n' に置換する(従来動作)。
+                     * すでに 'n' の場合(=クリップ確定のみで元々何も
+                     * 描いていない)は変更不要。 */
+                    if (is_paint0) action[i] = 2;
+                } else {
+                    /* どこからもクリップに使われていない純粋な装飾用
+                     * パス。背景画像側に既に焼き込まれているため、
+                     * パス構築演算子・オペランド・終端演算子を丸ごと
+                     * 削除してよい。 */
+                    for (size_t k = (size_t)run_start; k <= i; k++) action[k] = 1;
+                }
+            } else {
+                /* run が汚れている(未知の演算子を挟んだ)か空。
+                 * 安全側にフォールバックし、従来通り終端演算子のみ
+                 * 'n' に置換する(パス構築側は一切変更しない)。 */
+                if (is_paint0) action[i] = 2;
+            }
+            run_start = -1;
+            run_has_clip = 0;
+            continue;
+        }
+
+        /* q Q cm gs 色設定系など、パス構築にも終端にも該当しない
+         * 演算子。蓄積中の run があれば安全のため確定させずに手放す
+         * (該当トークンには一切触れない = action は 0 のまま)。 */
+        run_start = -1;
+        run_has_clip = 0;
     }
 
     /* 削除(action==1)は連続範囲をまとめてバイトごとスキップし、
