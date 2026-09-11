@@ -2184,8 +2184,145 @@ static void kozou_nameset_free(KozouNameSet *s) {
     s->names = NULL; s->count = 0; s->cap = 0;
 }
 
+/* KozouFontUsage: フォントリソース名ごとに、そのフォントで実際に
+ * Tj/TJ/'/" によって表示された1バイト文字コード(0-255)の集合を
+ * ビットマップ(32byte=256bit)で記録する。
+ *
+ * 背景: kozou_collect_used_fonts は「そのForm内でTfされた
+ * フォント名」を集めるだけで、フォント単位でしか判定していない
+ * ため、Tfはされたが隠しテキスト除去等で実際のTj/TJが1つも
+ * 残っていないフォントや、一部のグリフしか使われていないフォント
+ * であっても /CharProcs を丸ごとグラフトしてしまい、Type3フォント
+ * (1グリフ=1個の独立したベジェ曲線パス列)ではファイルサイズへの
+ * 影響が非常に大きい(実測で1文書あたり数百KB〜1MB超)。
+ * この構造体は Type3 フォントの /CharProcs をグリフ単位で
+ * サブセット化するための実測データを提供する。
+ * 単純フォント(Type1/TrueType/Type3)の文字コードは1バイトなので
+ * 256bitで十分。Type0(合成フォント)は複数バイトコードを使うため
+ * このビットマップでは正しく扱えないが、サブセット化はType3にしか
+ * 適用しないため問題ない。 */
+typedef struct {
+    char *name;
+    unsigned char used[32];
+} KozouFontUsageEntry;
+
+typedef struct {
+    KozouFontUsageEntry *entries;
+    size_t count, cap;
+} KozouFontUsage;
+
+static void kozou_fontusage_init(KozouFontUsage *u) {
+    u->entries = NULL; u->count = 0; u->cap = 0;
+}
+static KozouFontUsageEntry *kozou_fontusage_find(KozouFontUsage *u, const char *name, size_t len) {
+    for (size_t i = 0; i < u->count; i++) {
+        if (strlen(u->entries[i].name) == len && memcmp(u->entries[i].name, name, len) == 0)
+            return &u->entries[i];
+    }
+    return NULL;
+}
+static KozouFontUsageEntry *kozou_fontusage_find_or_add(KozouFontUsage *u, const char *name, size_t len) {
+    KozouFontUsageEntry *e = kozou_fontusage_find(u, name, len);
+    if (e) return e;
+    if (u->count == u->cap) {
+        u->cap = u->cap ? u->cap * 2 : 8;
+        u->entries = (KozouFontUsageEntry *)realloc(u->entries, sizeof(KozouFontUsageEntry) * u->cap);
+    }
+    e = &u->entries[u->count++];
+    e->name = (char *)malloc(len + 1);
+    memcpy(e->name, name, len);
+    e->name[len] = '\0';
+    memset(e->used, 0, sizeof(e->used));
+    return e;
+}
+static void kozou_fontusage_mark(KozouFontUsageEntry *e, unsigned char code) {
+    if (!e) return;
+    e->used[code >> 3] |= (unsigned char)(1u << (code & 7));
+}
+static int kozou_fontusage_code_used(const KozouFontUsageEntry *e, int code) {
+    if (!e) return 1; /* 記録が無い(=このFormでは追跡できなかった)場合は安全側 */
+    if (code < 0 || code > 255) return 1;
+    return (e->used[code >> 3] >> (code & 7)) & 1;
+}
+static void kozou_fontusage_free(KozouFontUsage *u) {
+    for (size_t i = 0; i < u->count; i++) free(u->entries[i].name);
+    free(u->entries);
+    u->entries = NULL; u->count = 0; u->cap = 0;
+}
+
+/* リテラル文字列トークン "(...)" (s[start]=='(', s[end-1]==')') の
+ * 中身をPDF仕様(7.3.4.2)に従って最小限デコードし、実際に表示される
+ * 各バイトを used に立てる。文字列の中身そのものを復元する必要は
+ * ないため、デコード結果は捨てて used マークだけ行う。 */
+static void kozou_mark_literal_string_codes(const char *s, size_t start, size_t end,
+                                             KozouFontUsageEntry *e)
+{
+    if (end < start + 2) return; /* "()" 未満は空文字列 */
+    size_t i = start + 1, stop = end - 1;
+    while (i < stop) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '\\' && i + 1 < stop) {
+            unsigned char n = (unsigned char)s[i + 1];
+            if (n >= '0' && n <= '7') {
+                int val = 0, k = 0;
+                size_t j = i + 1;
+                while (k < 3 && j < stop && s[j] >= '0' && s[j] <= '7') {
+                    val = val * 8 + (s[j] - '0');
+                    j++; k++;
+                }
+                kozou_fontusage_mark(e, (unsigned char)val);
+                i = j;
+                continue;
+            }
+            if (n == '\r') { i += 2; if (i < stop && s[i] == '\n') i++; continue; }
+            if (n == '\n') { i += 2; continue; }
+            {
+                unsigned char actual;
+                switch (n) {
+                    case 'n': actual = '\n'; break;
+                    case 'r': actual = '\r'; break;
+                    case 't': actual = '\t'; break;
+                    case 'b': actual = '\b'; break;
+                    case 'f': actual = '\f'; break;
+                    default:  actual = n;    break; /* \( \) \\ その他 */
+                }
+                kozou_fontusage_mark(e, actual);
+                i += 2;
+                continue;
+            }
+        }
+        kozou_fontusage_mark(e, c);
+        i++;
+    }
+}
+
+/* 16進文字列トークン "<...>" (s[start]=='<', s[end-1]=='>') をデコード
+ * して used を立てる。奇数桁の場合は仕様通り末尾を0埋めして扱う。 */
+static void kozou_mark_hex_string_codes(const char *s, size_t start, size_t end,
+                                         KozouFontUsageEntry *e)
+{
+    if (end < start + 2) return;
+    int have_nibble = 0, nibble_val = 0;
+    for (size_t i = start + 1; i < end - 1; i++) {
+        char c = s[i];
+        int v;
+        if (c >= '0' && c <= '9') v = c - '0';
+        else if (c >= 'A' && c <= 'F') v = c - 'A' + 10;
+        else if (c >= 'a' && c <= 'f') v = c - 'a' + 10;
+        else continue; /* 空白はスキップ (仕様上許可される) */
+        if (!have_nibble) { nibble_val = v; have_nibble = 1; }
+        else {
+            kozou_fontusage_mark(e, (unsigned char)((nibble_val << 4) | v));
+            have_nibble = 0;
+        }
+    }
+    if (have_nibble) kozou_fontusage_mark(e, (unsigned char)(nibble_val << 4));
+}
+
 /* コンテンツストリーム中で実際に "/FontName ... Tf" として使われている
  * フォントリソース名 (先頭の '/' を除いた文字列) を集める。
+ * 併せて (out_usage が非NULLの場合) Tj/TJ/'/" で実際に表示された
+ * 1バイト文字コードを、直前に Tf されたフォント名ごとに記録する。
  *
  * 背景: kozou_build_text_only_form は Form ごとに新しい /Resources を
  * 作る際、元の /Resources/Font 辞書を丸ごとグラフトしていた。PDF
@@ -2196,8 +2333,15 @@ static void kozou_nameset_free(KozouNameSet *s) {
  * のファイルサイズが元のPDFより大きくなる原因になっていた。
  *
  * この関数で実際に Tf された名前だけを集め、呼び出し側で /Font
- * 辞書をその名前だけに絞り込む (見た目に影響しない範囲でのみ削減)。 */
-static void kozou_collect_used_fonts(fz_context *ctx, fz_buffer *buf, KozouNameSet *out)
+ * 辞書をその名前だけに絞り込む (見た目に影響しない範囲でのみ削減)。
+ *
+ * out_usage: Type3 フォントの /CharProcs をグリフ単位でサブセット化
+ * するための実測データ。「Tf はされたが隠しテキスト除去等で実際の
+ * Tj/TJ が1つも残っていない」フォントや、「一部のグリフしか使われて
+ * いない」フォントを検出できる(実測で文書全体のType3グリフデータの
+ * 過半数がこのケースだった)。 */
+static void kozou_collect_used_fonts(fz_context *ctx, fz_buffer *buf, KozouNameSet *out,
+                                      KozouFontUsage *out_usage)
 {
     unsigned char *data = NULL;
     size_t len = fz_buffer_storage(ctx, buf, &data);
@@ -2218,15 +2362,70 @@ static void kozou_collect_used_fonts(fz_context *ctx, fz_buffer *buf, KozouNameS
         }
     }
 
+    KozouFontUsageEntry *cur_entry = NULL; /* 直近の Tf で選ばれたフォント */
+
     for (size_t i = 0; i < ntok; i++) {
         size_t tlen = toks[i].end - toks[i].start;
         const char *tp = src + toks[i].start;
-        if (tlen == 2 && tp[0] == 'T' && tp[1] == 'f' && i > 0) {
-            size_t nlen = toks[i-1].end - toks[i-1].start;
-            const char *np = src + toks[i-1].start;
+
+        if (tlen == 2 && tp[0] == 'T' && tp[1] == 'f' && i > 1) {
+            /* "/FontName size Tf" — オペランドは2つ (フォント名、サイズ)
+             * なので、フォント名は Tf の2つ前のトークン (i-2)。
+             * 直前 (i-1) はサイズの数値であり、これを見ると
+             * フォント名を絶対に取得できない(既存の実装が抱えていた
+             * オフバイワン)。実データ("/F38 14.66 Tf" 等)で検証済み。 */
+            size_t nlen = toks[i-2].end - toks[i-2].start;
+            const char *np = src + toks[i-2].start;
             if (nlen > 1 && np[0] == '/') {
                 kozou_nameset_add(out, np + 1, nlen - 1);
+                cur_entry = out_usage ? kozou_fontusage_find_or_add(out_usage, np + 1, nlen - 1) : NULL;
             }
+            continue;
+        }
+        if (!out_usage) continue;
+
+        if (tlen == 2 && tp[0] == 'T' && tp[1] == 'j' && i > 0 && cur_entry) {
+            size_t s0 = toks[i-1].start, e0 = toks[i-1].end;
+            if (e0 > s0 && src[s0] == '(') kozou_mark_literal_string_codes(src, s0, e0, cur_entry);
+            else if (e0 > s0 && src[s0] == '<') kozou_mark_hex_string_codes(src, s0, e0, cur_entry);
+            continue;
+        }
+        if (tlen == 1 && (tp[0] == '\'' || tp[0] == '"') && cur_entry) {
+            /* ' : オペランドは文字列のみ (string ')。
+             * " : オペランドは aw ac string の順 ("aw ac string \"")。
+             * どちらも表示文字列は演算子の直前(i-1)にある — aw/ac が
+             * 前に付くのは文字列よりさらに手前であり、この位置判定には
+             * 影響しない。 */
+            long idx = (long)i - 1;
+            if (idx >= 0) {
+                size_t s0 = toks[idx].start, e0 = toks[idx].end;
+                if (e0 > s0 && src[s0] == '(') kozou_mark_literal_string_codes(src, s0, e0, cur_entry);
+                else if (e0 > s0 && src[s0] == '<') kozou_mark_hex_string_codes(src, s0, e0, cur_entry);
+            }
+            continue;
+        }
+        if (tlen == 2 && tp[0] == 'T' && tp[1] == 'J' && i > 0 && cur_entry) {
+            /* 直前トークンは ']' のはず。対応する '[' まで深さカウントで
+             * 遡り、その間にあるすべての文字列トークンをマークする。 */
+            if (src[toks[i-1].start] == ']') {
+                long depth = 1;
+                long j = (long)i - 2;
+                while (j >= 0 && depth > 0) {
+                    size_t jl = toks[j].end - toks[j].start;
+                    if (jl == 1 && src[toks[j].start] == ']') depth++;
+                    else if (jl == 1 && src[toks[j].start] == '[') depth--;
+                    if (depth == 0) break;
+                    j--;
+                }
+                if (j >= 0) {
+                    for (long k = j + 1; k < (long)i - 1; k++) {
+                        size_t ks = toks[k].start, ke = toks[k].end;
+                        if (ke > ks && src[ks] == '(') kozou_mark_literal_string_codes(src, ks, ke, cur_entry);
+                        else if (ke > ks && src[ks] == '<') kozou_mark_hex_string_codes(src, ks, ke, cur_entry);
+                    }
+                }
+            }
+            continue;
         }
     }
     free(toks);
@@ -2857,6 +3056,110 @@ void kozou_compose_image_pdf_keep_text(
     }
 }
 
+/* font_obj (src) を dst にグラフトする。Type3 フォントであり、
+ * usage(このFormで実際に使われた1バイトコードの集合)が判明している
+ * 場合は、/CharProcs を実際に使われているグリフだけに絞り込んだ
+ * 新規フォント辞書を作って返す。
+ *
+ * 注意: 絞り込んだフォント辞書自体は pdf_graft_map の共有キャッシュ
+ * には乗せず、Form ごとに新規オブジェクトとして作る。同じ元フォント
+ * が別の Form では異なるグリフ集合を必要とする場合があり、グラフト
+ * マップで共有すると片方の Form 用にサブセット化した結果がもう片方
+ * の Form でも使われてしまい、必要なグリフが欠落する(表示崩れ)ため。
+ * 一方、個々の /CharProcs グリフストリームや /Widths 等の補助オブジェ
+ * クトは内容を変更しないので、pdf_graft_mapped_object で通常通り
+ * 共有grafする(同じグリフが複数Formで使われる場合の重複を避ける)。
+ *
+ * Type3以外のフォント、または usage が NULL (フォールバック経路等で
+ * 使用実績が取れていない)場合は、従来通り丸ごとグラフトする。 */
+static pdf_obj *kozou_graft_font_maybe_subset(
+    fz_context *ctx, pdf_document *dst, pdf_graft_map *gmap,
+    pdf_obj *font_obj, const KozouFontUsageEntry *usage)
+{
+    pdf_obj *subtype = pdf_dict_get(ctx, font_obj, PDF_NAME(Subtype));
+    if (!usage || !subtype || !pdf_name_eq(ctx, subtype, PDF_NAME(Type3)))
+        return pdf_graft_mapped_object(ctx, gmap, font_obj);
+
+    pdf_obj *src_charprocs = pdf_dict_get(ctx, font_obj, PDF_NAME(CharProcs));
+    pdf_obj *src_encoding  = pdf_dict_get(ctx, font_obj, PDF_NAME(Encoding));
+    pdf_obj *diffs = src_encoding ? pdf_dict_get(ctx, src_encoding, PDF_NAME(Differences)) : NULL;
+    if (!src_charprocs || !diffs || !pdf_is_array(ctx, diffs)) {
+        /* 想定外の構造(独自 Encoding が無い等)は安全側で丸ごとグラフト。 */
+        return pdf_graft_mapped_object(ctx, gmap, font_obj);
+    }
+
+    /* /Differences 配列 [code0 name0 name1 ... code1 name2 ...] を
+     * たどり、実際に使われているコードに対応するグリフ名を集める。 */
+    KozouNameSet used_glyph_names;
+    kozou_nameset_init(&used_glyph_names);
+    {
+        int n = pdf_array_len(ctx, diffs);
+        int cur_code = -1;
+        for (int i = 0; i < n; i++) {
+            pdf_obj *item = pdf_array_get(ctx, diffs, i);
+            if (pdf_is_int(ctx, item)) {
+                cur_code = pdf_to_int(ctx, item);
+            } else if (pdf_is_name(ctx, item) && cur_code >= 0) {
+                if (kozou_fontusage_code_used(usage, cur_code)) {
+                    const char *gname = pdf_to_name(ctx, item);
+                    if (gname) kozou_nameset_add(&used_glyph_names, gname, strlen(gname));
+                }
+                cur_code++;
+            }
+        }
+    }
+
+    /* 実際に使われているグリフだけを含む /CharProcs を新規作成する。
+     * 1つも使われていない場合(Tfされたが後段でTj/TJが全て消えた等)は
+     * 空の /CharProcs になる(何も描画しないだけで、フォントリソース
+     * 名自体は有効なオブジェクトとして残るため、未定義リソース参照に
+     * はならない)。 */
+    pdf_obj *new_charprocs = pdf_new_dict(ctx, dst,
+        used_glyph_names.count > 0 ? (int)used_glyph_names.count : 1);
+    {
+        int n = pdf_dict_len(ctx, src_charprocs);
+        for (int i = 0; i < n; i++) {
+            pdf_obj *key = pdf_dict_get_key(ctx, src_charprocs, i);
+            const char *keystr = pdf_is_name(ctx, key) ? pdf_to_name(ctx, key) : NULL;
+            if (!keystr) continue;
+            if (!kozou_nameset_contains(&used_glyph_names, keystr, strlen(keystr))) continue;
+            pdf_obj *proc = pdf_dict_get_val(ctx, src_charprocs, i);
+            if (proc) {
+                pdf_dict_puts(ctx, new_charprocs, keystr, pdf_graft_mapped_object(ctx, gmap, proc));
+            }
+        }
+    }
+    kozou_nameset_free(&used_glyph_names);
+
+    pdf_obj *new_font = pdf_add_object(ctx, dst, pdf_new_dict(ctx, dst, 8));
+    pdf_dict_put(ctx, new_font, PDF_NAME(Type), PDF_NAME(Font));
+    pdf_dict_put(ctx, new_font, PDF_NAME(Subtype), PDF_NAME(Type3));
+    {
+        pdf_obj *v;
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(FontBBox))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(FontBBox), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(FontMatrix))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(FontMatrix), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(Resources))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(Resources), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(Encoding))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(Encoding), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(FirstChar))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(FirstChar), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(LastChar))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(LastChar), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(Widths))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(Widths), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(ToUnicode))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(ToUnicode), pdf_graft_mapped_object(ctx, gmap, v));
+        if ((v = pdf_dict_get(ctx, font_obj, PDF_NAME(Name))))
+            pdf_dict_put(ctx, new_font, PDF_NAME(Name), pdf_graft_mapped_object(ctx, gmap, v));
+    }
+    pdf_dict_put_drop(ctx, new_font, PDF_NAME(CharProcs), new_charprocs);
+
+    return new_font;
+}
+
 /* src 側の Form XObject (グラフトしていない、常に確実に読める) から、
  * テキストだけを残した新規 Form XObject を dst に新規作成して返す。
  * 既存のグラフト済みオブジェクトを書き換えるのではなく、常に新規に
@@ -2930,15 +3233,19 @@ static pdf_obj *kozou_build_text_only_form(
             pdf_obj *src_font = pdf_dict_get(ctx, src_res, PDF_NAME(Font));
             if (src_font) {
                 KozouNameSet used_fonts;
+                KozouFontUsage font_usage;
                 kozou_nameset_init(&used_fonts);
-                kozou_collect_used_fonts(ctx, stripped, &used_fonts);
+                kozou_fontusage_init(&font_usage);
+                kozou_collect_used_fonts(ctx, stripped, &used_fonts, &font_usage);
                 if (used_fonts.count > 0) {
                     pdf_obj *new_font = pdf_new_dict(ctx, dst, (int)used_fonts.count);
                     for (size_t fi = 0; fi < used_fonts.count; fi++) {
                         pdf_obj *font_obj = pdf_dict_gets(ctx, src_font, used_fonts.names[fi]);
                         if (font_obj) {
+                            const KozouFontUsageEntry *usage = kozou_fontusage_find(
+                                &font_usage, used_fonts.names[fi], strlen(used_fonts.names[fi]));
                             pdf_dict_puts(ctx, new_font, used_fonts.names[fi],
-                                          pdf_graft_mapped_object(ctx, gmap, font_obj));
+                                          kozou_graft_font_maybe_subset(ctx, dst, gmap, font_obj, usage));
                         }
                     }
                     pdf_dict_put_drop(ctx, new_res, PDF_NAME(Font), new_font);
@@ -2950,6 +3257,7 @@ static pdf_obj *kozou_build_text_only_form(
                     pdf_dict_put(ctx, new_res, PDF_NAME(Font),
                                  pdf_graft_mapped_object(ctx, gmap, src_font));
                 }
+                kozou_fontusage_free(&font_usage);
                 kozou_nameset_free(&used_fonts);
             }
             pdf_obj *src_gs = pdf_dict_get(ctx, src_res, PDF_NAME(ExtGState));
