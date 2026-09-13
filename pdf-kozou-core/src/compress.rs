@@ -1666,8 +1666,31 @@ pub fn compose_image_pdf_keep_text_with_quality(
 
     let c_input = CString::new(compose_input)
         .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
-    let c_output =
-        CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    // compose の直接の出力先はまず一時ファイルにする。この後、GUIの
+    // 「圧縮」ボタンと全く同じ compress()(preset=Standard,
+    // object_stream=true) を通してから最終的な output へ保存する。
+    //
+    // 背景: kozou_compose_image_pdf_keep_text 自身の保存
+    // (pdf_create_document 由来の、一度もディスクへ保存されたことの
+    // 無いドキュメント)に対して opts.do_use_objstms=1 を設定しても、
+    // 実際にはオブジェクトストリームが1つも生成されないことを実機で
+    // 確認した。C側で別の保存経路(kozou_compress_preserving_type3)を
+    // 経由するラウンドトリップも試したが、そちらも同様に効果が無かった。
+    // 一方、GUIの「圧縮」ボタンは compress() -> safe_compress_only() ->
+    // enable_objstms() という経路を通っており、これは
+    // mupdf::pdf::PdfDocument::open() で一度実ファイルとして保存された
+    // ドキュメントを開き直してから保存するため、オブジェクトストリームが
+    // 正しく効くことを実機で確認済み。ここでC側を新たに調整するのでは
+    // なく、既に動作確認済みのこの Rust 側の compress() をそのまま
+    // 再利用する(処理コストはGUIで「圧縮」を別途押すのと変わらない)。
+    let precompress_path = tmp_dir.join(format!(
+        "kozou_keeptext_precompress_{}.pdf",
+        std::process::id()
+    ));
+    let precompress_str = precompress_path.to_string_lossy().to_string();
+    let c_output = CString::new(precompress_str.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
     let c_tmp_dir = CString::new(tmp_dir.to_string_lossy().as_ref())
         .map_err(|_| CoreError::InvalidArg("invalid tmp_dir path".into()))?;
@@ -1715,10 +1738,65 @@ pub fn compose_image_pdf_keep_text_with_quality(
     }
 
     if let Some(e) = compose_err {
+        let _ = std::fs::remove_file(&precompress_path);
         return Err(e);
     }
 
-    copy_metadata_after_write(output, &metadata);
+    //　圧縮前にメタデータを書き込んでおく。
+    copy_metadata_after_write(&precompress_str, &metadata);
+
+    // GUIの標準プリセット相当(compress_images=true, gc=2, object_stream=true)
+    // で圧縮する。font_subset は明示的に false にする — この時点の
+    // precompress_path は無数の小さな Type3 フォント(Form毎にサブセット化
+    // 済み)を持つため、pdf_subset_fonts() を重ねて走らせるとかえって
+    // 遅い/安全性が未検証な経路(subset_and_write)に入ってしまう。
+    // redact_outside_crop は指定せず compress() のデフォルト(true、GUIの
+    // デフォルトと同じ)に委ねる。
+    let compress_req = CompressRequest {
+        input: precompress_str.clone(),
+        output: output.to_string(),
+        preset: Some(CompressPreset::Standard),
+        compress_images: if use_png { Some(true) } else { Some(false) },
+        compress_fonts: Some(true),
+        garbage_level: Some(2),
+        clean: None,
+        sanitize: None,
+        font_subset: Some(false),
+        merge_fonts: None,
+        object_stream: Some(true),
+        redact_outside_crop: None,
+        redact_margin_pt: None,
+        redact_margin_top: None,
+        redact_margin_bottom: None,
+        redact_margin_left: None,
+        redact_margin_right: None,
+        image_dpi: None,
+        image_jpeg_quality: None,
+        crop_to_visible_image_area: None,
+    };
+
+    let compress_ok = match compress(&compress_req) {
+        Ok(_) => true,
+        Err(e) => {
+            // 圧縮に失敗しても、precompress_path 自体は有効な変換結果
+            // なので、それを最終出力としてそのまま使い、変換自体は
+            // 失敗させない(圧縮が一段効かないだけの安全側フォールバック)。
+            eprintln!(
+                "[compose_image_pdf_keep_text] compress step failed, falling back to uncompressed output: {e}"
+            );
+            std::fs::copy(&precompress_path, output).is_ok()
+        }
+    };
+    let _ = std::fs::remove_file(&precompress_path);
+
+    if !compress_ok {
+        return Err(CoreError::Internal(
+            "keep_text: compress step failed and fallback copy also failed".into(),
+        ));
+    }
+
+    // この処理でオブジェクトストリームがオフになっている可能性があるため圧縮前に移動。
+    //copy_metadata_after_write(output, &metadata);
 
     let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
     let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
@@ -1729,14 +1807,14 @@ pub fn compose_image_pdf_keep_text_with_quality(
         ratio: safe_ratio(ib, ob),
         params_used: CompressParamsUsed {
             compress_images: true,
-            compress_fonts: false,
+            compress_fonts: true,
             garbage_level: 2,
             clean: false,
             sanitize: false,
             font_subset: false,
             subset_skipped: false,
             merge_fonts: false,
-            object_stream: false,
+            object_stream: true,
             redact_outside_crop: false,
             redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
             redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
