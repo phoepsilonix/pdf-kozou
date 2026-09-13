@@ -1293,70 +1293,6 @@ void kozou_convert_to_pdf(
 }
 
 /* ------------------------------------------------------------------ */
-/* kozou_resolved_box_origin                                            */
-/*                                                                     */
-/* 「解決済み CropBox」(/CropBox を /MediaBox と intersect し、正規化   */
-/* したもの。無ければ /MediaBox そのもの)の左下座標を返す。            */
-/*                                                                     */
-/* fz_bound_page が返す bounds は常に (0,0) 起点に正規化されている     */
-/* (MuPDF がこの「解決済み CropBox」原点を (0,0) に平行移動してから     */
-/* レンダリングするため)。そのため bounds.x0/y0 は常に 0 になり、元の  */
-/* ページが /MediaBox 原点からどれだけオフセットしているかの情報が     */
-/* 失われる。                                                          */
-/*                                                                     */
-/* kozou_rasterize 系の関数はページ全体を「画像1枚だけの新規ページ」に  */
-/* 置き換えるが、これまでは新規ページの /MediaBox を常に               */
-/* {0,0,pw_pt,ph_pt} にしていたため、元ページが /MediaBox 原点から      */
-/* オフセットした位置に /CropBox を持つ場合 (スキャンPDFの余白カット、  */
-/* 印刷用ブリードなど) に出力 PDF の座標系が元ページと食い違っていた。  */
-/* kozou_compose_image_pdf_keep_text で確立したのと同じ「解決済み       */
-/* CropBox の左下座標」を使うことで、この食い違いを解消する。           */
-/*                                                                     */
-/* 入力が PDF でない、または /MediaBox が取得できない場合は             */
-/* bounds.x0/y0 (通常は 0,0) をそのまま返す (フォールバック)。          */
-/* ------------------------------------------------------------------ */
-static void kozou_resolved_box_origin(
-    fz_context  *ctx,
-    fz_document *doc,
-    int          page_index,
-    fz_rect      bounds,
-    float       *out_x0,
-    float       *out_y0)
-{
-    *out_x0 = bounds.x0;
-    *out_y0 = bounds.y0;
-
-    pdf_document *pdoc = pdf_document_from_fz_document(ctx, doc);
-    if (!pdoc) return;
-
-    pdf_obj *page_obj = pdf_lookup_page_obj(ctx, pdoc, page_index);
-    if (!page_obj) return;
-
-    pdf_obj *mb_obj = pdf_dict_get_inheritable(ctx, page_obj, PDF_NAME(MediaBox));
-    fz_rect media = (mb_obj && pdf_is_array(ctx, mb_obj) && pdf_array_len(ctx, mb_obj) == 4)
-        ? pdf_to_rect(ctx, mb_obj)
-        : fz_infinite_rect;
-
-    fz_rect effective = media;
-    if (!fz_is_infinite_rect(media)) {
-        pdf_obj *cb_obj = pdf_dict_get_inheritable(ctx, page_obj, PDF_NAME(CropBox));
-        if (cb_obj && pdf_is_array(ctx, cb_obj) && pdf_array_len(ctx, cb_obj) == 4) {
-            fz_rect crop = pdf_to_rect(ctx, cb_obj);
-            crop = fz_intersect_rect(crop, media);
-            if (!fz_is_empty_rect(crop))
-                effective = crop;
-        }
-    }
-
-    if (!fz_is_infinite_rect(effective) && !fz_is_empty_rect(effective)) {
-        /* pdf_page_transform_box と同様、座標の大小が入れ替わっている
-         * ケースを正規化してから使う。 */
-        *out_x0 = fz_min(effective.x0, effective.x1);
-        *out_y0 = fz_min(effective.y0, effective.y1);
-    }
-}
-
-/* ------------------------------------------------------------------ */
 /* kozou_rasterize                                                     */
 /*                                                                     */
 /* 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。   */
@@ -1480,14 +1416,6 @@ void kozou_rasterize(
                 float pw_pt = bounds.x1 - bounds.x0;
                 float ph_pt = bounds.y1 - bounds.y0;
 
-                /* 元ページの /MediaBox 原点に対する「解決済み CropBox」の
-                 * 左下座標。新規ページの /MediaBox と画像配置に使い、
-                 * 元ページと同じ座標系を保つ (kozou_compose_image_pdf_
-                 * keep_text と同じ考え方。詳細は kozou_resolved_box_origin
-                 * のコメント参照)。 */
-                float mb_x0, mb_y0;
-                kozou_resolved_box_origin(ctx, doc, i, bounds, &mb_x0, &mb_y0);
-
                 /* draw device で pixmap にレンダリング */
                 fz_matrix ctm = fz_scale(scale, scale);
                 fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
@@ -1545,18 +1473,18 @@ void kozou_rasterize(
 
                 /* コンテンツストリーム:
                  *   q
-                 *   pw 0 0 ph mb_x0 mb_y0 cm   ← 元ページと同じ原点に配置
-                 *   /Im0 Do                     ← 画像を描画
+                 *   pw 0 0 ph 0 0 cm   ← MediaBox サイズに拡大
+                 *   /Im0 Do             ← 画像を描画
                  *   Q
                  */
                 char cs_buf[256];
                 int cs_len = snprintf(cs_buf, sizeof(cs_buf),
-                    "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/Im0 Do\nQ\n",
-                    pw_pt, ph_pt, mb_x0, mb_y0);
+                    "q\n%.4f 0 0 %.4f 0 0 cm\n/Im0 Do\nQ\n",
+                    pw_pt, ph_pt);
                 contents = fz_new_buffer_from_copied_data(ctx,
                     (const unsigned char *)cs_buf, (size_t)cs_len);
 
-                fz_rect mediabox = { mb_x0, mb_y0, mb_x0 + pw_pt, mb_y0 + ph_pt };
+                fz_rect mediabox = { 0, 0, pw_pt, ph_pt };
                 page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
                 pdf_insert_page(ctx, pdfout, -1, page_obj);
             }
@@ -1714,14 +1642,6 @@ void kozou_rasterize_no_text(
                 float pw_pt = bounds.x1 - bounds.x0;
                 float ph_pt = bounds.y1 - bounds.y0;
 
-                /* 元ページの /MediaBox 原点に対する「解決済み CropBox」の
-                 * 左下座標。新規ページの /MediaBox と画像配置に使い、
-                 * 元ページと同じ座標系を保つ (kozou_compose_image_pdf_
-                 * keep_text と同じ考え方。詳細は kozou_resolved_box_origin
-                 * のコメント参照)。 */
-                float mb_x0, mb_y0;
-                kozou_resolved_box_origin(ctx, doc, i, bounds, &mb_x0, &mb_y0);
-
                 fz_matrix ctm = fz_scale(scale, scale);
                 fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
                 fz_colorspace *rgb = fz_device_rgb(ctx);
@@ -1778,12 +1698,12 @@ void kozou_rasterize_no_text(
 
                 char cs_buf[256];
                 int cs_len = snprintf(cs_buf, sizeof(cs_buf),
-                    "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/Im0 Do\nQ\n",
-                    pw_pt, ph_pt, mb_x0, mb_y0);
+                    "q\n%.4f 0 0 %.4f 0 0 cm\n/Im0 Do\nQ\n",
+                    pw_pt, ph_pt);
                 contents = fz_new_buffer_from_copied_data(ctx,
                     (const unsigned char *)cs_buf, (size_t)cs_len);
 
-                fz_rect mediabox = { mb_x0, mb_y0, mb_x0 + pw_pt, mb_y0 + ph_pt };
+                fz_rect mediabox = { 0, 0, pw_pt, ph_pt };
                 page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
                 pdf_insert_page(ctx, pdfout, -1, page_obj);
             }
