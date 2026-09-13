@@ -2250,16 +2250,6 @@ static void kozou_fontusage_free(KozouFontUsage *u) {
     u->entries = NULL; u->count = 0; u->cap = 0;
 }
 
-/* 定義は本ファイル後方。font_obj (src) を dst にグラフトする。Type3
- * フォントかつ usage が非NULLの場合は /CharProcs をグリフ単位で
- * サブセット化した新規フォント辞書を作って返す。ページ自身の
- * /Resources/Font (kozou_compose_image_pdf_keep_text) と、ネストした
- * Form XObject の /Resources/Font (kozou_build_text_only_form) の
- * 両方から使う。 */
-static pdf_obj *kozou_graft_font_maybe_subset(
-    fz_context *ctx, pdf_document *dst, pdf_graft_map *gmap,
-    pdf_obj *font_obj, const KozouFontUsageEntry *usage);
-
 /* リテラル文字列トークン "(...)" (s[start]=='(', s[end-1]==')') の
  * 中身をPDF仕様(7.3.4.2)に従って最小限デコードし、実際に表示される
  * 各バイトを used に立てる。文字列の中身そのものを復元する必要は
@@ -2980,81 +2970,6 @@ void kozou_compose_image_pdf_keep_text(
 
                     kozou_debug_dump_buffer(ctx, output, i, "orig", orig_buf);
                     kozou_debug_dump_buffer(ctx, output, i, "stripped", stripped);
-
-                    /* ページ自身の /Resources/Font も、ネストした Form
-                     * XObject (kozou_build_text_only_form) と同様に
-                     * グリフ単位でサブセット化する。
-                     *
-                     * 背景: このページ (page_obj) は手順1で
-                     * pdf_graft_mapped_object によって丸ごと複製されて
-                     * おり、その /Resources/Font (Type3 の /CharProcs
-                     * 含む) は元ページの全フォント・全グリフを無変更の
-                     * まま引き継いでいる。ネストした Form XObject は
-                     * kozou_build_text_only_form でグリフ単位の
-                     * サブセット化を行うが、ページの content stream に
-                     * 直接書かれているテキスト(ネストした Form を介さ
-                     * ない Tj/TJ)については、この「丸ごと複製」された
-                     * /Resources/Font がそのまま残ってしまい、実測では
-                     * サブセット化の効果がほぼ無効になっていた原因の
-                     * 大半を占めていた。ここで src 側(未変更)の
-                     * /Resources/Font を参照元として、このページの
-                     * stripped コンテンツから実際に使われている
-                     * フォント/グリフだけを集め、既にグラフト済みの
-                     * res(dst側、手順1の複製に含まれる)の /Font
-                     * エントリを丸ごと差し替える。 */
-                    {
-                        pdf_obj *src_font_pg = src_res_x ? pdf_dict_get(ctx, src_res_x, PDF_NAME(Font)) : NULL;
-                        if (src_font_pg) {
-                            KozouNameSet used_fonts_pg;
-                            KozouFontUsage font_usage_pg;
-                            unsigned char any_used_pg[32];
-                            memset(any_used_pg, 0, sizeof(any_used_pg));
-                            kozou_nameset_init(&used_fonts_pg);
-                            kozou_fontusage_init(&font_usage_pg);
-                            kozou_collect_used_fonts(ctx, stripped, &used_fonts_pg, &font_usage_pg, any_used_pg);
-                            if (used_fonts_pg.count > 0) {
-                                pdf_obj *new_font_pg = pdf_new_dict(ctx, dst, (int)used_fonts_pg.count);
-                                for (size_t fi = 0; fi < used_fonts_pg.count; fi++) {
-                                    pdf_obj *font_obj = pdf_dict_gets(ctx, src_font_pg, used_fonts_pg.names[fi]);
-                                    if (font_obj) {
-                                        const KozouFontUsageEntry *usage = kozou_fontusage_find(
-                                            &font_usage_pg, used_fonts_pg.names[fi], strlen(used_fonts_pg.names[fi]));
-                                        pdf_dict_puts(ctx, new_font_pg, used_fonts_pg.names[fi],
-                                                      kozou_graft_font_maybe_subset(ctx, dst, gmap, font_obj, usage));
-                                    }
-                                }
-                                pdf_dict_put_drop(ctx, res, PDF_NAME(Font), new_font_pg);
-                            } else if (kozou_has_text_show_ops(ctx, stripped)) {
-                                /* ローカルにTfが見つからないのにテキスト表示演算子が
-                                 * ある(通常は無いはずだが安全側)。どのフォント名が
-                                 * 有効か特定できないため、src の全フォントに対し
-                                 * any_used(フォント文脈を問わない使用コード)を
-                                 * 適用してサブセット化を試みる。 */
-                                int npg = pdf_dict_len(ctx, src_font_pg);
-                                pdf_obj *new_font_pg = pdf_new_dict(ctx, dst, npg > 0 ? npg : 1);
-                                KozouFontUsageEntry any_entry_pg;
-                                any_entry_pg.name = NULL;
-                                memcpy(any_entry_pg.used, any_used_pg, sizeof(any_entry_pg.used));
-                                for (int fi = 0; fi < npg; fi++) {
-                                    pdf_obj *key = pdf_dict_get_key(ctx, src_font_pg, fi);
-                                    const char *keystr = pdf_is_name(ctx, key) ? pdf_to_name(ctx, key) : NULL;
-                                    pdf_obj *font_obj = keystr ? pdf_dict_get_val(ctx, src_font_pg, fi) : NULL;
-                                    if (keystr && font_obj) {
-                                        pdf_dict_puts(ctx, new_font_pg, keystr,
-                                                      kozou_graft_font_maybe_subset(ctx, dst, gmap, font_obj, &any_entry_pg));
-                                    }
-                                }
-                                pdf_dict_put_drop(ctx, res, PDF_NAME(Font), new_font_pg);
-                            } else {
-                                /* テキスト表示演算子が無い = このページに直接描画
-                                 * されるテキストは無い(すべてネストした Form
-                                 * 経由)。丸ごと複製された /Font は不要なので削除。 */
-                                pdf_dict_del(ctx, res, PDF_NAME(Font));
-                            }
-                            kozou_fontusage_free(&font_usage_pg);
-                            kozou_nameset_free(&used_fonts_pg);
-                        }
-                    }
 
                     {
                         pdf_obj *bgname = pdf_new_name(ctx, "KzBgImg");
