@@ -1559,6 +1559,23 @@ void kozou_rasterize(
                 fz_rect mediabox = { mb_x0, mb_y0, mb_x0 + pw_pt, mb_y0 + ph_pt };
                 page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
                 pdf_insert_page(ctx, pdfout, -1, page_obj);
+
+                /* /CropBox を /MediaBox と同じ矩形で明示しておく。
+                 * pdf_add_page() は /MediaBox しか設定しないため /CropBox
+                 * キーは存在しないままになる。仕様上は /CropBox 省略時は
+                 * /MediaBox で代用されるはずだが、一部のビューワ
+                 * (ブラウザ内蔵PDFビューワ等)ではこの2状態でフォール
+                 * バック挙動が微妙に異なり、テキスト/罫線/画像が実際より
+                 * 太く/大きく見えることが確認された
+                 * (compose_image_pdf_keep_text と同じ問題)。 */
+                {
+                    pdf_obj *cb = pdf_new_array(ctx, pdfout, 4);
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x1));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y1));
+                    pdf_dict_put_drop(ctx, page_obj, PDF_NAME(CropBox), cb);
+                }
             }
             fz_always(ctx) {
                 /* 一時ファイルを必ず削除（エラー時も含む） */
@@ -1786,6 +1803,23 @@ void kozou_rasterize_no_text(
                 fz_rect mediabox = { mb_x0, mb_y0, mb_x0 + pw_pt, mb_y0 + ph_pt };
                 page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
                 pdf_insert_page(ctx, pdfout, -1, page_obj);
+
+                /* /CropBox を /MediaBox と同じ矩形で明示しておく。
+                 * pdf_add_page() は /MediaBox しか設定しないため /CropBox
+                 * キーは存在しないままになる。仕様上は /CropBox 省略時は
+                 * /MediaBox で代用されるはずだが、一部のビューワ
+                 * (ブラウザ内蔵PDFビューワ等)ではこの2状態でフォール
+                 * バック挙動が微妙に異なり、テキスト/罫線/画像が実際より
+                 * 太く/大きく見えることが確認された
+                 * (compose_image_pdf_keep_text と同じ問題)。 */
+                {
+                    pdf_obj *cb = pdf_new_array(ctx, pdfout, 4);
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x1));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y1));
+                    pdf_dict_put_drop(ctx, page_obj, PDF_NAME(CropBox), cb);
+                }
             }
             fz_always(ctx) {
                 if (tmp_img[0] != '\0') {
@@ -10936,6 +10970,23 @@ void kozou_split_imposition_pdf(
                 fz_rect mediabox = { 0, 0, cw_pt, ch_pt };
                 page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
                 pdf_insert_page(ctx, pdfout, -1, page_obj);
+
+                /* /CropBox を /MediaBox と同じ矩形で明示しておく。
+                 * pdf_add_page() は /MediaBox しか設定しないため /CropBox
+                 * キーは存在しないままになる。仕様上は /CropBox 省略時は
+                 * /MediaBox で代用されるはずだが、一部のビューワ
+                 * (ブラウザ内蔵PDFビューワ等)ではこの2状態でフォール
+                 * バック挙動が微妙に異なり、テキスト/罫線/画像が実際より
+                 * 太く/大きく見えることが確認された
+                 * (compose_image_pdf_keep_text と同じ問題)。 */
+                {
+                    pdf_obj *cb = pdf_new_array(ctx, pdfout, 4);
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x1));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y1));
+                    pdf_dict_put_drop(ctx, page_obj, PDF_NAME(CropBox), cb);
+                }
             }
             fz_always(ctx) {
                 if (tmp_img[0]) remove(tmp_img);
@@ -11457,6 +11508,23 @@ void kozou_rasterize_imposition(
                 fz_rect mediabox = { 0, 0, page_w_pt, page_h_pt };
                 page_obj = pdf_add_page(ctx, pdfout, mediabox, 0, resources, contents);
                 pdf_insert_page(ctx, pdfout, -1, page_obj);
+
+                /* /CropBox を /MediaBox と同じ矩形で明示しておく。
+                 * pdf_add_page() は /MediaBox しか設定しないため /CropBox
+                 * キーは存在しないままになる。仕様上は /CropBox 省略時は
+                 * /MediaBox で代用されるはずだが、一部のビューワ
+                 * (ブラウザ内蔵PDFビューワ等)ではこの2状態でフォール
+                 * バック挙動が微妙に異なり、テキスト/罫線/画像が実際より
+                 * 太く/大きく見えることが確認された
+                 * (compose_image_pdf_keep_text と同じ問題)。 */
+                {
+                    pdf_obj *cb = pdf_new_array(ctx, pdfout, 4);
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y0));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.x1));
+                    pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mediabox.y1));
+                    pdf_dict_put_drop(ctx, page_obj, PDF_NAME(CropBox), cb);
+                }
             }
             fz_always(ctx) {
                 if (tmp_img[0]) remove(tmp_img);
