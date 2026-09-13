@@ -1759,12 +1759,12 @@ pub fn compose_image_pdf_keep_text_with_quality(
         compress_images: if use_png { Some(true) } else { Some(false) },
         compress_fonts: Some(true),
         garbage_level: Some(2),
-        clean: None,
-        sanitize: None,
+        clean: Some(false),
+        sanitize: Some(false),
         font_subset: Some(false),
-        merge_fonts: None,
+        merge_fonts: Some(false),
         object_stream: Some(true),
-        redact_outside_crop: None,
+        redact_outside_crop: Some(false),
         redact_margin_pt: None,
         redact_margin_top: None,
         redact_margin_bottom: None,
@@ -1772,7 +1772,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         redact_margin_right: None,
         image_dpi: None,
         image_jpeg_quality: None,
-        crop_to_visible_image_area: None,
+        crop_to_visible_image_area: Some(false),
     };
 
     let compress_ok = match compress(&compress_req) {
