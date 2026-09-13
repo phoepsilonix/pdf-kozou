@@ -1001,7 +1001,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         setPdfOutPath(outPath);
         setPdfPageCount(resolvedPageCount);
         setPdfName("");
-        if (res.warning) setStatusMsg(res.warning);
+        // テキスト保持版はバックエンドの res.warning(日本語固定文言・dpi等の
+        // 技術的詳細向け)をそのまま出すのではなく、各localeで用意した
+        // 利点/制限事項ベースの案内文を表示する。通常の画像化PDFは従来通り
+        // res.warning(dpi入り)を表示する。
+        if (keepTextExperimental) {
+          setStatusMsg(t("image.keep_text_warning"));
+        } else if (res.warning) {
+          setStatusMsg(res.warning);
+        }
         announceSuccess("done.image");
         setPhase("result");
       } else {
@@ -1570,7 +1578,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     maxWidth: 480,
                   }}
                 >
-                  {t("image.rasterize_warning")}
+                  {/* statusMsg には通常の画像化PDFなら image.rasterize_warning、
+                      テキスト保持版なら image.keep_text_warning が
+                      setStatusMsg で設定されている(呼び出し箇所を参照)。
+                      以前はここで常に image.rasterize_warning を固定表示して
+                      おり、statusMsg の実際の内容(dpi入りの詳細やテキスト
+                      保持版の案内)が表示されていなかった。 */}
+                  {statusMsg}
                 </div>
               )}
             </>
@@ -1813,30 +1827,57 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 動作確認トグル。compose_image_pdf_keep_text を直接叩く。
                 面付けモード(1up以外)には未対応のため、その場合は無効。
                 一般ユーザー向けの完成機能ではないため、常設のGUI項目とは
-                見た目を明確に区別している(黄枠+固定文言、i18n未対応)。 */}
+                見た目を明確に区別している(黄枠)。ラベル・利点/制限事項は
+                各localeで明記する。 */}
             {outputMode === "pdf" && impositionMode === "1up" && (
-              <label
+              <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: FS.caption,
-                  color: "var(--c-textDim)",
                   border: "1px dashed #c9a227",
                   borderRadius: 6,
                   padding: "4px 8px",
                   marginTop: 4,
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={keepTextExperimental}
-                  onChange={(e) => setKeepTextExperimental(e.target.checked)}
-                />
-                <span>
-                  [実験的/テスト用] 背景を画像化しテキストは保持する (compose_image_pdf_keep_text)
-                </span>
-              </label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: FS.caption,
+                    color: "var(--c-textDim)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={keepTextExperimental}
+                    onChange={(e) => setKeepTextExperimental(e.target.checked)}
+                  />
+                  <span>{t("image.keep_text_checkbox_label")}</span>
+                </label>
+                {keepTextExperimental && (
+                  <div
+                    style={{
+                      fontSize: FS.caption,
+                      color: "var(--c-textDim)",
+                      marginTop: 4,
+                      paddingLeft: 22,
+                    }}
+                  >
+                    <div>
+                      <strong>{t("image.keep_text_benefit_title")}:</strong>{" "}
+                      {t("image.keep_text_benefit")}
+                    </div>
+                    <div style={{ marginTop: 2 }}>
+                      <strong>{t("image.keep_text_limitations_title")}:</strong>
+                    </div>
+                    <ol style={{ margin: "2px 0 0", paddingLeft: 18 }}>
+                      <li>{t("image.keep_text_limitation_1")}</li>
+                      <li>{t("image.keep_text_limitation_2")}</li>
+                      <li>{t("image.keep_text_limitation_3")}</li>
+                    </ol>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
