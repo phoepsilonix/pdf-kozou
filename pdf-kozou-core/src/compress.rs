@@ -1750,8 +1750,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
     // precompress_path は無数の小さな Type3 フォント(Form毎にサブセット化
     // 済み)を持つため、pdf_subset_fonts() を重ねて走らせるとかえって
     // 遅い/安全性が未検証な経路(subset_and_write)に入ってしまう。
-    // redact_outside_crop は指定せず compress() のデフォルト(true、GUIの
-    // デフォルトと同じ)に委ねる。
+    // redact_outside_crop は明示的にfalse指定。
     let compress_req = CompressRequest {
         input: precompress_str.clone(),
         output: output.to_string(),
@@ -1759,12 +1758,12 @@ pub fn compose_image_pdf_keep_text_with_quality(
         compress_images: if use_png { Some(true) } else { Some(false) },
         compress_fonts: Some(true),
         garbage_level: Some(2),
-        clean: None,
-        sanitize: None,
+        clean: Some(false),
+        sanitize: Some(false),
         font_subset: Some(false),
-        merge_fonts: None,
+        merge_fonts: Some(false),
         object_stream: Some(true),
-        redact_outside_crop: None,
+        redact_outside_crop: Some(false),
         redact_margin_pt: None,
         redact_margin_top: None,
         redact_margin_bottom: None,
@@ -1772,7 +1771,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         redact_margin_right: None,
         image_dpi: None,
         image_jpeg_quality: None,
-        crop_to_visible_image_area: None,
+        crop_to_visible_image_area: Some(false),
     };
 
     let compress_ok = match compress(&compress_req) {
