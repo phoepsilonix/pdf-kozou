@@ -2843,14 +2843,9 @@ void kozou_compose_image_pdf_keep_text(
                          * /MediaBox を回転後の pw_pt×ph_pt に合わせて
                          * 更新する(そのままだと元の MediaBox と縦横が
                          * 食い違ってページ表示がずれる)。
-                         * /CropBox は削除せず、新しい /MediaBox と同じ
-                         * 矩形を明示的に書き込む(仕様上は /CropBox 省略時
-                         * は /MediaBox で代用されるはずだが、一部の
-                         * ビューワ(ブラウザ内蔵PDFビューワ等)で
-                         * 「/CropBox キーが存在しない」場合のフォール
-                         * バック挙動が /CropBox が明示されている場合と
-                         * 微妙に異なり、テキスト/罫線が実際より太く/大きく
-                         * 見えることが実機で確認されたため)。 */
+                         * /CropBox が別途設定されている場合はここでは
+                         * 未対応(既知の制限、/Rotate!=0 のフォールバック
+                         * 経路のみに影響)。 */
                         pdf_dict_put_drop(ctx, page_obj, PDF_NAME(Rotate), pdf_new_int(ctx, 0));
                         {
                             pdf_obj *mb = pdf_new_array(ctx, dst, 4);
@@ -2859,13 +2854,7 @@ void kozou_compose_image_pdf_keep_text(
                             pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, pw_pt));
                             pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, ph_pt));
                             pdf_dict_put_drop(ctx, page_obj, PDF_NAME(MediaBox), mb);
-
-                            pdf_obj *cb = pdf_new_array(ctx, dst, 4);
-                            pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, 0));
-                            pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, 0));
-                            pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, pw_pt));
-                            pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, ph_pt));
-                            pdf_dict_put_drop(ctx, page_obj, PDF_NAME(CropBox), cb);
+                            pdf_dict_del(ctx, page_obj, PDF_NAME(CropBox));
                         }
                         fz_warn(ctx,
                             "compose_image_pdf_keep_text: page %d has /Rotate=%d, "
@@ -3094,21 +3083,12 @@ void kozou_compose_image_pdf_keep_text(
                      *
                      * /CropBox の解釈をビューワに委ねず、コンテンツ
                      * ストリーム自身のクリップパスとして確実に除去する。
-                     * さらに /MediaBox 自体も解決済み CropBox に縮小した
-                     * 上で、/CropBox にも同じ矩形を明示的に書き込む
-                     * (キーを削除するのではない)。
-                     *
-                     * 当初は /CropBox キー自体を削除し「/MediaBox =
-                     * 可視範囲」という単一の表現に統一する方針だったが、
-                     * 実機検証で、/CropBox が省略されているページを
-                     * 一部のビューワ(ブラウザ内蔵PDFビューワ等)で
-                     * 表示すると、/CropBox が明示的に /MediaBox と
-                     * 同じ値で存在するページとは微妙に異なるフォール
-                     * バック処理が働き、テキストや罫線が実際より太く/
-                     * 大きく見えることが確認された。そのため /CropBox
-                     * は削除せず /MediaBox と同一の値で明示しておく
-                     * (仕様上は等価なはずの2状態だが、ビューワの実装差
-                     * を避けるための防御的な措置)。 */
+                     * さらに /MediaBox 自体も解決済み CropBox に縮小し
+                     * /CropBox は削除する。以後「/MediaBox = 可視範囲」
+                     * という単一の表現に統一することで、一般的な
+                     * ブラウザ内蔵PDFビューワ(/CropBoxを尊重する)と、
+                     * /CropBoxを見ない/無視するビューワとで表示結果が
+                     * 食い違わないようにする。 */
                     char cs_prefix[320];
                     int  cs_prefix_len = snprintf(cs_prefix, sizeof(cs_prefix),
                         "q\n%.4f %.4f %.4f %.4f re\nW n\n"
@@ -3135,21 +3115,7 @@ void kozou_compose_image_pdf_keep_text(
                         pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, mb_x0 + pw_pt));
                         pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, mb_y0 + ph_pt));
                         pdf_dict_put_drop(ctx, page_obj, PDF_NAME(MediaBox), mb);
-
-                        /* /CropBox は削除せず、新しい /MediaBox と同じ
-                         * 矩形を明示的に書き込む。仕様上は /CropBox 省略時
-                         * は /MediaBox で代用されるはずだが、一部のビューワ
-                         * (ブラウザ内蔵PDFビューワ等)で「/CropBox キーが
-                         * 存在しない」場合のフォールバック挙動が /CropBox
-                         * が明示されている場合と微妙に異なり、テキストや
-                         * 罫線が実際より太く/大きく見えることが実機で
-                         * 確認されたため、明示しておく方が安全。 */
-                        pdf_obj *cb = pdf_new_array(ctx, dst, 4);
-                        pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mb_x0));
-                        pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mb_y0));
-                        pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mb_x0 + pw_pt));
-                        pdf_array_push_drop(ctx, cb, pdf_new_real(ctx, mb_y0 + ph_pt));
-                        pdf_dict_put_drop(ctx, page_obj, PDF_NAME(CropBox), cb);
+                        pdf_dict_del(ctx, page_obj, PDF_NAME(CropBox));
                     }
                 }
             }
