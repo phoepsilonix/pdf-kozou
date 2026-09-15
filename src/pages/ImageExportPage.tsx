@@ -702,7 +702,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           setPdfPageCount(cells.length);
           setPdfName("");
           // 画像PDFなのでテキスト消失の注意を表示
-          setStatusMsg(t("image.rasterize_warning"));
+          if (keepTextExperimental) {
+            setStatusMsg(t("image.keep_text_warning"));
+          } else {
+            setStatusMsg(t("image.rasterize_warning"));
+          }
           announceSuccess("done.image");
           setPhase("result");
         } catch (e) {
