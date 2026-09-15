@@ -8073,6 +8073,50 @@ static long kozou_count_tj_ops(fz_context *ctx, fz_buffer *buf)
     return cnt;
 }
 
+/* 行 (line/line_len は行内の生バイト列とその長さ) の中から "/ActualText"
+ * タグ直後の文字列オペランド(値)を探し、行内オフセットと長さ、
+ * hex文字列(<...>)かリテラル文字列((...))かを返す。
+ * 見つからなければ 0 を返す。
+ *
+ * ActualText-with-no-position 警告対策: 無害化(kozou_blank_all_bt_blocks_hv_ctm)
+ * が Tj/TJ の内容を空白に書き換えた際、それを囲む /ActualText BDC の値も
+ * 併せて空文字化するために、書き換え前にこの値の位置を特定しておく。 */
+static int kozou_find_actualtext_value(const char *line, size_t line_len,
+                                        size_t *val_off, size_t *val_len, int *is_hex)
+{
+    static const char at_tag[] = "/ActualText";
+    const size_t at_len = sizeof(at_tag) - 1;
+    if (line_len < at_len) return 0;
+    for (size_t i = 0; i + at_len <= line_len; i++) {
+        if (memcmp(line + i, at_tag, at_len) != 0) continue;
+        size_t j = i + at_len;
+        while (j < line_len && (line[j] == ' ' || line[j] == '\t')) j++;
+        if (j >= line_len) return 0;
+        if (line[j] == '<') {
+            size_t k = j + 1;
+            while (k < line_len && line[k] != '>') k++;
+            if (k >= line_len) return 0;
+            *val_off = j + 1; *val_len = k - (j + 1); *is_hex = 1;
+            return 1;
+        }
+        if (line[j] == '(') {
+            size_t k = j + 1;
+            int depth = 1;
+            while (k < line_len && depth > 0) {
+                if (line[k] == '\\') { k += 2; continue; }
+                if (line[k] == '(') depth++;
+                else if (line[k] == ')') { depth--; if (depth == 0) break; }
+                k++;
+            }
+            if (k >= line_len) return 0;
+            *val_off = j + 1; *val_len = k - (j + 1); *is_hex = 0;
+            return 1;
+        }
+        return 0; /* /ActualText の値が名前参照(/Properties経由)等、非対応形式 */
+    }
+    return 0;
+}
+
 /* XObject 配置 CTM を受け取り、各 Tj のデバイス座標を計算して
  * ターゲットの ox/oy (ページデバイス座標) と照合する版。
  * 内部 Tm 座標 (ix/iy) だけでは、XObject 内で同一 Tm を持つ複数の
@@ -8149,6 +8193,21 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
      * 対象を一意に特定できる。 */
     int cur_xobj_tj_seq = 0;
 
+    /* /ActualText 付き BDC/EMC の追跡 (ActualText-with-no-position 警告対策)。
+     * このスパン内で Tj/TJ の空白化が発生した場合、EMC で閉じる時点で
+     * 対応する /ActualText の値も空文字化する。入れ子(通常は起きないが
+     * 安全のため)に対応する小さなスタックで管理する。 */
+#define KOZOU_AT_STACK_MAX 16
+    typedef struct {
+        size_t out_pos;  /* out_buf 内での値バイト列の開始オフセット */
+        size_t out_len;  /* 値バイト列の長さ (0 = ActualTextでないBDC、または
+                           * 値の位置を特定できなかった) */
+        int    is_hex;   /* 1=hex文字列 <...>, 0=リテラル文字列 (...) */
+        int    blanked;  /* このスパン内で空白化が発生したか */
+    } KozouAtScope;
+    KozouAtScope at_stack[KOZOU_AT_STACK_MAX];
+    int at_sp = 0;
+
     while (pos < src_len) {
         size_t line_start = pos;
         while (pos < src_len && src[pos] != '\n') pos++;
@@ -8200,6 +8259,37 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                 in_bt = 1;
                 cur_tm = fz_identity;
                 cur_td = fz_identity;
+            } else if (trimmed_len >= 3 && src[te-3] == 'B' && src[te-2] == 'D' &&
+                       src[te-1] == 'C' && at_sp < KOZOU_AT_STACK_MAX) {
+                size_t voff = 0, vlen = 0; int vhex = 0;
+                size_t out_before = fz_buffer_storage(ctx, out_buf, NULL);
+                if (kozou_find_actualtext_value(src + ts, trimmed_len, &voff, &vlen, &vhex)) {
+                    at_stack[at_sp].out_pos = out_before + voff;
+                    at_stack[at_sp].out_len = vlen;
+                    at_stack[at_sp].is_hex  = vhex;
+                } else {
+                    at_stack[at_sp].out_len = 0;
+                }
+                at_stack[at_sp].blanked = 0;
+                at_sp++;
+            } else if (trimmed_len == 3 && src[ts] == 'E' && src[ts+1] == 'M' && src[ts+2] == 'C') {
+                if (at_sp > 0) {
+                    at_sp--;
+                    if (at_stack[at_sp].blanked && at_stack[at_sp].out_len > 0) {
+                        unsigned char *outp = NULL;
+                        fz_buffer_storage(ctx, out_buf, &outp);
+                        size_t p0 = at_stack[at_sp].out_pos, alen = at_stack[at_sp].out_len;
+                        if (at_stack[at_sp].is_hex) {
+                            for (size_t z = 0; z < alen; z++) outp[p0+z] = ' ';
+                        } else {
+                            size_t pairs = alen / 2;
+                            for (size_t z = 0; z < pairs; z++) {
+                                outp[p0+z*2] = '\\'; outp[p0+z*2+1] = '\n';
+                            }
+                            if (alen % 2 == 1) outp[p0+alen-1] = ' ';
+                        }
+                    }
+                }
             }
             fz_append_data(ctx, out_buf, src + line_start, line_len);
             fz_append_byte(ctx, out_buf, '\n');
@@ -8223,6 +8313,9 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                 float dev_x = full.e;
                 float dev_y = full.f;
                 int do_blank = blank_entire_bt;
+                /* any_char_blank はこの下の内側ブロックのスコープに閉じているため、
+                 * ActualText 追跡フックで参照できるよう外側のスコープにも複製する。 */
+                int did_char_blank_outer = 0;
                 int origin_is_target = 0;
                 int kozou_dbg_xobj_top = getenv("KOZOU_SANITIZE_DEBUG") != NULL;
                 if (!do_blank && n_targets > 0) {
@@ -8759,6 +8852,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                     }
 
                     if (any_char_blank) {
+                        did_char_blank_outer = 1;
                         /* 対象/非対象を連続ランに分けて出力する。非対象ランは元バイト列を
                          * そのまま書き戻し、対象ランのみ Helvetica + 幅差分TJ補正で置換する。
                          * (行内の文字列以降の残りトークン(閉じ括弧の TJ/] TJ 等)は、
@@ -8833,6 +8927,12 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         fz_append_string(ctx, out_buf, "( ) Tj\n");
                     }
                 }
+                /* ActualText-with-no-position 警告対策: このTj/TJで実際に
+                 * 何らかの空白化が行われた場合、現在開いている /ActualText
+                 * BDC スパン(あれば)を「空白化発生」としてマークする。
+                 * EMC で閉じる時点でこのスパンの値を空文字化する。 */
+                if (at_sp > 0 && (did_char_blank_outer || blank_entire_bt || do_blank))
+                    at_stack[at_sp-1].blanked = 1;
                 /* このTj/TJコマンドの処理が完了した(文字単位で個別に出力
                  * された最も一般的なケースを含む、全ての分岐が合流した
                  * 直後)。過去にblank化したかどうかに関わらず、ストリーム
@@ -8886,11 +8986,49 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                     int trv;
                     if (sscanf(trline, "%d Tr", &trv) == 1) cur_tr = trv;
                 }
+                /* /ActualText 付き BDC/EMC の追跡 (ActualText-with-no-position
+                 * 警告対策)。BT ブロック内で BDC/EMC が現れるケース
+                 * (実データで最も一般的: BT の直後に /Span <</ActualText ...>>
+                 * BDC が続き、その中で Tj/TJ が描かれて EMC で閉じる) を
+                 * ここで捕捉する。ロジックは BT 外の分岐と同一。 */
+                if (trimmed_len >= 3 && src[te-3] == 'B' && src[te-2] == 'D' &&
+                    src[te-1] == 'C' && at_sp < KOZOU_AT_STACK_MAX) {
+                    size_t voff = 0, vlen = 0; int vhex = 0;
+                    size_t out_before = fz_buffer_storage(ctx, out_buf, NULL);
+                    if (kozou_find_actualtext_value(src + ts, trimmed_len, &voff, &vlen, &vhex)) {
+                        at_stack[at_sp].out_pos = out_before + voff;
+                        at_stack[at_sp].out_len = vlen;
+                        at_stack[at_sp].is_hex  = vhex;
+                    } else {
+                        at_stack[at_sp].out_len = 0;
+                    }
+                    at_stack[at_sp].blanked = 0;
+                    at_sp++;
+                } else if (trimmed_len == 3 && src[ts] == 'E' && src[ts+1] == 'M' && src[ts+2] == 'C') {
+                    if (at_sp > 0) {
+                        at_sp--;
+                        if (at_stack[at_sp].blanked && at_stack[at_sp].out_len > 0) {
+                            unsigned char *outp = NULL;
+                            fz_buffer_storage(ctx, out_buf, &outp);
+                            size_t p0 = at_stack[at_sp].out_pos, alen = at_stack[at_sp].out_len;
+                            if (at_stack[at_sp].is_hex) {
+                                for (size_t z = 0; z < alen; z++) outp[p0+z] = ' ';
+                            } else {
+                                size_t pairs = alen / 2;
+                                for (size_t z = 0; z < pairs; z++) {
+                                    outp[p0+z*2] = '\\'; outp[p0+z*2+1] = '\n';
+                                }
+                                if (alen % 2 == 1) outp[p0+alen-1] = ' ';
+                            }
+                        }
+                    }
+                }
                 fz_append_data(ctx, out_buf, src + line_start, line_len);
                 fz_append_byte(ctx, out_buf, '\n');
             }
         }
     }
+#undef KOZOU_AT_STACK_MAX
 }
 
 /* 旧 API 互換: 内部座標 (ix/iy) でマッチングする版。
