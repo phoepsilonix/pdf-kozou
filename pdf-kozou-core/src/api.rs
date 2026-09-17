@@ -329,6 +329,19 @@ pub fn dispatch_json(line: &str) -> String {
                 )?)
             }
 
+            "compose_imposition_pdf_keep_text" => {
+                let mut req: crate::stext::ComposeImpositionPdfKeepTextRequest =
+                    serde_json::from_str(line)?;
+                let _tmp =
+                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                if let Some((_, ref tmp_path)) = _tmp {
+                    req.input = tmp_path.clone();
+                }
+                Ok(serde_json::to_string(
+                    &crate::stext::compose_imposition_pdf_keep_text(&req)?,
+                )?)
+            }
+
             "split_cell_render" => {
                 let mut req: crate::stext::SplitCellRenderRequest = serde_json::from_str(line)?;
                 let _tmp =
@@ -409,6 +422,10 @@ pub fn dispatch_json(line: &str) -> String {
                     /// "1-3,5" 形式の1ベースページ指定。省略時は全ページ。
                     #[serde(default)]
                     pages: Option<String>,
+                    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。
+                    /// 1以下/省略=無効(既定)。2〜6でdpi<300の場合のみ有効化。
+                    #[serde(default)]
+                    supersample: Option<i32>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
                 let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None, None)?;
@@ -424,6 +441,7 @@ pub fn dispatch_json(line: &str) -> String {
                         r.quality.unwrap_or(85),
                         r.use_png.unwrap_or(false),
                         pages.as_deref(),
+                        r.supersample.unwrap_or(1),
                     )?,
                 )?)
             }
@@ -478,6 +496,10 @@ pub fn dispatch_json(line: &str) -> String {
                     use_png: Option<bool>,
                     #[serde(default)]
                     pages: Option<String>,
+                    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。
+                    /// 1以下/省略=無効(既定)。2〜6でdpi<300の場合のみ有効化。
+                    #[serde(default)]
+                    supersample: Option<i32>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
                 let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None, None)?;
@@ -493,6 +515,7 @@ pub fn dispatch_json(line: &str) -> String {
                         r.quality.unwrap_or(85),
                         r.use_png.unwrap_or(false),
                         pages.as_deref(),
+                        r.supersample.unwrap_or(1),
                     )?,
                 )?)
             }
@@ -747,6 +770,7 @@ pub fn render_to_dir(
     layout_w: Option<f32>,
     layout_h: Option<f32>,
     layout_em: Option<f32>,
+    supersample_max: Option<i32>,
 ) -> anyhow::Result<serde_json::Value> {
     let (base, start_num) = resolve_name_prefix_and_start(
         name_prefix,
@@ -781,6 +805,7 @@ pub fn render_to_dir(
             layout_w,
             layout_h,
             layout_em,
+            supersample_max,
         };
 
         let resp = crate::render::render(&req)?;

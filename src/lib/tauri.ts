@@ -458,6 +458,9 @@ export interface RenderImpositionRequest {
   layoutW?: number;
   layoutH?: number;
   layoutEm?: number;
+  /** 高品質アンチエイリアス(スーパーサンプリング)倍率。未指定/1以下は無効
+   * (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。 */
+  supersampleMax?: number;
 }
 
 export interface RenderImpositionResponse {
@@ -494,6 +497,7 @@ export async function renderImposition(
       layout_w: req.layoutW ?? null,
       layout_h: req.layoutH ?? null,
       layout_em: req.layoutEm ?? null,
+      supersample_max: req.supersampleMax ?? null,
     },
   });
 }
@@ -517,6 +521,8 @@ export interface RasterizeImpositionRequest {
   layoutW?: number;
   layoutH?: number;
   layoutEm?: number;
+  /** renderImposition と同じ意味(未指定/1以下は無効・既定)。 */
+  supersampleMax?: number;
 }
 
 export interface RasterizeImpositionResponse {
@@ -551,6 +557,7 @@ export async function rasterizeImposition(
       layout_w: req.layoutW ?? null,
       layout_h: req.layoutH ?? null,
       layout_em: req.layoutEm ?? null,
+      supersample_max: req.supersampleMax ?? null,
     },
   });
 }
@@ -626,6 +633,64 @@ export async function composeImpositionPdf(
       layout_w: req.layoutW ?? null,
       layout_h: req.layoutH ?? null,
       layout_em: req.layoutEm ?? null,
+    },
+  });
+}
+
+export interface ComposeImpositionPdfKeepTextRequest {
+  input: string;
+  output: string;
+  /** 背景ラスタの解像度dpi。省略時150 */
+  dpi?: number;
+  /** JPEG品質1-100。省略時85。usePng時は無視 */
+  quality?: number;
+  usePng?: boolean;
+  /** 出力シートサイズ(pt) */
+  targetW: number;
+  targetH: number;
+  cols: number;
+  rows: number;
+  /** 出力順のセル配列。n_sheets*(cols*rows) 個（1始まりページ番号, 0=空白セル） */
+  sheetPages: number[];
+  nSheets: number;
+  gutter?: number;
+  margin?: number;
+  /** 向き自動: セルごとに収まりの良い向きへ +90° 回転を許可する */
+  autoOrient?: boolean;
+  /** 高品質アンチエイリアス(スーパーサンプリング)倍率。未指定/1以下は無効
+   * (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。 */
+  supersampleMax?: number;
+}
+
+export interface ComposeImpositionPdfKeepTextResponse {
+  ok: boolean;
+  output_bytes: number;
+}
+
+/**
+ * compose_imposition_pdf のキープテキスト版。
+ * 非テキスト要素はシート単位で1枚の背景ラスタに焼き込み、テキストは保持したまま重ねる。
+ */
+export async function composeImpositionPdfKeepText(
+  req: ComposeImpositionPdfKeepTextRequest,
+): Promise<ComposeImpositionPdfKeepTextResponse> {
+  return invoke<ComposeImpositionPdfKeepTextResponse>("compose_imposition_pdf_keep_text", {
+    request: {
+      input: req.input,
+      output: req.output,
+      dpi: req.dpi ?? null,
+      quality: req.quality ?? null,
+      use_png: req.usePng ?? null,
+      target_w: req.targetW,
+      target_h: req.targetH,
+      cols: req.cols,
+      rows: req.rows,
+      sheet_pages: req.sheetPages,
+      n_sheets: req.nSheets,
+      gutter: req.gutter ?? null,
+      margin: req.margin ?? null,
+      auto_orient: req.autoOrient ?? null,
+      supersample_max: req.supersampleMax ?? null,
     },
   });
 }
@@ -1266,6 +1331,9 @@ export async function exportImages(
   namePrefix?: string,
   pages?: string, // "1-3,5" etc. undefined=全ページ
   options?: ConvertOptions,
+  // 高品質アンチエイリアス(スーパーサンプリング)倍率。未指定/1以下は無効
+  // (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。
+  supersample?: number,
 ): Promise<ExportImagesResponse> {
   console.log("ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
   try {
@@ -1280,6 +1348,7 @@ export async function exportImages(
       layoutW: options?.layoutW ?? null,
       layoutH: options?.layoutH ?? null,
       layoutEm: options?.layoutEm ?? null,
+      supersample: supersample ?? null,
     });
     console.log("Res:ExportImages:", res);
     return res;
@@ -1309,6 +1378,10 @@ export async function exportImagePdf(
   usePng: boolean,
   pages?: string,
   options?: ConvertOptions,
+  // 高品質アンチエイリアス(スーパーサンプリング)倍率。未指定/1以下は無効
+  // (既定・従来と同一挙動)。2〜6を指定すると dpi<300 のときのみ有効化され、
+  // 細い罫線/ヘアラインの消失・フェードを緩和する(生成時間はやや増える)。
+  supersample?: number,
 ): Promise<ExportImagePdfResponse> {
   return invoke<ExportImagePdfResponse>("export_image_pdf", {
     path,
@@ -1320,6 +1393,7 @@ export async function exportImagePdf(
     layoutW: options?.layoutW ?? null,
     layoutH: options?.layoutH ?? null,
     layoutEm: options?.layoutEm ?? null,
+    supersample: supersample ?? null,
   });
 }
 
@@ -1336,6 +1410,8 @@ export async function exportImagePdfKeepText(
   usePng: boolean,
   pages?: string,
   options?: ConvertOptions,
+  // exportImagePdf と同じ意味(未指定/1以下は無効・既定)。
+  supersample?: number,
 ): Promise<ExportImagePdfResponse> {
   return invoke<ExportImagePdfResponse>("export_image_pdf_keep_text", {
     path,
@@ -1347,6 +1423,7 @@ export async function exportImagePdfKeepText(
     layoutW: options?.layoutW ?? null,
     layoutH: options?.layoutH ?? null,
     layoutEm: options?.layoutEm ?? null,
+    supersample: supersample ?? null,
   });
 }
 
