@@ -25,6 +25,27 @@ use crate::ffi::enable_objstms;
 use crate::ffi::kozou_new_context;
 use crate::ffi::merge_duplicate_fonts;
 
+// ── 一時ファイル配置ユーティリティ ────────────────────────────────────────────
+/// PDF小僧専用の一時ディレクトリ (`<system_temp>/pdf-kozou/`) を返す。
+/// 存在しなければ作成する (失敗しても best-effort で続行)。
+/// Tauri 側 (`src-tauri/src/tempdir.rs`) の `kozou_temp_dir()` と同じ場所を指す。
+fn kozou_tmp_dir() -> std::path::PathBuf {
+    let base = std::env::temp_dir().join("pdf-kozou");
+    let _ = std::fs::create_dir_all(&base);
+    base
+}
+
+/// `kozou_tmp_dir()` 内に `{prefix}_{uuid}.{ext}` 形式のユニークな一時ファイル
+/// パスを生成する。以前は `format!("{}.xxx.tmp.pdf", req.output)` のように
+/// 出力先ファイルと同じディレクトリ (例: ユーザーの Documents フォルダ) に
+/// 固定名で作成していたため、処理が異常終了した場合にユーザーの目に見える
+/// 場所へゴミファイルが残ってしまっていた。また固定名だと、同じ出力先を
+/// 対象に処理を多重実行した場合に書き込み中のファイルが衝突する恐れもある。
+/// 圧縮パイプラインの中間一時ファイルは基本すべてこちらを使う。
+fn kozou_tmp_unique_path(prefix: &str, ext: &str) -> std::path::PathBuf {
+    kozou_tmp_dir().join(format!("{prefix}_{}.{ext}", uuid::Uuid::new_v4()))
+}
+
 // ── メタデータ保持ユーティリティ ──────────────────────────────────────────────
 /// 入力PDFの /Info 辞書からメタデータを収集する
 ///
@@ -578,7 +599,9 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let _redact_guard: TempFileGuard = {
         let redact_outside_crop = req.redact_outside_crop.unwrap_or(true);
         if redact_outside_crop {
-            let redact_tmp = format!("{}.redact.tmp.pdf", req.output);
+            let redact_tmp = kozou_tmp_unique_path("redact", "pdf")
+                .to_string_lossy()
+                .into_owned();
             match crate::crop_cleanup::redact_outside_cropbox(
                 &current_input,
                 &redact_tmp,
@@ -624,7 +647,9 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         if req.image_dpi.is_some() || crop_to_visible {
             let target_dpi = req.image_dpi.unwrap_or(0.0);
             let quality = req.image_jpeg_quality.unwrap_or(85).clamp(1, 100);
-            let recompress_tmp = format!("{}.imgdpi.tmp.pdf", req.output);
+            let recompress_tmp = kozou_tmp_unique_path("imgdpi", "pdf")
+                .to_string_lossy()
+                .into_owned();
             match crate::image_recompress::recompress_images(
                 &current_input,
                 &recompress_tmp,
@@ -680,7 +705,9 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     let _redact_image_fix_guard: TempFileGuard = {
         if redact_applied && !redact_raw_already_handled_by_0_5 {
             let quality = req.image_jpeg_quality.unwrap_or(85).clamp(1, 100);
-            let fix_tmp = format!("{}.redactimg.tmp.pdf", req.output);
+            let fix_tmp = kozou_tmp_unique_path("redactimg", "pdf")
+                .to_string_lossy()
+                .into_owned();
             match crate::image_recompress::recompress_raw_images_native(
                 &current_input,
                 &fix_tmp,
