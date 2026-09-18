@@ -9,7 +9,7 @@
 export default CompressPage;
 
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
 import { Spinner } from "../components/common";
 import { MetadataEditModal } from "../components/MetadataEditModal";
@@ -333,6 +333,39 @@ export function CompressPage({
 
   const [result, setResult] = useState<CompressResponse | null>(null);
   const [tmpFile, setTmpFile] = useState("");
+  // tmpFile の最新値を常に参照できる ref。アンマウント時のクリーンアップ
+  // （useEffect の cleanup クロージャは effect 登録時点の state を掴んだ
+  //  ままになるため、state ではなく ref 経由で最新パスを読む）。
+  const tmpFileRef = useRef("");
+  useEffect(() => {
+    tmpFileRef.current = tmpFile;
+  }, [tmpFile]);
+
+  // 保存されずに残っているプレビュー用一時ファイルを破棄する (best-effort)。
+  // handleSaveCompressed が成功した場合は moveFile で消費済み
+  // (=ファイルは既に存在しない) なので、失敗は無視してよい。
+  const discardTmpFile = useCallback(async (path: string) => {
+    if (!path) return;
+    try {
+      await invoke("remove_file", { path });
+    } catch {
+      // 既に無い/移動済みなどは無視
+    }
+  }, []);
+
+  // アンマウント時 (画面遷移・ダイアログを閉じる・親コンポーネントの
+  // 切り替えなど) に、保存されないまま残っているプレビュー用一時ファイルを
+  // 掃除する。プレビュー→保存の間に離脱すると、これまでは
+  // cleanup_kozou_temp() によるアプリ終了時の一括削除まで残り続けていた。
+  useEffect(() => {
+    return () => {
+      const p = tmpFileRef.current;
+      if (p) {
+        invoke("remove_file", { path: p }).catch(() => {});
+      }
+    };
+  }, []);
+
   const [chainedFiles, setChainedFiles] = useState<string[]>([]); // 連携で作成した一時ファイル一覧
   const [preview, setPreview] = useState("");
   const [errMsg, setErrMsg] = useState("");
@@ -411,6 +444,11 @@ export function CompressPage({
     if (useGs && !gsPath) {
       setError(t("compress.err_gs_not_found"));
       return;
+    }
+    // 設定を変えて再プレビューした場合など、前回分のプレビュー一時ファイルが
+    // 残っていれば新しいものを作る前に破棄する。
+    if (tmpFile) {
+      await discardTmpFile(tmpFile);
     }
     setSavedFilePath(null);
     setPhase("processing");
@@ -515,6 +553,8 @@ export function CompressPage({
     convertLayoutW,
     convertLayoutH,
     announceError,
+    tmpFile,
+    discardTmpFile,
   ]);
 
   const handleChainNext = useCallback(async () => {
@@ -528,6 +568,11 @@ export function CompressPage({
 
       // 連携ファイルのパスを記録（リセット時に削除するため）
       setChainedFiles((prev) => [...prev, chainedPath]);
+
+      // 複製元のプレビュー一時ファイルは連携用に複製済みなので、
+      // ここで元の tmpFile 自体は破棄してよい（コピーであり移動ではない
+      // ため、放置すると孤立したまま残ってしまう）。
+      await discardTmpFile(tmpFile);
 
       // ステートを更新して「次の入力」としてセット
       setCurrentSource(chainedPath);
@@ -543,9 +588,13 @@ export function CompressPage({
     } catch (e) {
       setError(t("compress.err_chain_failed") + String(e));
     }
-  }, [tmpFile, useGs, setError, t]);
+  }, [tmpFile, useGs, setError, t, discardTmpFile]);
 
   const handleResetSource = useCallback(async () => {
+    // プレビュー用一時ファイルが未保存のまま残っていれば破棄する
+    if (tmpFile) {
+      await discardTmpFile(tmpFile);
+    }
     // 連携で作成した一時ファイルを削除する
     for (const cf of chainedFiles) {
       try {
@@ -564,7 +613,7 @@ export function CompressPage({
     setPreview("");
     // 必要ならモードも初期（MuPDF）に戻す
     //setUseGs(false);
-  }, [sourceFile, filePath, chainedFiles]);
+  }, [sourceFile, filePath, chainedFiles, tmpFile, discardTmpFile]);
 
   const handleSaveCompressed = useCallback(async () => {
     const sp = await pickSave(appendName(outputBaseName ?? stem(filePath), ["compressed"]));
