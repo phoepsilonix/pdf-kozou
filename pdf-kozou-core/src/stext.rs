@@ -1439,6 +1439,10 @@ pub struct RenderImpositionRequest {
     pub layout_h: Option<f32>,
     #[serde(default)]
     pub layout_em: Option<f32>,
+    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1以下/省略=無効
+    /// (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。
+    #[serde(default)]
+    pub supersample_max: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1499,6 +1503,7 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
             fmt_int,
             quality,
             gap_px,
+            req.supersample_max.unwrap_or(1),
             out,
             &mut res,
         );
@@ -1559,6 +1564,10 @@ pub struct RasterizeImpositionRequest {
     pub layout_h: Option<f32>,
     #[serde(default)]
     pub layout_em: Option<f32>,
+    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1以下/省略=無効
+    /// (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。
+    #[serde(default)]
+    pub supersample_max: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1632,6 +1641,7 @@ pub fn rasterize_imposition(
             quality,
             use_png,
             gap_px,
+            req.supersample_max.unwrap_or(1),
             c_tmp_dir.as_ptr(),
             &mut res,
         );
@@ -1753,6 +1763,147 @@ pub fn split_imposition_pdf(req: &SplitImpositionPdfRequest) -> Result<SplitImpo
 
     let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
     Ok(SplitImpositionPdfResponse {
+        ok: true,
+        output_bytes: ob,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ComposeImpositionPdfKeepTextRequest {
+    pub input: String,
+    pub output: String,
+    /// 背景ラスタの解像度dpi。省略時150。
+    #[serde(default)]
+    pub dpi: Option<f32>,
+    /// JPEG品質1-100。省略時85。use_png時は無視。
+    #[serde(default)]
+    pub quality: Option<i32>,
+    #[serde(default)]
+    pub use_png: Option<bool>,
+    /// 出力シートサイズ(pt)。
+    pub target_w: f32,
+    pub target_h: f32,
+    pub cols: i32,
+    pub rows: i32,
+    /// 出力順のセル配列。n_sheets*(cols*rows) 個（1始まりページ番号, 0=空白セル）。
+    pub sheet_pages: Vec<i32>,
+    pub n_sheets: i32,
+    #[serde(default)]
+    pub gutter: Option<f32>,
+    #[serde(default)]
+    pub margin: Option<f32>,
+    /// 1/true: 向き自動。セルごとに収まりの良い向きへ +90° 回転を許可する。
+    #[serde(default)]
+    pub auto_orient: Option<bool>,
+    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1以下/省略=無効
+    /// (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。
+    #[serde(default)]
+    pub supersample_max: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ComposeImpositionPdfKeepTextResponse {
+    pub ok: bool,
+    pub output_bytes: u64,
+}
+
+/// kozou_compose_imposition_pdf のキープテキスト版。
+/// 非テキスト要素はシート単位で1枚の背景ラスタに焼き込み、テキストは
+/// 「テキストのみ」のForm XObjectとして保持する。
+pub fn compose_imposition_pdf_keep_text(
+    req: &ComposeImpositionPdfKeepTextRequest,
+) -> Result<ComposeImpositionPdfKeepTextResponse> {
+    use crate::compress::strip_fully_buried_text_for_keep_text;
+    use crate::ffi::{FfiResult, kozou_compose_imposition_pdf_keep_text, kozou_new_context};
+    use std::ffi::CString;
+
+    let per = (req.cols * req.rows).max(1);
+    let expected = (req.n_sheets * per) as usize;
+    if req.sheet_pages.len() != expected {
+        return Err(CoreError::InvalidArg(format!(
+            "sheet_pages length {} != n_sheets*(cols*rows) {}",
+            req.sheet_pages.len(),
+            expected
+        )));
+    }
+    // target_w/target_h <= 0: C側(kozou_compose_imposition_pdf_keep_text)の
+    // 自動サイズ算出モードを使う合図。ここでは負数だけを拒否する
+    // (0はkozou_rasterize_imposition等と同じ「画像出力側」の使い方に
+    // 合わせた既定値のため許可する)。
+    if req.target_w < 0.0 || req.target_h < 0.0 {
+        return Err(CoreError::InvalidArg("invalid target page size".into()));
+    }
+
+    if let Some(parent) = std::path::Path::new(&req.output).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let tmp_dir_path = {
+        let base = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&base);
+        base
+    };
+
+    // kozou_compose_image_pdf_keep_text (1up) と同じ理由: オブジェクト裏に
+    // 完全に隠れているテキストが、背景ラスタ化によって前面レイヤーに
+    // 誤って現れる問題への対処。前処理済みの一時ファイルがあれば、
+    // それをこのシート合成の実際の入力として使う。前処理は失敗しても
+    // None を返すだけなので、対象なし/検出失敗時は常に元の input に
+    // フォールバックする。
+    let buried_stripped = strip_fully_buried_text_for_keep_text(&req.input, &tmp_dir_path);
+    let compose_input: &str = buried_stripped
+        .as_deref()
+        .and_then(|p| p.to_str())
+        .unwrap_or(req.input.as_str());
+
+    let c_input = CString::new(compose_input)
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    let c_output = CString::new(req.output.as_str())
+        .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
+
+    let tmp_dir = tmp_dir_path.to_string_lossy().to_string();
+    let c_tmp_dir = CString::new(tmp_dir).unwrap_or_default();
+
+    unsafe {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+        }
+        let mut res = FfiResult::default();
+        kozou_compose_imposition_pdf_keep_text(
+            ctx,
+            c_input.as_ptr(),
+            c_output.as_ptr(),
+            req.dpi.unwrap_or(150.0),
+            req.quality.unwrap_or(85),
+            if req.use_png.unwrap_or(false) { 1 } else { 0 },
+            req.target_w,
+            req.target_h,
+            req.cols,
+            req.rows,
+            req.sheet_pages.as_ptr(),
+            req.n_sheets,
+            req.gutter.unwrap_or(0.0),
+            req.margin.unwrap_or(0.0),
+            if req.auto_orient.unwrap_or(false) {
+                1
+            } else {
+                0
+            },
+            req.supersample_max.unwrap_or(1),
+            c_tmp_dir.as_ptr(),
+            &mut res,
+        );
+        mupdf_sys::fz_drop_context(ctx);
+        if res.ok == 0 {
+            return Err(CoreError::MuPdf(format!("{res}")));
+        }
+    }
+
+    let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+    Ok(ComposeImpositionPdfKeepTextResponse {
         ok: true,
         output_bytes: ob,
     })

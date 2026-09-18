@@ -247,6 +247,13 @@ enum Commands {
         /// PNG 埋め込みで画像 PDF を生成（可逆・無劣化）
         #[arg(long, default_value = "false")]
         png: bool,
+        /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1=無効(既定)。
+        /// 2〜6を指定すると、dpi<300 の場合にのみ内部を最大この倍率の高dpiで
+        /// レンダリングしてから目標dpiへ高品質ダウンサンプリングし、細い罫線/
+        /// ヘアラインの消失・フェードを緩和する(出力の画素数・ファイルサイズは
+        /// 変わらないが生成時間は増える)。dpi>=300 では自動的に無効化される。
+        #[arg(long, default_value = "1")]
+        supersample: i32,
     },
 
     /// [Stage 1 検証用] テキスト(Type3含む)を除外した背景画像のみを生成する。
@@ -301,6 +308,10 @@ enum Commands {
         /// PNG 埋め込みで背景画像を生成（可逆・無劣化）
         #[arg(long, default_value = "false")]
         png: bool,
+        /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1=無効(既定)。
+        /// 詳細は Rasterize コマンドの同名オプションを参照。
+        #[arg(long, default_value = "1")]
+        supersample: i32,
     },
 
     /// PDF を分割
@@ -550,6 +561,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                         layout_w,
                         layout_h,
                         layout_em,
+                        supersample_max: None,
                     };
                     let resp = pdf_kozou_core::render::render(&req)?;
                     println!("{}", serde_json::to_string(&resp)?);
@@ -736,6 +748,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             quality,
             page,
             png,
+            supersample,
         } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
@@ -751,6 +764,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 quality,
                 png,
                 pages.as_deref(),
+                supersample,
             )?;
             println!("{}", serde_json::to_string(&resp)?);
         }
@@ -788,6 +802,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             quality,
             page,
             png,
+            supersample,
         } => {
             let _tmp = auto_convert_if_needed(&input, None, None, None, None, None, None)?;
             let input = if let Some((_, ref p)) = _tmp {
@@ -803,6 +818,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 quality,
                 png,
                 pages.as_deref(),
+                supersample,
             )?;
             println!("{}", serde_json::to_string(&resp)?);
         }
@@ -1086,6 +1102,7 @@ fn render_to_dir(
         layout_w,
         layout_h,
         layout_em,
+        None,
     )?;
     println!("{}", serde_json::to_string(&resp)?);
     Ok(())
@@ -1114,6 +1131,7 @@ fn render_to_json(
             layout_w,
             layout_h,
             layout_em,
+            supersample_max: None,
         };
         let resp = pdf_kozou_core::render::render(&req)?;
         pages.push(serde_json::json!({

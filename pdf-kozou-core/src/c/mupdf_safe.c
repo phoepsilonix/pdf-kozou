@@ -1357,6 +1357,163 @@ static void kozou_resolved_box_origin(
 }
 
 /* ------------------------------------------------------------------ */
+/* kozou_compute_supersample_mult / kozou_render_page_to_pixmap        */
+/*                                                                     */
+/* 「画像化」機能で、指定 dpi が低いときに細い罫線・ヘアラインが       */
+/* MuPDFのラスタライズ時にサブピクセル位相の影響でフェード/消失する   */
+/* 問題への対策。内部を supersample_max 倍の高dpiでレンダリングして   */
+/* から、目標dpi相当のサイズへ fz_scale_pixmap で高品質ダウンサンプル */
+/* する。最終的な出力画素数・ファイルサイズは変わらない。             */
+/*                                                                     */
+/* 倍率の決定方針 (ページ単位で判定):                                 */
+/*   - dpi >= KOZOU_SUPERSAMPLE_DPI_THRESHOLD (300) の場合は元々      */
+/*     ヘアライン消失が起きないため無効(倍率1)                        */
+/*   - 内部dpiは絶対値として KOZOU_SUPERSAMPLE_ABS_DPI_CAP (600) を   */
+/*     超えない                                                       */
+/*   - 内部一時ビットマップの総画素数が                                */
+/*     KOZOU_SUPERSAMPLE_MAX_PIXELS (既定 5,000万px) を超えない        */
+/*   - 呼び出し側が指定した上限 (supersample_max, 1で無効/最大6を想定) */
+/*     を超えない                                                     */
+/*                                                                     */
+/* supersample_max <= 1 は「オプション無効」を意味し、この場合は既存  */
+/* の直接描画パスと完全に同一の挙動になる(挙動・性能の後方互換性)。   */
+/* ------------------------------------------------------------------ */
+#define KOZOU_SUPERSAMPLE_DPI_THRESHOLD   300.0f
+#define KOZOU_SUPERSAMPLE_ABS_DPI_CAP     600.0f
+#define KOZOU_SUPERSAMPLE_MAX_PIXELS      50000000.0  /* 5,000万px ≈ RGBで約143MB */
+
+static int kozou_compute_supersample_mult(
+    float dpi, int supersample_max, float target_w_px, float target_h_px)
+{
+    if (supersample_max <= 1) return 1;
+    if (dpi <= 0.0f) return 1;
+    if (dpi >= KOZOU_SUPERSAMPLE_DPI_THRESHOLD) return 1;
+
+    int by_abs_dpi = (int)floorf(KOZOU_SUPERSAMPLE_ABS_DPI_CAP / dpi);
+    if (by_abs_dpi < 1) by_abs_dpi = 1;
+
+    double target_px = (double)target_w_px * (double)target_h_px;
+    int by_mem = supersample_max;
+    if (target_px > 0.0) {
+        double m = sqrt(KOZOU_SUPERSAMPLE_MAX_PIXELS / target_px);
+        by_mem = (int)floor(m);
+        if (by_mem < 1) by_mem = 1;
+    }
+
+    int mult = supersample_max;
+    if (by_abs_dpi < mult) mult = by_abs_dpi;
+    if (by_mem   < mult) mult = by_mem;
+    if (mult < 1) mult = 1;
+    return mult;
+}
+
+/* 汎用の低レベルプリミティブ: 与えられた ctm・目標サイズでページを
+ * pixmap にレンダリングする。mult<=1 なら直接描画(従来と同一)。
+ * mult>1 なら ctm をさらに mult 倍したデバイス空間で一時的に描いてから
+ * fz_scale_pixmap で目標サイズ(target_w×target_h)へ高品質ダウンサンプル
+ * する。exclude_text はテキスト描画を無効化するかどうか。
+ * page には fz_run_page で描画できるもの(fz_page* または面付けの
+ * サブページ)を渡す。                                                */
+static fz_pixmap *kozou_render_ctm_to_pixmap(
+    fz_context *ctx, fz_page *page, fz_matrix ctm,
+    int target_w, int target_h, int mult, int exclude_text)
+{
+    fz_colorspace *rgb = fz_device_rgb(ctx);
+    fz_irect target_bbox = { 0, 0, target_w, target_h };
+    fz_pixmap *pixmap = NULL;
+
+    if (mult <= 1) {
+        pixmap = fz_new_pixmap_with_bbox(ctx, rgb, target_bbox, NULL, 0);
+        fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
+        fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
+        if (exclude_text) {
+            draw_dev->fill_text        = NULL;
+            draw_dev->stroke_text      = NULL;
+            draw_dev->clip_text        = NULL;
+            draw_dev->clip_stroke_text = NULL;
+            draw_dev->ignore_text      = NULL;
+        }
+        fz_try(ctx) {
+            fz_run_page(ctx, page, draw_dev, fz_identity, NULL);
+            fz_close_device(ctx, draw_dev);
+        }
+        fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
+        fz_catch(ctx) {
+            fz_drop_pixmap(ctx, pixmap);
+            fz_rethrow(ctx);
+        }
+    } else {
+        /* ctm 全体を mult 倍したデバイス空間で描画してから縮小する。
+         * fz_concat(ctm, scale) = 「ctmを適用した後にscaleを適用」
+         * なので、ctm に平行移動(中央寄せ等)が含まれていても、結果は
+         * 全体が mult 倍された座標系になり、後で正しく縮小できる。   */
+        fz_matrix big_ctm = fz_concat(ctm, fz_scale((float)mult, (float)mult));
+        fz_irect  big_bbox = { 0, 0, target_w * mult, target_h * mult };
+        fz_pixmap *big = fz_new_pixmap_with_bbox(ctx, rgb, big_bbox, NULL, 0);
+        fz_clear_pixmap_with_value(ctx, big, 0xff);
+
+        fz_try(ctx) {
+            fz_device *draw_dev = fz_new_draw_device(ctx, big_ctm, big);
+            if (exclude_text) {
+                draw_dev->fill_text        = NULL;
+                draw_dev->stroke_text      = NULL;
+                draw_dev->clip_text        = NULL;
+                draw_dev->clip_stroke_text = NULL;
+                draw_dev->ignore_text      = NULL;
+            }
+            fz_try(ctx) {
+                fz_run_page(ctx, page, draw_dev, fz_identity, NULL);
+                fz_close_device(ctx, draw_dev);
+            }
+            fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
+            fz_catch(ctx) { fz_rethrow(ctx); }
+
+            /* この結果はJPEG/PNGとして保存するか、他のpixmapへ行単位
+             * コピーするだけなので、x/yオフセット(MuPDF内部合成用の
+             * メタデータ)は0,0で構わない。使うのは幅・高さと画素内容。*/
+            pixmap = fz_scale_pixmap(ctx, big,
+                0.0f, 0.0f, (float)target_w, (float)target_h, NULL);
+            if (!pixmap)
+                fz_throw(ctx, FZ_ERROR_GENERIC,
+                         "kozou: supersample downscale failed");
+        }
+        fz_always(ctx) { fz_drop_pixmap(ctx, big); }
+        fz_catch(ctx) { fz_rethrow(ctx); }
+    }
+
+    return pixmap;
+}
+
+/* ページを pixmap にレンダリングする共通ヘルパー(bounds+dpiベース)。
+ * supersample_max > 1 かつ dpi がしきい値未満の場合は、内部を高dpiで
+ * レンダリングしてから目標サイズへ高品質ダウンサンプリングする。
+ * exclude_text が真の場合はテキスト描画コールバックを無効化する
+ * (kozou_compose_image_pdf_keep_text の背景画像生成用)。
+ * *out_ctm / *out_bbox には「目標(最終)dpiでの」ctm/bbox を返す
+ * (呼び出し側は従来通りこれを使って配置座標を計算できる)。         */
+static fz_pixmap *kozou_render_page_to_pixmap(
+    fz_context *ctx, fz_page *page, fz_rect bounds,
+    float dpi, int supersample_max, int exclude_text,
+    fz_matrix *out_ctm, fz_irect *out_bbox)
+{
+    float scale = dpi / 72.0f;
+    fz_matrix ctm  = fz_scale(scale, scale);
+    fz_irect  bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
+
+    int target_w = (int)(bbox.x1 - bbox.x0);
+    int target_h = (int)(bbox.y1 - bbox.y0);
+    int mult = kozou_compute_supersample_mult(
+        dpi, supersample_max, (float)target_w, (float)target_h);
+
+    fz_pixmap *pixmap = kozou_render_ctm_to_pixmap(
+        ctx, page, ctm, target_w, target_h, mult, exclude_text);
+
+    if (out_ctm)  *out_ctm  = ctm;
+    if (out_bbox) *out_bbox = bbox;
+    return pixmap;
+}
+
+/* ------------------------------------------------------------------ */
 /* kozou_rasterize                                                     */
 /*                                                                     */
 /* 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。   */
@@ -1387,6 +1544,7 @@ void kozou_rasterize(
     const char  *tmp_dir,
     const int   *page_indices,
     int          page_indices_len,
+    int          supersample_max, /* 1以下=無効(既定・後方互換)。2〜6で有効化 */
     FfiResult   *result)
 {
     fz_document  *doc    = NULL;
@@ -1488,22 +1646,13 @@ void kozou_rasterize(
                 float mb_x0, mb_y0;
                 kozou_resolved_box_origin(ctx, doc, i, bounds, &mb_x0, &mb_y0);
 
-                /* draw device で pixmap にレンダリング */
-                fz_matrix ctm = fz_scale(scale, scale);
-                fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
-                fz_colorspace *rgb = fz_device_rgb(ctx);
-                pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
-                fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
-
-                {
-                    fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
-                    fz_try(ctx) {
-                        fz_run_page(ctx, page, draw_dev, fz_identity, NULL);
-                        fz_close_device(ctx, draw_dev);
-                    }
-                    fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
-                    fz_catch(ctx) { fz_rethrow(ctx); }
-                }
+                /* draw device で pixmap にレンダリング
+                 * (supersample_max > 1 の場合は内部高dpi→縮小)         */
+                fz_matrix ctm;
+                fz_irect  bbox;
+                pixmap = kozou_render_page_to_pixmap(
+                    ctx, page, bounds, dpi, supersample_max, 0,
+                    &ctm, &bbox);
 
                 /* pixmap → 一時ファイル (JPEG or PNG) → fz_image
                  *
@@ -2576,6 +2725,7 @@ void kozou_compose_image_pdf_keep_text(
     const char  *tmp_dir,
     const int   *page_indices,
     int          page_indices_len,
+    int          supersample_max, /* 1以下=無効(既定・後方互換)。2〜6で有効化 */
     FfiResult   *result)
 {
     pdf_document  *src   = NULL;
@@ -2734,26 +2884,13 @@ void kozou_compose_image_pdf_keep_text(
                     }
                 }
 
-                fz_matrix ctm = fz_scale(scale, scale);
-                fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
-                fz_colorspace *rgb = fz_device_rgb(ctx);
-                pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
-                fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
-
-                {
-                    fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
-                    draw_dev->fill_text        = NULL;
-                    draw_dev->stroke_text      = NULL;
-                    draw_dev->clip_text        = NULL;
-                    draw_dev->clip_stroke_text = NULL;
-                    draw_dev->ignore_text      = NULL;
-                    fz_try(ctx) {
-                        fz_run_page(ctx, render_page, draw_dev, fz_identity, NULL);
-                        fz_close_device(ctx, draw_dev);
-                    }
-                    fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
-                    fz_catch(ctx) { fz_rethrow(ctx); }
-                }
+                /* 背景画像 (テキスト除外) をレンダリング。
+                 * supersample_max > 1 の場合は内部高dpi→縮小。         */
+                fz_matrix ctm;
+                fz_irect  bbox;
+                pixmap = kozou_render_page_to_pixmap(
+                    ctx, render_page, bounds, dpi, supersample_max, 1,
+                    &ctm, &bbox);
 
                 snprintf(tmp_img, sizeof(tmp_img),
                          "%s" KOZOU_PATH_SEP "kozou_composeimg_%d_%d.%s",
@@ -2785,15 +2922,9 @@ void kozou_compose_image_pdf_keep_text(
                     fz_pixmap *full_pm = NULL;
                     fz_var(full_pm);
                     fz_try(ctx) {
-                        full_pm = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
-                        fz_clear_pixmap_with_value(ctx, full_pm, 0xff);
-                        fz_device *full_dev = fz_new_draw_device(ctx, ctm, full_pm);
-                        fz_try(ctx) {
-                            fz_run_page(ctx, render_page, full_dev, fz_identity, NULL);
-                            fz_close_device(ctx, full_dev);
-                        }
-                        fz_always(ctx) { fz_drop_device(ctx, full_dev); }
-                        fz_catch(ctx) { fz_rethrow(ctx); }
+                        full_pm = kozou_render_page_to_pixmap(
+                            ctx, render_page, bounds, dpi, supersample_max, 0,
+                            NULL, NULL);
 
                         char tmp_img2[1024];
                         snprintf(tmp_img2, sizeof(tmp_img2),
@@ -3748,6 +3879,7 @@ fz_buffer *kozou_render_page(
     float       layout_em,
     int         format,      /* 0=JPEG, 1=PNG */
     int         quality,     /* JPEG quality 0-100 */
+    int         supersample_max, /* 1以下=無効(既定・後方互換)。2〜6で有効化 */
     int        *out_width,
     int        *out_height,
     float      *out_page_w_pt,
@@ -3791,17 +3923,12 @@ fz_buffer *kozou_render_page(
         fz_matrix ctm = fz_scale(scale, scale);
         fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
 
-        fz_colorspace *rgb = fz_device_rgb(ctx);
-        pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
-        fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
-
-        fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
-        fz_try(ctx) {
-            fz_run_page(ctx, page, draw_dev, fz_identity, NULL);
-            fz_close_device(ctx, draw_dev);
-        }
-        fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
-        fz_catch(ctx)  { fz_rethrow(ctx); }
+        int target_w = (int)(bbox.x1 - bbox.x0);
+        int target_h = (int)(bbox.y1 - bbox.y0);
+        int mult = kozou_compute_supersample_mult(
+            dpi, supersample_max, (float)target_w, (float)target_h);
+        pixmap = kozou_render_ctm_to_pixmap(
+            ctx, page, ctm, target_w, target_h, mult, 0);
 
         *out_width  = fz_pixmap_width(ctx, pixmap);
         *out_height = fz_pixmap_height(ctx, pixmap);
@@ -10709,6 +10836,7 @@ static fz_pixmap *kozou_compose_sheet_pixmap(
     int          rows,
     float        dpi,
     int          gap_px,
+    int          supersample_max, /* 1以下=無効(既定・後方互換)。2〜6で有効化 */
     float       *out_cell_w_pt,
     float       *out_cell_h_pt)
 {
@@ -10781,17 +10909,12 @@ static fz_pixmap *kozou_compose_sheet_pixmap(
             fz_matrix ctm = fz_scale(fit_scale, fit_scale);
             ctm = fz_pre_translate(ctm, -pb.x0, -pb.y0);
 
-            fz_irect render_bbox = { 0, 0, render_w, render_h };
-            fz_pixmap *cell_pix = fz_new_pixmap_with_bbox(ctx, rgb, render_bbox, NULL, 0);
-            fz_clear_pixmap_with_value(ctx, cell_pix, 0xff);
-
-            fz_device *draw_dev = fz_new_draw_device(ctx, ctm, cell_pix);
-            fz_try(ctx) {
-                fz_run_page(ctx, pg, draw_dev, fz_identity, NULL);
-                fz_close_device(ctx, draw_dev);
-            }
-            fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
-            fz_catch(ctx) { fz_drop_pixmap(ctx, cell_pix); fz_rethrow(ctx); }
+            /* セルへレンダリング (supersample_max > 1 かつ低dpiの場合は
+             * 内部高dpi→縮小)                                          */
+            int cell_mult = kozou_compute_supersample_mult(
+                dpi, supersample_max, (float)render_w, (float)render_h);
+            fz_pixmap *cell_pix = kozou_render_ctm_to_pixmap(
+                ctx, pg, ctm, render_w, render_h, cell_mult, 0);
 
             {
                 int src_stride = fz_pixmap_stride(ctx, cell_pix);
@@ -11169,6 +11292,174 @@ static pdf_obj *kozou_compose_page_to_xobject(
     return xobj;
 }
 
+/* kozou_compose_page_to_xobject のテキスト保持版。
+ * 元ページの内容を丸ごと保持するのではなく、kozou_compose_image_pdf_keep_text
+ * と同じ手法 (非テキスト描画命令の除去・ネストしたForm XObjectの
+ * テキスト化・フォントのグリフ単位サブセット化) を適用し、「テキストのみ」
+ * のForm XObjectを作る。背景(非テキスト要素)は呼び出し側がシート単位で
+ * 別途ラスタライズして重ねる前提のため、ここでは背景画像の埋め込みや
+ * MediaBox/CropBoxクリップは行わない(Form XObjectの/BBoxで自動的に
+ * クリップされるため、ページ全体を複製する場合ほど必要性が薄い)。
+ * 失敗した場合はNULLを返す(呼び出し側で「そのセルは画像のみにフォール
+ * バック」等、安全側の扱いをすること)。                                */
+static pdf_obj *kozou_compose_page_to_text_only_xobject(
+    fz_context *ctx, pdf_document *src, pdf_document *dst,
+    pdf_graft_map *gmap, int pno)
+{
+    pdf_obj *pageref = pdf_lookup_page_obj(ctx, src, pno); /* borrowed */
+
+    pdf_obj *boxobj = pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(CropBox));
+    if (!pdf_is_array(ctx, boxobj))
+        boxobj = pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(MediaBox));
+    fz_rect bbox;
+    if (pdf_is_array(ctx, boxobj)) {
+        bbox = pdf_to_rect(ctx, boxobj);
+    } else {
+        bbox.x0 = 0; bbox.y0 = 0; bbox.x1 = 595; bbox.y1 = 842;
+    }
+    if (bbox.x1 < bbox.x0) { float t = bbox.x0; bbox.x0 = bbox.x1; bbox.x1 = t; }
+    if (bbox.y1 < bbox.y0) { float t = bbox.y0; bbox.y0 = bbox.y1; bbox.y1 = t; }
+
+    pdf_obj   *res       = pdf_dict_get_inheritable(ctx, pageref, PDF_NAME(Resources)); /* borrowed, src */
+    pdf_obj   *res2      = NULL; /* dst 側、グラフト済み */
+    fz_buffer *orig_buf  = NULL;
+    fz_buffer *no_inline = NULL;
+    fz_buffer *stripped  = NULL;
+    pdf_obj   *xobj_dict = NULL;
+    pdf_obj   *new_xobj  = NULL;
+    fz_var(res2); fz_var(orig_buf); fz_var(no_inline); fz_var(stripped);
+    fz_var(xobj_dict); fz_var(new_xobj);
+
+    fz_try(ctx) {
+        res2 = res ? pdf_graft_mapped_object(ctx, gmap, res)
+                   : pdf_new_dict(ctx, dst, 1);
+        orig_buf = kozou_compose_read_contents(ctx, pageref);
+
+        /* res2(dst, グラフト済み)の /Resources/XObject を確保。
+         * ここに、ネストした Form を「テキストのみ版」へ差し替えていく。 */
+        xobj_dict = pdf_dict_get(ctx, res2, PDF_NAME(XObject));
+        if (!xobj_dict) {
+            xobj_dict = pdf_new_dict(ctx, dst, 1);
+            pdf_dict_put(ctx, res2, PDF_NAME(XObject), xobj_dict);
+        }
+
+        /* src 側(常に確実に読める)の /Resources/XObject を見て、
+         * Form XObject を指す名前だけを「テキストのみ版」に差し替える。
+         * 失敗した場合はエントリ自体を削除する(=対応する Do は名前解決
+         * できず除去される。その非テキスト要素は既にシート単位の背景
+         * 画像に焼き込まれている前提)。                                */
+        pdf_obj *src_xobj_d = res ? pdf_dict_get(ctx, res, PDF_NAME(XObject)) : NULL;
+        if (src_xobj_d) {
+            int nsx = pdf_dict_len(ctx, src_xobj_d);
+            for (int sk = 0; sk < nsx; sk++) {
+                pdf_obj *skey = pdf_dict_get_key(ctx, src_xobj_d, sk);
+                const char *skeystr = pdf_to_name(ctx, skey);
+                if (!skeystr || !skeystr[0]) continue;
+                pdf_obj *child_src = pdf_dict_gets(ctx, src_xobj_d, skeystr);
+                pdf_obj *child_subtype = child_src ? pdf_dict_get(ctx, child_src, PDF_NAME(Subtype)) : NULL;
+                if (!child_subtype || !pdf_name_eq(ctx, child_subtype, PDF_NAME(Form))) continue;
+
+                pdf_obj *new_form = kozou_build_text_only_form(ctx, dst, gmap, child_src, 0);
+                if (new_form) {
+                    pdf_dict_puts(ctx, xobj_dict, skeystr, new_form);
+                } else {
+                    pdf_obj *delname = pdf_new_name(ctx, skeystr);
+                    pdf_dict_del(ctx, xobj_dict, delname);
+                    pdf_drop_obj(ctx, delname);
+                    fz_warn(ctx, "compose_page_to_text_only_xobject: "
+                                 "page %d: failed to build text-only form for /%s, "
+                                 "dropping (image-only fallback)", pno + 1, skeystr);
+                }
+            }
+        }
+
+        no_inline = kozou_strip_inline_images(ctx, orig_buf);
+        stripped  = kozou_strip_nontext_paint_ops(ctx, no_inline, xobj_dict);
+
+        /* kozou_compose_image_pdf_keep_text と同じ理由で、ページ直接の
+         * /Resources/Font もグリフ単位でサブセット化する(ネストした
+         * Form 側は kozou_build_text_only_form が既に行っている)。 */
+        pdf_obj *src_font_pg = res ? pdf_dict_get(ctx, res, PDF_NAME(Font)) : NULL;
+        if (src_font_pg) {
+            KozouNameSet used_fonts_pg;
+            KozouFontUsage font_usage_pg;
+            unsigned char any_used_pg[32];
+            memset(any_used_pg, 0, sizeof(any_used_pg));
+            kozou_nameset_init(&used_fonts_pg);
+            kozou_fontusage_init(&font_usage_pg);
+            kozou_collect_used_fonts(ctx, stripped, &used_fonts_pg, &font_usage_pg, any_used_pg);
+            if (used_fonts_pg.count > 0) {
+                pdf_obj *new_font_pg = pdf_new_dict(ctx, dst, (int)used_fonts_pg.count);
+                for (size_t fi = 0; fi < used_fonts_pg.count; fi++) {
+                    pdf_obj *font_obj = pdf_dict_gets(ctx, src_font_pg, used_fonts_pg.names[fi]);
+                    if (font_obj) {
+                        const KozouFontUsageEntry *usage = kozou_fontusage_find(
+                            &font_usage_pg, used_fonts_pg.names[fi], strlen(used_fonts_pg.names[fi]));
+                        pdf_dict_puts(ctx, new_font_pg, used_fonts_pg.names[fi],
+                                      kozou_graft_font_maybe_subset(ctx, dst, gmap, font_obj, usage));
+                    }
+                }
+                pdf_dict_put_drop(ctx, res2, PDF_NAME(Font), new_font_pg);
+            } else if (kozou_has_text_show_ops(ctx, stripped)) {
+                int npg = pdf_dict_len(ctx, src_font_pg);
+                pdf_obj *new_font_pg = pdf_new_dict(ctx, dst, npg > 0 ? npg : 1);
+                KozouFontUsageEntry any_entry_pg;
+                any_entry_pg.name = NULL;
+                memcpy(any_entry_pg.used, any_used_pg, sizeof(any_entry_pg.used));
+                for (int fi = 0; fi < npg; fi++) {
+                    pdf_obj *key = pdf_dict_get_key(ctx, src_font_pg, fi);
+                    const char *keystr = pdf_is_name(ctx, key) ? pdf_to_name(ctx, key) : NULL;
+                    pdf_obj *font_obj = keystr ? pdf_dict_get_val(ctx, src_font_pg, fi) : NULL;
+                    if (keystr && font_obj) {
+                        pdf_dict_puts(ctx, new_font_pg, keystr,
+                                      kozou_graft_font_maybe_subset(ctx, dst, gmap, font_obj, &any_entry_pg));
+                    }
+                }
+                pdf_dict_put_drop(ctx, res2, PDF_NAME(Font), new_font_pg);
+            } else {
+                pdf_dict_del(ctx, res2, PDF_NAME(Font));
+            }
+            kozou_fontusage_free(&font_usage_pg);
+            kozou_nameset_free(&used_fonts_pg);
+        }
+
+        /* Matrix は identity。配置(縮小・平行移動・回転)は呼び出し側の
+         * cm で行う。BBox=元ページのCropBox/MediaBoxのため、PDFの仕様上
+         * ビューワはこの範囲外を自動的にクリップする。                  */
+        /* /BBox によるクリップをビューワの実装に委ねず、コンテンツ
+         * ストリーム自身のクリップパスとしても確実に適用する
+         * (kozou_compose_image_pdf_keep_text と同じ理由:
+         *  /CropBox 外にある別レイアウト/下書き等の要素が、ページの
+         *  可視範囲外だからといって content stream 上は消えていない
+         *  ため、/BBox の解釈が甘いビューワでは漏れて見える)。       */
+        fz_buffer *clipped = NULL;
+        fz_var(clipped);
+        fz_try(ctx) {
+            char clip_prefix[160];
+            int  clip_len = snprintf(clip_prefix, sizeof(clip_prefix),
+                "q\n%.4f %.4f %.4f %.4f re\nW n\n",
+                bbox.x0, bbox.y0, bbox.x1 - bbox.x0, bbox.y1 - bbox.y0);
+            clipped = fz_new_buffer(ctx,
+                (size_t)clip_len + fz_buffer_storage(ctx, stripped, NULL) + 4);
+            fz_append_data(ctx, clipped, clip_prefix, (size_t)clip_len);
+            fz_append_buffer(ctx, clipped, stripped);
+            fz_append_string(ctx, clipped, "\nQ\n");
+
+            new_xobj = pdf_new_xobject(ctx, dst, bbox, fz_identity, res2, clipped);
+        }
+        fz_always(ctx) { fz_drop_buffer(ctx, clipped); }
+        fz_catch(ctx) { fz_rethrow(ctx); }
+    }
+    fz_always(ctx) {
+        fz_drop_buffer(ctx, stripped);
+        fz_drop_buffer(ctx, no_inline);
+        fz_drop_buffer(ctx, orig_buf);
+        pdf_drop_obj(ctx, res2);
+    }
+    fz_catch(ctx) { fz_rethrow(ctx); }
+    return new_xobj;
+}
+
 void kozou_compose_imposition_pdf(
     fz_context  *ctx,
     const char  *input,
@@ -11370,6 +11661,335 @@ void kozou_compose_imposition_pdf(
 }
 
 /* ──────────────────────────────────────────────────────────────────
+ * kozou_compose_imposition_pdf のキープテキスト版。
+ *
+ * 各セルについて:
+ *   - 非テキスト要素は、シート全体で1枚の背景ラスタ画像にまとめて
+ *     焼き込む(supersample_max 対応)。
+ *   - テキストは kozou_compose_page_to_text_only_xobject で
+ *     「テキストのみ」の Form XObject 化し、背景画像の上に重ねて描画する。
+ *
+ * セルの配置(fit・中央寄せ・/Rotate反映)は kozou_compose_imposition_pdf
+ * と全く同じ計算式を使う。背景ラスタは、テキスト側と同じ配置行列 m を
+ * ピクセル空間へ変換したもの(pixm = m ∘ scale(pixscale*mult))で描画する
+ * ため、背景とテキストのズレは原理的に発生しない。
+ * ─────────────────────────────────────────────────────────────────── */
+void kozou_compose_imposition_pdf_keep_text(
+    fz_context  *ctx,
+    const char  *input,
+    const char  *output,
+    float        dpi,          /* 背景ラスタの解像度 */
+    int          quality,      /* JPEG品質(use_png時は無視) */
+    int          use_png,
+    float        target_w,
+    float        target_h,
+    int          cols,
+    int          rows,
+    const int   *sheet_pages,  /* n_sheets*(cols*rows) 個 */
+    int          n_sheets,
+    float        gutter,
+    float        margin,
+    int          auto_orient,
+    int          supersample_max, /* 1以下=無効(既定・後方互換)。2〜6で有効化 */
+    const char  *tmp_dir,
+    FfiResult   *result)
+{
+    pdf_document  *src    = NULL;
+    pdf_document  *dst    = NULL;
+    pdf_graft_map *gmap   = NULL;
+    pdf_obj      **xcache = NULL; /* テキストのみForm XObjectのキャッシュ */
+    int            page_count = 0;
+    fz_var(src); fz_var(dst); fz_var(gmap); fz_var(xcache); fz_var(page_count);
+
+    fz_try(ctx) {
+        src = pdf_open_document(ctx, input);
+        page_count = pdf_count_pages(ctx, src);
+        if (page_count <= 0)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
+        if (cols < 1) cols = 1;
+        if (rows < 1) rows = 1;
+        if (gutter < 0) gutter = 0;
+        if (margin < 0) margin = 0;
+        if (dpi <= 0.0f) dpi = 150.0f;
+
+        int per = cols * rows;
+
+        /* target_w/target_h <= 0: 自動算出モード。kozou_compose_sheet_pixmap
+         * (画像出力側の面付け)と同じ考え方で、実際に配置されるページの
+         * 最大幅・最大高さ(/Rotate反映後)を基準にシートサイズを決める。
+         * 「画像化PDFのN-up」画面のように、固定の出力用紙サイズを持たず
+         * 元ページのサイズから自動的にシートを組む使い方に対応するため。 */
+        if (target_w <= 1.0f || target_h <= 1.0f) {
+            float max_w_pt = 595.0f, max_h_pt = 842.0f;
+            int   valid_count = 0;
+            for (int i = 0; i < n_sheets * per; i++) {
+                int pno = sheet_pages[i] - 1;
+                if (pno < 0 || pno >= page_count) continue;
+                pdf_obj *pr = pdf_lookup_page_obj(ctx, src, pno); /* borrowed */
+                fz_rect  pb = pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(CropBox)));
+                if (pb.x1 <= pb.x0 || pb.y1 <= pb.y0)
+                    pb = pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(MediaBox)));
+                int prot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(Rotate)));
+                prot = ((prot % 360) + 360) % 360;
+                float pw = pb.x1 - pb.x0, ph = pb.y1 - pb.y0;
+                float vw = (prot == 90 || prot == 270) ? ph : pw;
+                float vh = (prot == 90 || prot == 270) ? pw : ph;
+                if (valid_count == 0) { max_w_pt = vw; max_h_pt = vh; }
+                else {
+                    if (vw > max_w_pt) max_w_pt = vw;
+                    if (vh > max_h_pt) max_h_pt = vh;
+                }
+                valid_count++;
+            }
+            target_w = max_w_pt * (float)cols + gutter * (float)(cols - 1) + margin * 2.0f;
+            target_h = max_h_pt * (float)rows + gutter * (float)(rows - 1) + margin * 2.0f;
+        }
+        if (target_w <= 1.0f || target_h <= 1.0f)
+            fz_throw(ctx, FZ_ERROR_ARGUMENT, "invalid target page size");
+
+        dst    = pdf_create_document(ctx);
+        gmap   = pdf_new_graft_map(ctx, dst);
+        xcache = fz_calloc(ctx, (size_t)page_count, sizeof(pdf_obj *));
+
+        const char *base_tmp = (tmp_dir && tmp_dir[0]) ? tmp_dir : output;
+        const char *ext      = use_png ? "png" : "jpg";
+        fz_colorspace *rgb   = fz_device_rgb(ctx);
+        float pixscale       = dpi / 72.0f;
+
+        for (int s = 0; s < n_sheets; s++) {
+            fz_buffer *text_cbuf = NULL; /* セルごとの text-only Do 呼び出しを蓄積 */
+            fz_buffer *cbuf      = NULL; /* 最終的な(背景+テキスト)コンテンツ */
+            pdf_obj   *sheet_res = NULL;
+            pdf_obj   *xdict     = NULL;
+            pdf_obj   *page_obj  = NULL;
+            fz_pixmap *big       = NULL;
+            fz_pixmap *bgpix     = NULL;
+            fz_image  *bgimage   = NULL;
+            pdf_obj   *bgimgref  = NULL;
+            char       tmp_img[1024];
+            tmp_img[0] = '\0';
+            fz_var(text_cbuf); fz_var(cbuf); fz_var(sheet_res); fz_var(xdict);
+            fz_var(page_obj); fz_var(big); fz_var(bgpix); fz_var(bgimage); fz_var(bgimgref);
+
+            fz_try(ctx) {
+                text_cbuf = fz_new_buffer(ctx, 256);
+                sheet_res = pdf_new_dict(ctx, dst, 2);
+                xdict     = pdf_new_dict(ctx, dst, per + 1);
+                pdf_dict_put_drop(ctx, sheet_res, PDF_NAME(XObject), xdict);
+
+                float tw = target_w, th = target_h;
+                if (auto_orient && per == 1) {
+                    int pno0 = sheet_pages[s * per] - 1;
+                    if (pno0 >= 0 && pno0 < page_count) {
+                        pdf_obj *pr  = pdf_lookup_page_obj(ctx, src, pno0); /* borrowed */
+                        fz_rect  pcb = pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(CropBox)));
+                        if (pcb.x1 <= pcb.x0 || pcb.y1 <= pcb.y0)
+                            pcb = pdf_to_rect(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(MediaBox)));
+                        int prot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(Rotate)));
+                        prot = ((prot % 360) + 360) % 360;
+                        float pw = pcb.x1 - pcb.x0, ph = pcb.y1 - pcb.y0;
+                        int page_landscape = (prot == 90 || prot == 270) ? (ph > pw) : (pw > ph);
+                        float big2   = (tw > th) ? tw : th;
+                        float small2 = (tw > th) ? th : tw;
+                        if (page_landscape) { tw = big2;   th = small2; }
+                        else                { tw = small2; th = big2;   }
+                    }
+                }
+                float availW = tw - 2.0f * margin - (cols - 1) * gutter;
+                float availH = th - 2.0f * margin - (rows - 1) * gutter;
+                if (availW <= 1.0f || availH <= 1.0f)
+                    fz_throw(ctx, FZ_ERROR_ARGUMENT, "margins/gutter too large for target size");
+                float cellW = availW / (float)cols;
+                float cellH = availH / (float)rows;
+                fz_rect mediabox = { 0, 0, tw, th };
+
+                /* このシート全体分の背景ラスタ用ビットマップ
+                 * (supersample_max はシート単位=ページ単位で判定)。 */
+                int sheet_w = (int)(tw * pixscale + 0.5f);
+                int sheet_h = (int)(th * pixscale + 0.5f);
+                if (sheet_w < 1) sheet_w = 1;
+                if (sheet_h < 1) sheet_h = 1;
+                int mult = kozou_compute_supersample_mult(
+                    dpi, supersample_max, (float)sheet_w, (float)sheet_h);
+                fz_irect big_bbox = { 0, 0, sheet_w * mult, sheet_h * mult };
+                big = fz_new_pixmap_with_bbox(ctx, rgb, big_bbox, NULL, 0);
+                fz_clear_pixmap_with_value(ctx, big, 0xff);
+
+                int placed = 0;
+                for (int c = 0; c < per; c++) {
+                    int pno = sheet_pages[s * per + c] - 1; /* 0始まり, -1=空白 */
+                    if (pno < 0 || pno >= page_count) continue;
+
+                    if (!xcache[pno])
+                        xcache[pno] = kozou_compose_page_to_text_only_xobject(ctx, src, dst, gmap, pno);
+                    pdf_obj *xobj = xcache[pno];
+                    if (!xobj) continue; /* 失敗時はそのセルはテキストなし(背景のみ)にフォールバック */
+
+                    fz_rect bb = pdf_to_rect(ctx, pdf_dict_get(ctx, xobj, PDF_NAME(BBox)));
+                    float bw = bb.x1 - bb.x0;
+                    float bh = bb.y1 - bb.y0;
+                    if (bw <= 0 || bh <= 0) continue;
+
+                    int rot;
+                    {
+                        pdf_obj *pr = pdf_lookup_page_obj(ctx, src, pno); /* borrowed */
+                        rot = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pr, PDF_NAME(Rotate)));
+                        rot = ((rot % 360) + 360) % 360;
+                        if (rot % 90 != 0) rot = 0;
+                    }
+                    float vw = (rot == 90 || rot == 270) ? bh : bw;
+                    float vh = (rot == 90 || rot == 270) ? bw : bh;
+
+                    int   col = c % cols;
+                    int   row = c / cols;
+                    float cellX    = margin + col * (cellW + gutter);
+                    float cellTopY = th - margin - row * (cellH + gutter);
+                    float cellBotY = cellTopY - cellH;
+
+                    float sx = cellW / vw, sy = cellH / vh;
+                    float scale = (sx < sy) ? sx : sy;
+                    float pw = vw * scale, ph = vh * scale;
+                    float offX = cellX    + (cellW - pw) * 0.5f;
+                    float offY = cellBotY + (cellH - ph) * 0.5f;
+
+                    /* m: 元ページ(未回転, bb.x0/y0起点)→シート上の最終配置(pt空間)。
+                     * Form XObjectはMuPDFの自動/Rotate・CropBox原点補正の
+                     * 対象外なので、テキスト側にはここで手動補正を入れる。 */
+                    fz_matrix rotm;
+                    switch (rot) {
+                        case 90:  rotm = fz_make_matrix(0.f, -1.f, 1.f, 0.f, 0.f, bw); break;
+                        case 180: rotm = fz_make_matrix(-1.f, 0.f, 0.f, -1.f, bw, bh); break;
+                        case 270: rotm = fz_make_matrix(0.f, 1.f, -1.f, 0.f, bh, 0.f); break;
+                        default:  rotm = fz_identity; break;
+                    }
+                    fz_matrix m = fz_translate(-bb.x0, -bb.y0);
+                    m = fz_concat(m, rotm);
+                    m = fz_concat(m, fz_scale(scale, scale));
+                    m = fz_concat(m, fz_translate(offX, offY));
+
+                    /* 背景(非テキスト)をこのセルの配置でシート全体の big に描画。
+                     * こちらは fz_load_page + fz_run_page を使うため、
+                     * /CropBoxの原点ズレと/Rotateは MuPDF が内部で自動的に
+                     * 補正済みの座標系で描画される。そのため m のように
+                     * translate(-bb.x0,-bb.y0) や rotm を重ねてはならない
+                     * (重ねると二重補正になり、テキスト側とズレる)。
+                     * ここで使うのは scale と offX/offY だけで十分。      */
+                    fz_matrix m_raster = fz_scale(scale, scale);
+                    m_raster = fz_concat(m_raster, fz_translate(offX, offY));
+
+                    {
+                        fz_matrix pixm = fz_concat(m_raster, fz_scale(pixscale * (float)mult, pixscale * (float)mult));
+                        fz_page *pg = NULL;
+                        fz_device *bgdev = NULL;
+                        fz_var(pg); fz_var(bgdev);
+                        fz_try(ctx) {
+                            pg = fz_load_page(ctx, (fz_document *)src, pno);
+                            bgdev = fz_new_draw_device(ctx, pixm, big);
+                            bgdev->fill_text        = NULL;
+                            bgdev->stroke_text      = NULL;
+                            bgdev->clip_text        = NULL;
+                            bgdev->clip_stroke_text = NULL;
+                            bgdev->ignore_text      = NULL;
+                            fz_try(ctx) {
+                                fz_run_page(ctx, pg, bgdev, fz_identity, NULL);
+                                fz_close_device(ctx, bgdev);
+                            }
+                            fz_always(ctx) { fz_drop_device(ctx, bgdev); }
+                            fz_catch(ctx) { fz_rethrow(ctx); }
+                        }
+                        fz_always(ctx) { fz_drop_page(ctx, pg); }
+                        fz_catch(ctx) { fz_rethrow(ctx); }
+                    }
+
+                    char nm[24];
+                    snprintf(nm, sizeof nm, "X%d", placed);
+                    pdf_dict_puts(ctx, xdict, nm, xobj);
+
+                    fz_append_printf(ctx, text_cbuf,
+                        "q %g %g %g %g %g %g cm /%s Do Q\n",
+                        m.a, m.b, m.c, m.d, m.e, m.f, nm);
+                    placed++;
+                }
+
+                /* シート全体の背景ラスタを目標サイズへ縮小(mult>1の場合)、
+                 * 保存して画像として埋め込む。 */
+                bgpix = (mult > 1)
+                    ? fz_scale_pixmap(ctx, big, 0.0f, 0.0f, (float)sheet_w, (float)sheet_h, NULL)
+                    : big;
+                if (!bgpix)
+                    fz_throw(ctx, FZ_ERROR_GENERIC, "kozou: supersample downscale failed (imposition keep-text)");
+
+                snprintf(tmp_img, sizeof(tmp_img),
+                         "%s" KOZOU_PATH_SEP "kozou_imposekt_%d_%d.%s",
+                         base_tmp, (int)getpid(), s, ext);
+                if (use_png) {
+                    fz_output *fout = fz_new_output_with_path(ctx, tmp_img, 0);
+                    fz_try(ctx) {
+                        fz_write_pixmap_as_png(ctx, fout, bgpix);
+                        fz_close_output(ctx, fout);
+                    }
+                    fz_always(ctx) { fz_drop_output(ctx, fout); }
+                    fz_catch(ctx) { fz_rethrow(ctx); }
+                } else {
+                    int jpeg_quality = (quality > 0 && quality <= 100) ? quality : 85;
+                    fz_save_pixmap_as_jpeg(ctx, bgpix, tmp_img, jpeg_quality);
+                }
+                bgimage  = fz_new_image_from_file(ctx, tmp_img);
+                bgimgref = pdf_add_image(ctx, dst, bgimage);
+                {
+                    pdf_obj *bgname = pdf_new_name(ctx, "KzBgImg");
+                    pdf_dict_put(ctx, xdict, bgname, bgimgref);
+                    pdf_drop_obj(ctx, bgname);
+                }
+
+                /* 背景を先に描いてから、テキストのみForm XObjectを重ねる。 */
+                cbuf = fz_new_buffer(ctx,
+                    64 + fz_buffer_storage(ctx, text_cbuf, NULL));
+                fz_append_printf(ctx, cbuf, "q %g 0 0 %g 0 0 cm /KzBgImg Do Q\n", tw, th);
+                fz_append_buffer(ctx, cbuf, text_cbuf);
+
+                page_obj = pdf_add_page(ctx, dst, mediabox, 0, sheet_res, cbuf);
+                pdf_insert_page(ctx, dst, -1, page_obj);
+            }
+            fz_always(ctx) {
+                if (tmp_img[0] != '\0') { remove(tmp_img); tmp_img[0] = '\0'; }
+                if (page_obj)  pdf_drop_obj(ctx, page_obj);
+                if (sheet_res) pdf_drop_obj(ctx, sheet_res);
+                if (cbuf)      fz_drop_buffer(ctx, cbuf);
+                if (text_cbuf) fz_drop_buffer(ctx, text_cbuf);
+                fz_drop_image(ctx, bgimage);
+                if (bgpix && bgpix != big) fz_drop_pixmap(ctx, bgpix);
+                fz_drop_pixmap(ctx, big);
+            }
+            fz_catch(ctx) { fz_rethrow(ctx); }
+        }
+
+        pdf_write_options opts = pdf_default_write_options;
+        opts.do_compress        = 1;
+        opts.do_compress_images = use_png ? 0 : 1;
+        opts.do_garbage         = 2;
+        opts.do_clean           = 0;
+        opts.do_use_objstms     = 1;
+        pdf_save_document(ctx, dst, output, &opts);
+
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        if (xcache) {
+            for (int i = 0; i < page_count; i++)
+                if (xcache[i]) pdf_drop_obj(ctx, xcache[i]);
+            fz_free(ctx, xcache);
+        }
+        if (gmap) pdf_drop_graft_map(ctx, gmap);
+        if (dst)  pdf_drop_document(ctx, dst);
+        if (src)  pdf_drop_document(ctx, src);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ──────────────────────────────────────────────────────────────────
  * 面付け解除して1セルを画像(base64用バッファ)に出力する。
  * 個別画像ファイル出力用。1回の呼び出しで1セルをレンダリングし、
  * JPEG/PNG を fz_output に書き出す。SVG は別途 fz_new_svg_device を使う。
@@ -11469,6 +12089,7 @@ void kozou_rasterize_imposition(
     int          quality,
     int          use_png,
     int          gap_px,
+    int          supersample_max, /* 1以下=無効(既定・後方互換)。2〜6で有効化 */
     const char  *tmp_dir,
     FfiResult   *result)
 {
@@ -11514,7 +12135,7 @@ void kozou_rasterize_imposition(
                 float cell_w_pt = 595.0f, cell_h_pt = 842.0f;
                 pixmap = kozou_compose_sheet_pixmap(ctx, doc, page_count,
                     page_nums, cells_per_sheet, cols, rows, dpi, gap_px,
-                    &cell_w_pt, &cell_h_pt);
+                    supersample_max, &cell_w_pt, &cell_h_pt);
 
                 /* PDFページの MediaBox は (cols*cell_w_pt, rows*cell_h_pt)。
                  * gap は pt 換算で加える（gap_px を pt に戻す）。 */
@@ -11601,6 +12222,7 @@ void kozou_render_imposition(
     int          format,     /* 0=JPEG, 1=PNG                                  */
     int          quality,    /* JPEG品質 1-100                                 */
     int          gap_px,     /* セル間ギャップ px（出力解像度基準）            */
+    int          supersample_max, /* 1以下=無効(既定・後方互換)。2〜6で有効化  */
     fz_output   *out,
     FfiResult   *result)
 {
@@ -11743,23 +12365,12 @@ void kozou_render_imposition(
                 if (cell_bbox.x1 > total_w) cell_bbox.x1 = total_w;
                 if (cell_bbox.y1 > total_h) cell_bbox.y1 = total_h;
 
-                /* ページを個別pixmapにレンダリング */
-                fz_irect render_bbox = { 0, 0, render_w, render_h };
-                fz_pixmap *cell_pix = fz_new_pixmap_with_bbox(ctx, rgb, render_bbox, NULL, 0);
-                fz_clear_pixmap_with_value(ctx, cell_pix, 0xff);
-
-                fz_device *draw_dev = fz_new_draw_device(ctx, ctm, cell_pix);
-                fz_try(ctx) {
-                    fz_run_page(ctx, pg, draw_dev, fz_identity, NULL);
-                    fz_close_device(ctx, draw_dev);
-                }
-                fz_always(ctx) {
-                    fz_drop_device(ctx, draw_dev);
-                }
-                fz_catch(ctx) {
-                    fz_drop_pixmap(ctx, cell_pix);
-                    fz_rethrow(ctx);
-                }
+                /* ページを個別pixmapにレンダリング
+                 * (supersample_max > 1 かつ低dpiの場合は内部高dpi→縮小) */
+                int cell_mult = kozou_compute_supersample_mult(
+                    dpi, supersample_max, (float)render_w, (float)render_h);
+                fz_pixmap *cell_pix = kozou_render_ctm_to_pixmap(
+                    ctx, pg, ctm, render_w, render_h, cell_mult, 0);
 
                 /* レンダリング済みpixmapのサンプルデータを合成先に行単位でコピー */
                 {
