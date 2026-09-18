@@ -26,11 +26,6 @@ pub struct RenderRequest {
     /// リフロー可能文書のフォントサイズ (pt)。省略時は 12pt
     #[serde(default)]
     pub layout_em: Option<f32>,
-    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1以下/省略=無効
-    /// (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化され、
-    /// 細い罫線/ヘアラインの消失・フェードを緩和する(生成時間はやや増える)。
-    #[serde(default)]
-    pub supersample_max: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -108,7 +103,6 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
             lem,
             fmt_code,
             quality,
-            req.supersample_max.unwrap_or(1) as c_int,
             &mut width,
             &mut height,
             &mut page_w_pt,

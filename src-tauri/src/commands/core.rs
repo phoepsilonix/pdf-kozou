@@ -123,7 +123,6 @@ pub async fn render_page(
                 layout_w,
                 layout_h,
                 layout_em,
-                supersample_max: None,
             };
             let resp = pdf_kozou_core::render::render(&req).map_err(|e| e.to_string())?;
             serde_json::to_string(&resp).map_err(|e| e.to_string())
@@ -293,19 +292,6 @@ pub async fn compose_imposition_pdf(request: Value) -> Result<Value> {
         std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
     }
     call_core_json("compose_imposition_pdf", request).await
-}
-
-/// compose_imposition_pdf のキープテキスト版。非テキスト要素はシート単位で
-/// 1枚の背景ラスタに焼き込み、テキストは保持したまま重ねる。
-#[tauri::command]
-pub async fn compose_imposition_pdf_keep_text(request: Value) -> Result<Value> {
-    if let Some(out) = request.get("output").and_then(|v| v.as_str())
-        && let Some(parent) = std::path::Path::new(out).parent()
-        && !parent.as_os_str().is_empty()
-    {
-        std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
-    }
-    call_core_json("compose_imposition_pdf_keep_text", request).await
 }
 
 /// 面付け解除した1セルを画像(JPEG/PNG/SVG)としてレンダリングし base64 で返す。
@@ -517,9 +503,6 @@ pub async fn export_images(
     layout_w: Option<f32>,
     layout_h: Option<f32>,
     layout_em: Option<f32>,
-    // 高品質アンチエイリアス(スーパーサンプリング)倍率。1以下/省略=無効
-    // (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。
-    supersample: Option<i32>,
 ) -> Result<Value> {
     use serde_json::json;
 
@@ -566,7 +549,6 @@ pub async fn export_images(
                 layout_w,
                 layout_h,
                 layout_em,
-                supersample,
             )
             .map_err(|e| e.to_string())
         }),
@@ -601,11 +583,6 @@ pub async fn export_image_pdf(
     layout_w: Option<f32>,
     layout_h: Option<f32>,
     layout_em: Option<f32>,
-    // 高品質アンチエイリアス(スーパーサンプリング)倍率。
-    // 1以下/省略=無効(既定・従来と同一挙動)。2〜6を指定すると、dpi<300の
-    // 場合のみ内部を高dpiでレンダリングしてから縮小し、細い罫線/ヘアライン
-    // の消失・フェードを緩和する(出力の画素数・ファイルサイズは変わらない)。
-    supersample: Option<i32>,
 ) -> Result<Value> {
     use serde_json::json;
 
@@ -626,7 +603,6 @@ pub async fn export_image_pdf(
         "layout_w":  layout_w,
         "layout_h":  layout_h,
         "layout_em": layout_em,
-        "supersample": supersample.unwrap_or(1),
     });
 
     call_core_json("rasterize", request).await
@@ -653,8 +629,6 @@ pub async fn export_image_pdf_keep_text(
     layout_w: Option<f32>,
     layout_h: Option<f32>,
     layout_em: Option<f32>,
-    // export_image_pdf と同じ意味(1以下/省略=無効・既定)。
-    supersample: Option<i32>,
 ) -> Result<Value> {
     use serde_json::json;
 
@@ -674,7 +648,6 @@ pub async fn export_image_pdf_keep_text(
         "layout_w":  layout_w,
         "layout_h":  layout_h,
         "layout_em": layout_em,
-        "supersample": supersample.unwrap_or(1),
     });
 
     call_core_json("compose_image_pdf_keep_text", request).await

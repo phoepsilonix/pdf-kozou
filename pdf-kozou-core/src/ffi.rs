@@ -156,8 +156,6 @@ unsafe extern "C" {
         layout_em: f32,
         format: c_int, /* 0=JPEG, 1=PNG */
         quality: c_int,
-        // 1以下=無効(既定・後方互換)。2〜6でdpi<300の場合のみ有効化。
-        supersample_max: c_int,
         out_width: *mut c_int,
         out_height: *mut c_int,
         out_page_w_pt: *mut f32,
@@ -224,8 +222,6 @@ unsafe extern "C" {
         format: c_int,  /* 0=JPEG, 1=PNG */
         quality: c_int, /* JPEG品質 1-100 */
         gap_px: c_int,  /* セル間ギャップ px */
-        // 1以下=無効(既定・後方互換)。2〜6でdpi<300の場合のみ有効化。
-        supersample_max: c_int,
         out: *mut mupdf_sys::fz_output,
         result: *mut FfiResult,
     );
@@ -246,8 +242,6 @@ unsafe extern "C" {
         quality: c_int, /* JPEG品質 1-100 */
         use_png: c_int, /* 0=JPEG, 1=PNG */
         gap_px: c_int,
-        // 1以下=無効(既定・後方互換)。2〜6でdpi<300の場合のみ有効化。
-        supersample_max: c_int,
         tmp_dir: *const c_char,
         result: *mut FfiResult,
     );
@@ -289,31 +283,6 @@ unsafe extern "C" {
         gutter: f32,
         margin: f32,
         auto_orient: c_int,
-        result: *mut FfiResult,
-    );
-
-    /// kozou_compose_imposition_pdf のキープテキスト版。
-    /// 非テキスト要素はシート単位で1枚の背景ラスタに焼き込み、テキストは
-    /// 「テキストのみ」のForm XObjectとして保持する。
-    pub fn kozou_compose_imposition_pdf_keep_text(
-        ctx: *mut mupdf_sys::fz_context,
-        input: *const c_char,
-        output: *const c_char,
-        dpi: f32,
-        quality: c_int,
-        use_png: c_int,
-        target_w: f32,
-        target_h: f32,
-        cols: c_int,
-        rows: c_int,
-        sheet_pages: *const c_int,
-        n_sheets: c_int,
-        gutter: f32,
-        margin: f32,
-        auto_orient: c_int,
-        // 1以下=無効(既定・後方互換)。2〜6でdpi<300の場合のみ有効化。
-        supersample_max: c_int,
-        tmp_dir: *const c_char,
         result: *mut FfiResult,
     );
 
@@ -432,10 +401,6 @@ unsafe extern "C" {
     /// tmp_dir: 一時ファイルを置く pdf-kozou 専用 temp ディレクトリのパス
     /// page_indices: 0ベースのページ番号配列。NULL の場合は全ページ対象。
     /// page_indices_len: page_indices の要素数。
-    /// supersample_max: 1以下=無効(既定・従来と同一挙動)。2〜6を指定すると、
-    /// dpi<300 の場合にのみ内部を最大 supersample_max 倍の高dpiでレンダリング
-    /// してから目標dpiへ高品質ダウンサンプリングし、細い罫線/ヘアラインの
-    /// 消失・フェードを緩和する(出力の画素数・ファイルサイズは変わらない)。
     pub fn kozou_rasterize(
         ctx: *mut mupdf_sys::fz_context,
         input: *const c_char,
@@ -446,7 +411,6 @@ unsafe extern "C" {
         tmp_dir: *const c_char,
         page_indices: *const c_int,
         page_indices_len: c_int,
-        supersample_max: c_int,
         result: *mut FfiResult,
     );
 
@@ -474,9 +438,6 @@ unsafe extern "C" {
     /// テキスト(Type3含む)はベクターのまま(元のフォントオブジェクトを
     /// 無変更で)残す。/Rotate!=0 のページは通常の全面ラスタライズに
     /// 自動フォールバックする(テキストは保持されない)。
-    /// supersample_max: kozou_rasterize と同じ意味。背景画像(非テキスト要素)
-    /// のレンダリングと、/Rotate!=0 ページの全面ラスタライズ・フォールバック
-    /// の両方に適用される。
     pub fn kozou_compose_image_pdf_keep_text(
         ctx: *mut mupdf_sys::fz_context,
         input: *const c_char,
@@ -487,7 +448,6 @@ unsafe extern "C" {
         tmp_dir: *const c_char,
         page_indices: *const c_int,
         page_indices_len: c_int,
-        supersample_max: c_int,
         result: *mut FfiResult,
     );
 }

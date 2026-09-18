@@ -55,7 +55,6 @@ import {
   type PdfInfo,
   type PickedFolder,
   rasterizeImposition,
-  composeImpositionPdfKeepText,
   renderImposition,
   renderPage,
   splitCellRender,
@@ -272,12 +271,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [format, setFormat] = useState<ImageFormat>(() => loadLastImageFormat() ?? "jpeg");
   const [dpi, setDpi] = useState(144);
   const [quality, setQuality] = useState(85);
-  // 高品質アンチエイリアス(スーパーサンプリング)。既定ON(オプトアウト)。
-  // ONの場合、dpi<300 のときのみ内部を高dpiでレンダリングしてから縮小し、
-  // 細い罫線/ヘアラインの消失・フェードを緩和する(出力のdpi/qualityは
-  // 変わらないが生成時間はやや増える)。
-  const [supersample, setSupersample] = useState(true);
-  const SUPERSAMPLE_MAX_MULT = 6;
   // 出力ファイル名の中間ラベル（初期値はモードの操作トークン。空可・自由入力可）
   const [label, setLabel] = useState("");
   // ユーザーがラベルを手動編集したか（編集後はモード/言語切替で上書きしない）
@@ -881,7 +874,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             format: fmt,
             quality: fmt === "jpeg" ? quality : undefined,
             gapPx: 0,
-            supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
           });
 
           // base64 → ファイル保存（ラベルが操作トークンを内包）
@@ -973,41 +965,21 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               }
             }
           }
-          if (keepTextExperimental) {
-            await composeImpositionPdfKeepText({
-              input: filePath,
-              output: outPath,
-              targetW: 0,
-              targetH: 0,
-              cols: modeInfo.cols,
-              rows: modeInfo.rows,
-              sheetPages,
-              nSheets: sheets.length,
-              gutter: 0,
-              margin: 0,
-              dpi,
-              quality,
-              usePng: format === "png",
-              supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
-            });
-          } else {
-            await rasterizeImposition({
-              input: filePath,
-              output: outPath,
-              sheetPages,
-              nSheets: sheets.length,
-              cols: modeInfo.cols,
-              rows: modeInfo.rows,
-              dpi,
-              quality,
-              usePng: format === "png",
-              gapPx: 0,
-              layoutW: convertLayoutW,
-              layoutH: convertLayoutH,
-              layoutEm: convertLayoutEm,
-              supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
-            });
-          }
+          await rasterizeImposition({
+            input: filePath,
+            output: outPath,
+            sheetPages,
+            nSheets: sheets.length,
+            cols: modeInfo.cols,
+            rows: modeInfo.rows,
+            dpi,
+            quality,
+            usePng: format === "png",
+            gapPx: 0,
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
+          });
           await commitSave(outPath);
           setPdfOutPath(outPath);
           setPdfPageCount(sheets.length);
@@ -1028,7 +1000,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           format === "png",
           pages || undefined,
           { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
-          supersample ? SUPERSAMPLE_MAX_MULT : undefined,
         );
         await commitSave(outPath);
         setPdfOutPath(outPath);
@@ -1055,7 +1026,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           imagePrefix(srcStem, keepOriginalName),
           pages || undefined,
           { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
-          supersample ? SUPERSAMPLE_MAX_MULT : undefined,
         );
         console.log("res", res);
         setImages(res.files);
@@ -1101,7 +1071,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutH,
     convertLayoutEm,
     keepTextExperimental,
-    supersample,
     t,
     IMPOSITION_MODES_I18N,
   ]);
@@ -1261,41 +1230,21 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               }
             }
 
-            if (keepTextExperimental) {
-              await composeImpositionPdfKeepText({
-                input: f.path,
-                output: outPath,
-                targetW: 0,
-                targetH: 0,
-                cols: modeInfo.cols,
-                rows: modeInfo.rows,
-                sheetPages,
-                nSheets: sheets.length,
-                gutter: 0,
-                margin: 0,
-                dpi,
-                quality,
-                usePng: format === "png",
-                supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
-              });
-            } else {
-              await rasterizeImposition({
-                input: f.path,
-                output: outPath,
-                sheetPages,
-                nSheets: sheets.length,
-                cols: modeInfo.cols,
-                rows: modeInfo.rows,
-                dpi,
-                quality,
-                usePng: format === "png",
-                gapPx: 0,
-                layoutW: convertLayoutW,
-                layoutH: convertLayoutH,
-                layoutEm: convertLayoutEm,
-                supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
-              });
-            }
+            await rasterizeImposition({
+              input: f.path,
+              output: outPath,
+              sheetPages,
+              nSheets: sheets.length,
+              cols: modeInfo.cols,
+              rows: modeInfo.rows,
+              dpi,
+              quality,
+              usePng: format === "png",
+              gapPx: 0,
+              layoutW: convertLayoutW,
+              layoutH: convertLayoutH,
+              layoutEm: convertLayoutEm,
+            });
             progress.done.push({ file: f.filename, count: sheets.length, pdfPath: outPath });
           } else {
             // 1up PDF
@@ -1307,7 +1256,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               format === "png",
               pages || undefined,
               { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
-              supersample ? SUPERSAMPLE_MAX_MULT : undefined,
             );
             const pageCount = filePageSpec.length || fileTotal;
             progress.done.push({ file: f.filename, count: pageCount, pdfPath: outPath });
@@ -1341,7 +1289,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               format: fmt,
               quality: fmt === "jpeg" ? quality : undefined,
               gapPx: 0,
-              supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
             });
 
             const outName = imageName(stem, false, si + 1, ext);
@@ -1366,7 +1313,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             imagePrefix(stem, false),
             pages || undefined,
             { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
-            supersample ? SUPERSAMPLE_MAX_MULT : undefined,
           );
           progress.done.push({ file: f.filename, count: res.files.length, savedFiles: res.files });
         }
@@ -1415,7 +1361,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutH,
     convertLayoutEm,
     keepTextExperimental,
-    supersample,
     total,
     mobile,
     IMPOSITION_MODES_I18N,
@@ -1883,14 +1828,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
 
             {/* [テスト用/実験的機能] 画像PDF化(フォント保持版) Stage2 の
-                動作確認トグル。1upはcompose_image_pdf_keep_textを、
-                面付け(N-up/見開き)はcompose_imposition_pdf_keep_textを
-                直接叩く。「テキスト保持」はPDF出力時のみ意味を持つため
-                outputMode==="pdf"に限定する(画像ファイル出力には非対応)。
+                動作確認トグル。compose_image_pdf_keep_text を直接叩く。
+                面付けモード(1up以外)には未対応のため、その場合は無効。
                 一般ユーザー向けの完成機能ではないため、常設のGUI項目とは
                 見た目を明確に区別している(黄枠)。ラベル・利点/制限事項は
                 各localeで明記する。 */}
-            {outputMode === "pdf" && (
+            {outputMode === "pdf" && impositionMode === "1up" && (
               <div
                 style={{
                   border: "1px dashed #c9a227",
@@ -1941,53 +1884,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               </div>
             )}
 
-            {/* 高品質アンチエイリアス(スーパーサンプリング、既定ON)。
-             * dpiが低いとき、細い罫線や装飾文字画像がラスタライズ時の
-             * サブピクセル位相の影響で消失/フェードする現象への対策。
-             * dpi/quality設定自体は変えず、生成時だけ内部で高dpiに
-             * レンダリングしてから縮小する(生成時間はやや増える)。
-             * 画像化PDF(1up)・画像ファイル出力(1up)・面付け(N-up/製本、
-             * 画像化PDF/画像ファイルどちらの出力でも)の全パスに適用される
-             * ため、outputMode/impositionModeに関わらず常に表示する。 */}
-            {(
-              <div
-                style={{
-                  border: "1px dashed #6b8fc9",
-                  borderRadius: 6,
-                  padding: "4px 8px",
-                  marginTop: 4,
-                }}
-              >
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    fontSize: FS.caption,
-                    color: "var(--c-textDim)",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={supersample}
-                    onChange={(e) => setSupersample(e.target.checked)}
-                  />
-                  <span>{t("image.supersample_checkbox_label")}</span>
-                </label>
-                {supersample && (
-                  <div
-                    style={{
-                      fontSize: FS.caption,
-                      color: "var(--c-textDim)",
-                      marginTop: 4,
-                      paddingLeft: 22,
-                    }}
-                  >
-                    {t("image.supersample_hint")}
-                  </div>
-                )}
-              </div>
-            )}
             {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
             {processDir === "normal" && format !== "svg" && (
               <>

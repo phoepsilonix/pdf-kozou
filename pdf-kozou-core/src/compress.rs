@@ -1295,16 +1295,10 @@ fn rewrite_safe_fallback(
 
 /// PDF を全ページ画像化 (テキスト・アウトライン失う — 非推奨)
 pub fn rasterize(input: &str, output: &str, dpi: f32) -> Result<CompressResponse> {
-    rasterize_with_quality(input, output, dpi, 85, false, None, 1)
+    rasterize_with_quality(input, output, dpi, 85, false, None)
 }
 
 /// pages: 1ベースのページ番号リスト。None の場合は全ページ。
-///
-/// supersample_max: 1以下=無効(既定・従来と同一挙動)。2〜6を指定すると、
-/// dpi<300 の場合にのみ内部を最大 supersample_max 倍の高dpiでレンダリング
-/// してから目標dpiへ高品質ダウンサンプリングし、細い罫線/ヘアラインの
-/// 消失・フェードを緩和する(出力の画素数・ファイルサイズ・quality設定は
-/// 変わらない。生成時間はやや増える)。
 pub fn rasterize_with_quality(
     input: &str,
     output: &str,
@@ -1312,7 +1306,6 @@ pub fn rasterize_with_quality(
     quality: i32,
     use_png: bool,
     pages: Option<&[i32]>,
-    supersample_max: i32,
 ) -> Result<CompressResponse> {
     use crate::ffi::{FfiResult, kozou_new_context, kozou_rasterize as ffi_rasterize};
     use std::ffi::CString;
@@ -1363,7 +1356,6 @@ pub fn rasterize_with_quality(
             c_tmp_dir.as_ptr(),
             indices_ptr,
             indices_len,
-            supersample_max as c_int,
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);
@@ -1377,11 +1369,6 @@ pub fn rasterize_with_quality(
 
     let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
     let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
-    let supersample_note = if supersample_max > 1 && dpi < 300.0 {
-        " (高品質アンチエイリアス有効)"
-    } else {
-        ""
-    };
     Ok(CompressResponse {
         ok: true,
         input_bytes: ib,
@@ -1405,7 +1392,7 @@ pub fn rasterize_with_quality(
             images_recompressed: None,
         },
         warning: Some(format!(
-            "ラスタライズ: {dpi}dpi 画像化PDFに変換{supersample_note}。テキスト選択・検索・コピー不可。"
+            "ラスタライズ: {dpi}dpi 画像化PDFに変換。テキスト選択・検索・コピー不可。"
         )),
     })
 }
@@ -1553,7 +1540,7 @@ pub fn rasterize_no_text_with_quality(
 /// 検出/無害化に失敗した場合や対象が無い場合は None を返し、呼び出し元は
 /// 元の input をそのまま使う (従来動作にフォールバックするだけで、
 /// この前処理が無くても compose 自体は今まで通り動作する)。
-pub(crate) fn strip_fully_buried_text_for_keep_text(
+fn strip_fully_buried_text_for_keep_text(
     input: &str,
     tmp_dir: &std::path::Path,
 ) -> Option<std::path::PathBuf> {
@@ -1644,9 +1631,6 @@ pub(crate) fn strip_fully_buried_text_for_keep_text(
     }
 }
 
-/// supersample_max: kozou_rasterize_with_quality と同じ意味(1以下=無効・既定)。
-/// 背景画像(非テキスト要素)のレンダリングと、/Rotate!=0 ページの全面
-/// ラスタライズ・フォールバックの両方に適用される。
 pub fn compose_image_pdf_keep_text_with_quality(
     input: &str,
     output: &str,
@@ -1654,7 +1638,6 @@ pub fn compose_image_pdf_keep_text_with_quality(
     quality: i32,
     use_png: bool,
     pages: Option<&[i32]>,
-    supersample_max: i32,
 ) -> Result<CompressResponse> {
     use crate::ffi::{
         FfiResult, kozou_compose_image_pdf_keep_text as ffi_compose, kozou_new_context,
@@ -1741,7 +1724,6 @@ pub fn compose_image_pdf_keep_text_with_quality(
             c_tmp_dir.as_ptr(),
             indices_ptr,
             indices_len,
-            supersample_max as c_int,
             &mut res,
         );
         mupdf_sys::fz_drop_context(ctx);
