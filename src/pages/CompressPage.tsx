@@ -510,7 +510,13 @@ export function CompressPage({
         setResult(res);
       }
 
-      setTmpFile(tmp);
+      // renderPage が tmp をオープンして読み終える(=Rust側でDocumentが
+      // dropしてファイルハンドルが閉じる)まで、tmpFile state / ref を
+      // 更新しない。先に setTmpFile してしまうと、renderPage がまだ
+      // ファイルを開いたままの間にアンマウント等で discardTmpFile /
+      // remove_file が呼ばれ、Windows ではハンドルが開いたままの削除に
+      // 失敗して(サイレントに無視され)アプリ終了まで残る、という
+      // タイミング依存の競合が起こり得るため。
       try {
         setPreview(
           await renderPage(tmp, 0, 108, {
@@ -522,6 +528,7 @@ export function CompressPage({
       } catch {
         setPreview("");
       }
+      setTmpFile(tmp);
       // 画面表示（−X%）と同じ「削減率」を読み上げる。負（増加）の場合は 0 とみなす。
       const reducedPct = Math.max(0, Math.round((1 - ratioVal) * 100));
       announceSuccess("done.compress", { ratio: String(reducedPct) });
