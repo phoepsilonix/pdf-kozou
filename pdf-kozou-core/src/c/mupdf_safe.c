@@ -2106,6 +2106,17 @@ static pdf_obj *kozou_build_text_only_form(
     fz_context *ctx, pdf_document *dst, pdf_graft_map *gmap,
     pdf_obj *src_xobj, int depth);
 
+/* 定義は本ファイル後方 (kozou_detect_buried_text 系の描画順記録デバイスを
+ * 使うため)。部分的に隠れていた文字の「隠し直し」パッチを作って dst に
+ * 追加し、それを描く content 片を content_out に追記する。追加した
+ * パッチ数を返す。詳細は定義側のコメント参照。 */
+static int kozou_keeptext_add_partial_covers(
+    fz_context *ctx, pdf_document *dst, fz_page *render_page, fz_rect bounds,
+    float dpi, int supersample_max, int page_index,
+    fz_pixmap *nt_pix, fz_image *bg_image,
+    float mb_x0, float mb_y0, float pw_pt, float ph_pt,
+    pdf_obj *xobj_dict, fz_buffer *content_out);
+
 /* BT 外にある「非テキストの描画命令」を演算子単位で除去する
  * (トークン解析ベース。1行に複数演算子が書かれていても、対象の
  *  演算子とその演算子自身のオペランドだけを正確に取り除き、
@@ -2707,10 +2718,18 @@ static void kozou_debug_dump_buffer(fz_context *ctx, const char *output,
 /*       判明したため撤廃した。) 画像を指す Do は除去する               */
 /*      (既に背景画像に焼き込まれている)。                             */
 /*                                                                     */
+/*   5. 一部だけオブジェクトに隠れていたテキストは、隠れていた部分だけ */
+/*      を覆う小さなパッチ画像を最前面に重ねて隠し直す                 */
+/*      (kozou_keeptext_add_partial_covers)。完全に(80%以上)隠れて    */
+/*      いたテキストは、呼び出し側(Rust)が事前に除去している。        */
+/*                                                                     */
 /* 既知の制限:                                                         */
-/*  - 画像の陰に隠れて見えないテキストがあった場合、そのテキストは      */
-/*    (隠していた画像はプライバシー保護のため背景に焼き込まれ消える     */
-/*     ため)前面に単独で現れる可能性がある。検出・回避はしていない。   */
+/*  - 半透明のオブジェクトの陰にあったテキストは、隠し直しの対象外     */
+/*    (透けて見えていた部分は「見えていたインク」として扱われ、        */
+/*     ベクターのテキストは不透明のまま前面に出る)。                   */
+/*  - 隠し直しは、描画順を記録するデバイスが捉えられる不透明な塗り     */
+/*    (パス/画像)による隠蔽が対象。テキストのクリップ等による         */
+/*    見えなさは対象外。                                               */
 /*  - /Rotate が 0 以外のページは今回未対応。安全のため、そのページ    */
 /*    だけ kozou_rasterize_no_text 相当(テキストも含めた通常の         */
 /*    全面ラスタライズ)にフォールバックする。                          */
@@ -3232,6 +3251,41 @@ void kozou_compose_image_pdf_keep_text(
                     fz_append_data(ctx, final_buf, cs_prefix, (size_t)cs_prefix_len);
                     fz_append_buffer(ctx, final_buf, stripped);
                     fz_append_string(ctx, final_buf, "\nQ\n");
+
+                    /* 部分的に隠れていたテキストの「隠し直し」パッチ。
+                     *
+                     * 上の Q で背景画像+テキストのレイヤーは閉じており、
+                     * ここから先は初期グラフィックス状態なので、パッチは
+                     * ページ座標そのままで配置できる。元PDFで後から描かれた
+                     * 不透明オブジェクトに隠れていた文字の「隠れていた
+                     * 部分だけ」を、背景画像と同じ画素の小さな画像
+                     * (見えていたインク部分は SMask で透過)で最前面に
+                     * 重ねる。詳細は kozou_keeptext_add_partial_covers の
+                     * コメント参照。
+                     *
+                     * この処理は見た目の忠実度を上げる追加処理であり、
+                     * 失敗しても変換自体は続行する (パッチ無し=従来動作)。 */
+                    {
+                        fz_buffer *cover_buf = fz_new_buffer(ctx, 1024);
+                        fz_try(ctx) {
+                            int ncov = kozou_keeptext_add_partial_covers(
+                                ctx, dst, render_page, bounds, dpi, supersample_max, i,
+                                pixmap, image, mb_x0, mb_y0, pw_pt, ph_pt,
+                                xobj, cover_buf);
+                            if (ncov > 0) {
+                                kozou_debug_dump_buffer(ctx, output, i, "covers", cover_buf);
+                                fz_append_buffer(ctx, final_buf, cover_buf);
+                            }
+                        }
+                        fz_always(ctx) {
+                            fz_drop_buffer(ctx, cover_buf);
+                        }
+                        fz_catch(ctx) {
+                            fz_warn(ctx, "compose_image_pdf_keep_text: page %d: "
+                                         "partial-cover step skipped: %s",
+                                    i, fz_caught_message(ctx));
+                        }
+                    }
 
                     kozou_debug_dump_buffer(ctx, output, i, "final", final_buf);
 
@@ -6163,6 +6217,535 @@ static int kozou_char_is_clipped_out(
 
     float hidden_ratio = 1.0f - (visible_area / text_area);
     return hidden_ratio >= cover_ratio;
+}
+
+/* ================================================================== */
+/* keep_text 用: 部分的に隠れていたテキストの「隠し直し」パッチ          */
+/*                                                                     */
+/* 背景: kozou_compose_image_pdf_keep_text は「非テキスト要素を1枚の   */
+/* 背景画像へ焼き込み、テキストは常にその上へベクターのまま重ねる」    */
+/* 設計のため、元PDFで「後から描かれた不透明オブジェクトに隠されて     */
+/* いた」文字は、隠されていた部分も含めて前面に現れてしまう。          */
+/* 完全に(80%以上)隠れていた文字は事前に除去済み                      */
+/* (compress.rs: strip_fully_buried_text_for_keep_text)だが、          */
+/* 一部だけ隠れていた文字は残ったままになる。                          */
+/*                                                                     */
+/* 対策のレイヤー構成:                                                 */
+/*   [下] 背景の1枚画像 (テキスト除外)                                  */
+/*   [中] テキスト (ベクターのまま。選択・検索・コピーが可能)          */
+/*   [上] 隠し直しパッチ: 「一部隠れていた文字」のうち、隠れて         */
+/*        いた部分だけを覆う小さな画像 (背景画像と同じ画素を切り出し、  */
+/*        見えていたインク部分は SMask で透過して残す)                  */
+/*                                                                     */
+/* 「隠れていた部分」の決め方 (形状に依存しないピクセル差分方式):       */
+/*   ・描画順を記録するデバイス (kozou_detect_buried_text と同じ) で    */
+/*     文字より後に描かれた不透明な塗りの bbox を得て、文字 bbox との   */
+/*     共通部分を候補領域にする。                                       */
+/*   ・元ページの全描画 (R_full) とテキスト除外描画 (R_nt=背景) を      */
+/*     同一ラスタ格子で比較し、差がある画素 = 元の見た目で文字の        */
+/*     インクが見えていた画素は透過 (=パッチで覆わない) とし、          */
+/*     残りの画素をパッチで覆う。                                       */
+/*     オブジェクトが矩形でなくても (円形・角丸・SMask付き画像等) 実際  */
+/*     に見えていた部分を壊さない。                                     */
+/*   ・パッチは必要最小限にする: 文字bbox∩覆いbboxの領域だけを対象に    */
+/*     し、さらに覆う画素の外接矩形に切り詰める。隣接する領域は、       */
+/*     結合しても面積がほとんど増えない場合に限って1つにまとめる         */
+/*     (テキスト選択などを妨げる広い前面要素を作らないため)。           */
+/*                                                                     */
+/* 失敗しても変換全体は失敗させない (呼び出し側で握りつぶして警告のみ)。*/
+/* 環境変数 KOZOU_KEEPTEXT_COVER=0 で無効化できる (切り分け用)。        */
+/* ================================================================== */
+
+/* 文字bboxの面積のうち、後から描かれた覆いと重なる割合の下限。
+ * これ以上重なる文字を「部分的に隠れていた文字」とみなす。 */
+#define KOZOU_COVER_MIN_OVERLAP_RATIO  0.02f
+/* 全描画とテキスト除外描画の画素差(各チャンネル最大)がこれを超えたら
+ * 「文字のインクが見えている画素」とみなす。同一描画系の差分なので
+ * インクの無い画素は完全に一致する(0)。低コントラスト文字も拾えるよう
+ * 小さく取る。 */
+#ifndef KOZOU_COVER_INK_DIFF_THRESHOLD
+#define KOZOU_COVER_INK_DIFF_THRESHOLD 3
+#endif
+/* 見えているインクの周囲この画素数までは、パッチで覆わない(既定 0)。
+ * 差分の閾値が小さい(=インクの縁の淡いAA画素まで「見えている」側に
+ * 入る)ため余白は不要で、余白を取ると、隠れていた文字の縁が
+ * 「見えているインク」の周囲に1画素幅で残ってしまう (検証で、
+ * 0 のほうが 1・2 より元のレンダリングとの差が小さかった)。 */
+#ifndef KOZOU_COVER_INK_DILATE_PX
+#define KOZOU_COVER_INK_DILATE_PX      0
+#endif
+/* 候補領域を文字bbox∩覆いbboxの周囲に広げる画素数 (AA縁の取りこぼし防止) */
+#ifndef KOZOU_COVER_REGION_PAD_PX
+#define KOZOU_COVER_REGION_PAD_PX 1
+#endif
+/* 隣接する領域を結合してよい面積比の上限 (結合後面積 / 元の面積合計)。 */
+#define KOZOU_COVER_MERGE_AREA_RATIO   1.25
+/* 1ページで扱う領域数の上限 (超過分は無視。オブジェクト数の暴走防止) */
+#define KOZOU_COVER_MAX_REGIONS        4096
+/* 全対全の結合パスを行う領域数の上限 (O(n^2) のため) */
+#define KOZOU_COVER_MERGE_ALL_LIMIT    2048
+
+typedef struct {
+    fz_irect *v;
+    int       n, cap;
+} KozouCoverRegionList;
+
+static double kozou_irect_area(fz_irect r)
+{
+    if (r.x1 <= r.x0 || r.y1 <= r.y0) return 0.0;
+    return (double)(r.x1 - r.x0) * (double)(r.y1 - r.y0);
+}
+
+/* a と b が接している/重なっていて、結合しても面積がほとんど増えない
+ * 場合だけ結合結果を *out に返して 1 を返す。 */
+static int kozou_cover_try_merge(fz_irect a, fz_irect b, fz_irect *out)
+{
+    if (a.x0 > b.x1 || b.x0 > a.x1 || a.y0 > b.y1 || b.y0 > a.y1) return 0;
+    fz_irect u;
+    u.x0 = a.x0 < b.x0 ? a.x0 : b.x0;
+    u.y0 = a.y0 < b.y0 ? a.y0 : b.y0;
+    u.x1 = a.x1 > b.x1 ? a.x1 : b.x1;
+    u.y1 = a.y1 > b.y1 ? a.y1 : b.y1;
+    if (kozou_irect_area(u) >
+        KOZOU_COVER_MERGE_AREA_RATIO * (kozou_irect_area(a) + kozou_irect_area(b)))
+        return 0;
+    *out = u;
+    return 1;
+}
+
+/* 直近の数件とだけ結合を試み(同じ行で連続する文字は stext 上でも
+ * 連続して現れる)、結合できなければ末尾に追加する。 */
+static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r)
+{
+    int start = L->n > 8 ? L->n - 8 : 0;
+    for (int k = L->n - 1; k >= start; k--) {
+        fz_irect m;
+        if (kozou_cover_try_merge(L->v[k], r, &m)) { L->v[k] = m; return; }
+    }
+    if (L->n >= KOZOU_COVER_MAX_REGIONS) return;
+    if (L->n == L->cap) {
+        int nc = L->cap ? L->cap * 2 : 64;
+        fz_irect *nv = (fz_irect *)realloc(L->v, sizeof(fz_irect) * (size_t)nc);
+        if (!nv) return;
+        L->v = nv;
+        L->cap = nc;
+    }
+    L->v[L->n++] = r;
+}
+
+static void kozou_cover_regions_merge_all(KozouCoverRegionList *L)
+{
+    if (L->n > KOZOU_COVER_MERGE_ALL_LIMIT) return;
+    for (int pass = 0; pass < 8; pass++) {
+        int changed = 0;
+        for (int i = 0; i < L->n; i++) {
+            for (int j = i + 1; j < L->n; j++) {
+                fz_irect m;
+                if (kozou_cover_try_merge(L->v[i], L->v[j], &m)) {
+                    L->v[i] = m;
+                    L->v[j] = L->v[L->n - 1];
+                    L->n--;
+                    j--;
+                    changed = 1;
+                }
+            }
+        }
+        if (!changed) break;
+    }
+}
+
+/* テキストイベントの空間ハッシュ (kozou_detect_buried_text の
+ * 「全イベントを線形走査して最近傍を探す」処理と同じ照合結果を、
+ * 大量文字のページでも O(n^2) にならないよう近傍セルだけで求める)。 */
+#define KOZOU_TEXT_GRID_CELL     4.0f   /* 照合半径 4pt と同じ */
+#define KOZOU_TEXT_GRID_BUCKETS  16384
+
+static unsigned int kozou_text_grid_slot(int cx, int cy)
+{
+    unsigned int h = ((unsigned int)cx * 73856093u) ^ ((unsigned int)cy * 19349663u);
+    return h % (unsigned int)KOZOU_TEXT_GRID_BUCKETS;
+}
+
+/* kozou_detect_buried_text と同じ規則: 同じ Unicode のイベントの中から
+ * 最近傍(4pt以内)を優先し、無ければ座標最近傍(4pt以内)。 */
+static KozouTextEvt *kozou_text_grid_match(
+    KozouBuriedList *list, const int *head, const int *next,
+    fz_point o, int ucs)
+{
+    KozouTextEvt *matched = NULL, *matched_ucs = NULL;
+    float best = 4.0f * 4.0f, best_ucs = 4.0f * 4.0f;
+    int cx0 = (int)floorf(o.x / KOZOU_TEXT_GRID_CELL);
+    int cy0 = (int)floorf(o.y / KOZOU_TEXT_GRID_CELL);
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int k = head[kozou_text_grid_slot(cx0 + dx, cy0 + dy)];
+                 k >= 0; k = next[k]) {
+                KozouTextEvt *te = &list->texts[k];
+                float ex = te->ox - o.x;
+                float ey = te->oy - o.y;
+                float d2 = ex * ex + ey * ey;
+                if (d2 < best) { best = d2; matched = te; }
+                if (te->ucs == ucs && d2 < best_ucs) { best_ucs = d2; matched_ucs = te; }
+            }
+        }
+    }
+    return matched_ucs ? matched_ucs : matched;
+}
+
+/* 部分的に隠れていた文字の候補領域(ピクセル座標)を集める。
+ * page は元ページ。scale は dpi/72。pix_w/pix_h は背景画像の画素数。 */
+static void kozou_collect_partial_cover_regions(
+    fz_context *ctx, fz_page *page, float scale, int pix_w, int pix_h,
+    KozouCoverRegionList *out)
+{
+    KozouBuriedList *list     = NULL;
+    fz_device       *orderdev = NULL;
+    fz_stext_page   *stext    = NULL;
+    int             *g_head   = NULL;
+    int             *g_next   = NULL;
+
+    fz_var(list); fz_var(orderdev); fz_var(stext);
+    fz_var(g_head); fz_var(g_next);
+
+    fz_try(ctx) {
+        fz_rect page_bounds = fz_bound_page(ctx, page);
+
+        list = (KozouBuriedList *)fz_malloc(ctx, sizeof(KozouBuriedList));
+        memset(list, 0, sizeof(KozouBuriedList));
+        list->page_h = page_bounds.y1 - page_bounds.y0;
+
+        /* 描画順の記録 (ページの可視領域=CropBox を初期クリップにするのは
+         * kozou_detect_buried_text と同じ理由) */
+        orderdev = kozou_new_buried_device(ctx, list);
+        kozou_buried_push_clip((KozouBuriedDevice *)orderdev, page_bounds);
+        fz_run_page(ctx, page, orderdev, fz_identity, NULL);
+        fz_close_device(ctx, orderdev);
+        fz_drop_device(ctx, orderdev);
+        orderdev = NULL;
+
+        if (list->cover_count > 0 && list->text_count > 0) {
+            g_head = (int *)fz_malloc(ctx, sizeof(int) * KOZOU_TEXT_GRID_BUCKETS);
+            g_next = (int *)fz_malloc(ctx, sizeof(int) * (size_t)list->text_count);
+            for (int s = 0; s < KOZOU_TEXT_GRID_BUCKETS; s++) g_head[s] = -1;
+            /* 後ろから挿入し、走査順を「イベントの若い順」にする
+             * (同距離のとき線形走査と同じ候補が選ばれる) */
+            for (int k = list->text_count - 1; k >= 0; k--) {
+                const KozouTextEvt *te = &list->texts[k];
+                unsigned int slot = kozou_text_grid_slot(
+                    (int)floorf(te->ox / KOZOU_TEXT_GRID_CELL),
+                    (int)floorf(te->oy / KOZOU_TEXT_GRID_CELL));
+                g_next[k] = g_head[slot];
+                g_head[slot] = k;
+            }
+
+            fz_stext_options opts = { FZ_STEXT_PRESERVE_WHITESPACE |
+                                      FZ_STEXT_ACCURATE_BBOXES, 0 };
+            stext = fz_new_stext_page_from_page(ctx, page, &opts);
+
+            for (fz_stext_block *block = stext->first_block; block; block = block->next) {
+                if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+                for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
+                    for (fz_stext_char *ch = line->first_char; ch; ch = ch->next) {
+                        int cp = ch->c;
+                        /* 空白は見た目に影響しない (無害化済みの U+0020 も含む) */
+                        if (cp == 0x20 || cp == 0x0A || kozou_is_whitespace_codepoint(cp))
+                            continue;
+
+                        fz_quad q = ch->quad;
+                        fz_rect cb;
+                        cb.x0 = q.ul.x < q.ll.x ? q.ul.x : q.ll.x;
+                        cb.y0 = q.ul.y < q.ur.y ? q.ul.y : q.ur.y;
+                        cb.x1 = q.ur.x > q.lr.x ? q.ur.x : q.lr.x;
+                        cb.y1 = q.ll.y > q.lr.y ? q.ll.y : q.lr.y;
+                        float tw = cb.x1 - cb.x0, th = cb.y1 - cb.y0;
+                        if (tw <= 0.5f || th <= 0.5f) continue;
+                        float text_area = tw * th;
+
+                        /* 前置フィルタ: 描画順を無視して、覆いと十分重なる
+                         * 文字だけを対象に (以降の照合コストを抑える) */
+                        int any = 0;
+                        for (int i = 0; i < list->cover_count && !any; i++) {
+                            const KozouCoverRect *cr = &list->covers[i];
+                            float ix0 = cb.x0 > cr->x0 ? cb.x0 : cr->x0;
+                            float iy0 = cb.y0 > cr->y0 ? cb.y0 : cr->y0;
+                            float ix1 = cb.x1 < cr->x1 ? cb.x1 : cr->x1;
+                            float iy1 = cb.y1 < cr->y1 ? cb.y1 : cr->y1;
+                            if (ix1 > ix0 && iy1 > iy0 &&
+                                (ix1 - ix0) * (iy1 - iy0) / text_area >= KOZOU_COVER_MIN_OVERLAP_RATIO)
+                                any = 1;
+                        }
+                        if (!any) continue;
+
+                        const KozouTextEvt *te = kozou_text_grid_match(
+                            list, g_head, g_next, ch->origin, ch->c);
+                        if (!te) continue;
+
+                        /* この文字より後に描かれた覆いとの共通部分の外接矩形 */
+                        fz_rect uni = { 1e30f, 1e30f, -1e30f, -1e30f };
+                        int have = 0;
+                        for (int i = 0; i < list->cover_count; i++) {
+                            const KozouCoverRect *cr = &list->covers[i];
+                            if (cr->event_index <= te->event_index) continue;
+                            float ix0 = cb.x0 > cr->x0 ? cb.x0 : cr->x0;
+                            float iy0 = cb.y0 > cr->y0 ? cb.y0 : cr->y0;
+                            float ix1 = cb.x1 < cr->x1 ? cb.x1 : cr->x1;
+                            float iy1 = cb.y1 < cr->y1 ? cb.y1 : cr->y1;
+                            if (ix1 <= ix0 || iy1 <= iy0) continue;
+                            if ((ix1 - ix0) * (iy1 - iy0) / text_area < KOZOU_COVER_MIN_OVERLAP_RATIO)
+                                continue;
+                            /* SMask付き画像は実際の不透明度も確認 (既存の判定と同じ) */
+                            if (!kozou_cover_alpha_ok(ctx, cr, &cb, 0.5f)) continue;
+                            if (ix0 < uni.x0) uni.x0 = ix0;
+                            if (iy0 < uni.y0) uni.y0 = iy0;
+                            if (ix1 > uni.x1) uni.x1 = ix1;
+                            if (iy1 > uni.y1) uni.y1 = iy1;
+                            have = 1;
+                        }
+                        if (!have) continue;
+
+                        fz_irect r;
+                        r.x0 = (int)floorf(uni.x0 * scale) - KOZOU_COVER_REGION_PAD_PX;
+                        r.y0 = (int)floorf(uni.y0 * scale) - KOZOU_COVER_REGION_PAD_PX;
+                        r.x1 = (int)ceilf (uni.x1 * scale) + KOZOU_COVER_REGION_PAD_PX;
+                        r.y1 = (int)ceilf (uni.y1 * scale) + KOZOU_COVER_REGION_PAD_PX;
+                        if (r.x0 < 0) r.x0 = 0;
+                        if (r.y0 < 0) r.y0 = 0;
+                        if (r.x1 > pix_w) r.x1 = pix_w;
+                        if (r.y1 > pix_h) r.y1 = pix_h;
+                        if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
+                        kozou_cover_region_add(out, r);
+                    }
+                }
+            }
+        }
+    }
+    fz_always(ctx) {
+        if (g_head) fz_free(ctx, g_head);
+        if (g_next) fz_free(ctx, g_next);
+        if (list) {
+            /* kozou_buried_fill_image で fz_keep_image した参照を解放する */
+            for (int ci = 0; ci < list->cover_count; ci++) {
+                if (list->covers[ci].image)
+                    fz_drop_image(ctx, list->covers[ci].image);
+            }
+            fz_free(ctx, list);
+        }
+        if (stext) fz_drop_stext_page(ctx, stext);
+        if (orderdev) {
+            fz_close_device(ctx, orderdev);
+            fz_drop_device(ctx, orderdev);
+        }
+    }
+    fz_catch(ctx) {
+        fz_rethrow(ctx);
+    }
+}
+
+/* 領域 r の画素ごとに「覆う(255)/覆わない(0)」のマスクを作る。
+ * full/nt は同一格子の RGB pixmap (全描画 / テキスト除外描画)。
+ * *tight に、覆う画素の外接矩形(r内)を返す。戻り値は覆う画素数。
+ * *mask_out は malloc された (r の幅×高さ) バイト列 (呼び出し側が free)。 */
+static long kozou_cover_compute_mask(
+    const fz_pixmap *full, const fz_pixmap *nt, fz_irect r,
+    unsigned char **mask_out, fz_irect *tight)
+{
+    const int D  = KOZOU_COVER_INK_DILATE_PX;
+    int w  = r.x1 - r.x0, h = r.y1 - r.y0;
+    int iw = w + 2 * D,   ih = h + 2 * D;
+    *mask_out = NULL;
+
+    unsigned char *ink  = (unsigned char *)calloc((size_t)iw * (size_t)ih, 1);
+    unsigned char *mask = (unsigned char *)malloc((size_t)w * (size_t)h);
+    if (!ink || !mask) { free(ink); free(mask); return 0; }
+
+    for (int y = -D; y < h + D; y++) {
+        int py = r.y0 + y;
+        if (py < 0 || py >= full->h || py >= nt->h) continue;
+        for (int x = -D; x < w + D; x++) {
+            int px = r.x0 + x;
+            if (px < 0 || px >= full->w || px >= nt->w) continue;
+            const unsigned char *a = full->samples + (size_t)py * full->stride + (size_t)px * full->n;
+            const unsigned char *b = nt->samples   + (size_t)py * nt->stride   + (size_t)px * nt->n;
+            int d = 0;
+            for (int c = 0; c < 3; c++) {
+                int e = (int)a[c] - (int)b[c];
+                if (e < 0) e = -e;
+                if (e > d) d = e;
+            }
+            if (d > KOZOU_COVER_INK_DIFF_THRESHOLD)
+                ink[(size_t)(y + D) * (size_t)iw + (size_t)(x + D)] = 1;
+        }
+    }
+
+    long count = 0;
+    tight->x0 = w; tight->y0 = h; tight->x1 = -1; tight->y1 = -1;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int covered = 1;
+            for (int dy = -D; dy <= D && covered; dy++)
+                for (int dx = -D; dx <= D; dx++)
+                    if (ink[(size_t)(y + D + dy) * (size_t)iw + (size_t)(x + D + dx)]) {
+                        covered = 0;
+                        break;
+                    }
+            mask[(size_t)y * (size_t)w + (size_t)x] = covered ? 255 : 0;
+            if (covered) {
+                count++;
+                if (x < tight->x0) tight->x0 = x;
+                if (y < tight->y0) tight->y0 = y;
+                if (x + 1 > tight->x1) tight->x1 = x + 1;
+                if (y + 1 > tight->y1) tight->y1 = y + 1;
+            }
+        }
+    }
+    free(ink);
+    if (count == 0) { free(mask); return 0; }
+    /* tight は領域内の相対座標 → 絶対座標へ */
+    tight->x0 += r.x0; tight->x1 += r.x0;
+    tight->y0 += r.y0; tight->y1 += r.y0;
+    *mask_out = mask;
+    return count;
+}
+
+/* 1ページ分の隠し直しパッチを作って dst に追加する。
+ *   render_page : 元ページ (テキスト付きの再描画と、覆い検出に使う)
+ *   nt_pix      : 背景画像のもとになったテキスト除外の pixmap (圧縮前)
+ *   bg_image    : 実際にPDFへ埋め込む背景画像 (JPEG/PNG)。パッチの画素は
+ *                 これを復号したものから切り出し、背景と完全に一致させる。
+ *   xobj_dict   : ページの /Resources/XObject (dst側)。KzCov* を登録する。
+ *   content_out : パッチを描く content ストリーム片を追記する。
+ * 戻り値: 追加したパッチ数。 */
+static int kozou_keeptext_add_partial_covers(
+    fz_context *ctx, pdf_document *dst, fz_page *render_page, fz_rect bounds,
+    float dpi, int supersample_max, int page_index,
+    fz_pixmap *nt_pix, fz_image *bg_image,
+    float mb_x0, float mb_y0, float pw_pt, float ph_pt,
+    pdf_obj *xobj_dict, fz_buffer *content_out)
+{
+    const char *env = getenv("KOZOU_KEEPTEXT_COVER");
+    if (env && env[0] == '0') return 0;
+    if (!nt_pix || nt_pix->w <= 0 || nt_pix->h <= 0 || nt_pix->n < 3) return 0;
+
+    KozouCoverRegionList regions;
+    memset(&regions, 0, sizeof(regions));
+    fz_pixmap *full = NULL;
+    fz_pixmap *dec  = NULL;
+    int added = 0;
+
+    fz_var(full);
+    fz_var(dec);
+    fz_var(added);
+
+    fz_try(ctx) {
+        float scale = dpi / 72.0f;
+        kozou_collect_partial_cover_regions(ctx, render_page, scale,
+                                            nt_pix->w, nt_pix->h, &regions);
+        if (regions.n > 0) {
+            kozou_cover_regions_merge_all(&regions);
+
+            /* 元ページの全描画 (テキスト込み)。背景と同じ ctm/サイズ/
+             * スーパーサンプリング設定で描くので、同一の画素格子になる。 */
+            full = kozou_render_page_to_pixmap(ctx, render_page, bounds, dpi,
+                                               supersample_max, 0, NULL, NULL);
+            if (full->w != nt_pix->w || full->h != nt_pix->h || full->n < 3)
+                fz_throw(ctx, FZ_ERROR_GENERIC, "cover: render size mismatch");
+
+            /* 実際に埋め込まれる背景画像を復号して、パッチの元画素にする
+             * (JPEGの場合、圧縮後の見た目と一致させるため)。復号結果の
+             * 大きさが合わない場合は圧縮前の nt_pix で代用する。 */
+            dec = fz_get_pixmap_from_image(ctx, bg_image, NULL, NULL, NULL, NULL);
+            const fz_pixmap *srcpx = dec;
+            if (!srcpx || srcpx->w != nt_pix->w || srcpx->h != nt_pix->h || srcpx->n < 1)
+                srcpx = nt_pix;
+
+            for (int k = 0; k < regions.n; k++) {
+                fz_irect r = regions.v[k];
+                unsigned char *mask = NULL;
+                fz_irect tight;
+                long cnt = kozou_cover_compute_mask(full, nt_pix, r, &mask, &tight);
+                if (cnt <= 0 || !mask) continue;
+
+                int rw = r.x1 - r.x0;
+                int tw = tight.x1 - tight.x0, th = tight.y1 - tight.y0;
+
+                fz_pixmap *rgb   = NULL;
+                fz_pixmap *gray  = NULL;
+                fz_image  *mimg  = NULL;
+                fz_image  *pimg  = NULL;
+                pdf_obj   *pref  = NULL;
+                fz_var(rgb); fz_var(gray); fz_var(mimg); fz_var(pimg); fz_var(pref);
+
+                fz_try(ctx) {
+                    fz_irect pb = { 0, 0, tw, th };
+                    rgb  = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx),  pb, NULL, 0);
+                    gray = fz_new_pixmap_with_bbox(ctx, fz_device_gray(ctx), pb, NULL, 0);
+                    for (int y = 0; y < th; y++) {
+                        unsigned char *drow = rgb->samples  + (size_t)y * rgb->stride;
+                        unsigned char *mrow = gray->samples + (size_t)y * gray->stride;
+                        const unsigned char *srow = srcpx->samples +
+                            (size_t)(tight.y0 + y) * srcpx->stride +
+                            (size_t)tight.x0 * srcpx->n;
+                        const unsigned char *kmask = mask +
+                            (size_t)(tight.y0 - r.y0 + y) * (size_t)rw +
+                            (size_t)(tight.x0 - r.x0);
+                        for (int x = 0; x < tw; x++) {
+                            const unsigned char *s = srow + (size_t)x * srcpx->n;
+                            if (srcpx->n >= 3) {
+                                drow[x * 3 + 0] = s[0];
+                                drow[x * 3 + 1] = s[1];
+                                drow[x * 3 + 2] = s[2];
+                            } else {
+                                drow[x * 3 + 0] = drow[x * 3 + 1] = drow[x * 3 + 2] = s[0];
+                            }
+                            mrow[x] = kmask[x];
+                        }
+                    }
+
+                    mimg = fz_new_image_from_pixmap(ctx, gray, NULL);
+                    pimg = fz_new_image_from_pixmap(ctx, rgb, mimg);
+                    pref = pdf_add_image(ctx, dst, pimg);
+
+                    char name[64];
+                    snprintf(name, sizeof(name), "KzCov%d_%d", page_index, added);
+                    pdf_dict_puts(ctx, xobj_dict, name, pref);
+
+                    /* 背景画像 (KzBgImg) と同じ画素格子に厳密に合わせて配置する。
+                     * 背景は単位正方形をページ全体 (pw_pt x ph_pt) に写像しており、
+                     * 画像の行は上から数える (PDFのy軸は上向き)。 */
+                    float W = (float)nt_pix->w, H = (float)nt_pix->h;
+                    float x0n = (float)tight.x0 / W, x1n = (float)tight.x1 / W;
+                    float y0n = (float)tight.y0 / H, y1n = (float)tight.y1 / H;
+                    fz_append_printf(ctx, content_out,
+                        "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/%s Do\nQ\n",
+                        pw_pt * (x1n - x0n), ph_pt * (y1n - y0n),
+                        mb_x0 + pw_pt * x0n,
+                        mb_y0 + ph_pt * (1.0f - y1n),
+                        name);
+                    added++;
+                }
+                fz_always(ctx) {
+                    free(mask);
+                    pdf_drop_obj(ctx, pref);
+                    fz_drop_image(ctx, pimg);
+                    fz_drop_image(ctx, mimg);
+                    fz_drop_pixmap(ctx, gray);
+                    fz_drop_pixmap(ctx, rgb);
+                }
+                fz_catch(ctx) {
+                    fz_rethrow(ctx);
+                }
+            }
+        }
+    }
+    fz_always(ctx) {
+        free(regions.v);
+        fz_drop_pixmap(ctx, dec);
+        fz_drop_pixmap(ctx, full);
+    }
+    fz_catch(ctx) {
+        fz_rethrow(ctx);
+    }
+    return added;
 }
 
 /* ---- 公開関数 ---- */
