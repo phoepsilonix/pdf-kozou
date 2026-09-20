@@ -9281,13 +9281,17 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                      * 外側にはみ出した対象外の文字まで巻き添えで消えてしまうため、
                      * ページ側 (kozou_sanitize_hidden_text) と同じ方針で文字単位のラン
                      * ごとに出力を分ける。 */
-#define KOZOU_XOBJ_LINE_MAX_CH 128
+#define KOZOU_XOBJ_LINE_MAX_CH 512
                     const char *ch_start[KOZOU_XOBJ_LINE_MAX_CH];
                     const char *ch_end[KOZOU_XOBJ_LINE_MAX_CH];
                     int         ch_blank[KOZOU_XOBJ_LINE_MAX_CH];
                     float       ch_w[KOZOU_XOBJ_LINE_MAX_CH];
                     int         n_ch_scanned = 0;
                     int         any_char_blank = 0;
+                    /* 文字列が文字配列に収まらなかった場合 (走査が上限で打ち切られた)、
+                     * 書き戻しで超過分が失われるため、文字単位の書き換えも行全体の
+                     * 置換もせず、元の行をそのまま通す。 */
+                    int         scan_incomplete = 0;
                     const char *scan_str_start = NULL;
                     int         scan_line_is_hex = 0;
 
@@ -9728,7 +9732,8 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                         }
                     }
 
-                    if (any_char_blank) {
+                    if (n_ch_scanned >= KOZOU_XOBJ_LINE_MAX_CH) scan_incomplete = 1;
+                    if (any_char_blank && !scan_incomplete) {
                         did_char_blank_outer = 1;
                         /* 対象/非対象を連続ランに分けて出力する。非対象ランは元バイト列を
                          * そのまま書き戻し、対象ランのみ Helvetica + 幅差分TJ補正で置換する。
@@ -9773,7 +9778,7 @@ static void kozou_blank_all_bt_blocks_hv_ctm(
                             }
                             i = j;
                         }
-                    } else if (origin_is_target) {
+                    } else if (origin_is_target && !scan_incomplete) {
                         /* 原点は対象だが文字列を特定できず文字単位判定ができなかった場合の
                          * 安全側フォールバック: 従来通り行全体を単一スペースに置換する。 */
                         do_blank = 1;
@@ -10401,9 +10406,27 @@ void kozou_sanitize_hidden_text(
                 pdf_obj *extg_dict = res ? pdf_dict_gets(ctx, res, "ExtGState") : NULL;
 
 #define SSTK 16  /* スタック消費削減のため縮小 (旧64) */
-                typedef struct { char s[128]; float v; int is_num; int is_str; } SOp;
+/* TJ 配列内の1文字列を文字単位で書き換える際の文字配列の大きさ。エスケープ後の
+ * 文字列がこれ(LIMIT)を超える場合は書き換えず素通しする (超過分の欠損防止)。 */
+#define KOZOU_TJ_ELEM_MAX 1024
+#define KOZOU_TJ_ELEM_MAX_LIMIT 1000
+                /* 文字列オペランドは、s[128] に収まらない長さのとき (エスケープ後で
+                 * 約120バイト超) は big にヒープ確保して全体を保持する。かつては
+                 * s[128] で打ち切っていたため、長い Tj/TJ 文字列の末尾が、対象文字が
+                 * 無い行も含めて無害化時に黙って失われていた (書き戻しは打ち切り後の
+                 * 内容を出力するため)。big はページのストリーム処理の終わりに
+                 * まとめて解放する (bigs 配列で管理)。 */
+                typedef struct { char s[128]; float v; int is_num; int is_str; char *big; } SOp;
+#define SOP_STR(o) ((o).big ? (o).big : (o).s)
                 SOp  stk[SSTK];
                 int  stk_top = 0;
+                /* オペランドが SSTK を超えて stk に積めなかった演算子では、stk の内容が
+                 * 不完全なため Tj/TJ の文字単位の書き換えを行わず、エコー済みの元の
+                 * オペランドをそのまま通す (書き換えると超過分が失われる)。 */
+                int  stk_overflow = 0;
+                char **bigs = NULL;
+                int    nbigs = 0, cbigs = 0;
+                fz_var(bigs); fz_var(nbigs); fz_var(cbigs);
                 /* 現在の演算子のオペランド列が書き込まれ始める直前の new_buf 長。
                  * 汎用パススルーはオペランドをトークン化と同時に無条件で
                  * new_buf にエコー済み書き出ししてしまうため、Tj/TJ を文字単位で
@@ -10420,7 +10443,7 @@ void kozou_sanitize_hidden_text(
                     pdf_token tok = pdf_lex(ctx, stm, &lxb);
                     if (tok == PDF_TOK_EOF) break;
 
-                    SOp op = {{0}, 0, 0, 0};
+                    SOp op = {{0}, 0, 0, 0, NULL};
                     switch (tok) {
                     case PDF_TOK_INT:
                         op.v = (float)lxb.i;
@@ -10433,15 +10456,42 @@ void kozou_sanitize_hidden_text(
                     case PDF_TOK_STRING: {
                         unsigned char *d = (unsigned char *)lxb.scratch;
                         size_t len = lxb.len;
-                        int j = 0; op.s[j++] = '(';
-                        for (size_t k = 0; k < len && j < (int)sizeof(op.s)-4; k++) {
+                        /* エスケープ後の長さが s[128] に収まるか (収まらなければ big) */
+                        size_t need = 2;
+                        for (size_t k = 0; k < len; k++) {
                             unsigned char c = d[k];
-                            if      (c=='(')  { op.s[j++]='\\'; op.s[j++]='('; }
-                            else if (c==')')  { op.s[j++]='\\'; op.s[j++]=')'; }
-                            else if (c=='\\') { op.s[j++]='\\'; op.s[j++]='\\'; }
-                            else              { op.s[j++]=(char)c; }
+                            need += (c=='(' || c==')' || c=='\\') ? 2 : 1;
                         }
-                        op.s[j++]=')'; op.s[j]='\0';
+                        char *dstp = op.s;
+                        size_t dcap = sizeof(op.s);
+                        if (need + 1 > sizeof(op.s)) {
+                            /* 下の書き込みループは末尾側に 4 バイトの余裕を残して
+                             * 止まるため、その分も確保する */
+                            char *bp = (char *)malloc(need + 8);
+                            if (bp && nbigs == cbigs) {
+                                int nc = cbigs ? cbigs * 2 : 16;
+                                char **nb = (char **)realloc(bigs, sizeof(char *) * (size_t)nc);
+                                if (nb) { bigs = nb; cbigs = nc; }
+                                else { free(bp); bp = NULL; }
+                            }
+                            if (bp) {
+                                bigs[nbigs++] = bp;
+                                op.big = bp;
+                                dstp = bp;
+                                dcap = need + 8;
+                            }
+                            /* bp が確保できない場合 (OOM) は従来どおり s[128] で打ち切る */
+                        }
+                        size_t j = 0; dstp[j++] = '(';
+                        for (size_t k = 0; k < len && j + 4 < dcap; k++) {
+                            unsigned char c = d[k];
+                            if      (c=='(')  { dstp[j++]='\\'; dstp[j++]='('; }
+                            else if (c==')')  { dstp[j++]='\\'; dstp[j++]=')'; }
+                            else if (c=='\\') { dstp[j++]='\\'; dstp[j++]='\\'; }
+                            else              { dstp[j++]=(char)c; }
+                        }
+                        dstp[j++]=')'; dstp[j]='\0';
+                        if (op.big) { op.s[0] = '('; op.s[1] = '\0'; } /* 空判定用 */
                         op.is_str = 1;
                         op.v = len > 0 ? (float)(unsigned char)lxb.scratch[0] : 0;
                         break;
@@ -10456,10 +10506,15 @@ void kozou_sanitize_hidden_text(
                     }
 
                     if (tok != PDF_TOK_KEYWORD) {
-                        if (stk_top == 0)
+                        if (stk_top == 0) {
                             pre_op_len = fz_buffer_storage(ctx, new_buf, NULL);
-                        if (op.s[0] && stk_top < SSTK) stk[stk_top++] = op;
-                        if (op.s[0]) fz_append_printf(ctx, new_buf, "%s ", op.s);
+                            stk_overflow = 0;
+                        }
+                        if (op.s[0]) {
+                            if (stk_top < SSTK) stk[stk_top++] = op;
+                            else stk_overflow = 1;
+                        }
+                        if (op.s[0]) fz_append_printf(ctx, new_buf, "%s ", SOP_STR(op));
                         continue;
                     }
 
@@ -10580,7 +10635,7 @@ void kozou_sanitize_hidden_text(
                     }
 
                     /* ── Tj: 単一文字列 ── */
-                    if (!strcmp(kw,"Tj")&&stk_top>=1&&stk[stk_top-1].is_str) {
+                    if (!strcmp(kw,"Tj")&&stk_top>=1&&!stk_overflow&&stk[stk_top-1].is_str) {
                         /* テキスト原点 (tm.e, tm.f) → グラフィックス CTM → page_ctm
                          * の順で適用し、stext の origin と同じデバイス座標を得る。 */
                         fz_point dp = fz_transform_point(fz_make_point(tm[4], tm[5]), gs_stack[gs_sp]);
@@ -10604,9 +10659,9 @@ void kozou_sanitize_hidden_text(
                          * 対象外の隣接文字まで巻き添えで消えてしまう不具合があった
                          * (例: 部分幅の矩形の右側にはみ出した文字、被覆率境界付近の文字)。
                          * このため文字単位で判定し、対象と非対象を連続ランに分けて
-                         * 個別に出力する。SOp.s は char[128] なのでデコード後の文字数は
-                         * 常に128未満に収まる。 */
-#define KOZOU_TJ_MAX_CH 128
+                         * 個別に出力する。デコード後の文字数が KOZOU_TJ_MAX_CH 以上の
+                         * 文字列は、超過分を失わないよう書き換えずに通す (下記)。 */
+#define KOZOU_TJ_MAX_CH 1024
                         const char *ch_start[KOZOU_TJ_MAX_CH];
                         const char *ch_end[KOZOU_TJ_MAX_CH];
                         int         ch_blank[KOZOU_TJ_MAX_CH];
@@ -10618,7 +10673,7 @@ void kozou_sanitize_hidden_text(
                             pdf_dict_gets(ctx,font_dict,cur_font) : NULL;
                         int is_mb2 = kozou_is_multibyte_font(ctx, fobj2);
                         float adv = 0.0f;
-                        const char *p2 = stk[stk_top-1].s + 1;
+                        const char *p2 = SOP_STR(stk[stk_top-1]) + 1;
                         while (*p2 && *p2 != ')' && n_ch < KOZOU_TJ_MAX_CH) {
                             const char *cstart = p2;
                             int cc2;
@@ -10750,6 +10805,10 @@ void kozou_sanitize_hidden_text(
                             adv += cw;
                         }
 
+                        /* 文字配列に収まらない長さの文字列は、書き戻しで超過分が失われる
+                         * ため文字単位の書き換えをせず、エコー済みの元の文字列を通す
+                         * (この Tj の対象文字は消去されないが、データ欠損よりは安全)。 */
+                        if (n_ch >= KOZOU_TJ_MAX_CH) any_blank = 0;
                         if (!any_blank) {
                             fz_append_printf(ctx,new_buf,"%s\n",kw);
                         } else {
@@ -10805,7 +10864,7 @@ void kozou_sanitize_hidden_text(
                     }
 
                     /* ── TJ: 配列形式 ── */
-                    if (!strcmp(kw,"TJ")) {
+                    if (!strcmp(kw,"TJ") && !stk_overflow) {
                         fz_point dp = fz_transform_point(fz_make_point(tm[4], tm[5]), gs_stack[gs_sp]);
                         dp = fz_transform_point(dp, page_ctm);
                         float dev_x = dp.x, dev_y = dp.y;
@@ -10829,11 +10888,13 @@ void kozou_sanitize_hidden_text(
                         /* Pass 1: 配列全体を走査し、対象文字が1つでもあるかを判定する
                          * (この段階では位置だけ把握し、まだ何も出力しない)。 */
                         int   any_blank = 0;
+                        int   tj_too_long = 0;
                         float tj_adv = 0.0f;
                         int   first_char_seen = 0;
                         for (int k = arr_s >= 0 ? arr_s : 0; k < stk_top; k++) {
                             if (stk[k].is_str) {
-                                const char *p2 = stk[k].s + 1;
+                                const char *p2 = SOP_STR(stk[k]) + 1;
+                                if (strlen(p2) > (size_t)KOZOU_TJ_ELEM_MAX_LIMIT) tj_too_long = 1;
                                 while (*p2 && *p2 != ')') {
                                     int cc2;
                                     if (*p2 == '\\') {
@@ -10926,6 +10987,9 @@ void kozou_sanitize_hidden_text(
                             }
                         }
 
+                        /* 配列内の文字列が文字配列 (KOZOU_TJ_ELEM_MAX) に収まらない長さの
+                         * ときは、書き戻しで超過分が失われるため書き換えずに通す。 */
+                        if (tj_too_long) any_blank = 0;
                         if (!any_blank) {
                             fz_append_printf(ctx,new_buf,"%s\n",kw);
                         } else {
@@ -10940,7 +11004,7 @@ void kozou_sanitize_hidden_text(
                              * カーニング数値はテキストを描かない [num] TJ として素通しする。 */
                             float tj_adv2 = 0.0f;
                             int   first_char_seen2 = 0;
-#define KOZOU_TJ_ELEM_MAX 128
+
                             for (int k = arr_s >= 0 ? arr_s : 0; k < stk_top; k++) {
                                 if (stk[k].is_str) {
                                     const char *ch_start[KOZOU_TJ_ELEM_MAX];
@@ -10948,7 +11012,7 @@ void kozou_sanitize_hidden_text(
                                     int         ch_blank[KOZOU_TJ_ELEM_MAX];
                                     float       ch_w[KOZOU_TJ_ELEM_MAX];
                                     int         n_ch = 0;
-                                    const char *p2 = stk[k].s + 1;
+                                    const char *p2 = SOP_STR(stk[k]) + 1;
                                     while (*p2 && *p2 != ')' && n_ch < KOZOU_TJ_ELEM_MAX) {
                                         const char *cstart = p2;
                                         int cc2;
@@ -11047,11 +11111,12 @@ void kozou_sanitize_hidden_text(
                                     }
                                 } else if (strcmp(stk[k].s,"[") && strcmp(stk[k].s,"]")) {
                                     /* カーニング値: テキストを描かない位置調整のみの TJ として素通し */
-                                    fz_append_printf(ctx,new_buf,"[%s] TJ\n",stk[k].s);
+                                    fz_append_printf(ctx,new_buf,"[%s] TJ\n",SOP_STR(stk[k]));
                                     tj_adv2 -= (float)atof(stk[k].s);
                                 }
                             }
 #undef KOZOU_TJ_ELEM_MAX
+#undef KOZOU_TJ_ELEM_MAX_LIMIT
                             modified=1;
                         }
                         stk_top=0; continue;
@@ -11061,7 +11126,12 @@ void kozou_sanitize_hidden_text(
                     stk_top=0;
                 }
                 } /* fz_try */
-                fz_always(ctx) { pdf_lexbuf_fin(ctx, &lxb); }
+                fz_always(ctx) {
+                    pdf_lexbuf_fin(ctx, &lxb);
+                    for (int bi = 0; bi < nbigs; bi++) free(bigs[bi]);
+                    free(bigs);
+                    bigs = NULL; nbigs = cbigs = 0;
+                }
                 fz_catch(ctx) {
                     fz_drop_stream(ctx, stm);
                     fz_drop_buffer(ctx, orig_buf);
