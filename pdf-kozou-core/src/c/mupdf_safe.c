@@ -2930,6 +2930,15 @@ void kozou_compose_image_pdf_keep_text(
 
                 image  = fz_new_image_from_file(ctx, tmp_img);
                 imgref = pdf_add_image(ctx, dst, image);
+                /* 背景は DeviceRGB で描いたラスタなので、色空間も DeviceRGB と明示する。
+                 * MuPDF は ICC 対応ビルドだと、これを ICCBased(sRGB) として書き出す。
+                 * 閲覧側によってはその ICC 変換の掛け方が、SMask 付きの画像
+                 * (隠し直しパッチ) と SMask 無しの画像 (この背景) とで異なり、
+                 * パッチの領域だけ色が僅かにずれて、隠した文字の輪郭が薄く見えて
+                 * しまう (pdfium で確認)。両方とも DeviceRGB にすれば、変換の
+                 * 有無に依らず同じ色になり、元ページ (DeviceRGB) の色にも一致する。 */
+                if (image->n == 3)
+                    pdf_dict_put(ctx, imgref, PDF_NAME(ColorSpace), PDF_NAME(DeviceRGB));
 
                 if (rotate != 0) {
                     /* Stage 2 未対応: /Rotate!=0 のページは合成せず、
@@ -6870,6 +6879,16 @@ static int kozou_keeptext_add_partial_covers(
                     mimg = fz_new_image_from_pixmap(ctx, gray, NULL);
                     pimg = fz_new_image_from_pixmap(ctx, rgb, mimg);
                     pref = pdf_add_image(ctx, dst, pimg);
+                    /* 背景 (KzBgImg) と同じく DeviceRGB と明示する (理由は背景画像側の
+                     * コメント参照)。パッチの画素は背景と同じ DeviceRGB の値。 */
+                    pdf_dict_put(ctx, pref, PDF_NAME(ColorSpace), PDF_NAME(DeviceRGB));
+                    /* SMask 画像の色空間は、PDF仕様上 DeviceGray でなければならない
+                     * (ICC対応ビルドだと ICCBased(Gray) で書き出されるため明示する)。 */
+                    {
+                        pdf_obj *smask = pdf_dict_get(ctx, pref, PDF_NAME(SMask));
+                        if (smask)
+                            pdf_dict_put(ctx, smask, PDF_NAME(ColorSpace), PDF_NAME(DeviceGray));
+                    }
 
                     char name[64];
                     snprintf(name, sizeof(name), "KzCov%d_%d", page_index, added);
