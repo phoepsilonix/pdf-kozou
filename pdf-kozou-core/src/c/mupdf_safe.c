@@ -2724,12 +2724,12 @@ static void kozou_debug_dump_buffer(fz_context *ctx, const char *output,
 /*      いたテキストは、呼び出し側(Rust)が事前に除去している。        */
 /*                                                                     */
 /* 既知の制限:                                                         */
-/*  - 半透明のオブジェクトの陰にあったテキストは、隠し直しの対象外     */
-/*    (透けて見えていた部分は「見えていたインク」として扱われ、        */
-/*     ベクターのテキストは不透明のまま前面に出る)。                   */
-/*  - 隠し直しは、描画順を記録するデバイスが捉えられる不透明な塗り     */
-/*    (パス/画像)による隠蔽が対象。テキストのクリップ等による         */
-/*    見えなさは対象外。                                               */
+/*  - 隠し直しは、描画順を記録するデバイスが捉えられる塗り            */
+/*    (パス/画像。不透明・半透明とも)による隠蔽が対象。シェーディング */
+/*    (グラデーション)やテキストのクリップ等による見えなさは対象外。  */
+/*  - 半透明の物越しに薄く見えていた文字は、その部分だけパッチの       */
+/*    ラスタ画素 (背景と同じ解像度) で描かれるため、拡大すると        */
+/*    ベクターの文字より粗く見える。                                   */
 /*  - /Rotate が 0 以外のページは今回未対応。安全のため、そのページ    */
 /*    だけ kozou_rasterize_no_text 相当(テキストも含めた通常の         */
 /*    全面ラスタライズ)にフォールバックする。                          */
@@ -3252,41 +3252,6 @@ void kozou_compose_image_pdf_keep_text(
                     fz_append_buffer(ctx, final_buf, stripped);
                     fz_append_string(ctx, final_buf, "\nQ\n");
 
-                    /* 部分的に隠れていたテキストの「隠し直し」パッチ。
-                     *
-                     * 上の Q で背景画像+テキストのレイヤーは閉じており、
-                     * ここから先は初期グラフィックス状態なので、パッチは
-                     * ページ座標そのままで配置できる。元PDFで後から描かれた
-                     * 不透明オブジェクトに隠れていた文字の「隠れていた
-                     * 部分だけ」を、背景画像と同じ画素の小さな画像
-                     * (見えていたインク部分は SMask で透過)で最前面に
-                     * 重ねる。詳細は kozou_keeptext_add_partial_covers の
-                     * コメント参照。
-                     *
-                     * この処理は見た目の忠実度を上げる追加処理であり、
-                     * 失敗しても変換自体は続行する (パッチ無し=従来動作)。 */
-                    {
-                        fz_buffer *cover_buf = fz_new_buffer(ctx, 1024);
-                        fz_try(ctx) {
-                            int ncov = kozou_keeptext_add_partial_covers(
-                                ctx, dst, render_page, bounds, dpi, supersample_max, i,
-                                pixmap, image, mb_x0, mb_y0, pw_pt, ph_pt,
-                                xobj, cover_buf);
-                            if (ncov > 0) {
-                                kozou_debug_dump_buffer(ctx, output, i, "covers", cover_buf);
-                                fz_append_buffer(ctx, final_buf, cover_buf);
-                            }
-                        }
-                        fz_always(ctx) {
-                            fz_drop_buffer(ctx, cover_buf);
-                        }
-                        fz_catch(ctx) {
-                            fz_warn(ctx, "compose_image_pdf_keep_text: page %d: "
-                                         "partial-cover step skipped: %s",
-                                    i, fz_caught_message(ctx));
-                        }
-                    }
-
                     kozou_debug_dump_buffer(ctx, output, i, "final", final_buf);
 
                     pdf_obj *new_stm = pdf_add_stream(ctx, dst, final_buf, NULL, 0);
@@ -3301,6 +3266,48 @@ void kozou_compose_image_pdf_keep_text(
                         pdf_array_push_drop(ctx, mb, pdf_new_real(ctx, mb_y0 + ph_pt));
                         pdf_dict_put_drop(ctx, page_obj, PDF_NAME(MediaBox), mb);
                         pdf_dict_del(ctx, page_obj, PDF_NAME(CropBox));
+                    }
+
+                    /* 部分的に隠れていたテキストの「隠し直し」パッチ。
+                     *
+                     * ページ (背景+テキスト) がここまでで出来上がっているので、
+                     * それを実際に描いて閲覧側での見え方を得て、元の見た目との
+                     * 違いを覆うパッチを作る。元PDFで後から描かれたオブジェクト
+                     * (不透明・半透明)に隠れていた文字の「隠れていた部分」を、
+                     * 元の見た目に戻す小さな画像 (見えていた不透明なインクは
+                     * SMask で透過) として最前面に重ねる。詳細は
+                     * kozou_keeptext_add_partial_covers のコメント参照。
+                     *
+                     * 上の Q で背景画像+テキストのレイヤーは閉じており、パッチは
+                     * 初期グラフィックス状態から始まるので、ページ座標そのままで
+                     * 配置できる。Contents は、パッチが1つ以上できた場合だけ
+                     * 「元の内容+パッチ」の新しいストリームへ差し替える。
+                     *
+                     * この処理は見た目の忠実度を上げる追加処理であり、失敗しても
+                     * 変換自体は続行する (パッチ無し=従来動作)。 */
+                    {
+                        fz_buffer *cover_buf = fz_new_buffer(ctx, 1024);
+                        fz_try(ctx) {
+                            int ncov = kozou_keeptext_add_partial_covers(
+                                ctx, dst, render_page, bounds, dpi, supersample_max, i,
+                                pixmap, image, mb_x0, mb_y0, pw_pt, ph_pt,
+                                xobj, cover_buf);
+                            if (ncov > 0) {
+                                kozou_debug_dump_buffer(ctx, output, i, "covers", cover_buf);
+                                fz_append_buffer(ctx, final_buf, cover_buf);
+                                pdf_obj *stm2 = pdf_add_stream(ctx, dst, final_buf, NULL, 0);
+                                pdf_dict_put(ctx, page_obj, PDF_NAME(Contents), stm2);
+                                pdf_drop_obj(ctx, stm2);
+                            }
+                        }
+                        fz_always(ctx) {
+                            fz_drop_buffer(ctx, cover_buf);
+                        }
+                        fz_catch(ctx) {
+                            fz_warn(ctx, "compose_image_pdf_keep_text: page %d: "
+                                         "partial-cover step skipped: %s",
+                                    i, fz_caught_message(ctx));
+                        }
                     }
                 }
             }
@@ -5630,7 +5637,15 @@ typedef struct {
     int            text_count;
     int            event_counter;
     float          page_h;   /* ページ高さ (pt) — Y 変換用 */
+    /* 0(既定・ゼロ初期化) = 従来どおり alpha<0.5 の塗りは覆いとみなさない。
+     * 1 = 半透明の塗り (alpha>=KOZOU_COVER_TRANSLUCENT_MIN_ALPHA) も覆いとして
+     * 記録する。keep_text の隠し直しパッチ用 (kozou_collect_partial_cover_regions)
+     * で、埋没テキストの検出/無害化 (kozou_detect_buried_text) には影響しない。 */
+    int            accept_translucent;
 } KozouBuriedList;
+
+/* accept_translucent 時に覆いとして記録する塗りの最小 alpha */
+#define KOZOU_COVER_TRANSLUCENT_MIN_ALPHA 0.02f
 
 
 
@@ -5842,7 +5857,8 @@ static void kozou_buried_fill_path(
 {
     KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
     if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
-    if (alpha < 0.5f) return;
+    if (alpha < (dev->list->accept_translucent
+                     ? KOZOU_COVER_TRANSLUCENT_MIN_ALPHA : 0.5f)) return;
 
     fz_rect bbox = fz_bound_path(ctx, path, NULL, ctm);
     if (bbox.x0 >= bbox.x1 || bbox.y0 >= bbox.y1) return;
@@ -5876,7 +5892,8 @@ static void kozou_buried_fill_image(
 {
     KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
     if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
-    if (alpha < 0.5f) return;
+    if (alpha < (dev->list->accept_translucent
+                     ? KOZOU_COVER_TRANSLUCENT_MIN_ALPHA : 0.5f)) return;
 
     fz_rect bbox = fz_transform_rect(fz_unit_rect, ctm);
     if (bbox.x0 > bbox.x1) { float t = bbox.x0; bbox.x0 = bbox.x1; bbox.x1 = t; }
@@ -6224,8 +6241,8 @@ static int kozou_char_is_clipped_out(
 /*                                                                     */
 /* 背景: kozou_compose_image_pdf_keep_text は「非テキスト要素を1枚の   */
 /* 背景画像へ焼き込み、テキストは常にその上へベクターのまま重ねる」    */
-/* 設計のため、元PDFで「後から描かれた不透明オブジェクトに隠されて     */
-/* いた」文字は、隠されていた部分も含めて前面に現れてしまう。          */
+/* 設計のため、元PDFで「後から描かれたオブジェクト(不透明・半透明)に  */
+/* 隠されていた」文字は、隠されていた部分も含めて前面に現れてしまう。  */
 /* 完全に(80%以上)隠れていた文字は事前に除去済み                      */
 /* (compress.rs: strip_fully_buried_text_for_keep_text)だが、          */
 /* 一部だけ隠れていた文字は残ったままになる。                          */
@@ -6233,24 +6250,31 @@ static int kozou_char_is_clipped_out(
 /* 対策のレイヤー構成:                                                 */
 /*   [下] 背景の1枚画像 (テキスト除外)                                  */
 /*   [中] テキスト (ベクターのまま。選択・検索・コピーが可能)          */
-/*   [上] 隠し直しパッチ: 「一部隠れていた文字」のうち、隠れて         */
-/*        いた部分だけを覆う小さな画像 (背景画像と同じ画素を切り出し、  */
-/*        見えていたインク部分は SMask で透過して残す)                  */
+/*   [上] 隠し直しパッチ: 「一部隠れていた文字」のうち、元の見た目と   */
+/*        違って見えてしまう部分だけを覆う小さな画像                    */
 /*                                                                     */
-/* 「隠れていた部分」の決め方 (形状に依存しないピクセル差分方式):       */
+/* 「覆う部分」の決め方 (形状・透明度に依存しないピクセル差分方式):     */
 /*   ・描画順を記録するデバイス (kozou_detect_buried_text と同じ) で    */
-/*     文字より後に描かれた不透明な塗りの bbox を得て、文字 bbox との   */
-/*     共通部分を候補領域にする。                                       */
-/*   ・元ページの全描画 (R_full) とテキスト除外描画 (R_nt=背景) を      */
-/*     同一ラスタ格子で比較し、差がある画素 = 元の見た目で文字の        */
-/*     インクが見えていた画素は透過 (=パッチで覆わない) とし、          */
-/*     残りの画素をパッチで覆う。                                       */
-/*     オブジェクトが矩形でなくても (円形・角丸・SMask付き画像等) 実際  */
-/*     に見えていた部分を壊さない。                                     */
-/*   ・パッチは必要最小限にする: 文字bbox∩覆いbboxの領域だけを対象に    */
-/*     し、さらに覆う画素の外接矩形に切り詰める。隣接する領域は、       */
-/*     結合しても面積がほとんど増えない場合に限って1つにまとめる         */
+/*     文字より後に描かれた塗り(不透明・半透明とも)の bbox と、文字    */
+/*     bbox の共通部分を候補領域にする。                                */
+/*   ・出力PDFのページ (背景+テキスト) を実際に描いて「閲覧側で       */
+/*     見える合成」を得る (テキストレイヤーだけをRGBAで描き、背景      */
+/*     ラスタの上に重ねる)。元ページの全描画と同じ画素格子で比較し、    */
+/*     テキストが描かれるのに元の見た目と違う画素を覆う。               */
+/*       - 不透明な物に隠れていた部分: 元=背景 → 背景と同じ画素で覆う  */
+/*       - 半透明の物越しに薄く見えていた部分: 元=薄まった文字 →       */
+/*         その薄い見え方の画素で覆う (背景+元でテキストが与えた変化)  */
+/*       - 見えていた不透明なインク: 合成と元が一致 → 覆わない          */
+/*         (ベクターのまま残す)                                         */
+/*     出力PDFのページを描けない場合は、不透明な覆いだけを対象とする    */
+/*     フォールバック (元の全描画とテキスト除外描画が同じ画素を覆う)    */
+/*     に切り替える。                                                   */
+/*   ・パッチは必要最小限にする: 候補領域は文字bbox∩覆いbboxだけ、      */
+/*     さらに覆う画素の外接矩形に切り詰める。隣接する領域は、結合しても */
+/*     面積がほとんど増えない場合に限って1つにまとめる                   */
 /*     (テキスト選択などを妨げる広い前面要素を作らないため)。           */
+/*   ・パッチの画素は、実際に埋め込む背景画像 (JPEG/PNG) を復号した      */
+/*     ものを土台にする。配置も背景画像と同じ画素格子に合わせる。       */
 /*                                                                     */
 /* 失敗しても変換全体は失敗させない (呼び出し側で握りつぶして警告のみ)。*/
 /* 環境変数 KOZOU_KEEPTEXT_COVER=0 で無効化できる (切り分け用)。        */
@@ -6273,6 +6297,18 @@ static int kozou_char_is_clipped_out(
  * 0 のほうが 1・2 より元のレンダリングとの差が小さかった)。 */
 #ifndef KOZOU_COVER_INK_DILATE_PX
 #define KOZOU_COVER_INK_DILATE_PX      0
+#endif
+/* (通常モード) 閲覧側で見える合成 (テキストレイヤー+背景) と、元の見た目との
+ * 差 (各チャンネル最大) がこれを超える「テキストが描かれる画素」を覆う。
+ * 同一のグリフを同じ画素格子で描き比べるので、一致する画素の差はほぼ0。 */
+#ifndef KOZOU_COVER_DEVIATION_THRESHOLD
+#define KOZOU_COVER_DEVIATION_THRESHOLD 6
+#endif
+/* (通常モード) 乖離した画素の周囲この画素数までを覆う。閲覧側がベクターの
+ * テキストを高倍率で描くと、ラスタで得た文字の輪郭より少し外側まで
+ * 文字が広がるため、その縁の取りこぼしを防ぐ。 */
+#ifndef KOZOU_COVER_MASK_DILATE_PX
+#define KOZOU_COVER_MASK_DILATE_PX      1
 #endif
 /* 候補領域を文字bbox∩覆いbboxの周囲に広げる画素数 (AA縁の取りこぼし防止) */
 #ifndef KOZOU_COVER_REGION_PAD_PX
@@ -6413,6 +6449,7 @@ static void kozou_collect_partial_cover_regions(
         list = (KozouBuriedList *)fz_malloc(ctx, sizeof(KozouBuriedList));
         memset(list, 0, sizeof(KozouBuriedList));
         list->page_h = page_bounds.y1 - page_bounds.y0;
+        list->accept_translucent = 1;
 
         /* 描画順の記録 (ページの可視領域=CropBox を初期クリップにするのは
          * kozou_detect_buried_text と同じ理由) */
@@ -6494,7 +6531,7 @@ static void kozou_collect_partial_cover_regions(
                             if ((ix1 - ix0) * (iy1 - iy0) / text_area < KOZOU_COVER_MIN_OVERLAP_RATIO)
                                 continue;
                             /* SMask付き画像は実際の不透明度も確認 (既存の判定と同じ) */
-                            if (!kozou_cover_alpha_ok(ctx, cr, &cb, 0.5f)) continue;
+                            if (!kozou_cover_alpha_ok(ctx, cr, &cb, KOZOU_COVER_TRANSLUCENT_MIN_ALPHA)) continue;
                             if (ix0 < uni.x0) uni.x0 = ix0;
                             if (iy0 < uni.y0) uni.y0 = iy0;
                             if (ix1 > uni.x1) uni.x1 = ix1;
@@ -6541,22 +6578,86 @@ static void kozou_collect_partial_cover_regions(
     }
 }
 
-/* 領域 r の画素ごとに「覆う(255)/覆わない(0)」のマスクを作る。
- * full/nt は同一格子の RGB pixmap (全描画 / テキスト除外描画)。
- * *tight に、覆う画素の外接矩形(r内)を返す。戻り値は覆う画素数。
- * *mask_out は malloc された (r の幅×高さ) バイト列 (呼び出し側が free)。 */
-static long kozou_cover_compute_mask(
-    const fz_pixmap *full, const fz_pixmap *nt, fz_irect r,
-    unsigned char **mask_out, fz_irect *tight)
+/* dst 側 (出力PDF) のページの「テキストレイヤーだけ」を、前乗算アルファ
+ * 付き RGBA (n=4, 最後がアルファ) の pixmap に描く。背景画像 (fill_image)
+ * は描かない。閲覧側でテキストが背景の上に実際に描かれる画素とその色を、
+ * 出力PDFそのもの (Type3 や代替フォントを含む) から得るために使う。
+ * mult>1 のときは kozou_render_ctm_to_pixmap と同じく、mult 倍の解像度で
+ * 描いてから目標サイズへ縮小する (元ページの全描画と同じ画素格子・同じ
+ * アンチエイリアスの出方にして、画素単位で比較できるようにするため)。 */
+static fz_pixmap *kozou_render_text_layer_rgba(
+    fz_context *ctx, fz_page *page, fz_matrix ctm,
+    int target_w, int target_h, int mult)
 {
-    const int D  = KOZOU_COVER_INK_DILATE_PX;
+    fz_colorspace *rgb = fz_device_rgb(ctx);
+    int m = mult < 1 ? 1 : mult;
+    fz_matrix big_ctm = fz_concat(ctm, fz_scale((float)m, (float)m));
+    fz_irect  big_bbox = { 0, 0, target_w * m, target_h * m };
+    fz_pixmap *big = NULL;
+    fz_pixmap *out = NULL;
+    fz_var(big);
+    fz_var(out);
+
+    fz_try(ctx) {
+        big = fz_new_pixmap_with_bbox(ctx, rgb, big_bbox, NULL, 1);
+        fz_clear_pixmap(ctx, big); /* 全透明 */
+
+        fz_device *dev = fz_new_draw_device(ctx, big_ctm, big);
+        dev->fill_image = NULL; /* 背景画像は描かない */
+        fz_try(ctx) {
+            fz_run_page(ctx, page, dev, fz_identity, NULL);
+            fz_close_device(ctx, dev);
+        }
+        fz_always(ctx) { fz_drop_device(ctx, dev); }
+        fz_catch(ctx) { fz_rethrow(ctx); }
+
+        if (m > 1) {
+            out = fz_scale_pixmap(ctx, big, 0.0f, 0.0f,
+                                  (float)target_w, (float)target_h, NULL);
+            if (!out)
+                fz_throw(ctx, FZ_ERROR_GENERIC, "kozou: text layer downscale failed");
+        } else {
+            out = fz_keep_pixmap(ctx, big);
+        }
+    }
+    fz_always(ctx) { fz_drop_pixmap(ctx, big); }
+    fz_catch(ctx) {
+        fz_drop_pixmap(ctx, out);
+        fz_rethrow(ctx);
+    }
+    return out;
+}
+
+/* 領域 r の画素ごとに「パッチで覆う(255)/覆わない(0)」のマスクを作る。
+ *   full  : 元ページの全描画 (テキスト込み)
+ *   nt    : テキスト除外の描画 (=背景)
+ *   layer : 出力PDF側のテキストレイヤーだけを描いた RGBA(前乗算) pixmap。
+ *           NULL の場合は下記のフォールバック。
+ * 戻り値は覆う画素数。*tight に覆う画素の外接矩形(絶対座標)、*mask_out に
+ * malloc された (r の幅×高さ) バイト列 (呼び出し側が free) を返す。
+ *
+ * layer がある場合 (通常):
+ *   閲覧側が実際に見せる合成 Rc = layer を nt の上に重ねたもの を作り、
+ *   元の見た目 full との差が閾値を超える画素 (=テキストが描かれるが、
+ *   元の見た目とは違う画素) を覆う。文字が不透明な物に隠れていた場合
+ *   (元=背景) だけでなく、半透明の物越しに薄く見えていた場合
+ *   (元=薄まった文字) も、パッチで「元の見た目」へ戻せる。
+ *   見えていた不透明なインクは Rc と full が一致するので覆わない。
+ * layer が無い場合 (フォールバック):
+ *   full と nt が同じ画素 (=元でインクが見えていない画素) を覆う。
+ *   不透明な覆いだけが対象になる。 */
+static long kozou_cover_compute_mask(
+    const fz_pixmap *full, const fz_pixmap *nt, const fz_pixmap *layer,
+    fz_irect r, unsigned char **mask_out, fz_irect *tight)
+{
+    const int D  = layer ? KOZOU_COVER_MASK_DILATE_PX : KOZOU_COVER_INK_DILATE_PX;
     int w  = r.x1 - r.x0, h = r.y1 - r.y0;
     int iw = w + 2 * D,   ih = h + 2 * D;
     *mask_out = NULL;
 
-    unsigned char *ink  = (unsigned char *)calloc((size_t)iw * (size_t)ih, 1);
+    unsigned char *flag = (unsigned char *)calloc((size_t)iw * (size_t)ih, 1);
     unsigned char *mask = (unsigned char *)malloc((size_t)w * (size_t)h);
-    if (!ink || !mask) { free(ink); free(mask); return 0; }
+    if (!flag || !mask) { free(flag); free(mask); return 0; }
 
     for (int y = -D; y < h + D; y++) {
         int py = r.y0 + y;
@@ -6567,13 +6668,30 @@ static long kozou_cover_compute_mask(
             const unsigned char *a = full->samples + (size_t)py * full->stride + (size_t)px * full->n;
             const unsigned char *b = nt->samples   + (size_t)py * nt->stride   + (size_t)px * nt->n;
             int d = 0;
-            for (int c = 0; c < 3; c++) {
-                int e = (int)a[c] - (int)b[c];
-                if (e < 0) e = -e;
-                if (e > d) d = e;
+            if (layer) {
+                if (px >= layer->w || py >= layer->h) continue;
+                const unsigned char *l = layer->samples + (size_t)py * layer->stride + (size_t)px * layer->n;
+                int la = l[3];
+                if (la == 0) continue; /* テキストが描かれない画素 */
+                for (int c = 0; c < 3; c++) {
+                    /* 前乗算アルファの over 合成: Rc = L + nt * (1 - a) */
+                    int rc = (int)l[c] + ((int)b[c] * (255 - la) + 127) / 255;
+                    if (rc > 255) rc = 255;
+                    int e = rc - (int)a[c];
+                    if (e < 0) e = -e;
+                    if (e > d) d = e;
+                }
+                if (d > KOZOU_COVER_DEVIATION_THRESHOLD)
+                    flag[(size_t)(y + D) * (size_t)iw + (size_t)(x + D)] = 1;
+            } else {
+                for (int c = 0; c < 3; c++) {
+                    int e = (int)a[c] - (int)b[c];
+                    if (e < 0) e = -e;
+                    if (e > d) d = e;
+                }
+                if (d > KOZOU_COVER_INK_DIFF_THRESHOLD)
+                    flag[(size_t)(y + D) * (size_t)iw + (size_t)(x + D)] = 1;
             }
-            if (d > KOZOU_COVER_INK_DIFF_THRESHOLD)
-                ink[(size_t)(y + D) * (size_t)iw + (size_t)(x + D)] = 1;
         }
     }
 
@@ -6581,13 +6699,15 @@ static long kozou_cover_compute_mask(
     tight->x0 = w; tight->y0 = h; tight->x1 = -1; tight->y1 = -1;
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            int covered = 1;
-            for (int dy = -D; dy <= D && covered; dy++)
+            int any = 0;
+            for (int dy = -D; dy <= D && !any; dy++)
                 for (int dx = -D; dx <= D; dx++)
-                    if (ink[(size_t)(y + D + dy) * (size_t)iw + (size_t)(x + D + dx)]) {
-                        covered = 0;
+                    if (flag[(size_t)(y + D + dy) * (size_t)iw + (size_t)(x + D + dx)]) {
+                        any = 1;
                         break;
                     }
+            /* layer あり: フラグ(乖離)の近傍を覆う。 なし: インクの近傍以外を覆う。 */
+            int covered = layer ? any : !any;
             mask[(size_t)y * (size_t)w + (size_t)x] = covered ? 255 : 0;
             if (covered) {
                 count++;
@@ -6598,7 +6718,7 @@ static long kozou_cover_compute_mask(
             }
         }
     }
-    free(ink);
+    free(flag);
     if (count == 0) { free(mask); return 0; }
     /* tight は領域内の相対座標 → 絶対座標へ */
     tight->x0 += r.x0; tight->x1 += r.x0;
@@ -6611,9 +6731,12 @@ static long kozou_cover_compute_mask(
  *   render_page : 元ページ (テキスト付きの再描画と、覆い検出に使う)
  *   nt_pix      : 背景画像のもとになったテキスト除外の pixmap (圧縮前)
  *   bg_image    : 実際にPDFへ埋め込む背景画像 (JPEG/PNG)。パッチの画素は
- *                 これを復号したものから切り出し、背景と完全に一致させる。
+ *                 これを復号したものを土台にし、背景と一致させる。
  *   xobj_dict   : ページの /Resources/XObject (dst側)。KzCov* を登録する。
  *   content_out : パッチを描く content ストリーム片を追記する。
+ * 呼び出し時点で、dst の最後のページが「背景+テキスト」の内容
+ * (Contents/Resources/MediaBox)まで出来上がっていること。そのページを
+ * 実際に描いて、閲覧側での見え方を得る。
  * 戻り値: 追加したパッチ数。 */
 static int kozou_keeptext_add_partial_covers(
     fz_context *ctx, pdf_document *dst, fz_page *render_page, fz_rect bounds,
@@ -6628,12 +6751,14 @@ static int kozou_keeptext_add_partial_covers(
 
     KozouCoverRegionList regions;
     memset(&regions, 0, sizeof(regions));
-    fz_pixmap *full = NULL;
-    fz_pixmap *dec  = NULL;
+    fz_pixmap *full  = NULL;
+    fz_pixmap *dec   = NULL;
+    fz_pixmap *layer = NULL;
     int added = 0;
 
     fz_var(full);
     fz_var(dec);
+    fz_var(layer);
     fz_var(added);
 
     fz_try(ctx) {
@@ -6650,7 +6775,40 @@ static int kozou_keeptext_add_partial_covers(
             if (full->w != nt_pix->w || full->h != nt_pix->h || full->n < 3)
                 fz_throw(ctx, FZ_ERROR_GENERIC, "cover: render size mismatch");
 
-            /* 実際に埋め込まれる背景画像を復号して、パッチの元画素にする
+            /* 出力PDF側のテキストレイヤー。取得できなければ layer=NULL の
+             * ままにして、不透明な覆いだけを対象とするフォールバックに
+             * する (半透明の覆いは対象外になる)。 */
+            {
+                pdf_page *cmp = NULL;
+                fz_var(cmp);
+                fz_try(ctx) {
+                    int npg = pdf_count_pages(ctx, dst);
+                    if (npg > 0) {
+                        int mult = kozou_compute_supersample_mult(
+                            dpi, supersample_max,
+                            (float)nt_pix->w, (float)nt_pix->h);
+                        cmp = pdf_load_page(ctx, dst, npg - 1);
+                        layer = kozou_render_text_layer_rgba(
+                            ctx, (fz_page *)cmp, fz_scale(scale, scale),
+                            nt_pix->w, nt_pix->h, mult);
+                        if (layer->w != nt_pix->w || layer->h != nt_pix->h || layer->n != 4) {
+                            fz_drop_pixmap(ctx, layer);
+                            layer = NULL;
+                        }
+                    }
+                }
+                fz_always(ctx) {
+                    if (cmp) fz_drop_page(ctx, (fz_page *)cmp);
+                }
+                fz_catch(ctx) {
+                    fz_warn(ctx, "compose_image_pdf_keep_text: page %d: text layer "
+                                 "render failed, cover patches limited to opaque "
+                                 "overlays: %s", page_index, fz_caught_message(ctx));
+                    layer = NULL;
+                }
+            }
+
+            /* 実際に埋め込まれる背景画像を復号して、パッチの土台にする
              * (JPEGの場合、圧縮後の見た目と一致させるため)。復号結果の
              * 大きさが合わない場合は圧縮前の nt_pix で代用する。 */
             dec = fz_get_pixmap_from_image(ctx, bg_image, NULL, NULL, NULL, NULL);
@@ -6662,7 +6820,7 @@ static int kozou_keeptext_add_partial_covers(
                 fz_irect r = regions.v[k];
                 unsigned char *mask = NULL;
                 fz_irect tight;
-                long cnt = kozou_cover_compute_mask(full, nt_pix, r, &mask, &tight);
+                long cnt = kozou_cover_compute_mask(full, nt_pix, layer, r, &mask, &tight);
                 if (cnt <= 0 || !mask) continue;
 
                 int rw = r.x1 - r.x0;
@@ -6680,22 +6838,30 @@ static int kozou_keeptext_add_partial_covers(
                     rgb  = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx),  pb, NULL, 0);
                     gray = fz_new_pixmap_with_bbox(ctx, fz_device_gray(ctx), pb, NULL, 0);
                     for (int y = 0; y < th; y++) {
+                        int py = tight.y0 + y;
                         unsigned char *drow = rgb->samples  + (size_t)y * rgb->stride;
                         unsigned char *mrow = gray->samples + (size_t)y * gray->stride;
                         const unsigned char *srow = srcpx->samples +
-                            (size_t)(tight.y0 + y) * srcpx->stride +
-                            (size_t)tight.x0 * srcpx->n;
+                            (size_t)py * srcpx->stride + (size_t)tight.x0 * srcpx->n;
+                        const unsigned char *frow = full->samples +
+                            (size_t)py * full->stride + (size_t)tight.x0 * full->n;
+                        const unsigned char *nrow = nt_pix->samples +
+                            (size_t)py * nt_pix->stride + (size_t)tight.x0 * nt_pix->n;
                         const unsigned char *kmask = mask +
-                            (size_t)(tight.y0 - r.y0 + y) * (size_t)rw +
-                            (size_t)(tight.x0 - r.x0);
+                            (size_t)(py - r.y0) * (size_t)rw + (size_t)(tight.x0 - r.x0);
                         for (int x = 0; x < tw; x++) {
                             const unsigned char *s = srow + (size_t)x * srcpx->n;
-                            if (srcpx->n >= 3) {
-                                drow[x * 3 + 0] = s[0];
-                                drow[x * 3 + 1] = s[1];
-                                drow[x * 3 + 2] = s[2];
-                            } else {
-                                drow[x * 3 + 0] = drow[x * 3 + 1] = drow[x * 3 + 2] = s[0];
+                            const unsigned char *f = frow + (size_t)x * full->n;
+                            const unsigned char *n0 = nrow + (size_t)x * nt_pix->n;
+                            for (int c = 0; c < 3; c++) {
+                                /* パッチ画素 = 背景(実際に埋め込む画像の画素) +
+                                 * 元の見た目でテキストが与えていた変化分。
+                                 * 不透明な物に隠れていた文字では変化分が0なので、
+                                 * 背景と完全に同じ画素になる。半透明の物越しに
+                                 * 薄く見えていた文字では、その薄い見え方になる。 */
+                                int base = (srcpx->n >= 3) ? s[c] : s[0];
+                                int v = base + ((int)f[c] - (int)n0[c]);
+                                drow[x * 3 + c] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
                             }
                             mrow[x] = kmask[x];
                         }
@@ -6739,6 +6905,7 @@ static int kozou_keeptext_add_partial_covers(
     }
     fz_always(ctx) {
         free(regions.v);
+        fz_drop_pixmap(ctx, layer);
         fz_drop_pixmap(ctx, dec);
         fz_drop_pixmap(ctx, full);
     }
