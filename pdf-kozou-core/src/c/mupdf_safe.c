@@ -7168,6 +7168,113 @@ void kozou_collect_xobj_bboxes(
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* 埋没判定の「実際に見えているか」の画素検証                          */
+/*                                                                     */
+/* kozou_char_is_buried は、後から描かれた覆いの bbox と文字 bbox の    */
+/* 幾何的な重なりだけで「埋没」を判定する。このため次の場合に、        */
+/* 実際には見えている文字まで「埋没」と判定し、無害化(除去)して        */
+/* しまっていた。                                                      */
+/*   - 覆いが回転した図形など、bbox が実際の塗りより大きい場合         */
+/*     (bbox の隅にあるだけで覆われていない文字)                       */
+/*   - 覆いが半透明 (alpha 0.5以上) で、文字が透けて見えている場合     */
+/*   - 80%以上は覆われているが、残りの部分が見えている場合            */
+/* 元ページの全描画とテキスト除外描画を同じ画素格子で比較し、文字の    */
+/* bbox 内に文字のインクが実際に見えている(コントラストが十分ある)    */
+/* 場合は、「埋没」から外す。                                          */
+/* 描画に失敗した場合や、無効化 (KOZOU_BURIED_PIXEL_VERIFY=0) の場合は  */
+/* 従来どおり (検証しない=幾何判定のまま) にする。                     */
+/* ------------------------------------------------------------------ */
+
+/* 検証用に描く解像度と、長辺の画素数の上限 (巨大ページでのメモリ対策) */
+#define KOZOU_VIS_DPI                144.0f
+#define KOZOU_VIS_MAX_PX             4000.0f
+/* 全描画とテキスト除外描画の画素差(各チャンネル最大)がこれを超える画素を
+ * 「インクが見えている」とみなす。ほぼ不透明な覆い(alpha 0.95等)の裏の
+ * 文字 (コントラスト数%) は、実質見えないものとして埋没のままにする。 */
+#ifndef KOZOU_VIS_INK_DIFF
+#define KOZOU_VIS_INK_DIFF 20
+#endif
+/* bbox 内のインク画素が、この画素数以上かつ面積のこの割合以上なら「見えている」 */
+#ifndef KOZOU_VIS_MIN_INK_PX
+#define KOZOU_VIS_MIN_INK_PX 3
+#endif
+#ifndef KOZOU_VIS_MIN_INK_FRACTION
+#define KOZOU_VIS_MIN_INK_FRACTION 0.01f
+#endif
+
+typedef struct {
+    fz_pixmap *full;
+    fz_pixmap *nt;
+    float      scale;
+    int        state;   /* 0=未準備, 1=準備済み, -1=不可 (従来動作) */
+} KozouVisCheck;
+
+/* bb (ページ座標) の範囲に、文字のインクが実際に見えていれば 1 */
+static int kozou_buried_pixels_show_ink(
+    fz_context *ctx, KozouVisCheck *v, fz_page *page, fz_rect bounds,
+    const fz_rect *bb)
+{
+    if (v->state == 0) {
+        const char *env = getenv("KOZOU_BURIED_PIXEL_VERIFY");
+        v->state = -1;
+        if (!(env && env[0] == '0')) {
+            fz_try(ctx) {
+                float pw = bounds.x1 - bounds.x0, ph = bounds.y1 - bounds.y0;
+                float mx = pw > ph ? pw : ph;
+                float dpi = KOZOU_VIS_DPI;
+                if (mx > 0.0f && mx * dpi / 72.0f > KOZOU_VIS_MAX_PX)
+                    dpi = KOZOU_VIS_MAX_PX * 72.0f / mx;
+                v->full = kozou_render_page_to_pixmap(ctx, page, bounds, dpi, 1, 0, NULL, NULL);
+                v->nt   = kozou_render_page_to_pixmap(ctx, page, bounds, dpi, 1, 1, NULL, NULL);
+                if (v->full->w == v->nt->w && v->full->h == v->nt->h &&
+                    v->full->n >= 3 && v->nt->n >= 3) {
+                    v->scale = dpi / 72.0f;
+                    v->state = 1;
+                }
+            }
+            fz_catch(ctx) {
+                fz_warn(ctx, "buried: pixel verification unavailable: %s",
+                        fz_caught_message(ctx));
+                v->state = -1;
+            }
+        }
+    }
+    if (v->state != 1) return 0;
+
+    const fz_pixmap *a = v->full, *b = v->nt;
+    int x0 = (int)floorf(bb->x0 * v->scale), x1 = (int)ceilf(bb->x1 * v->scale);
+    int y0 = (int)floorf(bb->y0 * v->scale), y1 = (int)ceilf(bb->y1 * v->scale);
+    /* 隣の文字のアンチエイリアスの縁が bbox に食い込む分を除くため、
+     * 十分大きい bbox は1画素ずつ内側へ縮める */
+    if (x1 - x0 >= 4) { x0++; x1--; }
+    if (y1 - y0 >= 4) { y0++; y1--; }
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > a->w) x1 = a->w;
+    if (y1 > a->h) y1 = a->h;
+    if (x1 <= x0 || y1 <= y0) return 0;
+
+    long area = (long)(x1 - x0) * (long)(y1 - y0);
+    long need = (long)ceilf(KOZOU_VIS_MIN_INK_FRACTION * (float)area);
+    if (need < KOZOU_VIS_MIN_INK_PX) need = KOZOU_VIS_MIN_INK_PX;
+    long ink = 0;
+    for (int y = y0; y < y1; y++) {
+        const unsigned char *pa = a->samples + (size_t)y * a->stride + (size_t)x0 * a->n;
+        const unsigned char *pb = b->samples + (size_t)y * b->stride + (size_t)x0 * b->n;
+        for (int x = x0; x < x1; x++, pa += a->n, pb += b->n) {
+            int d = 0;
+            for (int c = 0; c < 3; c++) {
+                int e = (int)pa[c] - (int)pb[c];
+                if (e < 0) e = -e;
+                if (e > d) d = e;
+            }
+            if (d > KOZOU_VIS_INK_DIFF && ++ink >= need) return 1;
+        }
+    }
+    return 0;
+}
+
 void kozou_detect_buried_text(
     fz_context  *ctx,
     const char  *path,
@@ -7186,9 +7293,11 @@ void kozou_detect_buried_text(
     fz_device      *orderdev = NULL;
     KozouBuriedList *list    = NULL;
     KozouXObjDevice *xobj_dev = NULL;
+    KozouVisCheck    vis;
+    memset(&vis, 0, sizeof(vis));
 
     fz_var(doc); fz_var(page); fz_var(stext);
-    fz_var(orderdev); fz_var(list); fz_var(xobj_dev);
+    fz_var(orderdev); fz_var(list); fz_var(xobj_dev); fz_var(vis);
 
     fz_try(ctx) {
         doc = fz_open_document(ctx, path);
@@ -7304,6 +7413,13 @@ void kozou_detect_buried_text(
                         : buried_is_clipped ? "clipped"
                         : "buried";
 
+                    /* 幾何判定で「埋没」でも、元の見た目でインクが実際に見えて
+                     * いる文字 (回転図形のbbox隅・半透明の裏・一部が見えている
+                     * 等) は埋没から外す (詳細は kozou_buried_pixels_show_ink)。 */
+                    if (!strcmp(buried_reason, "buried") &&
+                        kozou_buried_pixels_show_ink(ctx, &vis, page, page_bounds, &stext_bbox))
+                        continue;
+
                     /* JSON エスケープ */
                     char escaped[32];
                     kozou_json_escape_cp(cp, escaped);
@@ -7390,6 +7506,8 @@ void kozou_detect_buried_text(
         if (stext)    fz_drop_stext_page(ctx, stext);
         if (orderdev) { fz_close_device(ctx, orderdev);
                         fz_drop_device(ctx, orderdev); }
+        fz_drop_pixmap(ctx, vis.full);
+        fz_drop_pixmap(ctx, vis.nt);
         if (page)     fz_drop_page(ctx, page);
         if (doc)      fz_drop_document(ctx, doc);
     }
