@@ -10588,7 +10588,12 @@ void kozou_sanitize_hidden_text(
                         op.is_num = 1; break;
                     case PDF_TOK_REAL:
                         op.v = lxb.f;
-                        snprintf(op.s, sizeof(op.s), "%.6g", lxb.f);
+                        /* 実数オペランドは float (約7桁) で保持しているので、7桁で書き出す。
+                         * 以前の 6桁 (%.6g) だと、761.8898 が 761.89 になるなど、100以上の
+                         * 座標で 4桁目以降の小数が失われ、元と違う位置になっていた
+                         * (画素の境界に文字の原点が乗っているページでは、poppler で
+                         * 1画素ずれて描かれた)。 */
+                        snprintf(op.s, sizeof(op.s), "%.7g", lxb.f);
                         op.is_num = 1; break;
                     case PDF_TOK_STRING: {
                         unsigned char *d = (unsigned char *)lxb.scratch;
