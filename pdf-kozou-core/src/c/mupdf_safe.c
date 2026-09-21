@@ -6836,20 +6836,21 @@ static int kozou_keeptext_add_partial_covers(
                 int tw = tight.x1 - tight.x0, th = tight.y1 - tight.y0;
 
                 fz_pixmap *rgb   = NULL;
-                fz_pixmap *gray  = NULL;
-                fz_image  *mimg  = NULL;
+                fz_buffer *mbuf  = NULL;
+                pdf_obj   *mdict = NULL;
+                pdf_obj   *mref  = NULL;
                 fz_image  *pimg  = NULL;
                 pdf_obj   *pref  = NULL;
-                fz_var(rgb); fz_var(gray); fz_var(mimg); fz_var(pimg); fz_var(pref);
+                fz_var(rgb); fz_var(mbuf); fz_var(mdict); fz_var(mref);
+                fz_var(pimg); fz_var(pref);
 
                 fz_try(ctx) {
                     fz_irect pb = { 0, 0, tw, th };
                     rgb  = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx),  pb, NULL, 0);
-                    gray = fz_new_pixmap_with_bbox(ctx, fz_device_gray(ctx), pb, NULL, 0);
+                    mbuf = fz_new_buffer(ctx, (size_t)tw * (size_t)th);
                     for (int y = 0; y < th; y++) {
                         int py = tight.y0 + y;
                         unsigned char *drow = rgb->samples  + (size_t)y * rgb->stride;
-                        unsigned char *mrow = gray->samples + (size_t)y * gray->stride;
                         const unsigned char *srow = srcpx->samples +
                             (size_t)py * srcpx->stride + (size_t)tight.x0 * srcpx->n;
                         const unsigned char *frow = full->samples +
@@ -6872,23 +6873,32 @@ static int kozou_keeptext_add_partial_covers(
                                 int v = base + ((int)f[c] - (int)n0[c]);
                                 drow[x * 3 + c] = (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v));
                             }
-                            mrow[x] = kmask[x];
                         }
+                        fz_append_data(ctx, mbuf, kmask, (size_t)tw);
                     }
 
-                    mimg = fz_new_image_from_pixmap(ctx, gray, NULL);
-                    pimg = fz_new_image_from_pixmap(ctx, rgb, mimg);
+                    pimg = fz_new_image_from_pixmap(ctx, rgb, NULL);
                     pref = pdf_add_image(ctx, dst, pimg);
                     /* 背景 (KzBgImg) と同じく DeviceRGB と明示する (理由は背景画像側の
                      * コメント参照)。パッチの画素は背景と同じ DeviceRGB の値。 */
                     pdf_dict_put(ctx, pref, PDF_NAME(ColorSpace), PDF_NAME(DeviceRGB));
-                    /* SMask 画像の色空間は、PDF仕様上 DeviceGray でなければならない
-                     * (ICC対応ビルドだと ICCBased(Gray) で書き出されるため明示する)。 */
-                    {
-                        pdf_obj *smask = pdf_dict_get(ctx, pref, PDF_NAME(SMask));
-                        if (smask)
-                            pdf_dict_put(ctx, smask, PDF_NAME(ColorSpace), PDF_NAME(DeviceGray));
-                    }
+                    /* SMask は 8ビットの DeviceGray 画像として自前で作る。
+                     * MuPDF の pdf_add_image は、0/255 だけのマスクを 1ビットの
+                     * CCITT G4 で書き出すが、pdf.js は CCITT/JBIG2 の復号に wasm が
+                     * 必要で、wasm が使えない環境ではパッチが描かれず、隠した文字が
+                     * 見えてしまう。8ビットの無圧縮ストリーム (保存時に Flate で
+                     * 圧縮される) なら、どのビューアでも追加のデコーダ無しで読める。
+                     * マスクは 0/255 だけなので Flate でよく縮み、サイズ増は僅か。
+                     * 色空間は、PDF仕様上 DeviceGray でなければならない。 */
+                    mdict = pdf_new_dict(ctx, dst, 8);
+                    pdf_dict_put(ctx, mdict, PDF_NAME(Type), PDF_NAME(XObject));
+                    pdf_dict_put(ctx, mdict, PDF_NAME(Subtype), PDF_NAME(Image));
+                    pdf_dict_put_int(ctx, mdict, PDF_NAME(Width), tw);
+                    pdf_dict_put_int(ctx, mdict, PDF_NAME(Height), th);
+                    pdf_dict_put(ctx, mdict, PDF_NAME(ColorSpace), PDF_NAME(DeviceGray));
+                    pdf_dict_put_int(ctx, mdict, PDF_NAME(BitsPerComponent), 8);
+                    mref = pdf_add_stream(ctx, dst, mbuf, mdict, 0);
+                    pdf_dict_put(ctx, pref, PDF_NAME(SMask), mref);
 
                     char name[64];
                     snprintf(name, sizeof(name), "KzCov%d_%d", page_index, added);
@@ -6910,10 +6920,11 @@ static int kozou_keeptext_add_partial_covers(
                 }
                 fz_always(ctx) {
                     free(mask);
+                    pdf_drop_obj(ctx, mref);
+                    pdf_drop_obj(ctx, mdict);
+                    fz_drop_buffer(ctx, mbuf);
                     pdf_drop_obj(ctx, pref);
                     fz_drop_image(ctx, pimg);
-                    fz_drop_image(ctx, mimg);
-                    fz_drop_pixmap(ctx, gray);
                     fz_drop_pixmap(ctx, rgb);
                 }
                 fz_catch(ctx) {
