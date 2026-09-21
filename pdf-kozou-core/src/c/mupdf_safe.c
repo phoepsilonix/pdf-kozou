@@ -6319,6 +6319,42 @@ static int kozou_char_is_clipped_out(
 #ifndef KOZOU_COVER_MASK_DILATE_PX
 #define KOZOU_COVER_MASK_DILATE_PX      1
 #endif
+/* 上記の拡張幅は、文字の大きさ(em)に比例して広げる: フォントを埋め込んでいない
+ * 文字は閲覧側が別の代用フォントで描くため、MuPDF が解決した字形との
+ * 食い違いは、文字が大きいほど、また行が長いほど大きくなる。実測 (44pt の
+ * Helvetica-Bold "HIDDEN half") で、MuPDF との最大のずれは pdf.js が約1.6pt
+ * (em の3.7%)、pdfium が約0.4pt、poppler が約0.1pt。em の4% を目安に、
+ * 拡張幅 (画素) = ceil(em[pt] * 画素/pt * 比率) とし、下限は上の値、上限は下の値。
+ * 領域の余白 (KOZOU_COVER_REGION_PAD_PX) にも同じ幅を使う。 */
+#ifndef KOZOU_COVER_DILATE_EM_RATIO
+#define KOZOU_COVER_DILATE_EM_RATIO     0.04f
+#endif
+#ifndef KOZOU_COVER_MASK_DILATE_MAX_PX
+#define KOZOU_COVER_MASK_DILATE_MAX_PX  8
+#endif
+/* 閲覧側の字形が MuPDF の解決結果と食い違い得るフォントか。
+ * ft_substitute: MuPDF が代用フォントで解決した非埋め込みフォント (Arial 等)。
+ * fz_lookup_base14_font: Base14 の名前 (Helvetica 等) で、非埋め込みなら
+ * 内蔵の URW/Nimbus で解決される (このフラグは立たない)。埋め込みのサブセット
+ * フォント ("ABCDEF+..." の名前) は該当しない。Type3 は字形がファイル内にある。 */
+static int kozou_cover_font_may_differ(fz_context *ctx, fz_font *font)
+{
+    if (!font) return 0;
+    if (fz_font_t3_procs(ctx, font)) return 0;
+    if (fz_font_flags(font)->ft_substitute) return 1;
+    const char *name = fz_font_name(ctx, font);
+    int len = 0;
+    if (name && fz_lookup_base14_font(ctx, name, &len)) return 1;
+    return 0;
+}
+
+static int kozou_cover_dilate_px(float em_pt, float scale)
+{
+    int d = (int)ceilf(em_pt * scale * KOZOU_COVER_DILATE_EM_RATIO);
+    if (d < KOZOU_COVER_MASK_DILATE_PX) d = KOZOU_COVER_MASK_DILATE_PX;
+    if (d > KOZOU_COVER_MASK_DILATE_MAX_PX) d = KOZOU_COVER_MASK_DILATE_MAX_PX;
+    return d;
+}
 /* 候補領域を文字bbox∩覆いbboxの周囲に広げる画素数 (AA縁の取りこぼし防止) */
 #ifndef KOZOU_COVER_REGION_PAD_PX
 #define KOZOU_COVER_REGION_PAD_PX 1
@@ -6331,8 +6367,13 @@ static int kozou_char_is_clipped_out(
 #define KOZOU_COVER_MERGE_ALL_LIMIT    2048
 
 typedef struct {
-    fz_irect *v;
-    int       n, cap;
+    fz_irect r;
+    float    em;   /* この領域の文字の最大フォントサイズ (pt) */
+} KozouCoverRegion;
+
+typedef struct {
+    KozouCoverRegion *v;
+    int               n, cap;
 } KozouCoverRegionList;
 
 static double kozou_irect_area(fz_irect r)
@@ -6360,22 +6401,28 @@ static int kozou_cover_try_merge(fz_irect a, fz_irect b, fz_irect *out)
 
 /* 直近の数件とだけ結合を試み(同じ行で連続する文字は stext 上でも
  * 連続して現れる)、結合できなければ末尾に追加する。 */
-static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r)
+static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r, float em)
 {
     int start = L->n > 8 ? L->n - 8 : 0;
     for (int k = L->n - 1; k >= start; k--) {
         fz_irect m;
-        if (kozou_cover_try_merge(L->v[k], r, &m)) { L->v[k] = m; return; }
+        if (kozou_cover_try_merge(L->v[k].r, r, &m)) {
+            L->v[k].r = m;
+            if (em > L->v[k].em) L->v[k].em = em;
+            return;
+        }
     }
     if (L->n >= KOZOU_COVER_MAX_REGIONS) return;
     if (L->n == L->cap) {
         int nc = L->cap ? L->cap * 2 : 64;
-        fz_irect *nv = (fz_irect *)realloc(L->v, sizeof(fz_irect) * (size_t)nc);
+        KozouCoverRegion *nv = (KozouCoverRegion *)realloc(L->v, sizeof(KozouCoverRegion) * (size_t)nc);
         if (!nv) return;
         L->v = nv;
         L->cap = nc;
     }
-    L->v[L->n++] = r;
+    L->v[L->n].r  = r;
+    L->v[L->n].em = em;
+    L->n++;
 }
 
 static void kozou_cover_regions_merge_all(KozouCoverRegionList *L)
@@ -6386,8 +6433,9 @@ static void kozou_cover_regions_merge_all(KozouCoverRegionList *L)
         for (int i = 0; i < L->n; i++) {
             for (int j = i + 1; j < L->n; j++) {
                 fz_irect m;
-                if (kozou_cover_try_merge(L->v[i], L->v[j], &m)) {
-                    L->v[i] = m;
+                if (kozou_cover_try_merge(L->v[i].r, L->v[j].r, &m)) {
+                    L->v[i].r = m;
+                    if (L->v[j].em > L->v[i].em) L->v[i].em = L->v[j].em;
                     L->v[j] = L->v[L->n - 1];
                     L->n--;
                     j--;
@@ -6550,16 +6598,23 @@ static void kozou_collect_partial_cover_regions(
                         if (!have) continue;
 
                         fz_irect r;
-                        r.x0 = (int)floorf(uni.x0 * scale) - KOZOU_COVER_REGION_PAD_PX;
-                        r.y0 = (int)floorf(uni.y0 * scale) - KOZOU_COVER_REGION_PAD_PX;
-                        r.x1 = (int)ceilf (uni.x1 * scale) + KOZOU_COVER_REGION_PAD_PX;
-                        r.y1 = (int)ceilf (uni.y1 * scale) + KOZOU_COVER_REGION_PAD_PX;
+                        /* 閲覧側が別の字形で描き得る文字 (フォントを埋め込んでいない =
+                         * MuPDF が代用/内蔵の Base14 で解決した文字) だけ、文字サイズに
+                         * 比例して広げる。埋め込みフォントや Type3 は、どの閲覧側でも
+                         * 同じ字形なので広げない (見えている文字の縁を無駄にラスタ化しない)。 */
+                        float em = kozou_cover_font_may_differ(ctx, ch->font) ? ch->size : 0.0f;
+                        int pad = kozou_cover_dilate_px(em, scale);
+                        if (pad < KOZOU_COVER_REGION_PAD_PX) pad = KOZOU_COVER_REGION_PAD_PX;
+                        r.x0 = (int)floorf(uni.x0 * scale) - pad;
+                        r.y0 = (int)floorf(uni.y0 * scale) - pad;
+                        r.x1 = (int)ceilf (uni.x1 * scale) + pad;
+                        r.y1 = (int)ceilf (uni.y1 * scale) + pad;
                         if (r.x0 < 0) r.x0 = 0;
                         if (r.y0 < 0) r.y0 = 0;
                         if (r.x1 > pix_w) r.x1 = pix_w;
                         if (r.y1 > pix_h) r.y1 = pix_h;
                         if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
-                        kozou_cover_region_add(out, r);
+                        kozou_cover_region_add(out, r, em);
                     }
                 }
             }
@@ -6657,9 +6712,9 @@ static fz_pixmap *kozou_render_text_layer_rgba(
  *   不透明な覆いだけが対象になる。 */
 static long kozou_cover_compute_mask(
     const fz_pixmap *full, const fz_pixmap *nt, const fz_pixmap *layer,
-    fz_irect r, unsigned char **mask_out, fz_irect *tight)
+    fz_irect r, int dilate_px, unsigned char **mask_out, fz_irect *tight)
 {
-    const int D  = layer ? KOZOU_COVER_MASK_DILATE_PX : KOZOU_COVER_INK_DILATE_PX;
+    const int D  = layer ? dilate_px : KOZOU_COVER_INK_DILATE_PX;
     int w  = r.x1 - r.x0, h = r.y1 - r.y0;
     int iw = w + 2 * D,   ih = h + 2 * D;
     *mask_out = NULL;
@@ -6826,10 +6881,12 @@ static int kozou_keeptext_add_partial_covers(
                 srcpx = nt_pix;
 
             for (int k = 0; k < regions.n; k++) {
-                fz_irect r = regions.v[k];
+                fz_irect r = regions.v[k].r;
                 unsigned char *mask = NULL;
                 fz_irect tight;
-                long cnt = kozou_cover_compute_mask(full, nt_pix, layer, r, &mask, &tight);
+                long cnt = kozou_cover_compute_mask(
+                    full, nt_pix, layer, r,
+                    kozou_cover_dilate_px(regions.v[k].em, scale), &mask, &tight);
                 if (cnt <= 0 || !mask) continue;
 
                 int rw = r.x1 - r.x0;
