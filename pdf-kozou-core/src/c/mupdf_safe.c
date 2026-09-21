@@ -2110,12 +2110,18 @@ static pdf_obj *kozou_build_text_only_form(
  * 使うため)。部分的に隠れていた文字の「隠し直し」パッチを作って dst に
  * 追加し、それを描く content 片を content_out に追記する。追加した
  * パッチ数を返す。詳細は定義側のコメント参照。 */
+/* 層分割プラン (kozou_keeptext_plan_layers の結果)。定義は本ファイル後方。 */
+typedef struct KozouLayerPlan KozouLayerPlan;
+static KozouLayerPlan *kozou_keeptext_plan_layers(
+    fz_context *ctx, fz_page *render_page, fz_rect bounds,
+    float dpi, int supersample_max, fz_pixmap *bg_pix);
+static void kozou_layer_plan_free(fz_context *ctx, KozouLayerPlan *pl);
 static int kozou_keeptext_add_partial_covers(
     fz_context *ctx, pdf_document *dst, fz_page *render_page, fz_rect bounds,
     float dpi, int supersample_max, int page_index,
     fz_pixmap *nt_pix, fz_image *bg_image,
     float mb_x0, float mb_y0, float pw_pt, float ph_pt,
-    pdf_obj *xobj_dict, fz_buffer *content_out);
+    pdf_obj *xobj_dict, fz_buffer *content_out, KozouLayerPlan *plan);
 
 /* BT 外にある「非テキストの描画命令」を演算子単位で除去する
  * (トークン解析ベース。1行に複数演算子が書かれていても、対象の
@@ -2804,6 +2810,7 @@ void kozou_compose_image_pdf_keep_text(
 
             fz_page   *render_page = NULL;
             fz_pixmap *pixmap      = NULL;
+            KozouLayerPlan *layer_plan = NULL;
             fz_image  *image       = NULL;
             pdf_obj   *imgref      = NULL;
             pdf_obj   *src_page    = NULL;
@@ -2819,6 +2826,7 @@ void kozou_compose_image_pdf_keep_text(
 
             fz_var(render_page);
             fz_var(pixmap);
+            fz_var(layer_plan);
             fz_var(image);
             fz_var(imgref);
             fz_var(src_page);
@@ -2910,6 +2918,22 @@ void kozou_compose_image_pdf_keep_text(
                 pixmap = kozou_render_page_to_pixmap(
                     ctx, render_page, bounds, dpi, supersample_max, 1,
                     &ctm, &bbox);
+
+                /* 一部隠れていた文字の「隠し直し」の準備 (詳細は
+                 * kozou_keeptext_plan_layers のコメント参照)。層分割できる領域が
+                 * あれば、その領域の pixmap (背景) をここで BG_below に差し替える
+                 * (この後の JPEG/PNG 保存に反映させるため)。失敗しても保存前の
+                 * pixmap は変更されず、変換は続行する (全領域が従来のパッチになる)。 */
+                fz_try(ctx) {
+                    layer_plan = kozou_keeptext_plan_layers(
+                        ctx, render_page, bounds, dpi, supersample_max, pixmap);
+                }
+                fz_catch(ctx) {
+                    fz_warn(ctx, "compose_image_pdf_keep_text: page %d: "
+                                 "layer split unavailable: %s",
+                            i, fz_caught_message(ctx));
+                    layer_plan = NULL;
+                }
 
                 snprintf(tmp_img, sizeof(tmp_img),
                          "%s" KOZOU_PATH_SEP "kozou_composeimg_%d_%d.%s",
@@ -3300,7 +3324,7 @@ void kozou_compose_image_pdf_keep_text(
                             int ncov = kozou_keeptext_add_partial_covers(
                                 ctx, dst, render_page, bounds, dpi, supersample_max, i,
                                 pixmap, image, mb_x0, mb_y0, pw_pt, ph_pt,
-                                xobj, cover_buf);
+                                xobj, cover_buf, layer_plan);
                             if (ncov > 0) {
                                 kozou_debug_dump_buffer(ctx, output, i, "covers", cover_buf);
                                 fz_append_buffer(ctx, final_buf, cover_buf);
@@ -3328,6 +3352,8 @@ void kozou_compose_image_pdf_keep_text(
                 fz_drop_buffer(ctx, no_inline);
                 fz_drop_buffer(ctx, orig_buf);
                 pdf_drop_obj(ctx, dst_page);
+                kozou_layer_plan_free(ctx, layer_plan);
+                layer_plan = NULL;
                 fz_drop_image(ctx, image);
                 fz_drop_pixmap(ctx, pixmap);
                 fz_drop_page(ctx, render_page);
@@ -5638,6 +5664,16 @@ typedef struct {
 
 #define KOZOU_MAX_COVERS 8192
 #define KOZOU_MAX_TEXTS  32768
+/* keep_text の層分割用に記録する「非テキストの塗り」の上限 (超えたら層分割を諦める) */
+#define KOZOU_MAX_PAINTS 65536
+
+/* 非テキストの塗り (fill_path/stroke_path/fill_shade/fill_image/fill_image_mask) の記録。
+ * 配列の添字 = 通し番号 (seq)。kozou_filter_device が数える通し番号と一致する。 */
+typedef struct {
+    int           ev;                /* テキストイベントと共通の描画順 (event_counter) */
+    float         x0, y0, x1, y1;   /* クリップ後の bbox (デバイス座標) */
+    unsigned char bad;               /* 層に分けると見た目が変わる (非標準ブレンド/不透明度<1のグループ内 等) */
+} KozouPaintRec;
 
 typedef struct {
     KozouCoverRect covers[KOZOU_MAX_COVERS];
@@ -5651,6 +5687,13 @@ typedef struct {
      * 記録する。keep_text の隠し直しパッチ用 (kozou_collect_partial_cover_regions)
      * で、埋没テキストの検出/無害化 (kozou_detect_buried_text) には影響しない。 */
     int            accept_translucent;
+
+    /* keep_text の層分割用 (既定は 0/NULL = 記録しない。検出/無害化には影響しない)。
+     * record_paints=1 のとき、非テキストの塗りを全て paints[] に記録する
+     * (フィルタデバイスと同じ数え方: ソフトマスクの定義中の塗りは数えない)。 */
+    int            record_paints;
+    KozouPaintRec *paints;
+    int            paint_count, paint_cap, paint_overflow;
 } KozouBuriedList;
 
 /* accept_translucent 時に覆いとして記録する塗りの最小 alpha */
@@ -5781,6 +5824,13 @@ typedef struct {
     fz_rect         clip_stack[KOZOU_MAX_CLIP_DEPTH];
     int             clip_depth;      /* 実際にスタックされている深さ */
     int             clip_over_depth; /* 上限超過分の push 回数 (対応する pop で相殺) */
+
+    /* 層分割用の記録 (list->record_paints のときだけ使う) */
+    int             depth_mask;      /* ソフトマスク定義中の入れ子の深さ (中の塗りは数えない) */
+    fz_rect         mask_area;       /* begin_mask の area (end_mask でクリップとして積む) */
+    int             group_bad;       /* 非標準ブレンド/不透明度<1/knockout のグループの入れ子の数 */
+    unsigned char   group_bad_stack[64];
+    int             group_sp;
 } KozouBuriedDevice;
 
 /* 現在有効なクリップ矩形との交差を返す。clip_depth==0 (クリップ無し) の
@@ -5858,6 +5908,83 @@ static void kozou_buried_clip_image_mask(
     kozou_buried_push_clip((KozouBuriedDevice *)dev_, scissor);
 }
 
+/* 非テキストの塗り1件を paints[] に記録し、その描画順 (ev) を返す。記録しない
+ * 場合 (無効・ソフトマスク定義中・上限超過) は -1。 */
+static int kozou_paint_record(KozouBuriedDevice *dev, fz_rect bbox)
+{
+    KozouBuriedList *L = dev->list;
+    if (!L || !L->record_paints || dev->depth_mask > 0) return -1;
+    if (L->paint_count >= KOZOU_MAX_PAINTS) { L->paint_overflow = 1; return -1; }
+    if (L->paint_count == L->paint_cap) {
+        int nc = L->paint_cap ? L->paint_cap * 2 : 256;
+        KozouPaintRec *np = (KozouPaintRec *)realloc(L->paints, sizeof(KozouPaintRec) * (size_t)nc);
+        if (!np) { L->paint_overflow = 1; return -1; }
+        L->paints = np;
+        L->paint_cap = nc;
+    }
+    fz_rect nb = bbox;
+    if (nb.x0 > nb.x1) { float t = nb.x0; nb.x0 = nb.x1; nb.x1 = t; }
+    if (nb.y0 > nb.y1) { float t = nb.y0; nb.y0 = nb.y1; nb.y1 = t; }
+    fz_rect cb = kozou_buried_clip_intersect(dev, nb);
+    KozouPaintRec *pr = &L->paints[L->paint_count++];
+    pr->ev  = L->event_counter++;
+    pr->x0 = cb.x0; pr->y0 = cb.y0; pr->x1 = cb.x1; pr->y1 = cb.y1;
+    pr->bad = dev->group_bad > 0 ? 1 : 0;
+    return pr->ev;
+}
+
+static void kozou_buried_stroke_path(
+    fz_context *ctx, fz_device *dev_, const fz_path *path,
+    const fz_stroke_state *stroke, fz_matrix ctm, fz_colorspace *cs,
+    const float *color, float alpha, fz_color_params cp)
+{
+    (void)cs; (void)color; (void)alpha; (void)cp;
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->list && dev->list->record_paints && dev->depth_mask == 0)
+        kozou_paint_record(dev, fz_bound_path(ctx, path, stroke, ctm));
+}
+static void kozou_buried_fill_shade(
+    fz_context *ctx, fz_device *dev_, fz_shade *shade, fz_matrix ctm,
+    float alpha, fz_color_params cp)
+{
+    (void)alpha; (void)cp;
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->list && dev->list->record_paints && dev->depth_mask == 0)
+        kozou_paint_record(dev, fz_bound_shade(ctx, shade, ctm));
+}
+static void kozou_buried_fill_image_mask(
+    fz_context *ctx, fz_device *dev_, fz_image *image, fz_matrix ctm,
+    fz_colorspace *cs, const float *color, float alpha, fz_color_params cp)
+{
+    (void)ctx; (void)image; (void)cs; (void)color; (void)alpha; (void)cp;
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->list && dev->list->record_paints && dev->depth_mask == 0)
+        kozou_paint_record(dev, fz_transform_rect(fz_unit_rect, ctm));
+}
+/* ソフトマスク: 定義中 (begin_mask〜end_mask) の塗りは数えない。end_mask 以降、
+ * マスクはクリップとして扱われ pop_clip で外れるので、clip を1つ積んで対応を取る。
+ * (層分割の記録時だけ。従来の検出の挙動は変えない) */
+static void kozou_buried_begin_mask(
+    fz_context *ctx, fz_device *dev_, fz_rect area, int luminosity,
+    fz_colorspace *cs, const float *bc, fz_color_params cp)
+{
+    (void)ctx; (void)luminosity; (void)cs; (void)bc; (void)cp;
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->list && dev->list->record_paints) {
+        dev->depth_mask++;
+        dev->mask_area = area;
+    }
+}
+static void kozou_buried_end_mask(fz_context *ctx, fz_device *dev_, fz_function *fn)
+{
+    (void)ctx; (void)fn;
+    KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->list && dev->list->record_paints) {
+        if (dev->depth_mask > 0) dev->depth_mask--;
+        kozou_buried_push_clip(dev, dev->mask_area);
+    }
+}
+
 static void kozou_buried_fill_path(
     fz_context *ctx, fz_device *dev_,
     const fz_path *path, int even_odd, fz_matrix ctm,
@@ -5865,6 +5992,9 @@ static void kozou_buried_fill_path(
     fz_color_params cp)
 {
     KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    int prec_ev = -1;
+    if (dev->list && dev->list->record_paints && dev->depth_mask == 0)
+        prec_ev = kozou_paint_record(dev, fz_bound_path(ctx, path, NULL, ctm));
     if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
     if (alpha < (dev->list->accept_translucent
                      ? KOZOU_COVER_TRANSLUCENT_MIN_ALPHA : 0.5f)) return;
@@ -5888,7 +6018,7 @@ static void kozou_buried_fill_path(
     if (kozou_buried_rect_is_empty(clipped_bbox)) return;
 
     KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
-    cr->event_index = dev->list->event_counter++;
+    cr->event_index = prec_ev >= 0 ? prec_ev : dev->list->event_counter++;
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
     cr->x0 = clipped_bbox.x0; cr->y0 = clipped_bbox.y0;
     cr->x1 = clipped_bbox.x1; cr->y1 = clipped_bbox.y1;
@@ -5900,6 +6030,9 @@ static void kozou_buried_fill_image(
     fz_color_params cp)
 {
     KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    int prec_ev = -1;
+    if (dev->list && dev->list->record_paints && dev->depth_mask == 0)
+        prec_ev = kozou_paint_record(dev, fz_transform_rect(fz_unit_rect, ctm));
     if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
     if (alpha < (dev->list->accept_translucent
                      ? KOZOU_COVER_TRANSLUCENT_MIN_ALPHA : 0.5f)) return;
@@ -5918,7 +6051,7 @@ static void kozou_buried_fill_image(
     if (kozou_buried_rect_is_empty(clipped_bbox)) return;
 
     KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
-    cr->event_index = dev->list->event_counter++;
+    cr->event_index = prec_ev >= 0 ? prec_ev : dev->list->event_counter++;
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
     cr->x0 = clipped_bbox.x0; cr->y0 = clipped_bbox.y0;
     cr->x1 = clipped_bbox.x1; cr->y1 = clipped_bbox.y1;
@@ -6014,6 +6147,18 @@ static void kozou_buried_begin_group(
     int blendmode, float alpha)
 {
     KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->list && dev->list->record_paints) {
+        /* 標準以外のブレンド、不透明度<1、knockout のグループの中の塗りは、層に
+         * 分けて描くと (グループ全体としての合成が変わり) 見た目が変わる。 */
+        int bad = (blendmode != FZ_BLEND_NORMAL || knockout || alpha < 0.999f) ? 1 : 0;
+        if (dev->group_sp < (int)sizeof(dev->group_bad_stack)) {
+            dev->group_bad_stack[dev->group_sp++] = (unsigned char)bad;
+            dev->group_bad += bad;
+        } else {
+            dev->group_bad++;            /* 深すぎる入れ子は安全側 (bad 扱い) */
+            dev->group_sp++;
+        }
+    }
     if (dev->xobj_depth + 1 >= KOZOU_XOBJ_MAX_DEPTH) return;
     /* 深さを増やすが xref は変わらない（通常の透明グループ）*/
     dev->xobj_depth++;
@@ -6025,6 +6170,13 @@ static void kozou_buried_end_group(
     fz_context *ctx, fz_device *dev_)
 {
     KozouBuriedDevice *dev = (KozouBuriedDevice *)dev_;
+    if (dev->list && dev->list->record_paints && dev->group_sp > 0) {
+        dev->group_sp--;
+        if (dev->group_sp < (int)sizeof(dev->group_bad_stack))
+            dev->group_bad -= dev->group_bad_stack[dev->group_sp];
+        else
+            dev->group_bad--;
+    }
     if (dev->xobj_depth > 0) dev->xobj_depth--;
 }
 
@@ -6045,6 +6197,12 @@ static fz_device *kozou_new_buried_device(fz_context *ctx, KozouBuriedList *list
     dev->base.fill_path    = kozou_buried_fill_path;
     dev->base.fill_image   = kozou_buried_fill_image;
     dev->base.fill_text    = kozou_buried_fill_text;
+    /* 以下は list->record_paints のときだけ働く (従来の検出の挙動は変えない) */
+    dev->base.stroke_path      = kozou_buried_stroke_path;
+    dev->base.fill_shade       = kozou_buried_fill_shade;
+    dev->base.fill_image_mask  = kozou_buried_fill_image_mask;
+    dev->base.begin_mask       = kozou_buried_begin_mask;
+    dev->base.end_mask         = kozou_buried_end_mask;
     dev->base.begin_group  = kozou_buried_begin_group;
     dev->base.end_group    = kozou_buried_end_group;
     /* クリップ矩形の追跡: fill_path/fill_image が実際に見える範囲だけを
@@ -6064,6 +6222,252 @@ static fz_device *kozou_new_buried_device(fz_context *ctx, KozouBuriedList *list
     dev->clip_depth      = 0;
     dev->clip_over_depth = 0;
     return (fz_device *)dev;
+}
+
+/* ================================================================== */
+/* keep_text の層分割用: 非テキストの塗りを「選んで」描くフィルタデバイス */
+/*                                                                     */
+/* 背景ラスタを「文字の下にあるべき物 (BG_below)」と「文字の上にあるべき  */
+/* 物 (覆い層 C)」に分けて作るために、非テキストの塗りを通し番号 (seq) で */
+/* 選んで内側の描画デバイスへ転送する。                                  */
+/*   mode 0: S に含まれない塗りだけを描く   (= BG_below。テキストも描かない) */
+/*   mode 1: S に含まれる塗りだけを描く     (= 覆い層 C。透明背景に描く)  */
+/* seq の数え方は kozou_paint_record (描画順記録デバイス) と同じ:          */
+/*   fill_path / stroke_path / fill_shade / fill_image / fill_image_mask    */
+/* を1回ずつ数え、ソフトマスクの定義中の塗りは数えない (常に転送する)。    */
+/* テキストは転送しない。クリップ・グループ・マスクは常に転送する。        */
+/* (begin_tile は実装しない: 記録側と同様、インタプリタがタイルを展開して   */
+/*  通常の塗りとして送るので、数え方が揃う)                                */
+/* ================================================================== */
+typedef struct {
+    fz_device            base;
+    fz_device           *inner;
+    const unsigned char *sbits;
+    int                  nseq;
+    int                  mode;
+    int                  seq;
+    int                  depth_mask;
+    unsigned char       *clip_fwd;   /* クリップ系コンテナ毎: 1=inner へ転送済み 0=転送していない(テキストクリップ) */
+    int                  clip_n, clip_cap;
+} KozouFilterDevice;
+
+static int kozou_fd_pass(KozouFilterDevice *f)
+{
+    if (f->depth_mask > 0) return 1;
+    int sq = f->seq++;
+    int in = (f->sbits && sq < f->nseq && f->sbits[sq]) ? 1 : 0;
+    return f->mode == 0 ? !in : in;
+}
+static void kozou_fd_clip_push(fz_context *ctx, KozouFilterDevice *f, int fwd)
+{
+    if (f->clip_n == f->clip_cap) {
+        int nc = f->clip_cap ? f->clip_cap * 2 : 32;
+        f->clip_fwd = (unsigned char *)fz_realloc(ctx, f->clip_fwd, (size_t)nc);
+        f->clip_cap = nc;
+    }
+    f->clip_fwd[f->clip_n++] = (unsigned char)fwd;
+}
+
+static void kozou_fd_fill_path(fz_context *ctx, fz_device *d, const fz_path *path, int eo,
+    fz_matrix ctm, fz_colorspace *cs, const float *color, float alpha, fz_color_params cp)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    if (kozou_fd_pass(f)) fz_fill_path(ctx, f->inner, path, eo, ctm, cs, color, alpha, cp);
+}
+static void kozou_fd_stroke_path(fz_context *ctx, fz_device *d, const fz_path *path,
+    const fz_stroke_state *st, fz_matrix ctm, fz_colorspace *cs, const float *color,
+    float alpha, fz_color_params cp)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    if (kozou_fd_pass(f)) fz_stroke_path(ctx, f->inner, path, st, ctm, cs, color, alpha, cp);
+}
+static void kozou_fd_fill_shade(fz_context *ctx, fz_device *d, fz_shade *shade,
+    fz_matrix ctm, float alpha, fz_color_params cp)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    if (kozou_fd_pass(f)) fz_fill_shade(ctx, f->inner, shade, ctm, alpha, cp);
+}
+static void kozou_fd_fill_image(fz_context *ctx, fz_device *d, fz_image *img,
+    fz_matrix ctm, float alpha, fz_color_params cp)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    if (kozou_fd_pass(f)) fz_fill_image(ctx, f->inner, img, ctm, alpha, cp);
+}
+static void kozou_fd_fill_image_mask(fz_context *ctx, fz_device *d, fz_image *img,
+    fz_matrix ctm, fz_colorspace *cs, const float *color, float alpha, fz_color_params cp)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    if (kozou_fd_pass(f)) fz_fill_image_mask(ctx, f->inner, img, ctm, cs, color, alpha, cp);
+}
+static void kozou_fd_clip_path(fz_context *ctx, fz_device *d, const fz_path *path,
+    int eo, fz_matrix ctm, fz_rect scissor)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    fz_clip_path(ctx, f->inner, path, eo, ctm, scissor);
+    kozou_fd_clip_push(ctx, f, 1);
+}
+static void kozou_fd_clip_stroke_path(fz_context *ctx, fz_device *d, const fz_path *path,
+    const fz_stroke_state *st, fz_matrix ctm, fz_rect scissor)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    fz_clip_stroke_path(ctx, f->inner, path, st, ctm, scissor);
+    kozou_fd_clip_push(ctx, f, 1);
+}
+static void kozou_fd_clip_image_mask(fz_context *ctx, fz_device *d, fz_image *img,
+    fz_matrix ctm, fz_rect scissor)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    fz_clip_image_mask(ctx, f->inner, img, ctm, scissor);
+    kozou_fd_clip_push(ctx, f, 1);
+}
+/* テキストのクリップは転送しない (背景のテキスト除外描画と同じ扱い)。ただし
+ * 後の pop_clip との対応を取るため、転送していない印を積む。 */
+static void kozou_fd_clip_text(fz_context *ctx, fz_device *d, const fz_text *t,
+    fz_matrix ctm, fz_rect scissor)
+{
+    (void)t; (void)ctm; (void)scissor;
+    kozou_fd_clip_push(ctx, (KozouFilterDevice *)d, 0);
+}
+static void kozou_fd_clip_stroke_text(fz_context *ctx, fz_device *d, const fz_text *t,
+    const fz_stroke_state *st, fz_matrix ctm, fz_rect scissor)
+{
+    (void)t; (void)st; (void)ctm; (void)scissor;
+    kozou_fd_clip_push(ctx, (KozouFilterDevice *)d, 0);
+}
+static void kozou_fd_pop_clip(fz_context *ctx, fz_device *d)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    int fwd = 1;
+    if (f->clip_n > 0) fwd = f->clip_fwd[--f->clip_n];
+    if (fwd) fz_pop_clip(ctx, f->inner);
+}
+static void kozou_fd_begin_mask(fz_context *ctx, fz_device *d, fz_rect area, int lum,
+    fz_colorspace *cs, const float *bc, fz_color_params cp)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    f->depth_mask++;
+    fz_begin_mask(ctx, f->inner, area, lum, cs, bc, cp);
+}
+static void kozou_fd_end_mask(fz_context *ctx, fz_device *d, fz_function *fn)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    if (f->depth_mask > 0) f->depth_mask--;
+    fz_end_mask_tr(ctx, f->inner, fn);
+    kozou_fd_clip_push(ctx, f, 1); /* マスクはクリップとして pop_clip で外れる */
+}
+static void kozou_fd_begin_group(fz_context *ctx, fz_device *d, fz_rect area,
+    fz_colorspace *cs, int isolated, int knockout, int blendmode, float alpha)
+{
+    fz_begin_group(ctx, ((KozouFilterDevice *)d)->inner, area, cs, isolated, knockout, blendmode, alpha);
+}
+static void kozou_fd_end_group(fz_context *ctx, fz_device *d)
+{
+    fz_end_group(ctx, ((KozouFilterDevice *)d)->inner);
+}
+static void kozou_fd_set_default_cs(fz_context *ctx, fz_device *d, fz_default_colorspaces *dcs)
+{
+    fz_set_default_colorspaces(ctx, ((KozouFilterDevice *)d)->inner, dcs);
+}
+static void kozou_fd_render_flags(fz_context *ctx, fz_device *d, int set, int clear)
+{
+    fz_render_flags(ctx, ((KozouFilterDevice *)d)->inner, set, clear);
+}
+static void kozou_fd_begin_layer(fz_context *ctx, fz_device *d, const char *name)
+{
+    fz_begin_layer(ctx, ((KozouFilterDevice *)d)->inner, name);
+}
+static void kozou_fd_end_layer(fz_context *ctx, fz_device *d)
+{
+    fz_end_layer(ctx, ((KozouFilterDevice *)d)->inner);
+}
+static void kozou_fd_close(fz_context *ctx, fz_device *d)
+{
+    fz_close_device(ctx, ((KozouFilterDevice *)d)->inner);
+}
+static void kozou_fd_drop(fz_context *ctx, fz_device *d)
+{
+    KozouFilterDevice *f = (KozouFilterDevice *)d;
+    fz_drop_device(ctx, f->inner);
+    fz_free(ctx, f->clip_fwd);
+}
+
+/* inner の参照は、成功時にフィルタデバイスが引き取る (失敗時は呼び出し側が解放) */
+static fz_device *kozou_new_filter_device(
+    fz_context *ctx, fz_device *inner, const unsigned char *sbits, int nseq, int mode)
+{
+    KozouFilterDevice *f = fz_new_derived_device(ctx, KozouFilterDevice);
+    f->inner = inner; f->sbits = sbits; f->nseq = nseq; f->mode = mode;
+    f->base.fill_path = kozou_fd_fill_path;
+    f->base.stroke_path = kozou_fd_stroke_path;
+    f->base.fill_shade = kozou_fd_fill_shade;
+    f->base.fill_image = kozou_fd_fill_image;
+    f->base.fill_image_mask = kozou_fd_fill_image_mask;
+    f->base.clip_path = kozou_fd_clip_path;
+    f->base.clip_stroke_path = kozou_fd_clip_stroke_path;
+    f->base.clip_image_mask = kozou_fd_clip_image_mask;
+    f->base.clip_text = kozou_fd_clip_text;
+    f->base.clip_stroke_text = kozou_fd_clip_stroke_text;
+    f->base.pop_clip = kozou_fd_pop_clip;
+    f->base.begin_mask = kozou_fd_begin_mask;
+    f->base.end_mask = kozou_fd_end_mask;
+    f->base.begin_group = kozou_fd_begin_group;
+    f->base.end_group = kozou_fd_end_group;
+    f->base.set_default_colorspaces = kozou_fd_set_default_cs;
+    f->base.render_flags = kozou_fd_render_flags;
+    f->base.begin_layer = kozou_fd_begin_layer;
+    f->base.end_layer = kozou_fd_end_layer;
+    f->base.close_device = kozou_fd_close;
+    f->base.drop_device = kozou_fd_drop;
+    return (fz_device *)f;
+}
+
+/* 背景と同じ画素格子 (同じ ctm・サイズ・スーパーサンプリング) で、フィルタ付きに
+ * ページを描く。mode 0: RGB 不透明・白地 / mode 1: RGBA 透明地 (前乗算アルファ)。
+ * *out_seq に数えた塗りの数を返す (記録側の paint_count と一致するはず)。 */
+static fz_pixmap *kozou_render_page_filtered(
+    fz_context *ctx, fz_page *page, fz_rect bounds, float dpi, int supersample_max,
+    const unsigned char *sbits, int nseq, int mode, int *out_seq)
+{
+    float scale = dpi / 72.0f;
+    fz_matrix ctm = fz_scale(scale, scale);
+    fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
+    int tw = bbox.x1 - bbox.x0, th = bbox.y1 - bbox.y0;
+    int m = kozou_compute_supersample_mult(dpi, supersample_max, (float)tw, (float)th);
+    if (m < 1) m = 1;
+    fz_matrix big_ctm = fz_concat(ctm, fz_scale((float)m, (float)m));
+    fz_irect  big_bbox = { 0, 0, tw * m, th * m };
+    int alpha = (mode == 1);
+    fz_pixmap *big = NULL, *out = NULL;
+    fz_device *inner = NULL, *fdev = NULL;
+    fz_var(big); fz_var(out); fz_var(inner); fz_var(fdev);
+
+    fz_try(ctx) {
+        big = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), big_bbox, NULL, alpha);
+        if (alpha) fz_clear_pixmap(ctx, big);
+        else       fz_clear_pixmap_with_value(ctx, big, 0xff);
+        inner = fz_new_draw_device(ctx, big_ctm, big);
+        fdev  = kozou_new_filter_device(ctx, inner, sbits, nseq, mode);
+        inner = NULL; /* fdev が所有 */
+        fz_run_page(ctx, page, fdev, fz_identity, NULL);
+        fz_close_device(ctx, fdev);
+        if (out_seq) *out_seq = ((KozouFilterDevice *)fdev)->seq;
+        if (m > 1) {
+            out = fz_scale_pixmap(ctx, big, 0.0f, 0.0f, (float)tw, (float)th, NULL);
+            if (!out) fz_throw(ctx, FZ_ERROR_GENERIC, "kozou: filtered downscale failed");
+        } else {
+            out = fz_keep_pixmap(ctx, big);
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, fdev);
+        fz_drop_device(ctx, inner);
+        fz_drop_pixmap(ctx, big);
+    }
+    fz_catch(ctx) {
+        fz_drop_pixmap(ctx, out);
+        fz_rethrow(ctx);
+    }
+    return out;
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -6368,12 +6772,18 @@ static int kozou_cover_dilate_px(float em_pt, float scale)
 
 typedef struct {
     fz_irect r;
-    float    em;   /* この領域の文字の最大フォントサイズ (pt) */
+    float    em;       /* この領域の、閲覧側で字形が食い違い得る文字の最大フォントサイズ (pt)。0=なし */
+    int      min_ev;   /* この領域の隠れた文字の、最も若い描画順 (event_index) */
+    int      elig;     /* 1=層分割 (背景の下層 + ベクター文字 + 覆い層) で再現する / 0=マスク付きパッチ */
 } KozouCoverRegion;
 
 typedef struct {
     KozouCoverRegion *v;
     int               n, cap;
+    /* 層分割: 覆い層に回す塗りの通し番号の集合 (seq 添字のビット列)。層分割する領域が
+     * 無ければ NULL。malloc で確保 (呼び出し側が free)。 */
+    unsigned char    *sbits;
+    int               nseq;
 } KozouCoverRegionList;
 
 static double kozou_irect_area(fz_irect r)
@@ -6401,7 +6811,7 @@ static int kozou_cover_try_merge(fz_irect a, fz_irect b, fz_irect *out)
 
 /* 直近の数件とだけ結合を試み(同じ行で連続する文字は stext 上でも
  * 連続して現れる)、結合できなければ末尾に追加する。 */
-static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r, float em)
+static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r, float em, int min_ev)
 {
     int start = L->n > 8 ? L->n - 8 : 0;
     for (int k = L->n - 1; k >= start; k--) {
@@ -6409,6 +6819,7 @@ static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r, float em
         if (kozou_cover_try_merge(L->v[k].r, r, &m)) {
             L->v[k].r = m;
             if (em > L->v[k].em) L->v[k].em = em;
+            if (min_ev < L->v[k].min_ev) L->v[k].min_ev = min_ev;
             return;
         }
     }
@@ -6420,8 +6831,10 @@ static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r, float em
         L->v = nv;
         L->cap = nc;
     }
-    L->v[L->n].r  = r;
-    L->v[L->n].em = em;
+    L->v[L->n].r      = r;
+    L->v[L->n].em     = em;
+    L->v[L->n].min_ev = min_ev;
+    L->v[L->n].elig   = 0;
     L->n++;
 }
 
@@ -6436,6 +6849,7 @@ static void kozou_cover_regions_merge_all(KozouCoverRegionList *L)
                 if (kozou_cover_try_merge(L->v[i].r, L->v[j].r, &m)) {
                     L->v[i].r = m;
                     if (L->v[j].em > L->v[i].em) L->v[i].em = L->v[j].em;
+                    if (L->v[j].min_ev < L->v[i].min_ev) L->v[i].min_ev = L->v[j].min_ev;
                     L->v[j] = L->v[L->n - 1];
                     L->n--;
                     j--;
@@ -6485,11 +6899,153 @@ static KozouTextEvt *kozou_text_grid_match(
     return matched_ucs ? matched_ucs : matched;
 }
 
+/* ------------------------------------------------------------------ */
+/* 層分割 (背景の下層 + ベクター文字 + 覆い層) が使える領域かの判定           */
+/*                                                                     */
+/* 領域 R (隠れていた文字の近く) について、文字より後に描かれた非テキストの  */
+/* 塗りで R に重なるもの S_R を、覆い層に回す。背景の下層 (BG_below) は S を  */
+/* 除いて描く。これが元と同じ見た目になるのは、次を満たすとき:              */
+/*   (1) S_R の塗りが標準の合成 (ブレンド標準・不透明度1のグループ、      */
+/*       knockout でない中) で描かれている                                  */
+/*   (2) S_R の塗りより後に、R に重なるテキストが描かれていない            */
+/*       (あれば、そのテキストは覆いの上に来るべきで、単純な3層では表せない) */
+/*   (3) 他の領域の S が、この領域の隠れた文字より前に描かれた塗りを含まない */
+/*       (全領域で1組の S を共有するため、矛盾があれば領域を外す)            */
+/*   (4) 層分割する領域同士、および層分割しない領域 (パッチ) と重ならない     */
+/* 満たさない領域は、従来のマスク付きパッチにする。                          */
+/* ------------------------------------------------------------------ */
+static int kozou_frect_overlap(float ax0, float ay0, float ax1, float ay1,
+                               float bx0, float by0, float bx1, float by1)
+{
+    return ax0 < bx1 && bx0 < ax1 && ay0 < by1 && by0 < ay1;
+}
+
+/* R と重なる文字のうち、描画順が min_ev より後のものがあるか */
+static int kozou_layer_has_text_after(
+    KozouBuriedList *L, fz_stext_page *stext, const int *g_head, const int *g_next,
+    float rx0, float ry0, float rx1, float ry1, int min_ev)
+{
+    for (fz_stext_block *block = stext->first_block; block; block = block->next) {
+        if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
+        for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
+            for (fz_stext_char *ch = line->first_char; ch; ch = ch->next) {
+                int cp = ch->c;
+                if (cp == 0x20 || cp == 0x0A || kozou_is_whitespace_codepoint(cp)) continue;
+                fz_quad q = ch->quad;
+                float cx0 = q.ul.x < q.ll.x ? q.ul.x : q.ll.x;
+                float cy0 = q.ul.y < q.ur.y ? q.ul.y : q.ur.y;
+                float cx1 = q.ur.x > q.lr.x ? q.ur.x : q.lr.x;
+                float cy1 = q.ll.y > q.lr.y ? q.ll.y : q.lr.y;
+                if (!kozou_frect_overlap(cx0, cy0, cx1, cy1, rx0, ry0, rx1, ry1)) continue;
+                const KozouTextEvt *te = kozou_text_grid_match(L, g_head, g_next, ch->origin, ch->c);
+                if (te && te->event_index > min_ev) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static void kozou_layer_eligibility(
+    KozouBuriedList *L, fz_stext_page *stext, const int *g_head, const int *g_next,
+    KozouCoverRegionList *out, float scale)
+{
+    int n = out->n, np = L->paint_count;
+    if (n <= 0 || np <= 0 || L->paint_overflow || !L->paints) return;
+    unsigned char *sb = (unsigned char *)calloc((size_t)np, 1);
+    if (!sb) return;
+
+    /* (1)(2) 領域ごとの判定 */
+    for (int i = 0; i < n; i++) {
+        KozouCoverRegion *g = &out->v[i];
+        float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
+        float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+        int cnt = 0, bad = 0, min_s = 0x7fffffff;
+        for (int k = 0; k < np; k++) {
+            const KozouPaintRec *p = &L->paints[k];
+            if (p->ev <= g->min_ev) continue;
+            if (!kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1)) continue;
+            cnt++;
+            if (p->bad) bad = 1;
+            if (p->ev < min_s) min_s = p->ev;
+        }
+        if (cnt == 0 || bad) continue;
+        if (kozou_layer_has_text_after(L, stext, g_head, g_next, rx0, ry0, rx1, ry1, min_s)) continue;
+        g->elig = 1;
+    }
+
+    /* (3) 全領域で共有する S の矛盾解消 */
+    for (int iter = 0; iter < 64; iter++) {
+        memset(sb, 0, (size_t)np);
+        for (int i = 0; i < n; i++) {
+            if (!out->v[i].elig) continue;
+            const KozouCoverRegion *g = &out->v[i];
+            float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
+            float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+            for (int k = 0; k < np; k++) {
+                const KozouPaintRec *p = &L->paints[k];
+                if (p->ev > g->min_ev &&
+                    kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1))
+                    sb[k] = 1;
+            }
+        }
+        int changed = 0;
+        for (int i = 0; i < n; i++) {
+            if (!out->v[i].elig) continue;
+            const KozouCoverRegion *g = &out->v[i];
+            float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
+            float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+            for (int k = 0; k < np; k++) {
+                const KozouPaintRec *p = &L->paints[k];
+                if (sb[k] && p->ev <= g->min_ev &&
+                    kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1)) {
+                    out->v[i].elig = 0; changed = 1; break;
+                }
+            }
+        }
+        if (!changed) break;
+    }
+
+    /* (4) 領域同士の重なり: 層分割する領域は、他の領域と重ならないようにする */
+    for (int iter = 0; iter < 64; iter++) {
+        int changed = 0;
+        for (int i = 0; i < n; i++) {
+            if (!out->v[i].elig) continue;
+            for (int j = 0; j < n; j++) {
+                if (j == i) continue;
+                const fz_irect *a = &out->v[i].r, *b = &out->v[j].r;
+                if (a->x0 < b->x1 && b->x0 < a->x1 && a->y0 < b->y1 && b->y0 < a->y1) {
+                    out->v[i].elig = 0; changed = 1; break;
+                }
+            }
+        }
+        if (!changed) break;
+    }
+
+    /* 最終の S */
+    memset(sb, 0, (size_t)np);
+    int any = 0;
+    for (int i = 0; i < n; i++) {
+        if (!out->v[i].elig) continue;
+        any = 1;
+        const KozouCoverRegion *g = &out->v[i];
+        float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
+        float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+        for (int k = 0; k < np; k++) {
+            const KozouPaintRec *p = &L->paints[k];
+            if (p->ev > g->min_ev &&
+                kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1))
+                sb[k] = 1;
+        }
+    }
+    if (any) { out->sbits = sb; out->nseq = np; }
+    else free(sb);
+}
+
 /* 部分的に隠れていた文字の候補領域(ピクセル座標)を集める。
  * page は元ページ。scale は dpi/72。pix_w/pix_h は背景画像の画素数。 */
 static void kozou_collect_partial_cover_regions(
     fz_context *ctx, fz_page *page, float scale, int pix_w, int pix_h,
-    KozouCoverRegionList *out)
+    int want_layers, KozouCoverRegionList *out)
 {
     KozouBuriedList *list     = NULL;
     fz_device       *orderdev = NULL;
@@ -6507,6 +7063,7 @@ static void kozou_collect_partial_cover_regions(
         memset(list, 0, sizeof(KozouBuriedList));
         list->page_h = page_bounds.y1 - page_bounds.y0;
         list->accept_translucent = 1;
+        list->record_paints = want_layers ? 1 : 0;
 
         /* 描画順の記録 (ページの可視領域=CropBox を初期クリップにするのは
          * kozou_detect_buried_text と同じ理由) */
@@ -6614,16 +7171,23 @@ static void kozou_collect_partial_cover_regions(
                         if (r.x1 > pix_w) r.x1 = pix_w;
                         if (r.y1 > pix_h) r.y1 = pix_h;
                         if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
-                        kozou_cover_region_add(out, r, em);
+                        kozou_cover_region_add(out, r, em, te->event_index);
                     }
                 }
             }
+
+            /* 近接する領域をまとめた後で、層分割できる領域を決める
+             * (まとめる前後で領域が変わると、判定がずれるため) */
+            kozou_cover_regions_merge_all(out);
+            if (want_layers)
+                kozou_layer_eligibility(list, stext, g_head, g_next, out, scale);
         }
     }
     fz_always(ctx) {
         if (g_head) fz_free(ctx, g_head);
         if (g_next) fz_free(ctx, g_next);
         if (list) {
+            free(list->paints);
             /* kozou_buried_fill_image で fz_keep_image した参照を解放する */
             for (int ci = 0; ci < list->cover_count; ci++) {
                 if (list->covers[ci].image)
@@ -6802,19 +7366,243 @@ static long kozou_cover_compute_mask(
  * (Contents/Resources/MediaBox)まで出来上がっていること。そのページを
  * 実際に描いて、閲覧側での見え方を得る。
  * 戻り値: 追加したパッチ数。 */
+/* RGB 画像 + 8ビット SMask を PDF に追加し、背景画像と同じ画素格子に厳密に合わせて
+ * 配置する content 片を追記する (隠し直しパッチと覆い層の共通処理)。
+ *   rgb   : tw x th の RGB (DeviceRGB の値)
+ *   mbuf  : tw x th バイトのマスク (255=不透明)
+ *   tight : 背景画像の画素座標での配置矩形 (tw x th)
+ *   W,H   : 背景画像の画素数 */
+static void kozou_emit_masked_image(
+    fz_context *ctx, pdf_document *dst, fz_pixmap *rgb, fz_buffer *mbuf,
+    int tw, int th, fz_irect tight, int W, int H,
+    float mb_x0, float mb_y0, float pw_pt, float ph_pt,
+    const char *name, pdf_obj *xobj_dict, fz_buffer *content_out)
+{
+    pdf_obj  *mdict = NULL, *mref = NULL, *pref = NULL;
+    fz_image *pimg = NULL;
+    fz_var(mdict); fz_var(mref); fz_var(pref); fz_var(pimg);
+    fz_try(ctx) {
+        pimg = fz_new_image_from_pixmap(ctx, rgb, NULL);
+        pref = pdf_add_image(ctx, dst, pimg);
+        /* 背景 (KzBgImg) と同じく DeviceRGB と明示する (理由は背景画像側のコメント参照)。 */
+        pdf_dict_put(ctx, pref, PDF_NAME(ColorSpace), PDF_NAME(DeviceRGB));
+        /* SMask は 8ビットの DeviceGray 画像として自前で作る。
+         * MuPDF の pdf_add_image は、0/255 だけのマスクを 1ビットの CCITT G4 で
+         * 書き出すが、pdf.js は CCITT/JBIG2 の復号に wasm が必要で、wasm が
+         * 使えない環境ではパッチが描かれず、隠した文字が見えてしまう。
+         * 8ビットの無圧縮ストリーム (保存時に Flate で圧縮される) なら、どの
+         * ビューアでも追加のデコーダ無しで読める。色空間は、PDF仕様上
+         * DeviceGray でなければならない。 */
+        mdict = pdf_new_dict(ctx, dst, 8);
+        pdf_dict_put(ctx, mdict, PDF_NAME(Type), PDF_NAME(XObject));
+        pdf_dict_put(ctx, mdict, PDF_NAME(Subtype), PDF_NAME(Image));
+        pdf_dict_put_int(ctx, mdict, PDF_NAME(Width), tw);
+        pdf_dict_put_int(ctx, mdict, PDF_NAME(Height), th);
+        pdf_dict_put(ctx, mdict, PDF_NAME(ColorSpace), PDF_NAME(DeviceGray));
+        pdf_dict_put_int(ctx, mdict, PDF_NAME(BitsPerComponent), 8);
+        mref = pdf_add_stream(ctx, dst, mbuf, mdict, 0);
+        pdf_dict_put(ctx, pref, PDF_NAME(SMask), mref);
+        pdf_dict_puts(ctx, xobj_dict, name, pref);
+
+        /* 背景は単位正方形をページ全体 (pw_pt x ph_pt) に写像しており、画像の行は
+         * 上から数える (PDFのy軸は上向き)。 */
+        float fW = (float)W, fH = (float)H;
+        float x0n = (float)tight.x0 / fW, x1n = (float)tight.x1 / fW;
+        float y0n = (float)tight.y0 / fH, y1n = (float)tight.y1 / fH;
+        fz_append_printf(ctx, content_out,
+            "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/%s Do\nQ\n",
+            pw_pt * (x1n - x0n), ph_pt * (y1n - y0n),
+            mb_x0 + pw_pt * x0n,
+            mb_y0 + ph_pt * (1.0f - y1n),
+            name);
+    }
+    fz_always(ctx) {
+        pdf_drop_obj(ctx, mref);
+        pdf_drop_obj(ctx, mdict);
+        pdf_drop_obj(ctx, pref);
+        fz_drop_image(ctx, pimg);
+    }
+    fz_catch(ctx) {
+        fz_rethrow(ctx);
+    }
+}
+
+/* ================================================================== */
+/* 層分割プラン: 1ページ分の「どの領域を、どの方式で再現するか」            */
+/*                                                                     */
+/* 層分割する領域 (elig) は、背景画像のその領域の画素を「文字の下層          */
+/* (BG_below = 覆い等を除いた非テキスト)」に差し替え、その領域の覆い等      */
+/* (覆い層 C) を RGBA の画像として、テキストの上に重ねる。テキストは          */
+/* ベクターのまま。隠れていた部分は覆い層が隠すので、文字の字形・拡大表示・  */
+/* 半透明かどうかに依らず、元と同じ順序で合成される。                      */
+/* それ以外の領域は、従来のマスク付きパッチ (kozou_keeptext_add_partial_covers)。 */
+/* ================================================================== */
+struct KozouLayerPlan {
+    KozouCoverRegionList regions;   /* 全領域 (elig 付き) */
+    fz_pixmap           *cover_layer; /* 覆い層 C (RGBA, 前乗算)。層分割する領域があるときだけ */
+};
+
+static void kozou_layer_plan_free(fz_context *ctx, KozouLayerPlan *pl)
+{
+    if (!pl) return;
+    free(pl->regions.v);
+    free(pl->regions.sbits);
+    fz_drop_pixmap(ctx, pl->cover_layer);
+    free(pl);
+}
+
+/* bg_pix (背景の全描画: テキスト除外) を、層分割する領域だけ BG_below に差し替える。
+ * 呼び出しは、背景を保存する前。失敗したら NULL を返し、bg_pix は変更しない。 */
+static KozouLayerPlan *kozou_keeptext_plan_layers(
+    fz_context *ctx, fz_page *render_page, fz_rect bounds,
+    float dpi, int supersample_max, fz_pixmap *bg_pix)
+{
+    const char *env = getenv("KOZOU_KEEPTEXT_COVER");
+    if (env && env[0] == '0') return NULL;
+    if (!bg_pix || bg_pix->w <= 0 || bg_pix->h <= 0 || bg_pix->n < 3) return NULL;
+    const char *lenv = getenv("KOZOU_KEEPTEXT_LAYERS");
+    int want_layers = !(lenv && lenv[0] == '0');
+
+    KozouLayerPlan *pl = (KozouLayerPlan *)calloc(1, sizeof(KozouLayerPlan));
+    if (!pl) return NULL;
+    fz_pixmap *below = NULL;
+    fz_pixmap *cover = NULL;
+    fz_var(below); fz_var(cover);
+
+    fz_try(ctx) {
+        float scale = dpi / 72.0f;
+        kozou_collect_partial_cover_regions(ctx, render_page, scale,
+                                            bg_pix->w, bg_pix->h, want_layers, &pl->regions);
+        if (pl->regions.sbits) {
+            int seq0 = -1, seq1 = -1;
+            below = kozou_render_page_filtered(ctx, render_page, bounds, dpi, supersample_max,
+                                               pl->regions.sbits, pl->regions.nseq, 0, &seq0);
+            cover = kozou_render_page_filtered(ctx, render_page, bounds, dpi, supersample_max,
+                                               pl->regions.sbits, pl->regions.nseq, 1, &seq1);
+            /* 数え方が記録側と一致しない、または大きさが合わないページは、層分割を
+             * 諦めて全領域を従来のパッチにする。 */
+            int ok = below && cover &&
+                     seq0 == pl->regions.nseq && seq1 == pl->regions.nseq &&
+                     below->w == bg_pix->w && below->h == bg_pix->h && below->n >= 3 &&
+                     cover->w == bg_pix->w && cover->h == bg_pix->h && cover->n == 4;
+            if (!ok) {
+                for (int i = 0; i < pl->regions.n; i++) pl->regions.v[i].elig = 0;
+                fz_warn(ctx, "compose_image_pdf_keep_text: layer split disabled for this page "
+                             "(paint count mismatch: %d/%d vs %d)", seq0, seq1, pl->regions.nseq);
+            } else {
+                /* 背景の、層分割する領域だけを BG_below に差し替える */
+                for (int i = 0; i < pl->regions.n; i++) {
+                    if (!pl->regions.v[i].elig) continue;
+                    fz_irect r = pl->regions.v[i].r;
+                    for (int y = r.y0; y < r.y1; y++)
+                        memcpy(bg_pix->samples + (size_t)y * bg_pix->stride + (size_t)r.x0 * bg_pix->n,
+                               below->samples  + (size_t)y * below->stride  + (size_t)r.x0 * below->n,
+                               (size_t)(r.x1 - r.x0) * (size_t)(bg_pix->n < below->n ? bg_pix->n : below->n));
+                }
+                pl->cover_layer = cover;
+                cover = NULL;
+            }
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_pixmap(ctx, below);
+        fz_drop_pixmap(ctx, cover);
+    }
+    fz_catch(ctx) {
+        kozou_layer_plan_free(ctx, pl);
+        fz_rethrow(ctx);
+    }
+    return pl;
+}
+
+/* 層分割する領域の覆い層 (RGBA を、背景と同じ画素格子で切り出したもの) を PDF に追加し、
+ * テキストの上に重ねる content 片を追記する。追加した枚数を返す。 */
+static int kozou_keeptext_emit_overlays(
+    fz_context *ctx, pdf_document *dst, const KozouLayerPlan *pl, int page_index,
+    int W, int H, float mb_x0, float mb_y0, float pw_pt, float ph_pt,
+    pdf_obj *xobj_dict, fz_buffer *content_out)
+{
+    int added = 0;
+    const fz_pixmap *C = pl ? pl->cover_layer : NULL;
+    if (!C) return 0;
+    for (int i = 0; i < pl->regions.n; i++) {
+        if (!pl->regions.v[i].elig) continue;
+        fz_irect r = pl->regions.v[i].r;
+        /* 覆い層のアルファが0でない画素の外接矩形 (覆いが実際にある範囲だけ画像にする) */
+        fz_irect t = { r.x1, r.y1, r.x0, r.y0 };
+        for (int y = r.y0; y < r.y1; y++) {
+            const unsigned char *row = C->samples + (size_t)y * C->stride;
+            for (int x = r.x0; x < r.x1; x++) {
+                if (row[(size_t)x * 4 + 3]) {
+                    if (x < t.x0) t.x0 = x;
+                    if (x + 1 > t.x1) t.x1 = x + 1;
+                    if (y < t.y0) t.y0 = y;
+                    if (y + 1 > t.y1) t.y1 = y + 1;
+                }
+            }
+        }
+        if (t.x1 <= t.x0 || t.y1 <= t.y0) continue;
+        int tw = t.x1 - t.x0, th = t.y1 - t.y0;
+
+        fz_pixmap *rgb  = NULL;
+        fz_buffer *mbuf = NULL;
+        fz_var(rgb); fz_var(mbuf);
+        fz_try(ctx) {
+            fz_irect pb = { 0, 0, tw, th };
+            rgb  = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), pb, NULL, 0);
+            mbuf = fz_new_buffer(ctx, (size_t)tw * (size_t)th);
+            for (int y = 0; y < th; y++) {
+                const unsigned char *crow = C->samples + (size_t)(t.y0 + y) * C->stride +
+                                            (size_t)t.x0 * 4;
+                unsigned char *drow = rgb->samples + (size_t)y * rgb->stride;
+                unsigned char *arow = (unsigned char *)malloc((size_t)tw);
+                if (!arow) fz_throw(ctx, FZ_ERROR_GENERIC, "overlay: out of memory");
+                for (int x = 0; x < tw; x++) {
+                    int a = crow[x * 4 + 3];
+                    arow[x] = (unsigned char)a;
+                    for (int c = 0; c < 3; c++) {
+                        /* 前乗算 -> 非前乗算 (丸め付き) */
+                        int v = a ? ((int)crow[x * 4 + c] * 255 + a / 2) / a : 0;
+                        drow[x * 3 + c] = (unsigned char)(v > 255 ? 255 : v);
+                    }
+                }
+                fz_try(ctx) fz_append_data(ctx, mbuf, arow, (size_t)tw);
+                fz_always(ctx) free(arow);
+                fz_catch(ctx) fz_rethrow(ctx);
+            }
+            char name[64];
+            snprintf(name, sizeof(name), "KzOv%d_%d", page_index, added);
+            kozou_emit_masked_image(ctx, dst, rgb, mbuf, tw, th, t, W, H,
+                                    mb_x0, mb_y0, pw_pt, ph_pt, name, xobj_dict, content_out);
+            added++;
+        }
+        fz_always(ctx) {
+            fz_drop_buffer(ctx, mbuf);
+            fz_drop_pixmap(ctx, rgb);
+        }
+        fz_catch(ctx) {
+            fz_rethrow(ctx);
+        }
+    }
+    return added;
+}
+
 static int kozou_keeptext_add_partial_covers(
     fz_context *ctx, pdf_document *dst, fz_page *render_page, fz_rect bounds,
     float dpi, int supersample_max, int page_index,
     fz_pixmap *nt_pix, fz_image *bg_image,
     float mb_x0, float mb_y0, float pw_pt, float ph_pt,
-    pdf_obj *xobj_dict, fz_buffer *content_out)
+    pdf_obj *xobj_dict, fz_buffer *content_out, KozouLayerPlan *plan)
 {
     const char *env = getenv("KOZOU_KEEPTEXT_COVER");
     if (env && env[0] == '0') return 0;
     if (!nt_pix || nt_pix->w <= 0 || nt_pix->h <= 0 || nt_pix->n < 3) return 0;
 
-    KozouCoverRegionList regions;
-    memset(&regions, 0, sizeof(regions));
+    /* plan があれば、領域収集と層分割の判定は済んでいる (背景も差し替え済み)。
+     * なければ (層分割を使わない経路) ここで収集する。 */
+    KozouCoverRegionList own_regions;
+    memset(&own_regions, 0, sizeof(own_regions));
+    KozouCoverRegionList *regions = plan ? &plan->regions : &own_regions;
     fz_pixmap *full  = NULL;
     fz_pixmap *dec   = NULL;
     fz_pixmap *layer = NULL;
@@ -6827,10 +7615,18 @@ static int kozou_keeptext_add_partial_covers(
 
     fz_try(ctx) {
         float scale = dpi / 72.0f;
-        kozou_collect_partial_cover_regions(ctx, render_page, scale,
-                                            nt_pix->w, nt_pix->h, &regions);
-        if (regions.n > 0) {
-            kozou_cover_regions_merge_all(&regions);
+        if (!plan)
+            kozou_collect_partial_cover_regions(ctx, render_page, scale,
+                                                nt_pix->w, nt_pix->h, 0, &own_regions);
+        else
+            /* 層分割する領域: 覆い層 (RGBA) をテキストの上に重ねる */
+            added += kozou_keeptext_emit_overlays(
+                ctx, dst, plan, page_index, nt_pix->w, nt_pix->h,
+                mb_x0, mb_y0, pw_pt, ph_pt, xobj_dict, content_out);
+
+        int n_old = 0;
+        for (int i = 0; i < regions->n; i++) if (!regions->v[i].elig) n_old++;
+        if (n_old > 0) {
 
             /* 元ページの全描画 (テキスト込み)。背景と同じ ctm/サイズ/
              * スーパーサンプリング設定で描くので、同一の画素格子になる。 */
@@ -6880,13 +7676,14 @@ static int kozou_keeptext_add_partial_covers(
             if (!srcpx || srcpx->w != nt_pix->w || srcpx->h != nt_pix->h || srcpx->n < 1)
                 srcpx = nt_pix;
 
-            for (int k = 0; k < regions.n; k++) {
-                fz_irect r = regions.v[k].r;
+            for (int k = 0; k < regions->n; k++) {
+                if (regions->v[k].elig) continue; /* 層分割で再現済み */
+                fz_irect r = regions->v[k].r;
                 unsigned char *mask = NULL;
                 fz_irect tight;
                 long cnt = kozou_cover_compute_mask(
                     full, nt_pix, layer, r,
-                    kozou_cover_dilate_px(regions.v[k].em, scale), &mask, &tight);
+                    kozou_cover_dilate_px(regions->v[k].em, scale), &mask, &tight);
                 if (cnt <= 0 || !mask) continue;
 
                 int rw = r.x1 - r.x0;
@@ -6894,12 +7691,7 @@ static int kozou_keeptext_add_partial_covers(
 
                 fz_pixmap *rgb   = NULL;
                 fz_buffer *mbuf  = NULL;
-                pdf_obj   *mdict = NULL;
-                pdf_obj   *mref  = NULL;
-                fz_image  *pimg  = NULL;
-                pdf_obj   *pref  = NULL;
-                fz_var(rgb); fz_var(mbuf); fz_var(mdict); fz_var(mref);
-                fz_var(pimg); fz_var(pref);
+                fz_var(rgb); fz_var(mbuf);
 
                 fz_try(ctx) {
                     fz_irect pb = { 0, 0, tw, th };
@@ -6934,54 +7726,16 @@ static int kozou_keeptext_add_partial_covers(
                         fz_append_data(ctx, mbuf, kmask, (size_t)tw);
                     }
 
-                    pimg = fz_new_image_from_pixmap(ctx, rgb, NULL);
-                    pref = pdf_add_image(ctx, dst, pimg);
-                    /* 背景 (KzBgImg) と同じく DeviceRGB と明示する (理由は背景画像側の
-                     * コメント参照)。パッチの画素は背景と同じ DeviceRGB の値。 */
-                    pdf_dict_put(ctx, pref, PDF_NAME(ColorSpace), PDF_NAME(DeviceRGB));
-                    /* SMask は 8ビットの DeviceGray 画像として自前で作る。
-                     * MuPDF の pdf_add_image は、0/255 だけのマスクを 1ビットの
-                     * CCITT G4 で書き出すが、pdf.js は CCITT/JBIG2 の復号に wasm が
-                     * 必要で、wasm が使えない環境ではパッチが描かれず、隠した文字が
-                     * 見えてしまう。8ビットの無圧縮ストリーム (保存時に Flate で
-                     * 圧縮される) なら、どのビューアでも追加のデコーダ無しで読める。
-                     * マスクは 0/255 だけなので Flate でよく縮み、サイズ増は僅か。
-                     * 色空間は、PDF仕様上 DeviceGray でなければならない。 */
-                    mdict = pdf_new_dict(ctx, dst, 8);
-                    pdf_dict_put(ctx, mdict, PDF_NAME(Type), PDF_NAME(XObject));
-                    pdf_dict_put(ctx, mdict, PDF_NAME(Subtype), PDF_NAME(Image));
-                    pdf_dict_put_int(ctx, mdict, PDF_NAME(Width), tw);
-                    pdf_dict_put_int(ctx, mdict, PDF_NAME(Height), th);
-                    pdf_dict_put(ctx, mdict, PDF_NAME(ColorSpace), PDF_NAME(DeviceGray));
-                    pdf_dict_put_int(ctx, mdict, PDF_NAME(BitsPerComponent), 8);
-                    mref = pdf_add_stream(ctx, dst, mbuf, mdict, 0);
-                    pdf_dict_put(ctx, pref, PDF_NAME(SMask), mref);
-
                     char name[64];
                     snprintf(name, sizeof(name), "KzCov%d_%d", page_index, added);
-                    pdf_dict_puts(ctx, xobj_dict, name, pref);
-
-                    /* 背景画像 (KzBgImg) と同じ画素格子に厳密に合わせて配置する。
-                     * 背景は単位正方形をページ全体 (pw_pt x ph_pt) に写像しており、
-                     * 画像の行は上から数える (PDFのy軸は上向き)。 */
-                    float W = (float)nt_pix->w, H = (float)nt_pix->h;
-                    float x0n = (float)tight.x0 / W, x1n = (float)tight.x1 / W;
-                    float y0n = (float)tight.y0 / H, y1n = (float)tight.y1 / H;
-                    fz_append_printf(ctx, content_out,
-                        "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/%s Do\nQ\n",
-                        pw_pt * (x1n - x0n), ph_pt * (y1n - y0n),
-                        mb_x0 + pw_pt * x0n,
-                        mb_y0 + ph_pt * (1.0f - y1n),
-                        name);
+                    kozou_emit_masked_image(ctx, dst, rgb, mbuf, tw, th, tight,
+                                            nt_pix->w, nt_pix->h, mb_x0, mb_y0, pw_pt, ph_pt,
+                                            name, xobj_dict, content_out);
                     added++;
                 }
                 fz_always(ctx) {
                     free(mask);
-                    pdf_drop_obj(ctx, mref);
-                    pdf_drop_obj(ctx, mdict);
                     fz_drop_buffer(ctx, mbuf);
-                    pdf_drop_obj(ctx, pref);
-                    fz_drop_image(ctx, pimg);
                     fz_drop_pixmap(ctx, rgb);
                 }
                 fz_catch(ctx) {
@@ -6991,7 +7745,8 @@ static int kozou_keeptext_add_partial_covers(
         }
     }
     fz_always(ctx) {
-        free(regions.v);
+        free(own_regions.v);
+        free(own_regions.sbits);
         fz_drop_pixmap(ctx, layer);
         fz_drop_pixmap(ctx, dec);
         fz_drop_pixmap(ctx, full);
