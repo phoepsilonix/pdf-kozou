@@ -6784,6 +6784,12 @@ typedef struct {
      * 無ければ NULL。malloc で確保 (呼び出し側が free)。 */
     unsigned char    *sbits;
     int               nseq;
+    /* sbits で選んだ塗り自体の外接矩形 (画素座標) を、近接するもの同士1つに
+     * まとめたクラスタ。背景の穴・覆い層は、検出領域 (v[].r) ではなくこちらを
+     * 単位にする。詳細は kozou_build_paint_clusters のコメント参照。
+     * 層分割する領域が無ければ NULL/0。malloc で確保 (呼び出し側が free)。 */
+    fz_irect         *paint_clusters;
+    int               n_paint_clusters;
 } KozouCoverRegionList;
 
 static double kozou_irect_area(fz_irect r)
@@ -7043,6 +7049,11 @@ static void kozou_layer_eligibility(
 
 /* 部分的に隠れていた文字の候補領域(ピクセル座標)を集める。
  * page は元ページ。scale は dpi/72。pix_w/pix_h は背景画像の画素数。 */
+/* 前方宣言 (定義は本ファイル後方、kozou_keeptext_plan_layers の近く)。
+ * kozou_collect_partial_cover_regions が、覆い層の対象領域を確定した直後に
+ * 呼ぶ (list->paints を解放する前に、塗り自体の外接矩形を控えておくため)。 */
+static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedList *L, float scale);
+
 static void kozou_collect_partial_cover_regions(
     fz_context *ctx, fz_page *page, float scale, int pix_w, int pix_h,
     int want_layers, KozouCoverRegionList *out)
@@ -7179,8 +7190,10 @@ static void kozou_collect_partial_cover_regions(
             /* 近接する領域をまとめた後で、層分割できる領域を決める
              * (まとめる前後で領域が変わると、判定がずれるため) */
             kozou_cover_regions_merge_all(out);
-            if (want_layers)
+            if (want_layers) {
                 kozou_layer_eligibility(list, stext, g_head, g_next, out, scale);
+                kozou_build_paint_clusters(out, list, scale);
+            }
         }
     }
     fz_always(ctx) {
@@ -7438,7 +7451,7 @@ static void kozou_emit_masked_image(
 /* それ以外の領域は、従来のマスク付きパッチ (kozou_keeptext_add_partial_covers)。 */
 /* ================================================================== */
 struct KozouLayerPlan {
-    KozouCoverRegionList regions;   /* 全領域 (elig 付き) */
+    KozouCoverRegionList regions;   /* 全領域 (elig 付き)。paint_clusters も持つ */
     fz_pixmap           *cover_layer; /* 覆い層 C (RGBA, 前乗算)。層分割する領域があるときだけ */
 };
 
@@ -7447,6 +7460,7 @@ static void kozou_layer_plan_free(fz_context *ctx, KozouLayerPlan *pl)
     if (!pl) return;
     free(pl->regions.v);
     free(pl->regions.sbits);
+    free(pl->regions.paint_clusters);
     fz_drop_pixmap(ctx, pl->cover_layer);
     free(pl);
 }
@@ -7471,6 +7485,60 @@ static int kozou_irect_touch(fz_irect a, fz_irect b, int gap)
 {
     return a.x0 - gap < b.x1 && b.x0 - gap < a.x1 &&
            a.y0 - gap < b.y1 && b.y0 - gap < a.y1;
+}
+
+/* sbits で選んだ塗り (paints[k], k=0..out->nseq-1, sbits[k]=1) の実際の外接矩形
+ * (画素座標) を、近接するもの同士1つにまとめたクラスタにして out->paint_clusters
+ * に格納する。
+ *
+ * 背景の穴・覆い層は、隠れていた文字の検出領域 (out->v[].r) ではなく、この
+ * 「塗り自体の外接矩形」を単位にする。1つの塗り (帯や図形) が複数の検出領域に
+ * またがって隠している場合 (例: 1つの帯が複数行の文字を隠す。1つの図形の一部が
+ * 別々の文字にかかる場合も含む)、検出領域ごとに切ると、その境界は塗りの
+ * 「途中」を通ることになる。背景側は非可逆圧縮 (JPEG/PNG量子化) なので、
+ * 鋭い境界の近くでリンギング(縁のにじみ)を起こしやすく、この境界が塗りの
+ * 内側にあると、可逆な覆い層の色とのわずかな食い違いが細い筋として見えて
+ * しまう (実機で確認された不具合)。塗り自体の外接矩形を単位にすれば、背景の
+ * 穴と覆い層の境界は常に塗りの本当の縁 (元から鋭い境界だった場所) に来るため、
+ * 途中に境界ができない。 */
+static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedList *L, float scale)
+{
+    if (!out->sbits || out->nseq <= 0 || !L->paints) return;
+    fz_irect *v = (fz_irect *)malloc(sizeof(fz_irect) * (size_t)out->nseq);
+    if (!v) return;
+    int n = 0;
+    for (int k = 0; k < out->nseq && k < L->paint_count; k++) {
+        if (!out->sbits[k]) continue;
+        const KozouPaintRec *p = &L->paints[k];
+        fz_irect r;
+        r.x0 = (int)floorf(p->x0 * scale);
+        r.y0 = (int)floorf(p->y0 * scale);
+        r.x1 = (int)ceilf (p->x1 * scale);
+        r.y1 = (int)ceilf (p->y1 * scale);
+        if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
+        v[n++] = r;
+    }
+    for (int pass = 0; pass < 8 && n > 1; pass++) {
+        int changed = 0;
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                if (kozou_irect_touch(v[i], v[j], KOZOU_OVERLAY_CLUSTER_GAP_PX)) {
+                    fz_irect u;
+                    u.x0 = fz_mini(v[i].x0, v[j].x0);
+                    u.y0 = fz_mini(v[i].y0, v[j].y0);
+                    u.x1 = fz_maxi(v[i].x1, v[j].x1);
+                    u.y1 = fz_maxi(v[i].y1, v[j].y1);
+                    v[i] = u;
+                    v[j] = v[n - 1];
+                    n--; j--; changed = 1;
+                }
+            }
+        }
+        if (!changed) break;
+    }
+    free(out->paint_clusters);
+    out->paint_clusters = v;
+    out->n_paint_clusters = n;
 }
 
 static KozouLayerPlan *kozou_keeptext_plan_layers(
@@ -7509,11 +7577,16 @@ static KozouLayerPlan *kozou_keeptext_plan_layers(
                 for (int i = 0; i < pl->regions.n; i++) pl->regions.v[i].elig = 0;
                 fz_warn(ctx, "compose_image_pdf_keep_text: layer split disabled for this page "
                              "(paint count mismatch: %d/%d vs %d)", seq0, seq1, pl->regions.nseq);
+            } else if (pl->regions.n_paint_clusters <= 0) {
+                /* 層分割の対象になる塗りが無かった (elig な領域が結局無かった) */
+                for (int i = 0; i < pl->regions.n; i++) pl->regions.v[i].elig = 0;
             } else {
-                /* 背景の、層分割する領域だけを BG_below に差し替える */
-                for (int i = 0; i < pl->regions.n; i++) {
-                    if (!pl->regions.v[i].elig) continue;
-                    fz_irect r = kozou_irect_bleed(pl->regions.v[i].r,
+                /* 背景の、覆い層に回す塗り自体の外接矩形 (paint_clusters) だけを
+                 * BG_below に差し替える。検出領域 (v[].r) 単位ではなく塗り単位に
+                 * するのは、境界を常に塗りの本当の縁に置くため
+                 * (詳細は kozou_build_paint_clusters のコメント参照)。 */
+                for (int i = 0; i < pl->regions.n_paint_clusters; i++) {
+                    fz_irect r = kozou_irect_bleed(pl->regions.paint_clusters[i],
                                                    KOZOU_LAYER_BLEED_PX, bg_pix->w, bg_pix->h);
                     for (int y = r.y0; y < r.y1; y++)
                         memcpy(bg_pix->samples + (size_t)y * bg_pix->stride + (size_t)r.x0 * bg_pix->n,
@@ -7555,43 +7628,12 @@ static int kozou_keeptext_emit_overlays(
     const fz_pixmap *C = pl ? pl->cover_layer : NULL;
     if (!C) return 0;
 
-    /* elig な領域を、近接するもの同士1つのクラスタにまとめる (単純な O(n^2) 統合。
-     * 層分割の対象領域数は少ない想定なので許容する)。 */
-    int n = pl->regions.n;
-    fz_irect *clusters = (fz_irect *)malloc(sizeof(fz_irect) * (size_t)(n > 0 ? n : 1));
-    int nclusters = 0;
-    if (clusters) {
-        for (int i = 0; i < n; i++) {
-            if (!pl->regions.v[i].elig) continue;
-            clusters[nclusters++] = kozou_irect_bleed(pl->regions.v[i].r,
-                                                       KOZOU_LAYER_BLEED_PX, C->w, C->h);
-        }
-        for (int pass = 0; pass < 8; pass++) {
-            int changed = 0;
-            for (int i = 0; i < nclusters; i++) {
-                for (int j = i + 1; j < nclusters; j++) {
-                    if (kozou_irect_touch(clusters[i], clusters[j], KOZOU_OVERLAY_CLUSTER_GAP_PX)) {
-                        fz_irect u;
-                        u.x0 = fz_mini(clusters[i].x0, clusters[j].x0);
-                        u.y0 = fz_mini(clusters[i].y0, clusters[j].y0);
-                        u.x1 = fz_maxi(clusters[i].x1, clusters[j].x1);
-                        u.y1 = fz_maxi(clusters[i].y1, clusters[j].y1);
-                        clusters[i] = u;
-                        clusters[j] = clusters[nclusters - 1];
-                        nclusters--; j--; changed = 1;
-                    }
-                }
-            }
-            if (!changed) break;
-        }
-    }
-
-    for (int ci = 0; ci < nclusters; ci++) {
-        fz_irect r = clusters[ci];
-        if (r.x0 < 0) r.x0 = 0;
-        if (r.y0 < 0) r.y0 = 0;
-        if (r.x1 > C->w) r.x1 = C->w;
-        if (r.y1 > C->h) r.y1 = C->h;
+    /* 覆い層の各枚数は、背景の穴と同じ paint_clusters (塗り自体の外接矩形を
+     * まとめたクラスタ) を使う。plan_layers 側の背景差し替えと必ず同じ範囲に
+     * なるようにするため。 */
+    for (int ci = 0; ci < pl->regions.n_paint_clusters; ci++) {
+        fz_irect r = kozou_irect_bleed(pl->regions.paint_clusters[ci],
+                                       KOZOU_LAYER_BLEED_PX, C->w, C->h);
         /* 覆い層の画像は、アルファが0でない画素だけに切り詰めず、背景側で差し替えた
          * 穴 (クラスタの矩形そのもの) と全く同じ範囲にする。切り詰めると、背景の
          * 穴の縁 (差し替えで生じた鋭い境界) が JPEG 圧縮のリンギング (縁のにじみ) を
@@ -7640,11 +7682,9 @@ static int kozou_keeptext_emit_overlays(
             fz_drop_pixmap(ctx, rgb);
         }
         fz_catch(ctx) {
-            free(clusters);
             fz_rethrow(ctx);
         }
     }
-    free(clusters);
     return added;
 }
 
