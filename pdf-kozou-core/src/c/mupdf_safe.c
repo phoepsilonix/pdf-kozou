@@ -7453,6 +7453,26 @@ static void kozou_layer_plan_free(fz_context *ctx, KozouLayerPlan *pl)
 
 /* bg_pix (背景の全描画: テキスト除外) を、層分割する領域だけ BG_below に差し替える。
  * 呼び出しは、背景を保存する前。失敗したら NULL を返し、bg_pix は変更しない。 */
+#define KOZOU_OVERLAY_CLUSTER_GAP_PX 3
+/* 背景の穴 (差し替え範囲) と覆い層の両方に使う、追加の縁取り (画素)。JPEG圧縮の
+ * リンギングは境界の外側にも数画素にじみ得るため、検出した範囲より少し広めに
+ * 穴を開け、覆い層も同じだけ広く重ねることで、にじみを覆い層の下に収める。 */
+#define KOZOU_LAYER_BLEED_PX 3
+static fz_irect kozou_irect_bleed(fz_irect r, int px, int w, int h)
+{
+    r.x0 -= px; r.y0 -= px; r.x1 += px; r.y1 += px;
+    if (r.x0 < 0) r.x0 = 0;
+    if (r.y0 < 0) r.y0 = 0;
+    if (r.x1 > w) r.x1 = w;
+    if (r.y1 > h) r.y1 = h;
+    return r;
+}
+static int kozou_irect_touch(fz_irect a, fz_irect b, int gap)
+{
+    return a.x0 - gap < b.x1 && b.x0 - gap < a.x1 &&
+           a.y0 - gap < b.y1 && b.y0 - gap < a.y1;
+}
+
 static KozouLayerPlan *kozou_keeptext_plan_layers(
     fz_context *ctx, fz_page *render_page, fz_rect bounds,
     float dpi, int supersample_max, fz_pixmap *bg_pix)
@@ -7493,7 +7513,8 @@ static KozouLayerPlan *kozou_keeptext_plan_layers(
                 /* 背景の、層分割する領域だけを BG_below に差し替える */
                 for (int i = 0; i < pl->regions.n; i++) {
                     if (!pl->regions.v[i].elig) continue;
-                    fz_irect r = pl->regions.v[i].r;
+                    fz_irect r = kozou_irect_bleed(pl->regions.v[i].r,
+                                                   KOZOU_LAYER_BLEED_PX, bg_pix->w, bg_pix->h);
                     for (int y = r.y0; y < r.y1; y++)
                         memcpy(bg_pix->samples + (size_t)y * bg_pix->stride + (size_t)r.x0 * bg_pix->n,
                                below->samples  + (size_t)y * below->stride  + (size_t)r.x0 * below->n,
@@ -7517,6 +7538,14 @@ static KozouLayerPlan *kozou_keeptext_plan_layers(
 
 /* 層分割する領域の覆い層 (RGBA を、背景と同じ画素格子で切り出したもの) を PDF に追加し、
  * テキストの上に重ねる content 片を追記する。追加した枚数を返す。 */
+/* 隣接/近接する層分割領域を1枚の画像にまとめるためのクラスタ化。
+ *
+ * 個々の領域ごとに別々の画像で覆い層を出力すると、閲覧側によっては隣り合う
+ * 画像の境界に、サブピクセルの丸め (拡大縮小や配置の補間) が原因の細い隙間
+ * (背景の白が透けて見える「白い筋」) が出ることがある。1枚の連続した塗り
+ * (例: 複数行の文字にまたがる帯) が、たまたま文字ごとに複数の領域に分かれて
+ * いる場合に特に目立つ。近接する領域を1枚の画像にまとめ、画像同士の境界を
+ * 減らすことでこれを避ける。 */
 static int kozou_keeptext_emit_overlays(
     fz_context *ctx, pdf_document *dst, const KozouLayerPlan *pl, int page_index,
     int W, int H, float mb_x0, float mb_y0, float pw_pt, float ph_pt,
@@ -7525,22 +7554,52 @@ static int kozou_keeptext_emit_overlays(
     int added = 0;
     const fz_pixmap *C = pl ? pl->cover_layer : NULL;
     if (!C) return 0;
-    for (int i = 0; i < pl->regions.n; i++) {
-        if (!pl->regions.v[i].elig) continue;
-        fz_irect r = pl->regions.v[i].r;
-        /* 覆い層のアルファが0でない画素の外接矩形 (覆いが実際にある範囲だけ画像にする) */
-        fz_irect t = { r.x1, r.y1, r.x0, r.y0 };
-        for (int y = r.y0; y < r.y1; y++) {
-            const unsigned char *row = C->samples + (size_t)y * C->stride;
-            for (int x = r.x0; x < r.x1; x++) {
-                if (row[(size_t)x * 4 + 3]) {
-                    if (x < t.x0) t.x0 = x;
-                    if (x + 1 > t.x1) t.x1 = x + 1;
-                    if (y < t.y0) t.y0 = y;
-                    if (y + 1 > t.y1) t.y1 = y + 1;
+
+    /* elig な領域を、近接するもの同士1つのクラスタにまとめる (単純な O(n^2) 統合。
+     * 層分割の対象領域数は少ない想定なので許容する)。 */
+    int n = pl->regions.n;
+    fz_irect *clusters = (fz_irect *)malloc(sizeof(fz_irect) * (size_t)(n > 0 ? n : 1));
+    int nclusters = 0;
+    if (clusters) {
+        for (int i = 0; i < n; i++) {
+            if (!pl->regions.v[i].elig) continue;
+            clusters[nclusters++] = kozou_irect_bleed(pl->regions.v[i].r,
+                                                       KOZOU_LAYER_BLEED_PX, C->w, C->h);
+        }
+        for (int pass = 0; pass < 8; pass++) {
+            int changed = 0;
+            for (int i = 0; i < nclusters; i++) {
+                for (int j = i + 1; j < nclusters; j++) {
+                    if (kozou_irect_touch(clusters[i], clusters[j], KOZOU_OVERLAY_CLUSTER_GAP_PX)) {
+                        fz_irect u;
+                        u.x0 = fz_mini(clusters[i].x0, clusters[j].x0);
+                        u.y0 = fz_mini(clusters[i].y0, clusters[j].y0);
+                        u.x1 = fz_maxi(clusters[i].x1, clusters[j].x1);
+                        u.y1 = fz_maxi(clusters[i].y1, clusters[j].y1);
+                        clusters[i] = u;
+                        clusters[j] = clusters[nclusters - 1];
+                        nclusters--; j--; changed = 1;
+                    }
                 }
             }
+            if (!changed) break;
         }
+    }
+
+    for (int ci = 0; ci < nclusters; ci++) {
+        fz_irect r = clusters[ci];
+        if (r.x0 < 0) r.x0 = 0;
+        if (r.y0 < 0) r.y0 = 0;
+        if (r.x1 > C->w) r.x1 = C->w;
+        if (r.y1 > C->h) r.y1 = C->h;
+        /* 覆い層の画像は、アルファが0でない画素だけに切り詰めず、背景側で差し替えた
+         * 穴 (クラスタの矩形そのもの) と全く同じ範囲にする。切り詰めると、背景の
+         * 穴の縁 (差し替えで生じた鋭い境界) が JPEG 圧縮のリンギング (縁のにじみ) を
+         * 起こした場合に、その縁が覆い層でちょうど覆われず、白い筋として見えて
+         * しまう。穴と覆い層を常に同じ範囲にすることで、縁のにじみは必ず覆い層の
+         * 下に隠れる (アルファ0の画素は、覆い層自身が透明なので背景がそのまま
+         * 透けるだけで、見た目には影響しない)。 */
+        fz_irect t = r;
         if (t.x1 <= t.x0 || t.y1 <= t.y0) continue;
         int tw = t.x1 - t.x0, th = t.y1 - t.y0;
 
@@ -7581,9 +7640,11 @@ static int kozou_keeptext_emit_overlays(
             fz_drop_pixmap(ctx, rgb);
         }
         fz_catch(ctx) {
+            free(clusters);
             fz_rethrow(ctx);
         }
     }
+    free(clusters);
     return added;
 }
 
