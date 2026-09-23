@@ -13238,7 +13238,7 @@ static pdf_obj *kozou_compose_page_to_xobject(
  * バック」等、安全側の扱いをすること)。                                */
 static pdf_obj *kozou_compose_page_to_text_only_xobject(
     fz_context *ctx, pdf_document *src, pdf_document *dst,
-    pdf_graft_map *gmap, int pno)
+    pdf_graft_map *gmap, int pno, float dpi, int supersample_max)
 {
     pdf_obj *pageref = pdf_lookup_page_obj(ctx, src, pno); /* borrowed */
 
@@ -13355,6 +13355,58 @@ static pdf_obj *kozou_compose_page_to_text_only_xobject(
             }
             kozou_fontusage_free(&font_usage_pg);
             kozou_nameset_free(&used_fonts_pg);
+        }
+
+        /* オブジェクトの裏(あるいは半透明のオブジェクト越し)に隠れて
+         * いた文字を、kozou_compose_image_pdf_keep_text (1up) と同じ
+         * 仕組みで隠し直す。テキストはこの時点で無条件に stripped に
+         * 残っているので、その上に「覆いだったもの」をもう一度描き
+         * 重ねる。ここで生成する内容は、常に元ページ自身の座標系
+         * (bbox / dpi 基準) で作るため、この Form 全体が呼び出し側の
+         * cm (面付けの拡大縮小・配置) で変換されるときに、テキストと
+         * 覆いが一緒に正しく変換される。                              */
+        {
+            fz_page   *rpage    = NULL;
+            fz_pixmap *bg_pix   = NULL;
+            fz_image  *bg_ph    = NULL;
+            KozouLayerPlan *plan = NULL;
+            fz_var(rpage); fz_var(bg_pix); fz_var(bg_ph); fz_var(plan);
+            fz_try(ctx) {
+                rpage  = fz_load_page(ctx, (fz_document *)src, pno);
+                bg_pix = kozou_render_page_to_pixmap(ctx, rpage, bbox, dpi,
+                                                     supersample_max, 1, NULL, NULL);
+                plan = kozou_keeptext_plan_layers(ctx, rpage, bbox, dpi,
+                                                  supersample_max, bg_pix);
+                /* add_partial_covers が「実際に埋め込む背景画像」の色を
+                 * 復号して土台にするための fz_image。ここでは面付け後の
+                 * シート全体の背景 (imposition側で別途JPEG/PNG化される)
+                 * とは別物で、ページ単位のこの一時ラスタをそのまま
+                 * 使う (サイズが一致するので、無圧縮の nt_pix そのものを
+                 * 使うのと同じことになる)。                            */
+                bg_ph = fz_new_image_from_pixmap(ctx, bg_pix, NULL);
+                kozou_keeptext_emit_overlays(
+                    ctx, dst, plan, pno, bg_pix->w, bg_pix->h,
+                    bbox.x0, bbox.y0, bbox.x1 - bbox.x0, bbox.y1 - bbox.y0,
+                    xobj_dict, stripped);
+                kozou_keeptext_add_partial_covers(
+                    ctx, dst, rpage, bbox, dpi, supersample_max, pno,
+                    bg_pix, bg_ph,
+                    bbox.x0, bbox.y0, bbox.x1 - bbox.x0, bbox.y1 - bbox.y0,
+                    xobj_dict, stripped, plan);
+            }
+            fz_always(ctx) {
+                kozou_layer_plan_free(ctx, plan);
+                fz_drop_image(ctx, bg_ph);
+                fz_drop_pixmap(ctx, bg_pix);
+                if (rpage) fz_drop_page(ctx, rpage);
+            }
+            fz_catch(ctx) {
+                /* 隠し直しに失敗しても、テキストのみ版そのものの生成は
+                 * 継続する (安全側: 何も重ねない = 従来どおりの見た目)。 */
+                fz_warn(ctx, "compose_page_to_text_only_xobject: page %d: "
+                             "cover re-application failed, continuing without "
+                             "it: %s", pno + 1, fz_caught_message(ctx));
+            }
         }
 
         /* Matrix は identity。配置(縮小・平行移動・回転)は呼び出し側の
@@ -13755,7 +13807,8 @@ void kozou_compose_imposition_pdf_keep_text(
                     if (pno < 0 || pno >= page_count) continue;
 
                     if (!xcache[pno])
-                        xcache[pno] = kozou_compose_page_to_text_only_xobject(ctx, src, dst, gmap, pno);
+                        xcache[pno] = kozou_compose_page_to_text_only_xobject(
+                            ctx, src, dst, gmap, pno, dpi, supersample_max);
                     pdf_obj *xobj = xcache[pno];
                     if (!xobj) continue; /* 失敗時はそのセルはテキストなし(背景のみ)にフォールバック */
 
