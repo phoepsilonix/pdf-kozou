@@ -6774,6 +6774,18 @@ typedef struct {
     fz_irect r;
     float    em;       /* この領域の、閲覧側で字形が食い違い得る文字の最大フォントサイズ (pt)。0=なし */
     int      min_ev;   /* この領域の隠れた文字の、最も若い描画順 (event_index) */
+    int      max_ev;   /* この領域の隠れた文字の、最も遅い描画順 (event_index)。
+                         * 「このpaintは本当にこの領域を覆っているか」の判定は、
+                         * min_ev ではなく必ずこちら(max_ev)を基準にすること。
+                         * 領域が複数行(複数の元文字)をまとめたものである場合、
+                         * min_ev は先頭行の文字の描画順にしかならず、それより後・
+                         * 領域内の後続行の文字よりは前に描かれた「後続行自身の
+                         * 背景(帯など)」を、min_ev基準では誤って「覆い」と
+                         * 判定してしまう(実例: mk_05.py のように、行ごとに
+                         * 帯→その行の文字を交互に描くページで、1つの覆い矩形が
+                         * 複数行にまたがって検出領域が結合された場合)。
+                         * max_ev基準なら、領域内の全文字より後に描かれたpaintだけが
+                         * 「覆い」と判定されるため、この誤判定を避けられる。 */
     int      elig;     /* 1=層分割 (背景の下層 + ベクター文字 + 覆い層) で再現する / 0=マスク付きパッチ */
 } KozouCoverRegion;
 
@@ -6826,6 +6838,7 @@ static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r, float em
             L->v[k].r = m;
             if (em > L->v[k].em) L->v[k].em = em;
             if (min_ev < L->v[k].min_ev) L->v[k].min_ev = min_ev;
+            if (min_ev > L->v[k].max_ev) L->v[k].max_ev = min_ev;
             return;
         }
     }
@@ -6840,6 +6853,7 @@ static void kozou_cover_region_add(KozouCoverRegionList *L, fz_irect r, float em
     L->v[L->n].r      = r;
     L->v[L->n].em     = em;
     L->v[L->n].min_ev = min_ev;
+    L->v[L->n].max_ev = min_ev;
     L->v[L->n].elig   = 0;
     L->n++;
 }
@@ -6856,6 +6870,7 @@ static void kozou_cover_regions_merge_all(KozouCoverRegionList *L)
                     L->v[i].r = m;
                     if (L->v[j].em > L->v[i].em) L->v[i].em = L->v[j].em;
                     if (L->v[j].min_ev < L->v[i].min_ev) L->v[i].min_ev = L->v[j].min_ev;
+                    if (L->v[j].max_ev > L->v[i].max_ev) L->v[i].max_ev = L->v[j].max_ev;
                     L->v[j] = L->v[L->n - 1];
                     L->n--;
                     j--;
@@ -6968,7 +6983,12 @@ static void kozou_layer_eligibility(
         int cnt = 0, bad = 0, min_s = 0x7fffffff;
         for (int k = 0; k < np; k++) {
             const KozouPaintRec *p = &L->paints[k];
-            if (p->ev <= g->min_ev) continue;
+            /* g->min_ev ではなく g->max_ev: 領域が複数行をまとめたものである
+             * 場合、「本当にこの領域の(全)文字を覆っているpaint」かどうかは、
+             * 領域内で最も遅く描かれた文字より後かどうかで判定する必要がある。
+             * min_ev基準だと、先頭行より後・後続行より前に描かれた「後続行
+             * 自身の背景」を誤って覆いだと判定してしまう。 */
+            if (p->ev <= g->max_ev) continue;
             if (!kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1)) continue;
             cnt++;
             if (p->bad) bad = 1;
@@ -6989,7 +7009,7 @@ static void kozou_layer_eligibility(
             float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
             for (int k = 0; k < np; k++) {
                 const KozouPaintRec *p = &L->paints[k];
-                if (p->ev > g->min_ev &&
+                if (p->ev > g->max_ev &&
                     kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1))
                     sb[k] = 1;
             }
@@ -7002,7 +7022,7 @@ static void kozou_layer_eligibility(
             float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
             for (int k = 0; k < np; k++) {
                 const KozouPaintRec *p = &L->paints[k];
-                if (sb[k] && p->ev <= g->min_ev &&
+                if (sb[k] && p->ev <= g->max_ev &&
                     kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1)) {
                     out->v[i].elig = 0; changed = 1; break;
                 }
@@ -7038,7 +7058,7 @@ static void kozou_layer_eligibility(
         float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
         for (int k = 0; k < np; k++) {
             const KozouPaintRec *p = &L->paints[k];
-            if (p->ev > g->min_ev &&
+            if (p->ev > g->max_ev &&
                 kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1))
                 sb[k] = 1;
         }
@@ -7541,6 +7561,23 @@ static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedLis
     out->n_paint_clusters = n;
 }
 
+/* KOZOU_COVER_CLUSTER_MAX_PAGE_RATIO: paint_clusters の1つの面積が、ページ全体の
+ * 面積に対してこの割合を超えたら「異常に巨大」とみなし、層分割全体を諦める
+ * (詳細は呼び出し側のコメント参照)。通常の覆い(短い隠し文字1〜数個分)は
+ * ページの数%にも満たないはずなので、0.15程度は十分に安全側のマージンを持つ。 */
+#define KOZOU_COVER_CLUSTER_MAX_PAGE_RATIO 0.15
+
+static int kozou_paint_clusters_too_large(const fz_irect *clusters, int n, int W, int H)
+{
+    double page_area = (double)W * (double)H;
+    if (page_area <= 0.0) return 0;
+    for (int i = 0; i < n; i++) {
+        double a = kozou_irect_area(clusters[i]);
+        if (a > KOZOU_COVER_CLUSTER_MAX_PAGE_RATIO * page_area) return 1;
+    }
+    return 0;
+}
+
 static KozouLayerPlan *kozou_keeptext_plan_layers(
     fz_context *ctx, fz_page *render_page, fz_rect bounds,
     float dpi, int supersample_max, fz_pixmap *bg_pix)
@@ -7579,6 +7616,17 @@ static KozouLayerPlan *kozou_keeptext_plan_layers(
                              "(paint count mismatch: %d/%d vs %d)", seq0, seq1, pl->regions.nseq);
             } else if (pl->regions.n_paint_clusters <= 0) {
                 /* 層分割の対象になる塗りが無かった (elig な領域が結局無かった) */
+                for (int i = 0; i < pl->regions.n; i++) pl->regions.v[i].elig = 0;
+            } else if (kozou_paint_clusters_too_large(
+                           pl->regions.paint_clusters, pl->regions.n_paint_clusters,
+                           bg_pix->w, bg_pix->h)) {
+                /* 保険: 想定外の原因(未知のev取り違え等)で1クラスタが
+                 * ページの大半を占めるほど巨大化した場合、そのまま覆い層に
+                 * すると保持テキストの広い範囲を巻き込んでしまう。層分割を
+                 * 諦めて全域を従来のマスク付きパッチ(狭い範囲だけを個別に
+                 * 覆う、安全側)にフォールバックする。 */
+                fz_warn(ctx, "compose_image_pdf_keep_text: paint cluster too large "
+                             "relative to page, falling back to masked patches");
                 for (int i = 0; i < pl->regions.n; i++) pl->regions.v[i].elig = 0;
             } else {
                 /* 背景の、覆い層に回す塗り自体の外接矩形 (paint_clusters) だけを
