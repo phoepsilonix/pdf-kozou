@@ -175,6 +175,10 @@ export default function App() {
   // 狭幅時、上部の表示設定メニューを畳んでおくためのトグル（フローティング表示）
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dragCounter = useRef(0);
+  // dragenter/dragleave の取りこぼし（一部WebView実装でのドラッグ中オートスクロール時など）に
+  // よって dragCounter が0に戻らず dragOver が固定されてしまった場合の保険。
+  // dragenter を受けるたびにタイマーを延長し、一定時間 dragenter が来なければ強制的に解除する。
+  const dragOverResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { locale, setLocale, t } = useI18n();
@@ -603,13 +607,27 @@ export default function App() {
       onDragOver={(e) => e.preventDefault()}
       onDragEnter={(e) => {
         e.preventDefault();
+        // このオーバーレイはOSからのファイルドロップ専用。ファイル一覧内の並び替え
+        // ドラッグ（dataTransferに "fileId" のみをセットしたもの）はここでは扱わず、
+        // dataTransfer.types に "Files" を含む場合（外部ファイルのドラッグ）だけ反応する。
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
         dragCounter.current++;
         setDragOver(true);
+        if (dragOverResetTimer.current) clearTimeout(dragOverResetTimer.current);
+        dragOverResetTimer.current = setTimeout(() => {
+          dragCounter.current = 0;
+          setDragOver(false);
+        }, 1000);
       }}
-      onDragLeave={() => {
+      onDragLeave={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
         if (--dragCounter.current <= 0) {
           setDragOver(false);
           dragCounter.current = 0;
+          if (dragOverResetTimer.current) {
+            clearTimeout(dragOverResetTimer.current);
+            dragOverResetTimer.current = null;
+          }
         }
       }}
     >
@@ -1237,20 +1255,32 @@ function FileRow({
         tts.speak(info);
       }}
       onDragStart={(e) => {
+        e.stopPropagation();
         setIsDragging(true);
         e.dataTransfer.setData("fileId", String(entry.id));
       }}
-      onDragEnd={() => {
+      onDragEnd={(e) => {
+        e.stopPropagation();
         setIsDragging(false);
         setIsDragOver(false);
       }}
+      onDragEnter={(e) => {
+        // 一覧内の並び替えドラッグを、ルート要素の外部ファイルドロップ検出から隔離する。
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       onDragOver={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragOver(true);
       }}
-      onDragLeave={() => setIsDragOver(false)}
+      onDragLeave={(e) => {
+        e.stopPropagation();
+        setIsDragOver(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragOver(false);
         const fid = parseInt(e.dataTransfer.getData("fileId") || "0", 10);
         if (fid && fid !== entry.id) onDragReorder(fid, entry.id);
