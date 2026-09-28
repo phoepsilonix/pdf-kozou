@@ -811,10 +811,7 @@ export interface TrimMargins {
 }
 
 export type PageSelection =
-  | { type: "All" }
-  | { type: "Even" }
-  | { type: "Odd" }
-  | { type: "Range"; pages: number[] };
+  { type: "All" } | { type: "Even" } | { type: "Odd" } | { type: "Range"; pages: number[] };
 
 // ── 形式変換 ──────────────────────────────────────────────────────────────────
 

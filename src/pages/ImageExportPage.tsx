@@ -1949,7 +1949,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
              * 画像化PDF(1up)・画像ファイル出力(1up)・面付け(N-up/製本、
              * 画像化PDF/画像ファイルどちらの出力でも)の全パスに適用される
              * ため、outputMode/impositionModeに関わらず常に表示する。 */}
-            {(
+            {
               <div
                 style={{
                   border: "1px dashed #6b8fc9",
@@ -1987,7 +1987,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   </div>
                 )}
               </div>
-            )}
+            }
             {/* 面付けモード（通常変換時のみ。画像・PDF出力どちらでも利用可） */}
             {processDir === "normal" && format !== "svg" && (
               <>

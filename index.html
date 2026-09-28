@@ -10,8 +10,12 @@
          .kozou-spinner クラスを付与した要素は即座にアニメーションが始まる。 -->
     <style>
       @keyframes kozou-spin {
-        0%   { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
       }
       .kozou-spinner {
         animation: kozou-spin 1.6s ease-in-out infinite;
@@ -23,7 +27,12 @@
          計測するが、その時点でまだ body の既定 margin:8px が外れていないと計測値が
          ズレ、WebKitGTK 環境ではそのズレがそのままスクロールバーとして露出する。
          ここで最初から確定させておけば、initUiScale() の初回計測から正しい値になる。 */
-      html, body { margin: 0; height: 100%; overflow: hidden; }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+      }
     </style>
     <link rel="stylesheet" href="/src/index.css" />
   </head>
