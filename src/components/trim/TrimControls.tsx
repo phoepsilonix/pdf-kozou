@@ -251,6 +251,13 @@ export function TrimControls({
 
         <p style={s.hint}>{t("trim_controls.drag_hint")}</p>
 
+        {/* 狭幅では固定ナビ側のチェックボックスに説明(note)を出せないため、設定パネルに説明を出す */}
+        {hideActionBar && onPreviewCompressChange && (
+          <p style={s.hint}>
+            {t(`trim.preview_compress_note${previewCompressVariant === "batch" ? "_batch" : ""}`)}
+          </p>
+        )}
+
         {/*
 	<label
           style={{
