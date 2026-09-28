@@ -153,7 +153,6 @@ function TrimPageBatch({
   const [trimPages, onPages] = useState("all");
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
-  const [cropCleanup] = useState(false);
   // 各ファイルのトリミング後に redact + オブジェクトストリームの標準圧縮を掛けて出力するか（既定 ON・永続化）
   const previewCompress = usePdfStore((st) => st.trimPreviewCompress);
   const setPreviewCompress = usePdfStore((st) => st.setTrimPreviewCompress);
@@ -374,7 +373,6 @@ function TrimPageBatch({
             convertLayoutW,
             convertLayoutH,
             convertLayoutEm,
-            cropCleanup,
           );
           if (needFit && psize) {
             await fitTrimmedToPageSize(
@@ -422,7 +420,6 @@ function TrimPageBatch({
       convertLayoutW,
       convertLayoutH,
       convertLayoutEm,
-      cropCleanup,
       previewCompress,
       finalizeMobileOutput,
       announceSuccess,
@@ -1058,7 +1055,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [trimPages, onPages] = useState("all");
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
-  const [cropCleanup, setCropCleanup] = useState(false);
   // プレビュー時に redact + オブジェクトストリーム有効の標準圧縮を掛けるか（既定 ON・永続化）
   const previewCompress = usePdfStore((st) => st.trimPreviewCompress);
   const setPreviewCompress = usePdfStore((st) => st.setTrimPreviewCompress);
@@ -1185,7 +1181,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         convertLayoutW,
         convertLayoutH,
         convertLayoutEm,
-        cropCleanup,
       );
       if (needFit && psize) {
         await fitTrimmedToPageSize(
@@ -1282,7 +1277,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     setError,
     pageSizeId,
     pageOrientation,
-    cropCleanup,
     previewCompress,
     convertLayoutH,
     setPages,
@@ -1630,8 +1624,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             onExclude={onExclude}
             extractSpec={extractSpec}
             onExtract={onExtract}
-            cropCleanup={cropCleanup}
-            onCropCleanupChange={setCropCleanup}
             previewCompress={previewCompress}
             onPreviewCompressChange={setPreviewCompress}
             showImagePageSize={hasImage([filePath])}

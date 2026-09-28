@@ -13,6 +13,7 @@ import { FS } from "../../lib/typography";
 import { usePdfStore } from "../../store/usePdfStore";
 import { PageSelector } from "../PageSelector";
 import { PageSizeSelector } from "../PageSizeSelector";
+import { RedactMarginSection } from "./RedactMarginSection";
 
 interface Props {
   margins: TrimMargins;
@@ -26,8 +27,6 @@ interface Props {
   onReset: () => void;
   processing: boolean;
   applyLabel?: string;
-  cropCleanup?: boolean;
-  onCropCleanupChange?: (v: boolean) => void;
   /** プレビュー時に redact + オブジェクトストリーム有効の標準圧縮を掛けるか */
   previewCompress?: boolean;
   onPreviewCompressChange?: (v: boolean) => void;
@@ -68,8 +67,6 @@ export function TrimControls({
   onReset,
   processing,
   applyLabel,
-  cropCleanup: _cropCleanup = false,
-  onCropCleanupChange: _onCropCleanupChange,
   previewCompress = false,
   onPreviewCompressChange,
   previewCompressVariant = "preview",
@@ -260,38 +257,8 @@ export function TrimControls({
           </p>
         )}
 
-        {/*
-	<label
-          style={{
-            display: "flex",
-            gap: 6,
-            alignItems: "flex-start",
-            padding: "6px 0 2px",
-            cursor: "pointer",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={cropCleanup}
-            onChange={(e) => onCropCleanupChange?.(e.target.checked)}
-            style={{ marginTop: 2, flexShrink: 0 }}
-          />
-          <span>
-            <span style={{ fontSize: FS.caption }}>{t("trim.crop_cleanup")}</span>
-            <span
-              style={{
-                display: "block",
-                fontSize: FS.caption,
-                color: "var(--c-textDim)",
-                lineHeight: 1.4,
-                marginTop: 2,
-              }}
-            >
-              {t("trim.crop_cleanup_note")}
-            </span>
-          </span>
-        </label>
-	*/}
+        {/* 圧縮時の redact 余白。圧縮画面と共通の設定を、ここでも変更できる */}
+        {onPreviewCompressChange && <RedactMarginSection disabled={!previewCompress} />}
       </div>
 
       {/* 下部固定の操作帯（スクロールしない・常に最下部に表示）
