@@ -27,6 +27,9 @@ interface Props {
   applyLabel?: string;
   cropCleanup?: boolean;
   onCropCleanupChange?: (v: boolean) => void;
+  /** プレビュー時に redact + オブジェクトストリーム有効の標準圧縮を掛けるか */
+  previewCompress?: boolean;
+  onPreviewCompressChange?: (v: boolean) => void;
   // バッチ用: 出力フォルダ選択
   outDir?: string;
   onPickDir?: () => void;
@@ -64,6 +67,8 @@ export function TrimControls({
   applyLabel,
   cropCleanup: _cropCleanup = false,
   onCropCleanupChange: _onCropCleanupChange,
+  previewCompress = false,
+  onPreviewCompressChange,
   outDir,
   onPickDir,
   excludeSpec,
@@ -282,29 +287,90 @@ export function TrimControls({
           （呼び出し側が共通の固定実行ボタンを別途用意している場合）。
           リセットは他に導線がないため常に表示する。 */}
       <section style={s.actions}>
-        <button
-          type="button"
-          style={s.btnReset}
-          onClick={onReset}
-          disabled={processing}
-          aria-label={t("trim_controls.reset")}
-        >
-          {t("trim_controls.reset")}
-        </button>
-        {!hideActionBar && (
+        {/* プレビュー時の圧縮オプション。プレビューボタンの直上に置く。
+            hideActionBar 時（狭幅）は呼び出し側の固定ナビ側に同等のものを出す。 */}
+        {!hideActionBar && onPreviewCompressChange && (
+          <PreviewCompressOption
+            checked={previewCompress}
+            onChange={onPreviewCompressChange}
+            disabled={processing}
+          />
+        )}
+        <div style={s.actionsRow}>
           <button
             type="button"
-            style={{ ...s.btnApply, ...(processing ? s.btnDisabled : {}) }}
-            onClick={!outDir && onPickDir ? onPickDir : onApply}
+            style={s.btnReset}
+            onClick={onReset}
             disabled={processing}
+            aria-label={t("trim_controls.reset")}
           >
-            {processing
-              ? t("trim_controls.processing")
-              : (applyLabel ?? t("trim_controls.preview"))}
+            {t("trim_controls.reset")}
           </button>
-        )}
+          {!hideActionBar && (
+            <button
+              type="button"
+              style={{ ...s.btnApply, ...(processing ? s.btnDisabled : {}) }}
+              onClick={!outDir && onPickDir ? onPickDir : onApply}
+              disabled={processing}
+            >
+              {processing
+                ? t("trim_controls.processing")
+                : (applyLabel ?? t("trim_controls.preview"))}
+            </button>
+          )}
+        </div>
       </section>
     </div>
+  );
+}
+
+/** トリミングのプレビュー時に圧縮(redact + オブジェクトストリーム)を掛けるかのチェックボックス */
+export function PreviewCompressOption({
+  checked,
+  onChange,
+  disabled,
+  compact = false,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  const { t } = useI18n();
+  return (
+    <label
+      style={{
+        display: "flex",
+        gap: 6,
+        alignItems: "flex-start",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ marginTop: 2, flexShrink: 0 }}
+      />
+      <span>
+        <span style={{ fontSize: FS.caption }}>{t("trim.preview_compress")}</span>
+        {!compact && (
+          <span
+            style={{
+              display: "block",
+              fontSize: FS.caption,
+              color: "var(--c-textDim)",
+              lineHeight: 1.4,
+              marginTop: 2,
+            }}
+          >
+            {t("trim.preview_compress_note")}
+          </span>
+        )}
+      </span>
+    </label>
   );
 }
 
@@ -441,11 +507,13 @@ const s: Record<string, React.CSSProperties> = {
   actions: {
     flexShrink: 0,
     display: "flex",
+    flexDirection: "column",
     gap: 8,
     padding: "10px 14px",
     borderTop: "1px solid var(--c-border)",
     background: "var(--c-bgCard)",
   },
+  actionsRow: { display: "flex", gap: 8 },
   btnReset: {
     padding: "10px 14px",
     background: "transparent",

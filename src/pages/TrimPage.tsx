@@ -13,7 +13,7 @@ import { FixedMobileNav } from "../components/FixedMobileNav";
 import { MetadataEditModal } from "../components/MetadataEditModal";
 import { PreviewPane } from "../components/PreviewPane";
 import { TrimCanvas } from "../components/trim/TrimCanvas";
-import { TrimControls } from "../components/trim/TrimControls";
+import { PreviewCompressOption, TrimControls } from "../components/trim/TrimControls";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
@@ -34,7 +34,9 @@ import {
 import { resolvePageSizePt } from "../lib/pageSize";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import {
+  type CompressRequest,
   composeImpositionPdf,
+  compressPdf,
   getPdfInfo,
   getUniqueTempPath,
   isAndroid,
@@ -1023,6 +1025,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
   const [cropCleanup, setCropCleanup] = useState(false);
+  // プレビュー時に redact + オブジェクトストリーム有効の標準圧縮を掛けるか（既定 ON・永続化）
+  const previewCompress = usePdfStore((st) => st.trimPreviewCompress);
+  const setPreviewCompress = usePdfStore((st) => st.setTrimPreviewCompress);
   const { pickSave, commitSave, discardSave } = useSaveDialog();
   const [outTmp, setOutTmp] = useState<string>("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
@@ -1117,8 +1122,10 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     await new Promise((resolve) => setTimeout(resolve, 0));
     setResultImgs([]);
     try {
-      const tmpPath = await getUniqueTempPath("trimmed_tmp", "pdf");
-      setOutTmp(tmpPath);
+      const trimmedPath = await getUniqueTempPath("trimmed_tmp", "pdf");
+      setOutTmp(trimmedPath);
+      // 以降のプレビュー生成・保存に使うパス（圧縮に成功したら圧縮後のファイルに切り替える）
+      let tmpPath = trimmedPath;
 
       console.log(
         "[DEBUG] trim_pdf",
@@ -1133,7 +1140,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       // 画像入力 + ページサイズ指定時は「自然サイズでトリム → 結果を目標サイズへフィット」。
       // マージンは自然サイズ基準のまま使えるので座標の割合再計算が不要。
       const needFit = hasImage([filePath]) && psize != null;
-      const trimOut = needFit ? await getUniqueTempPath("trimmed_natural_tmp", "pdf") : tmpPath;
+      const trimOut = needFit ? await getUniqueTempPath("trimmed_natural_tmp", "pdf") : trimmedPath;
       const res = await trimPdf(
         filePath,
         trimOut,
@@ -1149,10 +1156,53 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       if (needFit && psize) {
         await fitTrimmedToPageSize(
           trimOut,
-          tmpPath,
+          trimmedPath,
           psize,
           pageOrientation === "auto" && pageSizeId !== "image",
         );
+      }
+
+      // トリミングだけでは CropBox を設定するのみで領域外の内容が残るため、
+      // プレビュー時に redact（領域外の物理削除）+ オブジェクトストリーム有効の
+      // 標準圧縮を掛け、その結果をそのまま表示・保存対象にする。
+      // 圧縮に失敗してもトリミング結果自体は有効なので、警告のみでフォールバックする。
+      if (previewCompress) {
+        try {
+          const compressedPath = await getUniqueTempPath("trimmed_compressed_tmp", "pdf");
+          const st = usePdfStore.getState();
+          const redactMarginOpts: Pick<
+            CompressRequest,
+            | "redact_margin_pt"
+            | "redact_margin_top"
+            | "redact_margin_bottom"
+            | "redact_margin_left"
+            | "redact_margin_right"
+          > = st.redactMarginLinked
+            ? { redact_margin_pt: st.redactMarginPt }
+            : {
+                redact_margin_pt: st.redactMarginPt,
+                redact_margin_top: st.redactMarginTop,
+                redact_margin_bottom: st.redactMarginBottom,
+                redact_margin_left: st.redactMarginLeft,
+                redact_margin_right: st.redactMarginRight,
+              };
+          const cres = await compressPdf(trimmedPath, compressedPath, {
+            preset: "standard",
+            redact_outside_crop: true,
+            object_stream: true,
+            ...redactMarginOpts,
+            layout_w: convertLayoutW,
+            layout_h: convertLayoutH,
+            layout_em: convertLayoutEm,
+          });
+          console.log("[DEBUG] trim preview compress:", cres);
+          tmpPath = compressedPath;
+          setOutTmp(compressedPath);
+          // 圧縮前の中間ファイルは不要になるので破棄（失敗しても無視）
+          invoke("remove_file", { path: trimmedPath }).catch(() => {});
+        } catch (ce) {
+          console.warn("[WARN] trim preview compress failed (fallback to uncompressed):", ce);
+        }
       }
       /*
       .then(() => { 
@@ -1220,6 +1270,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     pageSizeId,
     pageOrientation,
     cropCleanup,
+    previewCompress,
     convertLayoutH,
     setPages,
     convertLayoutW,
@@ -1568,6 +1619,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             onExtract={onExtract}
             cropCleanup={cropCleanup}
             onCropCleanupChange={setCropCleanup}
+            previewCompress={previewCompress}
+            onPreviewCompressChange={setPreviewCompress}
             showImagePageSize={hasImage([filePath])}
             hideActionBar={isNarrow}
           />
@@ -1581,9 +1634,17 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           toSecondLabel={t("common.jump_to_trim_settings")}
           toFirstLabel={t("common.jump_to_canvas")}
         >
-          <BtnPrimary onClick={handleExecute} disabled={phase !== "edit"}>
-            {phase !== "edit" ? t("trim_controls.processing") : t("trim_controls.preview")}
-          </BtnPrimary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
+            <PreviewCompressOption
+              compact
+              checked={previewCompress}
+              onChange={setPreviewCompress}
+              disabled={phase !== "edit"}
+            />
+            <BtnPrimary onClick={handleExecute} disabled={phase !== "edit"}>
+              {phase !== "edit" ? t("trim_controls.processing") : t("trim_controls.preview")}
+            </BtnPrimary>
+          </div>
         </FixedMobileNav>
       )}
     </div>

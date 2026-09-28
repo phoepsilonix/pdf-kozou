@@ -322,6 +322,8 @@
     "preview_fail": "プレビュー失敗",
     "crop_cleanup": "領域外リソース削除（試験的）",
     "crop_cleanup_note": "CropBox外の部品をlopdfで削除しファイルサイズを削減します。CropBoxと一部でも重なる部品は保持します。",
+    "preview_compress": "トリミング後に圧縮して表示・保存（redact＋オブジェクトストリーム）",
+    "preview_compress_note": "トリミング領域外の内容をredactで物理的に削除し、オブジェクトストリームを有効にした標準圧縮を掛けた結果をプレビュー・保存します。圧縮設定の余白などは圧縮画面の設定に従います。",
     "saved_title": "保存しました",
     "back_to_edit": "トリミングに戻る"
   },
