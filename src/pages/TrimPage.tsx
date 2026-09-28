@@ -34,9 +34,7 @@ import {
 import { resolvePageSizePt } from "../lib/pageSize";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import {
-  type CompressRequest,
   composeImpositionPdf,
-  compressPdf,
   getPdfInfo,
   getUniqueTempPath,
   isAndroid,
@@ -49,6 +47,7 @@ import {
   trimPdf,
 } from "../lib/tauri";
 import { F } from "../lib/theme";
+import { compressTrimmedPdf } from "../lib/trimCompress";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
@@ -155,6 +154,9 @@ function TrimPageBatch({
   const [excludeSpec, onExclude] = useState("");
   const [extractSpec, onExtract] = useState("all");
   const [cropCleanup] = useState(false);
+  // 各ファイルのトリミング後に redact + オブジェクトストリームの標準圧縮を掛けて出力するか（既定 ON・永続化）
+  const previewCompress = usePdfStore((st) => st.trimPreviewCompress);
+  const setPreviewCompress = usePdfStore((st) => st.setTrimPreviewCompress);
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [zoom, setZoom] = useState(0.75);
@@ -354,9 +356,14 @@ function TrimPageBatch({
           );
           const psize = resolvePageSizePt(pageSizeId, pageOrientation);
           const needFit = hasImage([f.filename]) && psize != null;
+          // 圧縮する場合は、トリミング(+フィット)結果をいったん中間ファイルに出し、
+          // 圧縮した結果を最終出力 out に書く。
+          const stagePath = previewCompress
+            ? await getUniqueTempPath("trimmed_batch_stage_tmp", "pdf")
+            : out;
           const trimOut = needFit
             ? await getUniqueTempPath("trimmed_natural_batch_tmp", "pdf")
-            : out;
+            : stagePath;
           const res = await trimPdf(
             f.path,
             trimOut,
@@ -372,10 +379,24 @@ function TrimPageBatch({
           if (needFit && psize) {
             await fitTrimmedToPageSize(
               trimOut,
-              out,
+              stagePath,
               psize,
               pageOrientation === "auto" && pageSizeId !== "image",
             );
+          }
+          if (previewCompress) {
+            try {
+              await compressTrimmedPdf(stagePath, out, {
+                layoutW: convertLayoutW,
+                layoutH: convertLayoutH,
+                layoutEm: convertLayoutEm,
+              });
+              invoke("remove_file", { path: stagePath }).catch(() => {});
+            } catch (ce) {
+              // 圧縮に失敗してもトリミング結果は有効なので、そのまま出力にフォールバックする
+              console.warn("[WARN] trim batch compress failed (fallback to uncompressed):", ce);
+              await moveFile(stagePath, out);
+            }
           }
           console.log("[DEBUG] trim_pdf 結果:", res);
           prog.done.push({ f: f.filename, saved: out.split(/[/\\]/).pop() ?? "" });
@@ -402,6 +423,7 @@ function TrimPageBatch({
       convertLayoutH,
       convertLayoutEm,
       cropCleanup,
+      previewCompress,
       finalizeMobileOutput,
       announceSuccess,
     ],
@@ -877,6 +899,9 @@ function TrimPageBatch({
               onExclude={onExclude}
               extractSpec={extractSpec}
               onExtract={onExtract}
+              previewCompress={previewCompress}
+              onPreviewCompressChange={setPreviewCompress}
+              previewCompressVariant="batch"
               showImagePageSize={files.some((f) => hasImage([f.filename]))}
               hideActionBar={isNarrow}
             />
@@ -897,13 +922,22 @@ function TrimPageBatch({
           toSecondLabel={t("common.jump_to_trim_settings")}
           toFirstLabel={t("common.jump_to_canvas")}
         >
-          <BtnPrimary onClick={handleExecute} disabled={phase !== "edit"}>
-            {phase !== "edit"
-              ? t("trim_controls.processing")
-              : outDir || mobile
-                ? t("trim.apply_label", { count: String(files.length) })
-                : t("trim.no_dir_apply")}
-          </BtnPrimary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
+            <PreviewCompressOption
+              compact
+              variant="batch"
+              checked={previewCompress}
+              onChange={setPreviewCompress}
+              disabled={phase !== "edit"}
+            />
+            <BtnPrimary onClick={handleExecute} disabled={phase !== "edit"}>
+              {phase !== "edit"
+                ? t("trim_controls.processing")
+                : outDir || mobile
+                  ? t("trim.apply_label", { count: String(files.length) })
+                  : t("trim.no_dir_apply")}
+            </BtnPrimary>
+          </div>
         </FixedMobileNav>
       )}
     </div>
@@ -1169,31 +1203,10 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       if (previewCompress) {
         try {
           const compressedPath = await getUniqueTempPath("trimmed_compressed_tmp", "pdf");
-          const st = usePdfStore.getState();
-          const redactMarginOpts: Pick<
-            CompressRequest,
-            | "redact_margin_pt"
-            | "redact_margin_top"
-            | "redact_margin_bottom"
-            | "redact_margin_left"
-            | "redact_margin_right"
-          > = st.redactMarginLinked
-            ? { redact_margin_pt: st.redactMarginPt }
-            : {
-                redact_margin_pt: st.redactMarginPt,
-                redact_margin_top: st.redactMarginTop,
-                redact_margin_bottom: st.redactMarginBottom,
-                redact_margin_left: st.redactMarginLeft,
-                redact_margin_right: st.redactMarginRight,
-              };
-          const cres = await compressPdf(trimmedPath, compressedPath, {
-            preset: "standard",
-            redact_outside_crop: true,
-            object_stream: true,
-            ...redactMarginOpts,
-            layout_w: convertLayoutW,
-            layout_h: convertLayoutH,
-            layout_em: convertLayoutEm,
+          const cres = await compressTrimmedPdf(trimmedPath, compressedPath, {
+            layoutW: convertLayoutW,
+            layoutH: convertLayoutH,
+            layoutEm: convertLayoutEm,
           });
           console.log("[DEBUG] trim preview compress:", cres);
           tmpPath = compressedPath;

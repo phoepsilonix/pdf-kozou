@@ -30,6 +30,8 @@ interface Props {
   /** プレビュー時に redact + オブジェクトストリーム有効の標準圧縮を掛けるか */
   previewCompress?: boolean;
   onPreviewCompressChange?: (v: boolean) => void;
+  /** 文言の種別。"batch" は各ファイル出力時に圧縮する旨の文言にする */
+  previewCompressVariant?: "preview" | "batch";
   // バッチ用: 出力フォルダ選択
   outDir?: string;
   onPickDir?: () => void;
@@ -69,6 +71,7 @@ export function TrimControls({
   onCropCleanupChange: _onCropCleanupChange,
   previewCompress = false,
   onPreviewCompressChange,
+  previewCompressVariant = "preview",
   outDir,
   onPickDir,
   excludeSpec,
@@ -294,6 +297,7 @@ export function TrimControls({
             checked={previewCompress}
             onChange={onPreviewCompressChange}
             disabled={processing}
+            variant={previewCompressVariant}
           />
         )}
         <div style={s.actionsRow}>
@@ -330,13 +334,16 @@ export function PreviewCompressOption({
   onChange,
   disabled,
   compact = false,
+  variant = "preview",
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
   compact?: boolean;
+  variant?: "preview" | "batch";
 }) {
   const { t } = useI18n();
+  const suffix = variant === "batch" ? "_batch" : "";
   return (
     <label
       style={{
@@ -355,7 +362,7 @@ export function PreviewCompressOption({
         style={{ marginTop: 2, flexShrink: 0 }}
       />
       <span>
-        <span style={{ fontSize: FS.caption }}>{t("trim.preview_compress")}</span>
+        <span style={{ fontSize: FS.caption }}>{t(`trim.preview_compress${suffix}`)}</span>
         {!compact && (
           <span
             style={{
@@ -366,7 +373,7 @@ export function PreviewCompressOption({
               marginTop: 2,
             }}
           >
-            {t("trim.preview_compress_note")}
+            {t(`trim.preview_compress_note${suffix}`)}
           </span>
         )}
       </span>
