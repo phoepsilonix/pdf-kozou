@@ -323,9 +323,11 @@
     "crop_cleanup": "領域外リソース削除（試験的）",
     "crop_cleanup_note": "CropBox外の部品をlopdfで削除しファイルサイズを削減します。CropBoxと一部でも重なる部品は保持します。",
     "preview_compress": "トリミング後に圧縮して表示・保存（redact＋オブジェクトストリーム）",
-    "preview_compress_note": "トリミング領域外の内容をredactで物理的に削除し、オブジェクトストリームを有効にした標準圧縮を掛けた結果をプレビュー・保存します。redactの余白（上下左右）は圧縮画面で設定した値（既定100pt）がそのまま使われます。redact自体は常に有効です。",
+    "preview_compress_note": "トリミング領域外の内容をredactで物理的に削除し、オブジェクトストリームを有効にした標準圧縮を掛けた結果をプレビュー・保存します。CropBoxの外側に残す幅(redact余白)は圧縮画面の設定に従います（現在: {{margin}}）。",
     "preview_compress_batch": "各ファイルをトリミング後に圧縮して出力（redact＋オブジェクトストリーム）",
-    "preview_compress_note_batch": "各ファイルのトリミング領域外の内容をredactで物理的に削除し、オブジェクトストリームを有効にした標準圧縮を掛けて出力します。redactの余白（上下左右）は圧縮画面で設定した値（既定100pt）がそのまま使われます。redact自体は常に有効です。圧縮に失敗したファイルはトリミングのみの結果を出力します。",
+    "preview_compress_note_batch": "各ファイルのトリミング領域外の内容をredactで物理的に削除し、オブジェクトストリームを有効にした標準圧縮を掛けて出力します。圧縮に失敗したファイルはトリミングのみの結果を出力します。CropBoxの外側に残す幅(redact余白)は圧縮画面の設定に従います（現在: {{margin}}）。",
+    "redact_margin_uniform": "上下左右 {{v}}pt",
+    "redact_margin_each": "上 {{top}} / 下 {{bottom}} / 左 {{left}} / 右 {{right}} pt",
     "saved_title": "保存しました",
     "back_to_edit": "トリミングに戻る"
   },
