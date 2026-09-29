@@ -324,6 +324,7 @@
     "preview_compress_note": "Deletes content outside the trim area. With a margin of 0, text or images at the boundary may be lost. The margin value is shared with the Compress feature.",
     "preview_compress_batch": "Compress each file after trimming",
     "preview_compress_note_batch": "Deletes content outside the trim area. With a margin of 0, text or images at the boundary may be lost. The margin value is shared with the Compress feature.",
+    "compress_failed_warning": "Compression failed, so this is the trim-only result. Content outside the trim area has not been removed.",
     "redact_margin_heading": "Redact margin for compression (pt)",
     "redact_margin_shared_note": "Width kept outside the CropBox.",
     "saved_title": "Saved",

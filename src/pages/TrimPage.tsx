@@ -145,7 +145,9 @@ function TrimPageBatch({
     current: number;
     done: { f: string; saved?: string }[];
     errors: { f: string; msg: string }[];
-  }>({ current: 0, done: [], errors: [] });
+    /** 処理自体は成功したが、圧縮に失敗してトリミングのみの結果で出力したファイル */
+    warnings: { f: string; msg: string }[];
+  }>({ current: 0, done: [], errors: [], warnings: [] });
   const [previewIdx, setPreviewIdx] = useState(0);
   const [previewPage, setPreviewPage] = useState(0);
   const [pageImage, setPageImage] = useState("");
@@ -332,6 +334,7 @@ function TrimPageBatch({
         current: 0,
         done: [] as { f: string; saved?: string }[],
         errors: [] as { f: string; msg: string }[],
+        warnings: [] as { f: string; msg: string }[],
       };
       setProgress({ ...prog });
       const producedPaths: string[] = [];
@@ -394,6 +397,8 @@ function TrimPageBatch({
               // 圧縮に失敗してもトリミング結果は有効なので、そのまま出力にフォールバックする
               console.warn("[WARN] trim batch compress failed (fallback to uncompressed):", ce);
               await moveFile(stagePath, out);
+              // 画面にも警告を出す（領域外が削除されていないまま出力されるため）
+              prog.warnings.push({ f: f.filename, msg: t("trim.compress_failed_warning") });
             }
           }
           console.log("[DEBUG] trim_pdf 結果:", res);
@@ -423,6 +428,7 @@ function TrimPageBatch({
       previewCompress,
       finalizeMobileOutput,
       announceSuccess,
+      t,
     ],
   );
 
@@ -458,6 +464,9 @@ function TrimPageBatch({
               <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}
+          {progress.warnings.map((w) => (
+            <WarnLogRow key={w.f} file={w.f} msg={w.msg} />
+          ))}
         </div>
         <Spinner />
       </div>
@@ -471,10 +480,13 @@ function TrimPageBatch({
         <span
           style={{
             fontSize: 56,
-            color: progress.errors.length ? "var(--c-warn)" : "var(--c-accent)",
+            color:
+              progress.errors.length || progress.warnings.length
+                ? "var(--c-warn)"
+                : "var(--c-accent)",
           }}
         >
-          {progress.errors.length ? "⚠" : "✓"}
+          {progress.errors.length || progress.warnings.length ? "⚠" : "✓"}
         </span>
         <div style={b.title}>
           {t("trim.batch_done_title", { count: String(progress.done.length) })}
@@ -526,6 +538,9 @@ function TrimPageBatch({
               <span style={b.logFile}>{e.f}</span>
               <span style={{ ...b.logMeta, color: "var(--c-err)" }}>{e.msg}</span>
             </div>
+          ))}
+          {progress.warnings.map((w) => (
+            <WarnLogRow key={w.f} file={w.f} msg={w.msg} />
           ))}
         </div>
         <button
@@ -1038,6 +1053,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [pageImage, setPageImage] = useState("");
   const [savedPath, setSavedPath] = useState("");
   const [errMsg, setErrMsg] = useState("");
+  // プレビュー時の圧縮に失敗し、トリミングのみの結果で表示している場合 true
+  const [compressFailed, setCompressFailed] = useState(false);
   const { isNarrow } = useViewport();
   const canvasTopRef = useRef<HTMLDivElement>(null);
   const settingsTopRef = useRef<HTMLDivElement>(null);
@@ -1151,6 +1168,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
     setResultImgs([]);
+    setCompressFailed(false);
     try {
       const trimmedPath = await getUniqueTempPath("trimmed_tmp", "pdf");
       setOutTmp(trimmedPath);
@@ -1210,6 +1228,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           invoke("remove_file", { path: trimmedPath }).catch(() => {});
         } catch (ce) {
           console.warn("[WARN] trim preview compress failed (fallback to uncompressed):", ce);
+          setCompressFailed(true);
         }
       }
       /*
@@ -1422,6 +1441,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
         }}
         onCompress={() => setPhase("compress")}
         isSaving={isSaving}
+        warning={compressFailed ? t("trim.compress_failed_warning") : undefined}
       />
     );
 
@@ -1657,6 +1677,23 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
 }
 
 // ── 結果ビュー ────────────────────────────────────────────────────────────────
+/** バッチの処理ログ用: 圧縮に失敗してトリミングのみで出力したファイルの警告行 */
+function WarnLogRow({ file, msg }: { file: string; msg: string }) {
+  return (
+    <div
+      style={{
+        ...b.logRow,
+        background: "var(--c-warnBg)",
+        borderColor: "var(--c-warnBd)",
+      }}
+    >
+      <span style={{ color: "var(--c-warn)" }}>⚠</span>
+      <span style={b.logFile}>{file}</span>
+      <span style={{ ...b.logMeta, color: "var(--c-warn)" }}>{msg}</span>
+    </div>
+  );
+}
+
 function ResultView({
   images,
   pageCount,
@@ -1664,6 +1701,7 @@ function ResultView({
   onBack,
   onCompress,
   isSaving,
+  warning,
 }: {
   images: string[];
   pageCount: number;
@@ -1671,6 +1709,8 @@ function ResultView({
   onBack: () => void;
   onCompress: () => void;
   isSaving: boolean;
+  /** 圧縮に失敗してトリミングのみの結果になっている場合の警告文 */
+  warning?: string;
 }) {
   const [localZoom, setLocalZoom] = useState(0.5);
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -1765,6 +1805,23 @@ function ResultView({
           </button>
         </div>
       </div>
+
+      {warning && (
+        <div
+          role="alert"
+          style={{
+            margin: "8px 24px 0",
+            padding: "8px 12px",
+            borderRadius: 6,
+            border: "1px solid var(--c-warnBd)",
+            background: "var(--c-warnBg)",
+            color: "var(--c-warn)",
+            fontSize: FS.small,
+          }}
+        >
+          ⚠ {warning}
+        </div>
+      )}
 
       <div style={r.gallery} ref={galleryRef}>
         {images.map((b64, i) => (
