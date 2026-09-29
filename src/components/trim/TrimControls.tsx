@@ -10,7 +10,6 @@ import { useI18n } from "../../lib/i18n";
 import type { TrimMargins } from "../../lib/tauri";
 import { F } from "../../lib/theme";
 import { FS } from "../../lib/typography";
-import { usePdfStore } from "../../store/usePdfStore";
 import { PageSelector } from "../PageSelector";
 import { PageSizeSelector } from "../PageSizeSelector";
 import { RedactMarginSection } from "./RedactMarginSection";
@@ -304,33 +303,10 @@ export function TrimControls({
   );
 }
 
-/**
- * プレビュー時の圧縮で使われる redact 余白(圧縮画面の設定)を、現在値つきの文字列にする。
- * 余白は圧縮画面の設定(usePdfStore)に従うため、標準(100pt)から変更していればその値になる。
- */
-function useRedactMarginLabel(): string {
-  const { t } = useI18n();
-  const linked = usePdfStore((st) => st.redactMarginLinked);
-  const uniform = usePdfStore((st) => st.redactMarginPt);
-  const top = usePdfStore((st) => st.redactMarginTop);
-  const bottom = usePdfStore((st) => st.redactMarginBottom);
-  const left = usePdfStore((st) => st.redactMarginLeft);
-  const right = usePdfStore((st) => st.redactMarginRight);
-  return linked
-    ? t("trim.redact_margin_uniform", { v: String(uniform) })
-    : t("trim.redact_margin_each", {
-        top: String(top),
-        bottom: String(bottom),
-        left: String(left),
-        right: String(right),
-      });
-}
-
-/** 圧縮オプションの説明文。redact 余白の現在値を含む */
+/** 圧縮オプションの説明文 */
 function PreviewCompressNoteText({ variant }: { variant: "preview" | "batch" }) {
   const { t } = useI18n();
-  const margin = useRedactMarginLabel();
-  return <>{t(`trim.preview_compress_note${variant === "batch" ? "_batch" : ""}`, { margin })}</>;
+  return <>{t(`trim.preview_compress_note${variant === "batch" ? "_batch" : ""}`)}</>;
 }
 
 /** トリミングのプレビュー時に圧縮(redact + オブジェクトストリーム)を掛けるかのチェックボックス */
