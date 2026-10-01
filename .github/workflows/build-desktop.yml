@@ -870,7 +870,9 @@ jobs:
             mkdir -p "$d"
             cp "$PROFILE" "$d/$UUID.mobileprovision"
           done
-          echo "Name:           $($PB -c 'Print :Name' "$PLIST")"
+          NAME=$($PB -c 'Print :Name' "$PLIST")
+          echo "IOS_PROFILE_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "Name:           $NAME"
           echo "UUID:           $UUID"
           echo "Team:           $($PB -c 'Print :TeamIdentifier:0' "$PLIST")"
           echo "App ID:         $($PB -c 'Print :Entitlements:application-identifier' "$PLIST")"
@@ -882,6 +884,33 @@ jobs:
             echo "Type:           App Store / Enterprise (ProvisionedDevices なし)"
           fi
           echo "get-task-allow: $($PB -c 'Print :Entitlements:get-task-allow' "$PLIST" 2>/dev/null || echo '?')"
+
+      # pbxproj に書き込んだ署名設定が Xcode 26 で反映されず「requires a provisioning profile」で
+      # 失敗するため、xcodebuild の build/archive にだけ署名設定をコマンドラインで追加する
+      # (コマンドライン指定は pbxproj より優先される)。exportArchive には触れない。
+      - name: Install xcodebuild shim (署名設定を強制)
+        if: ${{ steps.ios_signing.outputs.enabled == 'true' }}
+        run: |
+          SHIM_DIR="$RUNNER_TEMP/shim"
+          mkdir -p "$SHIM_DIR"
+          cat > "$SHIM_DIR/xcodebuild" <<'EOF'
+          #!/bin/bash
+          args=("$@")
+          act=0
+          for a in "$@"; do
+            case "$a" in build|archive) act=1 ;; esac
+          done
+          if [ "$act" = 1 ]; then
+            args+=(CODE_SIGN_STYLE=Manual
+                   "CODE_SIGN_IDENTITY=Apple Distribution"
+                   "PROVISIONING_PROFILE_SPECIFIER=${IOS_PROFILE_NAME}"
+                   "DEVELOPMENT_TEAM=${APPLE_DEVELOPMENT_TEAM}")
+          fi
+          echo "+ xcodebuild ${args[*]}" >&2
+          exec /usr/bin/xcodebuild "${args[@]}"
+          EOF
+          chmod +x "$SHIM_DIR/xcodebuild"
+          echo "$SHIM_DIR" >> "$GITHUB_PATH"
 
       - name: Build iOS (signed)
         if: ${{ steps.ios_signing.outputs.enabled == 'true' }}
