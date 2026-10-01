@@ -831,21 +831,44 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      # 署名用 Secrets (未設定・fork の PR では未署名ビルドにフォールバック)
+      #   IOS_CERTIFICATE          : Apple Distribution 証明書 (.p12) の base64
+      #   IOS_CERTIFICATE_PASSWORD : .p12 のパスワード
+      #   IOS_MOBILE_PROVISION     : App Store 用 .mobileprovision の base64
+      #   APPLE_DEVELOPMENT_TEAM   : Apple Developer の Team ID
+      - name: Check iOS signing secrets
+        id: ios_signing
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+        run: |
+          if [ -n "$IOS_CERTIFICATE" ] && [ -n "$IOS_MOBILE_PROVISION" ] && [ -n "$APPLE_DEVELOPMENT_TEAM" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::iOS signing secrets not set; building unsigned"
+          fi
+
+      - name: Build iOS (signed)
+        if: ${{ steps.ios_signing.outputs.enabled == 'true' }}
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+        run: |
+          export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
+          pnpm run tauri ios build --export-method app-store-connect --ci
+
       - name: Build iOS (unsigned)
+        if: ${{ steps.ios_signing.outputs.enabled != 'true' }}
         env:
           CODE_SIGNING_ALLOWED: "NO"
           CODE_SIGNING_REQUIRED: "NO"
-          #DEVELOPMENT_TEAM: ""
-          #APPLE_DEVELOPMENT_TEAM: ""
           TAURI_SIGNING_PRIVATE_KEY: ""   # 署名無効
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-          # CODE_SIGNING_ALLOWED: "NO"   # 必要に応じて xcconfig で制御
         run: |
-          #pnpm run build -- --target ios  # または
-          # pnpm exec tauri ios build --ci --no-sign
-          #pnpm run tauri:ios:build || pnpm run tauri ios build
-          #tauri ios build --ci --no-sign
-          #pnpm run tauri ios build -- --ci --no-sign
           export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
           pnpm run tauri ios build --export-method app-store-connect --ci --no-sign
 
