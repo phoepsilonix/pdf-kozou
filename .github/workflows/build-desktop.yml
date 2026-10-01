@@ -888,29 +888,43 @@ jobs:
       # pbxproj に書き込んだ署名設定が Xcode 26 で反映されず「requires a provisioning profile」で
       # 失敗するため、xcodebuild の build/archive にだけ署名設定をコマンドラインで追加する
       # (コマンドライン指定は pbxproj より優先される)。exportArchive には触れない。
+      # Tauri(cargo-mobile2)は xcodebuild を環境変数をほぼ空にして起動するため、
+      # 値は環境変数ではなくラッパーと同じフォルダのファイルに書き出して読ませる。
       - name: Install xcodebuild shim (署名設定を強制)
         if: ${{ steps.ios_signing.outputs.enabled == 'true' }}
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
         run: |
           SHIM_DIR="$RUNNER_TEMP/shim"
           mkdir -p "$SHIM_DIR"
+          printf '%s' "$IOS_PROFILE_NAME" > "$SHIM_DIR/profile_name"
+          printf '%s' "$APPLE_DEVELOPMENT_TEAM" > "$SHIM_DIR/team"
           cat > "$SHIM_DIR/xcodebuild" <<'EOF'
           #!/bin/bash
+          D="$(cd "$(dirname "$0")" && pwd)"
+          NAME="$(cat "$D/profile_name")"
+          TEAM="$(cat "$D/team")"
           args=("$@")
           act=0
           for a in "$@"; do
             case "$a" in build|archive) act=1 ;; esac
           done
           if [ "$act" = 1 ]; then
-            args+=(CODE_SIGN_STYLE=Manual
-                   "CODE_SIGN_IDENTITY=Apple Distribution"
-                   "PROVISIONING_PROFILE_SPECIFIER=${IOS_PROFILE_NAME}"
-                   "DEVELOPMENT_TEAM=${APPLE_DEVELOPMENT_TEAM}")
+            if [ -n "$NAME" ] && [ -n "$TEAM" ]; then
+              args+=(CODE_SIGN_STYLE=Manual
+                     "CODE_SIGN_IDENTITY=Apple Distribution"
+                     "PROVISIONING_PROFILE_SPECIFIER=${NAME}"
+                     "DEVELOPMENT_TEAM=${TEAM}")
+            else
+              echo "xcodebuild shim: profile name or team is empty; not overriding" >&2
+            fi
           fi
           echo "+ xcodebuild ${args[*]}" >&2
           exec /usr/bin/xcodebuild "${args[@]}"
           EOF
           chmod +x "$SHIM_DIR/xcodebuild"
           echo "$SHIM_DIR" >> "$GITHUB_PATH"
+          echo "shim profile_name length: $(printf '%s' "$IOS_PROFILE_NAME" | wc -c), team length: $(printf '%s' "$APPLE_DEVELOPMENT_TEAM" | wc -c)"
 
       - name: Build iOS (signed)
         if: ${{ steps.ios_signing.outputs.enabled == 'true' }}
