@@ -938,6 +938,10 @@ jobs:
       # Xcode が見ている値を表示する(原因調査用。Secrets の値は Actions がマスクする)
       - name: Debug iOS signing (失敗時のみ)
         if: ${{ failure() && steps.ios_signing.outputs.enabled == 'true' }}
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
         run: |
           set +e
           echo "=== pbxproj の変更点 (Tauri が書き換えた署名設定) ==="
@@ -951,6 +955,36 @@ jobs:
           xcodebuild -project src-tauri/gen/apple/pdf-kozou.xcodeproj -scheme pdf-kozou_iOS \
             -configuration release -sdk iphoneos -showBuildSettings 2>&1 \
             | grep -E 'CODE_SIGN_(STYLE|IDENTITY)|PROVISIONING_PROFILE|DEVELOPMENT_TEAM|PRODUCT_BUNDLE_IDENTIFIER'
+          echo "=== 証明書の突き合わせ: プロファイル内の証明書 と 登録した .p12 の証明書 (SHA-1) ==="
+          PLIST="$RUNNER_TEMP/profile.plist"
+          i=0
+          while CERT=$(plutil -extract "DeveloperCertificates.$i" raw -o - "$PLIST" 2>/dev/null); do
+            echo "profile[$i]: $(echo "$CERT" | base64 --decode | openssl x509 -inform DER -noout -fingerprint -sha1 -enddate 2>&1 | tr '\n' ' ')"
+            i=$((i+1))
+          done
+          echo "$IOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/dbg.p12"
+          echo "p12:        $(openssl pkcs12 -in "$RUNNER_TEMP/dbg.p12" -passin env:IOS_CERTIFICATE_PASSWORD -nokeys -clcerts 2>&1 | openssl x509 -noout -fingerprint -sha1 -enddate 2>&1 | tr '\n' ' ')"
+          rm -f "$RUNNER_TEMP/dbg.p12"
+          echo "=== プローブ: xcodebuild -dry-run で署名エラーが出るか比較 (ラッパーを通さず実体を直接実行) ==="
+          WS=src-tauri/gen/apple/pdf-kozou.xcodeproj/project.xcworkspace
+          PUUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PLIST")
+          probe() {
+            label="$1"; shift
+            echo "--- $label"
+            /usr/bin/xcodebuild -workspace "$WS" -scheme pdf-kozou_iOS -sdk iphoneos \
+              -configuration release build -dry-run "$@" 2>&1 \
+              | grep -E 'error:|BUILD (SUCCEEDED|FAILED)' | head -5
+          }
+          probe "A: pbxproj のまま"
+          probe "B: PROVISIONING_PROFILE_SPECIFIER=名前" "PROVISIONING_PROFILE_SPECIFIER=$IOS_PROFILE_NAME"
+          probe "C: PROVISIONING_PROFILE_SPECIFIER=UUID" "PROVISIONING_PROFILE_SPECIFIER=$PUUID"
+          probe "D: Manual + 汎用ID + 名前 + チーム" CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=Apple Distribution" \
+            "PROVISIONING_PROFILE_SPECIFIER=$IOS_PROFILE_NAME" "DEVELOPMENT_TEAM=$APPLE_DEVELOPMENT_TEAM"
+          echo "--- E: D の指定で解決される値"
+          /usr/bin/xcodebuild -project src-tauri/gen/apple/pdf-kozou.xcodeproj -scheme pdf-kozou_iOS \
+            -configuration release -sdk iphoneos -showBuildSettings CODE_SIGN_STYLE=Manual \
+            "PROVISIONING_PROFILE_SPECIFIER=$IOS_PROFILE_NAME" "DEVELOPMENT_TEAM=$APPLE_DEVELOPMENT_TEAM" 2>&1 \
+            | grep -E 'PROVISIONING_PROFILE_SPECIFIER|DEVELOPMENT_TEAM'
           exit 0
 
       - name: Save Cache
