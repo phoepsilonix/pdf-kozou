@@ -905,6 +905,25 @@ jobs:
           export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
           pnpm run tauri ios build --export-method app-store-connect --ci --no-sign
 
+      # 署名ビルドが失敗したときだけ、Tauri が pbxproj に書き込んだ署名設定と
+      # Xcode が見ている値を表示する(原因調査用。Secrets の値は Actions がマスクする)
+      - name: Debug iOS signing (失敗時のみ)
+        if: ${{ failure() && steps.ios_signing.outputs.enabled == 'true' }}
+        run: |
+          set +e
+          echo "=== pbxproj の変更点 (Tauri が書き換えた署名設定) ==="
+          git diff --no-color -U0 -- src-tauri/gen/apple/pdf-kozou.xcodeproj | grep -E '^[+-]' || echo "(変更なし)"
+          echo "=== 配置済みプロファイル ==="
+          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" 2>&1
+          echo "=== キーチェーンと署名ID ==="
+          security list-keychains -d user
+          security find-identity -v -p codesigning
+          echo "=== Xcode が解決した署名関連の設定 ==="
+          xcodebuild -project src-tauri/gen/apple/pdf-kozou.xcodeproj -scheme pdf-kozou_iOS \
+            -configuration release -sdk iphoneos -showBuildSettings 2>&1 \
+            | grep -E 'CODE_SIGN_(STYLE|IDENTITY)|PROVISIONING_PROFILE|DEVELOPMENT_TEAM|PRODUCT_BUNDLE_IDENTIFIER'
+          exit 0
+
       - name: Save Cache
         uses: actions/cache/save@v6.1.0
         #キャッシュサイズが肥大化しているので、一時的にオフ。
