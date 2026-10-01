@@ -818,18 +818,18 @@ jobs:
       - name: Build Frontend check
         run: pnpm run build:frontend
 
-      - name: Init Tauri Mobile (初回のみ)
-        run: |
-          pnpm exec tauri ios init --ci || true
+      #- name: Init Tauri Mobile (初回のみ)
+      #  run: |
+      #    pnpm exec tauri ios init --ci || true
 
-      - name: ios gen
-        run: |
-          ls src-tauri/gen/
-          tar cf ios-gen.tar src-tauri/gen/apple
-          bzip2 -9 ios-gen.tar
-          rm -rf ./bundle
-          mkdir -p bundle/ios
-          cp -a ios-gen.tar.bz2 bundle/ios/
+      #- name: ios gen
+      #  run: |
+      #    ls src-tauri/gen/
+      #    tar cf ios-gen.tar src-tauri/gen/apple
+      #    bzip2 -9 ios-gen.tar
+      #    rm -rf ./bundle
+      #    mkdir -p bundle/ios
+      #    cp -a ios-gen.tar.bz2 bundle/ios/
 
       # App Store Connect は 1024x1024 アプリアイコンにアルファチャンネルがあると
       # (完全不透明でも) 90717 で拒否する。tauri ios init がアイコンを再配置するため、
