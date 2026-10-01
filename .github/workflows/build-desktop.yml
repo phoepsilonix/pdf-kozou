@@ -850,6 +850,39 @@ jobs:
             echo "::notice::iOS signing secrets not set; building unsigned"
           fi
 
+      # Tauri CLI は旧フォルダ(~/Library/MobileDevice/Provisioning Profiles)にランダム名で
+      # プロファイルを置くが、Xcode 16 以降は ~/Library/Developer/Xcode/UserData/Provisioning Profiles
+      # を参照するため、両方に UUID 名で配置する。あわせて原因調査用に内容を表示する(秘密情報なし)。
+      - name: Install provisioning profile
+        if: ${{ steps.ios_signing.outputs.enabled == 'true' }}
+        env:
+          IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
+        run: |
+          set -euo pipefail
+          PROFILE="$RUNNER_TEMP/app.mobileprovision"
+          PLIST="$RUNNER_TEMP/profile.plist"
+          echo "$IOS_MOBILE_PROVISION" | base64 --decode > "$PROFILE"
+          security cms -D -i "$PROFILE" > "$PLIST"
+          PB=/usr/libexec/PlistBuddy
+          UUID=$($PB -c 'Print :UUID' "$PLIST")
+          for d in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+                   "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$d"
+            cp "$PROFILE" "$d/$UUID.mobileprovision"
+          done
+          echo "Name:           $($PB -c 'Print :Name' "$PLIST")"
+          echo "UUID:           $UUID"
+          echo "Team:           $($PB -c 'Print :TeamIdentifier:0' "$PLIST")"
+          echo "App ID:         $($PB -c 'Print :Entitlements:application-identifier' "$PLIST")"
+          echo "Expiration:     $($PB -c 'Print :ExpirationDate' "$PLIST")"
+          echo "Platform:       $($PB -c 'Print :Platform:0' "$PLIST" 2>/dev/null || echo '?')"
+          if $PB -c 'Print :ProvisionedDevices' "$PLIST" >/dev/null 2>&1; then
+            echo "Type:           Development / Ad Hoc (ProvisionedDevices あり)"
+          else
+            echo "Type:           App Store / Enterprise (ProvisionedDevices なし)"
+          fi
+          echo "get-task-allow: $($PB -c 'Print :Entitlements:get-task-allow' "$PLIST" 2>/dev/null || echo '?')"
+
       - name: Build iOS (signed)
         if: ${{ steps.ios_signing.outputs.enabled == 'true' }}
         env:
