@@ -51,8 +51,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 1.8.0
-        CFBundleVersion: "1.8.0"
+        CFBundleShortVersionString: 1.8.17
+        CFBundleVersion: "1.8.17"
     entitlements:
       path: pdf-kozou_iOS/pdf-kozou_iOS.entitlements
     scheme:
