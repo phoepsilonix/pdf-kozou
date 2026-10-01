@@ -831,6 +831,24 @@ jobs:
           mkdir -p bundle/ios
           cp -a ios-gen.tar.bz2 bundle/ios/
 
+      # App Store Connect は 1024x1024 アプリアイコンにアルファチャンネルがあると
+      # (完全不透明でも) 90717 で拒否する。tauri ios init がアイコンを再配置するため、
+      # init 後に RGBA/透過PNGが残っていないか検査し、あれば早期に失敗させる。
+      - name: Verify iOS app icons have no alpha channel
+        run: |
+          python3 - <<'PY'
+          import glob, struct, sys
+          bad = []
+          for f in sorted(glob.glob('src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/*.png')):
+              d = open(f, 'rb').read()
+              ctype = d[25]  # IHDR color type: 4=gray+alpha, 6=RGBA
+              if ctype in (4, 6) or b'tRNS' in d:
+                  bad.append((f, ctype))
+          for f, c in bad:
+              print(f'::error file={f}::alpha channel present (color type {c})')
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:

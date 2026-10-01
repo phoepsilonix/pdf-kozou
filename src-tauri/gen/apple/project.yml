@@ -53,6 +53,9 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 1.8.18
         CFBundleVersion: "1.8.18"
+        ITSAppUsesNonExemptEncryption: false
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportsDocumentBrowser: false
     entitlements:
       path: pdf-kozou_iOS/pdf-kozou_iOS.entitlements
     scheme:
