@@ -29,10 +29,20 @@ on:
         default: 'false'
         type: boolean
       notarize_macos:
-        description: 'macOSのdmg/appをDeveloper IDで署名・公証 (タグpushでは常に実行)'
+        description: 'macOSのdmg/appをDeveloper IDで署名・公証 (タグpush・リリース公開時は常に実行)'
         required: false
         default: 'false'
         type: boolean
+      publish_release:
+        description: 'ビルド成功後にGitHubリリースを公開 (タグpush相当。macOSの署名・公証も自動で有効)'
+        required: false
+        default: 'false'
+        type: boolean
+      release_tag:
+        description: 'リリースのタグ名 (publish_release用。空ならpackage.jsonのversionからvX.Y.Zを使う)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -568,7 +578,7 @@ jobs:
       #     MAC_DEVELOPER_ID_CERTIFICATE          : Developer ID Application 証明書(.p12)の base64
       #     MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD : 上記 .p12 のパスワード
       #     APPLE_API_KEY_ID / APPLE_API_ISSUER / APPLE_API_PRIVATE_KEY : 公証用(TestFlight アップロードと共用)
-      #   実行条件: タグ push、または手動実行で notarize_macos=true (既定は false)。
+      #   実行条件: タグ push、または手動実行で notarize_macos=true / publish_release=true (既定は false)。
       #   Tauri は APPLE_CERTIFICATE があると署名(Hardened Runtime つき)と dmg の署名を行い、
       #   APPLE_API_* があると .app を公証してステープルする。値が空の環境変数でも
       #   「設定あり」と扱われて失敗するため、有効なときだけ GITHUB_ENV 経由で渡す。
@@ -581,16 +591,24 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
           NOTARIZE_INPUT: ${{ github.event.inputs.notarize_macos }}
+          PUBLISH_INPUT: ${{ github.event.inputs.publish_release }}
         run: |
-          # 署名・公証は、タグ push のとき、または手動実行で notarize_macos=true のときだけ行う
-          # (手動ビルドのたびに公証の待ち時間が加わらないようにする)。
+          # 署名・公証は、タグ push のとき、または手動実行で notarize_macos=true / publish_release=true
+          # のときだけ行う(手動ビルドのたびに公証の待ち時間が加わらないようにする。
+          # リリースを公開するときは、署名なしの dmg が混ざらないよう必ず行う)。
           case "$GITHUB_REF" in
             refs/tags/*) WANT=true ;;
-            *) WANT="${NOTARIZE_INPUT:-false}" ;;
+            *)
+              if [ "${NOTARIZE_INPUT:-false}" = "true" ] || [ "${PUBLISH_INPUT:-false}" = "true" ]; then
+                WANT=true
+              else
+                WANT=false
+              fi
+              ;;
           esac
           if [ "$WANT" != "true" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::macOS Developer ID signing/notarization skipped (tag push or notarize_macos=true で有効)"
+            echo "::notice::macOS Developer ID signing/notarization skipped (タグ push、または notarize_macos / publish_release が true のとき有効)"
           elif [ -n "$MAC_DEVELOPER_ID_CERTIFICATE" ] && [ -n "$MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD" ] \
              && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_PRIVATE_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
@@ -1369,8 +1387,36 @@ jobs:
       - build-macos
       - build-android    # 条件次第で実行されない場合もある
       - build-ios
-    if: startsWith(github.ref, 'refs/tags/') # タグ時のみ
+    # タグ push、または手動実行で publish_release=true のとき。
+    # needs のジョブが skip(skip_android / skip_ios)されていても、失敗・キャンセルがなければ公開する。
+    if: ${{ !cancelled() && !failure() && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish_release == 'true') }}
     steps:
+      - uses: actions/checkout@v7.0.1
+
+      # タグ push ではそのタグを使う。手動実行では release_tag、空なら package.json の version から決める。
+      # 既存のタグが別のコミットを指している場合は、誤公開を避けるため中止する。
+      - name: Decide release tag
+        id: tag
+        env:
+          RELEASE_TAG_INPUT: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="${RELEASE_TAG_INPUT:-}"
+            if [ -z "$TAG" ]; then
+              TAG="v$(jq -r '.version' package.json)"
+            fi
+            REMOTE=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | awk '{print $1}' | tail -1)
+            if [ -n "$REMOTE" ] && [ "$REMOTE" != "$GITHUB_SHA" ]; then
+              echo "::error::タグ $TAG は既に存在し、このコミット ($GITHUB_SHA) とは別のコミット ($REMOTE) を指しています"
+              exit 1
+            fi
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         #continue-on-error: true # アーティファクトが存在しない場合の対策
@@ -1380,6 +1426,8 @@ jobs:
       - name: Release to GitHub
         uses: softprops/action-gh-release@v3.0.3
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
           files: |
             ./dist/linux-artifacts/**/*.AppImage
             ./dist/linux-artifacts/**/*.deb
@@ -1397,4 +1445,4 @@ jobs:
             ./dist/ios-artifacts/**/*.app
             ./dist/ios-artifacts/**/*.tar.bz2
           draft: false
-          prerelease: ${{ contains(github.ref_name, 'pre') }}
+          prerelease: ${{ contains(steps.tag.outputs.name, 'pre') }}
