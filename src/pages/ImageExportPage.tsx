@@ -688,6 +688,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         }
         const dir = outPath.replace(/[/\\][^/\\]+$/, "");
         if (dir) setOutDir(dir);
+        setStatusMsg("");
         setPhase("processing");
         await new Promise((resolve) => requestAnimationFrame(resolve));
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -925,6 +926,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
+    // 進捗Spinnerは statusMsg が非空だとそれをラベルに使うため、前回実行の
+    // 結果メッセージ(テキスト選択不可/テキスト保持版の案内)が残っていると
+    // 設定を切り替えて再実行した際に逆の案内が進捗として出てしまう。
+    // 実行開始時に必ず消しておく
+    setStatusMsg("");
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1014,8 +1020,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           setPdfPageCount(sheets.length);
           setPdfName("");
           // 面付け画像PDFも各ページが画像化されるため、
-          // 1ページごとの画像PDFと同様にテキスト消失の注意を表示する
-          setStatusMsg(t("image.rasterize_warning"));
+          // 1ページごとの画像PDFと同様に注意を表示する。
+          // テキスト保持版では「テキスト選択・検索不可」は誤りなので、
+          // 保持版専用の案内に切り替える
+          setStatusMsg(
+            keepTextExperimental ? t("image.keep_text_warning") : t("image.rasterize_warning"),
+          );
           announceSuccess("done.image");
           setPhase("result");
           return;
@@ -1912,7 +1922,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   <input
                     type="checkbox"
                     checked={keepTextExperimental}
-                    onChange={(e) => setKeepTextExperimental(e.target.checked)}
+                    onChange={(e) => {
+                      setKeepTextExperimental(e.target.checked);
+                      setStatusMsg("");
+                    }}
                   />
                   <span>{t("image.keep_text_checkbox_label")}</span>
                 </label>
