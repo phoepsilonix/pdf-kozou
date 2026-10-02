@@ -4,7 +4,7 @@
 
 // src-tauri/src/platform/folder_ops.rs
 //
-// iOS: ユーザーが選んだ保存先フォルダ(security-scoped、Swift側がアクセスを保持)
+// iOS: ユーザーが選んだ保存先フォルダ(security-scoped、Objective-C側がアクセスを保持)
 // に対する、衝突判定・サブフォルダ作成・コピーの操作。
 //
 // OS 固有の API は使わず std のみで実装しているため、デスクトップ上で単体テスト

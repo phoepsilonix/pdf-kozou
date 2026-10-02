@@ -6,11 +6,12 @@
 //
 // iOS: 保存先フォルダ選択(UIDocumentPickerViewController)の呼び出し。
 //
-// 実体は Xcode アプリ側の Swift
-// (gen/apple/Sources/pdf-kozou/KozouFolderPicker.swift の `kozou_ios_pick_folder`)で、
-// C ABI 経由で呼ぶ。シンボルはアプリのリンク時に解決される。
-// 選ばれたフォルダは security-scoped で、Swift 側がアクセス開始状態を保持するため、
-// 返したパスには通常の std::fs でアクセスできる。
+// 実体は Objective-C(ios/kozou_folder_picker.m の `kozou_ios_pick_folder`)で、
+// build.rs が `cc` で Rust ライブラリへ一緒にコンパイル・リンクする。
+// (Xcode のアプリターゲット側に置くと、cargo の cdylib リンク時にシンボルが
+// 解決できずビルドが失敗する。)
+// 選ばれたフォルダは security-scoped で、Objective-C 側がアクセス開始状態を
+// 保持するため、返したパスには通常の std::fs でアクセスできる。
 
 use std::ffi::{CStr, c_char, c_void};
 use std::sync::mpsc;
@@ -24,14 +25,14 @@ unsafe extern "C" {
 
 type Reply = (i32, String);
 
-/// Swift から1回だけ呼ばれる。`ctx` は `pick_folder` が Box 化した Sender。
+/// Objective-C 側から1回だけ呼ばれる。`ctx` は `pick_folder` が Box 化した Sender。
 extern "C" fn on_result(ctx: *mut c_void, status: i32, json: *const c_char) {
     // SAFETY: ctx は pick_folder が Box::into_raw で渡したもので、ここで一度だけ回収する。
     let tx = unsafe { Box::from_raw(ctx as *mut mpsc::Sender<Reply>) };
     let text = if json.is_null() {
         String::new()
     } else {
-        // SAFETY: Swift が呼び出し中のみ有効な NUL 終端文字列を渡す。即座にコピーする。
+        // SAFETY: Objective-C 側が呼び出し中のみ有効な NUL 終端文字列を渡す。即座にコピーする。
         unsafe { CStr::from_ptr(json) }
             .to_string_lossy()
             .into_owned()

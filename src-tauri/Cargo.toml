@@ -19,6 +19,7 @@ path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+cc = "1"   # iOS: フォルダ選択ピッカー(Objective-C)のコンパイル用
 
 [dependencies]
 # サイドカー(別プロセス起動)を廃止し、ライブラリとして直接リンクする。

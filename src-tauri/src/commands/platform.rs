@@ -179,7 +179,7 @@ pub async fn discard_pending_save(app: tauri::AppHandle, path: String) -> Result
 }
 
 /// 保存先フォルダを選ばせる(モバイルのみ)。Android は `ACTION_OPEN_DOCUMENT_TREE`、
-/// iOS は `UIDocumentPickerViewController` のフォルダ選択(Swift: KozouFolderPicker.swift)。
+/// iOS は `UIDocumentPickerViewController` のフォルダ選択(ios/kozou_folder_picker.m)。
 /// iOS では `tree_uri` に選択フォルダの絶対パスを入れて返す。デスクトップでは呼ばれない想定
 /// (デスクトップは `pick_save_file` のネイティブ保存ダイアログのみ使う)。
 ///
@@ -545,7 +545,7 @@ pub async fn commit_batch_to_folder(
     #[cfg(target_os = "ios")]
     {
         let _ = &app;
-        // iOS: 選択フォルダ(security-scoped、Swift側がアクセス保持中)へ
+        // iOS: 選択フォルダ(security-scoped、Objective-C側がアクセス保持中)へ
         // 通常のファイルコピーで書き込む。重いコピーになり得るのでブロッキング用スレッドで行う。
         tauri::async_runtime::spawn_blocking(move || {
             let folder = std::path::PathBuf::from(&tree_uri);
