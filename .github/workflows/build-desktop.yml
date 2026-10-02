@@ -557,7 +557,60 @@ jobs:
       #    mkdir -p bundle/macos
       #    cp -a macos-gen.tar.bz2 bundle/macos/
 
-      - name: Build (release) - 署名なし
+      # ---------------------------------------------------------------------
+      # dmg / app の署名(Developer ID Application)と公証(notarization)。
+      #   Secrets (すべて揃っているときだけ有効。未設定・fork の PR では従来どおり署名なし):
+      #     MAC_DEVELOPER_ID_CERTIFICATE          : Developer ID Application 証明書(.p12)の base64
+      #     MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD : 上記 .p12 のパスワード
+      #     APPLE_API_KEY_ID / APPLE_API_ISSUER / APPLE_API_PRIVATE_KEY : 公証用(TestFlight アップロードと共用)
+      #   Tauri は APPLE_CERTIFICATE があると署名(Hardened Runtime つき)と dmg の署名を行い、
+      #   APPLE_API_* があると .app を公証してステープルする。値が空の環境変数でも
+      #   「設定あり」と扱われて失敗するため、有効なときだけ GITHUB_ENV 経由で渡す。
+      - name: Check macOS Developer ID secrets
+        id: mac_devid
+        env:
+          MAC_DEVELOPER_ID_CERTIFICATE: ${{ secrets.MAC_DEVELOPER_ID_CERTIFICATE }}
+          MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          if [ -n "$MAC_DEVELOPER_ID_CERTIFICATE" ] && [ -n "$MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD" ] \
+             && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_PRIVATE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS Developer ID secrets not set; dmg/app are built unsigned"
+          fi
+
+      - name: Prepare Developer ID signing and notarization env
+        if: ${{ steps.mac_devid.outputs.enabled == 'true' }}
+        env:
+          MAC_DEVELOPER_ID_CERTIFICATE: ${{ secrets.MAC_DEVELOPER_ID_CERTIFICATE }}
+          MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          # 公証用 API キー(.p8)をファイルに書き出す
+          KEY_FILE="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          umask 077
+          printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$KEY_FILE"
+          # 値に改行や記号が含まれても壊れないよう、区切り文字つきの形式で GITHUB_ENV に書く
+          setenv() {
+            local d="EOF_$(uuidgen)"
+            { echo "$1<<$d"; printf '%s\n' "$2"; echo "$d"; } >> "$GITHUB_ENV"
+          }
+          setenv APPLE_CERTIFICATE "$MAC_DEVELOPER_ID_CERTIFICATE"
+          setenv APPLE_CERTIFICATE_PASSWORD "$MAC_DEVELOPER_ID_CERTIFICATE_PASSWORD"
+          setenv APPLE_API_KEY "$APPLE_API_KEY_ID"
+          setenv APPLE_API_ISSUER "$APPLE_API_ISSUER"
+          setenv APPLE_API_KEY_PATH "$KEY_FILE"
+
+      # MAC_DEVELOPER_ID_* などが揃っていれば、上の準備ステップが渡した APPLE_* 環境変数で
+      # Tauri が署名・公証まで行う。揃っていなければ従来どおり署名なし。
+      - name: Build (release)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""   # 空で署名をスキップ
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
@@ -570,6 +623,34 @@ jobs:
           pnpm run build --target universal-apple-darwin
           #pnpm run tauri build -- --no-bundle
           #pnpm run tauri bundle -- --bundles app --target universal-apple-darwin
+
+      # 署名・公証の結果を確認する(失敗してもビルドは止めず、警告として表示する)。
+      # あわせて dmg 自体も公証・ステープルする(Tauri が公証するのは .app のみ)。
+      - name: Notarize dmg and verify signatures
+        if: ${{ steps.mac_devid.outputs.enabled == 'true' }}
+        run: |
+          set -uo pipefail
+          APP="target/universal-apple-darwin/release/bundle/macos/PDF-Kozou.app"
+          echo "--- codesign (app) ---"
+          codesign -dvv "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|flags|Timestamp' || true
+          codesign --verify --deep --strict --verbose=2 "$APP" || echo "::warning::app の署名検証に失敗しました"
+          xcrun stapler validate "$APP" || echo "::warning::app に公証チケットがステープルされていません"
+          spctl --assess --type execute -vv "$APP" || echo "::warning::Gatekeeper が app を受理しませんでした(公証されていない可能性)"
+
+          shopt -s nullglob
+          for DMG in target/universal-apple-darwin/release/bundle/dmg/*.dmg target/release/bundle/dmg/*.dmg; do
+            echo "--- dmg: $DMG ---"
+            codesign -dvv "$DMG" 2>&1 | grep -E 'Authority|TeamIdentifier' || echo "::warning::dmg が署名されていません"
+            if xcrun notarytool submit "$DMG" \
+                 --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait; then
+              xcrun stapler staple "$DMG" && xcrun stapler validate "$DMG" \
+                || echo "::warning::dmg のステープルに失敗しました"
+            else
+              echo "::warning::dmg の公証に失敗しました(上のログを確認)"
+            fi
+            spctl --assess --type open --context context:primary-signature -vv "$DMG" \
+              || echo "::warning::Gatekeeper が dmg を受理しませんでした"
+          done
 
       # ---------------------------------------------------------------------
       # Mac App Store / TestFlight 用の署名つき pkg を作る(下の dmg / 7z とは別成果物)。
@@ -677,6 +758,8 @@ jobs:
           APP="$W/PDF-Kozou.app"
           ditto "$SRC" "$APP"
           cp "$W/app.provisionprofile" "$APP/Contents/embedded.provisionprofile"
+          # Developer ID の公証チケット(ステープル済みの場合)は MAS 用には不要なので除去
+          rm -f "$APP/Contents/CodeResources"
           xattr -cr "$APP"
           codesign --force --timestamp --options runtime \
             --entitlements "$W/entitlements.plist" \
