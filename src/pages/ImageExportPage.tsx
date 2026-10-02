@@ -1176,8 +1176,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           const sheetCount = sheetPageNums.length;
           if (sheetCount === 0) {
-            setStatusMsg(t("image.deimp_no_pages"));
-            return;
+            // バッチでは statusMsg は表示されず、ここで return すると
+            // phase が "processing" のまま完了画面へ進めなくなる。
+            // このファイルだけエラーとして記録し、次のファイルへ進む
+            // (catch で progress.errors に積まれる)
+            throw new Error(t("image.deimp_no_pages"));
           }
 
           // calcSplitCells はシート番号1..sheetCount で計算する
