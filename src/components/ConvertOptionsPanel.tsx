@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import type { ConvertOptions } from "../lib/tauri";
 import { FS } from "../lib/typography";
+import { NumInput } from "./NumInput";
 
 export interface ConvertOptionsPanelProps {
   options: ConvertOptions;
@@ -109,16 +110,16 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
         <label style={s.label} htmlFor="convert-width-input">
           {t("convert_options.width_pt")}
         </label>
-        <input
+        <NumInput
           id="convert-width-input"
-          type="number"
           style={s.numInput}
           min={100}
           max={2000}
           step={1}
+          integer={true}
+          live
           value={localW}
-          onChange={(e) => {
-            const v = Number(e.target.value);
+          onChange={(v) => {
             setLocalW(v);
             emitDebounced(v, localH, localEm);
           }}
@@ -126,16 +127,16 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
         <label style={{ ...s.label, marginLeft: 12 }} htmlFor="convert-height-input">
           {t("convert_options.height_pt")}
         </label>
-        <input
+        <NumInput
           id="convert-height-input"
-          type="number"
           style={s.numInput}
           min={100}
           max={2000}
           step={1}
+          integer={true}
+          live
           value={localH}
-          onChange={(e) => {
-            const v = Number(e.target.value);
+          onChange={(v) => {
             setLocalH(v);
             emitDebounced(localW, v, localEm);
           }}
@@ -145,16 +146,16 @@ export function ConvertOptionsPanel({ options, onChange }: ConvertOptionsPanelPr
         <label style={{ ...s.label, marginLeft: 12 }} htmlFor="convert-font-input">
           {t("convert_options.font_pt")}
         </label>
-        <input
+        <NumInput
           id="convert-font-input"
-          type="number"
           style={s.numInput}
           min={6}
           max={72}
           step={0.5}
+          integer={false}
+          live
           value={localEm}
-          onChange={(e) => {
-            const v = Number(e.target.value);
+          onChange={(v) => {
             setLocalEm(v);
             emitDebounced(localW, localH, v);
           }}

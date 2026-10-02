@@ -18,6 +18,7 @@ import {
   ThumbCard,
 } from "../components/common";
 import { FixedMobileNav } from "../components/FixedMobileNav";
+import { NumInput } from "../components/NumInput";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { PreviewPane } from "../components/PreviewPane";
 import { useA11y } from "../hooks/useA11y";
@@ -2117,14 +2118,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                   >
                     −
                   </button>
-                  <input
-                    type="number"
+                  <NumInput
                     style={s.numInput}
                     value={dpi}
                     min={36}
                     max={1200}
+                    live
+                    fallback={72}
                     aria-label={t("image.dpi_label")}
-                    onChange={(e) => setDpi(parseInt(e.target.value, 10) || 72)}
+                    onChange={setDpi}
                   />
                   <button
                     type="button"

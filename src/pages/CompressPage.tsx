@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
 import { Spinner } from "../components/common";
 import { MetadataEditModal } from "../components/MetadataEditModal";
+import { NumInput } from "../components/NumInput";
 import { useA11y } from "../hooks/useA11y";
 import { useBusyAnnouncer } from "../hooks/useBusyAnnouncer";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -198,30 +199,6 @@ export function CompressPage({
       redactMarginRight,
     ],
   );
-  // DPI/JPEG品質は number input で min/max を即時clampすると
-  // 「144」等の複数桁入力の途中(例: "1")でmin値に強制されてしまい入力できなくなるため、
-  // 入力中はテキストのまま保持し、blur/Enter確定時にのみ clamp してストアへ反映する。
-  const [dpiText, setDpiText] = useState(String(imageDpi));
-  useEffect(() => setDpiText(String(imageDpi)), [imageDpi]);
-  const commitDpi = () => {
-    const n = Math.min(1200, Math.max(30, Math.round(Number(dpiText)) || 144));
-    setImageDpi(n);
-    setDpiText(String(n));
-  };
-  const [qualityText, setQualityText] = useState(String(imageJpegQuality));
-  useEffect(() => setQualityText(String(imageJpegQuality)), [imageJpegQuality]);
-  const commitQuality = () => {
-    const n = Math.min(100, Math.max(1, Math.round(Number(qualityText)) || 85));
-    setImageJpegQuality(n);
-    setQualityText(String(n));
-  };
-  const [marginPtText, setMarginPtText] = useState(String(redactMarginPt));
-  useEffect(() => setMarginPtText(String(redactMarginPt)), [redactMarginPt]);
-  const commitMarginPt = () => {
-    const n = Math.max(0, Math.round(Number(marginPtText)) || 0);
-    setRedactMarginPt(n);
-    setMarginPtText(String(n));
-  };
   const { pickSave, commitSave, discardSave } = useSaveDialog();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
@@ -1457,16 +1434,12 @@ export function CompressPage({
                 {redactMarginLinked ? (
                   <label style={c.optLabel}>
                     {t("compress.redact_margin_label")}
-                    <input
-                      type="number"
+                    <NumInput
                       min={0}
                       step={10}
-                      value={marginPtText}
-                      onChange={(e) => setMarginPtText(e.target.value)}
-                      onBlur={commitMarginPt}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") e.currentTarget.blur();
-                      }}
+                      fallback={0}
+                      value={redactMarginPt}
+                      onChange={setRedactMarginPt}
                       style={{ marginLeft: 8, width: 80 }}
                     />
                     <span style={{ marginLeft: 4 }}>pt</span>
@@ -1532,34 +1505,26 @@ export function CompressPage({
               <div style={c.optRow}>
                 <label style={c.optLabel}>
                   {t("compress.image_dpi_value_label")}
-                  <input
-                    type="number"
+                  <NumInput
                     min={30}
                     max={1200}
                     step={10}
-                    value={dpiText}
-                    onChange={(e) => setDpiText(e.target.value)}
-                    onBlur={commitDpi}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") e.currentTarget.blur();
-                    }}
+                    fallback={144}
+                    value={imageDpi}
+                    onChange={setImageDpi}
                     style={{ marginLeft: 8, width: 80 }}
                   />
                   <span style={{ marginLeft: 4 }}>dpi</span>
                 </label>
                 <label style={{ ...c.optLabel, marginLeft: 16 }}>
                   {t("compress.image_jpeg_quality_label")}
-                  <input
-                    type="number"
+                  <NumInput
                     min={1}
                     max={100}
                     step={5}
-                    value={qualityText}
-                    onChange={(e) => setQualityText(e.target.value)}
-                    onBlur={commitQuality}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") e.currentTarget.blur();
-                    }}
+                    fallback={85}
+                    value={imageJpegQuality}
+                    onChange={setImageJpegQuality}
                     style={{ marginLeft: 8, width: 70 }}
                   />
                 </label>
@@ -1734,26 +1699,15 @@ function MarginNumField({
   value: number;
   onChange: (v: number) => void;
 }) {
-  const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
-  const commit = () => {
-    const n = Math.max(0, Math.round(Number(text)) || 0);
-    onChange(n);
-    setText(String(n));
-  };
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
       <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>{label}</span>
-      <input
-        type="number"
+      <NumInput
         min={0}
         step={10}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
+        fallback={0}
+        value={value}
+        onChange={onChange}
         style={{ width: 60, textAlign: "center" }}
       />
     </div>

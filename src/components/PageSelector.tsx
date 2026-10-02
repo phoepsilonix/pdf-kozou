@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 import { useI18n } from "../lib/i18n";
+import { normalizePageSpec } from "../lib/numInput";
 import { FS } from "../lib/typography";
 
 // src/components/PageSelector.tsx — 共通ページ範囲指定コンポーネント
 // 対応表記: "1-3,5,7-", "odd", "even", "-5" (末尾から5ページ), "all"
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 //import { getTheme } from "../lib/themes";
 
 export interface PageSelectorProps {
@@ -77,13 +78,42 @@ export function PageSelector({
     },
     [rangeText, onChange, type],
   );
+  // IME 変換中は表示だけ更新し、確定(compositionend)時に半角へ正規化して親へ通知する。
+  // 全角のまま親へ渡すと「確定したのに0ページ」になるため、常に半角化した値を渡す。
+  const composing = useRef(false);
   const handleRange = useCallback(
     (v: string) => {
-      setRangeText(v);
-      onChange(v);
+      const norm = normalizePageSpec(v);
+      setRangeText(norm);
+      onChange(norm);
     },
     [onChange],
   );
+  const rangeInputProps = {
+    inputMode: "text" as const,
+    autoComplete: "off",
+    autoCorrect: "off",
+    autoCapitalize: "off",
+    spellCheck: false,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (composing.current || (e.nativeEvent as InputEvent).isComposing) {
+        setRangeText(e.target.value);
+        return;
+      }
+      handleRange(e.target.value);
+    },
+    onCompositionStart: () => {
+      composing.current = true;
+    },
+    onCompositionEnd: (e: React.CompositionEvent<HTMLInputElement>) => {
+      composing.current = false;
+      handleRange(e.currentTarget.value);
+    },
+    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+      composing.current = false;
+      handleRange(e.currentTarget.value);
+    },
+  };
 
   const btnBase: React.CSSProperties = {
     padding: compact ? "4px 10px" : "5px 13px",
@@ -152,7 +182,7 @@ export function PageSelector({
               data-range-input
               aria-label={rangeAria}
               value={rangeText}
-              onChange={(e) => handleRange(e.target.value)}
+              {...rangeInputProps}
               placeholder={t("page_selector.placeholder")}
               style={{
                 padding: "6px 10px",
@@ -229,7 +259,7 @@ export function PageSelector({
               data-range-input
               aria-label={rangeAria}
               value={rangeText}
-              onChange={(e) => handleRange(e.target.value)}
+              {...rangeInputProps}
               placeholder={t("page_selector.placeholder")}
               style={{
                 padding: "6px 10px",
@@ -261,7 +291,9 @@ export function PageSelector({
 }
 
 // ページ指定文字列を実際のページインデックス配列に展開
-export function resolvePageSpec(spec: string, total: number): number[] {
+export function resolvePageSpec(rawSpec: string, total: number): number[] {
+  // 全角数字・全角記号・各種ハイフンを半角に統一してから解釈する
+  const spec = normalizePageSpec(rawSpec ?? "").trim();
   if (!spec || spec === "all") return Array.from({ length: total }, (_, i) => i);
   if (spec === "odd")
     return Array.from({ length: total }, (_, i) => i).filter((i) => (i + 1) % 2 === 1);

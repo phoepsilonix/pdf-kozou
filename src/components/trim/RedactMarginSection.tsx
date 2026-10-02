@@ -3,10 +3,10 @@
 // 値は圧縮画面と共通の設定(usePdfStore の redactMargin*)をそのまま読み書きするため、
 // ここで変更した値は圧縮画面にも反映され、その逆も同様。
 
-import { useEffect, useState } from "react";
 import { useI18n } from "../../lib/i18n";
 import { FS } from "../../lib/typography";
 import { usePdfStore } from "../../store/usePdfStore";
+import { NumInput } from "../NumInput";
 
 /** 0 以上の整数(pt)を入力するフィールド。確定(blur / Enter)時に値を丸めて反映する */
 function MarginPtField({
@@ -22,27 +22,15 @@ function MarginPtField({
   disabled?: boolean;
   width?: number;
 }) {
-  const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
-  const commit = () => {
-    const n = Math.max(0, Math.round(Number(text)) || 0);
-    onChange(n);
-    setText(String(n));
-  };
   return (
     <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
       <span style={{ fontSize: FS.caption, color: "var(--c-textDim)" }}>{label}</span>
-      <input
-        type="number"
+      <NumInput
+        value={value}
+        onChange={onChange}
         min={0}
         step={10}
-        value={text}
         disabled={disabled}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
         style={{ width, textAlign: "center" }}
       />
     </label>

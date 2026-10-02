@@ -17,6 +17,7 @@ import {
   TapRevealText,
 } from "../components/common";
 import { FixedMobileNav } from "../components/FixedMobileNav";
+import { NumInput } from "../components/NumInput";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
@@ -809,24 +810,26 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               <div style={s.btnRow}>
                 <label style={s.numLabel}>
                   {t("booklet.margin")}
-                  <input
-                    type="number"
+                  <NumInput
                     min={0}
+                    integer={false}
+                    live
                     value={margin}
                     aria-label={t("booklet.margin")}
-                    onChange={(e) => setMargin(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(n) => setMargin(Math.max(0, n))}
                     style={s.num}
                   />
                   pt
                 </label>
                 <label style={s.numLabel}>
                   {t("booklet.gutter")}
-                  <input
-                    type="number"
+                  <NumInput
                     min={0}
+                    integer={false}
+                    live
                     value={gutter}
                     aria-label={t("booklet.gutter")}
-                    onChange={(e) => setGutter(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(n) => setGutter(Math.max(0, n))}
                     style={s.num}
                   />
                   pt

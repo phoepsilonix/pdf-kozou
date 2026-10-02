@@ -19,6 +19,7 @@ import {
 } from "../components/common";
 import { FixedMobileNav } from "../components/FixedMobileNav";
 import { MetadataEditModal } from "../components/MetadataEditModal";
+import { NumInput } from "../components/NumInput";
 import { PreviewPane } from "../components/PreviewPane";
 //import { CompressPage } from "./CompressPage";
 import { useA11y } from "../hooks/useA11y";
@@ -868,14 +869,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                   >
                     −
                   </button>
-                  <input
-                    type="number"
+                  <NumInput
                     style={s.numInput}
                     value={everyN}
                     min={1}
                     max={isBatch ? 999 : total}
+                    live
                     aria-label={t("aria.every_n_input")}
-                    onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    onChange={(n) => setEveryN(Math.max(1, n))}
                   />
                   <button
                     type="button"
@@ -910,22 +911,19 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                       >
                         ◀
                       </button>
-                      <input
-                        type="number"
+                      <NumInput
                         style={s.rangeInput}
-                        ref={i === 0 ? rangeRef : undefined}
+                        inputRef={i === 0 ? rangeRef : undefined}
                         aria-label={
                           i === 0 ? t("aria.range_input") : `${t("aria.range_input")} #${i + 1}`
                         }
                         value={rng[0]}
                         min={1}
                         max={total}
-                        onChange={(e) =>
-                          setRanges((r) =>
-                            r.map((x, j) =>
-                              j === i ? [parseInt(e.target.value, 10) || 1, x[1]] : x,
-                            ),
-                          )
+                        fallback={1}
+                        live
+                        onChange={(n) =>
+                          setRanges((r) => r.map((x, j) => (j === i ? [n, x[1]] : x)))
                         }
                       />
                       <button
@@ -947,19 +945,16 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                       >
                         ◀
                       </button>
-                      <input
-                        type="number"
+                      <NumInput
                         style={s.rangeInput}
+                        aria-label={`${t("aria.range_input")} #${i + 1}`}
                         value={rng[1]}
                         min={1}
                         max={total}
-                        aria-label={`${t("aria.range_input")} #${i + 1}`}
-                        onChange={(e) =>
-                          setRanges((r) =>
-                            r.map((x, j) =>
-                              j === i ? [x[0], parseInt(e.target.value, 10) || 1] : x,
-                            ),
-                          )
+                        fallback={total}
+                        live
+                        onChange={(n) =>
+                          setRanges((r) => r.map((x, j) => (j === i ? [x[0], n] : x)))
                         }
                       />
                       <button
@@ -1011,18 +1006,16 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                       >
                         ◀
                       </button>
-                      <input
-                        type="number"
+                      <NumInput
                         style={s.rangeInput}
+                        aria-label={`${t("aria.range_input")} #${i + 1}`}
                         value={rng[0]}
                         min={1}
-                        aria-label={`${t("aria.range_input")} #${i + 1}`}
-                        onChange={(e) =>
-                          setRanges((r) =>
-                            r.map((x, j) =>
-                              j === i ? [parseInt(e.target.value, 10) || 1, x[1]] : x,
-                            ),
-                          )
+                        max={total}
+                        fallback={1}
+                        live
+                        onChange={(n) =>
+                          setRanges((r) => r.map((x, j) => (j === i ? [n, x[1]] : x)))
                         }
                       />
                       <button
@@ -1044,18 +1037,16 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                       >
                         ◀
                       </button>
-                      <input
-                        type="number"
+                      <NumInput
                         style={s.rangeInput}
+                        aria-label={`${t("aria.range_input")} #${i + 1}`}
                         value={rng[1]}
                         min={1}
-                        aria-label={`${t("aria.range_input")} #${i + 1}`}
-                        onChange={(e) =>
-                          setRanges((r) =>
-                            r.map((x, j) =>
-                              j === i ? [x[0], parseInt(e.target.value, 10) || 1] : x,
-                            ),
-                          )
+                        max={total}
+                        fallback={total}
+                        live
+                        onChange={(n) =>
+                          setRanges((r) => r.map((x, j) => (j === i ? [x[0], n] : x)))
                         }
                       />
                       <button

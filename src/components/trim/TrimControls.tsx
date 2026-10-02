@@ -10,6 +10,7 @@ import { useI18n } from "../../lib/i18n";
 import type { TrimMargins } from "../../lib/tauri";
 import { F } from "../../lib/theme";
 import { FS } from "../../lib/typography";
+import { NumInput } from "../NumInput";
 import { PageSelector } from "../PageSelector";
 import { PageSizeSelector } from "../PageSizeSelector";
 import { RedactMarginSection } from "./RedactMarginSection";
@@ -384,17 +385,18 @@ function MmField({
       <label style={s.fieldLabel} htmlFor={id}>
         {label}
       </label>
-      <input
+      <NumInput
         id={id}
-        ref={inputRef}
-        type="number"
+        inputRef={inputRef}
         style={s.input}
         value={value}
         min={0}
         max={max}
         step={0.5}
+        integer={false}
+        live
         aria-label={ariaLabel ?? label}
-        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        onChange={onChange}
       />
       <span style={s.unit}>mm</span>
     </div>
