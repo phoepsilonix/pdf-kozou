@@ -455,7 +455,7 @@ const CROPBOX_EPS: f32 = 0.01;
 /// CropBox 外側の余白（上下左右、pt 単位）のデフォルト値。
 /// ギリギリの部品が消えにくいように余裕を持たせるための値で、
 /// ユーザーが `RedactMargins` で上書きできる。
-pub const DEFAULT_REDACT_MARGIN_PT: f32 = 100.0;
+pub const DEFAULT_REDACT_MARGIN_PT: f32 = 20.0;
 
 /// CropBox 外側に持たせる余白を上下左右individuallyに指定するための値。
 /// 各帯（上/下/左/右）はそれぞれ「自分の方向」への食い込み量として
@@ -503,7 +503,7 @@ impl RedactMargins {
 ///   ページはスキップする。
 /// - 消去対象のページが1つもなければ `input` を `output` にコピーするだけで終える。
 /// - `margins`: 上下左右に持たせる余裕 (pt)。`None` の場合は
-///   `DEFAULT_REDACT_MARGIN_PT` (100pt) を上下左右均等に使う。
+///   `DEFAULT_REDACT_MARGIN_PT` (20pt) を上下左右均等に使う。
 pub fn redact_outside_cropbox(
     input: &str,
     output: &str,

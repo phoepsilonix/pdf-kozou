@@ -428,7 +428,7 @@ pub struct CompressRequest {
     pub redact_outside_crop: Option<bool>,
 
     /// redact_outside_crop 有効時、CropBox 外側に持たせる余白 (pt、上下左右共通)。
-    /// 未指定時は `crop_cleanup::DEFAULT_REDACT_MARGIN_PT` (100pt) を使う。
+    /// 未指定時は `crop_cleanup::DEFAULT_REDACT_MARGIN_PT` (20pt) を使う。
     /// 下記の redact_margin_top/bottom/left/right が個別に指定されていれば
     /// そちらが優先され、指定の無い方向のみこの値にフォールバックする。
     #[serde(default)]
