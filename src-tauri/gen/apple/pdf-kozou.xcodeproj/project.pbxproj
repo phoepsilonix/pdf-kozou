@@ -13,6 +13,7 @@
 		59DCD97832C279A4D5352C38 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4449CE687E152E5D56BAE52D /* CoreGraphics.framework */; };
 		81E7CC1A0F22AC68E560B3CB /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30E0A972409DCE2C4B3C1B14 /* QuartzCore.framework */; };
 		9A61A2EFF9C93AD5874D5BF3 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71A872922A5D4153A894B8F9 /* main.mm */; };
+		3B7D1C2A5E8F4A9061D2C7E4 /* KozouFolderPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E4A9B0D1C3F4825A7B8D9F1 /* KozouFolderPicker.swift */; };
 		9D02FDA1D6AC203C18C93DCF /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 1B4E9D2364D8A5930EF34F23 /* assets */; };
 		B81E1ABB3BC82C7866A7EC30 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 587D9441C81E25C8BFADA4C1 /* Security.framework */; };
 		C3540C87FDA49A9CA8C6DF19 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CABF59F6CFB97713F5ED0475 /* UIKit.framework */; };
@@ -37,6 +38,7 @@
 		6B7ACCCBA578BFE746E3BEF1 /* gs.rs */ = {isa = PBXFileReference; path = gs.rs; sourceTree = "<group>"; };
 		70C9DE83BCD97B90C6121298 /* tempdir.rs */ = {isa = PBXFileReference; path = tempdir.rs; sourceTree = "<group>"; };
 		71A872922A5D4153A894B8F9 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		6E4A9B0D1C3F4825A7B8D9F1 /* KozouFolderPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KozouFolderPicker.swift; sourceTree = "<group>"; };
 		7D74B67B26D6CEDADFF20701 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		8F07E4D3DF2F07737F75CA7E /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		961E0491AF9FEA422027AD82 /* pdf-kozou_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "pdf-kozou_iOS.entitlements"; sourceTree = "<group>"; };
@@ -75,6 +77,7 @@
 			isa = PBXGroup;
 			children = (
 				71A872922A5D4153A894B8F9 /* main.mm */,
+				6E4A9B0D1C3F4825A7B8D9F1 /* KozouFolderPicker.swift */,
 				6F5F6A27D11E7B101FDDFE0B /* bindings */,
 			);
 			path = "pdf-kozou";
@@ -282,6 +285,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9A61A2EFF9C93AD5874D5BF3 /* main.mm in Sources */,
+				3B7D1C2A5E8F4A9061D2C7E4 /* KozouFolderPicker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

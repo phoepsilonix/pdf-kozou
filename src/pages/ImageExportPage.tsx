@@ -45,17 +45,17 @@ import {
 } from "../lib/mobileOutput";
 import {
   checkPathConflict,
+  composeImpositionPdfKeepText,
   exportImagePdf,
   exportImagePdfKeepText,
   exportImages,
   getPdfInfo,
+  hasFolderPicker,
   type ImageFormat,
-  isAndroid,
   joinPath,
   type PdfInfo,
   type PickedFolder,
   rasterizeImposition,
-  composeImpositionPdfKeepText,
   renderImposition,
   renderPage,
   splitCellRender,
@@ -728,7 +728,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return;
       let androidFolderForRun: PickedFolder | null = null;
-      if (await isAndroid()) {
+      if (await hasFolderPicker()) {
         androidFolderForRun = await ensureAndroidFolder();
         if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
@@ -797,7 +797,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       const resolvedDir = outDir || (await pickDir());
       if (!resolvedDir) return; // キャンセル
       let androidFolderForRun: PickedFolder | null = null;
-      if (await isAndroid()) {
+      if (await hasFolderPicker()) {
         androidFolderForRun = await ensureAndroidFolder();
         if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
@@ -919,7 +919,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       effectiveOutDir = d;
     }
     let androidFolderForRun: PickedFolder | null = null;
-    if (outputMode === "images" && (await isAndroid())) {
+    if (outputMode === "images" && (await hasFolderPicker())) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
@@ -1112,7 +1112,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     const batchDir = outDir || (await pickDir());
     if (!batchDir) return; // キャンセル
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }

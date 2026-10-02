@@ -3,16 +3,18 @@
 // トリミング・圧縮・分割・隠しテキスト等)で共通して使う、モバイル向けの
 // 保存後処理をまとめたフック。
 //
-// Android は SAF フォルダ選択(useBatchSaveFolder、永続化対応)、
-// iOS は従来通りダウンロードフォルダ配下へのコピー(commitSavedBatch)
-// を使う。各ページはこのフックの commitMobileOutput() を、自前の
-// finalizeMobileOutput() (mobileSavedFiles/mobileSaveError の state 管理)
-// から呼び出す薄いラッパーにするだけでよい。
+// Android は SAF フォルダ選択、iOS は UIDocumentPicker のフォルダ選択
+// (どちらも useBatchSaveFolder、保存先は選択フォルダ)を使う。
+// フォルダ選択が使えない環境(現状は無し)では従来通りダウンロードフォルダ配下
+// へのコピー(commitSavedBatch)にフォールバックする。各ページはこのフックの
+// commitMobileOutput() を、自前の finalizeMobileOutput()
+// (mobileSavedFiles/mobileSaveError の state 管理)から呼び出す薄いラッパーに
+// するだけでよい。
 
 import { useCallback, useEffect, useState } from "react";
 import { guessMimeTypeFromPath } from "../lib/mimeType";
 import { commitSavedBatch, type MobileSavedFileInfo } from "../lib/mobileOutput";
-import { isAndroid, isMobile, type PickedFolder } from "../lib/tauri";
+import { hasFolderPicker, isMobile, type PickedFolder } from "../lib/tauri";
 import { useBatchSaveFolder } from "./useBatchSaveFolder";
 
 /**
@@ -31,11 +33,12 @@ export function useMobileBatchOutput() {
       .catch(() => setMobile(false));
   }, []);
 
-  // JSXの分岐は同期的な値が要るため、isAndroid() の結果をstate化しておく。
-  // 実処理側(guard/finalize)は毎回 isAndroid() を直接awaitして使うこと。
+  // JSXの分岐は同期的な値が要るため、hasFolderPicker() の結果をstate化しておく
+  // (Android と iOS でフォルダ選択UIを出す。名前は経緯で androidUI のまま)。
+  // 実処理側(guard/finalize)は毎回 hasFolderPicker() を直接awaitして使うこと。
   const [androidUI, setAndroidUI] = useState(false);
   useEffect(() => {
-    isAndroid()
+    hasFolderPicker()
       .then(setAndroidUI)
       .catch(() => setAndroidUI(false));
   }, []);
@@ -65,7 +68,7 @@ export function useMobileBatchOutput() {
       mobileRelativeDir: string,
       folderOverride?: PickedFolder | null,
     ): Promise<MobileSavedFileInfo[] | null> => {
-      if (await isAndroid()) {
+      if (await hasFolderPicker()) {
         const folder = folderOverride ?? androidFolder;
         if (!folder) throw new Error(ANDROID_FOLDER_MISSING);
         const saved = await commitGrouped(folder, dir, filePaths, guessMimeTypeFromPath);

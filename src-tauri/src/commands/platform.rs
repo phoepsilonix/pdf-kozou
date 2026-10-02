@@ -73,6 +73,13 @@ pub fn is_android() -> bool {
     cfg!(target_os = "android")
 }
 
+/// iOS かどうか。バッチ出力の保存先の案内表示(「ダウンロード」ではなく
+/// 「ファイル」アプリ内のアプリ用フォルダ)をフロントエンドで切り替えるために使う。
+#[tauri::command]
+pub fn is_ios() -> bool {
+    cfg!(target_os = "ios")
+}
+
 /// PDF を開くダイアログ (単一ファイル)
 /// デスクトップ: xdg-desktop-portal 不使用、GTK3 直接 (Linux) / rfd (macOS, Windows)
 /// モバイル: tauri-plugin-dialog のネイティブピッカーを使用
@@ -171,8 +178,9 @@ pub async fn discard_pending_save(app: tauri::AppHandle, path: String) -> Result
     }
 }
 
-/// 単一ファイル保存(モバイルのみ)向け: `ACTION_OPEN_DOCUMENT_TREE` で
-/// 保存先フォルダを選ばせる。デスクトップでは呼ばれない想定
+/// 保存先フォルダを選ばせる(モバイルのみ)。Android は `ACTION_OPEN_DOCUMENT_TREE`、
+/// iOS は `UIDocumentPickerViewController` のフォルダ選択(Swift: KozouFolderPicker.swift)。
+/// iOS では `tree_uri` に選択フォルダの絶対パスを入れて返す。デスクトップでは呼ばれない想定
 /// (デスクトップは `pick_save_file` のネイティブ保存ダイアログのみ使う)。
 ///
 /// ユーザーがキャンセルした場合は `Ok(None)`。
@@ -197,10 +205,25 @@ pub async fn pick_save_folder(app: tauri::AppHandle) -> Result<Option<PickedFold
             folder_name: p.folder_name,
         }))
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
     {
         let _ = &app;
-        Err("pick_save_folder is only available on Android".to_string())
+        // iOS: パスをそのまま tree_uri として扱う(以降の list_folder_names /
+        // get_or_create_subfolder / commit_batch_to_folder にそのまま渡される)。
+        let picked = platform::ios_folder::pick_folder().await?;
+        Ok(picked.map(|p| PickedFolderDto {
+            folder_name: if p.name.is_empty() {
+                p.path.clone()
+            } else {
+                p.name
+            },
+            tree_uri: p.path,
+        }))
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _ = &app;
+        Err("pick_save_folder is only available on mobile".to_string())
     }
 }
 
@@ -243,10 +266,15 @@ pub async fn list_folder_names(
             .ok_or("SafFolderPlugin is not registered")?;
         state.list_folder_names(&tree_uri)
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    {
+        let _ = &app;
+        platform::folder_ops::list_folder_names(std::path::Path::new(&tree_uri))
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let _ = (&app, &tree_uri);
-        Err("list_folder_names is only available on Android".to_string())
+        Err("list_folder_names is only available on mobile".to_string())
     }
 }
 
@@ -266,10 +294,16 @@ pub async fn get_or_create_subfolder(
             .ok_or("SafFolderPlugin is not registered")?;
         state.get_or_create_subfolder(&tree_uri, &name)
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    {
+        let _ = &app;
+        platform::folder_ops::get_or_create_subfolder(std::path::Path::new(&tree_uri), &name)
+            .map(|p| p.display().to_string())
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let _ = (&app, &tree_uri, &name);
-        Err("get_or_create_subfolder is only available on Android".to_string())
+        Err("get_or_create_subfolder is only available on mobile".to_string())
     }
 }
 
@@ -383,7 +417,7 @@ pub struct SavedFileInfo {
 /// 一緒に保存されてしまう)。`file_paths` の各要素は `temp_dir` 配下の
 /// 絶対パスであること。
 ///
-/// デスクトップおよび iOS (未対応) では何もせず空配列を返す
+/// デスクトップおよび iOS では何もせず空配列を返す
 /// (デスクトップは `temp_dir` = 実際にユーザーが選んだ保存先そのもの
 /// であり、追加の移動は不要)。
 #[tauri::command]
@@ -508,7 +542,34 @@ pub async fn commit_batch_to_folder(
         }
         Ok(results)
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    {
+        let _ = &app;
+        // iOS: 選択フォルダ(security-scoped、Swift側がアクセス保持中)へ
+        // 通常のファイルコピーで書き込む。重いコピーになり得るのでブロッキング用スレッドで行う。
+        tauri::async_runtime::spawn_blocking(move || {
+            let folder = std::path::PathBuf::from(&tree_uri);
+            let mut results = Vec::with_capacity(entries.len());
+            for entry in entries {
+                let dest = platform::folder_ops::copy_entry(
+                    &folder,
+                    std::path::Path::new(&entry.source_path),
+                    &entry.target_name,
+                    entry.overwrite,
+                )?;
+                results.push(SavedFileInfo {
+                    uri: format!("file://{}", dest.display()),
+                    display_name: entry.target_name.clone(),
+                    relative_path: String::new(),
+                    source_relative: entry.source_path.clone(),
+                });
+            }
+            Ok::<_, String>(results)
+        })
+        .await
+        .map_err(|e| format!("保存処理が中断されました: {e}"))?
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let _ = (&app, &tree_uri, &entries);
         Ok(vec![])

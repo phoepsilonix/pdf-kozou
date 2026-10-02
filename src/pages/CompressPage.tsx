@@ -32,7 +32,7 @@ import {
   type CompressResponse,
   compressPdf,
   getUniqueTempPath,
-  isAndroid,
+  hasFolderPicker,
   joinPath,
   moveFile,
   type PdfInfo,
@@ -729,7 +729,7 @@ export function CompressPage({
       return;
     }
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }

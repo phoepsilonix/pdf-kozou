@@ -37,7 +37,7 @@ import {
   composeImpositionPdf,
   getPdfInfo,
   getUniqueTempPath,
-  isAndroid,
+  hasFolderPicker,
   joinPath,
   moveFile,
   type PdfInfo,
@@ -436,7 +436,7 @@ function TrimPageBatch({
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }

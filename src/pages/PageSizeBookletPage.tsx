@@ -35,7 +35,7 @@ import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import {
   composeImpositionPdf,
   getPdfInfo,
-  isAndroid,
+  hasFolderPicker,
   joinPath,
   type PdfInfo,
   type PickedFolder,
@@ -407,7 +407,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     const dir = outDir || (await pickDir());
     if (!dir) return;
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }

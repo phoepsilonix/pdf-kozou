@@ -10,6 +10,14 @@ use tauri::Manager;
 pub mod screen_info;
 pub use screen_info::{DisplayServer, ScreenInfo};
 
+// iOS の保存先フォルダ操作。std のみで書かれており、デスクトップでも
+// 単体テストできるよう全プラットフォームでコンパイルする。
+#[allow(dead_code)]
+pub mod folder_ops;
+
+#[cfg(target_os = "ios")]
+pub mod ios_folder;
+
 #[cfg(target_os = "android")]
 pub mod android_fs_info;
 
@@ -472,9 +480,18 @@ pub fn discard_pending_save(app: &tauri::AppHandle, output_path: &str) -> Result
 
 #[cfg(mobile)]
 pub async fn pick_output_dir(_app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    let output_dir = _app
-        .path()
-        .document_dir()
-        .expect("Failed to get document dir");
-    Some(output_dir)
+    // iOS: 処理中の出力はアプリ専用の一時ディレクトリへ書き出し、完了後に
+    // commit_batch_to_folder がユーザーの選んだフォルダへコピーする。
+    #[cfg(target_os = "ios")]
+    {
+        Some(crate::tempdir::kozou_temp_dir())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let output_dir = _app
+            .path()
+            .document_dir()
+            .expect("Failed to get document dir");
+        Some(output_dir)
+    }
 }

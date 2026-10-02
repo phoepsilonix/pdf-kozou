@@ -198,6 +198,7 @@ pub fn run() {
             platform_cmd::get_screen_info,
             platform_cmd::is_mobile,
             platform_cmd::is_android,
+            platform_cmd::is_ios,
             platform_cmd::pick_open_file,
             platform_cmd::pick_open_files,
             platform_cmd::pick_save_file,

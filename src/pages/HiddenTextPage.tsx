@@ -24,7 +24,7 @@ import {
   detectLowContrastText,
   detectTinyText,
   detectTransparentText,
-  isAndroid,
+  hasFolderPicker,
   joinPath,
   type PdfInfo,
   type PickedFolder,
@@ -451,7 +451,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return; // キャンセル
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }

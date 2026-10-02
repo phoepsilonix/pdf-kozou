@@ -1,6 +1,8 @@
 // src/hooks/useBatchSaveFolder.ts
 // 複数ファイル出力(画像ファイル出力・バッチ画像PDF出力等)向けの、
-// フォルダ単位アクセス(ACTION_OPEN_DOCUMENT_TREE)による保存。
+// フォルダ単位アクセスによる保存(Android: ACTION_OPEN_DOCUMENT_TREE、
+// iOS: UIDocumentPicker のフォルダ選択。iOS では treeUri に選択フォルダの
+// 絶対パスが入る)。
 //
 // 単一ファイル保存の useSaveDialog と同じ B方式(pickSaveFolder)を使うが、
 // 出力ファイルが複数になるため、衝突確認は1件ずつではなく
@@ -38,7 +40,7 @@ import {
   type BatchSavedFileInfo,
   commitBatchToFolder,
   getOrCreateSubfolder,
-  isAndroid,
+  hasFolderPicker,
   type PickedFolder,
   pickSaveFolder,
 } from "../lib/tauri";
@@ -60,7 +62,7 @@ export function useBatchSaveFolder() {
   const loadPersisted = useCallback((): Promise<PickedFolder | null> => {
     if (!loadPromiseRef.current) {
       loadPromiseRef.current = (async () => {
-        if (!(await isAndroid())) return null;
+        if (!(await hasFolderPicker())) return null;
         const persisted = await getValidPersistedAndroidFolder();
         if (persisted) setFolder(persisted);
         return persisted;

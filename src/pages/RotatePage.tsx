@@ -45,6 +45,7 @@ import {
   commitSavedFile,
   getPdfInfo,
   getUniqueTempPath,
+  hasFolderPicker,
   isAndroid,
   joinPath,
   moveFile,
@@ -405,7 +406,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }

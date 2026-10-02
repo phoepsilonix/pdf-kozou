@@ -37,7 +37,7 @@ import {
 } from "../lib/mobileOutput";
 import {
   getPdfInfo,
-  isAndroid,
+  hasFolderPicker,
   type OverrideMeta,
   type PdfInfo,
   type PickedFolder,
@@ -361,7 +361,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
@@ -427,7 +427,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     const resolvedDir = outDir || (await pickDir());
     if (!resolvedDir) return;
     let androidFolderForRun: PickedFolder | null = null;
-    if (await isAndroid()) {
+    if (await hasFolderPicker()) {
       androidFolderForRun = await ensureAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }

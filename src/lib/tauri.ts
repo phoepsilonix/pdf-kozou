@@ -811,7 +811,10 @@ export interface TrimMargins {
 }
 
 export type PageSelection =
-  { type: "All" } | { type: "Even" } | { type: "Odd" } | { type: "Range"; pages: number[] };
+  | { type: "All" }
+  | { type: "Even" }
+  | { type: "Odd" }
+  | { type: "Range"; pages: number[] };
 
 // ── 形式変換 ──────────────────────────────────────────────────────────────────
 
@@ -890,6 +893,35 @@ export async function isAndroid(): Promise<boolean> {
     _isAndroidCache = await invoke<boolean>("is_android");
   }
   return _isAndroidCache;
+}
+
+let _hasFolderPickerCache: boolean | null = null;
+
+/**
+ * 保存先フォルダを選んでバッチ出力を書き込む方式(pickSaveFolder() 系)が使える
+ * 環境かどうか。Android(SAF)と iOS(UIDocumentPicker のフォルダ選択)が対象。
+ * 単一ファイル保存の B 方式(beginFolderSave 等)は Android のみなので、
+ * そちらは引き続き isAndroid() で判定すること。
+ */
+export async function hasFolderPicker(): Promise<boolean> {
+  if (_hasFolderPickerCache === null) {
+    _hasFolderPickerCache = (await isAndroid()) || (await isIOS());
+  }
+  return _hasFolderPickerCache;
+}
+
+let _isIOSCache: boolean | null = null;
+
+/**
+ * 実行環境が iOS かどうか。iOS にはアプリが直接書き込める共有の「ダウンロード」
+ * フォルダが無く、バッチ出力はアプリの Documents 配下へ保存して「ファイル」アプリ
+ * から参照する方式になるため、保存先の案内表示の切り替えに使う。
+ */
+export async function isIOS(): Promise<boolean> {
+  if (_isIOSCache === null) {
+    _isIOSCache = await invoke<boolean>("is_ios");
+  }
+  return _isIOSCache;
 }
 
 export async function pickSaveFile(defaultName: string): Promise<string | null> {
