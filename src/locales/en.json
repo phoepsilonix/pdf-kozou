@@ -992,6 +992,7 @@
     "title": "Save As",
     "folder_label": "Save to folder",
     "change_folder": "Change",
+    "granted_label": "Folders already allowed (no extra prompt)",
     "input_label": "File name",
     "save": "Save",
     "cancel": "Cancel"

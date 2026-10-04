@@ -19,7 +19,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect } from "react";
-import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
+import { getValidPersistedAndroidFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
 import { resolveSaveConflict } from "../lib/saveConflict";
 import {
   beginFolderSave,
@@ -27,7 +27,6 @@ import {
   discardPendingSave,
   getDefaultSaveDir,
   isAndroid,
-  pickSaveFolder,
 } from "../lib/tauri";
 import { usePdfStore } from "../store/usePdfStore";
 import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
@@ -52,9 +51,8 @@ export function useSaveDialog() {
         // 通常通りピッカーを開く ──
         let folder = await getValidPersistedAndroidFolder();
         if (!folder) {
-          folder = await pickSaveFolder();
+          folder = await pickAndPersistSaveFolder();
           if (!folder) return null; // フォルダ選択をキャンセル
-          persistAndroidSaveFolder(folder);
         }
 
         // フォルダ選択の永続化により保存が完全に無人で走るようになったため、

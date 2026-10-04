@@ -34,6 +34,8 @@ package phoepsilonix.pdfkozou
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
 import androidx.activity.result.ActivityResult
 import androidx.documentfile.provider.DocumentFile
 import app.tauri.annotation.ActivityCallback
@@ -45,6 +47,12 @@ import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import java.io.IOException
+
+@InvokeArg
+class PickFolderArgs {
+  // 前回選んだフォルダの treeUri。ピッカーをこのフォルダから開かせる(任意)。
+  var initialUri: String? = null
+}
 
 @InvokeArg
 class FindFileArgs {
@@ -76,7 +84,62 @@ class SafFolderPlugin(private val activity: Activity) : Plugin(activity) {
   @Command
   fun pickFolder(invoke: Invoke) {
     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+    intent.addFlags(
+      Intent.FLAG_GRANT_READ_URI_PERMISSION or
+        Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+        Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+    )
+    // 前回のフォルダからピッカーを開く。システムのフォルダ選択は、既に
+    // 権限を持っているフォルダでも毎回「アクセスを許可」の確認を出す
+    // (アプリ側では抑止できない)ため、せめて目的のフォルダまでの
+    // 操作を減らす。EXTRA_INITIAL_URI は API 26 以降。
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      try {
+        val args = invoke.parseArgs(PickFolderArgs::class.java)
+        val initial = args.initialUri
+        if (!initial.isNullOrEmpty()) {
+          intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, Uri.parse(initial))
+        }
+      } catch (_: Exception) {
+        // 引数の解釈に失敗しても、初期位置が付かないだけで選択自体は続行する。
+      }
+    }
     startActivityForResult(invoke, intent, "handlePickFolder")
+  }
+
+  // 既に永続的な書き込み権限(takePersistableUriPermission 済み)を持っている
+  // フォルダの一覧を返す。ここに載っているフォルダは、システムのピッカーを
+  // 開かずに(=権限確認ダイアログ無しで)そのまま保存先に使える。
+  @Command
+  fun listGrantedFolders(invoke: Invoke) {
+    try {
+      val list = JSArray()
+      val perms = activity.contentResolver.persistedUriPermissions
+        .filter { it.isWritePermission && DocumentsContract.isTreeUri(it.uri) }
+        .sortedByDescending { it.persistedTime }
+      for (p in perms) {
+        val doc = DocumentFile.fromTreeUri(activity, p.uri) ?: continue
+        // 削除・取り外し等で実体が無くなったフォルダは候補から外す。
+        val usable = try {
+          doc.exists() && doc.isDirectory && doc.canWrite()
+        } catch (_: Exception) {
+          false
+        }
+        if (!usable) continue
+        val o = JSObject()
+        o.put("treeUri", p.uri.toString())
+        o.put("folderName", doc.name ?: p.uri.lastPathSegment ?: "")
+        // 例: "primary:Documents/PDF" (同名フォルダの見分け用)
+        o.put("folderPath", DocumentsContract.getTreeDocumentId(p.uri))
+        list.put(o)
+      }
+      val r = JSObject()
+      r.put("folders", list)
+      invoke.resolve(r)
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "failed to list granted folders")
+    }
   }
 
   @ActivityCallback

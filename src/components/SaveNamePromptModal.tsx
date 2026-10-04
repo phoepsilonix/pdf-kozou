@@ -9,9 +9,9 @@
 // ここから行える。
 
 import { useEffect, useRef, useState } from "react";
-import { persistAndroidSaveFolder } from "../lib/androidSaveFolder";
+import { persistAndroidSaveFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
 import { useI18n } from "../lib/i18n";
-import { type PickedFolder, pickSaveFolder } from "../lib/tauri";
+import { type GrantedFolder, listGrantedFolders, type PickedFolder } from "../lib/tauri";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
@@ -21,6 +21,7 @@ export function SaveNamePromptModal() {
   const { t } = useI18n();
   const [nameInput, setNameInput] = useState("");
   const [folder, setFolder] = useState<PickedFolder | null>(null);
+  const [granted, setGranted] = useState<GrantedFolder[]>([]);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -28,6 +29,23 @@ export function SaveNamePromptModal() {
       setNameInput(request.suggestedName);
       setFolder(request.folder);
     }
+  }, [request]);
+
+  // 既に権限を持っているフォルダの一覧。ここから選べばシステムの
+  // フォルダピッカー(毎回出る権限確認)を開かずに保存先を切り替えられる。
+  useEffect(() => {
+    if (!request) return;
+    let cancelled = false;
+    listGrantedFolders()
+      .then((list) => {
+        if (!cancelled) setGranted(list);
+      })
+      .catch(() => {
+        if (!cancelled) setGranted([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [request]);
 
   // モーダル表示直後に入力欄へフォーカスする(autoFocus属性の代わり)。
@@ -45,13 +63,19 @@ export function SaveNamePromptModal() {
   };
 
   const changeFolder = async () => {
-    const picked = await pickSaveFolder();
-    if (picked) {
-      setFolder(picked);
-      // ここで明示的に選び直した場合は、以後の既定値としても更新する。
-      persistAndroidSaveFolder(picked);
-    }
+    // 明示的に選び直した場合は、以後の既定値としても更新される。
+    const picked = await pickAndPersistSaveFolder();
+    if (picked) setFolder(picked);
   };
+
+  // 許可済みフォルダを選ぶ(OSの権限確認なし)。
+  const selectGrantedFolder = (g: GrantedFolder) => {
+    const picked: PickedFolder = { treeUri: g.treeUri, folderName: g.folderName };
+    setFolder(picked);
+    persistAndroidSaveFolder(picked);
+  };
+
+  const otherGranted = granted.filter((g) => g.treeUri !== folder?.treeUri);
 
   return (
     <>
@@ -74,6 +98,25 @@ export function SaveNamePromptModal() {
                 {t("save_name_prompt.change_folder")}
               </button>
             </div>
+            {otherGranted.length > 0 && (
+              <div style={s.grantedBox}>
+                <span style={s.grantedLabel}>{t("save_name_prompt.granted_label")}</span>
+                <div style={s.grantedList}>
+                  {otherGranted.map((g) => (
+                    <button
+                      key={g.treeUri}
+                      type="button"
+                      style={s.grantedBtn}
+                      title={g.folderPath ?? g.folderName}
+                      onClick={() => selectGrantedFolder(g)}
+                    >
+                      <span style={s.grantedName}>{g.folderName}</span>
+                      {g.folderPath && <span style={s.grantedPath}>{g.folderPath}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </fieldset>
           <div style={s.form}>
             <label style={s.label} htmlFor="save-name-prompt-input">
@@ -199,6 +242,52 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: FS.body,
     fontFamily: F,
     cursor: "pointer",
+  },
+  grantedBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  grantedLabel: {
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
+  },
+  grantedList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    maxHeight: 140,
+    overflowY: "auto",
+  },
+  grantedBtn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 2,
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--c-border)",
+    background: "var(--c-bg)",
+    color: "var(--c-text)",
+    fontSize: FS.body,
+    fontFamily: F,
+    cursor: "pointer",
+    textAlign: "left" as const,
+    minWidth: 0,
+  },
+  grantedName: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
+  grantedPath: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+    fontSize: FS.caption,
+    color: "var(--c-textSub)",
   },
   input: {
     padding: "10px 12px",

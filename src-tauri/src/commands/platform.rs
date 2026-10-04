@@ -192,14 +192,17 @@ pub struct PickedFolderDto {
 }
 
 #[tauri::command]
-pub async fn pick_save_folder(app: tauri::AppHandle) -> Result<Option<PickedFolderDto>, String> {
+pub async fn pick_save_folder(
+    app: tauri::AppHandle,
+    initial_tree_uri: Option<String>,
+) -> Result<Option<PickedFolderDto>, String> {
     #[cfg(target_os = "android")]
     {
         use tauri::Manager;
         let state = app
             .try_state::<platform::android_saf_folder::KozouSafFolder>()
             .ok_or("SafFolderPlugin is not registered")?;
-        let picked = state.pick_folder()?;
+        let picked = state.pick_folder(initial_tree_uri.as_deref())?;
         Ok(picked.map(|p| PickedFolderDto {
             tree_uri: p.tree_uri,
             folder_name: p.folder_name,
@@ -207,7 +210,7 @@ pub async fn pick_save_folder(app: tauri::AppHandle) -> Result<Option<PickedFold
     }
     #[cfg(target_os = "ios")]
     {
-        let _ = &app;
+        let _ = (&app, &initial_tree_uri);
         // iOS: パスをそのまま tree_uri として扱う(以降の list_folder_names /
         // get_or_create_subfolder / commit_batch_to_folder にそのまま渡される)。
         let picked = platform::ios_folder::pick_folder().await?;
@@ -222,8 +225,44 @@ pub async fn pick_save_folder(app: tauri::AppHandle) -> Result<Option<PickedFold
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let _ = &app;
+        let _ = (&app, &initial_tree_uri);
         Err("pick_save_folder is only available on mobile".to_string())
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantedFolderDto {
+    pub tree_uri: String,
+    pub folder_name: String,
+    pub folder_path: Option<String>,
+}
+
+/// 既に永続的な権限を持っている保存先フォルダの一覧(Android のみ。新しい順)。
+/// ここに載っているフォルダは、システムのフォルダピッカー(毎回出る権限確認)
+/// を開かずにそのまま保存先に使える。Android 以外では空配列を返す。
+#[tauri::command]
+pub async fn list_granted_folders(app: tauri::AppHandle) -> Result<Vec<GrantedFolderDto>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let state = app
+            .try_state::<platform::android_saf_folder::KozouSafFolder>()
+            .ok_or("SafFolderPlugin is not registered")?;
+        Ok(state
+            .list_granted_folders()?
+            .into_iter()
+            .map(|f| GrantedFolderDto {
+                tree_uri: f.tree_uri,
+                folder_name: f.folder_name,
+                folder_path: f.folder_path,
+            })
+            .collect())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = &app;
+        Ok(Vec::new())
     }
 }
 

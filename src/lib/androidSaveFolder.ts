@@ -13,7 +13,7 @@
 // クリアしてフォールバック(通常のピッカー呼び出し)に任せる。
 
 import { usePdfStore } from "../store/usePdfStore";
-import { listFolderNames, type PickedFolder } from "./tauri";
+import { listFolderNames, type PickedFolder, pickSaveFolder } from "./tauri";
 
 /**
  * 永続化されたフォルダがあれば、実際にまだ使えるか検証した上で返す。
@@ -34,4 +34,20 @@ export async function getValidPersistedAndroidFolder(): Promise<PickedFolder | n
 
 export function persistAndroidSaveFolder(folder: PickedFolder | null): void {
   usePdfStore.getState().setAndroidSaveFolder(folder);
+}
+
+/**
+ * システムのフォルダピッカーを開き、選ばれたフォルダを永続化して返す
+ * (キャンセル時は null)。
+ *
+ * ACTION_OPEN_DOCUMENT_TREE は、既に権限を持っているフォルダでも毎回
+ * 「アクセスを許可」の確認を出す(アプリ側からは抑止できない)。そこで
+ * 前回のフォルダを初期位置に指定して操作を減らす。許可済みフォルダを
+ * 確認なしで選び直せる導線は SaveNamePromptModal の一覧を参照。
+ */
+export async function pickAndPersistSaveFolder(): Promise<PickedFolder | null> {
+  const initial = usePdfStore.getState().androidSaveFolder?.treeUri ?? null;
+  const picked = await pickSaveFolder(initial);
+  if (picked) persistAndroidSaveFolder(picked);
+  return picked;
 }

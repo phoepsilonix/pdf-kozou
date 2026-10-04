@@ -992,6 +992,7 @@
     "title": "名前を付けて保存",
     "folder_label": "保存先フォルダ",
     "change_folder": "変更",
+    "granted_label": "保存済みのフォルダ(確認なしで選べます)",
     "input_label": "ファイル名",
     "save": "保存",
     "cancel": "キャンセル"

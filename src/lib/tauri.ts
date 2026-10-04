@@ -963,8 +963,23 @@ export interface PickedFolder {
   treeUri: string;
   folderName: string;
 }
-export async function pickSaveFolder(): Promise<PickedFolder | null> {
-  return await invoke<PickedFolder | null>("pick_save_folder");
+/**
+ * `initialTreeUri` を渡すと、Android のピッカーをそのフォルダから開く
+ * (iOS では無視される)。
+ */
+export async function pickSaveFolder(initialTreeUri?: string | null): Promise<PickedFolder | null> {
+  return await invoke<PickedFolder | null>("pick_save_folder", {
+    initialTreeUri: initialTreeUri ?? null,
+  });
+}
+
+/** 既に永続的な権限を持っているフォルダ(Android のみ。それ以外は空配列)。 */
+export interface GrantedFolder extends PickedFolder {
+  /** 同名フォルダの見分け用の表示パス(例: "primary:Documents/PDF")。 */
+  folderPath?: string | null;
+}
+export async function listGrantedFolders(): Promise<GrantedFolder[]> {
+  return await invoke<GrantedFolder[]>("list_granted_folders");
 }
 
 /** 指定フォルダ内に同名ファイルが既に存在するかどうか(モバイルのみ)。 */

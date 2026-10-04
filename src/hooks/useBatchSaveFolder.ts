@@ -33,7 +33,7 @@
 // 参照すると再レンダー前の古い値(null)を掴むことがある。
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
+import { getValidPersistedAndroidFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
 import { type PlannedGroup, resolveGroupsSaveConflict } from "../lib/batchSaveConflict";
 import {
   type BatchFolderEntry,
@@ -42,7 +42,6 @@ import {
   getOrCreateSubfolder,
   hasFolderPicker,
   type PickedFolder,
-  pickSaveFolder,
 } from "../lib/tauri";
 
 function baseName(path: string): string {
@@ -77,11 +76,8 @@ export function useBatchSaveFolder() {
 
   /** 「参照」ボタン用。選択済みでも常にダイアログを開き直す。 */
   const pickFolder = useCallback(async (): Promise<PickedFolder | null> => {
-    const picked = await pickSaveFolder();
-    if (picked) {
-      setFolder(picked);
-      persistAndroidSaveFolder(picked);
-    }
+    const picked = await pickAndPersistSaveFolder();
+    if (picked) setFolder(picked);
     return picked;
   }, []);
 

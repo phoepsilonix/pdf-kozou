@@ -206,6 +206,7 @@ pub fn run() {
             platform_cmd::commit_saved_file,
             platform_cmd::discard_pending_save,
             platform_cmd::pick_save_folder,
+            platform_cmd::list_granted_folders,
             platform_cmd::check_save_name_exists,
             platform_cmd::begin_folder_save,
             platform_cmd::pick_output_dir,

@@ -51,6 +51,34 @@ struct PickFolderResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PickFolderArgs<'a> {
+    initial_uri: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GrantedFolderEntry {
+    tree_uri: String,
+    folder_name: String,
+    folder_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ListGrantedFoldersResponse {
+    folders: Vec<GrantedFolderEntry>,
+}
+
+/// 永続的な権限を既に持っているフォルダ。
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantedFolder {
+    pub tree_uri: String,
+    pub folder_name: String,
+    pub folder_path: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FindFileArgs<'a> {
     tree_uri: &'a str,
     file_name: &'a str,
@@ -125,10 +153,12 @@ pub struct KozouSafFolder(PluginHandle<tauri::Wry>);
 impl KozouSafFolder {
     /// `ACTION_OPEN_DOCUMENT_TREE` でフォルダを選ばせる。
     /// ユーザーがキャンセルした場合は `Ok(None)`。
-    pub fn pick_folder(&self) -> Result<Option<PickedFolder>, String> {
+    ///
+    /// `initial_uri` を渡すと、ピッカーをそのフォルダから開く。
+    pub fn pick_folder(&self, initial_uri: Option<&str>) -> Result<Option<PickedFolder>, String> {
         let resp = self
             .0
-            .run_mobile_plugin::<PickFolderResponse>("pickFolder", ())
+            .run_mobile_plugin::<PickFolderResponse>("pickFolder", PickFolderArgs { initial_uri })
             .map_err(|e| e.to_string())?;
         match (resp.tree_uri, resp.folder_name) {
             (Some(tree_uri), Some(folder_name)) => Ok(Some(PickedFolder {
@@ -137,6 +167,24 @@ impl KozouSafFolder {
             })),
             _ => Ok(None),
         }
+    }
+
+    /// 既に永続的な書き込み権限を持っているフォルダの一覧(新しい順)。
+    /// これらはシステムのピッカー(権限確認ダイアログ)を経ずに使える。
+    pub fn list_granted_folders(&self) -> Result<Vec<GrantedFolder>, String> {
+        let resp = self
+            .0
+            .run_mobile_plugin::<ListGrantedFoldersResponse>("listGrantedFolders", ())
+            .map_err(|e| e.to_string())?;
+        Ok(resp
+            .folders
+            .into_iter()
+            .map(|f| GrantedFolder {
+                tree_uri: f.tree_uri,
+                folder_name: f.folder_name,
+                folder_path: f.folder_path,
+            })
+            .collect())
     }
 
     /// 指定フォルダ内に同名ファイルが既に存在するか確認し、あればその

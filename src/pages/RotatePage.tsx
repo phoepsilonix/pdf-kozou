@@ -28,7 +28,7 @@ import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { usePreview } from "../hooks/usePreview";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
-import { getValidPersistedAndroidFolder, persistAndroidSaveFolder } from "../lib/androidSaveFolder";
+import { getValidPersistedAndroidFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { hasImage } from "../lib/fileTypes";
 import { useI18n } from "../lib/i18n";
@@ -51,7 +51,6 @@ import {
   moveFile,
   type PdfInfo,
   type PickedFolder,
-  pickSaveFolder,
   renderPage,
   rotatePdf,
 } from "../lib/tauri";
@@ -560,9 +559,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       if (await isAndroid()) {
         let folder = await getValidPersistedAndroidFolder();
         if (!folder) {
-          folder = await pickSaveFolder();
+          folder = await pickAndPersistSaveFolder();
           if (!folder) return;
-          persistAndroidSaveFolder(folder);
         }
         const confirmed = await useSaveNamePromptStore
           .getState()
