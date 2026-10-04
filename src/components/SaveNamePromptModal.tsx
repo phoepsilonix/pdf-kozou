@@ -9,9 +9,13 @@
 // ここから行える。
 
 import { useEffect, useRef, useState } from "react";
-import { persistAndroidSaveFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
+import {
+  listRecentGrantedFolders,
+  persistAndroidSaveFolder,
+  pickAndPersistSaveFolder,
+} from "../lib/androidSaveFolder";
 import { useI18n } from "../lib/i18n";
-import { type GrantedFolder, listGrantedFolders, type PickedFolder } from "../lib/tauri";
+import type { GrantedFolder, PickedFolder } from "../lib/tauri";
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
@@ -36,7 +40,7 @@ export function SaveNamePromptModal() {
   useEffect(() => {
     if (!request) return;
     let cancelled = false;
-    listGrantedFolders()
+    listRecentGrantedFolders()
       .then((list) => {
         if (!cancelled) setGranted(list);
       })

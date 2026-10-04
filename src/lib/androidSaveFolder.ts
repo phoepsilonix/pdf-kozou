@@ -14,7 +14,13 @@
 
 import { useFolderChooserStore } from "../store/useFolderChooserStore";
 import { usePdfStore } from "../store/usePdfStore";
-import { listFolderNames, listGrantedFolders, type PickedFolder, pickSaveFolder } from "./tauri";
+import {
+  type GrantedFolder,
+  listFolderNames,
+  listGrantedFolders,
+  type PickedFolder,
+  pickSaveFolder,
+} from "./tauri";
 
 /**
  * 永続化されたフォルダがあれば、実際にまだ使えるか検証した上で返す。
@@ -53,6 +59,19 @@ export async function pickAndPersistSaveFolder(): Promise<PickedFolder | null> {
   return picked;
 }
 
+/** 保存先の一覧に出す許可済みフォルダの最大件数(新しい順で先頭から)。 */
+export const MAX_GRANTED_FOLDERS_SHOWN = 10;
+
+/**
+ * 許可済みフォルダを新しい順に最大 MAX_GRANTED_FOLDERS_SHOWN 件返す。
+ * 権限の取り消しはしていないため、フォルダを選び直すたびに権限は
+ * 増え続ける。一覧が長くなりすぎないよう、直近のものだけを出す。
+ */
+export async function listRecentGrantedFolders(): Promise<GrantedFolder[]> {
+  const all = await listGrantedFolders();
+  return all.slice(0, MAX_GRANTED_FOLDERS_SHOWN);
+}
+
 /**
  * バッチ出力の「参照」ボタン用。許可済みフォルダがあれば、まず一覧から
  * 選ばせる(選べばOSの権限確認なしで切り替わる)。一覧に無いフォルダを
@@ -60,9 +79,9 @@ export async function pickAndPersistSaveFolder(): Promise<PickedFolder | null> {
  * キャンセル時は null。Android 以外では一覧が空なので従来通りピッカーを開く。
  */
 export async function chooseAndPersistSaveFolder(): Promise<PickedFolder | null> {
-  let granted: Awaited<ReturnType<typeof listGrantedFolders>> = [];
+  let granted: GrantedFolder[] = [];
   try {
-    granted = await listGrantedFolders();
+    granted = await listRecentGrantedFolders();
   } catch {
     // 取得に失敗しても、従来通りピッカーを開けば良い。
   }

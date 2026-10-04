@@ -92,14 +92,17 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     color: "var(--c-text)",
   },
+  // 一覧(list)だけをスクロールさせ、注記とボタン行は常に見える位置に固定する。
   body: {
     padding: 18,
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    overflowY: "auto",
+    minHeight: 0,
+    overflow: "hidden",
   },
   note: {
+    flexShrink: 0,
     fontSize: FS.caption,
     color: "var(--c-textSub)",
   },
@@ -107,6 +110,9 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 6,
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowY: "auto",
   },
   item: {
     display: "flex",
@@ -146,6 +152,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "flex-end",
     gap: 8,
     marginTop: 4,
+    flexShrink: 0,
   },
   cancelBtn: {
     padding: "8px 14px",
