@@ -988,6 +988,12 @@
     "auto_rename": "Auto-number the conflicting files",
     "cancel": "Cancel"
   },
+  "folder_chooser": {
+    "title": "Choose a save folder",
+    "note": "These folders are already allowed. Picking one here switches without another permission prompt.",
+    "other": "Choose another folder…",
+    "cancel": "Cancel"
+  },
   "save_name_prompt": {
     "title": "Save As",
     "folder_label": "Save to folder",

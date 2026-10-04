@@ -25,6 +25,7 @@ import { BatchSaveConflictModal } from "./components/BatchSaveConflictModal";
 import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
 import { TapRevealText } from "./components/common";
 import { FloatingMenu } from "./components/FloatingMenu";
+import { FolderChooserModal } from "./components/FolderChooserModal";
 import { FontScaleControl } from "./components/FontScaleControl";
 import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
@@ -1618,6 +1619,7 @@ function ToolShell({
       </div>
       <SaveConflictModal />
       <SaveNamePromptModal />
+      <FolderChooserModal />
       <BatchSaveConflictModal />
     </div>
   );

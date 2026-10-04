@@ -12,8 +12,9 @@
 // 取り消した/フォルダを削除した等で無効になっていれば、その場で
 // クリアしてフォールバック(通常のピッカー呼び出し)に任せる。
 
+import { useFolderChooserStore } from "../store/useFolderChooserStore";
 import { usePdfStore } from "../store/usePdfStore";
-import { listFolderNames, type PickedFolder, pickSaveFolder } from "./tauri";
+import { listFolderNames, listGrantedFolders, type PickedFolder, pickSaveFolder } from "./tauri";
 
 /**
  * 永続化されたフォルダがあれば、実際にまだ使えるか検証した上で返す。
@@ -49,5 +50,30 @@ export async function pickAndPersistSaveFolder(): Promise<PickedFolder | null> {
   const initial = usePdfStore.getState().androidSaveFolder?.treeUri ?? null;
   const picked = await pickSaveFolder(initial);
   if (picked) persistAndroidSaveFolder(picked);
+  return picked;
+}
+
+/**
+ * バッチ出力の「参照」ボタン用。許可済みフォルダがあれば、まず一覧から
+ * 選ばせる(選べばOSの権限確認なしで切り替わる)。一覧に無いフォルダを
+ * 選びたい時、または許可済みフォルダが無い時だけシステムのピッカーを開く。
+ * キャンセル時は null。Android 以外では一覧が空なので従来通りピッカーを開く。
+ */
+export async function chooseAndPersistSaveFolder(): Promise<PickedFolder | null> {
+  let granted: Awaited<ReturnType<typeof listGrantedFolders>> = [];
+  try {
+    granted = await listGrantedFolders();
+  } catch {
+    // 取得に失敗しても、従来通りピッカーを開けば良い。
+  }
+  if (granted.length === 0) return await pickAndPersistSaveFolder();
+
+  const current = usePdfStore.getState().androidSaveFolder;
+  const choice = await useFolderChooserStore.getState().ask(current, granted);
+  if (choice === null) return null;
+  if (choice === "picker") return await pickAndPersistSaveFolder();
+
+  const picked: PickedFolder = { treeUri: choice.treeUri, folderName: choice.folderName };
+  persistAndroidSaveFolder(picked);
   return picked;
 }

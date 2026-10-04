@@ -33,7 +33,10 @@
 // 参照すると再レンダー前の古い値(null)を掴むことがある。
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getValidPersistedAndroidFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
+import {
+  chooseAndPersistSaveFolder,
+  getValidPersistedAndroidFolder,
+} from "../lib/androidSaveFolder";
 import { type PlannedGroup, resolveGroupsSaveConflict } from "../lib/batchSaveConflict";
 import {
   type BatchFolderEntry,
@@ -74,9 +77,12 @@ export function useBatchSaveFolder() {
     loadPersisted();
   }, [loadPersisted]);
 
-  /** 「参照」ボタン用。選択済みでも常にダイアログを開き直す。 */
+  /**
+   * 「参照」ボタン用。選択済みでも常に選び直せる。許可済みフォルダがあれば
+   * 一覧から選ばせ(OSの権限確認なし)、無ければシステムのピッカーを開く。
+   */
   const pickFolder = useCallback(async (): Promise<PickedFolder | null> => {
-    const picked = await pickAndPersistSaveFolder();
+    const picked = await chooseAndPersistSaveFolder();
     if (picked) setFolder(picked);
     return picked;
   }, []);
