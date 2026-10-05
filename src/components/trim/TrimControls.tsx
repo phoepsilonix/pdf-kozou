@@ -292,7 +292,11 @@ export function TrimControls({
                   marginTop: 2,
                 }}
               >
-                {t("trim.resize_to_crop_note")}
+                {t(
+                  previewCompressVariant === "batch"
+                    ? "trim.resize_to_crop_note_batch"
+                    : "trim.resize_to_crop_note",
+                )}
               </span>
             </span>
           </label>
