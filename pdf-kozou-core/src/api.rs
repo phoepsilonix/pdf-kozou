@@ -160,6 +160,10 @@ pub fn dispatch_json(line: &str) -> String {
                 }
                 Ok(serde_json::to_string(&crate::trim::trim(&req)?)?)
             }
+            "crop_to_page" => {
+                let req: crate::trim::CropToPageRequest = serde_json::from_str(line)?;
+                Ok(serde_json::to_string(&crate::trim::crop_to_page(&req)?)?)
+            }
             "compress" => {
                 #[derive(serde::Deserialize)]
                 struct Req {

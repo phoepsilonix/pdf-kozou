@@ -1132,6 +1132,19 @@ export async function trimPdf(
   });
 }
 
+/**
+ * トリミング済み PDF のページサイズを CropBox（トリミング後の範囲）に合わせる。
+ * CropBox が MediaBox と異なるページ＝トリミングされたページだけが対象。
+ * 枠外の内容は消えない（見えなくなるだけ）ため、物理削除したい場合は先に
+ * 圧縮(redact_outside_crop)を通すこと。redact は CropBox ≠ MediaBox を前提に
+ * 動くので、この処理の後では効かない。
+ */
+export async function cropToPage(inputPath: string, outputPath: string): Promise<void> {
+  await invoke("crop_to_page_pdf", {
+    request: { input: inputPath, output: outputPath },
+  });
+}
+
 // ── パスの同一性チェック ──────────────────────────────────────────────────────
 
 export async function checkPathConflict(params: {

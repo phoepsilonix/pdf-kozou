@@ -159,6 +159,7 @@ pub fn run() {
             core::get_file_stat,
             core::get_default_save_dir,
             core::trim_pdf,
+            core::crop_to_page_pdf,
             core::compress_pdf,
             core::split_pdf,
             core::merge_pdf,

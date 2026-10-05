@@ -66,6 +66,9 @@ interface PdfStore {
   /** トリミングのプレビュー時に、redact + オブジェクトストリーム有効の標準圧縮を掛けて表示・保存する */
   trimPreviewCompress: boolean;
   setTrimPreviewCompress: (v: boolean) => void;
+  /** トリミング後の大きさをそのままページサイズにする（MediaBox ← CropBox） */
+  trimResizeToCrop: boolean;
+  setTrimResizeToCrop: (v: boolean) => void;
 
   // --- GS管理 ---
   gsAvailable: boolean;
@@ -221,6 +224,8 @@ export const usePdfStore = create<PdfStore>()(
       setObjectStream: (v) => set({ objectStream: v }),
       trimPreviewCompress: true,
       setTrimPreviewCompress: (v) => set({ trimPreviewCompress: v }),
+      trimResizeToCrop: false,
+      setTrimResizeToCrop: (v) => set({ trimResizeToCrop: v }),
 
       // GS初期化
       gsAvailable: false,
@@ -333,6 +338,7 @@ export const usePdfStore = create<PdfStore>()(
         imageJpegQuality: state.imageJpegQuality,
         objectStream: state.objectStream,
         trimPreviewCompress: state.trimPreviewCompress,
+        trimResizeToCrop: state.trimResizeToCrop,
       }),
     },
   ),

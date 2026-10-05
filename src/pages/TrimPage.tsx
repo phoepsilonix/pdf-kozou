@@ -35,6 +35,7 @@ import { resolvePageSizePt } from "../lib/pageSize";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import {
   composeImpositionPdf,
+  cropToPage,
   getPdfInfo,
   getUniqueTempPath,
   hasFolderPicker,
@@ -158,6 +159,8 @@ function TrimPageBatch({
   // 各ファイルのトリミング後に redact + オブジェクトストリームの標準圧縮を掛けて出力するか（既定 ON・永続化）
   const previewCompress = usePdfStore((st) => st.trimPreviewCompress);
   const setPreviewCompress = usePdfStore((st) => st.setTrimPreviewCompress);
+  const resizeToCrop = usePdfStore((st) => st.trimResizeToCrop);
+  const setResizeToCrop = usePdfStore((st) => st.setTrimResizeToCrop);
 
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [zoom, setZoom] = useState(0.75);
@@ -357,12 +360,15 @@ function TrimPageBatch({
             extractSpec,
           );
           const psize = resolvePageSizePt(pageSizeId, pageOrientation);
-          const needFit = hasImage([f.filename]) && psize != null;
-          // 圧縮する場合は、トリミング(+フィット)結果をいったん中間ファイルに出し、
-          // 圧縮した結果を最終出力 out に書く。
-          const stagePath = previewCompress
-            ? await getUniqueTempPath("trimmed_batch_stage_tmp", "pdf")
-            : out;
+          // 「トリミング後のサイズをページサイズにする」ときは、標準ページサイズへの
+          // フィットは行わない（フィットすると余白が付いてトリミング後の大きさでなくなる）。
+          const needFit = hasImage([f.filename]) && psize != null && !resizeToCrop;
+          // 圧縮・ページサイズ変更をする場合は、トリミング(+フィット)結果をいったん
+          // 中間ファイルに出し、後続の処理結果を最終出力 out に書く。
+          const stagePath =
+            previewCompress || resizeToCrop
+              ? await getUniqueTempPath("trimmed_batch_stage_tmp", "pdf")
+              : out;
           const trimOut = needFit
             ? await getUniqueTempPath("trimmed_natural_batch_tmp", "pdf")
             : stagePath;
@@ -385,21 +391,34 @@ function TrimPageBatch({
               pageOrientation === "auto" && pageSizeId !== "image",
             );
           }
+          // 現在の結果ファイル（次の処理の入力）。最終的に out へ置く。
+          let current = stagePath;
           if (previewCompress) {
+            // ページサイズ変更が続く場合は圧縮結果も中間ファイルに出す
+            const compressedPath = resizeToCrop
+              ? await getUniqueTempPath("trimmed_batch_compressed_tmp", "pdf")
+              : out;
             try {
-              await compressTrimmedPdf(stagePath, out, {
+              await compressTrimmedPdf(stagePath, compressedPath, {
                 layoutW: convertLayoutW,
                 layoutH: convertLayoutH,
                 layoutEm: convertLayoutEm,
               });
               invoke("remove_file", { path: stagePath }).catch(() => {});
+              current = compressedPath;
             } catch (ce) {
               // 圧縮に失敗してもトリミング結果は有効なので、そのまま出力にフォールバックする
               console.warn("[WARN] trim batch compress failed (fallback to uncompressed):", ce);
-              await moveFile(stagePath, out);
+              if (!resizeToCrop) await moveFile(stagePath, out);
               // 画面にも警告を出す（領域外が削除されていないまま出力されるため）
               prog.warnings.push({ f: f.filename, msg: t("trim.compress_failed_warning") });
             }
+          }
+          // redact(圧縮)の後でページサイズを CropBox に合わせる。
+          // 失敗は黙ってフォールバックせず、このファイルのエラーとして扱う。
+          if (resizeToCrop) {
+            await cropToPage(current, out);
+            invoke("remove_file", { path: current }).catch(() => {});
           }
           console.log("[DEBUG] trim_pdf 結果:", res);
           prog.done.push({ f: f.filename, saved: out.split(/[/\\]/).pop() ?? "" });
@@ -422,6 +441,7 @@ function TrimPageBatch({
       extractSpec,
       pageSizeId,
       pageOrientation,
+      resizeToCrop,
       convertLayoutW,
       convertLayoutH,
       convertLayoutEm,
@@ -914,6 +934,8 @@ function TrimPageBatch({
               previewCompress={previewCompress}
               onPreviewCompressChange={setPreviewCompress}
               previewCompressVariant="batch"
+              resizeToCrop={resizeToCrop}
+              onResizeToCropChange={setResizeToCrop}
               showImagePageSize={files.some((f) => hasImage([f.filename]))}
               hideActionBar={isNarrow}
             />
@@ -1075,6 +1097,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   // プレビュー時に redact + オブジェクトストリーム有効の標準圧縮を掛けるか（既定 ON・永続化）
   const previewCompress = usePdfStore((st) => st.trimPreviewCompress);
   const setPreviewCompress = usePdfStore((st) => st.setTrimPreviewCompress);
+  const resizeToCrop = usePdfStore((st) => st.trimResizeToCrop);
+  const setResizeToCrop = usePdfStore((st) => st.setTrimResizeToCrop);
   const { pickSave, commitSave, discardSave } = useSaveDialog();
   const [outTmp, setOutTmp] = useState<string>("");
   const [metaEditOpen, setMetaEditOpen] = useState(false);
@@ -1187,7 +1211,9 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       const psize = resolvePageSizePt(pageSizeId, pageOrientation);
       // 画像入力 + ページサイズ指定時は「自然サイズでトリム → 結果を目標サイズへフィット」。
       // マージンは自然サイズ基準のまま使えるので座標の割合再計算が不要。
-      const needFit = hasImage([filePath]) && psize != null;
+      // 「トリミング後のサイズをページサイズにする」ときはフィットしない
+      // （フィットすると余白が付いてトリミング後の大きさでなくなる）。
+      const needFit = hasImage([filePath]) && psize != null && !resizeToCrop;
       const trimOut = needFit ? await getUniqueTempPath("trimmed_natural_tmp", "pdf") : trimmedPath;
       const res = await trimPdf(
         filePath,
@@ -1230,6 +1256,16 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           console.warn("[WARN] trim preview compress failed (fallback to uncompressed):", ce);
           setCompressFailed(true);
         }
+      }
+      // redact(圧縮)の後でページサイズを CropBox（トリミング後の範囲）に合わせる。
+      // 指定された変換が行われないまま結果を見せないよう、失敗は握りつぶさず
+      // 下の catch でエラー画面にする。
+      if (resizeToCrop) {
+        const resizedPath = await getUniqueTempPath("trimmed_resized_tmp", "pdf");
+        await cropToPage(tmpPath, resizedPath);
+        invoke("remove_file", { path: tmpPath }).catch(() => {});
+        tmpPath = resizedPath;
+        setOutTmp(resizedPath);
       }
       /*
       .then(() => { 
@@ -1297,6 +1333,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
     pageSizeId,
     pageOrientation,
     previewCompress,
+    resizeToCrop,
     convertLayoutH,
     setPages,
     convertLayoutW,
@@ -1646,6 +1683,8 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             onExtract={onExtract}
             previewCompress={previewCompress}
             onPreviewCompressChange={setPreviewCompress}
+            resizeToCrop={resizeToCrop}
+            onResizeToCropChange={setResizeToCrop}
             showImagePageSize={hasImage([filePath])}
             hideActionBar={isNarrow}
           />

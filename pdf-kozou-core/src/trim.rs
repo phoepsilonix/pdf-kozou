@@ -534,3 +534,137 @@ pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
         crop_boxes,
     })
 }
+
+// ── トリミング後のサイズをページサイズにする（MediaBox ← CropBox）─────────────
+
+/// MediaBox と CropBox の一致判定に使う許容誤差 (pt)
+const BOX_EPS: f32 = 0.01;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CropToPageRequest {
+    pub input: String,
+    pub output: String,
+}
+
+#[derive(Serialize)]
+pub struct CropToPageResponse {
+    pub ok: bool,
+    /// MediaBox を CropBox に揃えた（＝ページサイズが変わった）ページ数
+    pub pages_resized: usize,
+    pub input_bytes: u64,
+    pub output_bytes: u64,
+}
+
+/// ページの CropBox を取得する（無ければ None）。
+/// `get_media_box` と同じ読み方で、キーだけ CropBox にしたもの。
+fn get_crop_box(page_obj: &mupdf::pdf::PdfObject) -> Option<(f32, f32, f32, f32)> {
+    let cb = page_obj.get_dict("CropBox").ok()??;
+    let cb = cb.resolve().ok().flatten().unwrap_or(cb);
+    let mut v = [0.0_f32; 4];
+    for (i, slot) in v.iter_mut().enumerate() {
+        *slot = cb
+            .get_array(i as i32)
+            .ok()??
+            .resolve()
+            .ok()
+            .flatten()?
+            .as_float()
+            .ok()?;
+    }
+    Some((v[0], v[1], v[2], v[3]))
+}
+
+/// CropBox が MediaBox と異なるページについて、MediaBox を CropBox に揃える。
+///
+/// トリミング（`trim`）は CropBox を設定するだけでページサイズ(MediaBox)を
+/// 変えない。本関数はその後段で呼び、「トリミング後の大きさ＝ページサイズ」に
+/// する。コンテンツストリームの座標は変えず、ページ枠だけを CropBox に合わせる
+/// ため、表示内容は変わらない（Rotate も座標系が MediaBox/CropBox 共通なので
+/// 考慮不要）。
+///
+/// 注意: 枠外の内容そのものは消えない（見えなくなるだけ）。物理的に削除したい
+/// 場合は、本関数の前に圧縮の redact_outside_crop を通すこと
+/// （redact は CropBox ≠ MediaBox を前提に動くため、本関数の後では効かない）。
+///
+/// CropBox が無い・MediaBox と同一・不正なページには何もしない。
+pub fn crop_to_page(req: &CropToPageRequest) -> Result<CropToPageResponse> {
+    use mupdf::pdf::{PdfDocument, PdfWriteOptions};
+
+    // trim と同様、入力を作業ファイルへコピーして開き、インクリメンタル保存する
+    // （/Info 等のメタデータ・PDF バージョン・オブジェクトストリームを保持）。
+    let work_tmp = tempfile::Builder::new()
+        .suffix(".pdf")
+        .tempfile()
+        .map_err(CoreError::Io)?;
+    let work_path = work_tmp.path().to_string_lossy().to_string();
+    std::fs::copy(&req.input, &work_path).map_err(CoreError::Io)?;
+
+    let doc = PdfDocument::open(&work_path).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+    let page_count = doc
+        .page_count()
+        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+    let mut pages_resized = 0usize;
+    for idx in 0..page_count {
+        let mut page_obj = doc
+            .find_page(idx)
+            .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+
+        let Some((cx0, cy0, cx1, cy1)) = get_crop_box(&page_obj) else {
+            continue;
+        };
+        let (mx0, my0, mx1, my1) = get_media_box(&page_obj).unwrap_or((0.0, 0.0, 595.0, 842.0));
+
+        // CropBox は仕様上 MediaBox との交差で解釈される。範囲外にはみ出した
+        // CropBox でページが広がらないよう、交差を新しいページ枠にする。
+        let (nx0, ny0, nx1, ny1) = (cx0.max(mx0), cy0.max(my0), cx1.min(mx1), cy1.min(my1));
+        if nx1 <= nx0 || ny1 <= ny0 {
+            continue; // 不正な CropBox
+        }
+        let same = (nx0 - mx0).abs() < BOX_EPS
+            && (ny0 - my0).abs() < BOX_EPS
+            && (nx1 - mx1).abs() < BOX_EPS
+            && (ny1 - my1).abs() < BOX_EPS;
+        if same {
+            continue; // トリミングされていないページ
+        }
+
+        for key in &["MediaBox", "CropBox"] {
+            let obj =
+                make_rect(&doc, nx0, ny0, nx1, ny1).map_err(|e| CoreError::MuPdf(e.to_string()))?;
+            page_obj
+                .dict_put(*key, obj)
+                .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+        }
+        for key in &["ArtBox", "BleedBox", "TrimBox"] {
+            if let Ok(Some(_)) = page_obj.get_dict(*key) {
+                let obj = make_rect(&doc, nx0, ny0, nx1, ny1)
+                    .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+                page_obj
+                    .dict_put(*key, obj)
+                    .map_err(|e: mupdf::Error| CoreError::MuPdf(e.to_string()))?;
+            }
+        }
+        pages_resized += 1;
+    }
+
+    let mut opts = PdfWriteOptions::default();
+    opts.set_incremental(true)
+        .set_compress(true)
+        .set_garbage_level(0)
+        .set_clean(false);
+    doc.save_with_options(&req.output, opts)
+        .map_err(|e| CoreError::MuPdf(e.to_string()))?;
+
+    drop(doc);
+    drop(work_tmp);
+
+    let input_bytes = std::fs::metadata(&req.input).map(|m| m.len()).unwrap_or(0);
+    let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+    Ok(CropToPageResponse {
+        ok: true,
+        pages_resized,
+        input_bytes,
+        output_bytes,
+    })
+}

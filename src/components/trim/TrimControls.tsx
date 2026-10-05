@@ -32,6 +32,9 @@ interface Props {
   onPreviewCompressChange?: (v: boolean) => void;
   /** 文言の種別。"batch" は各ファイル出力時に圧縮する旨の文言にする */
   previewCompressVariant?: "preview" | "batch";
+  /** トリミング後の大きさをそのままページサイズにする（MediaBox ← CropBox） */
+  resizeToCrop?: boolean;
+  onResizeToCropChange?: (v: boolean) => void;
   // バッチ用: 出力フォルダ選択
   outDir?: string;
   onPickDir?: () => void;
@@ -70,6 +73,8 @@ export function TrimControls({
   previewCompress = false,
   onPreviewCompressChange,
   previewCompressVariant = "preview",
+  resizeToCrop = false,
+  onResizeToCropChange,
   outDir,
   onPickDir,
   excludeSpec,
@@ -255,6 +260,42 @@ export function TrimControls({
           <p style={s.hint}>
             <PreviewCompressNoteText variant={previewCompressVariant} />
           </p>
+        )}
+
+        {/* トリミング後のサイズをページサイズにする。狭幅時も固定ナビには出さず、
+            説明が必要なためここ（設定パネル）に常に出す */}
+        {onResizeToCropChange && (
+          <label
+            style={{
+              display: "flex",
+              gap: 6,
+              alignItems: "flex-start",
+              cursor: processing ? "not-allowed" : "pointer",
+              opacity: processing ? 0.6 : 1,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={resizeToCrop}
+              disabled={processing}
+              onChange={(e) => onResizeToCropChange(e.target.checked)}
+              style={{ marginTop: 2, flexShrink: 0 }}
+            />
+            <span>
+              <span style={{ fontSize: FS.caption }}>{t("trim.resize_to_crop")}</span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: FS.caption,
+                  color: "var(--c-textDim)",
+                  lineHeight: 1.4,
+                  marginTop: 2,
+                }}
+              >
+                {t("trim.resize_to_crop_note")}
+              </span>
+            </span>
+          </label>
         )}
 
         {/* 圧縮時の redact 余白。圧縮画面と共通の設定を、ここでも変更できる */}

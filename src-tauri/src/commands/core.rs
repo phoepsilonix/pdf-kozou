@@ -143,6 +143,14 @@ pub async fn trim_pdf(request: Value) -> Result<Value> {
     call_core_json("trim", request).await
 }
 
+/// トリミング済み PDF のページサイズを CropBox に合わせる（MediaBox ← CropBox）。
+/// CropBox が MediaBox と異なるページだけが対象。枠外の内容は消えないため、
+/// 物理削除したい場合は先に compress の redact_outside_crop を通すこと。
+#[tauri::command]
+pub async fn crop_to_page_pdf(request: Value) -> Result<Value> {
+    call_core_json("crop_to_page", request).await
+}
+
 /// 非 PDF ファイル（EPUB, XPS, HTML, CBZ, 画像等）を PDF に変換する
 /// layout_w/h/em: リフロー可能文書（DOCX, EPUB, HTML）のレイアウト指定 (pt)
 /// 省略時はデフォルト値（w=450, h=600, em=12）が使用される

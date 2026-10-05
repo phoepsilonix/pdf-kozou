@@ -324,6 +324,8 @@
     "preview_compress_note": "領域外を削除します。余白が0だと境目の文字や画像が消える場合があります。余白の設定値は圧縮機能と共通です。",
     "preview_compress_batch": "各ファイルをトリミング後に圧縮して出力",
     "preview_compress_note_batch": "領域外を削除します。余白が0だと境目の文字や画像が消える場合があります。余白の設定値は圧縮機能と共通です。",
+    "resize_to_crop": "トリミング後のサイズをページサイズにする",
+    "resize_to_crop_note": "トリミングした範囲がそのままページサイズになります（余白部分は残りません）。上の圧縮をオフにすると、ページ外の内容が見えない状態でファイルに残ります。画像のページサイズ指定より優先されます。",
     "compress_failed_warning": "圧縮に失敗したため、トリミングのみの結果です。領域外の内容は削除されていません。",
     "redact_margin_heading": "圧縮時のredact余白 (pt)",
     "redact_margin_shared_note": "CropBoxの外側に残す幅です。",

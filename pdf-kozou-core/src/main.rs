@@ -144,6 +144,18 @@ enum Commands {
         crop_cleanup: bool,
     },
 
+    /// トリミング済み PDF のページサイズを CropBox に合わせる (MediaBox ← CropBox)
+    ///
+    /// CropBox が MediaBox と異なるページ（trim で設定したページ）だけが対象。
+    /// 枠外の内容は消えないため、物理削除したい場合は先に compress
+    /// (redact_outside_crop、既定で有効) を通すこと。
+    CropToPage {
+        /// 入力 PDF
+        input: String,
+        /// 出力 PDF
+        output: String,
+    },
+
     /// PDF を圧縮・最適化
     Compress {
         /// 入力 PDF
@@ -627,6 +639,12 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 crop_cleanup,
             };
             let resp = pdf_kozou_core::trim::trim(&req)?;
+            println!("{}", serde_json::to_string(&resp)?);
+        }
+
+        Commands::CropToPage { input, output } => {
+            let req = pdf_kozou_core::trim::CropToPageRequest { input, output };
+            let resp = pdf_kozou_core::trim::crop_to_page(&req)?;
             println!("{}", serde_json::to_string(&resp)?);
         }
 
