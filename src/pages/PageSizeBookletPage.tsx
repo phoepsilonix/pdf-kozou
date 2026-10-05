@@ -67,6 +67,15 @@ const MODES: { id: ImpositionMode; labelKey: string }[] = [
 
 const SIZE_IDS: Exclude<PageSizeId, "image">[] = ["A3", "A4", "A5", "B4", "B5"];
 
+// カスタムサイズ(mm)の入力範囲。PDF の MediaBox 実用上限(14400pt≒5080mm)に収める。
+const PT_PER_MM = 72 / 25.4;
+const CUSTOM_MM_MIN = 20;
+const CUSTOM_MM_MAX = 5000;
+const clampCustomMm = (v: number) =>
+  Number.isFinite(v) ? Math.min(CUSTOM_MM_MAX, Math.max(CUSTOM_MM_MIN, v)) : CUSTOM_MM_MIN;
+// 0.1mm 単位に丸め、整数なら小数点を付けない(ファイル名・表示用)
+const fmtMm = (v: number) => String(Math.round(v * 10) / 10);
+
 // バッチ実行の進捗
 interface BatchProgress {
   current: number;
@@ -130,6 +139,12 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     pageSizeId === "image" ? "A4" : pageSizeId,
   );
   const [orient, setOrient] = useState<Orient>(pageOrientation);
+  // カスタムサイズ(mm)。幅・高さの大小は問わず、内部で「縦向き基準(短辺×長辺)」に
+  // 正規化する(向きボタン・自動向き判定が定型サイズと同じ規則で動くように)。
+  // プリセットのサイズはストアと共有するが、カスタムはこの画面のローカル状態のみ。
+  const [isCustom, setIsCustom] = useState(false);
+  const [customWmm, setCustomWmm] = useState(210);
+  const [customHmm, setCustomHmm] = useState(297);
 
   const [gutter, setGutter] = useState(0);
   const [margin, setMargin] = useState(0);
@@ -156,12 +171,26 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         ?.replace(/\.[^/.]+$/, "") || "output",
     [filePath],
   );
+  // 縦向き基準の用紙寸法(pt)。カスタム時は mm 入力を短辺×長辺に正規化して使う。
+  const basePt = useMemo(() => {
+    if (!isCustom) return PAGE_SIZE_PT[sizeId];
+    const a = clampCustomMm(customWmm) * PT_PER_MM;
+    const b = clampCustomMm(customHmm) * PT_PER_MM;
+    return { w: Math.min(a, b), h: Math.max(a, b) };
+  }, [isCustom, sizeId, customWmm, customHmm]);
+  // 表示・ファイル名用のサイズ名(例: A4 / 200x300mm)
+  const sizeLabel = useMemo(() => {
+    if (!isCustom) return sizeId;
+    const a = clampCustomMm(customWmm);
+    const b = clampCustomMm(customHmm);
+    return `${fmtMm(Math.min(a, b))}x${fmtMm(Math.max(a, b))}mm`;
+  }, [isCustom, sizeId, customWmm, customHmm]);
   // 既定ラベル: サイズ変更のみ=ページサイズ（例 A4）/
   //   n-up・製本=ページサイズ＋面数トークン（例 A4_2面 / A4_中綴じ）
   const defaultLabel = useMemo(() => {
-    if (mode === "1up") return sizeId;
-    return `${sizeId}_${t(`filename.label.${mode}`)}`;
-  }, [mode, sizeId, t]);
+    if (mode === "1up") return sizeLabel;
+    return `${sizeLabel}_${t(`filename.label.${mode}`)}`;
+  }, [mode, sizeLabel, t]);
   // 実効ラベルはレンダリング中に派生（state同期のeffectを使わない）。
   // 未編集なら defaultLabel（mode/サイズ/言語に追従）、編集済みなら手入力値 label。
   // これで n-up/中綴じ・サイズ切替が同一レンダリングで反映され取りこぼさない。
@@ -251,6 +280,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     setOrientation(pageOrientation === "auto" ? "auto" : isWide ? "landscape" : "portrait");
   };
   const onPageSizeChange = (id: Exclude<PageSizeId, "image">) => {
+    setIsCustom(false);
     setSizeId(id);
     setPageSize(id, orient);
   };
@@ -287,9 +317,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   }, [orient, sourceAspect, mode, layout.cols, layout.rows]);
 
   const targetPt = useMemo(() => {
-    const base = PAGE_SIZE_PT[sizeId];
+    const base = basePt;
     return resolvedOrient === "landscape" ? { w: base.h, h: base.w } : { w: base.w, h: base.h };
-  }, [sizeId, resolvedOrient]);
+  }, [basePt, resolvedOrient]);
 
   // C 側 kozou_compose_imposition_pdf と同じ規則でシートごとの出力サイズを返す。
   // 向き「自動」かつ 1ページ面付け(per==1)のときは、各シートの向きをそのページの
@@ -302,7 +332,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         const pageNo = pages[0] ?? 0;
         const pg = pageNo > 0 ? pdfInfo?.pages?.[pageNo - 1] : undefined;
         if (pg && pg.w > 0 && pg.h > 0) {
-          const base = PAGE_SIZE_PT[sizeId];
+          const base = basePt;
           const big = Math.max(base.w, base.h);
           const small = Math.min(base.w, base.h);
           return pg.w > pg.h ? { w: big, h: small } : { w: small, h: big };
@@ -310,7 +340,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       }
       return targetPt;
     },
-    [orient, layout.cols, layout.rows, pdfInfo, sizeId, targetPt],
+    [orient, layout.cols, layout.rows, pdfInfo, basePt, targetPt],
   );
 
   const pickDir = useCallback(async (): Promise<string | null> => {
@@ -768,14 +798,65 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                     type="button"
                     key={id}
                     aria-label={id}
-                    aria-pressed={sizeId === id}
+                    aria-pressed={!isCustom && sizeId === id}
                     onClick={() => onPageSizeChange(id)}
-                    style={{ ...s.choice, ...(sizeId === id ? s.choiceSel : {}) }}
+                    style={{ ...s.choice, ...(!isCustom && sizeId === id ? s.choiceSel : {}) }}
                   >
                     {id}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  aria-label={t("pagesize.custom")}
+                  aria-pressed={isCustom}
+                  onClick={() => setIsCustom(true)}
+                  style={{ ...s.choice, ...(isCustom ? s.choiceSel : {}) }}
+                >
+                  {t("pagesize.custom")}
+                </button>
               </div>
+              {isCustom && (
+                <>
+                  <div style={{ ...s.btnRow, marginTop: 8 }}>
+                    <label style={s.numLabel}>
+                      {t("pagesize.custom_w")}
+                      <NumInput
+                        min={CUSTOM_MM_MIN}
+                        max={CUSTOM_MM_MAX}
+                        integer={false}
+                        live
+                        fallback={210}
+                        value={customWmm}
+                        aria-label={t("pagesize.custom_w")}
+                        onChange={setCustomWmm}
+                        style={s.num}
+                      />
+                      mm
+                    </label>
+                    <label style={s.numLabel}>
+                      {t("pagesize.custom_h")}
+                      <NumInput
+                        min={CUSTOM_MM_MIN}
+                        max={CUSTOM_MM_MAX}
+                        integer={false}
+                        live
+                        fallback={297}
+                        value={customHmm}
+                        aria-label={t("pagesize.custom_h")}
+                        onChange={setCustomHmm}
+                        style={s.num}
+                      />
+                      mm
+                    </label>
+                  </div>
+                  <div style={s.note}>
+                    {t("pagesize.custom_hint", {
+                      min: String(CUSTOM_MM_MIN),
+                      max: String(CUSTOM_MM_MAX),
+                    })}
+                  </div>
+                </>
+              )}
               <div style={{ ...s.btnRow, marginTop: 8 }}>
                 {(["auto", "portrait", "landscape"] as Orient[]).map((o) => (
                   <button
@@ -924,12 +1005,12 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                   rows: String(layout.rows),
                   size:
                     orient === "auto"
-                      ? `${sizeId} ${t("pagesize.orient_auto")}(${t(
+                      ? `${sizeLabel} ${t("pagesize.orient_auto")}(${t(
                           resolvedOrient === "portrait"
                             ? "pagesize.orient_portrait"
                             : "pagesize.orient_landscape",
                         )})`
-                      : `${sizeId} ${t(
+                      : `${sizeLabel} ${t(
                           resolvedOrient === "portrait"
                             ? "pagesize.orient_portrait"
                             : "pagesize.orient_landscape",
