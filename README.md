@@ -115,7 +115,7 @@ pdf-kozou-coreコマンドラインはv1.7.20以前のパッケージから取�
 
 ## インストール
 
-### バイナリ (推奨)
+### バイナリ
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)
 
@@ -133,8 +133,8 @@ pdf-kozou-coreコマンドラインはv1.7.20以前のパッケージから取�
 |                  | `PDF-Kozou_${version}_amd64.AppImage` `PDF-Kozou_${version}_amd64-linux.7z`    |
 | Android          | `PDF-Kozou_${version}_.apk` `PDF-Kozou_${version}.aab`                         |
 |                  | `app-universal-release.apk` `app-universal-release.aab`                        |
-| MacOS            | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
-| iOS              | `PDF-Kozou_${version}_.ipa` `PDF-Kozou_${version}.app`                         |
+| MacBook(MacOS)   | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
+| iPhone(iOS)      | `PDF-Kozou_${version}_.ipa` `PDF-Kozou_${version}.app`                         |
 
 ### Microsoft Store(Windows)
 
@@ -147,15 +147,16 @@ https://play.google.com/store/apps/details?id=phoepsilonix.pdfkozou
 
 GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
 
-### MacOS
+### MacBook(MacOS)
 
-TestFlightで公開テスト中（2026/10/06から90日間有効）
+TestFlightで公開テスト中（2026/10/06から90日間有効）  
 https://testflight.apple.com/join/WTt5ZVsH
+
 実機環境がないため動作未確認です。
 
-### iOS
+### iPhone(iOS)
 
-TestFlightで公開テスト中（2026/10/06から90日間有効）
+TestFlightで公開テスト中（2026/10/06から90日間有効）  
 https://testflight.apple.com/join/WTt5ZVsH
 
 GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
