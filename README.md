@@ -90,19 +90,19 @@ v1.8.4より、画像のダウンサンプリングを追加しました。必�
 
 ## 機能
 
-| コマンド    | 内容                                                              |
-| ----------- | ----------------------------------------------------------------- |
-| `info`      | PDF の基本情報を取得 (ページ数・サイズなど)                       |
-| `render`    | ページを JPEG / PNG / SVG 画像にレンダリング                      |
-| `trim`      | CropBox を設定してトリミング                                      |
-| `crop-to-page` | トリミング後のサイズをページサイズにする (MediaBox ← CropBox)  |
-| `compress`  | ファイルサイズを最適化・圧縮(GSがある環境ではGSも呼び出せます。)  |
-| `split`     | 1ページずつ・N ページごと・ページ範囲で分割                       |
-| `merge`     | 複数の PDF を結合                                                 |
-| `rotate`    | ページを 90 / 180 / 270 度回転                                    |
-| `convert`   | 非 PDF ファイル（EPUB, DOCX, XPS, HTML, 画像等）を PDF に変換する |
-| `rasterize` | PDF を全ページ画像化して PDF に再出力（ラスタライズ）             |
-| `json`      | stdin から JSON リクエストを受け取って実行 (Tauri sidecar モード) |
+| コマンド       | 内容                                                              |
+| -------------- | ----------------------------------------------------------------- |
+| `info`         | PDF の基本情報を取得 (ページ数・サイズなど)                       |
+| `render`       | ページを JPEG / PNG / SVG 画像にレンダリング                      |
+| `trim`         | CropBox を設定してトリミング                                      |
+| `crop-to-page` | トリミング後のサイズをページサイズにする (MediaBox ← CropBox)     |
+| `compress`     | ファイルサイズを最適化・圧縮(GSがある環境ではGSも呼び出せます。)  |
+| `split`        | 1ページずつ・N ページごと・ページ範囲で分割                       |
+| `merge`        | 複数の PDF を結合                                                 |
+| `rotate`       | ページを 90 / 180 / 270 度回転                                    |
+| `convert`      | 非 PDF ファイル（EPUB, DOCX, XPS, HTML, 画像等）を PDF に変換する |
+| `rasterize`    | PDF を全ページ画像化して PDF に再出力（ラスタライズ）             |
+| `json`         | stdin から JSON リクエストを受け取って実行 (Tauri sidecar モード) |
 
 - convertは、一部レイアウトが崩れる可能性あり。DOCX、XLSXなどでうまく動作しない場合もあります。
 
@@ -133,7 +133,7 @@ pdf-kozou-coreコマンドラインはv1.7.20以前のパッケージから取�
 |                  | `PDF-Kozou_${version}_amd64.AppImage` `PDF-Kozou_${version}_amd64-linux.7z`    |
 | Android          | `PDF-Kozou_${version}_.apk` `PDF-Kozou_${version}.aab`                         |
 |                  | `app-universal-release.apk` `app-universal-release.aab`                        |
-| macOS            | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
+| MacOS            | `PDF-Kozou_${version}_universal.dmg` `PDF-Kozou_${version}_universal-macos.7z` |
 | iOS              | `PDF-Kozou_${version}_.ipa` `PDF-Kozou_${version}.app`                         |
 
 ### Microsoft Store(Windows)
@@ -145,28 +145,20 @@ pdf-kozou-coreコマンドラインはv1.7.20以前のパッケージから取�
 早期アクセス版(v1.8.3〜)  
 https://play.google.com/store/apps/details?id=phoepsilonix.pdfkozou
 
-GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。  
-トリミング（Crop）後の圧縮は別アプリの使用を推奨します。(〜v1.8.1まで)  
-v1.8.2より、apply_redactionsの活用により、Cropbox領域外のファイルサイズの削減率をアップしました。  
-v1.8.4より、画像のダウンサンプリングを追加しました。必要解像度より15%以上大きいJpeg画像や無圧縮タイプの画像を再圧縮します。  
-GhostScript呼び出しは無理なので、PDFの構造によっては、圧縮が見込めない場合もあります。  
-ただ上記２つのオプションによって、以前よりは圧縮率が改善したと思います。
+GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
 
 ### MacOS
-公開テスト中（2026/10/02から90日間有効）
+
+TestFlightで公開テスト中（2026/10/06から90日間有効）
 https://testflight.apple.com/join/WTt5ZVsH
 実機環境がないため動作未確認です。
 
 ### iOS
-公開テスト中（2026/10/02から90日間有効）
+
+TestFlightで公開テスト中（2026/10/06から90日間有効）
 https://testflight.apple.com/join/WTt5ZVsH
 
-GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。  
-トリミング（Crop）後の圧縮は別アプリの使用を推奨します。(〜v1.8.1まで)
-v1.8.2より、apply_redactionsの活用により、Cropbox領域外のファイルサイズの削減率をアップしました。  
-v1.8.4より、画像のダウンサンプリングを追加しました。必要解像度より15%以上大きいJpeg画像や無圧縮タイプの画像を再圧縮します。  
-GhostScripts呼び出しは無理なので、PDFの構造によっては、圧縮が見込めない場合もあります。  
-ただ上記２つのオプションによって、以前よりは圧縮率が改善したと思います。
+GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
 
 ### ソースからビルド
 
