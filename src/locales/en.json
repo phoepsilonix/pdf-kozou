@@ -500,6 +500,8 @@
     "custom": "Custom",
     "custom_w": "Width",
     "custom_h": "Height",
+    "custom_keep_aspect": "Keep the original page aspect ratio",
+    "custom_keep_aspect_hint": "Changing either width or height sets the other to match the original page's aspect ratio (sheet width ÷ height = {{ratio}}). For 2-up/booklet layouts the ratio of the whole arrangement is used, excluding margins. If page sizes vary, the median is used; in batch mode the PDF currently shown is the reference.",
     "custom_hint": "Specify in mm ({{min}}–{{max}} mm). Width/height order does not matter: the shorter side is treated as the width, and orientation is set with the buttons above.",
     "image": "Match image",
     "orient_auto": "Auto",

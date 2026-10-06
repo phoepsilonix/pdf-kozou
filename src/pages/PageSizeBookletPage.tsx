@@ -145,6 +145,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const [isCustom, setIsCustom] = useState(false);
   const [customWmm, setCustomWmm] = useState(210);
   const [customHmm, setCustomHmm] = useState(297);
+  // true のとき、幅・高さの片方を変えるともう片方を元ページの縦横比に合わせて自動で決める。
+  const [keepAspect, setKeepAspect] = useState(false);
 
   const [gutter, setGutter] = useState(0);
   const [margin, setMargin] = useState(0);
@@ -303,6 +305,31 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     const mid = Math.floor(sorted.length / 2);
     return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
   }, [pdfInfo]);
+
+  // カスタムサイズの縦横比固定。元ページの縦横比(sourceAspect: 幅/高さ、中央値)を、
+  // 1枚の用紙に並べる列×行で掛け合わせた「用紙全体の縦横比」(1ページ/枚なら元ページと同じ)。
+  // 余白・中央余白は mm 固定なので比率には含めない。
+  const aspectBase = sourceAspect ? (sourceAspect * layout.cols) / layout.rows : undefined;
+  // 入力途中の値(live)をそのまま基準にし、もう片方だけを 0.1mm 単位で追従させる
+  // （入力中の値を丸め直すと入力欄が打鍵と競合するため、基準側は触らない）。
+  const keepRatio = keepAspect ? aspectBase : undefined;
+  const onCustomW = (v: number) => {
+    setCustomWmm(v);
+    if (keepRatio) setCustomHmm(Math.round((v / keepRatio) * 10) / 10);
+  };
+  const onCustomH = (v: number) => {
+    setCustomHmm(v);
+    if (keepRatio) setCustomWmm(Math.round(v * keepRatio * 10) / 10);
+  };
+  // 面付けの切り替えや別 PDF で縦横比が変わったら、幅を基準に高さを合わせ直す
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 比率(aspectBase)とオン/オフが変わったときだけ再計算したい。幅の入力ごとには走らせない
+  useEffect(() => {
+    if (keepAspect && aspectBase) setCustomHmm(Math.round((customWmm / aspectBase) * 10) / 10);
+  }, [aspectBase, keepAspect]);
+  const onKeepAspectChange = (on: boolean) => {
+    // オンにした時点の幅を基準に高さを合わせる処理は上の useEffect が行う
+    setKeepAspect(on);
+  };
 
   const resolvedOrient = useMemo<Exclude<Orient, "auto">>(() => {
     if (orient === "portrait" || orient === "landscape") return orient;
@@ -828,7 +855,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                         fallback={210}
                         value={customWmm}
                         aria-label={t("pagesize.custom_w")}
-                        onChange={setCustomWmm}
+                        onChange={onCustomW}
                         style={s.num}
                       />
                       mm
@@ -843,12 +870,28 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                         fallback={297}
                         value={customHmm}
                         aria-label={t("pagesize.custom_h")}
-                        onChange={setCustomHmm}
+                        onChange={onCustomH}
                         style={s.num}
                       />
                       mm
                     </label>
                   </div>
+                  <label style={s.keepNameRow}>
+                    <input
+                      type="checkbox"
+                      checked={keepAspect && aspectBase !== undefined}
+                      disabled={aspectBase === undefined}
+                      onChange={(e) => onKeepAspectChange(e.target.checked)}
+                    />
+                    <span>{t("pagesize.custom_keep_aspect")}</span>
+                  </label>
+                  {keepAspect && aspectBase !== undefined && (
+                    <div style={s.note}>
+                      {t("pagesize.custom_keep_aspect_hint", {
+                        ratio: (Math.round(aspectBase * 1000) / 1000).toString(),
+                      })}
+                    </div>
+                  )}
                   <div style={s.note}>
                     {t("pagesize.custom_hint", {
                       min: String(CUSTOM_MM_MIN),
