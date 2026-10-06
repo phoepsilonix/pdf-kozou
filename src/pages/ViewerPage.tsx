@@ -16,6 +16,7 @@ import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
+import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useViewport } from "../hooks/useViewport";
 import { useI18n } from "../lib/i18n";
 import {
@@ -682,6 +683,13 @@ function InfoDrawer({
 }) {
   const { t } = useI18n();
   const { isNarrow } = useViewport();
+  // モバイル(Android/iOS)では、ファイルピッカーが返す content:// URI や
+  // iOS のコピー済み一時ファイルから取り込み時にアプリ専用キャッシュへ
+  // コピーしており、filePath はそのコピー先(import_<時刻>_<連番>/ファイル名
+  // のような内部パス)になる。元の保存場所の実パスはOSの仕様上取得できず、
+  // ユーザーにとって意味のない内部パスを見せても混乱を招くだけなので、
+  // モバイルではパスを表示・コピー対象にしない(ファイル名は別行で表示する)。
+  const showPath = !useIsMobilePlatform();
   const [allCopied, setAllCopied] = useState(false);
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const meta: PdfMetadata = info?.metadata ?? {};
@@ -726,7 +734,7 @@ function InfoDrawer({
   const handleCopyAll = () => {
     const lines = [
       fileName && `${t("viewer.meta_filename")}: ${fileName}`,
-      filePath && `${t("viewer.meta_path")}: ${filePath}`,
+      showPath && filePath && `${t("viewer.meta_path")}: ${filePath}`,
       info?.file_size && `${t("viewer.meta_size")}: ${formatBytes(info.file_size)}`,
       info?.page_count && `${t("viewer.meta_pages")}: ${info.page_count}`,
       meta.title && `タイトル: ${meta.title}`,
@@ -793,19 +801,21 @@ function InfoDrawer({
             ⎘
           </button>
         </div>
-        <div style={ds.row}>
-          <span style={ds.label}>{t("viewer.meta_path")}</span>
-          <span style={{ ...ds.value, wordBreak: "break-all", fontSize: FS.caption }}>
-            {filePath}
-          </span>
-          <button
-            type="button"
-            style={ds.copyBtn}
-            onClick={() => navigator.clipboard.writeText(filePath)}
-          >
-            ⎘
-          </button>
-        </div>
+        {showPath && (
+          <div style={ds.row}>
+            <span style={ds.label}>{t("viewer.meta_path")}</span>
+            <span style={{ ...ds.value, wordBreak: "break-all", fontSize: FS.caption }}>
+              {filePath}
+            </span>
+            <button
+              type="button"
+              style={ds.copyBtn}
+              onClick={() => navigator.clipboard.writeText(filePath)}
+            >
+              ⎘
+            </button>
+          </div>
+        )}
         {info?.file_size != null && (
           <div style={ds.row}>
             <span style={ds.label}>{t("viewer.meta_size")}</span>
