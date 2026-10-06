@@ -12,7 +12,17 @@ import { useEffect, useState } from "react";
 import { isMobile } from "../lib/tauri";
 
 export function useIsMobilePlatform(): boolean {
-  const [mobilePlatform, setMobilePlatform] = useState(false);
+  return useMobilePlatformState() === true;
+}
+
+/**
+ * useIsMobilePlatform() の判定結果が未確定の間を区別したい場合用。
+ * 判定は非同期 (is_mobile コマンド) のため、確定するまでは null を返す。
+ * 「モバイルでは表示しない」ものを、判定完了前に一瞬だけ見せてしまわない
+ * ようにするには、`state === false` (デスクトップと確定) の時だけ表示する。
+ */
+export function useMobilePlatformState(): boolean | null {
+  const [mobilePlatform, setMobilePlatform] = useState<boolean | null>(null);
   useEffect(() => {
     isMobile()
       .then(setMobilePlatform)

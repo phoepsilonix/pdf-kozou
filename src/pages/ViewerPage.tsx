@@ -16,7 +16,7 @@ import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
-import { useIsMobilePlatform } from "../hooks/usePlatform";
+import { useMobilePlatformState } from "../hooks/usePlatform";
 import { useViewport } from "../hooks/useViewport";
 import { useI18n } from "../lib/i18n";
 import {
@@ -689,7 +689,9 @@ function InfoDrawer({
   // のような内部パス)になる。元の保存場所の実パスはOSの仕様上取得できず、
   // ユーザーにとって意味のない内部パスを見せても混乱を招くだけなので、
   // モバイルではパスを表示・コピー対象にしない(ファイル名は別行で表示する)。
-  const showPath = !useIsMobilePlatform();
+  // is_mobile の判定は非同期なので、デスクトップと確定するまでは表示しない
+  // (判定前の一瞬だけモバイルでパスが見えてしまうのを避ける)。
+  const showPath = useMobilePlatformState() === false;
   const [allCopied, setAllCopied] = useState(false);
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const meta: PdfMetadata = info?.metadata ?? {};
