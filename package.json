@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.8.21",
   "type": "module",
-  "packageManager": "pnpm@11.28.2",
+  "packageManager": "pnpm@11.28.3",
   "scripts": {
     "tauri": "tauri",
     "dev:core": "cargo build --bin pdf-kozou-core",
@@ -20,8 +20,8 @@
     "version": "echo $npm_package_version"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.0",
-    "@tauri-apps/plugin-dialog": "^2.8.0",
+    "@tauri-apps/api": "^2.12.1",
+    "@tauri-apps/plugin-dialog": "^2.8.1",
     "@tauri-apps/plugin-fs": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.7.0",
     "@tauri-apps/plugin-os": "^2.4.0",
@@ -32,13 +32,13 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
-    "@tauri-apps/cli": "^2.12.0",
+    "@tauri-apps/cli": "^2.12.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "pnpm": "^11.28.2",
+    "pnpm": "^11.28.3",
     "prettier": "^3.9.9",
     "typescript": "^7.0.2",
-    "vite": "^8.3.1"
+    "vite": "^8.3.2"
   }
 }
