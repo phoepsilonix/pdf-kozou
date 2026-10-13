@@ -51,8 +51,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 1.8.21
-        CFBundleVersion: "1.8.21"
+        CFBundleShortVersionString: 1.8.22
+        CFBundleVersion: "1.8.22"
         ITSAppUsesNonExemptEncryption: false
         LSSupportsOpeningDocumentsInPlace: true
         UISupportsDocumentBrowser: false
