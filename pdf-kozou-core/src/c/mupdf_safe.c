@@ -11101,6 +11101,34 @@ static void kozou_blank_all_bt_blocks_hv(
     }
 }
 
+/* 実数オペランドを PDF の数値表記 (指数表記なし) で書き出す
+ * (kozou_sanitize_hidden_text 用)。有効桁は 7 桁。
+ *
+ * printf の %g は、指数が -5 以下または 7 桁を超えると 1.234e-05 のような
+ * 指数表記になる。PDF の数値に指数表記は無く、MuPDF は「5.643887e」を
+ * 未知のキーワード、「-05」を別のオペランドとして読むため、その演算子の
+ * オペランドの数が合わなくなる。実PDFでは、Canva 書き出しの「面積ほぼ0の
+ * クリップ矩形」(cm や re に 5.6e-05 程度の値が入る) の座標が壊れてクリップが
+ * 効かなくなり、本来は隠れているはずの塗りが、テキスト行の位置に帯状に
+ * 描かれた。 */
+static void kozou_format_real(char *dst, size_t cap, float f)
+{
+    snprintf(dst, cap, "%.7g", (double)f);
+    if (!strchr(dst, 'e') && !strchr(dst, 'E')) return;
+    double a = fabs((double)f);
+    if (a >= 1.0) {                       /* 1e7 以上: 整数として書く */
+        snprintf(dst, cap, "%.0f", (double)f);
+        return;
+    }
+    int e10 = (int)floor(log10(a));       /* 1 未満: e10 は -5 以下 */
+    int dec = 6 - e10;                    /* 先頭の有効数字から 7 桁ぶん */
+    if (dec > 40) dec = 40;
+    snprintf(dst, cap, "%.*f", dec, (double)f);
+    size_t n = strlen(dst);
+    while (n > 1 && dst[n - 1] == '0') dst[--n] = '\0';  /* 末尾の 0 を削る */
+    if (n > 1 && dst[n - 1] == '.') dst[--n] = '\0';
+}
+
 /* 文字列オペランドを PDF のリテラル文字列 (...) として書き出すとき、
  * 元の1バイトが何文字に展開されるかを返す (kozou_sanitize_hidden_text 用)。
  *
@@ -11585,7 +11613,7 @@ void kozou_sanitize_hidden_text(
                          * 座標で 4桁目以降の小数が失われ、元と違う位置になっていた
                          * (画素の境界に文字の原点が乗っているページでは、poppler で
                          * 1画素ずれて描かれた)。 */
-                        snprintf(op.s, sizeof(op.s), "%.7g", lxb.f);
+                        kozou_format_real(op.s, sizeof(op.s), lxb.f);
                         op.is_num = 1; break;
                     case PDF_TOK_STRING: {
                         unsigned char *d = (unsigned char *)lxb.scratch;
