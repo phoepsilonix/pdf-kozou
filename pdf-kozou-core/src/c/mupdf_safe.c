@@ -11101,6 +11101,26 @@ static void kozou_blank_all_bt_blocks_hv(
     }
 }
 
+/* 文字列オペランドを PDF のリテラル文字列 (...) として書き出すとき、
+ * 元の1バイトが何文字に展開されるかを返す (kozou_sanitize_hidden_text 用)。
+ *
+ * ( ) \\ は1文字ぶんのバックスラッシュを付けて2文字。
+ * NUL(0x00)・LF(0x0A)・CR(0x0D) は 3桁の8進 \ooo の4文字にする。
+ *   - NUL: 文字列を C 文字列 (op.s / fz_append_printf の %s) として扱うため、
+ *     そのまま書くと NUL で打ち切られて「(」だけが出力され、閉じ括弧が失われる。
+ *     2バイト CID フォント (Identity-H) で CID が 256 未満のとき上位バイトが
+ *     0x00 になるため、Canva 等の書き出し PDF では普通に現れる。
+ *   - CR / LF: リテラル文字列内の生の改行は、読み込み側で LF に正規化される
+ *     (CR 単独・CRLF → LF) ため、元のバイト値が変わってしまう。また行単位で
+ *     内容ストリームを走査する後段処理を行の途中で分断する。
+ * 3桁固定なので、直後に数字が続いても後段の8進デコード (最大3桁) と衝突しない。 */
+static size_t kozou_lit_esc_size(unsigned char c)
+{
+    if (c == '(' || c == ')' || c == '\\') return 2;
+    if (c == 0x00 || c == '\n' || c == '\r') return 4;
+    return 1;
+}
+
 void kozou_sanitize_hidden_text(
     fz_context  *ctx,
     const char  *input_path,
@@ -11570,17 +11590,16 @@ void kozou_sanitize_hidden_text(
                     case PDF_TOK_STRING: {
                         unsigned char *d = (unsigned char *)lxb.scratch;
                         size_t len = lxb.len;
-                        /* エスケープ後の長さが s[128] に収まるか (収まらなければ big) */
+                        /* エスケープ後の長さが s[128] に収まるか (収まらなければ big)。
+                         * NUL・CR・LF は \\ooo (4文字) に展開するので、op.s には
+                         * NUL バイトが一切入らない (C 文字列として安全に扱える)。 */
                         size_t need = 2;
-                        for (size_t k = 0; k < len; k++) {
-                            unsigned char c = d[k];
-                            need += (c=='(' || c==')' || c=='\\') ? 2 : 1;
-                        }
+                        for (size_t k = 0; k < len; k++)
+                            need += kozou_lit_esc_size(d[k]);
                         char *dstp = op.s;
                         size_t dcap = sizeof(op.s);
                         if (need + 1 > sizeof(op.s)) {
-                            /* 下の書き込みループは末尾側に 4 バイトの余裕を残して
-                             * 止まるため、その分も確保する */
+                            /* 閉じ括弧と終端 NUL の余裕を含めて確保する */
                             char *bp = (char *)malloc(need + 8);
                             if (bp && nbigs == cbigs) {
                                 int nc = cbigs ? cbigs * 2 : 16;
@@ -11597,12 +11616,24 @@ void kozou_sanitize_hidden_text(
                             /* bp が確保できない場合 (OOM) は従来どおり s[128] で打ち切る */
                         }
                         size_t j = 0; dstp[j++] = '(';
-                        for (size_t k = 0; k < len && j + 4 < dcap; k++) {
+                        for (size_t k = 0; k < len; k++) {
                             unsigned char c = d[k];
-                            if      (c=='(')  { dstp[j++]='\\'; dstp[j++]='('; }
-                            else if (c==')')  { dstp[j++]='\\'; dstp[j++]=')'; }
-                            else if (c=='\\') { dstp[j++]='\\'; dstp[j++]='\\'; }
-                            else              { dstp[j++]=(char)c; }
+                            size_t csz = kozou_lit_esc_size(c);
+                            /* 閉じ括弧 ')' と終端 NUL の2バイトを必ず残す。
+                             * (旧: j + 4 < dcap で止めていたため、エスケープ後の長さが
+                             *  s[128] に収まる 124〜125 文字のとき、末尾が欠けていた) */
+                            if (j + csz + 2 > dcap) break;
+                            if (csz == 4) {
+                                dstp[j++] = '\\';
+                                dstp[j++] = (char)('0' + ((c >> 6) & 7));
+                                dstp[j++] = (char)('0' + ((c >> 3) & 7));
+                                dstp[j++] = (char)('0' + (c & 7));
+                            } else if (csz == 2) {
+                                dstp[j++] = '\\';
+                                dstp[j++] = (char)c;
+                            } else {
+                                dstp[j++] = (char)c;
+                            }
                         }
                         dstp[j++]=')'; dstp[j]='\0';
                         if (op.big) { op.s[0] = '('; op.s[1] = '\0'; } /* 空判定用 */
