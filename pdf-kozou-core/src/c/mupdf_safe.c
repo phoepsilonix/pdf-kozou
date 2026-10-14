@@ -2700,6 +2700,476 @@ static void kozou_debug_dump_buffer(fz_context *ctx, const char *output,
 }
 
 /* ------------------------------------------------------------------ */
+/* kozou_keeptext_fix_tounicode_radicals                               */
+/*                                                                     */
+/* キープテキスト版の出力に含まれるフォントの ToUnicode CMap のうち、  */
+/* 変換先が「康熙部首 (U+2F00-2FD5)」または「CJK互換漢字              */
+/* (U+F900-FAFF)」になっているエントリを、対応する通常の漢字に         */
+/* 書き換える。                                                        */
+/*                                                                     */
+/* 見た目は同じでも、コピーや検索では別の文字として扱われるため、      */
+/* 「玉入れ」で検索しても「⽟⼊れ」にヒットしない。ToUnicode は         */
+/* コピー・検索・読み上げ用の対応表で、ページの描画 (グリフ・          */
+/* 内容ストリーム) には一切使われないため、表示は変わらない。          */
+/* 全角/半角や記号などは対象外 (NFKC 全体は適用しない)。               */
+/*                                                                     */
+/* グラフト済みの既存ストリームを pdf_update_stream で書き換える       */
+/* 操作は信頼できないことが分かっているため、書き換えが必要な          */
+/* ToUnicode だけ新規ストリームを作り、フォント辞書の /ToUnicode を     */
+/* 差し替える。変換対象が無い ToUnicode は一切触らない。               */
+/* 失敗しても警告だけで、変換全体は止めない。                          */
+/* ------------------------------------------------------------------ */
+static unsigned int kz_han_from_radical(unsigned int cp)
+{
+    /* U+2F00..U+2FD5 の NFKC 変換結果 */
+    static const unsigned short kangxi[214] = {
+        0x4E00, 0x4E28, 0x4E36, 0x4E3F, 0x4E59, 0x4E85, 0x4E8C, 0x4EA0, 0x4EBA, 0x513F, 0x5165, 0x516B,
+        0x5182, 0x5196, 0x51AB, 0x51E0, 0x51F5, 0x5200, 0x529B, 0x52F9, 0x5315, 0x531A, 0x5338, 0x5341,
+        0x535C, 0x5369, 0x5382, 0x53B6, 0x53C8, 0x53E3, 0x56D7, 0x571F, 0x58EB, 0x5902, 0x590A, 0x5915,
+        0x5927, 0x5973, 0x5B50, 0x5B80, 0x5BF8, 0x5C0F, 0x5C22, 0x5C38, 0x5C6E, 0x5C71, 0x5DDB, 0x5DE5,
+        0x5DF1, 0x5DFE, 0x5E72, 0x5E7A, 0x5E7F, 0x5EF4, 0x5EFE, 0x5F0B, 0x5F13, 0x5F50, 0x5F61, 0x5F73,
+        0x5FC3, 0x6208, 0x6236, 0x624B, 0x652F, 0x6534, 0x6587, 0x6597, 0x65A4, 0x65B9, 0x65E0, 0x65E5,
+        0x66F0, 0x6708, 0x6728, 0x6B20, 0x6B62, 0x6B79, 0x6BB3, 0x6BCB, 0x6BD4, 0x6BDB, 0x6C0F, 0x6C14,
+        0x6C34, 0x706B, 0x722A, 0x7236, 0x723B, 0x723F, 0x7247, 0x7259, 0x725B, 0x72AC, 0x7384, 0x7389,
+        0x74DC, 0x74E6, 0x7518, 0x751F, 0x7528, 0x7530, 0x758B, 0x7592, 0x7676, 0x767D, 0x76AE, 0x76BF,
+        0x76EE, 0x77DB, 0x77E2, 0x77F3, 0x793A, 0x79B8, 0x79BE, 0x7A74, 0x7ACB, 0x7AF9, 0x7C73, 0x7CF8,
+        0x7F36, 0x7F51, 0x7F8A, 0x7FBD, 0x8001, 0x800C, 0x8012, 0x8033, 0x807F, 0x8089, 0x81E3, 0x81EA,
+        0x81F3, 0x81FC, 0x820C, 0x821B, 0x821F, 0x826E, 0x8272, 0x8278, 0x864D, 0x866B, 0x8840, 0x884C,
+        0x8863, 0x897E, 0x898B, 0x89D2, 0x8A00, 0x8C37, 0x8C46, 0x8C55, 0x8C78, 0x8C9D, 0x8D64, 0x8D70,
+        0x8DB3, 0x8EAB, 0x8ECA, 0x8F9B, 0x8FB0, 0x8FB5, 0x9091, 0x9149, 0x91C6, 0x91CC, 0x91D1, 0x9577,
+        0x9580, 0x961C, 0x96B6, 0x96B9, 0x96E8, 0x9751, 0x975E, 0x9762, 0x9769, 0x97CB, 0x97ED, 0x97F3,
+        0x9801, 0x98A8, 0x98DB, 0x98DF, 0x9996, 0x9999, 0x99AC, 0x9AA8, 0x9AD8, 0x9ADF, 0x9B25, 0x9B2F,
+        0x9B32, 0x9B3C, 0x9B5A, 0x9CE5, 0x9E75, 0x9E7F, 0x9EA5, 0x9EBB, 0x9EC3, 0x9ECD, 0x9ED1, 0x9EF9,
+        0x9EFD, 0x9F0E, 0x9F13, 0x9F20, 0x9F3B, 0x9F4A, 0x9F52, 0x9F8D, 0x9F9C, 0x9FA0
+    };
+    /* U+F900..U+FAFF の NFKC 変換結果 (0 は変換なし) */
+    static const unsigned short compat[512] = {
+        0x8C48, 0x66F4, 0x8ECA, 0x8CC8, 0x6ED1, 0x4E32, 0x53E5, 0x9F9C, 0x9F9C, 0x5951, 0x91D1, 0x5587,
+        0x5948, 0x61F6, 0x7669, 0x7F85, 0x863F, 0x87BA, 0x88F8, 0x908F, 0x6A02, 0x6D1B, 0x70D9, 0x73DE,
+        0x843D, 0x916A, 0x99F1, 0x4E82, 0x5375, 0x6B04, 0x721B, 0x862D, 0x9E1E, 0x5D50, 0x6FEB, 0x85CD,
+        0x8964, 0x62C9, 0x81D8, 0x881F, 0x5ECA, 0x6717, 0x6D6A, 0x72FC, 0x90CE, 0x4F86, 0x51B7, 0x52DE,
+        0x64C4, 0x6AD3, 0x7210, 0x76E7, 0x8001, 0x8606, 0x865C, 0x8DEF, 0x9732, 0x9B6F, 0x9DFA, 0x788C,
+        0x797F, 0x7DA0, 0x83C9, 0x9304, 0x9E7F, 0x8AD6, 0x58DF, 0x5F04, 0x7C60, 0x807E, 0x7262, 0x78CA,
+        0x8CC2, 0x96F7, 0x58D8, 0x5C62, 0x6A13, 0x6DDA, 0x6F0F, 0x7D2F, 0x7E37, 0x964B, 0x52D2, 0x808B,
+        0x51DC, 0x51CC, 0x7A1C, 0x7DBE, 0x83F1, 0x9675, 0x8B80, 0x62CF, 0x6A02, 0x8AFE, 0x4E39, 0x5BE7,
+        0x6012, 0x7387, 0x7570, 0x5317, 0x78FB, 0x4FBF, 0x5FA9, 0x4E0D, 0x6CCC, 0x6578, 0x7D22, 0x53C3,
+        0x585E, 0x7701, 0x8449, 0x8AAA, 0x6BBA, 0x8FB0, 0x6C88, 0x62FE, 0x82E5, 0x63A0, 0x7565, 0x4EAE,
+        0x5169, 0x51C9, 0x6881, 0x7CE7, 0x826F, 0x8AD2, 0x91CF, 0x52F5, 0x5442, 0x5973, 0x5EEC, 0x65C5,
+        0x6FFE, 0x792A, 0x95AD, 0x9A6A, 0x9E97, 0x9ECE, 0x529B, 0x66C6, 0x6B77, 0x8F62, 0x5E74, 0x6190,
+        0x6200, 0x649A, 0x6F23, 0x7149, 0x7489, 0x79CA, 0x7DF4, 0x806F, 0x8F26, 0x84EE, 0x9023, 0x934A,
+        0x5217, 0x52A3, 0x54BD, 0x70C8, 0x88C2, 0x8AAA, 0x5EC9, 0x5FF5, 0x637B, 0x6BAE, 0x7C3E, 0x7375,
+        0x4EE4, 0x56F9, 0x5BE7, 0x5DBA, 0x601C, 0x73B2, 0x7469, 0x7F9A, 0x8046, 0x9234, 0x96F6, 0x9748,
+        0x9818, 0x4F8B, 0x79AE, 0x91B4, 0x96B8, 0x60E1, 0x4E86, 0x50DA, 0x5BEE, 0x5C3F, 0x6599, 0x6A02,
+        0x71CE, 0x7642, 0x84FC, 0x907C, 0x9F8D, 0x6688, 0x962E, 0x5289, 0x677B, 0x67F3, 0x6D41, 0x6E9C,
+        0x7409, 0x7559, 0x786B, 0x7D10, 0x985E, 0x516D, 0x622E, 0x9678, 0x502B, 0x5D19, 0x6DEA, 0x8F2A,
+        0x5F8B, 0x6144, 0x6817, 0x7387, 0x9686, 0x5229, 0x540F, 0x5C65, 0x6613, 0x674E, 0x68A8, 0x6CE5,
+        0x7406, 0x75E2, 0x7F79, 0x88CF, 0x88E1, 0x91CC, 0x96E2, 0x533F, 0x6EBA, 0x541D, 0x71D0, 0x7498,
+        0x85FA, 0x96A3, 0x9C57, 0x9E9F, 0x6797, 0x6DCB, 0x81E8, 0x7ACB, 0x7B20, 0x7C92, 0x72C0, 0x7099,
+        0x8B58, 0x4EC0, 0x8336, 0x523A, 0x5207, 0x5EA6, 0x62D3, 0x7CD6, 0x5B85, 0x6D1E, 0x66B4, 0x8F3B,
+        0x884C, 0x964D, 0x898B, 0x5ED3, 0x5140, 0x55C0, 0x0000, 0x0000, 0x585A, 0x0000, 0x6674, 0x0000,
+        0x0000, 0x51DE, 0x732A, 0x76CA, 0x793C, 0x795E, 0x7965, 0x798F, 0x9756, 0x7CBE, 0x7FBD, 0x0000,
+        0x8612, 0x0000, 0x8AF8, 0x0000, 0x0000, 0x9038, 0x90FD, 0x0000, 0x0000, 0x0000, 0x98EF, 0x98FC,
+        0x9928, 0x9DB4, 0x90DE, 0x96B7, 0x4FAE, 0x50E7, 0x514D, 0x52C9, 0x52E4, 0x5351, 0x559D, 0x5606,
+        0x5668, 0x5840, 0x58A8, 0x5C64, 0x5C6E, 0x6094, 0x6168, 0x618E, 0x61F2, 0x654F, 0x65E2, 0x6691,
+        0x6885, 0x6D77, 0x6E1A, 0x6F22, 0x716E, 0x722B, 0x7422, 0x7891, 0x793E, 0x7949, 0x7948, 0x7950,
+        0x7956, 0x795D, 0x798D, 0x798E, 0x7A40, 0x7A81, 0x7BC0, 0x7DF4, 0x7E09, 0x7E41, 0x7F72, 0x8005,
+        0x81ED, 0x8279, 0x8279, 0x8457, 0x8910, 0x8996, 0x8B01, 0x8B39, 0x8CD3, 0x8D08, 0x8FB6, 0x9038,
+        0x96E3, 0x97FF, 0x983B, 0x6075, 0x0000, 0x8218, 0x0000, 0x0000, 0x4E26, 0x51B5, 0x5168, 0x4F80,
+        0x5145, 0x5180, 0x52C7, 0x52FA, 0x559D, 0x5555, 0x5599, 0x55E2, 0x585A, 0x58B3, 0x5944, 0x5954,
+        0x5A62, 0x5B28, 0x5ED2, 0x5ED9, 0x5F69, 0x5FAD, 0x60D8, 0x614E, 0x6108, 0x618E, 0x6160, 0x61F2,
+        0x6234, 0x63C4, 0x641C, 0x6452, 0x6556, 0x6674, 0x6717, 0x671B, 0x6756, 0x6B79, 0x6BBA, 0x6D41,
+        0x6EDB, 0x6ECB, 0x6F22, 0x701E, 0x716E, 0x77A7, 0x7235, 0x72AF, 0x732A, 0x7471, 0x7506, 0x753B,
+        0x761D, 0x761F, 0x76CA, 0x76DB, 0x76F4, 0x774A, 0x7740, 0x78CC, 0x7AB1, 0x7BC0, 0x7C7B, 0x7D5B,
+        0x7DF4, 0x7F3E, 0x8005, 0x8352, 0x83EF, 0x8779, 0x8941, 0x8986, 0x8996, 0x8ABF, 0x8AF8, 0x8ACB,
+        0x8B01, 0x8AFE, 0x8AED, 0x8B39, 0x8B8A, 0x8D08, 0x8F38, 0x9072, 0x9199, 0x9276, 0x967C, 0x96E3,
+        0x9756, 0x97DB, 0x97FF, 0x980B, 0x983B, 0x9B12, 0x9F9C, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x9F43, 0x9F8E, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000
+    };
+    if (cp >= 0x2F00 && cp <= 0x2FD5) return kangxi[cp - 0x2F00];
+    if (cp >= 0xF900 && cp <= 0xFAFF) {
+        unsigned short v = compat[cp - 0xF900];
+        return v ? (unsigned int)v : cp;
+    }
+    return cp;
+}
+
+enum { KZ_EOF = 0, KZ_HEX, KZ_LB, KZ_RB, KZ_WORD, KZ_BAD };
+
+static int kz_hexdigit(int c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static int kz_is_ws(int c)
+{
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == 0;
+}
+
+/* 次のトークンを読む。KZ_HEX のとき [*s, *s+*n) は「<」「>」を除いた
+ * 16進の桁。空白を含む16進文字列などの想定外のものは KZ_BAD。 */
+static int kz_next(const unsigned char *d, size_t len, size_t *pos, size_t *s, size_t *n)
+{
+    size_t i = *pos;
+    for (;;) {
+        while (i < len && kz_is_ws(d[i])) i++;
+        if (i < len && d[i] == '%') {
+            while (i < len && d[i] != '\n' && d[i] != '\r') i++;
+            continue;
+        }
+        break;
+    }
+    if (i >= len) { *pos = i; return KZ_EOF; }
+    if (d[i] == '[') { *s = i; *n = 1; *pos = i + 1; return KZ_LB; }
+    if (d[i] == ']') { *s = i; *n = 1; *pos = i + 1; return KZ_RB; }
+    if (d[i] == '<') {
+        size_t j;
+        if (i + 1 < len && d[i + 1] == '<') { *pos = i + 2; return KZ_BAD; }
+        j = i + 1;
+        *s = j;
+        while (j < len && d[j] != '>') {
+            if (kz_hexdigit(d[j]) < 0) return KZ_BAD;
+            j++;
+        }
+        if (j >= len) return KZ_BAD;
+        *n = j - *s;
+        *pos = j + 1;
+        return KZ_HEX;
+    }
+    {
+        size_t j = i;
+        while (j < len && !kz_is_ws(d[j]) && !strchr("()<>[]{}/%", d[j])) j++;
+        if (j == i) j = i + 1;
+        *s = i; *n = j - i; *pos = j;
+        return KZ_WORD;
+    }
+}
+
+static int kz_word_is(const unsigned char *d, size_t s, size_t n, const char *w)
+{
+    return strlen(w) == n && memcmp(d + s, w, n) == 0;
+}
+
+static int kz_hexval(const unsigned char *d, size_t s, size_t n, unsigned long *v)
+{
+    unsigned long r = 0;
+    size_t i;
+    if (n == 0 || n > 8) return 0;
+    for (i = 0; i < n; i++) {
+        int h = kz_hexdigit(d[s + i]);
+        if (h < 0) return 0;
+        r = r * 16 + (unsigned long)h;
+    }
+    *v = r;
+    return 1;
+}
+
+/* 変換先 (UTF-16BE の16進) を 16ビット単位の配列にしたもの */
+typedef struct { unsigned u[8]; int n; } kz_dst;
+
+static int kz_parse_dst(const unsigned char *d, size_t s, size_t n, kz_dst *o)
+{
+    int i;
+    if (n == 0 || n % 4 != 0 || n > 32) return 0;
+    o->n = (int)(n / 4);
+    for (i = 0; i < o->n; i++) {
+        unsigned long v;
+        if (!kz_hexval(d, s + (size_t)i * 4, 4, &v)) return 0;
+        o->u[i] = (unsigned)v;
+    }
+    return 1;
+}
+
+/* 最後の単位に add を足したとき、部首文字に変換される単位があるか */
+static int kz_dst_affected(const kz_dst *x, unsigned long add)
+{
+    int i;
+    for (i = 0; i < x->n; i++) {
+        unsigned u = (x->u[i] + (i == x->n - 1 ? (unsigned)add : 0u)) & 0xFFFFu;
+        if (kz_han_from_radical(u) != u) return 1;
+    }
+    return 0;
+}
+
+/* 16進(大文字)を width 桁、0埋めで書く。
+ * fz_append_printf は %X を解釈せずそのまま出力してしまうため、自前で書く。 */
+static void kz_append_hex(fz_context *ctx, fz_buffer *b, unsigned long v, int width)
+{
+    char tmp[24];
+    int i = 0, k;
+    static const char hexchars[] = "0123456789ABCDEF";
+    do { tmp[i++] = hexchars[v & 15u]; v >>= 4; } while (v && i < 16);
+    for (k = i; k < width && k < 16; k++) fz_append_byte(ctx, b, '0');
+    while (i > 0) fz_append_byte(ctx, b, (unsigned char)tmp[--i]);
+}
+
+static void kz_emit_dst(fz_context *ctx, fz_buffer *b, const kz_dst *x, unsigned long add)
+{
+    int i;
+    fz_append_byte(ctx, b, '<');
+    for (i = 0; i < x->n; i++) {
+        unsigned u = (x->u[i] + (i == x->n - 1 ? (unsigned)add : 0u)) & 0xFFFFu;
+        kz_append_hex(ctx, b, kz_han_from_radical(u), 4);
+    }
+    fz_append_byte(ctx, b, '>');
+}
+
+static void kz_emit_hex(fz_context *ctx, fz_buffer *b, const unsigned char *d, size_t s, size_t n)
+{
+    fz_append_byte(ctx, b, '<');
+    fz_append_data(ctx, b, d + s, n);
+    fz_append_byte(ctx, b, '>');
+}
+
+typedef struct {
+    fz_buffer *out;     /* 出力全体 */
+    fz_buffer *chunk;   /* 作成中のセクションの行 */
+    int cnt;            /* chunk の項目数 */
+    int is_range;
+} kz_sec;
+
+static void kz_flush(fz_context *ctx, kz_sec *sc)
+{
+    if (sc->cnt == 0) return;
+    fz_append_printf(ctx, sc->out, "%d begin%s\n", sc->cnt, sc->is_range ? "bfrange" : "bfchar");
+    fz_append_buffer(ctx, sc->out, sc->chunk);
+    fz_append_printf(ctx, sc->out, "end%s\n", sc->is_range ? "bfrange" : "bfchar");
+    fz_clear_buffer(ctx, sc->chunk);
+    sc->cnt = 0;
+}
+
+/* 仕様上の上限 (1セクション100項目) に合わせて区切る */
+static void kz_item_done(fz_context *ctx, kz_sec *sc)
+{
+    if (++sc->cnt >= 100) kz_flush(ctx, sc);
+}
+
+static size_t kz_find_begin(const unsigned char *d, size_t len, size_t from, int *is_range)
+{
+    size_t i;
+    for (i = from; i + 11 <= len; i++) {
+        if (d[i] == 'b' && memcmp(d + i, "beginbfchar", 11) == 0) { *is_range = 0; return i; }
+        if (i + 12 <= len && d[i] == 'b' && memcmp(d + i, "beginbfrange", 12) == 0) { *is_range = 1; return i; }
+    }
+    return (size_t)-1;
+}
+
+/* ToUnicode CMap を変換する。変換対象が無い、または想定外の構造なら NULL。 */
+static fz_buffer *kz_fix_cmap(fz_context *ctx, const unsigned char *d, size_t len)
+{
+    fz_buffer *out = NULL, *chunk = NULL;
+    int changed = 0, bad = 0;
+    size_t pos = 0;
+    size_t expanded = 0;
+    fz_var(out); fz_var(chunk); fz_var(pos); fz_var(changed); fz_var(bad); fz_var(expanded);
+
+    fz_try(ctx) {
+        kz_sec sc;
+        out = fz_new_buffer(ctx, len + 256);
+        chunk = fz_new_buffer(ctx, 4096);
+        sc.out = out; sc.chunk = chunk; sc.cnt = 0; sc.is_range = 0;
+
+        while (!bad) {
+            int is_range = 0;
+            size_t idx = kz_find_begin(d, len, pos, &is_range);
+            size_t cstart, q, q2, p, kwlen, s, n;
+            int t;
+            if (idx == (size_t)-1) {
+                fz_append_data(ctx, out, d + pos, len - pos);
+                pos = len;
+                break;
+            }
+            /* 直前の項目数 (「12 beginbfchar」の 12) は書き直すので除く */
+            cstart = idx;
+            q = idx;
+            while (q > pos && kz_is_ws(d[q - 1])) q--;
+            q2 = q;
+            while (q2 > pos && d[q2 - 1] >= '0' && d[q2 - 1] <= '9') q2--;
+            if (q2 < q) cstart = q2;
+            fz_append_data(ctx, out, d + pos, cstart - pos);
+
+            kwlen = is_range ? 12 : 11;
+            p = idx + kwlen;
+            sc.is_range = is_range;
+            sc.cnt = 0;
+            fz_clear_buffer(ctx, chunk);
+
+            for (;;) {
+                size_t as, an, bs, bn, cs, cn;
+                t = kz_next(d, len, &p, &s, &n);
+                if (t == KZ_WORD && kz_word_is(d, s, n, is_range ? "endbfrange" : "endbfchar")) break;
+                if (t != KZ_HEX) { bad = 1; break; }
+                as = s; an = n;
+
+                if (!is_range) {
+                    kz_dst x;
+                    t = kz_next(d, len, &p, &bs, &bn);
+                    if (t != KZ_HEX) { bad = 1; break; }
+                    kz_emit_hex(ctx, chunk, d, as, an);
+                    fz_append_byte(ctx, chunk, ' ');
+                    if (kz_parse_dst(d, bs, bn, &x)) {
+                        if (kz_dst_affected(&x, 0)) changed = 1;
+                        kz_emit_dst(ctx, chunk, &x, 0);
+                    } else {
+                        kz_emit_hex(ctx, chunk, d, bs, bn);
+                    }
+                    fz_append_byte(ctx, chunk, '\n');
+                    kz_item_done(ctx, &sc);
+                } else {
+                    unsigned long lo, hi;
+                    t = kz_next(d, len, &p, &bs, &bn);
+                    if (t != KZ_HEX) { bad = 1; break; }
+                    if (!kz_hexval(d, as, an, &lo) || !kz_hexval(d, bs, bn, &hi) || hi < lo) { bad = 1; break; }
+                    t = kz_next(d, len, &p, &cs, &cn);
+                    if (t == KZ_HEX) {
+                        kz_dst x;
+                        if (!kz_parse_dst(d, cs, cn, &x)) {
+                            /* 想定外の形式はそのまま */
+                            kz_emit_hex(ctx, chunk, d, as, an); fz_append_byte(ctx, chunk, ' ');
+                            kz_emit_hex(ctx, chunk, d, bs, bn); fz_append_byte(ctx, chunk, ' ');
+                            kz_emit_hex(ctx, chunk, d, cs, cn); fz_append_byte(ctx, chunk, '\n');
+                            kz_item_done(ctx, &sc);
+                        } else {
+                            /* 変換対象を含まない区間はそのまま範囲で、
+                             * 含む要素だけを1件ずつの範囲に展開する */
+                            unsigned long L = hi - lo + 1, k = 0;
+                            while (k < L) {
+                                unsigned long k2 = k + 1;
+                                if (!kz_dst_affected(&x, k)) {
+                                    while (k2 < L && !kz_dst_affected(&x, k2)) k2++;
+                                    fz_append_byte(ctx, chunk, '<'); kz_append_hex(ctx, chunk, lo + k, (int)an);
+                                    fz_append_string(ctx, chunk, "> <"); kz_append_hex(ctx, chunk, lo + k2 - 1, (int)an);
+                                    fz_append_string(ctx, chunk, "> ");
+                                    kz_emit_dst(ctx, chunk, &x, k);
+                                } else {
+                                    if (++expanded > 4096) { bad = 1; break; }
+                                    changed = 1;
+                                    fz_append_byte(ctx, chunk, '<'); kz_append_hex(ctx, chunk, lo + k, (int)an);
+                                    fz_append_string(ctx, chunk, "> <"); kz_append_hex(ctx, chunk, lo + k, (int)an);
+                                    fz_append_string(ctx, chunk, "> ");
+                                    kz_emit_dst(ctx, chunk, &x, k);
+                                }
+                                fz_append_byte(ctx, chunk, '\n');
+                                kz_item_done(ctx, &sc);
+                                k = k2;
+                            }
+                            if (bad) break;
+                        }
+                    } else if (t == KZ_LB) {
+                        kz_emit_hex(ctx, chunk, d, as, an); fz_append_byte(ctx, chunk, ' ');
+                        kz_emit_hex(ctx, chunk, d, bs, bn); fz_append_string(ctx, chunk, " [");
+                        for (;;) {
+                            kz_dst x;
+                            t = kz_next(d, len, &p, &cs, &cn);
+                            if (t == KZ_RB) break;
+                            if (t != KZ_HEX) { bad = 1; break; }
+                            fz_append_byte(ctx, chunk, ' ');
+                            if (kz_parse_dst(d, cs, cn, &x)) {
+                                if (kz_dst_affected(&x, 0)) changed = 1;
+                                kz_emit_dst(ctx, chunk, &x, 0);
+                            } else {
+                                kz_emit_hex(ctx, chunk, d, cs, cn);
+                            }
+                        }
+                        if (bad) break;
+                        fz_append_string(ctx, chunk, " ]\n");
+                        kz_item_done(ctx, &sc);
+                    } else {
+                        bad = 1; break;
+                    }
+                }
+            }
+            if (bad) break;
+            kz_flush(ctx, &sc);
+            pos = p;
+        }
+    }
+    fz_always(ctx) {
+        if (chunk) fz_drop_buffer(ctx, chunk);
+    }
+    fz_catch(ctx) {
+        if (out) fz_drop_buffer(ctx, out);
+        fz_rethrow(ctx);
+    }
+    if (bad || !changed) {
+        fz_drop_buffer(ctx, out);
+        return NULL;
+    }
+    return out;
+}
+
+/* 文書内の全フォントの ToUnicode のうち、部首文字を含むものを差し替える */
+static void kozou_keeptext_fix_tounicode_radicals(fz_context *ctx, pdf_document *doc)
+{
+    int n, i;
+    unsigned char *done = NULL;
+    pdf_obj **repl = NULL;
+    if (!doc) return;
+    n = pdf_count_objects(ctx, doc);
+    if (n <= 1) return;
+    done = (unsigned char *)calloc((size_t)n, 1);
+    repl = (pdf_obj **)calloc((size_t)n, sizeof(pdf_obj *));
+    if (!done || !repl) { free(done); free(repl); return; }
+
+    for (i = 1; i < n; i++) {
+        pdf_obj *obj = NULL;
+        int tn = 0;
+        fz_var(obj); fz_var(tn);
+        fz_try(ctx) {
+            obj = pdf_load_object(ctx, doc, i);
+            if (pdf_is_dict(ctx, obj)) {
+                pdf_obj *tu = pdf_dict_get(ctx, obj, PDF_NAME(ToUnicode));
+                if (tu && pdf_is_indirect(ctx, tu)) {
+                    tn = pdf_to_num(ctx, tu);
+                    if (tn > 0 && tn < n) {
+                        if (!done[tn]) {
+                            fz_buffer *src = NULL, *nb = NULL;
+                            fz_var(src); fz_var(nb);
+                            done[tn] = 1;
+                            fz_try(ctx) {
+                                if (pdf_is_stream(ctx, tu)) {
+                                    const unsigned char *data = NULL;
+                                    size_t dl;
+                                    src = pdf_load_stream(ctx, tu);
+                                    dl = fz_buffer_storage(ctx, src, (unsigned char **)&data);
+                                    if (dl > 0 && dl <= (size_t)4 * 1024 * 1024)
+                                        nb = kz_fix_cmap(ctx, data, dl);
+                                }
+                                if (nb) {
+                                    repl[tn] = pdf_add_stream(ctx, doc, nb, NULL, 0);
+                                }
+                            }
+                            fz_always(ctx) {
+                                if (src) fz_drop_buffer(ctx, src);
+                                if (nb) fz_drop_buffer(ctx, nb);
+                            }
+                            fz_catch(ctx) {
+                                fz_warn(ctx, "kozou_keeptext_fix_tounicode_radicals: ToUnicode %d: %s",
+                                        tn, fz_caught_message(ctx));
+                            }
+                        }
+                        if (repl[tn])
+                            pdf_dict_put(ctx, obj, PDF_NAME(ToUnicode), repl[tn]);
+                    }
+                }
+            }
+        }
+        fz_always(ctx) { pdf_drop_obj(ctx, obj); }
+        fz_catch(ctx) {
+            fz_warn(ctx, "kozou_keeptext_fix_tounicode_radicals: object %d: %s", i, fz_caught_message(ctx));
+        }
+    }
+    for (i = 1; i < n; i++) if (repl[i]) pdf_drop_obj(ctx, repl[i]);
+    free(done);
+    free(repl);
+}
+
+/* ------------------------------------------------------------------ */
 /* kozou_compose_image_pdf_keep_text                                   */
 /*                                                                     */
 /* 画像PDF化(フォント保持版) Stage 2。                                  */
@@ -3384,6 +3854,8 @@ void kozou_compose_image_pdf_keep_text(
          * 確認済み (do_appearance/do_pretty 等は逆に肥大化/無効だった
          * ため未使用のまま)。 */
         opts.do_use_objstms     = 1;
+        /* 部首文字・互換漢字を指す ToUnicode を通常の漢字に直す (表示は変わらない) */
+        kozou_keeptext_fix_tounicode_radicals(ctx, dst);
         pdf_save_document(ctx, dst, output, &opts);
 
         if (allocated) free(pages_to_do);
@@ -14016,6 +14488,8 @@ void kozou_compose_imposition_pdf_keep_text(
         opts.do_garbage         = 2;
         opts.do_clean           = 0;
         opts.do_use_objstms     = 1;
+        /* 部首文字・互換漢字を指す ToUnicode を通常の漢字に直す (表示は変わらない) */
+        kozou_keeptext_fix_tounicode_radicals(ctx, dst);
         pdf_save_document(ctx, dst, output, &opts);
 
         set_ok(result);
