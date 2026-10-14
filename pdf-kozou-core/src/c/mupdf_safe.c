@@ -1407,6 +1407,50 @@ static int kozou_compute_supersample_mult(
     return mult;
 }
 
+/* ------------------------------------------------------------------ */
+/* kozou_fit_page: ページ全体にぴったり合わせたラスタライズ寸法・倍率  */
+/*                                                                     */
+/* 目標画素数 w×h は従来どおり fz_round_rect(ページ範囲×dpi/72) で決める */
+/* が、ページ寸法×dpi/72 が整数でない場合 (例: 842.25pt×2 = 1684.5px   */
+/* → 1685px) に、従来のように一様倍率 dpi/72 のまま 1685px 分を        */
+/* ページ寸法 842.25pt に貼ると、画素格子とページが 0.5px 分食い違い、  */
+/* 画像全体がページ下方ほど大きく (最大 0.5px = 72/dpi/2 pt) ずれる。   */
+/* そこで描画の倍率を軸ごとに sx = w/ページ幅、sy = h/ページ高 とし、   */
+/* 画素格子がページ範囲にちょうど一致するようにする。画像の配置は      */
+/* 従来どおりページ寸法 (pw×ph) ぴったりに貼ればよい。                 */
+/* sx, sy は dpi/72 に対して高々 0.5px/画素数 しか違わない (A4・144dpi  */
+/* で約 0.03%) ので、dpi の意味は実質変わらない。                      */
+/*                                                                     */
+/* ページ座標 → 画素座標の変換は、必ず x に sx、y に sy を使うこと      */
+/* (KozouScale)。一様な dpi/72 を使うと、ページ下方で最大 0.5px の       */
+/* 食い違いが出て、描画結果の画素比較やパッチ位置がずれる。            */
+/* ------------------------------------------------------------------ */
+typedef struct { float x, y; } KozouScale;
+
+typedef struct {
+    int        w, h;     /* 目標画素数 */
+    KozouScale s;        /* ページ座標(pt) → 画素 の軸ごとの倍率 */
+} KozouFit;
+
+static KozouFit kozou_fit_page(fz_rect bounds, float dpi)
+{
+    KozouFit f;
+    float uni = dpi / 72.0f;
+    fz_irect bb = fz_round_rect(fz_transform_rect(bounds, fz_scale(uni, uni)));
+    float pw = bounds.x1 - bounds.x0;
+    float ph = bounds.y1 - bounds.y0;
+    f.w = bb.x1 - bb.x0;
+    f.h = bb.y1 - bb.y0;
+    if (f.w < 1) f.w = 1;
+    if (f.h < 1) f.h = 1;
+    f.s.x = (pw > 0.0f) ? (float)f.w / pw : uni;
+    f.s.y = (ph > 0.0f) ? (float)f.h / ph : uni;
+    return f;
+}
+
+/* 大きさ(画素数)だけを見る処理 (文字サイズ×倍率など) 用の代表値 */
+static float kozou_scale_mean(KozouScale s) { return 0.5f * (s.x + s.y); }
+
 /* 汎用の低レベルプリミティブ: 与えられた ctm・目標サイズでページを
  * pixmap にレンダリングする。mult<=1 なら直接描画(従来と同一)。
  * mult>1 なら ctm をさらに mult 倍したデバイス空間で一時的に描いてから
@@ -1496,12 +1540,12 @@ static fz_pixmap *kozou_render_page_to_pixmap(
     float dpi, int supersample_max, int exclude_text,
     fz_matrix *out_ctm, fz_irect *out_bbox)
 {
-    float scale = dpi / 72.0f;
-    fz_matrix ctm  = fz_scale(scale, scale);
+    KozouFit fit = kozou_fit_page(bounds, dpi);
+    fz_matrix ctm  = fz_scale(fit.s.x, fit.s.y);
     fz_irect  bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
 
-    int target_w = (int)(bbox.x1 - bbox.x0);
-    int target_h = (int)(bbox.y1 - bbox.y0);
+    int target_w = fit.w;
+    int target_h = fit.h;
     int mult = kozou_compute_supersample_mult(
         dpi, supersample_max, (float)target_w, (float)target_h);
 
@@ -1801,7 +1845,6 @@ void kozou_rasterize_no_text(
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "document has no pages");
 
         if (dpi <= 0.0f) dpi = 150.0f;
-        float scale = dpi / 72.0f;
 
         int  *pages_to_render     = NULL;
         int   pages_to_render_len = 0;
@@ -1871,7 +1914,8 @@ void kozou_rasterize_no_text(
                 float mb_x0, mb_y0;
                 kozou_resolved_box_origin(ctx, doc, i, bounds, &mb_x0, &mb_y0);
 
-                fz_matrix ctm = fz_scale(scale, scale);
+                KozouFit fit = kozou_fit_page(bounds, dpi);
+                fz_matrix ctm = fz_scale(fit.s.x, fit.s.y);
                 fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
                 fz_colorspace *rgb = fz_device_rgb(ctx);
                 pixmap = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
@@ -6900,10 +6944,9 @@ static fz_pixmap *kozou_render_page_filtered(
     fz_context *ctx, fz_page *page, fz_rect bounds, float dpi, int supersample_max,
     const unsigned char *sbits, int nseq, int mode, int *out_seq)
 {
-    float scale = dpi / 72.0f;
-    fz_matrix ctm = fz_scale(scale, scale);
-    fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
-    int tw = bbox.x1 - bbox.x0, th = bbox.y1 - bbox.y0;
+    KozouFit fit = kozou_fit_page(bounds, dpi);
+    fz_matrix ctm = fz_scale(fit.s.x, fit.s.y);
+    int tw = fit.w, th = fit.h;
     int m = kozou_compute_supersample_mult(dpi, supersample_max, (float)tw, (float)th);
     if (m < 1) m = 1;
     fz_matrix big_ctm = fz_concat(ctm, fz_scale((float)m, (float)m));
@@ -7440,7 +7483,7 @@ static int kozou_layer_has_text_after(
 
 static void kozou_layer_eligibility(
     KozouBuriedList *L, fz_stext_page *stext, const int *g_head, const int *g_next,
-    KozouCoverRegionList *out, float scale)
+    KozouCoverRegionList *out, KozouScale scale)
 {
     int n = out->n, np = L->paint_count;
     if (n <= 0 || np <= 0 || L->paint_overflow || !L->paints) return;
@@ -7450,8 +7493,8 @@ static void kozou_layer_eligibility(
     /* (1)(2) 領域ごとの判定 */
     for (int i = 0; i < n; i++) {
         KozouCoverRegion *g = &out->v[i];
-        float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
-        float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+        float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
+        float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
         int cnt = 0, bad = 0, min_s = 0x7fffffff;
         for (int k = 0; k < np; k++) {
             const KozouPaintRec *p = &L->paints[k];
@@ -7477,8 +7520,8 @@ static void kozou_layer_eligibility(
         for (int i = 0; i < n; i++) {
             if (!out->v[i].elig) continue;
             const KozouCoverRegion *g = &out->v[i];
-            float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
-            float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+            float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
+            float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
             for (int k = 0; k < np; k++) {
                 const KozouPaintRec *p = &L->paints[k];
                 if (p->ev > g->max_ev &&
@@ -7490,8 +7533,8 @@ static void kozou_layer_eligibility(
         for (int i = 0; i < n; i++) {
             if (!out->v[i].elig) continue;
             const KozouCoverRegion *g = &out->v[i];
-            float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
-            float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+            float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
+            float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
             for (int k = 0; k < np; k++) {
                 const KozouPaintRec *p = &L->paints[k];
                 if (sb[k] && p->ev <= g->max_ev &&
@@ -7526,8 +7569,8 @@ static void kozou_layer_eligibility(
         if (!out->v[i].elig) continue;
         any = 1;
         const KozouCoverRegion *g = &out->v[i];
-        float rx0 = g->r.x0 / scale, ry0 = g->r.y0 / scale;
-        float rx1 = g->r.x1 / scale, ry1 = g->r.y1 / scale;
+        float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
+        float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
         for (int k = 0; k < np; k++) {
             const KozouPaintRec *p = &L->paints[k];
             if (p->ev > g->max_ev &&
@@ -7540,14 +7583,15 @@ static void kozou_layer_eligibility(
 }
 
 /* 部分的に隠れていた文字の候補領域(ピクセル座標)を集める。
- * page は元ページ。scale は dpi/72。pix_w/pix_h は背景画像の画素数。 */
+ * page は元ページ。scale は kozou_fit_page の軸ごとの倍率 (ページ座標→画素)。
+ * pix_w/pix_h は背景画像の画素数。 */
 /* 前方宣言 (定義は本ファイル後方、kozou_keeptext_plan_layers の近く)。
  * kozou_collect_partial_cover_regions が、覆い層の対象領域を確定した直後に
  * 呼ぶ (list->paints を解放する前に、塗り自体の外接矩形を控えておくため)。 */
-static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedList *L, float scale);
+static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedList *L, KozouScale scale);
 
 static void kozou_collect_partial_cover_regions(
-    fz_context *ctx, fz_page *page, float scale, int pix_w, int pix_h,
+    fz_context *ctx, fz_page *page, KozouScale scale, int pix_w, int pix_h,
     int want_layers, KozouCoverRegionList *out)
 {
     KozouBuriedList *list     = NULL;
@@ -7663,12 +7707,12 @@ static void kozou_collect_partial_cover_regions(
                          * 比例して広げる。埋め込みフォントや Type3 は、どの閲覧側でも
                          * 同じ字形なので広げない (見えている文字の縁を無駄にラスタ化しない)。 */
                         float em = kozou_cover_font_may_differ(ctx, ch->font) ? ch->size : 0.0f;
-                        int pad = kozou_cover_dilate_px(em, scale);
+                        int pad = kozou_cover_dilate_px(em, kozou_scale_mean(scale));
                         if (pad < KOZOU_COVER_REGION_PAD_PX) pad = KOZOU_COVER_REGION_PAD_PX;
-                        r.x0 = (int)floorf(uni.x0 * scale) - pad;
-                        r.y0 = (int)floorf(uni.y0 * scale) - pad;
-                        r.x1 = (int)ceilf (uni.x1 * scale) + pad;
-                        r.y1 = (int)ceilf (uni.y1 * scale) + pad;
+                        r.x0 = (int)floorf(uni.x0 * scale.x) - pad;
+                        r.y0 = (int)floorf(uni.y0 * scale.y) - pad;
+                        r.x1 = (int)ceilf (uni.x1 * scale.x) + pad;
+                        r.y1 = (int)ceilf (uni.y1 * scale.y) + pad;
                         if (r.x0 < 0) r.x0 = 0;
                         if (r.y0 < 0) r.y0 = 0;
                         if (r.x1 > pix_w) r.x1 = pix_w;
@@ -7993,7 +8037,7 @@ static int kozou_irect_touch(fz_irect a, fz_irect b, int gap)
  * しまう (実機で確認された不具合)。塗り自体の外接矩形を単位にすれば、背景の
  * 穴と覆い層の境界は常に塗りの本当の縁 (元から鋭い境界だった場所) に来るため、
  * 途中に境界ができない。 */
-static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedList *L, float scale)
+static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedList *L, KozouScale scale)
 {
     if (!out->sbits || out->nseq <= 0 || !L->paints) return;
     fz_irect *v = (fz_irect *)malloc(sizeof(fz_irect) * (size_t)out->nseq);
@@ -8003,10 +8047,10 @@ static void kozou_build_paint_clusters(KozouCoverRegionList *out, KozouBuriedLis
         if (!out->sbits[k]) continue;
         const KozouPaintRec *p = &L->paints[k];
         fz_irect r;
-        r.x0 = (int)floorf(p->x0 * scale);
-        r.y0 = (int)floorf(p->y0 * scale);
-        r.x1 = (int)ceilf (p->x1 * scale);
-        r.y1 = (int)ceilf (p->y1 * scale);
+        r.x0 = (int)floorf(p->x0 * scale.x);
+        r.y0 = (int)floorf(p->y0 * scale.y);
+        r.x1 = (int)ceilf (p->x1 * scale.x);
+        r.y1 = (int)ceilf (p->y1 * scale.y);
         if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
         v[n++] = r;
     }
@@ -8067,7 +8111,8 @@ static KozouLayerPlan *kozou_keeptext_plan_layers(
     fz_var(below); fz_var(cover);
 
     fz_try(ctx) {
-        float scale = dpi / 72.0f;
+        KozouFit fit = kozou_fit_page(bounds, dpi);
+        KozouScale scale = fit.s;
         kozou_collect_partial_cover_regions(ctx, render_page, scale,
                                             bg_pix->w, bg_pix->h, want_layers, &pl->regions);
         if (pl->regions.sbits) {
@@ -8235,7 +8280,8 @@ static int kozou_keeptext_add_partial_covers(
     fz_var(added);
 
     fz_try(ctx) {
-        float scale = dpi / 72.0f;
+        KozouFit fit = kozou_fit_page(bounds, dpi);
+        KozouScale scale = fit.s;
         if (!plan)
             kozou_collect_partial_cover_regions(ctx, render_page, scale,
                                                 nt_pix->w, nt_pix->h, 0, &own_regions);
@@ -8270,7 +8316,7 @@ static int kozou_keeptext_add_partial_covers(
                             (float)nt_pix->w, (float)nt_pix->h);
                         cmp = pdf_load_page(ctx, dst, npg - 1);
                         layer = kozou_render_text_layer_rgba(
-                            ctx, (fz_page *)cmp, fz_scale(scale, scale),
+                            ctx, (fz_page *)cmp, fz_scale(scale.x, scale.y),
                             nt_pix->w, nt_pix->h, mult);
                         if (layer->w != nt_pix->w || layer->h != nt_pix->h || layer->n != 4) {
                             fz_drop_pixmap(ctx, layer);
@@ -8304,7 +8350,7 @@ static int kozou_keeptext_add_partial_covers(
                 fz_irect tight;
                 long cnt = kozou_cover_compute_mask(
                     full, nt_pix, layer, r,
-                    kozou_cover_dilate_px(regions->v[k].em, scale), &mask, &tight);
+                    kozou_cover_dilate_px(regions->v[k].em, kozou_scale_mean(scale)), &mask, &tight);
                 if (cnt <= 0 || !mask) continue;
 
                 int rw = r.x1 - r.x0;
@@ -8669,7 +8715,7 @@ void kozou_collect_xobj_bboxes(
 typedef struct {
     fz_pixmap *full;
     fz_pixmap *nt;
-    float      scale;
+    KozouScale scale;
     int        state;   /* 0=未準備, 1=準備済み, -1=不可 (従来動作) */
 } KozouVisCheck;
 
@@ -8692,7 +8738,8 @@ static int kozou_buried_pixels_show_ink(
                 v->nt   = kozou_render_page_to_pixmap(ctx, page, bounds, dpi, 1, 1, NULL, NULL);
                 if (v->full->w == v->nt->w && v->full->h == v->nt->h &&
                     v->full->n >= 3 && v->nt->n >= 3) {
-                    v->scale = dpi / 72.0f;
+                    v->scale.x = (float)v->full->w / pw;
+                    v->scale.y = (float)v->full->h / ph;
                     v->state = 1;
                 }
             }
@@ -8706,8 +8753,8 @@ static int kozou_buried_pixels_show_ink(
     if (v->state != 1) return 0;
 
     const fz_pixmap *a = v->full, *b = v->nt;
-    int x0 = (int)floorf(bb->x0 * v->scale), x1 = (int)ceilf(bb->x1 * v->scale);
-    int y0 = (int)floorf(bb->y0 * v->scale), y1 = (int)ceilf(bb->y1 * v->scale);
+    int x0 = (int)floorf(bb->x0 * v->scale.x), x1 = (int)ceilf(bb->x1 * v->scale.x);
+    int y0 = (int)floorf(bb->y0 * v->scale.y), y1 = (int)ceilf(bb->y1 * v->scale.y);
     /* 隣の文字のアンチエイリアスの縁が bbox に食い込む分を除くため、
      * 十分大きい bbox は1画素ずつ内側へ縮める */
     if (x1 - x0 >= 4) { x0++; x1--; }
