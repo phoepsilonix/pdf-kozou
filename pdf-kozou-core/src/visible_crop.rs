@@ -40,7 +40,9 @@
 //      クリップパスは無視する = クリップを狭めないだけで、見えている
 //      部分を誤って切り落とすことはない。
 
-use crate::image_recompress::{SourceKind, classify_source, image_native_size};
+use crate::image_recompress::{
+    SourceKind, classify_source, image_native_size, set_flate_content,
+};
 use lopdf::content::{Content, Operation};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::{HashMap, HashSet};
@@ -502,31 +504,6 @@ fn analyze(doc: &Document) -> CropAnalysis {
         }
     }
     analysis
-}
-
-/// ストリーム本体を Flate 圧縮して書き戻す。lopdf::Stream::compress() は
-/// 「圧縮した方が小さい場合のみ」圧縮して Filter を設定する挙動のため、
-/// 逆に伸びる場合は Filter キーが最後まで付かないままになり、後続の
-/// stream_bytes()/decompressed_content() 呼び出し経路によっては扱いが
-/// 分かれてしまう。ここでは常に Filter=FlateDecode を設定して統一する。
-fn set_flate_content(stream: &mut lopdf::Stream, bytes: Vec<u8>) {
-    use flate2::Compression;
-    use flate2::write::ZlibEncoder;
-    use std::io::Write;
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-    let compressed = match encoder.write_all(&bytes).and_then(|_| encoder.finish()) {
-        Ok(c) => c,
-        Err(_) => {
-            // 圧縮に失敗したら無圧縮のまま (stream_bytes() が Filter 無しを
-            // 正しく生データとして扱うので安全)。
-            stream.set_plain_content(bytes);
-            return;
-        }
-    };
-    stream.set_plain_content(compressed);
-    stream
-        .dict
-        .set("Filter", Object::Name(b"FlateDecode".to_vec()));
 }
 
 // ---------------------------------------------------------------------

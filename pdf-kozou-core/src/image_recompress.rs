@@ -30,8 +30,10 @@
 //     上記以外の複合フィルタはデコード経路が複雑なため安全側でスキップする
 //     （元のまま保持）。
 //   - インライン画像 (BI...EI) は対象外。
-//   - /SMask (アルファ) が同じ画像に付随する場合は、本体と同じ目標サイズに
-//     合わせて縮小する（アスペクトのズレ防止）。
+//   - /SMask (アルファ) は本体とは独立に扱う。マスクは JPEG にせず、
+//     必要なら表示サイズから決めた寸法へロスレス (Flate) のまま縮小する。
+//     他の画像のマスクとして使われている画像は、本体側の JPEG 変換の
+//     対象から外す。
 
 use lopdf::content::Content;
 use lopdf::{Dictionary, Document, Object, ObjectId};
@@ -602,6 +604,134 @@ fn recompress_one(
     Ok(())
 }
 
+/// ストリーム本体を Flate 圧縮して書き戻す。lopdf::Stream::compress() は
+/// 「圧縮した方が小さい場合のみ」圧縮して Filter を設定する挙動のため、
+/// 逆に伸びる場合は Filter キーが最後まで付かないままになり、後続の
+/// stream_bytes()/decompressed_content() 呼び出し経路によっては扱いが
+/// 分かれてしまう。ここでは常に Filter=FlateDecode を設定して統一する。
+pub(crate) fn set_flate_content(stream: &mut lopdf::Stream, bytes: Vec<u8>) {
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+    let compressed = match encoder.write_all(&bytes).and_then(|_| encoder.finish()) {
+        Ok(c) => c,
+        Err(_) => {
+            // 圧縮に失敗したら無圧縮のまま (stream_bytes() が Filter 無しを
+            // 正しく生データとして扱うので安全)。
+            stream.set_plain_content(bytes);
+            return;
+        }
+    };
+    stream.set_plain_content(compressed);
+    stream
+        .dict
+        .set("Filter", Object::Name(b"FlateDecode".to_vec()));
+}
+
+/// 文書内で他の画像のマスク (/SMask, /Mask のストリーム) として使われている
+/// 画像オブジェクトの集合。マスクは透過の輪郭そのものなので、JPEG のような
+/// 非可逆圧縮にかけてはならない (輪郭に滲み・リンギングが出る)。
+pub(crate) fn collect_mask_ids(doc: &Document) -> HashSet<ObjectId> {
+    let mut out = HashSet::new();
+    for obj in doc.objects.values() {
+        let Object::Stream(s) = obj else { continue };
+        if !matches!(
+            s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()),
+            Some(b"Image")
+        ) {
+            continue;
+        }
+        for key in [&b"SMask"[..], b"Mask"] {
+            if let Ok(Object::Reference(id)) = s.dict.get(key) {
+                out.insert(*id);
+            }
+        }
+    }
+    out
+}
+
+/// 8bit グレースケールのマスクを、ロスレス (Flate) のまま書き直す。
+/// `target` を渡すとその寸法へ縮小する (拡大はしない)。透過の輪郭を
+/// なまらせないよう、縮小は平均化系のフィルタで行い、JPEG には変換しない。
+fn rewrite_mask_lossless(
+    doc: &mut Document,
+    id: ObjectId,
+    target: Option<(u32, u32)>,
+) -> Result<(), String> {
+    use image::GrayImage;
+    let (gray, w, h) = {
+        let obj = doc
+            .get_object(id)
+            .map_err(|e| format!("get mask {id:?}: {e}"))?;
+        let s = obj
+            .as_stream()
+            .map_err(|e| format!("mask {id:?} as_stream: {e}"))?;
+        if s.dict.has(b"Matte") {
+            return Err(format!("mask {id:?}: has /Matte, left as is"));
+        }
+        let kind = classify_source(doc, &s.dict)
+            .ok_or_else(|| format!("mask {id:?}: unsupported filter/colorspace"))?;
+        let (w, h) =
+            image_native_size(&s.dict).ok_or_else(|| format!("mask {id:?}: missing size"))?;
+        let (w, h) = (w as u32, h as u32);
+        let bytes = match kind {
+            SourceKind::RawGray8 => {
+                let b = stream_bytes(s).map_err(|e| format!("mask {id:?} decompress: {e}"))?;
+                let expected = w as usize * h as usize;
+                if b.len() < expected {
+                    return Err(format!("mask {id:?}: buffer too short"));
+                }
+                b[..expected].to_vec()
+            }
+            SourceKind::Dct | SourceKind::DctFlateWrapped => {
+                let raw = if matches!(kind, SourceKind::Dct) {
+                    s.content.clone()
+                } else {
+                    use std::io::Read;
+                    let mut v = Vec::new();
+                    flate2::read::ZlibDecoder::new(s.content.as_slice())
+                        .read_to_end(&mut v)
+                        .map_err(|e| format!("mask {id:?} inflate: {e}"))?;
+                    v
+                };
+                let l = image::load_from_memory_with_format(&raw, image::ImageFormat::Jpeg)
+                    .map_err(|e| format!("mask {id:?} jpeg decode: {e}"))?
+                    .to_luma8();
+                if l.width() != w || l.height() != h {
+                    return Err(format!("mask {id:?}: JPEG size differs from dictionary"));
+                }
+                l.into_raw()
+            }
+            _ => return Err(format!("mask {id:?}: not 8bit gray")),
+        };
+        let g =
+            GrayImage::from_raw(w, h, bytes).ok_or_else(|| format!("mask {id:?}: bad buffer"))?;
+        (g, w, h)
+    };
+    let (out, ow, oh) = match target {
+        Some((tw, th)) if tw < w || th < h => {
+            let (tw, th) = (tw.clamp(1, w), th.clamp(1, h));
+            let r = image::imageops::resize(&gray, tw, th, image::imageops::FilterType::Triangle);
+            (r.into_raw(), tw, th)
+        }
+        _ => (gray.into_raw(), w, h),
+    };
+    let obj = doc
+        .get_object_mut(id)
+        .map_err(|e| format!("get_mut mask {id:?}: {e}"))?;
+    let s = obj
+        .as_stream_mut()
+        .map_err(|e| format!("mask {id:?} as_stream_mut: {e}"))?;
+    s.dict.set("Width", Object::Integer(ow as i64));
+    s.dict.set("Height", Object::Integer(oh as i64));
+    s.dict.set("BitsPerComponent", Object::Integer(8));
+    s.dict
+        .set("ColorSpace", Object::Name(b"DeviceGray".to_vec()));
+    set_flate_content(s, out);
+    Ok(())
+}
+
 /// 全ページの埋め込み画像を、実表示サイズから逆算した目標 DPI・JPEG 品質で
 /// ダウンサンプル再圧縮する。対象は DCTDecode(JPEG) と、8bpc の
 /// Gray/RGB/CMYK 生ビットマップ (FlateDecode/無フィルタ) のみ。
@@ -672,10 +802,14 @@ pub fn recompress_images(
     }
 
     // 2. 判定 + ダウンサンプル対象を確定
+    let mask_ids = collect_mask_ids(&doc);
     // (xref, target_w, target_h)
     let mut targets: Vec<(ObjectId, u32, u32)> = Vec::new();
     for (xref, (disp_w_pt, disp_h_pt)) in &needed {
         stats.images_scanned += 1;
+        if mask_ids.contains(xref) {
+            continue; // マスクは下で別扱い (非可逆圧縮にしない)
+        }
         let Ok(obj) = doc.get_object(*xref) else {
             continue;
         };
@@ -717,7 +851,53 @@ pub fn recompress_images(
         }
     }
 
-    if targets.is_empty() {
+    // マスク (/SMask) は本体とは独立に扱う。マスクは単位正方形に対して
+    // 解像度に依存せず貼られるので、本体と同じ寸法にそろえる必要はなく、
+    // 必要画素数は「そのマスクを使う画像の表示サイズ」から決める
+    // (複数の画像が共有していれば最大値)。縮小するときも、生のグレー
+    // マスクを JPEG にせず、ロスレス (Flate) のまま書き直す。
+    let mut mask_needed: HashMap<ObjectId, (i64, i64)> = HashMap::new();
+    for (xref, (disp_w_pt, disp_h_pt)) in &needed {
+        let Ok(obj) = doc.get_object(*xref) else {
+            continue;
+        };
+        let Some(Object::Reference(mid)) =
+            obj.as_stream().ok().and_then(|s| s.dict.get(b"SMask").ok())
+        else {
+            continue;
+        };
+        let nw = ((disp_w_pt / 72.0) * target_dpi).ceil().max(1.0) as i64;
+        let nh = ((disp_h_pt / 72.0) * target_dpi).ceil().max(1.0) as i64;
+        let e = mask_needed.entry(*mid).or_insert((nw, nh));
+        e.0 = e.0.max(nw);
+        e.1 = e.1.max(nh);
+    }
+    let mut mask_targets: Vec<(ObjectId, Option<(u32, u32)>)> = Vec::new();
+    for (mid, (nw, nh)) in &mask_needed {
+        let Ok(obj) = doc.get_object(*mid) else {
+            continue;
+        };
+        let Ok(dict) = obj.as_stream().map(|s| &s.dict) else {
+            continue;
+        };
+        let Some((mw, mh)) = image_native_size(dict) else {
+            continue;
+        };
+        let shrink = mw > nw * 115 / 100 && mh > nh * 115 / 100;
+        let uncompressed = dict.get(b"Filter").is_err();
+        if !shrink && !uncompressed {
+            continue;
+        }
+        let target = shrink.then(|| {
+            (
+                (*nw).clamp(8.min(mw.max(1)), mw.max(1)) as u32,
+                (*nh).clamp(8.min(mh.max(1)), mh.max(1)) as u32,
+            )
+        });
+        mask_targets.push((*mid, target));
+    }
+
+    if targets.is_empty() && mask_targets.is_empty() {
         doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
         return Ok(stats);
     }
@@ -730,27 +910,10 @@ pub fn recompress_images(
                 eprintln!("[image_recompress] xref={xref:?}: {e} (skipped, kept original)");
             }
         }
-
-        // 付随する /SMask も同じ寸法に合わせて縮小する（対象になる場合のみ）
-        if let Ok(obj) = doc.get_object(*xref) {
-            if let Ok(dict) = obj.as_stream().map(|s| s.dict.clone()) {
-                if let Ok(Object::Reference(smask_ref)) = dict.get(b"SMask") {
-                    let smask_ref = *smask_ref;
-                    if let Ok(smask_obj) = doc.get_object(smask_ref) {
-                        if let Ok(smask_dict) = smask_obj.as_stream().map(|s| s.dict.clone()) {
-                            if classify_source(&doc, &smask_dict).is_some() {
-                                if let Err(e) =
-                                    recompress_one(&mut doc, smask_ref, *tw, *th, jpeg_quality)
-                                {
-                                    eprintln!(
-                                        "[image_recompress] smask xref={smask_ref:?}: {e} (skipped)"
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    }
+    for (mid, target) in &mask_targets {
+        if let Err(e) = rewrite_mask_lossless(&mut doc, *mid, *target) {
+            eprintln!("[image_recompress] smask xref={mid:?}: {e} (skipped, kept original)");
         }
     }
 
@@ -774,6 +937,8 @@ pub fn recompress_raw_images_native(
     let mut doc = Document::load(input).map_err(|e| format!("lopdf load: {e}"))?;
 
     let mut targets: Vec<(ObjectId, u32, u32)> = Vec::new();
+    let mask_ids = collect_mask_ids(&doc);
+    let mut mask_rewrites: Vec<ObjectId> = Vec::new();
     let object_ids: Vec<ObjectId> = doc.objects.keys().copied().collect();
     for xref in object_ids {
         let Ok(obj) = doc.get_object(xref) else {
@@ -800,10 +965,17 @@ pub fn recompress_raw_images_native(
             continue;
         };
         stats.images_scanned += 1;
+        if mask_ids.contains(&xref) {
+            // マスクは JPEG にしない。無圧縮のものだけロスレスに圧縮し直す。
+            if dict.get(b"Filter").is_err() {
+                mask_rewrites.push(xref);
+            }
+            continue;
+        }
         targets.push((xref, native_w.max(1) as u32, native_h.max(1) as u32));
     }
 
-    if targets.is_empty() {
+    if targets.is_empty() && mask_rewrites.is_empty() {
         if input != output {
             std::fs::copy(input, output).map_err(|e| format!("copy: {e}"))?;
         }
@@ -820,7 +992,153 @@ pub fn recompress_raw_images_native(
             }
         }
     }
+    for mid in &mask_rewrites {
+        if let Err(e) = rewrite_mask_lossless(&mut doc, *mid, None) {
+            eprintln!("[image_recompress] raw-native smask xref={mid:?}: {e} (skipped)");
+        }
+    }
 
     doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::{dictionary, Stream};
+
+    /// 100x100pt に表示される 400x400 の生 RGB 画像と、それに付く 400x400 の
+    /// 無圧縮グレーマスクを持つ 1 ページの文書を保存する。
+    /// `second` を true にすると、同じマスクを共有する 200x200pt 表示の
+    /// 画像をもう 1 枚置く。
+    fn write_doc(path: &std::path::Path, second: bool) -> (ObjectId, ObjectId) {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let mask = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Image", "Width" => 400, "Height" => 400,
+                "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+            },
+            (0..400 * 400).map(|i| ((i / 400) % 256) as u8).collect(),
+        ));
+        let mut mk = |doc: &mut Document| {
+            doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Image", "Width" => 400, "Height" => 400,
+                    "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8,
+                    "SMask" => Object::Reference(mask),
+                },
+                (0..400 * 400 * 3).map(|i| (i % 251) as u8).collect(),
+            ))
+        };
+        let im0 = mk(&mut doc);
+        let im1 = mk(&mut doc);
+        let mut content = String::from("q 100 0 0 100 10 10 cm /Im0 Do Q\n");
+        let mut xo = dictionary! { "Im0" => im0 };
+        if second {
+            content.push_str("q 200 0 0 200 10 300 cm /Im1 Do Q\n");
+            xo.set("Im1", Object::Reference(im1));
+        }
+        let cid = doc.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 600.into(), 800.into()],
+            "Contents" => cid,
+            "Resources" => dictionary! { "XObject" => xo },
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(page)], "Count" => 1,
+            }),
+        );
+        let cat = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", Object::Reference(cat));
+        doc.save(path).unwrap();
+        (im0, mask)
+    }
+
+    fn tmp(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("kozou_recompress_{}_{name}", std::process::id()))
+    }
+
+    fn dict_of(doc: &Document, id: ObjectId) -> Dictionary {
+        doc.get_object(id)
+            .unwrap()
+            .as_stream()
+            .unwrap()
+            .dict
+            .clone()
+    }
+
+    /// マスクは JPEG にならず、ロスレス (Flate) のまま表示サイズへ縮小される。
+    #[test]
+    fn smask_stays_lossless_and_is_sized_from_display() {
+        let (i, o) = (tmp("a.pdf"), tmp("a_out.pdf"));
+        let (_, mask) = write_doc(&i, false);
+        recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, false).unwrap();
+        let doc = Document::load(&o).unwrap();
+        let d = dict_of(&doc, mask);
+        assert_eq!(d.get(b"Filter").unwrap().as_name().unwrap(), b"FlateDecode");
+        assert_eq!(
+            d.get(b"ColorSpace").unwrap().as_name().unwrap(),
+            b"DeviceGray"
+        );
+        // 100pt を 72dpi で表示 → 100 画素
+        assert_eq!(d.get(b"Width").unwrap().as_i64().unwrap(), 100);
+        assert_eq!(d.get(b"Height").unwrap().as_i64().unwrap(), 100);
+        let s = doc.get_object(mask).unwrap().as_stream().unwrap();
+        assert_eq!(stream_bytes(s).unwrap().len(), 100 * 100);
+        let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+    }
+
+    /// 同じマスクを共有する画像が複数あれば、表示サイズが最大の画像に合わせる。
+    #[test]
+    fn shared_smask_uses_largest_display_size() {
+        let (i, o) = (tmp("b.pdf"), tmp("b_out.pdf"));
+        let (_, mask) = write_doc(&i, true);
+        recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, false).unwrap();
+        let doc = Document::load(&o).unwrap();
+        let d = dict_of(&doc, mask);
+        assert_eq!(d.get(b"Width").unwrap().as_i64().unwrap(), 200);
+        assert_eq!(d.get(b"Height").unwrap().as_i64().unwrap(), 200);
+        let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+    }
+
+    /// 生ビットマップだけを JPEG 化する軽量パスでも、マスクは JPEG にしない。
+    #[test]
+    fn raw_native_pass_does_not_jpeg_the_mask() {
+        let (i, o) = (tmp("c.pdf"), tmp("c_out.pdf"));
+        let (im0, mask) = write_doc(&i, false);
+        recompress_raw_images_native(i.to_str().unwrap(), o.to_str().unwrap(), 80).unwrap();
+        let doc = Document::load(&o).unwrap();
+        let md = dict_of(&doc, mask);
+        assert_eq!(
+            md.get(b"Filter").unwrap().as_name().unwrap(),
+            b"FlateDecode"
+        );
+        assert_eq!(md.get(b"Width").unwrap().as_i64().unwrap(), 400);
+        let bd = dict_of(&doc, im0);
+        assert_eq!(bd.get(b"Filter").unwrap().as_name().unwrap(), b"DCTDecode");
+        let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+    }
+
+    /// CMYK JPEG や /Decode が反転した JPEG は、色が変わるため対象にしない。
+    #[test]
+    fn unsafe_dct_is_not_classified() {
+        let doc = Document::with_version("1.5");
+        let cmyk = dictionary! {
+            "Filter" => "DCTDecode", "ColorSpace" => "DeviceCMYK", "BitsPerComponent" => 8,
+        };
+        assert!(classify_source(&doc, &cmyk).is_none());
+        let inverted = dictionary! {
+            "Filter" => "DCTDecode", "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8,
+            "Decode" => vec![1.into(), 0.into(), 1.into(), 0.into(), 1.into(), 0.into()],
+        };
+        assert!(classify_source(&doc, &inverted).is_none());
+        let ok = dictionary! {
+            "Filter" => "DCTDecode", "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8,
+        };
+        assert!(matches!(classify_source(&doc, &ok), Some(SourceKind::Dct)));
+    }
 }
