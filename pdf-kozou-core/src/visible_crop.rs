@@ -52,6 +52,8 @@ pub struct VisibleCropStats {
     pub images_scanned: usize,
     pub images_cropped: usize,
     pub images_stubbed: usize,
+    /// 使われていない /XObject リソース参照 (画像・Form) を外した数。
+    pub xobjects_pruned: usize,
 }
 
 /// 見えている範囲がこの割合未満なら crop 対象にする (savings が小さすぎる
@@ -1045,6 +1047,311 @@ fn shielded_images(doc: &Document) -> HashSet<ObjectId> {
     found
 }
 
+// ---------------------------------------------------------------------
+// 未使用の XObject リソース参照の整理
+//
+// キープテキスト版などでは、ページの描画命令 (Do) だけが取り除かれ、
+// /Resources /XObject の参照は元のまま残ることがある。参照が残っていると
+// 画像は「到達可能」なまま扱われ、ガベージコレクションでも消えず、
+// 描画に使われない元画像がファイルの大半を占めることがある。
+// どの内容ストリームからも Do されない名前の参照だけを外す。
+// ---------------------------------------------------------------------
+
+/// XObject 辞書の置き場所。
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum XoSlot {
+    /// /XObject が独立した辞書オブジェクト (`/XObject 12 0 R`)
+    Obj(ObjectId),
+    /// /Resources が独立した辞書オブジェクトで、/XObject はその中にインライン
+    InResObj(ObjectId),
+    /// /Resources も /XObject も、持ち主 (ページ・Pages・Form 等) の辞書の中
+    InHolder(ObjectId),
+}
+
+/// `start` の /Resources から XObject 辞書の置き場所を引く。`climb` が true なら
+/// /Parent を辿って継承されたリソースも探す (ページ用)。
+/// 戻り値: (置き場所, その辞書を指しているオブジェクト)。`InHolder` では
+/// 後者は持ち主自身。
+fn find_xo_slot(doc: &Document, start: ObjectId, climb: bool) -> Option<(XoSlot, ObjectId)> {
+    let mut current = start;
+    for _ in 0..64 {
+        let dict = as_dict_any(doc.get_object(current).ok()?)?;
+        if let Ok(res) = dict.get(b"Resources") {
+            return match res {
+                Object::Reference(r) => {
+                    let rd = as_dict_any(doc.get_object(*r).ok()?)?;
+                    match rd.get(b"XObject") {
+                        Ok(Object::Reference(x)) => Some((XoSlot::Obj(*x), *r)),
+                        Ok(Object::Dictionary(_)) => Some((XoSlot::InResObj(*r), current)),
+                        _ => None,
+                    }
+                }
+                Object::Dictionary(rd) => match rd.get(b"XObject") {
+                    Ok(Object::Reference(x)) => Some((XoSlot::Obj(*x), current)),
+                    Ok(Object::Dictionary(_)) => Some((XoSlot::InHolder(current), current)),
+                    _ => None,
+                },
+                _ => None,
+            };
+        }
+        if !climb {
+            return None;
+        }
+        match dict.get(b"Parent") {
+            Ok(Object::Reference(p)) => current = *p,
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// 内容ストリームのバイト列から `Do` の名前を集める。解釈できなければ None。
+fn content_do_names(bytes: &[u8]) -> Option<HashSet<Vec<u8>>> {
+    let content = Content::decode(bytes).ok()?;
+    let mut names = HashSet::new();
+    for op in &content.operations {
+        if op.operator == "Do" {
+            if let Some(Object::Name(n)) = op.operands.first() {
+                names.insert(n.clone());
+            }
+        }
+    }
+    Some(names)
+}
+
+fn stream_do_names(stream: &lopdf::Stream) -> Option<HashSet<Vec<u8>>> {
+    content_do_names(&crate::image_recompress::stream_bytes(stream).ok()?)
+}
+
+/// ページの /Contents (単一ストリームまたはその配列) の Do 名を集める。
+fn page_do_names(doc: &Document, page: &Dictionary) -> Option<HashSet<Vec<u8>>> {
+    let mut names = HashSet::new();
+    let ids: Vec<ObjectId> = match page.get(b"Contents") {
+        Err(_) => return Some(names), // 内容なしのページ
+        Ok(Object::Reference(id)) => match doc.get_object(*id).ok()? {
+            Object::Array(arr) => arr
+                .iter()
+                .map(|o| o.as_reference().ok())
+                .collect::<Option<Vec<_>>>()?,
+            _ => vec![*id],
+        },
+        Ok(Object::Array(arr)) => arr
+            .iter()
+            .map(|o| o.as_reference().ok())
+            .collect::<Option<Vec<_>>>()?,
+        Ok(_) => return None,
+    };
+    for id in ids {
+        let Object::Stream(s) = doc.get_object(id).ok()? else {
+            return None;
+        };
+        names.extend(stream_do_names(s)?);
+    }
+    Some(names)
+}
+
+/// 文書内の参照の出現回数 (オブジェクト ID ごと)。
+fn count_references(doc: &Document) -> HashMap<ObjectId, usize> {
+    fn visit(o: &Object, counts: &mut HashMap<ObjectId, usize>) {
+        match o {
+            Object::Reference(r) => *counts.entry(*r).or_default() += 1,
+            Object::Array(a) => a.iter().for_each(|v| visit(v, counts)),
+            Object::Dictionary(d) => d.iter().for_each(|(_, v)| visit(v, counts)),
+            Object::Stream(s) => s.dict.iter().for_each(|(_, v)| visit(v, counts)),
+            _ => {}
+        }
+    }
+    let mut counts = HashMap::new();
+    for o in doc.objects.values() {
+        visit(o, &mut counts);
+    }
+    for (_, v) in doc.trailer.iter() {
+        visit(v, &mut counts);
+    }
+    counts
+}
+
+fn dict_mut_of(obj: &mut Object) -> Option<&mut Dictionary> {
+    match obj {
+        Object::Dictionary(d) => Some(d),
+        Object::Stream(s) => Some(&mut s.dict),
+        _ => None,
+    }
+}
+
+/// 置き場所の XObject 辞書を可変で取り出す。
+fn xo_dict_mut(doc: &mut Document, slot: XoSlot) -> Option<&mut Dictionary> {
+    match slot {
+        XoSlot::Obj(x) => dict_mut_of(doc.get_object_mut(x).ok()?),
+        XoSlot::InResObj(r) => dict_mut_of(doc.get_object_mut(r).ok()?)?
+            .get_mut(b"XObject")
+            .ok()?
+            .as_dict_mut()
+            .ok(),
+        XoSlot::InHolder(h) => dict_mut_of(doc.get_object_mut(h).ok()?)?
+            .get_mut(b"Resources")
+            .ok()?
+            .as_dict_mut()
+            .ok()?
+            .get_mut(b"XObject")
+            .ok()?
+            .as_dict_mut()
+            .ok(),
+    }
+}
+
+/// どの内容ストリームからも `Do` されない /XObject 参照を外す。外した数を返す。
+///
+/// 安全のため、次の場合は触らない:
+/// - 内容ストリームを解釈できない文脈がある置き場所
+///   (使われている名前を確定できないため)。解釈できないストリームが
+///   「自前のリソースを持たない Form」の場合は、文書全体で何もしない
+/// - 解析の文脈 (ページ・Form・パターン) 以外から参照されている辞書
+///   (注釈の外観など、使用名を把握できない利用者がいるかもしれないため)
+/// - 自前の /XObject を持たない Form、Type3 の CharProcs が Do している名前は、
+///   継承されたリソースを使う可能性があるので、どの置き場所でも残す
+pub fn prune_unused_xobjects(doc: &mut Document) -> usize {
+    let refs = count_references(doc);
+    let mut used: HashMap<XoSlot, HashSet<Vec<u8>>> = HashMap::new();
+    let mut referrers: HashMap<XoSlot, HashSet<ObjectId>> = HashMap::new();
+    let mut tainted: HashSet<XoSlot> = HashSet::new();
+    let mut inherited: HashSet<Vec<u8>> = HashSet::new();
+
+    // 1. ページ
+    let page_ids: Vec<ObjectId> = doc.page_iter().collect();
+    for page_id in page_ids {
+        let Ok(page) = doc.get_object(page_id).and_then(|o| o.as_dict()) else {
+            continue;
+        };
+        let names = page_do_names(doc, page);
+        match (find_xo_slot(doc, page_id, true), names) {
+            (Some((slot, referrer)), Some(n)) => {
+                used.entry(slot).or_default().extend(n);
+                referrers.entry(slot).or_default().insert(referrer);
+            }
+            (Some((slot, referrer)), None) => {
+                tainted.insert(slot);
+                referrers.entry(slot).or_default().insert(referrer);
+            }
+            (None, Some(n)) => inherited.extend(n),
+            (None, None) => {}
+        }
+    }
+
+    // 2. Form / タイリングパターン / Type3 の CharProcs
+    for (id, obj) in doc.objects.iter() {
+        match obj {
+            Object::Stream(s)
+                if matches!(
+                    s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()),
+                    Some(b"Form")
+                ) || s.dict.has(b"PatternType") =>
+            {
+                let names = stream_do_names(s);
+                match (find_xo_slot(doc, *id, false), names) {
+                    (Some((slot, referrer)), Some(n)) => {
+                        used.entry(slot).or_default().extend(n);
+                        referrers.entry(slot).or_default().insert(referrer);
+                    }
+                    (Some((slot, referrer)), None) => {
+                        tainted.insert(slot);
+                        referrers.entry(slot).or_default().insert(referrer);
+                    }
+                    (None, Some(n)) => inherited.extend(n),
+                    // 内容が読めず、自前の XObject 辞書も無い: どの名前を
+                    // 継承して使うか分からないので、何もしない。
+                    (None, None) => return 0,
+                }
+            }
+            Object::Dictionary(d)
+                if matches!(
+                    d.get(b"Subtype").ok().and_then(|o| o.as_name().ok()),
+                    Some(b"Type3")
+                ) =>
+            {
+                let Ok(procs) = d.get(b"CharProcs").map(|o| resolve_dict(doc, o)) else {
+                    continue;
+                };
+                let Some(procs) = procs else { return 0 };
+                for (_, v) in procs.iter() {
+                    let Ok((_, Object::Stream(s))) = doc.dereference(v) else {
+                        return 0;
+                    };
+                    match stream_do_names(s) {
+                        Some(n) => inherited.extend(n),
+                        None => return 0,
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // 3. 外す対象を決める (まだ書き換えない)
+    let mut removals: Vec<(XoSlot, Vec<Vec<u8>>)> = Vec::new();
+    for (slot, names) in &used {
+        if tainted.contains(slot) {
+            continue;
+        }
+        // 独立した辞書は、把握している持ち主以外から参照されていないこと。
+        let shared_ok = match slot {
+            XoSlot::Obj(id) | XoSlot::InResObj(id) => {
+                let known = referrers.get(slot).map_or(0, |s| s.len());
+                refs.get(id).copied().unwrap_or(0) == known
+            }
+            XoSlot::InHolder(_) => true,
+        };
+        if !shared_ok {
+            continue;
+        }
+        let dict = match slot {
+            XoSlot::Obj(x) => doc.get_object(*x).ok().and_then(as_dict_any),
+            XoSlot::InResObj(r) => doc
+                .get_object(*r)
+                .ok()
+                .and_then(as_dict_any)
+                .and_then(|d| d.get(b"XObject").ok())
+                .and_then(|o| o.as_dict().ok()),
+            XoSlot::InHolder(h) => doc
+                .get_object(*h)
+                .ok()
+                .and_then(as_dict_any)
+                .and_then(|d| d.get(b"Resources").ok())
+                .and_then(|o| o.as_dict().ok())
+                .and_then(|d| d.get(b"XObject").ok())
+                .and_then(|o| o.as_dict().ok()),
+        };
+        let Some(dict) = dict else { continue };
+        let unused: Vec<Vec<u8>> = dict
+            .iter()
+            .filter(|(k, v)| {
+                matches!(v, Object::Reference(_)) && !names.contains(*k) && !inherited.contains(*k)
+            })
+            .map(|(k, _)| k.clone())
+            .collect();
+        if !unused.is_empty() {
+            removals.push((*slot, unused));
+        }
+    }
+
+    // 4. 反映
+    let mut removed = 0;
+    for (slot, keys) in removals {
+        if let Some(dict) = xo_dict_mut(doc, slot) {
+            for k in keys {
+                if dict.remove(&k).is_some() {
+                    removed += 1;
+                }
+            }
+        }
+    }
+    if removed > 0 {
+        // 参照されなくなった画像などを文書から取り除く。
+        doc.prune_objects();
+    }
+    removed
+}
+
 /// 全ページの埋め込み画像のうち、実際に見えている範囲だけを残して
 /// ピクセルデータを切り詰める。image_recompress::recompress_images の
 /// 前段として呼び出すことを想定 (この後で通常の DPI/品質パスを流すと、
@@ -1056,9 +1363,12 @@ fn shielded_images(doc: &Document) -> HashSet<ObjectId> {
 ///      ストリームに使用箇所を持つ画像は計画から外す
 ///   3. 内容ストリームと画像 (SMask 含む) を一括で書き込む
 pub fn crop_to_visible_area(doc: &mut Document, jpeg_quality: u8) -> VisibleCropStats {
+    let mut stats = VisibleCropStats::default();
+    // 描画に使われない XObject 参照を先に外す (以降の解析対象から無駄な
+    // 画像が消え、ファイルにも残らない)。
+    stats.xobjects_pruned = prune_unused_xobjects(doc);
     let analysis = analyze(doc);
     let shielded = shielded_images(doc);
-    let mut stats = VisibleCropStats::default();
 
     let mut crop_plans: HashMap<ObjectId, Rect> = HashMap::new();
     let mut stub_targets: HashSet<ObjectId> = HashSet::new();
@@ -1416,5 +1726,150 @@ mod tests {
             v0 <= (800.0 - 450.0) / 800.0 && v1 >= (800.0 - 200.0) / 800.0,
             "v {v0}..{v1}"
         );
+    }
+
+    // ---- 未使用 XObject 参照の整理 ----
+
+    struct PruneDoc {
+        doc: Document,
+        im0: ObjectId,
+        im1: ObjectId,
+    }
+
+    /// 画像 Im0/Im1 (と、`form_content` があれば自前のリソースを持たない
+    /// Form Fm0) を /XObject に並べたページを作る。
+    fn build_prune(
+        content: &str,
+        form_content: Option<&str>,
+        indirect_res: bool,
+        annot_shares_res: bool,
+    ) -> PruneDoc {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let img = |doc: &mut Document| {
+            doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Image", "Width" => 10, "Height" => 10,
+                    "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+                },
+                vec![0u8; 100],
+            ))
+        };
+        let im0 = img(&mut doc);
+        let im1 = img(&mut doc);
+        let mut xo = dictionary! { "Im0" => im0, "Im1" => im1 };
+        if let Some(fc) = form_content {
+            let fm = doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Form",
+                    "BBox" => vec![0.into(), 0.into(), 10.into(), 10.into()],
+                },
+                fc.as_bytes().to_vec(),
+            ));
+            xo.set("Fm0", Object::Reference(fm));
+        }
+        let resources = dictionary! { "XObject" => xo };
+        let cid = doc.add_object(Stream::new(dictionary! {}, content.as_bytes().to_vec()));
+        let mut page = dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 600.into(), 800.into()],
+            "Contents" => cid,
+        };
+        let res_ref = if indirect_res {
+            let r = doc.add_object(resources.clone());
+            page.set("Resources", Object::Reference(r));
+            Some(r)
+        } else {
+            page.set("Resources", resources);
+            None
+        };
+        if annot_shares_res {
+            let r = res_ref.expect("annot sharing needs indirect resources");
+            let ap = doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Form",
+                    "BBox" => vec![0.into(), 0.into(), 10.into(), 10.into()],
+                    "Resources" => Object::Reference(r),
+                },
+                b"q /Im1 Do Q".to_vec(),
+            ));
+            let annot = doc.add_object(dictionary! {
+                "Type" => "Annot", "Subtype" => "Stamp",
+                "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()],
+                "AP" => dictionary! { "N" => ap },
+            });
+            page.set("Annots", vec![Object::Reference(annot)]);
+        }
+        let page_id = doc.add_object(page);
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(page_id)], "Count" => 1,
+            }),
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", Object::Reference(catalog));
+        PruneDoc { doc, im0, im1 }
+    }
+
+    fn xobject_names(doc: &Document) -> Vec<String> {
+        let pid = doc.page_iter().next().unwrap();
+        let res = resolve_resources(doc, pid).unwrap();
+        let xo = resolve_dict(doc, res.get(b"XObject").unwrap()).unwrap();
+        let mut v: Vec<String> = xo
+            .iter()
+            .map(|(k, _)| String::from_utf8_lossy(k).into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Do されない参照だけが外れ、画像オブジェクトも文書から消える。
+    #[test]
+    fn prune_removes_only_unused_entries() {
+        let mut b = build_prune("q 10 0 0 10 0 0 cm /Im0 Do Q", None, false, false);
+        assert_eq!(prune_unused_xobjects(&mut b.doc), 1);
+        assert_eq!(xobject_names(&b.doc), vec!["Im0"]);
+        assert!(b.doc.get_object(b.im0).is_ok());
+        assert!(
+            b.doc.get_object(b.im1).is_err(),
+            "unused image must be dropped"
+        );
+    }
+
+    /// 独立した Resources でも同じ (Resources を指すのがページだけの場合)。
+    #[test]
+    fn prune_works_with_indirect_resources() {
+        let mut b = build_prune("q /Im1 Do Q", None, true, false);
+        assert_eq!(prune_unused_xobjects(&mut b.doc), 1);
+        assert_eq!(xobject_names(&b.doc), vec!["Im1"]);
+    }
+
+    /// 注釈の外観など、ページ以外からも参照されている辞書には触らない。
+    #[test]
+    fn prune_skips_resources_shared_with_other_objects() {
+        let mut b = build_prune("q /Im0 Do Q", None, true, true);
+        assert_eq!(prune_unused_xobjects(&mut b.doc), 0);
+        assert_eq!(xobject_names(&b.doc), vec!["Im0", "Im1"]);
+        assert!(b.doc.get_object(b.im1).is_ok());
+    }
+
+    /// 自前のリソースを持たない Form が Do する名前は、継承されたリソースを
+    /// 使う可能性があるので残す。
+    #[test]
+    fn prune_keeps_names_used_by_forms_without_resources() {
+        let mut b = build_prune("q /Fm0 Do Q", Some("q /Im1 Do Q"), false, false);
+        assert_eq!(prune_unused_xobjects(&mut b.doc), 1);
+        assert_eq!(xobject_names(&b.doc), vec!["Fm0", "Im1"]);
+        assert!(b.doc.get_object(b.im0).is_err());
+        assert!(b.doc.get_object(b.im1).is_ok());
+    }
+
+    /// crop_to_visible_area の一部として実行され、統計に反映される。
+    #[test]
+    fn crop_to_visible_area_reports_pruned_entries() {
+        let mut b = build_prune("q 10 0 0 10 0 0 cm /Im0 Do Q", None, false, false);
+        let st = crop_to_visible_area(&mut b.doc, 90);
+        assert_eq!(st.xobjects_pruned, 1);
     }
 }

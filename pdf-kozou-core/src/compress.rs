@@ -660,11 +660,15 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 Ok(stats)
                     if stats.images_recompressed > 0
                         || stats.images_cropped > 0
-                        || stats.images_stubbed > 0 =>
+                        || stats.images_stubbed > 0
+                        || stats.xobjects_pruned > 0 =>
                 {
                     eprintln!(
-                        "[compress] image_dpi/crop: {} downsampled, {} cropped, {} stubbed (target_dpi={target_dpi}, q{quality})",
-                        stats.images_recompressed, stats.images_cropped, stats.images_stubbed
+                        "[compress] image_dpi/crop: {} downsampled, {} cropped, {} stubbed, {} unused xobject refs dropped (target_dpi={target_dpi}, q{quality})",
+                        stats.images_recompressed,
+                        stats.images_cropped,
+                        stats.images_stubbed,
+                        stats.xobjects_pruned
                     );
                     current_input = recompress_tmp.clone();
                     images_recompressed = stats.images_recompressed;
@@ -1797,7 +1801,14 @@ pub fn compose_image_pdf_keep_text_with_quality(
     // precompress_path は無数の小さな Type3 フォント(Form毎にサブセット化
     // 済み)を持つため、pdf_subset_fonts() を重ねて走らせるとかえって
     // 遅い/安全性が未検証な経路(subset_and_write)に入ってしまう。
-    // redact_outside_crop は明示的にfalse指定。
+    //
+    // 圧縮画面の標準設定と同じく、次の 2 つを有効にする:
+    // - crop_to_visible_image_area: 表示範囲への切り詰めと、描画に使われない
+    //   /XObject 参照 (compose 後も元画像への参照がページのリソースに残る
+    //   ことがあり、ガベージコレクションでも消えず元画像がそのまま残る) の
+    //   整理。実ファイルで 19.4MB → 2.0MB になることを確認済み
+    // - redact_outside_crop: CropBox の外側を削除する (CropBox が無い/
+    //   ページ全体と同じ場合は何もしない)
     let compress_req = CompressRequest {
         input: precompress_str.clone(),
         output: output.to_string(),
@@ -1810,7 +1821,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         font_subset: Some(false),
         merge_fonts: Some(false),
         object_stream: Some(true),
-        redact_outside_crop: Some(false),
+        redact_outside_crop: Some(true),
         redact_margin_pt: None,
         redact_margin_top: None,
         redact_margin_bottom: None,
@@ -1818,7 +1829,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
         redact_margin_right: None,
         image_dpi: None,
         image_jpeg_quality: None,
-        crop_to_visible_image_area: Some(false),
+        crop_to_visible_image_area: Some(true),
     };
 
     let compress_ok = match compress(&compress_req) {

@@ -46,6 +46,8 @@ pub struct ImageRecompressStats {
     pub images_skipped_filter: usize,
     pub images_cropped: usize,
     pub images_stubbed: usize,
+    /// 使われていない /XObject リソース参照を外した数 (切り詰めオプション時)。
+    pub xobjects_pruned: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -761,6 +763,7 @@ pub fn recompress_images(
         let crop_stats = crate::visible_crop::crop_to_visible_area(&mut doc, jpeg_quality);
         stats.images_cropped = crop_stats.images_cropped;
         stats.images_stubbed = crop_stats.images_stubbed;
+        stats.xobjects_pruned = crop_stats.xobjects_pruned;
     }
 
     if target_dpi <= 0.0 {

@@ -553,7 +553,7 @@
     "image_dpi_value_label": "Target DPI",
     "image_jpeg_quality_label": "JPEG quality",
     "crop_to_visible_label": "Crop embedded images to their actually-visible area",
-    "crop_to_visible_hint": "Removes pixel data outside the visible region for images that are partially (or fully) hidden by a clip path or Form /BBox",
+    "crop_to_visible_hint": "Removes pixel data outside the visible region for images that are partially (or fully) hidden by a clip path or Form /BBox. Also drops references to images that are never drawn",
     "images_recompressed": "Images recompressed",
     "gs_info_title": "About Ghostscript Pro Mode",
     "gs_info_1": "• Calls the external Ghostscript program for advanced reconstruction.",
