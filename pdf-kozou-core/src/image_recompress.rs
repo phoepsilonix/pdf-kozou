@@ -48,12 +48,12 @@ pub struct ImageRecompressStats {
 
 #[derive(Clone, Copy, Debug)]
 struct Matrix {
-    a: f32,
-    b: f32,
-    c: f32,
-    d: f32,
-    e: f32,
-    f: f32,
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    e: f64,
+    f: f64,
 }
 
 impl Matrix {
@@ -80,7 +80,7 @@ impl Matrix {
     }
 
     /// 単位正方形の辺 (1,0), (0,1) を変換した際の長さ = ページ上の表示サイズ(pt)
-    fn displayed_size(&self) -> (f32, f32) {
+    fn displayed_size(&self) -> (f64, f64) {
         let wx = self.a;
         let wy = self.b;
         let hx = self.c;
@@ -91,10 +91,10 @@ impl Matrix {
     }
 }
 
-fn obj_to_f32(o: &Object) -> f32 {
+fn obj_to_f64(o: &Object) -> f64 {
     match o {
-        Object::Integer(i) => *i as f32,
-        Object::Real(r) => *r,
+        Object::Integer(i) => *i as f64,
+        Object::Real(r) => *r as f64,
         _ => 0.0,
     }
 }
@@ -172,7 +172,7 @@ fn walk_content(
     ctm: Matrix,
     depth: u32,
     visiting: &mut HashSet<ObjectId>,
-    needed: &mut HashMap<ObjectId, (f32, f32)>,
+    needed: &mut HashMap<ObjectId, (f64, f64)>,
 ) {
     if depth > 12 {
         return;
@@ -200,12 +200,12 @@ fn walk_content(
             }
             "cm" if op.operands.len() == 6 => {
                 let m = Matrix {
-                    a: obj_to_f32(&op.operands[0]),
-                    b: obj_to_f32(&op.operands[1]),
-                    c: obj_to_f32(&op.operands[2]),
-                    d: obj_to_f32(&op.operands[3]),
-                    e: obj_to_f32(&op.operands[4]),
-                    f: obj_to_f32(&op.operands[5]),
+                    a: obj_to_f64(&op.operands[0]),
+                    b: obj_to_f64(&op.operands[1]),
+                    c: obj_to_f64(&op.operands[2]),
+                    d: obj_to_f64(&op.operands[3]),
+                    e: obj_to_f64(&op.operands[4]),
+                    f: obj_to_f64(&op.operands[5]),
                 };
                 cur = m.concat(&cur);
             }
@@ -256,12 +256,12 @@ fn walk_content(
                             .and_then(|o| o.as_array().ok())
                             .filter(|a| a.len() == 6)
                             .map(|a| Matrix {
-                                a: obj_to_f32(&a[0]),
-                                b: obj_to_f32(&a[1]),
-                                c: obj_to_f32(&a[2]),
-                                d: obj_to_f32(&a[3]),
-                                e: obj_to_f32(&a[4]),
-                                f: obj_to_f32(&a[5]),
+                                a: obj_to_f64(&a[0]),
+                                b: obj_to_f64(&a[1]),
+                                c: obj_to_f64(&a[2]),
+                                d: obj_to_f64(&a[3]),
+                                e: obj_to_f64(&a[4]),
+                                f: obj_to_f64(&a[5]),
                             })
                             .unwrap_or(Matrix::IDENTITY);
                         let form_ctm = form_matrix.concat(&cur);
@@ -320,7 +320,7 @@ impl SourceKind {
 /// 対応: DeviceGray/CalGray(1), DeviceRGB/CalRGB(3), DeviceCMYK(4),
 ///       ICCBased ([/ICCBased ref] で参照先ストリームの /N を見る)。
 /// Indexed 等、上記以外は None (未対応)。
-fn colorspace_components(doc: &Document, cs: &Object) -> Option<u8> {
+pub(crate) fn colorspace_components(doc: &Document, cs: &Object) -> Option<u8> {
     let (_, resolved) = doc.dereference(cs).ok()?;
     match resolved {
         Object::Name(n) => match n.as_slice() {
@@ -363,6 +363,35 @@ pub(crate) fn stream_bytes(stream: &lopdf::Stream) -> Result<Vec<u8>, lopdf::Err
     }
 }
 
+/// /Decode が無い、または各成分が恒等 ([0 1 0 1 ...]) かどうか。
+/// 再エンコード時に /Decode を落とすため、反転指定があると色が変わる。
+pub(crate) fn decode_is_default(dict: &Dictionary) -> bool {
+    match dict.get(b"Decode") {
+        Err(_) => true,
+        Ok(o) => match o.as_array() {
+            Ok(arr) => {
+                arr.len() % 2 == 0
+                    && arr
+                        .chunks(2)
+                        .all(|p| obj_to_f64(&p[0]) == 0.0 && obj_to_f64(&p[1]) == 1.0)
+            }
+            Err(_) => false,
+        },
+    }
+}
+
+/// DCT (JPEG) 画像を image クレートで RGB/Gray として再エンコードしても
+/// 色が変わらないか。ColorSpace が Gray/RGB 相当 (成分数 1 か 3) で、
+/// /Decode が恒等の場合のみ true。CMYK/YCCK JPEG は RGB 化すると色が
+/// 変わる (ColorSpace を書き換えない実装のため) ので対象外にする。
+fn dct_is_safely_reencodable(doc: &Document, dict: &Dictionary) -> bool {
+    let comps = dict
+        .get(b"ColorSpace")
+        .ok()
+        .and_then(|cs| colorspace_components(doc, cs));
+    matches!(comps, Some(1) | Some(3)) && decode_is_default(dict)
+}
+
 pub(crate) fn classify_source(doc: &Document, dict: &Dictionary) -> Option<SourceKind> {
     let filter_name: Option<&[u8]> = match dict.get(b"Filter") {
         Ok(Object::Name(n)) => Some(n.as_slice()),
@@ -372,14 +401,18 @@ pub(crate) fn classify_source(doc: &Document, dict: &Dictionary) -> Option<Sourc
             // それ以外の配列 (ASCII85+LZW 等) は非対応。
             let names: Option<Vec<&[u8]>> = arr.iter().map(|o| o.as_name().ok()).collect();
             return match names.as_deref() {
-                Some([b"FlateDecode", b"DCTDecode"]) => Some(SourceKind::DctFlateWrapped),
+                Some([b"FlateDecode", b"DCTDecode"]) => {
+                    dct_is_safely_reencodable(doc, dict).then_some(SourceKind::DctFlateWrapped)
+                }
                 _ => None,
             };
         }
         _ => return None,
     };
     match filter_name {
-        Some(b"DCTDecode") => return Some(SourceKind::Dct),
+        Some(b"DCTDecode") => {
+            return dct_is_safely_reencodable(doc, dict).then_some(SourceKind::Dct);
+        }
         Some(b"FlateDecode") | None => {} // 下で成分数を見て判定
         _ => return None,                 // CCITTFaxDecode / JBIG2Decode / JPXDecode 等は非対応
     }
@@ -430,7 +463,7 @@ fn recompress_one(
         // CMYK で /Decode が [1 0 1 0 1 0 1 0] のように反転指定されている場合を検出
         let decode_inverted = matches!(
             dict.get(b"Decode").ok().and_then(|o| o.as_array().ok()),
-            Some(arr) if arr.len() >= 2 && obj_to_f32(&arr[0]) > obj_to_f32(&arr[1])
+            Some(arr) if arr.len() >= 2 && obj_to_f64(&arr[0]) > obj_to_f64(&arr[1])
         );
         let raw_bytes = match kind {
             SourceKind::Dct => stream.content.clone(),
@@ -501,10 +534,10 @@ fn recompress_one(
                 } else {
                     (px[0], px[1], px[2], px[3])
                 };
-                let kf = k as f32 / 255.0;
-                let r = 255.0 * (1.0 - c as f32 / 255.0) * (1.0 - kf);
-                let g = 255.0 * (1.0 - m as f32 / 255.0) * (1.0 - kf);
-                let b = 255.0 * (1.0 - y as f32 / 255.0) * (1.0 - kf);
+                let kf = k as f64 / 255.0;
+                let r = 255.0 * (1.0 - c as f64 / 255.0) * (1.0 - kf);
+                let g = 255.0 * (1.0 - m as f64 / 255.0) * (1.0 - kf);
+                let b = 255.0 * (1.0 - y as f64 / 255.0) * (1.0 - kf);
                 rgb.push(r.round().clamp(0.0, 255.0) as u8);
                 rgb.push(g.round().clamp(0.0, 255.0) as u8);
                 rgb.push(b.round().clamp(0.0, 255.0) as u8);
@@ -579,6 +612,8 @@ pub fn recompress_images(
     jpeg_quality: u8,
     crop_to_visible: bool,
 ) -> Result<ImageRecompressStats, String> {
+    // 公開 API は f32 のまま。内部の幾何計算は f64 で行う (単位換算での誤差を抑える)。
+    let target_dpi = target_dpi as f64;
     let mut stats = ImageRecompressStats::default();
     if target_dpi <= 0.0 && !crop_to_visible {
         if input != output {
@@ -604,7 +639,7 @@ pub fn recompress_images(
     }
 
     // 1. 表示サイズ集計
-    let mut needed: HashMap<ObjectId, (f32, f32)> = HashMap::new();
+    let mut needed: HashMap<ObjectId, (f64, f64)> = HashMap::new();
     for page_id in doc.page_iter() {
         let Some(resources) = resolve_resources(&doc, page_id) else {
             continue;
