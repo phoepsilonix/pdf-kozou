@@ -2006,7 +2006,7 @@ void kozou_rasterize_no_text(
                 float mb_x0, mb_y0;
                 kozou_resolved_box_origin(ctx, doc, i, bounds, &mb_x0, &mb_y0);
 
-                KozouFit fit = kozou_fit_page(bounds, dpi);
+                KozouFit fit = kozou_fit_page_for_raster(bounds, dpi);
                 fz_matrix ctm = fz_scale(fit.s.x, fit.s.y);
                 fz_irect bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
                 fz_colorspace *rgb = fz_device_rgb(ctx);
@@ -2031,6 +2031,7 @@ void kozou_rasterize_no_text(
                     fz_always(ctx) { fz_drop_device(ctx, draw_dev); }
                     fz_catch(ctx) { fz_rethrow(ctx); }
                 }
+                kozou_replicate_partial_edges(pixmap, &fit);
 
                 snprintf(tmp_img, sizeof(tmp_img),
                          "%s" KOZOU_PATH_SEP "kozou_rasterize_notext_%d_%d.%s",
@@ -2064,7 +2065,8 @@ void kozou_rasterize_no_text(
                 char cs_buf[256];
                 int cs_len = snprintf(cs_buf, sizeof(cs_buf),
                     "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/Im0 Do\nQ\n",
-                    pw_pt, ph_pt, mb_x0, mb_y0);
+                    fit.img_w_pt, fit.img_h_pt,
+                    mb_x0, mb_y0 + ph_pt - fit.img_h_pt);
                 contents = fz_new_buffer_from_copied_data(ctx,
                     (const unsigned char *)cs_buf, (size_t)cs_len);
 
@@ -3521,9 +3523,14 @@ void kozou_compose_image_pdf_keep_text(
                  * supersample_max > 1 の場合は内部高dpi→縮小。         */
                 fz_matrix ctm;
                 fz_irect  bbox;
-                pixmap = kozou_render_page_to_pixmap(
+                /* 背景画像・覆い層・回転フォールバックは、すべて同じ寸法
+                 * (kozou_fit_page_for_raster) で描く。画像の貼り付け寸法は
+                 * fit_kt.img_w_pt × img_h_pt、左上をページ左上に合わせる
+                 * (位置: mb_x0, mb_y0 + ph_pt - img_h_pt)。 */
+                KozouFit fit_kt = kozou_fit_page_for_raster(bounds, dpi);
+                pixmap = kozou_render_page_to_pixmap_fit(
                     ctx, render_page, bounds, dpi, supersample_max, 1,
-                    &ctm, &bbox);
+                    fit_kt, &ctm, &bbox);
 
                 /* 一部隠れていた文字の「隠し直し」の準備 (詳細は
                  * kozou_keeptext_plan_layers のコメント参照)。層分割できる領域が
@@ -3580,9 +3587,9 @@ void kozou_compose_image_pdf_keep_text(
                     fz_pixmap *full_pm = NULL;
                     fz_var(full_pm);
                     fz_try(ctx) {
-                        full_pm = kozou_render_page_to_pixmap(
+                        full_pm = kozou_render_page_to_pixmap_fit(
                             ctx, render_page, bounds, dpi, supersample_max, 0,
-                            NULL, NULL);
+                            fit_kt, NULL, NULL);
 
                         char tmp_img2[1024];
                         snprintf(tmp_img2, sizeof(tmp_img2),
@@ -3615,8 +3622,9 @@ void kozou_compose_image_pdf_keep_text(
 
                         char cs2[256];
                         int cs2_len = snprintf(cs2, sizeof(cs2),
-                            "q\n%.4f 0 0 %.4f 0 0 cm\n/KzFullImg Do\nQ\n",
-                            pw_pt, ph_pt);
+                            "q\n%.4f 0 0 %.4f 0 %.4f cm\n/KzFullImg Do\nQ\n",
+                            fit_kt.img_w_pt, fit_kt.img_h_pt,
+                            ph_pt - fit_kt.img_h_pt);
                         fz_buffer *cbuf2 = fz_new_buffer_from_copied_data(
                             ctx, (const unsigned char *)cs2, (size_t)cs2_len);
                         pdf_obj *stm2 = pdf_add_stream(ctx, dst, cbuf2, NULL, 0);
@@ -3883,7 +3891,8 @@ void kozou_compose_image_pdf_keep_text(
                         "q\n%.4f %.4f %.4f %.4f re\nW n\n"
                         "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/KzBgImg Do\nQ\n",
                         mb_x0, mb_y0, pw_pt, ph_pt,
-                        pw_pt, ph_pt, mb_x0, mb_y0);
+                        fit_kt.img_w_pt, fit_kt.img_h_pt,
+                        mb_x0, mb_y0 + ph_pt - fit_kt.img_h_pt);
 
                     final_buf = fz_new_buffer(ctx,
                         (size_t)cs_prefix_len + fz_buffer_storage(ctx, stripped, NULL) + 16);
@@ -3929,7 +3938,9 @@ void kozou_compose_image_pdf_keep_text(
                         fz_try(ctx) {
                             int ncov = kozou_keeptext_add_partial_covers(
                                 ctx, dst, render_page, bounds, dpi, supersample_max, i,
-                                pixmap, image, mb_x0, mb_y0, pw_pt, ph_pt,
+                                pixmap, image, mb_x0,
+                                mb_y0 + ph_pt - fit_kt.img_h_pt,
+                                fit_kt.img_w_pt, fit_kt.img_h_pt,
                                 xobj, cover_buf, layer_plan);
                             if (ncov > 0) {
                                 kozou_debug_dump_buffer(ctx, output, i, "covers", cover_buf);
@@ -7036,7 +7047,7 @@ static fz_pixmap *kozou_render_page_filtered(
     fz_context *ctx, fz_page *page, fz_rect bounds, float dpi, int supersample_max,
     const unsigned char *sbits, int nseq, int mode, int *out_seq)
 {
-    KozouFit fit = kozou_fit_page(bounds, dpi);
+    KozouFit fit = kozou_fit_page_for_raster(bounds, dpi);
     fz_matrix ctm = fz_scale(fit.s.x, fit.s.y);
     int tw = fit.w, th = fit.h;
     int m = kozou_compute_supersample_mult(dpi, supersample_max, (float)tw, (float)th);
@@ -7064,6 +7075,9 @@ static fz_pixmap *kozou_render_page_filtered(
         } else {
             out = fz_keep_pixmap(ctx, big);
         }
+        /* 背景 (kozou_render_page_to_pixmap_fit) と同じく、ページ範囲に半端にしか
+         * 入っていない右端列・下端行を内側の複製にする (背景と画素が一致する)。 */
+        kozou_replicate_partial_edges(out, &fit);
     }
     fz_always(ctx) {
         fz_drop_device(ctx, fdev);
@@ -8203,7 +8217,7 @@ static KozouLayerPlan *kozou_keeptext_plan_layers(
     fz_var(below); fz_var(cover);
 
     fz_try(ctx) {
-        KozouFit fit = kozou_fit_page(bounds, dpi);
+        KozouFit fit = kozou_fit_page_for_raster(bounds, dpi);
         KozouScale scale = fit.s;
         kozou_collect_partial_cover_regions(ctx, render_page, scale,
                                             bg_pix->w, bg_pix->h, want_layers, &pl->regions);
@@ -8372,7 +8386,7 @@ static int kozou_keeptext_add_partial_covers(
     fz_var(added);
 
     fz_try(ctx) {
-        KozouFit fit = kozou_fit_page(bounds, dpi);
+        KozouFit fit = kozou_fit_page_for_raster(bounds, dpi);
         KozouScale scale = fit.s;
         if (!plan)
             kozou_collect_partial_cover_regions(ctx, render_page, scale,
@@ -8389,8 +8403,10 @@ static int kozou_keeptext_add_partial_covers(
 
             /* 元ページの全描画 (テキスト込み)。背景と同じ ctm/サイズ/
              * スーパーサンプリング設定で描くので、同一の画素格子になる。 */
-            full = kozou_render_page_to_pixmap(ctx, render_page, bounds, dpi,
-                                               supersample_max, 0, NULL, NULL);
+            full = kozou_render_page_to_pixmap_fit(ctx, render_page, bounds, dpi,
+                                                   supersample_max, 0,
+                                                   kozou_fit_page_for_raster(bounds, dpi),
+                                                   NULL, NULL);
             if (full->w != nt_pix->w || full->h != nt_pix->h || full->n < 3)
                 fz_throw(ctx, FZ_ERROR_GENERIC, "cover: render size mismatch");
 
