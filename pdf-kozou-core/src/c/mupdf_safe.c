@@ -1430,6 +1430,13 @@ typedef struct { float x, y; } KozouScale;
 typedef struct {
     int        w, h;     /* 目標画素数 */
     KozouScale s;        /* ページ座標(pt) → 画素 の軸ごとの倍率 */
+    /* 画像を PDF に貼るときの大きさ(pt)。kozou_fit_page では常にページ寸法
+     * (pw×ph) と同じ。kozou_fit_page_uniform では w/s.x × h/s.y で、ページ
+     * 寸法より右・下へ最大 1画素分(72/dpi pt 未満)大きい。 */
+    float      img_w_pt, img_h_pt;
+    /* ページ範囲×倍率 (小数のままの画素数)。w,h との差が、右端列・下端行が
+     * ページ範囲に半端にしか入っていないことを表す (kozou_fit_page では 0)。 */
+    float      exact_w_px, exact_h_px;
 } KozouFit;
 
 static KozouFit kozou_fit_page(fz_rect bounds, float dpi)
@@ -1445,7 +1452,78 @@ static KozouFit kozou_fit_page(fz_rect bounds, float dpi)
     if (f.h < 1) f.h = 1;
     f.s.x = (pw > 0.0f) ? (float)f.w / pw : uni;
     f.s.y = (ph > 0.0f) ? (float)f.h / ph : uni;
+    f.img_w_pt = (pw > 0.0f) ? pw : (float)f.w / uni;
+    f.img_h_pt = (ph > 0.0f) ? ph : (float)f.h / uni;
+    f.exact_w_px = (float)f.w;
+    f.exact_h_px = (float)f.h;
     return f;
+}
+
+/* kozou_fit_page_uniform: 縦横とも一様な倍率 dpi/72 を保ったまま (アスペクト比を
+ * 変えずに) ページ全体を覆うラスタライズ寸法を決める。
+ *
+ * 画素数は kozou_fit_page と同じ (ページ範囲×dpi/72 を外側へ丸めた整数) だが、
+ * 余り(例: 842.25pt×2=1684.5px → 1685px の 0.5px 分)を倍率の変更で吸収せず、
+ * 画像の左上をページ左上に合わせたまま、右端・下端へはみ出させる。はみ出し部分は
+ * 表示領域 (MediaBox/CropBox) の外なので表示されない。img_w_pt/img_h_pt が
+ * 貼り付け寸法 (= 画素数 / 倍率)。ページ座標→画素座標の変換は kozou_fit_page と同じ
+ * く (pt - 原点) × s.x, s.y で、左上基準なので呼び出し側の式は変わらない。
+ * ただし画像の貼り付け位置は下端基準ではなく、上端をページ上端に合わせること:
+ *   cm = img_w_pt 0 0 img_h_pt  mb_x0  (mb_y0 + ph_pt - img_h_pt) */
+static KozouFit kozou_fit_page_uniform(fz_rect bounds, float dpi)
+{
+    KozouFit f;
+    float uni = dpi / 72.0f;
+    fz_irect bb = fz_round_rect(fz_transform_rect(bounds, fz_scale(uni, uni)));
+    float pw = bounds.x1 - bounds.x0;
+    float ph = bounds.y1 - bounds.y0;
+    f.w = bb.x1 - bb.x0;
+    f.h = bb.y1 - bb.y0;
+    if (f.w < 1) f.w = 1;
+    if (f.h < 1) f.h = 1;
+    f.s.x = uni;
+    f.s.y = uni;
+    f.img_w_pt = (float)f.w / uni;
+    f.img_h_pt = (float)f.h / uni;
+    f.exact_w_px = pw * uni;
+    f.exact_h_px = ph * uni;
+    return f;
+}
+
+/* 右端列・下端行が、ページ範囲に半端にしか入っていない場合 (exact と w,h の差が
+ * 0.001px 超) に、その列・行を1つ内側の列・行の複製で置き換える。
+ * 半端な列・行には、表示領域の外側にある原本の内容 (裁ち落とし・トンボ・はみ出した
+ * 画像など) が混ざる。表示領域の外は見えないが、画像から取り出せてしまうため、
+ * 原本と無関係なダミー(内側の複製)にしておく。fit が kozou_fit_page の場合は
+ * 差が 0 なので何もしない。 */
+static void kozou_replicate_partial_edges(fz_pixmap *pix, const KozouFit *fit)
+{
+    if (!pix || !fit || pix->w < 2 || pix->h < 2) return;
+    size_t n = (size_t)pix->n;
+    size_t stride = (size_t)pix->stride;
+    unsigned char *s = pix->samples;
+    if ((float)pix->w - fit->exact_w_px > 0.001f) {
+        for (int y = 0; y < pix->h; y++) {
+            unsigned char *row = s + (size_t)y * stride;
+            memcpy(row + (size_t)(pix->w - 1) * n, row + (size_t)(pix->w - 2) * n, n);
+        }
+    }
+    if ((float)pix->h - fit->exact_h_px > 0.001f) {
+        memcpy(s + (size_t)(pix->h - 1) * stride,
+               s + (size_t)(pix->h - 2) * stride, (size_t)pix->w * n);
+    }
+}
+
+/* 画像化(kozou_rasterize)で使う寸法の選択。1 なら縦横同一倍率+右端・下端調整方式、
+ * 0 なら従来の縦横別倍率 (kozou_fit_page) に戻る。 */
+#define KOZOU_RASTER_UNIFORM_FIT 1
+static KozouFit kozou_fit_page_for_raster(fz_rect bounds, float dpi)
+{
+#if KOZOU_RASTER_UNIFORM_FIT
+    return kozou_fit_page_uniform(bounds, dpi);
+#else
+    return kozou_fit_page(bounds, dpi);
+#endif
 }
 
 /* 大きさ(画素数)だけを見る処理 (文字サイズ×倍率など) 用の代表値 */
@@ -1535,12 +1613,11 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
  * (kozou_compose_image_pdf_keep_text の背景画像生成用)。
  * *out_ctm / *out_bbox には「目標(最終)dpiでの」ctm/bbox を返す
  * (呼び出し側は従来通りこれを使って配置座標を計算できる)。         */
-static fz_pixmap *kozou_render_page_to_pixmap(
+static fz_pixmap *kozou_render_page_to_pixmap_fit(
     fz_context *ctx, fz_page *page, fz_rect bounds,
     float dpi, int supersample_max, int exclude_text,
-    fz_matrix *out_ctm, fz_irect *out_bbox)
+    KozouFit fit, fz_matrix *out_ctm, fz_irect *out_bbox)
 {
-    KozouFit fit = kozou_fit_page(bounds, dpi);
     fz_matrix ctm  = fz_scale(fit.s.x, fit.s.y);
     fz_irect  bbox = fz_round_rect(fz_transform_rect(bounds, ctm));
 
@@ -1551,10 +1628,22 @@ static fz_pixmap *kozou_render_page_to_pixmap(
 
     fz_pixmap *pixmap = kozou_render_ctm_to_pixmap(
         ctx, page, ctm, target_w, target_h, mult, exclude_text);
+    kozou_replicate_partial_edges(pixmap, &fit);
 
     if (out_ctm)  *out_ctm  = ctm;
     if (out_bbox) *out_bbox = bbox;
     return pixmap;
+}
+
+/* 従来の呼び出し口 (kozou_fit_page = 縦横別倍率・画像=ページ寸法)。 */
+static fz_pixmap *kozou_render_page_to_pixmap(
+    fz_context *ctx, fz_page *page, fz_rect bounds,
+    float dpi, int supersample_max, int exclude_text,
+    fz_matrix *out_ctm, fz_irect *out_bbox)
+{
+    return kozou_render_page_to_pixmap_fit(
+        ctx, page, bounds, dpi, supersample_max, exclude_text,
+        kozou_fit_page(bounds, dpi), out_ctm, out_bbox);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1694,9 +1783,10 @@ void kozou_rasterize(
                  * (supersample_max > 1 の場合は内部高dpi→縮小)         */
                 fz_matrix ctm;
                 fz_irect  bbox;
-                pixmap = kozou_render_page_to_pixmap(
+                KozouFit  fit = kozou_fit_page_for_raster(bounds, dpi);
+                pixmap = kozou_render_page_to_pixmap_fit(
                     ctx, page, bounds, dpi, supersample_max, 0,
-                    &ctm, &bbox);
+                    fit, &ctm, &bbox);
 
                 /* pixmap → 一時ファイル (JPEG or PNG) → fz_image
                  *
@@ -1738,14 +1828,16 @@ void kozou_rasterize(
 
                 /* コンテンツストリーム:
                  *   q
-                 *   pw 0 0 ph mb_x0 mb_y0 cm   ← 元ページと同じ原点に配置
-                 *   /Im0 Do                     ← 画像を描画
+                 *   iw 0 0 ih mb_x0 (mb_y0+ph-ih) cm  ← 画像の左上をページ左上に合わせる
+                 *   /Im0 Do                          ← 画像を描画
                  *   Q
-                 */
+                 * 従来方式 (kozou_fit_page) では iw,ih = pw,ph で mb_y0+ph-ih = mb_y0。
+                 * 一様倍率方式では画像が右・下へ最大1画素分はみ出す (表示領域の外)。 */
                 char cs_buf[256];
                 int cs_len = snprintf(cs_buf, sizeof(cs_buf),
                     "q\n%.4f 0 0 %.4f %.4f %.4f cm\n/Im0 Do\nQ\n",
-                    pw_pt, ph_pt, mb_x0, mb_y0);
+                    fit.img_w_pt, fit.img_h_pt,
+                    mb_x0, mb_y0 + ph_pt - fit.img_h_pt);
                 contents = fz_new_buffer_from_copied_data(ctx,
                     (const unsigned char *)cs_buf, (size_t)cs_len);
 
