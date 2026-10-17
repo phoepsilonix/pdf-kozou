@@ -6313,6 +6313,8 @@ typedef struct {
     int            record_paints;
     KozouPaintRec *paints;
     int            paint_count, paint_cap, paint_overflow;
+    int            lowfill_raster_count; /* 低塗り率パスの実形状判定を行った回数 (上限あり) */
+    int            lowfill_cover_count;  /* 低塗り率パス由来で登録した覆いの数 (上限あり) */
 } KozouBuriedList;
 
 /* accept_translucent 時に覆いとして記録する塗りの最小 alpha */
@@ -6604,6 +6606,124 @@ static void kozou_buried_end_mask(fz_context *ctx, fz_device *dev_, fz_function 
     }
 }
 
+/* 実塗り面積/bbox が小さいパス (細い吊り紐が付いた星や月を1つのパスで描いた
+ * Canva 等の飾り) を、bbox 全体ではなく「実際に塗られている部分」だけで覆いとして
+ * 登録するための実形状判定。パスを 1pt 格子 (大きいときは最大512格子) の
+ * グレー画素に描き、十分に塗られた厚みのある格子だけを、行ごとの横連続矩形として
+ * 返す。細い線 (罫線・枠・吊り紐) は厚みが無いので落ちる。 */
+#define KOZOU_LOWFILL_MAX_GRID  512
+#define KOZOU_LOWFILL_MAX_RECTS 2048
+/* 低塗り率パス由来の覆いの合計上限 (KOZOU_MAX_COVERS=8192 の一部)。
+ * 通常の覆い(画像・矩形)の枠を食い潰さないため、残りは必ず確保する。 */
+#define KOZOU_LOWFILL_MAX_COVERS_PER_PAGE 3000
+#define KOZOU_LOWFILL_MAX_PER_PAGE 2000
+#define KOZOU_LOWFILL_MIN_DIM   6.0f
+
+static int kozou_lowfill_solid_rects(
+    fz_context *ctx, const fz_path *path, int even_odd, fz_matrix ctm,
+    fz_rect bbox, fz_rect *out, int max_out)
+{
+    int n = 0;
+    float bw = bbox.x1 - bbox.x0, bh = bbox.y1 - bbox.y0;
+    if (bw < KOZOU_LOWFILL_MIN_DIM || bh < KOZOU_LOWFILL_MIN_DIM) return 0;
+    float md = bw > bh ? bw : bh;
+    float sc = md > (float)KOZOU_LOWFILL_MAX_GRID ? (float)KOZOU_LOWFILL_MAX_GRID / md : 1.0f;
+    int pw = (int)ceilf(bw * sc) + 1, ph = (int)ceilf(bh * sc) + 1;
+    fz_pixmap *pix = NULL;
+    fz_device *dd = NULL;
+    unsigned char *keep = NULL;
+    int *queue = NULL, *open_prev = NULL, *open_cur = NULL;
+    fz_var(pix); fz_var(dd); fz_var(keep); fz_var(queue); fz_var(n);
+    fz_var(open_prev); fz_var(open_cur);
+    fz_try(ctx) {
+        pix = fz_new_pixmap(ctx, fz_device_gray(ctx), pw, ph, NULL, 0);
+        fz_clear_pixmap(ctx, pix);
+        fz_matrix m = fz_concat(ctm, fz_translate(-bbox.x0, -bbox.y0));
+        m = fz_concat(m, fz_scale(sc, sc));
+        dd = fz_new_draw_device(ctx, fz_identity, pix);
+        float white = 1.0f;
+        fz_fill_path(ctx, dd, path, even_odd, m, fz_device_gray(ctx), &white, 1.0f,
+                     fz_default_color_params);
+        fz_close_device(ctx, dd);
+        const unsigned char *sp = pix->samples;
+        int stride = (int)pix->stride;
+        size_t cells = (size_t)pw * (size_t)ph;
+        keep  = (unsigned char *)fz_calloc(ctx, cells, 1);
+        queue = (int *)fz_malloc(ctx, sizeof(int) * cells);
+        #define KZ_ON(x, y) ((x) >= 0 && (x) < pw && (y) >= 0 && (y) < ph && sp[(y) * stride + (x)] >= 128)
+        #define KZ_THIN(x, y) ((x) >= 0 && (x) < pw && (y) >= 0 && (y) < ph && sp[(y) * stride + (x)] >= 48)
+        /* 厚みのある格子: 自分が塗られ、左右どちらかと上下どちらかも塗られている */
+        int qh = 0, qt = 0;
+        for (int y = 0; y < ph; y++)
+            for (int x = 0; x < pw; x++)
+                if (KZ_ON(x, y) && (KZ_ON(x - 1, y) || KZ_ON(x + 1, y)) &&
+                    (KZ_ON(x, y - 1) || KZ_ON(x, y + 1))) {
+                    keep[(size_t)y * pw + x] = 1;
+                    queue[qt++] = y * pw + x;
+                }
+        if (qt == 0) goto lowfill_done;   /* 厚みのある部分が無い (罫線・枠だけ) → 覆いにしない */
+        /* 厚みのある部分につながった細い線 (吊り紐など) も同じ塗りの一部として含める。
+         * 厚い部分を持たない線パスは上で除外済みなので、罫線グリッドは影響を受けない。 */
+        while (qh < qt) {
+            int c = queue[qh++], cx = c % pw, cy = c / pw;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    int nx = cx + dx, ny = cy + dy;
+                    if (!KZ_THIN(nx, ny) || keep[(size_t)ny * pw + nx]) continue;
+                    keep[(size_t)ny * pw + nx] = 1;
+                    queue[qt++] = ny * pw + nx;
+                }
+        }
+        /* 行ごとの横連続矩形にし、同じ x 範囲が連続する行は縦に結合する */
+        open_prev = (int *)fz_malloc(ctx, sizeof(int) * (size_t)max_out);
+        open_cur  = (int *)fz_malloc(ctx, sizeof(int) * (size_t)max_out);
+        int np_prev = 0;
+        for (int y = 0; y < ph; y++) {
+            int nc = 0;
+            int x = 0;
+            while (x < pw) {
+                if (!keep[(size_t)y * pw + x]) { x++; continue; }
+                int x0 = x;
+                while (x < pw && keep[(size_t)y * pw + x]) x++;
+                float rx0 = bbox.x0 + (float)x0 / sc, rx1 = bbox.x0 + (float)x / sc;
+                float ry1 = bbox.y0 + (float)(y + 1) / sc;
+                int idx = -1;
+                for (int k = 0; k < np_prev; k++) {
+                    int o = open_prev[k];
+                    if (out[o].x0 == rx0 && out[o].x1 == rx1) { idx = o; break; }
+                }
+                if (idx >= 0) {
+                    out[idx].y1 = ry1;
+                } else {
+                    if (n >= max_out) break;
+                    out[n].x0 = rx0; out[n].x1 = rx1;
+                    out[n].y0 = bbox.y0 + (float)y / sc; out[n].y1 = ry1;
+                    idx = n++;
+                }
+                if (nc < max_out) open_cur[nc++] = idx;
+            }
+            int *t = open_prev; open_prev = open_cur; open_cur = t;
+            np_prev = nc;
+            if (n >= max_out && nc == 0) break;
+        }
+        lowfill_done:
+        #undef KZ_ON
+        #undef KZ_THIN
+    }
+    fz_always(ctx) {
+        fz_drop_device(ctx, dd);
+        fz_drop_pixmap(ctx, pix);
+        fz_free(ctx, keep);
+        fz_free(ctx, queue);
+        fz_free(ctx, open_prev);
+        fz_free(ctx, open_cur);
+    }
+    fz_catch(ctx) {
+        return 0;
+    }
+    return n;
+}
+
 static void kozou_buried_fill_path(
     fz_context *ctx, fz_device *dev_,
     const fz_path *path, int even_odd, fz_matrix ctm,
@@ -6628,7 +6748,37 @@ static void kozou_buried_fill_path(
      * 無害化で可視テキストを破壊してしまう。
      * (fill_ratio はクリップ前の本来のパス面積比で判定する) */
     float fill_ratio = kozou_path_fill_ratio(ctx, path, ctm, bbox);
-    if (fill_ratio < KOZOU_BURIED_MIN_FILL_RATIO) return;
+    if (fill_ratio < KOZOU_BURIED_MIN_FILL_RATIO) {
+        /* 隠し直しパッチ用の収集 (accept_translucent=1) に限り、塗り率が低くても
+         * 実際に塗られた部分だけを覆いとして登録する (細い吊り紐の付いた星・月など)。
+         * 埋没テキストの検出/無害化 (accept_translucent=0) の挙動は変えない。 */
+        if (!dev->list->accept_translucent ||
+            dev->list->lowfill_raster_count >= KOZOU_LOWFILL_MAX_PER_PAGE) return;
+        fz_rect cb = kozou_buried_clip_intersect(dev, bbox);
+        if (kozou_buried_rect_is_empty(cb)) return;
+        dev->list->lowfill_raster_count++;
+        fz_rect *rects = (fz_rect *)fz_malloc(ctx, sizeof(fz_rect) * KOZOU_LOWFILL_MAX_RECTS);
+        int nr = 0;
+        fz_try(ctx) {
+            nr = kozou_lowfill_solid_rects(ctx, path, even_odd, ctm, bbox, rects,
+                                           KOZOU_LOWFILL_MAX_RECTS);
+            int ev = prec_ev >= 0 ? prec_ev : dev->list->event_counter++;
+            /* 枠を超えるパスは一部だけ登録せず、従来どおり覆いなしにする */
+            if (dev->list->lowfill_cover_count + nr > KOZOU_LOWFILL_MAX_COVERS_PER_PAGE) nr = 0;
+            for (int i = 0; i < nr && dev->list->cover_count < KOZOU_MAX_COVERS; i++) {
+                fz_rect r = fz_intersect_rect(rects[i], cb);
+                if (kozou_buried_rect_is_empty(r)) continue;
+                KozouCoverRect *cr = &dev->list->covers[dev->list->cover_count++];
+                cr->event_index = ev;
+                cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
+                cr->x0 = r.x0; cr->y0 = r.y0; cr->x1 = r.x1; cr->y1 = r.y1;
+                dev->list->lowfill_cover_count++;
+            }
+        }
+        fz_always(ctx) { fz_free(ctx, rects); }
+        fz_catch(ctx) { /* 失敗しても従来どおり覆いなしとして続行 */ }
+        return;
+    }
 
     /* アクティブなクリップ矩形と交差させる。クリップの外側は実際には
      * 描画されない (見えない) ので、その部分をカバーとして扱ってしまうと
