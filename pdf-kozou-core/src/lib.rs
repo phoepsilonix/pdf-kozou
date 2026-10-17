@@ -14,6 +14,7 @@ pub mod ffi;
 pub mod font_subset;
 pub mod image_recompress;
 pub mod info;
+pub mod jpeg_lossless;
 pub mod merge;
 pub mod pixmap;
 pub mod render;

@@ -65,6 +65,15 @@ const INVISIBLE_AREA_THRESHOLD: f64 = 0.02;
 /// 切り出し矩形に足す安全マージン (px)。クリップ境界のアンチエイリアス等で
 /// ぎりぎり見えている画素を誤って切り落とさないため。
 const CROP_MARGIN_PX: i64 = 2;
+/// 切り詰める辺ごとの最小の削減量 (px)。これより小さい辺は切らずに、原本の辺の
+/// まま残す。わずかな削減では容量がほとんど減らないのに、画像の貼り付け先の
+/// 辺が新しくなり、ビューアの画素格子への丸めの違い (最大 1 デバイス画素) が
+/// 見えるリスクだけが増えるため。実際の閾値は max(この値, 辺の長さ×MIN_EDGE_TRIM_RATIO)。
+const MIN_EDGE_TRIM_PX: i64 = 16;
+const MIN_EDGE_TRIM_RATIO: f64 = 0.02;
+/// 辺ごとの判定のあとに残る面積が、元の面積のこの割合以上なら切り詰めない
+/// (節約が小さすぎるため)。
+const KEEP_AREA_SKIP_RATIO: f64 = 0.97;
 
 #[derive(Clone, Copy, Debug)]
 struct Matrix {
@@ -689,6 +698,103 @@ struct PendingCrop {
     comp: Matrix,
 }
 
+/// JPEG の無劣化トリミングの使い方 (環境変数 KOZOU_CROP_LOSSLESS、検証用)。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LosslessMode {
+    /// 無劣化にできる場合でも使わず、常に復号→指定品質で再エンコードする ("0")。
+    Never,
+    /// 無劣化にできるなら常に使う ("1")。画質は落ちないが、元のJPEGの品質が
+    /// 指定品質より高いと、再エンコードより大きくなる。
+    Force,
+    /// 無劣化の結果が、再エンコードの結果以下の大きさのときだけ使う (既定)。
+    /// 元のJPEGが指定品質以下で圧縮済みなら、無劣化のほうが小さく画質も落ちない。
+    Auto,
+}
+
+fn lossless_crop_mode() -> LosslessMode {
+    match std::env::var("KOZOU_CROP_LOSSLESS").as_deref() {
+        Ok("0") => LosslessMode::Never,
+        Ok("1") => LosslessMode::Force,
+        _ => LosslessMode::Auto,
+    }
+}
+
+/// JPEG を復号して `px` の範囲を切り出し、指定品質で再エンコードする。
+fn reencode_jpeg_crop(
+    raw: &[u8],
+    native_w: i64,
+    native_h: i64,
+    px: &PixRect,
+    jpeg_quality: u8,
+) -> Result<Vec<u8>, String> {
+    use image::codecs::jpeg::JpegEncoder;
+    use image::{ColorType, GenericImageView, ImageEncoder};
+    let img = image::load_from_memory_with_format(raw, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("jpeg decode: {e}"))?;
+    let grayscale = matches!(img.color(), image::ColorType::L8 | image::ColorType::L16);
+    let (iw, ih) = img.dimensions();
+    // 辞書の Width/Height と JPEG の実寸が食い違うと、UV→画素の変換がずれて
+    // 補正が合わなくなる。安全側で切り詰めない。
+    if iw as i64 != native_w || ih as i64 != native_h {
+        return Err(format!(
+            "JPEG size {iw}x{ih} differs from dictionary {native_w}x{native_h}"
+        ));
+    }
+    let (cw, ch) = ((px.col1 - px.col0) as u32, (px.row1 - px.row0) as u32);
+    let cropped = img.crop_imm(px.col0 as u32, px.row0 as u32, cw, ch);
+    let mut out_buf: Vec<u8> = Vec::new();
+    let encoder = JpegEncoder::new_with_quality(&mut out_buf, jpeg_quality);
+    if grayscale {
+        let luma = cropped.to_luma8();
+        encoder
+            .write_image(luma.as_raw(), cw, ch, ColorType::L8.into())
+            .map_err(|e| format!("jpeg encode: {e}"))?;
+    } else {
+        let rgb = cropped.to_rgb8();
+        encoder
+            .write_image(rgb.as_raw(), cw, ch, ColorType::Rgb8.into())
+            .map_err(|e| format!("jpeg encode: {e}"))?;
+    }
+    Ok(out_buf)
+}
+
+/// 画素矩形 `px` を JPEG の MCU 格子に外側へ揃え、無劣化で切り出す。
+/// 揃えた後の矩形 (元画像全体と同じになる場合は None) と、切り出した JPEG を返す。
+/// 外側へ揃えるので、必要な範囲は必ず含まれる。
+fn lossless_align_and_crop(
+    raw: &[u8],
+    native_w: i64,
+    native_h: i64,
+    px: &PixRect,
+) -> Option<(PixRect, Vec<u8>)> {
+    let g = crate::jpeg_lossless::jpeg_geometry(raw)?;
+    if g.width as i64 != native_w || g.height as i64 != native_h {
+        return None;
+    }
+    let (mw, mh) = (g.mcu_w as i64, g.mcu_h as i64);
+    let down = |v: i64, m: i64| v / m * m;
+    let up = |v: i64, m: i64, max: i64| if v >= max { max } else { ((v + m - 1) / m * m).min(max) };
+    let apx = PixRect {
+        col0: down(px.col0, mw),
+        row0: down(px.row0, mh),
+        col1: up(px.col1, mw, native_w),
+        row1: up(px.row1, mh, native_h),
+    };
+    let (aw, ah) = (apx.col1 - apx.col0, apx.row1 - apx.row0);
+    if aw >= native_w && ah >= native_h {
+        return None;
+    }
+    let out = crate::jpeg_lossless::crop_jpeg_lossless(
+        raw,
+        apx.col0 as u32,
+        apx.row0 as u32,
+        aw as u32,
+        ah as u32,
+    )
+    .ok()?;
+    Some((apx, out))
+}
+
 /// 画像 xref のピクセルデータを uv (ローカル UV [0,1]^2) の範囲だけに
 /// 切り出した結果を組み立てる。対応フォーマットは
 /// image_recompress::classify_source と同じ。SMask 付きの場合は本体と
@@ -704,9 +810,6 @@ fn plan_crop(
     uv: Rect,
     jpeg_quality: u8,
 ) -> Result<PendingCrop, String> {
-    use image::codecs::jpeg::JpegEncoder;
-    use image::{ColorType, GenericImageView, ImageEncoder};
-
     let obj = doc
         .get_object(xref)
         .map_err(|e| format!("get image {xref:?}: {e}"))?;
@@ -736,16 +839,66 @@ fn plan_crop(
         row0: (((1.0 - uv.y1) * nh).floor() as i64 - CROP_MARGIN_PX).clamp(0, native_h),
         row1: (((1.0 - uv.y0) * nh).ceil() as i64 + CROP_MARGIN_PX).clamp(0, native_h),
     };
+    // 削減量が小さい辺は切らない (原本の辺を残す)。
+    let min_x = MIN_EDGE_TRIM_PX.max((nw * MIN_EDGE_TRIM_RATIO).ceil() as i64);
+    let min_y = MIN_EDGE_TRIM_PX.max((nh * MIN_EDGE_TRIM_RATIO).ceil() as i64);
+    let px = PixRect {
+        col0: if px.col0 < min_x { 0 } else { px.col0 },
+        col1: if native_w - px.col1 < min_x { native_w } else { px.col1 },
+        row0: if px.row0 < min_y { 0 } else { px.row0 },
+        row1: if native_h - px.row1 < min_y { native_h } else { px.row1 },
+    };
     let new_w = (px.col1 - px.col0).max(1);
     let new_h = (px.row1 - px.row0).max(1);
     if new_w >= native_w && new_h >= native_h {
         return Err("crop rect covers entire image, not worth it".to_string());
+    }
+    if (new_w * new_h) as f64 >= KEEP_AREA_SKIP_RATIO * (native_w * native_h) as f64 {
+        return Err("crop saves too little, not worth it".to_string());
     }
     let px = PixRect {
         col1: px.col0 + new_w,
         row1: px.row0 + new_h,
         ..px
     };
+
+    // JPEG は、MCU 格子に外側へ揃えた矩形なら、DCT 係数のまま無劣化で切り出せる
+    // (jpeg_lossless)。ただし元の品質が指定品質より高いと、再エンコードより大きく
+    // なることが多い。既定 (Auto) では、無劣化の結果が再エンコード以下の大きさの
+    // ときだけ採用する。どちらもできなければ従来どおり (再エンコード)。
+    let mut jpeg_out: Option<Vec<u8>> = None;
+    let px = if matches!(kind, SourceKind::Dct | SourceKind::DctFlateWrapped) {
+        let mode = lossless_crop_mode();
+        let cand = if mode == LosslessMode::Never {
+            None
+        } else {
+            lossless_align_and_crop(&raw_bytes, native_w, native_h, &px)
+        };
+        match cand {
+            Some((apx, out)) if out.len() < raw_bytes.len() => {
+                if mode == LosslessMode::Force {
+                    jpeg_out = Some(out);
+                    apx
+                } else {
+                    match reencode_jpeg_crop(&raw_bytes, native_w, native_h, &px, jpeg_quality) {
+                        Ok(re) if re.len() < out.len() => {
+                            jpeg_out = Some(re);
+                            px
+                        }
+                        _ => {
+                            jpeg_out = Some(out);
+                            apx
+                        }
+                    }
+                }
+            }
+            _ => px,
+        }
+    } else {
+        px
+    };
+    let new_w = (px.col1 - px.col0).max(1);
+    let new_h = (px.row1 - px.row0).max(1);
 
     // 実際に切り出す画素矩形から UV 窓と補正行列を作る。
     // 補正行列は「切り出し後の単位正方形」を「元の単位正方形のうちの
@@ -768,40 +921,15 @@ fn plan_crop(
     let mut new_image = stream.clone();
     match kind {
         SourceKind::Dct | SourceKind::DctFlateWrapped => {
-            let img = image::load_from_memory_with_format(&raw_bytes, image::ImageFormat::Jpeg)
-                .map_err(|e| format!("jpeg decode {xref:?}: {e}"))?;
-            let grayscale = matches!(img.color(), image::ColorType::L8 | image::ColorType::L16);
-            let (iw, ih) = img.dimensions();
-            // 辞書の Width/Height と JPEG の実寸が食い違うと、UV→画素の
-            // 変換がずれて補正が合わなくなる。安全側で切り詰めない。
-            if iw as i64 != native_w || ih as i64 != native_h {
-                return Err(format!(
-                    "image {xref:?}: JPEG size {iw}x{ih} differs from dictionary {native_w}x{native_h}"
-                ));
-            }
-            let (cw, ch) = (new_w as u32, new_h as u32);
-            let cropped = img.crop_imm(px.col0 as u32, px.row0 as u32, cw, ch);
-
-            let mut out_buf: Vec<u8> = Vec::new();
-            {
-                // 呼び出し元から渡された jpeg_quality でエンコードする。
-                let encoder = JpegEncoder::new_with_quality(&mut out_buf, jpeg_quality);
-                if grayscale {
-                    let luma = cropped.to_luma8();
-                    encoder
-                        .write_image(luma.as_raw(), cw, ch, ColorType::L8.into())
-                        .map_err(|e| format!("jpeg encode {xref:?}: {e}"))?;
-                } else {
-                    let rgb = cropped.to_rgb8();
-                    encoder
-                        .write_image(rgb.as_raw(), cw, ch, ColorType::Rgb8.into())
-                        .map_err(|e| format!("jpeg encode {xref:?}: {e}"))?;
-                }
-            }
-            // 安全弁: 再エンコードで逆にバイト数が増える場合は取りやめる。
+            let out_buf = match jpeg_out.take() {
+                Some(b) => b,
+                None => reencode_jpeg_crop(&raw_bytes, native_w, native_h, &px, jpeg_quality)
+                    .map_err(|e| format!("image {xref:?}: {e}"))?,
+            };
+            // 安全弁: 切り出しで逆にバイト数が増える場合は取りやめる。
             if out_buf.len() >= raw_bytes.len() {
                 return Err(format!(
-                    "image {xref:?}: re-encoded crop ({}B) not smaller than original ({}B), skipping",
+                    "image {xref:?}: cropped JPEG ({}B) not smaller than original ({}B), skipping",
                     out_buf.len(),
                     raw_bytes.len()
                 ));
@@ -1686,6 +1814,115 @@ mod tests {
         assert_eq!(crop_to_visible_area(&mut b.doc, 90).images_cropped, 0);
         assert_eq!(image_wh(&b.doc, b.image), (605, 807));
         assert_eq!(ops(&b.doc, b.content).len(), before);
+    }
+
+    /// 削減量が小さい辺 (ここでは左端の約 5px) は切らず、原本の辺のまま残す。
+    /// 大きく削れる辺 (上下) だけが新しい辺になる。
+    #[test]
+    fn small_edge_trim_keeps_original_edge() {
+        let c = "q 5 200 595 250 re W* n q 600 0 0 800 0 0 cm /Im0 Do Q Q";
+        let mut b = build(c, (605, 807), None, vec![], false);
+        assert_eq!(crop_to_visible_area(&mut b.doc, 90).images_cropped, 1);
+        let (w, h) = image_wh(&b.doc, b.image);
+        assert_eq!(w, 605, "left/right trims are tiny, so the width stays");
+        assert!(h < 807 / 2, "rows are cut a lot: {h}");
+        let o = ops(&b.doc, b.content);
+        let i = o.iter().position(|op| op.operator == "Do").unwrap();
+        let m: Vec<f64> = o[i - 1].operands.iter().map(obj_to_f64).collect();
+        assert_eq!(m[4], 0.0, "left edge is the original edge");
+        assert!((m[0] - 1.0).abs() < 1e-9);
+    }
+
+    /// 削減がごく僅かなら、何も切らない。
+    #[test]
+    fn tiny_overall_saving_is_skipped() {
+        let c = "q 3 3 594 794 re W* n q 600 0 0 800 0 0 cm /Im0 Do Q Q";
+        let mut b = build(c, (605, 807), None, vec![], false);
+        assert_eq!(crop_to_visible_area(&mut b.doc, 90).images_cropped, 0);
+        assert_eq!(image_wh(&b.doc, b.image), (605, 807));
+    }
+
+    /// JPEG は、MCU 格子に外側へ揃えて無劣化で切り出される: 切り出し後の画素は
+    /// 元画像の同じ位置の画素と完全に一致する (再エンコードの劣化がない)。
+    #[test]
+    fn jpeg_is_cropped_losslessly_on_mcu_grid() {
+        use image::codecs::jpeg::JpegEncoder;
+        use image::{ColorType, ImageEncoder};
+        let (iw, ih) = (605usize, 807usize);
+        let rgb = raw_rgb(iw, ih);
+        let mut jpeg = Vec::new();
+        JpegEncoder::new_with_quality(&mut jpeg, 88)
+            .write_image(&rgb, iw as u32, ih as u32, ColorType::Rgb8.into())
+            .unwrap();
+        let geo = crate::jpeg_lossless::jpeg_geometry(&jpeg).unwrap();
+        let mut b = build(CLIPPED, (iw as i64, ih as i64), None, vec![], false);
+        b.doc.objects.insert(
+            b.image,
+            Object::Stream(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Image",
+                    "Width" => iw as i64, "Height" => ih as i64,
+                    "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8,
+                    "Filter" => "DCTDecode",
+                },
+                jpeg.clone(),
+            )),
+        );
+        // 目標品質 95 は元 (88) より高いので、再エンコードは無劣化より大きくなり、
+        // 既定 (Auto) では無劣化が選ばれる。
+        assert_eq!(crop_to_visible_area(&mut b.doc, 95).images_cropped, 1);
+        let (w, h) = image_wh(&b.doc, b.image);
+        let o = ops(&b.doc, b.content);
+        let i = o.iter().position(|op| op.operator == "Do").unwrap();
+        let m: Vec<f64> = o[i - 1].operands.iter().map(obj_to_f64).collect();
+        let col0 = (m[4] * iw as f64).round() as u32;
+        let row0 = ((1.0 - m[5] - m[3]) * ih as f64).round() as u32;
+        assert_eq!(col0 % geo.mcu_w, 0, "left edge is on the MCU grid");
+        assert_eq!(row0 % geo.mcu_h, 0, "top edge is on the MCU grid");
+        let st = b.doc.get_object(b.image).unwrap().as_stream().unwrap();
+        let before = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)
+            .unwrap()
+            .to_rgb8();
+        let after = image::load_from_memory_with_format(&st.content, image::ImageFormat::Jpeg)
+            .unwrap()
+            .to_rgb8();
+        assert_eq!((after.width() as i64, after.height() as i64), (w, h));
+        for (x, y) in [(0u32, 0u32), (7, 9), (w as u32 - 1, h as u32 - 1), (w as u32 / 2, h as u32 / 2)] {
+            assert_eq!(after.get_pixel(x, y), before.get_pixel(x + col0, y + row0), "px {x},{y}");
+        }
+    }
+
+    /// 元が高品質で、目標品質が低いと、再エンコードのほうが小さい。既定 (Auto) では
+    /// そちらを選ぶ (切り出し位置は MCU 格子に揃えず、従来どおりの画素矩形)。
+    #[test]
+    fn auto_prefers_reencode_when_it_is_smaller() {
+        use image::codecs::jpeg::JpegEncoder;
+        use image::{ColorType, ImageEncoder};
+        let (iw, ih) = (605usize, 807usize);
+        let mut jpeg = Vec::new();
+        JpegEncoder::new_with_quality(&mut jpeg, 98)
+            .write_image(&raw_rgb(iw, ih), iw as u32, ih as u32, ColorType::Rgb8.into())
+            .unwrap();
+        let geo = crate::jpeg_lossless::jpeg_geometry(&jpeg).unwrap();
+        let mut b = build(CLIPPED, (iw as i64, ih as i64), None, vec![], false);
+        b.doc.objects.insert(
+            b.image,
+            Object::Stream(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Image",
+                    "Width" => iw as i64, "Height" => ih as i64,
+                    "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8,
+                    "Filter" => "DCTDecode",
+                },
+                jpeg,
+            )),
+        );
+        assert_eq!(crop_to_visible_area(&mut b.doc, 40).images_cropped, 1);
+        let o = ops(&b.doc, b.content);
+        let i = o.iter().position(|op| op.operator == "Do").unwrap();
+        let m: Vec<f64> = o[i - 1].operands.iter().map(obj_to_f64).collect();
+        let col0 = (m[4] * iw as f64).round() as u32;
+        assert_ne!(col0 % geo.mcu_w, 0, "re-encode keeps the plain pixel rect: {col0}");
     }
 
     /// 注釈の外観など、解析が辿らない場所からも使われる画像は切り詰めない。
