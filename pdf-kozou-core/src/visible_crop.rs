@@ -698,24 +698,36 @@ struct PendingCrop {
     comp: Matrix,
 }
 
-/// JPEG の無劣化トリミングの使い方 (環境変数 KOZOU_CROP_LOSSLESS、検証用)。
+/// JPEG の無劣化トリミングの使い方 (環境変数 KOZOU_CROP_LOSSLESS)。
+/// ダウンサンプリング・再圧縮は image_dpi / jpeg_quality の別オプションで行うので、
+/// 切り詰めそのものは画質を変えない無劣化を標準にする。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LosslessMode {
     /// 無劣化にできる場合でも使わず、常に復号→指定品質で再エンコードする ("0")。
     Never,
-    /// 無劣化にできるなら常に使う ("1")。画質は落ちないが、元のJPEGの品質が
-    /// 指定品質より高いと、再エンコードより大きくなる。
+    /// 無劣化にできるなら常に使う (既定、"1" も同じ)。画質は落ちない。元のJPEGの
+    /// 品質が指定品質より高いと、再エンコードより大きくなることがある。
     Force,
-    /// 無劣化の結果が、再エンコードの結果以下の大きさのときだけ使う (既定)。
+    /// 無劣化の結果が、再エンコードの結果以下の大きさのときだけ使う ("auto")。
     /// 元のJPEGが指定品質以下で圧縮済みなら、無劣化のほうが小さく画質も落ちない。
     Auto,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// テスト用: 環境変数を使わずに、スレッドごとにモードを上書きする。
+    static MODE_OVERRIDE: std::cell::Cell<Option<LosslessMode>> = const { std::cell::Cell::new(None) };
+}
+
 fn lossless_crop_mode() -> LosslessMode {
+    #[cfg(test)]
+    if let Some(m) = MODE_OVERRIDE.with(|c| c.get()) {
+        return m;
+    }
     match std::env::var("KOZOU_CROP_LOSSLESS").as_deref() {
         Ok("0") => LosslessMode::Never,
-        Ok("1") => LosslessMode::Force,
-        _ => LosslessMode::Auto,
+        Ok("auto") => LosslessMode::Auto,
+        _ => LosslessMode::Force,
     }
 }
 
@@ -864,8 +876,11 @@ fn plan_crop(
 
     // JPEG は、MCU 格子に外側へ揃えた矩形なら、DCT 係数のまま無劣化で切り出せる
     // (jpeg_lossless)。ただし元の品質が指定品質より高いと、再エンコードより大きく
-    // なることが多い。既定 (Auto) では、無劣化の結果が再エンコード以下の大きさの
-    // ときだけ採用する。どちらもできなければ従来どおり (再エンコード)。
+    // なることが多い。ダウンサンプリング・再圧縮は別オプション (image_dpi /
+    // jpeg_quality) で行うので、切り詰めは無劣化を標準にする (Force)。"auto" なら、
+    // 無劣化の結果が再エンコード以下の大きさのときだけ採用する。無劣化にできない
+    // JPEG (プログレッシブなど) や、結果が元より小さくならない場合は、従来どおり
+    // (再エンコード)。
     let mut jpeg_out: Option<Vec<u8>> = None;
     let px = if matches!(kind, SourceKind::Dct | SourceKind::DctFlateWrapped) {
         let mode = lossless_crop_mode();
@@ -1868,8 +1883,8 @@ mod tests {
                 jpeg.clone(),
             )),
         );
-        // 目標品質 95 は元 (88) より高いので、再エンコードは無劣化より大きくなり、
-        // 既定 (Auto) では無劣化が選ばれる。
+        // 既定 (Force) では無劣化が選ばれる (目標品質 95 は元 (88) より高いので、
+        // "auto" でも無劣化のほうが小さい)。
         assert_eq!(crop_to_visible_area(&mut b.doc, 95).images_cropped, 1);
         let (w, h) = image_wh(&b.doc, b.image);
         let o = ops(&b.doc, b.content);
@@ -1892,10 +1907,9 @@ mod tests {
         }
     }
 
-    /// 元が高品質で、目標品質が低いと、再エンコードのほうが小さい。既定 (Auto) では
-    /// そちらを選ぶ (切り出し位置は MCU 格子に揃えず、従来どおりの画素矩形)。
-    #[test]
-    fn auto_prefers_reencode_when_it_is_smaller() {
+    /// 高品質 (98) の JPEG を目標品質 40 で切り詰め、切り出し開始列と MCU 幅を返す。
+    /// 再エンコードのほうが小さくなる条件 (元が高品質で、目標品質が低い)。
+    fn crop_hq_jpeg_with_low_target() -> (u32, u32) {
         use image::codecs::jpeg::JpegEncoder;
         use image::{ColorType, ImageEncoder};
         let (iw, ih) = (605usize, 807usize);
@@ -1921,8 +1935,32 @@ mod tests {
         let o = ops(&b.doc, b.content);
         let i = o.iter().position(|op| op.operator == "Do").unwrap();
         let m: Vec<f64> = o[i - 1].operands.iter().map(obj_to_f64).collect();
-        let col0 = (m[4] * iw as f64).round() as u32;
-        assert_ne!(col0 % geo.mcu_w, 0, "re-encode keeps the plain pixel rect: {col0}");
+        ((m[4] * iw as f64).round() as u32, geo.mcu_w)
+    }
+
+    /// 既定は無劣化: 再エンコードのほうが小さくなる条件でも、MCU 格子に揃えて
+    /// 無劣化で切り出す (ダウンサンプリング・再圧縮は別オプション)。
+    #[test]
+    fn default_is_lossless_even_when_reencode_is_smaller() {
+        let (col0, mcu_w) = crop_hq_jpeg_with_low_target();
+        assert_eq!(col0 % mcu_w, 0, "lossless start column is on the MCU grid: {col0}");
+    }
+
+    /// "auto" では、再エンコードのほうが小さければそちらを選ぶ (切り出し位置は
+    /// MCU 格子に揃えず、従来どおりの画素矩形)。
+    #[test]
+    fn auto_prefers_reencode_when_it_is_smaller() {
+        MODE_OVERRIDE.with(|c| c.set(Some(LosslessMode::Auto)));
+        let (col0, mcu_w) = crop_hq_jpeg_with_low_target();
+        assert_ne!(col0 % mcu_w, 0, "re-encode keeps the plain pixel rect: {col0}");
+    }
+
+    /// "0" では、無劣化にできる JPEG でも常に再エンコードする。
+    #[test]
+    fn never_always_reencodes() {
+        MODE_OVERRIDE.with(|c| c.set(Some(LosslessMode::Never)));
+        let (col0, mcu_w) = crop_hq_jpeg_with_low_target();
+        assert_ne!(col0 % mcu_w, 0, "re-encode keeps the plain pixel rect: {col0}");
     }
 
     /// 注釈の外観など、解析が辿らない場所からも使われる画像は切り詰めない。
