@@ -7602,6 +7602,9 @@ static void kozou_layer_eligibility(
         float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
         float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
         int cnt = 0, bad = 0, min_s = 0x7fffffff;
+        /* 覆い層に回す塗り自体の外接矩形 (検出領域とは別)。覆い層は塗りの範囲全体を
+         * 画像にするため、領域の外でも塗りの上に重ねて描かれる文字は覆われてしまう。 */
+        float ux0 = rx0, uy0 = ry0, ux1 = rx1, uy1 = ry1;
         for (int k = 0; k < np; k++) {
             const KozouPaintRec *p = &L->paints[k];
             /* g->min_ev ではなく g->max_ev: 領域が複数行をまとめたものである
@@ -7614,9 +7617,16 @@ static void kozou_layer_eligibility(
             cnt++;
             if (p->bad) bad = 1;
             if (p->ev < min_s) min_s = p->ev;
+            if (p->x0 < ux0) ux0 = p->x0;
+            if (p->y0 < uy0) uy0 = p->y0;
+            if (p->x1 > ux1) ux1 = p->x1;
+            if (p->y1 > uy1) uy1 = p->y1;
         }
         if (cnt == 0 || bad) continue;
-        if (kozou_layer_has_text_after(L, stext, g_head, g_next, rx0, ry0, rx1, ry1, min_s)) continue;
+        /* 検出領域だけでなく、塗り全体の範囲で「塗りより後に描かれる文字」を調べる
+         * (例: 吹き出しの白い塗りの一部だけが隠れ文字にかかり、同じ吹き出しの上に
+         * 後から描かれた見えている文字「フレンチ」が覆い層の下になって消える不具合)。 */
+        if (kozou_layer_has_text_after(L, stext, g_head, g_next, ux0, uy0, ux1, uy1, min_s)) continue;
         g->elig = 1;
     }
 
