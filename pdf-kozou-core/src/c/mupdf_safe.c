@@ -7636,6 +7636,39 @@ static void kozou_layer_eligibility(
             }
         }
         int changed = 0;
+        /* (3b) 前面(覆い層)に回す塗り p について、p より後に描かれて p と重なる塗り q が
+         * 前面に含まれていない場合、合成すると q が p の下になり描画順が逆転する
+         * (例: 赤い円の上に描かれた円形写真が、円の下に回り赤い円盤だけが前面に出る)。
+         * その p を選んだ領域は層分割しない (従来のマスク付きパッチに戻す)。 */
+        unsigned char *inv = (unsigned char *)calloc((size_t)np, 1);
+        if (inv) {
+            for (int k = 0; k < np; k++) {
+                if (!sb[k]) continue;
+                const KozouPaintRec *p = &L->paints[k];
+                for (int j = k + 1; j < np; j++) {
+                    const KozouPaintRec *q = &L->paints[j];
+                    if (sb[j] || q->ev <= p->ev) continue;
+                    if (kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, q->x0, q->y0, q->x1, q->y1)) {
+                        inv[k] = 1;
+                        break;
+                    }
+                }
+            }
+            for (int i = 0; i < n; i++) {
+                if (!out->v[i].elig) continue;
+                const KozouCoverRegion *g = &out->v[i];
+                float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
+                float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
+                for (int k = 0; k < np; k++) {
+                    const KozouPaintRec *p = &L->paints[k];
+                    if (inv[k] && p->ev > g->max_ev &&
+                        kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1)) {
+                        out->v[i].elig = 0; changed = 1; break;
+                    }
+                }
+            }
+            free(inv);
+        }
         for (int i = 0; i < n; i++) {
             if (!out->v[i].elig) continue;
             const KozouCoverRegion *g = &out->v[i];
