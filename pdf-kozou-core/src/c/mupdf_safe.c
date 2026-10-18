@@ -7921,7 +7921,8 @@ static void kozou_layer_eligibility(
     /* 切り分け用: 環境変数 KOZOU_KEEPTEXT_DEBUG=1 のとき、検出した領域・層分割の可否・
      * 覆い層に回す塗りを標準エラーに出す。通常は何も出さない。 */
     if (getenv("KOZOU_KEEPTEXT_DEBUG")) {
-        fprintf(stderr, "[kozou keeptext] regions=%d paints=%d overflow=%d\n", n, np, L->paint_overflow);
+        fprintf(stderr, "[kozou keeptext] regions=%d paints=%d overflow=%d covers=%d lowfill(raster=%d covers=%d)\n",
+                n, np, L->paint_overflow, L->cover_count, L->lowfill_raster_count, L->lowfill_cover_count);
         for (int i = 0; i < n; i++) {
             const KozouCoverRegion *g = &out->v[i];
             fprintf(stderr, "  region %d: px(%d,%d)-(%d,%d) ev[%d..%d] %s\n", i,
@@ -7930,6 +7931,20 @@ static void kozou_layer_eligibility(
             if (g->r.x1 - g->r.x0 <= 0) continue;
             float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
             float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
+            /* この領域に重なる覆い (どの塗り/画像が領域の原因か)。多いときは先頭から 6 件まで */
+            int shown = 0, total = 0;
+            for (int k = 0; k < L->cover_count; k++) {
+                const KozouCoverRect *cv = &L->covers[k];
+                if (cv->event_index <= g->max_ev) continue;
+                if (!kozou_frect_overlap(cv->x0, cv->y0, cv->x1, cv->y1, rx0, ry0, rx1, ry1)) continue;
+                total++;
+                if (shown < 6) {
+                    shown++;
+                    fprintf(stderr, "    cover %d ev=%d dev(%.1f,%.1f)-(%.1f,%.1f)%s\n", k, cv->event_index,
+                            cv->x0, cv->y0, cv->x1, cv->y1, cv->is_image ? " image" : "");
+                }
+            }
+            if (total > shown) fprintf(stderr, "    ... covers overlapping: %d (showing %d)\n", total, shown);
             for (int k = 0; k < np; k++) {
                 const KozouPaintRec *p = &L->paints[k];
                 if (p->ev > g->max_ev &&
