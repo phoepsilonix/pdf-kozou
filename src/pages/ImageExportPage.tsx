@@ -1450,7 +1450,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   if (phase === "processing" && isBatch && batchProgress)
     return (
       <div style={s.root}>
-        <div style={s.center}>
+        <div style={s.bpCenter}>
           <div style={s.bpTitle}>
             {t("image.batch_processing", {
               current: String(batchProgress.current),
@@ -1474,7 +1474,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             mobilePlatform={mobilePlatform}
             style={s.bpCurrent}
           />
-          <div style={s.bpLog}>
+          <div
+            style={s.bpLogFlex}
+            // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
+            ref={(el) => {
+              if (el) el.scrollTop = el.scrollHeight;
+            }}
+          >
             {batchProgress.done.map((d) => (
               <div key={d.file} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -1530,7 +1536,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           />
           <span style={s.title}>{t("image.batch_done_title")}</span>
         </PageHeader>
-        <div style={s.center}>
+        <div style={s.bpCenter}>
           <span
             style={{
               fontSize: 56,
@@ -1571,7 +1577,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           ) : (
             <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
           )}
-          <div style={s.bpLog}>
+          <div style={s.bpLogFlex}>
             {batchProgress.done.map((d) => (
               <div key={d.file} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -3248,8 +3254,23 @@ const s: Record<string, React.CSSProperties> = {
     gap: 16,
     padding: 32,
   },
-  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
+  // バッチの進捗/結果画面用。ログ(bpLog)が残りの高さを使って伸縮し、その中だけが
+  // スクロールする。center (上下中央寄せ) だとウィンドウが低いときに上下がはみ出して
+  // 切れ、ログの内部スクロールが届かない部分ができるため、上寄せにしている。
+  bpCenter: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 16,
+    padding: 32,
+    overflow: "hidden",
+  },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)", flexShrink: 0 },
   bpBar: {
+    flexShrink: 0,
     width: "100%",
     maxWidth: 480,
     height: 8,
@@ -3280,7 +3301,19 @@ const s: Record<string, React.CSSProperties> = {
     maxHeight: 360,
     overflowY: "auto",
   },
+  // バッチの進捗/結果画面用: 残りの高さいっぱいまで伸び、はみ出す分はこの中でスクロールする
+  bpLogFlex: {
+    width: "100%",
+    maxWidth: 480,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowY: "auto",
+  },
   bpRow: {
+    flexShrink: 0,
     display: "flex",
     alignItems: "baseline",
     flexWrap: "wrap" as const,
