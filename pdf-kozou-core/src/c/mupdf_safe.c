@@ -7918,6 +7918,27 @@ static void kozou_layer_eligibility(
                 sb[k] = 1;
         }
     }
+    /* 切り分け用: 環境変数 KOZOU_KEEPTEXT_DEBUG=1 のとき、検出した領域・層分割の可否・
+     * 覆い層に回す塗りを標準エラーに出す。通常は何も出さない。 */
+    if (getenv("KOZOU_KEEPTEXT_DEBUG")) {
+        fprintf(stderr, "[kozou keeptext] regions=%d paints=%d overflow=%d\n", n, np, L->paint_overflow);
+        for (int i = 0; i < n; i++) {
+            const KozouCoverRegion *g = &out->v[i];
+            fprintf(stderr, "  region %d: px(%d,%d)-(%d,%d) ev[%d..%d] %s\n", i,
+                    g->r.x0, g->r.y0, g->r.x1, g->r.y1, g->min_ev, g->max_ev,
+                    g->elig ? "LAYER" : "mask-patch");
+            if (g->r.x1 - g->r.x0 <= 0) continue;
+            float rx0 = g->r.x0 / scale.x, ry0 = g->r.y0 / scale.y;
+            float rx1 = g->r.x1 / scale.x, ry1 = g->r.y1 / scale.y;
+            for (int k = 0; k < np; k++) {
+                const KozouPaintRec *p = &L->paints[k];
+                if (p->ev > g->max_ev &&
+                    kozou_frect_overlap(p->x0, p->y0, p->x1, p->y1, rx0, ry0, rx1, ry1))
+                    fprintf(stderr, "    paint %d ev=%d dev(%.1f,%.1f)-(%.1f,%.1f) bad=%d%s\n", k, p->ev,
+                            p->x0, p->y0, p->x1, p->y1, p->bad, sb[k] ? " in-S" : "");
+            }
+        }
+    }
     if (any) { out->sbits = sb; out->nseq = np; }
     else free(sb);
 }
