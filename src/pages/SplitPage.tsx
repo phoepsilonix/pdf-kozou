@@ -562,7 +562,13 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             mobilePlatform={mobilePlatform}
             style={s.bpCurrent}
           />
-          <div style={s.bpLog}>
+          <div
+            style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}
+            ref={(el) => {
+              // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
+              if (el) el.scrollTop = el.scrollHeight;
+            }}
+          >
             {batchProgress.done.map((d) => (
               <div key={d.file} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -1610,8 +1616,10 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: 18,
     padding: 40,
+    minHeight: 0,
+    overflow: "hidden",
   },
-  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)", flexShrink: 0 },
   bpBar: {
     width: "100%",
     maxWidth: 480,
@@ -1619,6 +1627,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-border)",
     borderRadius: 4,
     overflow: "hidden",
+    flexShrink: 0,
   },
   bpFill: {
     height: "100%",
@@ -1633,6 +1642,7 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    flexShrink: 0,
   },
   bpLog: {
     width: "100%",
@@ -1651,6 +1661,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     borderRadius: 6,
     border: `1px solid var(--c-border)`,
+    flexShrink: 0,
   },
   bpLogFile: {
     flex: 1,

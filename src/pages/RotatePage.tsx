@@ -515,7 +515,13 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
             mobilePlatform={mobilePlatform}
             style={s.bpCurrent}
           />
-          <div style={s.bpLog}>
+          <div
+            style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}
+            ref={(el) => {
+              // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
+              if (el) el.scrollTop = el.scrollHeight;
+            }}
+          >
             {batchProgress.done.map((d) => (
               <div key={d.file} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -723,7 +729,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                   outDir
                 )}
               </div>
-              <div style={s.bpLog}>
+              <div style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}>
                 {batchProgress.done.map((d) => (
                   <div key={d.file} style={s.bpRow}>
                     <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -1391,6 +1397,8 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     gap: 14,
+    minHeight: 0,
+    overflow: "hidden",
   },
   resultIcon: { fontSize: 56, color: "var(--c-accent)" },
   resultStat: { fontSize: 20, fontWeight: 700, color: "var(--c-text)" },
@@ -1403,8 +1411,10 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: 16,
     padding: 32,
+    minHeight: 0,
+    overflow: "hidden",
   },
-  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)", flexShrink: 0 },
   bpBarWrap: {
     width: "100%",
     maxWidth: 440,
@@ -1412,6 +1422,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-border)",
     borderRadius: 4,
     overflow: "hidden",
+    flexShrink: 0,
   },
   bpBar: {
     height: "100%",
@@ -1426,6 +1437,7 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    flexShrink: 0,
   },
   bpLog: {
     width: "100%",
@@ -1445,6 +1457,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     borderRadius: 6,
     border: `1px solid var(--c-border)`,
+    flexShrink: 0,
   },
   bpFile: {
     fontSize: FS.caption,

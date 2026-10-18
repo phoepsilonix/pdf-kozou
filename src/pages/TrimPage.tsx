@@ -476,7 +476,13 @@ function TrimPageBatch({
         <div style={b.barWrap}>
           <div style={{ ...b.bar, width: `${pct}%` }} />
         </div>
-        <div style={b.log}>
+        <div
+          style={{ ...b.log, flex: "0 1 auto", minHeight: 0 }}
+          ref={(el) => {
+            // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
+            if (el) el.scrollTop = el.scrollHeight;
+          }}
+        >
           {progress.done.map((d) => (
             <div key={d.f} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -537,7 +543,7 @@ function TrimPageBatch({
             usePdfStore.getState().lastSaveDir
           )}
         </div>
-        <div style={b.log}>
+        <div style={{ ...b.log, flex: "0 1 auto", minHeight: 0 }}>
           {progress.done.map((d) => (
             <div key={d.f} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -2171,8 +2177,11 @@ const b: Record<string, React.CSSProperties> = {
     gap: 14,
     background: "var(--c-bg)",
     padding: 32,
+    minHeight: 0,
+    overflow: "hidden",
+    boxSizing: "border-box",
   },
-  title: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
+  title: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)", flexShrink: 0 },
   barWrap: {
     width: "100%",
     maxWidth: 460,
@@ -2180,6 +2189,7 @@ const b: Record<string, React.CSSProperties> = {
     background: "var(--c-border)",
     borderRadius: 4,
     overflow: "hidden",
+    flexShrink: 0,
   },
   bar: { height: "100%", background: "var(--c-accent)", borderRadius: 4, transition: "width 0.3s" },
   log: {
@@ -2200,6 +2210,7 @@ const b: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     borderRadius: 6,
     border: `1px solid var(--c-border)`,
+    flexShrink: 0,
   },
   logFile: {
     fontSize: FS.caption,
@@ -2222,5 +2233,6 @@ const b: Record<string, React.CSSProperties> = {
     fontSize: FS.body,
     fontFamily: F,
     marginTop: 8,
+    flexShrink: 0,
   },
 };

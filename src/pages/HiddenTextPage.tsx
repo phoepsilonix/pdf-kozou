@@ -583,7 +583,13 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           </div>
           {/* 右: ログ */}
           <div style={rightStyle}>
-            <div style={s.preview}>
+            <div
+              style={s.preview}
+              ref={(el) => {
+                // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
+                if (el) el.scrollTop = el.scrollHeight;
+              }}
+            >
               <div style={s.sec}>
                 {progress.done.map((d) => (
                   <div key={d.file} style={s.statusBox}>

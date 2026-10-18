@@ -845,7 +845,7 @@ export function CompressPage({
   }
   if (phase === "processing" && isBatch && batchProg) {
     return (
-      <div style={c.center}>
+      <div style={c.bpCenter}>
         <div style={c.bpTitle}>
           {t("compress.processing", {
             current: String(batchProg.cur),
@@ -857,7 +857,13 @@ export function CompressPage({
         </div>
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
         <Spinner label={t("compress.processing")} />
-        <div style={c.bpLog}>
+        <div
+          style={c.bpLog}
+          // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
+          ref={(el) => {
+            if (el) el.scrollTop = el.scrollHeight;
+          }}
+        >
           {batchProg.done.map((d) => (
             <div key={d.file} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
@@ -905,7 +911,7 @@ export function CompressPage({
   }
   if (phase === "batchResult" && batchProg) {
     return (
-      <div style={c.center}>
+      <div style={c.bpCenter}>
         <span
           style={{
             fontSize: 52,
@@ -2028,7 +2034,7 @@ const c: Record<string, React.CSSProperties> = {
   saveBtnMain: { fontSize: FS.label, fontWeight: 700, color: "var(--c-text)" },
   saveBtnSub: { fontSize: FS.caption, color: "var(--c-textSub)" },
 
-  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)" },
+  bpTitle: { fontSize: FS.subtitle, fontWeight: 700, color: "var(--c-text)", flexShrink: 0 },
   bpBarWrap: {
     width: "100%",
     maxWidth: 440,
@@ -2036,6 +2042,7 @@ const c: Record<string, React.CSSProperties> = {
     background: "var(--c-border)",
     borderRadius: 4,
     overflow: "hidden",
+    flexShrink: 0,
   },
   bpBar: {
     height: "100%",
@@ -2043,8 +2050,23 @@ const c: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     transition: "width 0.3s",
   },
-  bpCurFile: { fontSize: FS.small, color: "var(--c-textSub)" },
-  bpOutDir: { fontSize: FS.caption, color: "var(--c-textDim)" },
+  bpCurFile: { fontSize: FS.small, color: "var(--c-textSub)", flexShrink: 0 },
+  bpOutDir: { fontSize: FS.caption, color: "var(--c-textDim)", flexShrink: 0 },
+  // バッチの進捗/結果画面用。center と違い、高さの上限を持ち、はみ出しを隠す。
+  // ログ(bpLog)は縮んで内部でスクロールする (中央寄せのまま、長いときだけ縮む)。
+  bpCenter: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    boxSizing: "border-box",
+    minHeight: 0,
+    overflow: "hidden",
+    gap: 16,
+    background: "var(--c-bg)",
+    padding: 32,
+  },
   bpLog: {
     width: "100%",
     maxWidth: 480,
@@ -2052,6 +2074,8 @@ const c: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 5,
     maxHeight: 360,
+    flex: "0 1 auto",
+    minHeight: 0,
     overflowY: "auto",
   },
   bpRow: {
@@ -2063,6 +2087,7 @@ const c: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
     borderRadius: 6,
     border: `1px solid var(--c-border)`,
+    flexShrink: 0,
   },
   bpFile: {
     fontSize: FS.small,
