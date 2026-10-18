@@ -6652,15 +6652,22 @@ static int kozou_lowfill_solid_rects(
         queue = (int *)fz_malloc(ctx, sizeof(int) * cells);
         #define KZ_ON(x, y) ((x) >= 0 && (x) < pw && (y) >= 0 && (y) < ph && sp[(y) * stride + (x)] >= 128)
         #define KZ_THIN(x, y) ((x) >= 0 && (x) < pw && (y) >= 0 && (y) < ph && sp[(y) * stride + (x)] >= 48)
-        /* 厚みのある格子: 自分が塗られ、左右どちらかと上下どちらかも塗られている */
+        /* 厚みのある格子: 周囲 (半径 R 格子 ≒ 1pt) がすべて塗られている = 厚み 3pt 以上。
+         * 表の罫線 (1〜2pt 幅) は厚みが足りず、ここで落ちる。 */
+        int R = (int)ceilf(1.0f * sc);
+        if (R < 1) R = 1;
         int qh = 0, qt = 0;
         for (int y = 0; y < ph; y++)
-            for (int x = 0; x < pw; x++)
-                if (KZ_ON(x, y) && (KZ_ON(x - 1, y) || KZ_ON(x + 1, y)) &&
-                    (KZ_ON(x, y - 1) || KZ_ON(x, y + 1))) {
+            for (int x = 0; x < pw; x++) {
+                int all = 1;
+                for (int dy = -R; dy <= R && all; dy++)
+                    for (int dx = -R; dx <= R; dx++)
+                        if (!KZ_ON(x + dx, y + dy)) { all = 0; break; }
+                if (all) {
                     keep[(size_t)y * pw + x] = 1;
                     queue[qt++] = y * pw + x;
                 }
+            }
         if (qt == 0) goto lowfill_done;   /* 厚みのある部分が無い (罫線・枠だけ) → 覆いにしない */
         /* 厚みのある部分につながった細い線 (吊り紐など) も同じ塗りの一部として含める。
          * 厚い部分を持たない線パスは上で除外済みなので、罫線グリッドは影響を受けない。 */
