@@ -7197,6 +7197,36 @@ static fz_device *kozou_new_filter_device(
     return (fz_device *)f;
 }
 
+/* 整数倍 m の高解像度画素 (big: tw*m × th*m) を、m×m ブロックの面積平均で
+ * tw×th に縮小する。fz_scale_pixmap の縮小フィルタ (simple) は 2 画素ほどにわたって
+ * 縁をにじませる。覆い層は元のベクター図形の上に重ねるため、にじんだ縁は
+ * 帯や図形が太く見える原因になる。面積平均なら縁の被覆率が正確に保たれる。
+ * 前乗算アルファ (mode 1) でも各成分の平均で正しい。 */
+static fz_pixmap *kozou_box_downscale(
+    fz_context *ctx, const fz_pixmap *big, int m, int tw, int th)
+{
+    int n = big->n;
+    fz_irect bb = { 0, 0, tw, th };
+    fz_pixmap *out = fz_new_pixmap_with_bbox(ctx, big->colorspace, bb, NULL, big->alpha);
+    int bstride = (int)big->stride, ostride = (int)out->stride;
+    int area = m * m;
+    for (int y = 0; y < th; y++) {
+        unsigned char *op = out->samples + (size_t)y * ostride;
+        for (int x = 0; x < tw; x++) {
+            for (int c = 0; c < n; c++) {
+                unsigned int sum = 0;
+                for (int dy = 0; dy < m; dy++) {
+                    const unsigned char *bp = big->samples +
+                        (size_t)(y * m + dy) * bstride + (size_t)(x * m) * n + c;
+                    for (int dx = 0; dx < m; dx++) sum += bp[(size_t)dx * n];
+                }
+                op[(size_t)x * n + c] = (unsigned char)((sum + (unsigned)area / 2) / (unsigned)area);
+            }
+        }
+    }
+    return out;
+}
+
 /* 背景と同じ画素格子 (同じ ctm・サイズ・スーパーサンプリング) で、フィルタ付きに
  * ページを描く。mode 0: RGB 不透明・白地 / mode 1: RGBA 透明地 (前乗算アルファ)。
  * *out_seq に数えた塗りの数を返す (記録側の paint_count と一致するはず)。 */
@@ -7226,7 +7256,11 @@ static fz_pixmap *kozou_render_page_filtered(
         fz_run_page(ctx, page, fdev, fz_identity, NULL);
         fz_close_device(ctx, fdev);
         if (out_seq) *out_seq = ((KozouFilterDevice *)fdev)->seq;
-        if (m > 1) {
+        if (m > 1 && mode == 1) {
+            /* 覆い層: 縁をにじませない面積平均で縮小する (上の説明を参照)。
+             * 背景 (mode 0) は従来どおり fz_scale_pixmap で、背景の見た目は変えない。 */
+            out = kozou_box_downscale(ctx, big, m, tw, th);
+        } else if (m > 1) {
             out = fz_scale_pixmap(ctx, big, 0.0f, 0.0f, (float)tw, (float)th, NULL);
             if (!out) fz_throw(ctx, FZ_ERROR_GENERIC, "kozou: filtered downscale failed");
         } else {
