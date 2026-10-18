@@ -8537,6 +8537,65 @@ static KozouLayerPlan *kozou_keeptext_plan_layers(
 
 /* 層分割する領域の覆い層 (RGBA を、背景と同じ画素格子で切り出したもの) を PDF に追加し、
  * テキストの上に重ねる content 片を追記する。追加した枚数を返す。 */
+/* 覆い画像のRGBのうち、アルファ0 (完全に透明) の画素は、見た目に影響しないが、
+ * 黒(0)のままだと、後段で RGB が JPEG 圧縮されたとき、不透明部分 (例: 金色の星) との
+ * 境で大きな色差のためリンギングが出て、縁や色がゆらぐ。透明画素のRGBを、近くの
+ * 不透明画素の色で埋めて (色のにじませ)、圧縮に有利な滑らかな画像にする。
+ * 不透明画素が全く無いときは何もしない。 */
+#define KOZOU_BLEED_PASSES 12
+static void kozou_bleed_transparent_rgb(
+    unsigned char *rgb, int rgb_stride, const unsigned char *alpha, int tw, int th)
+{
+    size_t cells = (size_t)tw * (size_t)th;
+    unsigned char *done = (unsigned char *)calloc(cells, 1);
+    unsigned char *next = (unsigned char *)malloc(cells);
+    if (!done || !next) { free(done); free(next); return; }
+    unsigned long long sum[3] = {0, 0, 0};
+    size_t nopaque = 0;
+    for (size_t i = 0; i < cells; i++) {
+        if (alpha[i]) {
+            done[i] = 1; nopaque++;
+            int y = (int)(i / (size_t)tw), x = (int)(i % (size_t)tw);
+            for (int c = 0; c < 3; c++) sum[c] += rgb[(size_t)y * rgb_stride + (size_t)x * 3 + c];
+        }
+    }
+    if (nopaque == 0) { free(done); free(next); return; }
+    for (int pass = 0; pass < KOZOU_BLEED_PASSES; pass++) {
+        memcpy(next, done, cells);
+        int any = 0;
+        for (int y = 0; y < th; y++) {
+            for (int x = 0; x < tw; x++) {
+                size_t i = (size_t)y * tw + x;
+                if (done[i]) continue;
+                unsigned int acc[3] = {0, 0, 0}; int n = 0;
+                static const int dx4[4] = {-1, 1, 0, 0}, dy4[4] = {0, 0, -1, 1};
+                for (int k = 0; k < 4; k++) {
+                    int nx = x + dx4[k], ny = y + dy4[k];
+                    if (nx < 0 || nx >= tw || ny < 0 || ny >= th) continue;
+                    if (!done[(size_t)ny * tw + nx]) continue;
+                    for (int c = 0; c < 3; c++) acc[c] += rgb[(size_t)ny * rgb_stride + (size_t)nx * 3 + c];
+                    n++;
+                }
+                if (n) {
+                    for (int c = 0; c < 3; c++)
+                        rgb[(size_t)y * rgb_stride + (size_t)x * 3 + c] = (unsigned char)((acc[c] + n / 2) / n);
+                    next[i] = 1; any = 1;
+                }
+            }
+        }
+        memcpy(done, next, cells);
+        if (!any) break;
+    }
+    /* まだ埋まっていない (不透明部分から遠い) 画素は、不透明画素の平均色にする */
+    unsigned char avg[3];
+    for (int c = 0; c < 3; c++) avg[c] = (unsigned char)(sum[c] / nopaque);
+    for (int y = 0; y < th; y++)
+        for (int x = 0; x < tw; x++)
+            if (!done[(size_t)y * tw + x])
+                for (int c = 0; c < 3; c++) rgb[(size_t)y * rgb_stride + (size_t)x * 3 + c] = avg[c];
+    free(done); free(next);
+}
+
 /* 隣接/近接する層分割領域を1枚の画像にまとめるためのクラスタ化。
  *
  * 個々の領域ごとに別々の画像で覆い層を出力すると、閲覧側によっては隣り合う
@@ -8596,6 +8655,12 @@ static int kozou_keeptext_emit_overlays(
                 fz_try(ctx) fz_append_data(ctx, mbuf, arow, (size_t)tw);
                 fz_always(ctx) free(arow);
                 fz_catch(ctx) fz_rethrow(ctx);
+            }
+            {
+                unsigned char *mdata = NULL;
+                size_t mlen = fz_buffer_storage(ctx, mbuf, &mdata);
+                if (mdata && mlen >= (size_t)tw * (size_t)th)
+                    kozou_bleed_transparent_rgb(rgb->samples, (int)rgb->stride, mdata, tw, th);
             }
             char name[64];
             snprintf(name, sizeof(name), "KzOv%d_%d", page_index, added);
