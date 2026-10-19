@@ -6781,6 +6781,9 @@ static void kozou_buried_fill_path(
                 cr->x0 = r.x0; cr->y0 = r.y0; cr->x1 = r.x1; cr->y1 = r.y1;
                 dev->list->lowfill_cover_count++;
             }
+            if (getenv("KOZOU_KEEPTEXT_DEBUG") && (bbox.x1 - bbox.x0) * (bbox.y1 - bbox.y0) > 3000.0f)
+                fprintf(stderr, "[kozou cover-src] route=lowfill ev=%d bbox=(%.1f,%.1f)-(%.1f,%.1f) ratio=%.3f alpha=%.2f even_odd=%d rects=%d\n",
+                        ev, bbox.x0, bbox.y0, bbox.x1, bbox.y1, fill_ratio, alpha, even_odd, nr);
         }
         fz_always(ctx) { fz_free(ctx, rects); }
         fz_catch(ctx) { /* 失敗しても従来どおり覆いなしとして続行 */ }
@@ -6798,6 +6801,9 @@ static void kozou_buried_fill_path(
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
     cr->x0 = clipped_bbox.x0; cr->y0 = clipped_bbox.y0;
     cr->x1 = clipped_bbox.x1; cr->y1 = clipped_bbox.y1;
+    if (getenv("KOZOU_KEEPTEXT_DEBUG") && (bbox.x1 - bbox.x0) * (bbox.y1 - bbox.y0) > 3000.0f)
+        fprintf(stderr, "[kozou cover-src] route=normal ev=%d bbox=(%.1f,%.1f)-(%.1f,%.1f) ratio=%.3f alpha=%.2f even_odd=%d\n",
+                cr->event_index, bbox.x0, bbox.y0, bbox.x1, bbox.y1, fill_ratio, alpha, even_odd);
 }
 
 static void kozou_buried_fill_image(
