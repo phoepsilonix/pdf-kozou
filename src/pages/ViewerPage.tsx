@@ -1784,6 +1784,8 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                     style={{
                       position: "relative",
                       display: "inline-block",
+                      flexShrink: 0,
+                      margin: "0 auto",
                       boxShadow: `0 4px ${Math.round(32 * zoom)}px rgba(0,0,0,0.7)`,
                     }}
                   >
@@ -2131,14 +2133,25 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bg)",
   },
   viewScroll: { flex: 1, overflow: "auto" },
+  // justifyContent: "center" だとページが親より広いとき左側へはみ出した分が
+  // スクロール範囲(負方向)に入らず、見開きなど横長PDFの左側を見られなくなる。
+  // 中央寄せは子要素の margin: 0 auto で行い、はみ出し時は左端から右へスクロールできるようにする。
   viewInner: {
     display: "flex",
     alignItems: "flex-start",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     minWidth: "100%",
+    width: "max-content",
+    boxSizing: "border-box",
     padding: "24px 24px 0",
   },
-  viewCenter: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 },
+  viewCenter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 300,
+    margin: "0 auto",
+  },
   viewSpinner: {
     width: 32,
     height: 32,
