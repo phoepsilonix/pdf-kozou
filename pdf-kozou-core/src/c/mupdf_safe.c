@@ -1529,6 +1529,20 @@ static KozouFit kozou_fit_page_for_raster(fz_rect bounds, float dpi)
 /* 大きさ(画素数)だけを見る処理 (文字サイズ×倍率など) 用の代表値 */
 static float kozou_scale_mean(KozouScale s) { return 0.5f * (s.x + s.y); }
 
+/* ページを画素にレンダリングする描画デバイスの生成。
+ * 通常の fz_new_draw_device は、画像を描くとき、画像の矩形を整数画素の格子へ
+ * 「外側に」スナップする (左上を切り下げ、右下を切り上げる)。このため、画像の
+ * 4辺は平均で約 0.5 画素ずつ外へはみ出し (144dpi で縦横とも約 +1 画素大きく
+ * なる)、写真の外周が原本より余分に見える・位置が少しずれる原因になっていた。
+ * fz_new_draw_device_type3 は、このスナップを行わない (画像の端は縮尺時の
+ * アルファで半端な画素に正しく反映される)。それ以外の描画は通常と同じ
+ * (MuPDF 内の FZ_DRAWDEV_FLAGS_TYPE3 は、画像のスナップの有無にのみ使われる)。
+ * 背景・覆い層・差分検出が同じ画素格子で一致するよう、ページ描画はすべてこれで行う。 */
+static fz_device *kozou_new_page_draw_device(fz_context *ctx, fz_matrix transform, fz_pixmap *dest)
+{
+    return fz_new_draw_device_type3(ctx, transform, dest);
+}
+
 /* 汎用の低レベルプリミティブ: 与えられた ctm・目標サイズでページを
  * pixmap にレンダリングする。mult<=1 なら直接描画(従来と同一)。
  * mult>1 なら ctm をさらに mult 倍したデバイス空間で一時的に描いてから
@@ -1547,7 +1561,7 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
     if (mult <= 1) {
         pixmap = fz_new_pixmap_with_bbox(ctx, rgb, target_bbox, NULL, 0);
         fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
-        fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
+        fz_device *draw_dev = kozou_new_page_draw_device(ctx, ctm, pixmap);
         if (exclude_text) {
             draw_dev->fill_text        = NULL;
             draw_dev->stroke_text      = NULL;
@@ -1575,7 +1589,7 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
         fz_clear_pixmap_with_value(ctx, big, 0xff);
 
         fz_try(ctx) {
-            fz_device *draw_dev = fz_new_draw_device(ctx, big_ctm, big);
+            fz_device *draw_dev = kozou_new_page_draw_device(ctx, big_ctm, big);
             if (exclude_text) {
                 draw_dev->fill_text        = NULL;
                 draw_dev->stroke_text      = NULL;
@@ -2014,7 +2028,7 @@ void kozou_rasterize_no_text(
                 fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
 
                 {
-                    fz_device *draw_dev = fz_new_draw_device(ctx, ctm, pixmap);
+                    fz_device *draw_dev = kozou_new_page_draw_device(ctx, ctm, pixmap);
                     /* テキストを一切描画しない: コールバックを NULL にして
                      * fz_run_page からのテキスト系オペレータを無視させる。
                      * Type3 グリフもこの fill_text 経由でしか描画されない
@@ -7256,7 +7270,7 @@ static fz_pixmap *kozou_render_page_filtered(
         big = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), big_bbox, NULL, alpha);
         if (alpha) fz_clear_pixmap(ctx, big);
         else       fz_clear_pixmap_with_value(ctx, big, 0xff);
-        inner = fz_new_draw_device(ctx, big_ctm, big);
+        inner = kozou_new_page_draw_device(ctx, big_ctm, big);
         fdev  = kozou_new_filter_device(ctx, inner, sbits, nseq, mode);
         inner = NULL; /* fdev が所有 */
         fz_run_page(ctx, page, fdev, fz_identity, NULL);
@@ -8161,7 +8175,7 @@ static fz_pixmap *kozou_render_text_layer_rgba(
         big = fz_new_pixmap_with_bbox(ctx, rgb, big_bbox, NULL, 1);
         fz_clear_pixmap(ctx, big); /* 全透明 */
 
-        fz_device *dev = fz_new_draw_device(ctx, big_ctm, big);
+        fz_device *dev = kozou_new_page_draw_device(ctx, big_ctm, big);
         dev->fill_image = NULL; /* 背景画像は描かない */
         fz_try(ctx) {
             fz_run_page(ctx, page, dev, fz_identity, NULL);
@@ -13966,7 +13980,7 @@ static fz_pixmap *kozou_render_cell(
         pix = fz_new_pixmap_with_bbox(ctx, rgb, bbox, NULL, 0);
         fz_clear_pixmap_with_value(ctx, pix, 0xff);
 
-        fz_device *dev = fz_new_draw_device(ctx, ctm, pix);
+        fz_device *dev = kozou_new_page_draw_device(ctx, ctm, pix);
         fz_try(ctx) {
             fz_run_page(ctx, pg, dev, fz_identity, NULL);
             fz_close_device(ctx, dev);
@@ -14898,7 +14912,7 @@ void kozou_compose_imposition_pdf_keep_text(
                         fz_var(pg); fz_var(bgdev);
                         fz_try(ctx) {
                             pg = fz_load_page(ctx, (fz_document *)src, pno);
-                            bgdev = fz_new_draw_device(ctx, pixm, big);
+                            bgdev = kozou_new_page_draw_device(ctx, pixm, big);
                             bgdev->fill_text        = NULL;
                             bgdev->stroke_text      = NULL;
                             bgdev->clip_text        = NULL;
