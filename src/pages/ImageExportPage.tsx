@@ -82,10 +82,28 @@ type OutputMode = "images" | "pdf";
 // (画像/画像化PDF)・面付けモードのいずれも前回選択が引き継がれて
 // いなかった(以前のリリースから未実装のまま放置されていた)ため、
 // HiddenTextPage.tsx の LAST_THR_KEY と同じ localStorage パターンで
-// 補完する。
+// 補完する。高品質アンチエイリアス・テキスト保持(キープテキスト)の
+// チェックも同じ扱いで記憶する。
 const LAST_IMAGE_FORMAT_KEY = "image_export_last_format";
 const LAST_OUTPUT_MODE_KEY = "image_export_last_output_mode";
 const LAST_IMPOSITION_MODE_KEY = "image_export_last_imposition_mode";
+const LAST_SUPERSAMPLE_KEY = "image_export_last_supersample";
+const LAST_KEEP_TEXT_KEY = "image_export_last_keep_text";
+
+// 真偽値のチェックボックス用。保存値は "1"/"0"。未保存・不正値は null（既定値を使う）。
+function loadLastBool(key: string): boolean | null {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch {}
+  return null;
+}
+function saveLastBool(key: string, v: boolean) {
+  try {
+    localStorage.setItem(key, v ? "1" : "0");
+  } catch {}
+}
 
 function loadLastImageFormat(): ImageFormat | null {
   try {
@@ -277,7 +295,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // ONの場合、dpi<300 のときのみ内部を高dpiでレンダリングしてから縮小し、
   // 細い罫線/ヘアラインの消失・フェードを緩和する(出力のdpi/qualityは
   // 変わらないが生成時間はやや増える)。
-  const [supersample, setSupersample] = useState(true);
+  // 前回の選択を記憶する（無ければ既定のON）。
+  const [supersample, setSupersample] = useState(() => loadLastBool(LAST_SUPERSAMPLE_KEY) ?? true);
   const SUPERSAMPLE_MAX_MULT = 6;
   // 出力ファイル名の中間ラベル（初期値はモードの操作トークン。空可・自由入力可）
   const [label, setLabel] = useState("");
@@ -290,13 +309,17 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 画像PDF化(フォント保持版)テスト用トグル。GUIには通常表示しない
   // 実験的機能で、compose_image_pdf_keep_text (Stage2) の動作確認用。
   // デフォルトはOFF、面付けモードでは非対応。
-  const [keepTextExperimental, setKeepTextExperimental] = useState(false);
+  // 前回の選択を記憶する（チェックボックスは出力モードが「画像化PDF」のときだけ表示される）。
+  const [keepTextExperimental, setKeepTextExperimental] = useState(
+    () => loadLastBool(LAST_KEEP_TEXT_KEY) ?? false,
+  );
   const [pdfName, setPdfName] = useState("");
   const [outDir, setOutDir] = useState("");
 
   const [pages, setPages] = useState(""); // "" = 全ページ
 
-  // 出力形式・出力モード・面付けモードは、選択が変わるたびに記憶する
+  // 出力形式・出力モード・面付けモード・高品質アンチエイリアス・テキスト保持は、
+  // 選択が変わるたびに記憶する
   // （実行ボタンを押さずページを離れても次回に引き継がれるようにする）。
   useEffect(() => {
     saveLastImageFormat(format);
@@ -307,6 +330,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   useEffect(() => {
     saveLastImpositionMode(impositionMode);
   }, [impositionMode]);
+  useEffect(() => {
+    saveLastBool(LAST_SUPERSAMPLE_KEY, supersample);
+  }, [supersample]);
+  useEffect(() => {
+    saveLastBool(LAST_KEEP_TEXT_KEY, keepTextExperimental);
+  }, [keepTextExperimental]);
 
   // pages 指定を正確に展開したページ数（odd/even/末尾省略も対応）
   const resolvedPageCount = useMemo(
