@@ -4,7 +4,8 @@
 // src/pages/ViewerPage.tsx — MuPDF ビューア（軽量版）
 //
 // 設計：
-//   - レンダリング DPI=96 固定（軽量）、ズームは CSS transform のみ
+//   - 描画 DPI は表示される実画素数（ズーム × devicePixelRatio）に合わせて 96〜288 の段階で選ぶ
+//     （画像の論理サイズは常に 96dpi 基準。WebView の拡大縮小補間を避ける）
 //   - テキストは行単位の透明 div（DOM 軽量、文字ごとの span は廃止）
 //   - 画像表示後に stext を遅延取得
 //   - 前後1ページをプリフェッチ
@@ -33,11 +34,12 @@ import {
 import { F } from "../lib/theme";
 import { FS } from "../lib/typography";
 import { getUiScale } from "../lib/uiScale";
+import { BASE_DPI, PageImageCache, pickRenderDpi, useDevicePixelRatio } from "../lib/viewerRender";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 const THUMB_DPI = 52;
-const RENDER_DPI = 96; // 固定。ズームは CSS transform で対応
+const RENDER_DPI = BASE_DPI; // 文字選択・リンク座標の論理 dpi（画像の描画 dpi とは別）
 
 // ── ユーティリティ ────────────────────────────────────────────────────────────
 function pageAspect(info: PdfInfo | null, i: number): number {
@@ -1153,14 +1155,17 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   // ホーム画面のレイアウト設定（リフロー可能文書用）
   const { convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
 
-  // メイン画像キャッシュ（path → page → b64）
-  const imgCache = useRef<Map<string, Map<number, string>>>(new Map());
+  // メイン画像キャッシュ（path, page, 描画dpi → b64。総容量に上限あり）
+  const [imgCache] = useState(() => new PageImageCache());
+  // 描画中リクエストの共有（同じ画像の二重描画を避ける）
+  const inflight = useRef<Map<string, Promise<string>>>(new Map());
 
-  // 表示中ページの状態
-  const [mainImg, setMainImg] = useState<string>("");
+  // 表示中ページの状態（画像・その描画dpi・実サイズは常にセットで更新する）
+  const [shown, setShown] = useState<{ b64: string; dpi: number; w: number; h: number } | null>(
+    null,
+  );
+  const mainImg = shown?.b64 ?? "";
   const [mainLoading, setMainLoading] = useState(false);
-  const [imgNaturalW, setImgNaturalW] = useState(0);
-  const [imgNaturalH, setImgNaturalH] = useState(0);
 
   // stext（遅延取得）
   const [textBlocks, setTextBlocks] = useState<STextBlock[]>([]);
@@ -1290,100 +1295,128 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     if (key === lastLayoutKey.current) return;
     lastLayoutKey.current = key;
     // 非 PDF のキャッシュのみクリア（PDF はレイアウト不変）
-    for (const path of [...imgCache.current.keys()]) {
+    for (const path of imgCache.paths()) {
       if (!path.toLowerCase().endsWith(".pdf")) {
-        imgCache.current.delete(path);
+        imgCache.deletePath(path);
         thumbCache.current.delete(path);
       }
     }
     // infoKey もリセットして再取得を促す
     lastInfoKey.current = "";
-  }, [convertLayoutW, convertLayoutH, convertLayoutEm]);
+  }, [convertLayoutW, convertLayoutH, convertLayoutEm, imgCache]);
 
   // 非 PDF ファイルの変換済みパスキャッシュ（変換は1回だけ）
   // ── 2. メイン画像レンダリング（キャッシュ付き）────────────────────────────
+  // 描画 dpi: 表示される実画素数（ズーム × devicePixelRatio × UI倍率）に合わせた段階。
+  // ズーム操作中は描き直さず、止まって 250ms 後の値で決める（それまでは表示中の画像を CSS で拡縮）。
+  const [settledZoom, setSettledZoom] = useState(zoom);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSettledZoom(zoom), 250);
+    return () => window.clearTimeout(id);
+  }, [zoom]);
+  const devicePixelRatio = useDevicePixelRatio();
+  const renderDpi = pickRenderDpi(settledZoom, devicePixelRatio * getUiScale());
+
   const getOrRender = useCallback(
-    async (path: string, page: number): Promise<string> => {
-      if (!imgCache.current.has(path)) imgCache.current.set(path, new Map());
-      // biome-ignore lint/style/noNonNullAssertion: 直前のhas/setで必ずpathのMapが存在
-      const pageMap = imgCache.current.get(path)!;
-      // biome-ignore lint/style/noNonNullAssertion: 直前のpageMap.has(page)チェック済み
-      if (pageMap.has(page)) return pageMap.get(page)!;
-      const b64 = await renderPage(path, page, RENDER_DPI, {
+    async (path: string, page: number, dpi: number): Promise<string> => {
+      const hit = imgCache.get(path, page, dpi);
+      if (hit) return hit;
+      const key = `${path}\u0000${page}@${dpi}`;
+      const running = inflight.current.get(key);
+      if (running) return running;
+      const task = renderPage(path, page, dpi, {
         layoutW: convertLayoutW,
         layoutH: convertLayoutH,
         layoutEm: convertLayoutEm,
-      });
-      pageMap.set(page, b64);
-      return b64;
+      })
+        .then((b64) => {
+          imgCache.set(path, page, dpi, b64);
+          return b64;
+        })
+        .finally(() => {
+          inflight.current.delete(key);
+        });
+      inflight.current.set(key, task);
+      return task;
     },
-    [convertLayoutW, convertLayoutH, convertLayoutEm],
+    [imgCache, convertLayoutW, convertLayoutH, convertLayoutEm],
   );
 
   // プリフェッチ（前後1ページ）
   const prefetch = useCallback(
-    (path: string, page: number, max: number) => {
+    (path: string, page: number, max: number, dpi: number) => {
       [page - 1, page + 1]
         .filter((p) => p >= 0 && p < max)
         .forEach((p) => {
-          getOrRender(path, p).catch(() => {});
+          getOrRender(path, p, dpi).catch(() => {});
         });
     },
     [getOrRender],
   );
 
+  // stext/links を取得済みのページ（path + page）。dpi だけが変わった再実行では取り直さない。
+  const textLoadedKey = useRef("");
+
   useEffect(() => {
     if (!activePath) return;
     let cancelled = false;
-
-    setTextBlocks([]);
-    setPageLinks([]);
+    const pageKey = `${activePath}\u0000${viewPage}`;
+    if (textLoadedKey.current !== pageKey) {
+      setTextBlocks([]);
+      setPageLinks([]);
+    }
     // 検索ヒットはページが変わってもクリアしない（SearchBar が管理）
 
-    // キャッシュがあれば即表示
-    const cached = imgCache.current.get(activePath)?.get(viewPage);
-    if (cached) {
-      setMainImg(cached);
-      setMainLoading(false);
-    } else {
-      setMainLoading(true);
-    }
+    // 画像とその実サイズ・描画 dpi を、デコード完了後にセットで差し替える
+    const show = (b64: string, dpi: number) =>
+      new Promise<void>((resolve) => {
+        const img = new window.Image();
+        img.onload = () => {
+          if (!cancelled) setShown({ b64, dpi, w: img.naturalWidth, h: img.naturalHeight });
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = `data:image/jpeg;base64,${b64}`;
+      });
 
     (async () => {
       try {
-        const b64 = await getOrRender(activePath, viewPage);
+        const exact = imgCache.get(activePath, viewPage, renderDpi);
+        if (!exact) {
+          // 他の dpi の描画済み画像があれば、描き直しの間の暫定表示に使う
+          const best = imgCache.getBest(activePath, viewPage);
+          if (best) await show(best.b64, best.dpi);
+          else setMainLoading(true);
+        }
+        const b64 = exact ?? (await getOrRender(activePath, viewPage, renderDpi));
         if (cancelled) return;
-        setMainImg(b64);
+        await show(b64, renderDpi);
+        if (cancelled) return;
         setMainLoading(false);
-
-        // 画像の実サイズを取得
-        const img = new window.Image();
-        img.onload = () => {
-          if (!cancelled) {
-            setImgNaturalW(img.naturalWidth);
-            setImgNaturalH(img.naturalHeight);
-          }
-        };
-        img.src = `data:image/jpeg;base64,${b64}`;
 
         // PDF のみ stext/links/prefetch を実行（非 PDF は変換のたびにプロセスが起動するため抑制）
         const isPdf = activePath.toLowerCase().endsWith(".pdf");
         if (isPdf) {
           // stext を遅延取得（非同期、失敗しても表示には影響なし）
-          const scale = RENDER_DPI / 72.0;
-          getPageText(activePath, viewPage, scale)
-            .then((r) => {
-              if (!cancelled && r.ok) setTextBlocks(r.blocks);
-            })
-            .catch(() => {});
-          getPageLinks(activePath, viewPage, scale)
-            .then((r) => {
-              if (!cancelled && r.ok) setPageLinks(r.links);
-            })
-            .catch(() => {});
+          if (textLoadedKey.current !== pageKey) {
+            const scale = RENDER_DPI / 72.0;
+            getPageText(activePath, viewPage, scale)
+              .then((r) => {
+                if (!cancelled && r.ok) {
+                  textLoadedKey.current = pageKey;
+                  setTextBlocks(r.blocks);
+                }
+              })
+              .catch(() => {});
+            getPageLinks(activePath, viewPage, scale)
+              .then((r) => {
+                if (!cancelled && r.ok) setPageLinks(r.links);
+              })
+              .catch(() => {});
+          }
 
           // 前後プリフェッチ
-          prefetch(activePath, viewPage, total);
+          prefetch(activePath, viewPage, total, renderDpi);
         }
       } catch (e) {
         if (!cancelled) {
@@ -1396,7 +1429,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activePath, viewPage, getOrRender, prefetch, total]);
+  }, [activePath, viewPage, getOrRender, prefetch, total, renderDpi, imgCache]);
 
   // ── 4. サムネイル ──────────────────────────────────────────────────────────
   // ページ移動時に読み上げ
@@ -1532,8 +1565,10 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
   // 表示サイズ（zoom を直接サイズに反映して transform: scale を使わない）
   // → Linux WebKitGTK で transform: scale 内のテキスト選択座標がずれる問題を回避
-  const displayW = Math.round(imgNaturalW * zoom);
-  const displayH = Math.round(imgNaturalH * zoom);
+  // 論理サイズ = 実サイズ × 96/描画dpi × ズーム（描画 dpi が変わっても見た目の大きさは同じ）
+  const imgLogicalScale = shown ? BASE_DPI / shown.dpi : 1;
+  const displayW = Math.round((shown?.w ?? 0) * imgLogicalScale * zoom);
+  const displayH = Math.round((shown?.h ?? 0) * imgLogicalScale * zoom);
 
   return (
     <div style={{ ...s.root, paddingBottom: "calc(var(--safe-bottom))" }}>
@@ -1793,10 +1828,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                       src={`data:image/jpeg;base64,${mainImg}`}
                       alt={t("viewer.page_alt", { n: String(viewPage + 1) })}
                       style={{ display: "block", width: displayW, height: displayH }}
-                      onLoad={(e) => {
-                        const img = e.currentTarget;
-                        setImgNaturalW(img.naturalWidth);
-                        setImgNaturalH(img.naturalHeight);
+                      onLoad={() => {
                         // ページジャンプ後のヒット位置へスクロール
                         const hit = pendingScrollHit.current;
                         if (hit) {
