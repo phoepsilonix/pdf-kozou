@@ -50,6 +50,24 @@ fn inherited_attr(doc: &lopdf::Document, page_id: lopdf::ObjectId, key: &[u8]) -
     None
 }
 
+/// 継承属性 (Resources / MediaBox / CropBox / Rotate) を各ページ自身の辞書へ展開する。
+/// ページを別ドキュメントへ移す前に呼ぶ（親 Pages ノードを持ち越さないため）。
+pub(crate) fn flatten_inherited_attrs(doc: &mut lopdf::Document, page_ids: &[lopdf::ObjectId]) {
+    use lopdf::Object;
+    for &pid in page_ids {
+        for key in [&b"Resources"[..], b"MediaBox", b"CropBox", b"Rotate"] {
+            let has = doc.get_dictionary(pid).map(|d| d.has(key)).unwrap_or(false);
+            if !has {
+                if let Some(v) = inherited_attr(doc, pid, key) {
+                    if let Ok(Object::Dictionary(d)) = doc.get_object_mut(pid) {
+                        d.set(key.to_vec(), v);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// オブジェクト内の間接参照の番号を一律にずらす（結合時の番号衝突回避）。
 fn shift_refs(obj: &mut lopdf::Object, off: u32) {
     use lopdf::Object;
@@ -94,18 +112,7 @@ fn merge_with_lopdf(req: &MergeRequest) -> Result<MergeResponse> {
         if page_ids.is_empty() {
             return Err(CoreError::Parse(format!("{input_path}: no pages")));
         }
-        for &pid in &page_ids {
-            for key in [&b"Resources"[..], b"MediaBox", b"CropBox", b"Rotate"] {
-                let has = src.get_dictionary(pid).map(|d| d.has(key)).unwrap_or(false);
-                if !has {
-                    if let Some(v) = inherited_attr(&src, pid, key) {
-                        if let Ok(Object::Dictionary(d)) = src.get_object_mut(pid) {
-                            d.set(key.to_vec(), v);
-                        }
-                    }
-                }
-            }
-        }
+        flatten_inherited_attrs(&mut src, &page_ids);
 
         // 番号をずらして dst へ取り込む
         let off = dst.max_id;
