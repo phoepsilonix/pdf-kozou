@@ -239,7 +239,7 @@ fn split_with_lopdf(req: &SplitRequest) -> Result<SplitResponse> {
     let metadata: Vec<(String, String)> = if let Some(ref ov) = req.override_metadata {
         ov.clone()
     } else {
-        crate::compress::collect_metadata(&req.input)
+        crate::compress::metadata_from_doc(&src)
     };
 
     let ranges: Vec<Vec<i32>> = match &req.mode {

@@ -55,6 +55,118 @@ fn kozou_tmp_unique_path(prefix: &str, ext: &str) -> std::path::PathBuf {
 /// 空文字列が返った場合はそのキーが存在しないことを意味する。
 pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
     use crate::convert::is_pdf;
+
+    // PDF はまず lopdf で読み、読めない入力(破損・パスワード付き暗号化等)だけ
+    // 従来の MuPDF 実装へフォールバックする（移行期間中の安全策）。
+    if is_pdf(input) {
+        match collect_metadata_lopdf(input) {
+            Ok(result) => {
+                eprintln!("[metadata] collected {} keys from {input}", result.len());
+                return result;
+            }
+            Err(e) => {
+                eprintln!("[metadata] lopdf path failed ({e}); falling back to MuPDF");
+            }
+        }
+    }
+    collect_metadata_mupdf(input)
+}
+
+const INFO_KEYS: [&str; 8] = [
+    "Title",
+    "Author",
+    "Subject",
+    "Keywords",
+    "Creator",
+    "Producer",
+    "CreationDate",
+    "ModDate",
+];
+
+/// PDF のテキスト文字列(バイト列)を UTF-8 にする。
+///
+/// BOM で判別する: UTF-16BE (FE FF) / UTF-16LE (FF FE, 非標準だが存在する) /
+/// UTF-8 (EF BB BF, PDF 2.0)。BOM が無ければ、正しい UTF-8 ならそのまま、そうでなければ PDFDocEncoding。
+/// 壊れたバイト列でも失敗させず、置換文字を使って読めるところまで読む。
+fn decode_pdf_text(bytes: &[u8]) -> String {
+    let utf16 = |body: &[u8], be: bool| -> String {
+        let units: Vec<u16> = body
+            .chunks_exact(2)
+            .map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) })
+            .collect();
+        String::from_utf16_lossy(&units)
+    };
+    if let Some(body) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        utf16(body, true)
+    } else if let Some(body) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        utf16(body, false)
+    } else if let Some(body) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        String::from_utf8_lossy(body).into_owned()
+    } else if !bytes.is_ascii() && std::str::from_utf8(bytes).is_ok() {
+        // BOM の無い UTF-8（非標準だが日本語 PDF で見かける）。MuPDF と同様に UTF-8 として読む
+        String::from_utf8_lossy(bytes).into_owned()
+    } else {
+        let obj = lopdf::Object::String(bytes.to_vec(), lopdf::StringFormat::Literal);
+        lopdf::decode_text_string(&obj)
+            // PDFDocEncoding で未定義のバイトがあれば Latin-1 として読む
+            .unwrap_or_else(|_| bytes.iter().map(|&b| b as char).collect())
+    }
+}
+
+/// Info 辞書の値（文字列または名前。間接参照は最大 8 段まで解決）を文字列にする。
+fn info_value_to_string(doc: &lopdf::Document, obj: &lopdf::Object) -> Option<String> {
+    use lopdf::Object;
+    let mut cur = obj.clone();
+    for _ in 0..8 {
+        match cur {
+            Object::Reference(id) => cur = doc.get_object(id).ok()?.clone(),
+            Object::String(ref bytes, _) => return Some(decode_pdf_text(bytes)),
+            Object::Name(ref n) => return Some(String::from_utf8_lossy(n).into_owned()),
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// 読み込み済みの lopdf 文書の /Info 辞書からメタデータを収集する。
+/// /Info が無い（または辞書でない）場合は空。
+pub fn metadata_from_doc(doc: &lopdf::Document) -> Vec<(String, String)> {
+    use lopdf::Object;
+    let info = match doc.trailer.get(b"Info") {
+        Ok(Object::Reference(id)) => doc.get_dictionary(*id).ok(),
+        Ok(Object::Dictionary(d)) => Some(d),
+        _ => None,
+    };
+    let Some(info) = info else {
+        return vec![];
+    };
+    let mut result = Vec::new();
+    for key in INFO_KEYS {
+        if let Ok(v) = info.get(key.as_bytes()) {
+            if let Some(s) = info_value_to_string(doc, v) {
+                let s = s.trim().to_string();
+                if !s.is_empty() {
+                    eprintln!("[metadata] {key} = {s}");
+                    result.push((key.to_string(), s));
+                }
+            }
+        }
+    }
+    result
+}
+
+/// lopdf による /Info の読み出し。読めない入力は Err（呼び出し側でフォールバック）。
+fn collect_metadata_lopdf(input: &str) -> std::result::Result<Vec<(String, String)>, String> {
+    let doc = lopdf::Document::load(input).map_err(|e| e.to_string())?;
+    if doc.is_encrypted() {
+        return Err("encrypted PDF".into());
+    }
+    Ok(metadata_from_doc(&doc))
+}
+
+/// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。
+fn collect_metadata_mupdf(input: &str) -> Vec<(String, String)> {
+    use crate::convert::is_pdf;
     use mupdf::pdf::PdfDocument;
 
     // 非 PDF ファイルは PdfDocument::open でフリーズするため

@@ -87,21 +87,25 @@ fn shift_refs(obj: &mut lopdf::Object, off: u32) {
 /// - 親 Pages ノードから継承される属性は、取り込む前に各ページへ展開する。
 /// - 旧カタログ・旧ページツリー・しおり等は到達不能になるので prune で落とす。
 ///   （しおりは従来から未対応）
-/// - メタデータは従来どおり、保存後に collect_metadata / copy_metadata_after_write で扱う。
+/// - メタデータは先頭ファイルの /Info を読み込み済みの文書から取り、保存後に copy_metadata_after_write で書く。
 fn merge_with_lopdf(req: &MergeRequest) -> Result<MergeResponse> {
     use lopdf::{Dictionary, Document, Object};
 
-    let metadata = crate::compress::collect_metadata(&req.inputs[0]);
+    let mut metadata: Vec<(String, String)> = Vec::new();
 
     let mut dst = Document::with_version("1.5");
     let pages_id = dst.new_object_id();
     let mut kids: Vec<Object> = Vec::new();
 
-    for input_path in &req.inputs {
+    for (input_index, input_path) in req.inputs.iter().enumerate() {
         let mut src = Document::load(input_path)
             .map_err(|e| CoreError::Parse(format!("{input_path}: {e}")))?;
         if src.is_encrypted() {
             return Err(CoreError::Parse(format!("{input_path}: encrypted PDF")));
+        }
+        if input_index == 0 {
+            // 先頭ファイルのメタデータを引き継ぐ（読み込み済みの文書から取る）
+            metadata = crate::compress::metadata_from_doc(&src);
         }
         if src.version.as_str() > dst.version.as_str() {
             dst.version = src.version.clone();
