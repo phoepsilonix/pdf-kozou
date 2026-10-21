@@ -98,8 +98,7 @@ fn merge_with_lopdf(req: &MergeRequest) -> Result<MergeResponse> {
     let mut kids: Vec<Object> = Vec::new();
 
     for (input_index, input_path) in req.inputs.iter().enumerate() {
-        let mut src = Document::load(input_path)
-            .map_err(|e| CoreError::Parse(format!("{input_path}: {e}")))?;
+        let (mut src, _) = crate::safe_load::load_checked(input_path)?;
         if src.is_encrypted() {
             return Err(CoreError::Parse(format!("{input_path}: encrypted PDF")));
         }

@@ -216,11 +216,9 @@ fn drop_dead_link_annots(dst: &mut lopdf::Document, pages: &[lopdf::ObjectId]) {
 /// lopdf による分割。出力ごとに、取り出すページから到達できるオブジェクトだけを複製する
 /// （入力全体を出力数ぶん複製しないので、全ページ分割でも出力数に比例して遅くならない）。
 fn split_with_lopdf(req: &SplitRequest) -> Result<SplitResponse> {
-    use lopdf::Document;
     use std::collections::HashSet;
 
-    let mut src = Document::load(&req.input)
-        .map_err(|e| CoreError::Parse(format!("{}: {e}", req.input)))?;
+    let (mut src, _) = crate::safe_load::load_checked(&req.input)?;
     if src.is_encrypted() {
         return Err(CoreError::Parse(format!("{}: encrypted PDF", req.input)));
     }

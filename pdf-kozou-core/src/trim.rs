@@ -490,6 +490,9 @@ fn trim_with_lopdf(req: &TrimRequest) -> Result<TrimResponse> {
 
     let has_extract = keep_pages.len() < page_count as usize;
     if has_extract {
+        // ストリームを書き直すので、lopdf が内容を落としていないか確かめる
+        // （増分保存の経路は元のバイト列を残すので不要）
+        crate::safe_load::check_no_lost_objects(&doc, &bytes, &req.input)?;
         // 「残すページだけ」の新しい文書を作る。出力ごとに到達できるオブジェクトだけを
         // 複製するので、不要ページだけが使っていた画像等は残らない。
         crate::merge::flatten_inherited_attrs(&mut doc, &page_ids);

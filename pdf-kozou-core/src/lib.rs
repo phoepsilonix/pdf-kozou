@@ -19,6 +19,7 @@ pub mod merge;
 pub mod pixmap;
 pub mod render;
 pub mod rotate;
+pub mod safe_load;
 pub mod split;
 pub mod stext;
 pub mod trim;
