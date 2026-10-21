@@ -88,7 +88,7 @@ impl Extract<'_> {
 }
 
 /// 取り出したページから到達できるオブジェクトだけを、元の番号のまま新しい文書へ複製する。
-fn extract_pages(
+pub(crate) fn extract_pages(
     src: &lopdf::Document,
     all_pages: &std::collections::HashSet<lopdf::ObjectId>,
     selected: &[lopdf::ObjectId],

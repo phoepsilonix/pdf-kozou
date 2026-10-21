@@ -242,7 +242,7 @@ fn pdf_metadata_from_pairs(pairs: Vec<(String, String)>) -> PdfMetadata {
 use lopdf::{Dictionary, Document, Object, ObjectId};
 
 /// 間接参照を最大 8 段まで解決する。
-fn lp_resolve<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Object> {
+pub(crate) fn lp_resolve<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Object> {
     let mut cur = obj;
     for _ in 0..8 {
         match cur {
@@ -261,7 +261,7 @@ fn lp_dict<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Dictionary> {
     }
 }
 
-fn lp_num(doc: &Document, obj: &Object) -> Option<f64> {
+pub(crate) fn lp_num(doc: &Document, obj: &Object) -> Option<f64> {
     match lp_resolve(doc, obj)? {
         Object::Integer(n) => Some(*n as f64),
         Object::Real(f) => Some(*f as f64),
