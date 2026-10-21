@@ -37,7 +37,7 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
 }
 
 /// ページツリーの親をたどって継承属性 (Resources / MediaBox / CropBox / Rotate) を探す。
-fn inherited_attr(doc: &lopdf::Document, page_id: lopdf::ObjectId, key: &[u8]) -> Option<lopdf::Object> {
+pub(crate) fn inherited_attr(doc: &lopdf::Document, page_id: lopdf::ObjectId, key: &[u8]) -> Option<lopdf::Object> {
     let mut cur = page_id;
     // 循環参照対策で深さを制限する
     for _ in 0..64 {
