@@ -87,7 +87,7 @@ fn shift_refs(obj: &mut lopdf::Object, off: u32) {
 /// - 親 Pages ノードから継承される属性は、取り込む前に各ページへ展開する。
 /// - 旧カタログ・旧ページツリー・しおり等は到達不能になるので prune で落とす。
 ///   （しおりは従来から未対応）
-/// - メタデータは先頭ファイルの /Info を読み込み済みの文書から取り、保存後に copy_metadata_after_write で書く。
+/// - メタデータは先頭ファイルの /Info を読み込み済みの文書から取り、保存前に新しい文書へ設定する。
 fn merge_with_lopdf(req: &MergeRequest) -> Result<MergeResponse> {
     use lopdf::{Dictionary, Document, Object};
 
@@ -148,12 +148,11 @@ fn merge_with_lopdf(req: &MergeRequest) -> Result<MergeResponse> {
     let catalog_id = dst.add_object(Object::Dictionary(catalog));
     dst.trailer.set("Root", Object::Reference(catalog_id));
 
+    crate::compress::set_info_on_doc(&mut dst, &metadata);
     dst.prune_objects();
     dst.compress();
     dst.save(&req.output)
         .map_err(|e| CoreError::Parse(format!("{}: {e}", req.output)))?;
-
-    crate::compress::copy_metadata_after_write(&req.output, &metadata);
 
     let output_bytes = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
     Ok(MergeResponse {

@@ -164,6 +164,90 @@ fn collect_metadata_lopdf(input: &str) -> std::result::Result<Vec<(String, Strin
     Ok(metadata_from_doc(&doc))
 }
 
+/// 新規に作った lopdf 文書へ /Info を設定する（結合・分割など、保存前に使う）。
+pub fn set_info_on_doc(doc: &mut lopdf::Document, metadata: &[(String, String)]) {
+    use lopdf::{Dictionary, Object};
+    if metadata.is_empty() {
+        return;
+    }
+    let mut info = Dictionary::new();
+    for (key, value) in metadata {
+        info.set(key.as_str(), lopdf::text_string(value));
+    }
+    let id = doc.add_object(Object::Dictionary(info));
+    doc.trailer.set("Info", Object::Reference(id));
+}
+
+/// 既存 PDF の /Info を増分更新で書き換える（lopdf 実装）。
+///
+/// updates: (キー, Some(値)=設定 / None=削除)。/Info が無く、設定する値があれば新規作成する。
+/// 変更が無ければファイルには触らない。元のバイト列は残し、末尾に追記するだけなので、
+/// しおり・フォーム・注釈などには影響しない。
+/// 暗号化された文書は、追記した文字列を暗号化できないため Err にする（呼び出し側で
+/// MuPDF 実装へフォールバック）。
+fn write_info_lopdf(
+    path: &str,
+    updates: &[(String, Option<String>)],
+) -> std::result::Result<(), String> {
+    use lopdf::{Dictionary, IncrementalDocument, Object, ObjectId};
+
+    let mut doc = IncrementalDocument::load(path).map_err(|e| e.to_string())?;
+    {
+        let prev = doc.get_prev_documents();
+        if prev.is_encrypted() || prev.trailer.has(b"Encrypt") {
+            return Err("encrypted PDF".into());
+        }
+    }
+
+    // 既存の /Info（参照なら番号を持ち越して上書き、直書きなら新オブジェクトへ移す）
+    let existing: Option<(Option<ObjectId>, Dictionary)> = {
+        let prev = doc.get_prev_documents();
+        match prev.trailer.get(b"Info") {
+            Ok(Object::Reference(id)) => prev
+                .get_dictionary(*id)
+                .ok()
+                .map(|d| (Some(*id), d.clone())),
+            Ok(Object::Dictionary(d)) => Some((None, d.clone())),
+            _ => None,
+        }
+    };
+    let has_set = updates.iter().any(|(_, v)| v.is_some());
+    let (info_id, mut dict) = match existing {
+        Some(found) => found,
+        None if has_set => (None, Dictionary::new()),
+        None => return Ok(()),
+    };
+
+    for (key, value) in updates {
+        match value {
+            Some(v) => dict.set(key.as_str(), lopdf::text_string(v)),
+            None => {
+                dict.remove(key.as_bytes());
+            }
+        }
+    }
+    match info_id {
+        Some(id) => {
+            doc.new_document.objects.insert(id, Object::Dictionary(dict));
+        }
+        None => {
+            let id = doc.new_document.add_object(Object::Dictionary(dict));
+            doc.new_document.trailer.set("Info", Object::Reference(id));
+        }
+    }
+
+    // 一時ファイルに書いてから置き換える（書き込み途中で壊さない）
+    let tmp = format!("{path}.kozou_tmp");
+    doc.save(&tmp).map_err(|e| format!("save failed: {e}"))?;
+    if std::fs::rename(&tmp, path).is_err() {
+        // 置き換えできない環境(他プロセスがロック中など)では上書きコピーに切り替える
+        let r = std::fs::copy(&tmp, path).map(|_| ()).map_err(|e| format!("replace failed: {e}"));
+        let _ = std::fs::remove_file(&tmp);
+        r?;
+    }
+    Ok(())
+}
+
 /// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。
 fn collect_metadata_mupdf(input: &str) -> Vec<(String, String)> {
     use crate::convert::is_pdf;
@@ -324,6 +408,23 @@ pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
     if metadata.is_empty() {
         return;
     }
+    // まず lopdf（増分保存）で書き、書けない入力だけ従来の MuPDF 実装へフォールバックする
+    // （移行期間中の安全策）。
+    let updates: Vec<(String, Option<String>)> = metadata
+        .iter()
+        .map(|(k, v)| (k.clone(), Some(v.clone())))
+        .collect();
+    match write_info_lopdf(output, &updates) {
+        Ok(()) => eprintln!("[metadata] wrote {} keys to {output}", metadata.len()),
+        Err(e) => {
+            eprintln!("[metadata] lopdf write failed ({e}); falling back to MuPDF");
+            copy_metadata_after_write_mupdf(output, metadata);
+        }
+    }
+}
+
+/// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。
+fn copy_metadata_after_write_mupdf(output: &str, metadata: &[(String, String)]) {
     // まず /Info が存在するか確認
     let has_info = {
         use mupdf::pdf::PdfDocument;
@@ -2390,6 +2491,24 @@ pub const REWRITE_OPTIONS_DEFAULT: &str = "compress=yes,compress-images=yes,garb
 /// /Info dict が存在すれば incremental 更新、なければ新規作成。
 /// 空文字列のフィールドは「削除」として扱う。
 pub fn set_metadata(path: &str, metadata: &[(String, String)]) -> std::result::Result<(), String> {
+    let updates: Vec<(String, Option<String>)> = metadata
+        .iter()
+        .map(|(k, v)| (k.clone(), (!v.trim().is_empty()).then(|| v.clone())))
+        .collect();
+    match write_info_lopdf(path, &updates) {
+        Ok(()) => {
+            eprintln!("[metadata] set_metadata wrote {} keys to {path}", metadata.len());
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("[metadata] lopdf write failed ({e}); falling back to MuPDF");
+            set_metadata_mupdf(path, metadata)
+        }
+    }
+}
+
+/// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。
+fn set_metadata_mupdf(path: &str, metadata: &[(String, String)]) -> std::result::Result<(), String> {
     // 空でない項目だけ書き込む、空は削除扱い（削除は write_pdf_info_clear で対応）
     let to_write: Vec<(String, String)> = metadata
         .iter()

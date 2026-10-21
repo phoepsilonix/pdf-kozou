@@ -282,12 +282,11 @@ fn split_with_lopdf(req: &SplitRequest) -> Result<SplitResponse> {
             page_indices.iter().map(|&i| page_ids[i as usize]).collect();
 
         let mut dst = extract_pages(&src, &all_pages, &selected);
+        crate::compress::set_info_on_doc(&mut dst, &metadata);
         dst.prune_objects();
         dst.compress();
         dst.save(&out_path)
             .map_err(|e| CoreError::Parse(format!("{}: {e}", out_path.display())))?;
-
-        crate::compress::copy_metadata_after_write(out_path.to_str().unwrap(), &metadata);
         files.push(out_path.to_string_lossy().to_string());
     }
 
