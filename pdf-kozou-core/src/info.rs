@@ -271,7 +271,7 @@ pub(crate) fn lp_num(doc: &Document, obj: &Object) -> Option<f64> {
 
 /// [x0 y0 x1 y1] を (小,小,大,大) に正規化して返す。配列でなければ None。
 /// MuPDF の pdf_to_rect と同様、足りない要素・数値でない要素は 0 として扱う。
-fn lp_rect(doc: &Document, obj: &Object) -> Option<[f64; 4]> {
+pub(crate) fn lp_rect(doc: &Document, obj: &Object) -> Option<[f64; 4]> {
     let Object::Array(a) = lp_resolve(doc, obj)? else {
         return None;
     };
