@@ -186,7 +186,7 @@
     "margins_changed": "余白を 上 {{top}}、下 {{bottom}}、左 {{left}}、右 {{right}} ミリに変更しました"
   },
   "app": {
-    "tagline": "Rust with tauri · MuPDF · オフライン完全動作",
+    "tagline": "Rust with tauri · MuPDF and loPDF · オフライン完全動作",
     "select_file": "ファイルを選択…",
     "select_file_hint": "ファイルを選択。Ctrl+Oでも開けます。",
     "select_prompt": "ファイルを選択してください",
