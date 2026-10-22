@@ -356,14 +356,8 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   // ── モバイル (Android) 向け出力: SAFフォルダ選択(useMobileBatchOutput)。
   // iOS は従来通り決め打ちのサブフォルダ名を「保存先プレビュー」として
   // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする ──
-  const {
-    mobile,
-    androidUI,
-    androidFolder,
-    pickAndroidFolder,
-    ensureAndroidFolder,
-    commitMobileOutput,
-  } = useMobileBatchOutput();
+  const { mobile, androidUI, androidFolder, pickAndroidFolder, commitMobileOutput } =
+    useMobileBatchOutput();
   const mobileRelativeDir = useMemo(
     () => buildMobileOutputSubfolder(`${batchFiles.length}件`),
     [batchFiles.length],
@@ -452,7 +446,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     if (!resolvedDir) return; // キャンセル
     let androidFolderForRun: PickedFolder | null = null;
     if (await hasFolderPicker()) {
-      androidFolderForRun = await ensureAndroidFolder();
+      androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     setMobileSavedFiles(null);
@@ -534,7 +528,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     enabled,
     thr,
     pickDir,
-    ensureAndroidFolder,
+    pickAndroidFolder,
     skipType3,
     finalizeMobileOutput,
   ]);

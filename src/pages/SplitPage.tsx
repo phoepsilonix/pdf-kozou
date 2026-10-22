@@ -179,14 +179,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする。
   // 分割はバッチでなくても常に複数ファイル出力になるため、単体/バッチ
   // 両方でこの仕組みを使う。
-  const {
-    mobile,
-    androidUI,
-    androidFolder,
-    pickAndroidFolder,
-    ensureAndroidFolder,
-    commitMobileOutput,
-  } = useMobileBatchOutput();
+  const { mobile, androidUI, androidFolder, pickAndroidFolder, commitMobileOutput } =
+    useMobileBatchOutput();
   // biome-ignore lint/correctness/useExhaustiveDependencies: batchFiles参照が変わるたびに再生成すると保存のたびに違うフォルダ名になってしまうため、識別に必要なlengthのみを依存にする意図。
   const mobileRelativeDir = useMemo(() => {
     const label =
@@ -363,7 +357,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (!resolvedDir) return;
     let androidFolderForRun: PickedFolder | null = null;
     if (await hasFolderPicker()) {
-      androidFolderForRun = await ensureAndroidFolder();
+      androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     setMobileSavedFiles(null);
@@ -411,7 +405,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     srcStem,
     keepOriginalName,
     pickDir,
-    ensureAndroidFolder,
+    pickAndroidFolder,
     overrideMetadata,
     setError,
     announceSuccess,
@@ -429,7 +423,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (!resolvedDir) return;
     let androidFolderForRun: PickedFolder | null = null;
     if (await hasFolderPicker()) {
-      androidFolderForRun = await ensureAndroidFolder();
+      androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
@@ -505,7 +499,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     ranges,
     splitPrefix,
     pickDir,
-    ensureAndroidFolder,
+    pickAndroidFolder,
     overrideMetadata,
     announceSuccess,
     finalizeMobileOutput,
@@ -780,7 +774,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   const executeBtn = (
     <BtnPrimary onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}>
-      {outDir
+      {!androidUI && outDir
         ? isBatch
           ? t("split.execute_batch", { count: String(batchFiles?.length) })
           : t("split.execute", { count: String(groups.length) })

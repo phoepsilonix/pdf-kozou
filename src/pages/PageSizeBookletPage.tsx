@@ -98,14 +98,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   // ── モバイル (Android) 向けバッチ出力: SAFフォルダ選択(useMobileBatchOutput)。
   // iOS は従来通り決め打ちのサブフォルダ名を「保存先プレビュー」として
   // 表示し、実行後に同じ名前で MediaStore の Downloads へコピーする ──
-  const {
-    mobile,
-    androidUI,
-    androidFolder,
-    pickAndroidFolder,
-    ensureAndroidFolder,
-    commitMobileOutput,
-  } = useMobileBatchOutput();
+  const { mobile, androidUI, androidFolder, pickAndroidFolder, commitMobileOutput } =
+    useMobileBatchOutput();
   const mobileRelativeDir = useMemo(
     () => buildMobileOutputSubfolder(`${batchFiles?.length ?? 0}件`),
     [batchFiles?.length],
@@ -466,7 +460,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     if (!dir) return;
     let androidFolderForRun: PickedFolder | null = null;
     if (await hasFolderPicker()) {
-      androidFolderForRun = await ensureAndroidFolder();
+      androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
@@ -535,7 +529,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     batchFiles,
     outDir,
     pickDir,
-    ensureAndroidFolder,
+    pickAndroidFolder,
     mode,
     composePdfName,
     targetPt,
