@@ -588,8 +588,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               }}
             >
               <div style={s.sec}>
-                {progress.done.map((d) => (
-                  <div key={d.file} style={s.statusBox}>
+                {progress.done.map((d, idx) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                  <div key={`${d.file}:${idx}`} style={s.statusBox}>
                     {d.file} →{" "}
                     {d.hits === 0 ? t("hidden.batch_no_detection") : `${d.hits}字 → ${d.saved}`}
                   </div>
@@ -660,8 +661,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
           <div style={rightStyle}>
             <div style={s.preview}>
               <div style={s.sec}>
-                {progress.done.map((d) => (
-                  <div key={d.file} style={s.logRow}>
+                {progress.done.map((d, idx) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                  <div key={`${d.file}:${idx}`} style={s.logRow}>
                     <span style={s.logFile}>{d.file}</span>
                     <span style={s.logMeta}>→</span>
                     <span style={s.logMeta}>
@@ -671,8 +673,9 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                     </span>
                   </div>
                 ))}
-                {progress.errors.map((e) => (
-                  <div key={e.file} style={s.logRow}>
+                {progress.errors.map((e, idx) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                  <div key={`${e.file}:${idx}`} style={s.logRow}>
                     <span style={s.logFile}>{e.file}</span>
                     <span style={s.logMeta}>→</span>
                     <span style={s.logMeta}>{e.msg.slice(0, 60)}</span>

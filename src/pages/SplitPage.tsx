@@ -75,7 +75,9 @@ interface BatchProgress {
   // 将来デスクトップ版の進捗表示でフルパス表示を選択可能にするための予備
   // フィールド。現状は未使用（表示は常にファイル名のみ）
   currentFilePath: string;
-  done: { file: string; count: number }[];
+  // outputs: 出力したファイル名(先頭と末尾。1件のときは1つ)。同名入力に連番が付いた
+  // 場合も、実際の出力名を確認できるようにする
+  done: { file: string; count: number; outputs: string[] }[];
   errors: { file: string; msg: string }[];
 }
 
@@ -484,7 +486,15 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           convertLayoutEm,
           overrideMetadata,
         );
-        progress.done.push({ file: f.filename, count: res.files.length });
+        const baseName = (p: string) => p.split(/[/\\]/).pop() ?? p;
+        progress.done.push({
+          file: f.filename,
+          count: res.files.length,
+          outputs:
+            res.files.length > 1
+              ? [baseName(res.files[0]), baseName(res.files[res.files.length - 1])]
+              : res.files.map(baseName),
+        });
         producedPaths.push(...res.files);
       } catch (e) {
         progress.errors.push({ file: f.filename, msg: String(e) });
@@ -566,17 +576,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
               if (el) el.scrollTop = el.scrollHeight;
             }}
           >
-            {batchProgress.done.map((d) => (
-              <div key={d.file} style={s.bpLogRow}>
+            {batchProgress.done.map((d, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${d.file}:${idx}`} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file}</span>
                 <span style={s.bpLogMeta}>
                   {t("common.files_arrow", { count: String(d.count) })}
                 </span>
+                {d.outputs.length > 0 && <span style={s.bpLogMeta}>{d.outputs.join(" 〜 ")}</span>}
               </div>
             ))}
-            {batchProgress.errors.map((e) => (
-              <div key={e.file} style={{ ...s.bpLogRow }}>
+            {batchProgress.errors.map((e, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${e.file}:${idx}`} style={{ ...s.bpLogRow }}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -644,17 +657,20 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             </div>
           )}
           <div style={s.bpLog}>
-            {batchProgress.done.map((d) => (
-              <div key={d.file} style={s.bpLogRow}>
+            {batchProgress.done.map((d, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${d.file}:${idx}`} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file}</span>
                 <span style={s.bpLogMeta}>
                   {t("common.files_arrow", { count: String(d.count) })}
                 </span>
+                {d.outputs.length > 0 && <span style={s.bpLogMeta}>{d.outputs.join(" 〜 ")}</span>}
               </div>
             ))}
-            {batchProgress.errors.map((e) => (
-              <div key={e.file} style={s.bpLogRow}>
+            {batchProgress.errors.map((e, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${e.file}:${idx}`} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>

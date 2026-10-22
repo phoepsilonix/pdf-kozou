@@ -582,8 +582,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
               if (el) el.scrollTop = el.scrollHeight;
             }}
           >
-            {batchProgress.done.map((d) => (
-              <div key={d.file} style={s.bpLogRow}>
+            {batchProgress.done.map((d, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${d.file}:${idx}`} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
@@ -594,8 +595,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e) => (
-              <div key={e.file} style={s.bpLogRow}>
+            {batchProgress.errors.map((e, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${e.file}:${idx}`} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -659,8 +661,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             )}
           </div>
           <div style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}>
-            {batchProgress.done.map((d) => (
-              <div key={d.file} style={s.bpLogRow}>
+            {batchProgress.done.map((d, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${d.file}:${idx}`} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpLogFile}>{d.file} → </span>
                 <span style={s.bpLogMeta}>
@@ -671,8 +674,9 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e) => (
-              <div key={e.file} style={s.bpLogRow}>
+            {batchProgress.errors.map((e, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${e.file}:${idx}`} style={s.bpLogRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpLogFile}>{e.file}</span>
                 <span style={{ ...s.bpLogMeta, color: "var(--c-err)" }}>{e.msg}</span>

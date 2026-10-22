@@ -861,8 +861,9 @@ export function CompressPage({
             if (el) el.scrollTop = el.scrollHeight;
           }}
         >
-          {batchProg.done.map((d) => (
-            <div key={d.file} style={c.bpRow}>
+          {batchProg.done.map((d, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <div key={`${d.file}:${idx}`} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file} → </span>
               <span style={c.bpFile2}>{d.saved}</span>
@@ -873,8 +874,9 @@ export function CompressPage({
               )}
             </div>
           ))}
-          {batchProg.errors.map((e) => (
-            <div key={e.file} style={c.bpRow}>
+          {batchProg.errors.map((e, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <div key={`${e.file}:${idx}`} style={c.bpRow}>
               <span style={{ color: "var(--c-err)" }}>✕</span>
               <span style={c.bpFile}>{e.file}</span>
               <span style={c.bpErrMsg}>{e.msg}</span>
@@ -946,8 +948,9 @@ export function CompressPage({
         )}
         <div style={{ height: 10 }} />
         <div style={c.bpLog}>
-          {batchProg.done.map((d) => (
-            <div key={d.file} style={c.bpRow}>
+          {batchProg.done.map((d, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <div key={`${d.file}:${idx}`} style={c.bpRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={c.bpFile}>{d.file} → </span>
               <span style={c.bpFile2}>{d.saved}</span>
@@ -958,8 +961,9 @@ export function CompressPage({
               )}
             </div>
           ))}
-          {batchProg.errors.map((e) => (
-            <div key={e.file} style={c.bpRow}>
+          {batchProg.errors.map((e, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <div key={`${e.file}:${idx}`} style={c.bpRow}>
               <span style={{ color: "var(--c-err)" }}>✕</span>
               <span style={c.bpFile}>{e.file}</span>
               <span style={c.bpErrMsg}>{e.msg}</span>

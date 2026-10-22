@@ -480,15 +480,17 @@ function TrimPageBatch({
             if (el) el.scrollTop = el.scrollHeight;
           }}
         >
-          {progress.done.map((d) => (
-            <div key={d.f} style={b.logRow}>
+          {progress.done.map((d, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <div key={`${d.f}:${idx}`} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={b.logFile}>{d.f} → </span>
               <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}
-          {progress.warnings.map((w) => (
-            <WarnLogRow key={w.f} file={w.f} msg={w.msg} />
+          {progress.warnings.map((w, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <WarnLogRow key={`${w.f}:${idx}`} file={w.f} msg={w.msg} />
           ))}
         </div>
         <Spinner />
@@ -541,16 +543,18 @@ function TrimPageBatch({
           )}
         </div>
         <div style={{ ...b.log, flex: "0 1 auto", minHeight: 0 }}>
-          {progress.done.map((d) => (
-            <div key={d.f} style={b.logRow}>
+          {progress.done.map((d, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <div key={`${d.f}:${idx}`} style={b.logRow}>
               <span style={{ color: "var(--c-accent)" }}>✓</span>
               <span style={b.logFile}>{d.f} → </span>
               <span style={b.logMeta}>{d.saved}</span>
             </div>
           ))}
-          {progress.errors.map((e) => (
+          {progress.errors.map((e, idx) => (
             <div
-              key={e.f}
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              key={`${e.f}:${idx}`}
               style={{
                 ...b.logRow,
                 background: "var(--c-errBg)",
@@ -562,8 +566,9 @@ function TrimPageBatch({
               <span style={{ ...b.logMeta, color: "var(--c-err)" }}>{e.msg}</span>
             </div>
           ))}
-          {progress.warnings.map((w) => (
-            <WarnLogRow key={w.f} file={w.f} msg={w.msg} />
+          {progress.warnings.map((w, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <WarnLogRow key={`${w.f}:${idx}`} file={w.f} msg={w.msg} />
           ))}
         </div>
         <button

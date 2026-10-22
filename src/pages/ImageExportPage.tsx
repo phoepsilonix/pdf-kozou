@@ -1514,8 +1514,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               if (el) el.scrollTop = el.scrollHeight;
             }}
           >
-            {batchProgress.done.map((d) => (
-              <div key={d.file} style={s.bpRow}>
+            {batchProgress.done.map((d, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${d.file}:${idx}`} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
                 {d.pdfPath ? (
@@ -1611,8 +1612,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             <div style={{ fontSize: FS.small, color: "var(--c-textSub)" }}>{outDir}</div>
           )}
           <div style={s.bpLogFlex}>
-            {batchProgress.done.map((d) => (
-              <div key={d.file} style={s.bpRow}>
+            {batchProgress.done.map((d, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${d.file}:${idx}`} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
                 {d.pdfPath ? (
@@ -1636,9 +1638,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 )}
               </div>
             ))}
-            {batchProgress.errors.map((e) => (
+            {batchProgress.errors.map((e, idx) => (
               <div
-                key={e.file}
+                // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                key={`${e.file}:${idx}`}
                 style={{ ...s.bpRow, background: "var(--c-errBg)", borderColor: "var(--c-errBd)" }}
               >
                 <span style={{ color: "var(--c-err)" }}>✕</span>

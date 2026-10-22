@@ -519,8 +519,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
               if (el) el.scrollTop = el.scrollHeight;
             }}
           >
-            {batchProgress.done.map((d) => (
-              <div key={d.file} style={s.bpRow}>
+            {batchProgress.done.map((d, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${d.file}:${idx}`} style={s.bpRow}>
                 <span style={{ color: "var(--c-accent)" }}>✓</span>
                 <span style={s.bpFile}>{d.file} → </span>
                 <span
@@ -532,8 +533,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 </span>
               </div>
             ))}
-            {batchProgress.errors.map((e) => (
-              <div key={e.file} style={s.bpRow}>
+            {batchProgress.errors.map((e, idx) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+              <div key={`${e.file}:${idx}`} style={s.bpRow}>
                 <span style={{ color: "var(--c-err)" }}>✕</span>
                 <span style={s.bpFile}>{e.file}</span>
                 <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
@@ -727,8 +729,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                 )}
               </div>
               <div style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}>
-                {batchProgress.done.map((d) => (
-                  <div key={d.file} style={s.bpRow}>
+                {batchProgress.done.map((d, idx) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                  <div key={`${d.file}:${idx}`} style={s.bpRow}>
                     <span style={{ color: "var(--c-accent)" }}>✓</span>
                     <span style={s.bpFile}>{d.file} → </span>
                     <span
@@ -742,8 +745,9 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
                     </span>
                   </div>
                 ))}
-                {batchProgress.errors.map((e) => (
-                  <div key={e.file} style={s.bpRow}>
+                {batchProgress.errors.map((e, idx) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                  <div key={`${e.file}:${idx}`} style={s.bpRow}>
                     <span style={{ color: "var(--c-err)" }}>✕</span>
                     <span style={s.bpFile}>{e.file}</span>
                     <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
