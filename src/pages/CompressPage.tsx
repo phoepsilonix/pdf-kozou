@@ -767,13 +767,12 @@ export function CompressPage({
         });
         producedPaths.push(out);
       } catch (e) {
-        prog.errors.push({ file: f.filename, msg: String(e) });
+        // 1ファイルの失敗は、エラー一覧に1行だけ出す(原因を含める)。
         console.warn(`圧縮失敗: ${f.filename}. 元ファイルをコピーします。`);
         try {
           // 圧縮に失敗しても、出力フォルダにファイルがない状態を避けるためにコピー
           await invoke("copy_file", { src: f.path, dst: out });
           producedPaths.push(out);
-
           prog.errors.push({
             file: f.filename,
             msg: `${t("compress.err_compress_fallback")} (${String(e)})`,
@@ -782,7 +781,7 @@ export function CompressPage({
           // コピーすら失敗した場合（ディスクフルや権限エラーなど）
           prog.errors.push({
             file: f.filename,
-            msg: `${t("compress.err_fatal")}${String(copyErr)}`,
+            msg: `${t("compress.err_fatal")}${String(copyErr)} (${String(e)})`,
           });
         }
       }
