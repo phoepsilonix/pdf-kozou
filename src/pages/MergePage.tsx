@@ -17,6 +17,7 @@ import {
   TapRevealText,
   ThumbCard,
 } from "../components/common";
+import { FileSortSelect } from "../components/FileSortSelect";
 import { MetadataEditModal } from "../components/MetadataEditModal";
 import { PageSizeSelector } from "../components/PageSizeSelector";
 import { useA11y } from "../hooks/useA11y";
@@ -25,7 +26,7 @@ import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
 import { buildName, opSuffix, stem } from "../lib/filename";
-import { type SortDirection, sortByFilename } from "../lib/fileSort";
+import { type SortDirection, type SortKey, sortFileEntries } from "../lib/fileSort";
 import { type FileWithPath, hasImage, isMupdfExtension } from "../lib/fileTypes";
 import { useI18n } from "../lib/i18n";
 import { resolvePageSizePt } from "../lib/pageSize";
@@ -50,6 +51,7 @@ interface PdfEntry {
   path: string;
   filename: string;
   pageCount: number;
+  modifiedMs?: number; // 更新日時(並び替え用)
   thumbs: (string | undefined)[];
   pages?: { w: number; h: number }[]; // アスペクト比用
 }
@@ -179,6 +181,9 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
             }
           }
           const filename = path.split(/[/\\]/).pop() ?? path;
+          const stat = await invoke<{ modified?: number }>("get_file_stat", { path }).catch(() => ({
+            modified: 0,
+          }));
           // 取り込み確定したパスを即座に既知集合へ（連続追加時の重複防止）。
           knownPaths.current.add(path);
           added.push(filename);
@@ -192,6 +197,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
                 path,
                 filename,
                 pageCount: info.page_count,
+                modifiedMs: stat.modified ?? 0,
                 thumbs,
                 pages: info.pages,
               },
@@ -308,10 +314,17 @@ useEffect(() => {
       return a;
     });
   const remove = (id: number) => setEntries((p) => p.filter((e) => e.id !== id));
-  // ファイル名(数字は数値として比較)の昇順/降順に並び替える。
-  const sortByName = (direction: SortDirection) => {
-    setEntries((p) => sortByFilename(p, (e) => e.filename, direction));
-    announceSuccess(direction === "asc" ? "file.sorted_asc" : "file.sorted_desc");
+  // ファイル名(数字は数値として比較)または更新日時の昇順/降順に並び替える。
+  const sortEntries = (key: SortKey, direction: SortDirection) => {
+    setEntries((p) =>
+      sortFileEntries(
+        p,
+        { name: (e) => e.filename, modified: (e) => e.modifiedMs },
+        key,
+        direction,
+      ),
+    );
+    announceSuccess(`file.sorted_${key}_${direction}`);
   };
 
   // ── プレビュー ────────────────────────────────────────────────────────────
@@ -704,26 +717,7 @@ useEffect(() => {
               {t("merge.file_count", { count: String(entries.length), pages: String(totalPages) })}
             </span>
             <div style={{ flex: 1 }} />
-            <button
-              type="button"
-              style={s.btnSort}
-              onClick={() => sortByName("asc")}
-              disabled={entries.length < 2}
-              aria-label={t("file.sort_asc_aria")}
-              title={t("file.sort_asc_aria")}
-            >
-              {t("file.sort_asc")}
-            </button>
-            <button
-              type="button"
-              style={s.btnSort}
-              onClick={() => sortByName("desc")}
-              disabled={entries.length < 2}
-              aria-label={t("file.sort_desc_aria")}
-              title={t("file.sort_desc_aria")}
-            >
-              {t("file.sort_desc")}
-            </button>
+            <FileSortSelect onSort={sortEntries} disabled={entries.length < 2} />
             <button
               type="button"
               style={s.btnClear}
@@ -985,16 +979,6 @@ const s: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap" as const,
   },
   sub: { fontSize: FS.label, color: "var(--c-textSub)" },
-  btnSort: {
-    padding: "5px 14px",
-    background: "transparent",
-    border: `1px solid var(--c-borderHi)`,
-    borderRadius: 6,
-    color: "var(--c-textSub)",
-    cursor: "pointer",
-    fontSize: FS.small,
-    fontFamily: F,
-  },
   btnClear: {
     padding: "5px 14px",
     background: "transparent",

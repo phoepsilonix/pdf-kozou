@@ -797,12 +797,20 @@ pub async fn get_tmp_path(filename: String) -> Result<String> {
     Ok(path.display().to_string())
 }
 
-/// ファイルのメタ情報（サイズ）を返す
+/// ファイルのメタ情報（サイズ・更新日時）を返す。
+///
+/// `modified` は更新日時(UNIX エポックからのミリ秒)。取得できない環境では 0。
+/// モバイルでは content:// URI から一時ファイルへ取り込んだ時刻になる。
 #[tauri::command]
 pub async fn get_file_stat(path: String) -> Result<Value> {
     use serde_json::json;
     let meta = std::fs::metadata(&path).map_err(|e| Error::Core(format!("stat {path}: {e}")))?;
-    Ok(json!({ "size": meta.len() }))
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_millis() as u64);
+    Ok(json!({ "size": meta.len(), "modified": modified }))
 }
 
 /// 一時ファイルパスを返す (pdf-kozou temp dir + name)

@@ -1,7 +1,7 @@
 // src/store/usePdfStore.ts
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { type SortDirection, sortByFilename } from "../lib/fileSort";
+import { type SortDirection, type SortKey, sortFileEntries } from "../lib/fileSort";
 import type { PdfInfo, TrimMargins } from "../lib/tauri";
 
 export type ImpositionMode = "1up" | "2up" | "4up" | "booklet" | "booklet-rtl";
@@ -12,6 +12,8 @@ export interface FileEntry {
   filename: string;
   pageCount: number;
   sizeBytes: number;
+  /** 更新日時(UNIX エポックからのミリ秒)。不明な場合は 0/未設定。 */
+  modifiedMs?: number;
   selected: boolean;
 }
 
@@ -29,8 +31,8 @@ interface PdfStore {
   selectNone: () => void;
   clearList: () => void;
   reorderFiles: (fromId: number, toId: number) => void;
-  /** ファイル名(数字は数値として比較)の昇順/降順に一覧を並び替える。 */
-  sortFilesByName: (direction: SortDirection) => void;
+  /** ファイル名(数字は数値として比較)または更新日時の昇順/降順に一覧を並び替える。 */
+  sortFiles: (key: SortKey, direction: SortDirection) => void;
 
   filePath: string | null;
   pdfInfo: PdfInfo | null;
@@ -193,8 +195,15 @@ export const usePdfStore = create<PdfStore>()(
           arr.splice(ti, 0, item);
           return { fileList: arr };
         }),
-      sortFilesByName: (direction) =>
-        set((s) => ({ fileList: sortByFilename(s.fileList, (f) => f.filename, direction) })),
+      sortFiles: (key, direction) =>
+        set((s) => ({
+          fileList: sortFileEntries(
+            s.fileList,
+            { name: (f) => f.filename, modified: (f) => f.modifiedMs },
+            key,
+            direction,
+          ),
+        })),
 
       filePath: null,
       pdfInfo: null,

@@ -24,6 +24,7 @@ import { A11yControls, LiveRegion } from "./components/A11yControls";
 import { BatchSaveConflictModal } from "./components/BatchSaveConflictModal";
 import { ConvertOptionsPanel } from "./components/ConvertOptionsPanel";
 import { TapRevealText } from "./components/common";
+import { FileSortSelect } from "./components/FileSortSelect";
 import { FloatingMenu } from "./components/FloatingMenu";
 import { FolderChooserModal } from "./components/FolderChooserModal";
 import { FontScaleControl } from "./components/FontScaleControl";
@@ -142,7 +143,7 @@ export default function App() {
     selectNone,
     clearList,
     reorderFiles,
-    sortFilesByName,
+    sortFiles,
     setFile,
     setError,
     lastError,
@@ -251,9 +252,9 @@ export default function App() {
               layoutH: convertLayoutH,
               layoutEm: convertLayoutEm,
             });
-            const stat = await invoke<{ size: number }>("get_file_stat", { path }).catch(() => ({
-              size: 0,
-            }));
+            const stat = await invoke<{ size: number; modified?: number }>("get_file_stat", {
+              path,
+            }).catch(() => ({ size: 0, modified: 0 }));
 
             const fname = path.split(/[/\\]/).pop() ?? path;
             addFiles([
@@ -262,6 +263,7 @@ export default function App() {
                 filename: fname,
                 pageCount: info.page_count,
                 sizeBytes: stat.size,
+                modifiedMs: stat.modified ?? 0,
                 selected: true,
               },
             ]);
@@ -1045,30 +1047,13 @@ export default function App() {
                       <button type="button" style={s.btnSm} onClick={selectNone}>
                         {t("file.deselect")}
                       </button>
-                      <button
-                        type="button"
-                        style={s.btnSm}
-                        onClick={() => {
-                          sortFilesByName("asc");
-                          announceSuccess("file.sorted_asc");
+                      <FileSortSelect
+                        onSort={(key, direction) => {
+                          sortFiles(key, direction);
+                          announceSuccess(`file.sorted_${key}_${direction}`);
                         }}
-                        aria-label={t("file.sort_asc_aria")}
-                        title={t("file.sort_asc_aria")}
-                      >
-                        {t("file.sort_asc")}
-                      </button>
-                      <button
-                        type="button"
-                        style={s.btnSm}
-                        onClick={() => {
-                          sortFilesByName("desc");
-                          announceSuccess("file.sorted_desc");
-                        }}
-                        aria-label={t("file.sort_desc_aria")}
-                        title={t("file.sort_desc_aria")}
-                      >
-                        {t("file.sort_desc")}
-                      </button>
+                        style={{ padding: "6px 10px", fontSize: FS.body, borderRadius: 7 }}
+                      />
                       <div style={{ flex: 1 }} />
                       <button
                         type="button"
