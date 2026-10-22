@@ -212,6 +212,37 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
+/// 取り込み元ファイルの更新日時。取得できなければ None。
+///
+/// - Android の content:// URI: ContentResolver に COLUMN_LAST_MODIFIED を問い合わせる
+/// - file:// URL (iOS 等): そのパスの metadata から取得する
+#[cfg(mobile)]
+fn source_modified_time(
+    app: &tauri::AppHandle,
+    file_path: &tauri_plugin_fs::FilePath,
+) -> Option<std::time::SystemTime> {
+    let url = match file_path {
+        tauri_plugin_fs::FilePath::Url(url) => url,
+        tauri_plugin_fs::FilePath::Path(p) => {
+            return std::fs::metadata(p).ok()?.modified().ok();
+        }
+    };
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let ms = app
+            .try_state::<crate::platform::android_fs_info::KozouFsInfo>()?
+            .get_last_modified(url.as_str())?;
+        return Some(std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms));
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        let path = url.to_file_path().ok()?;
+        std::fs::metadata(path).ok()?.modified().ok()
+    }
+}
+
 // `commands::platform::get_pending_open_files` (Android の共有/Open with で
 // 渡された content:// URI をローカル実パスへ変換する処理) からも呼べるように
 // `pub(crate)` にしている。
@@ -295,6 +326,16 @@ pub(crate) async fn filepath_to_local(
 
     // 4. 実ファイルとして保存
     std::fs::write(&dest, bytes).map_err(|e| format!("Write error: {e}"))?;
+
+    // 5. 元ファイルの更新日時を、取り込んだ一時ファイルへ引き継ぐ。
+    //    一覧の「更新日時」表示・並び替えは一時ファイルの更新日時を参照するため、
+    //    引き継がないと全ファイルが取り込み時刻になってしまう。
+    //    取得・設定できなかった場合は取り込み時刻のまま(エラーにはしない)。
+    if let Some(modified) = source_modified_time(app, &file_path) {
+        if let Ok(f) = std::fs::OpenOptions::new().write(true).open(&dest) {
+            let _ = f.set_modified(modified);
+        }
+    }
 
     Ok(dest)
 }

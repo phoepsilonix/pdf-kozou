@@ -23,6 +23,7 @@
 package phoepsilonix.pdfkozou
 
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -38,6 +39,37 @@ class GetDisplayNameArgs {
 
 @TauriPlugin
 class FsInfoPlugin(private val activity: android.app.Activity) : Plugin(activity) {
+
+  // 元ファイルの更新日時 (DocumentsContract.Document.COLUMN_LAST_MODIFIED、
+  // UNIX エポックからのミリ秒)。SAF のドキュメントプロバイダが提供しない場合
+  // (列が無い・null・0)は lastModified を返さず、Rust 側は取得できなかった
+  // ものとして扱う(取り込んだ一時ファイルの更新日時=取り込み時刻のまま)。
+  @Command
+  fun getLastModified(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(GetDisplayNameArgs::class.java)
+      val uri = Uri.parse(args.uri)
+
+      var lastModified: Long? = null
+      val projection = arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+      val cursor = activity.contentResolver.query(uri, projection, null, null, null)
+      cursor?.use {
+        if (it.moveToFirst()) {
+          val idx = it.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+          if (idx >= 0 && !it.isNull(idx)) {
+            val v = it.getLong(idx)
+            if (v > 0) lastModified = v
+          }
+        }
+      }
+
+      val result = JSObject()
+      result.put("lastModified", lastModified)
+      invoke.resolve(result)
+    } catch (ex: Exception) {
+      invoke.reject(ex.message ?: "failed to query last modified")
+    }
+  }
 
   @Command
   fun getDisplayName(invoke: Invoke) {

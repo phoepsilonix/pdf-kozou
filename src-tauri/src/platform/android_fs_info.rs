@@ -44,6 +44,12 @@ struct GetDisplayNameResponse {
     name: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetLastModifiedResponse {
+    last_modified: Option<u64>,
+}
+
 /// Kotlin 側の `FsInfoPlugin` へのハンドル。`tauri::AppHandle` の state
 /// として管理する (`run()` の `.plugin(kozou_fs_info_plugin())` で登録)。
 pub struct KozouFsInfo(PluginHandle<tauri::Wry>);
@@ -64,6 +70,21 @@ impl KozouFsInfo {
                 None
             }
         }
+    }
+}
+
+impl KozouFsInfo {
+    /// content:// URI から元ファイルの更新日時(UNIX エポックからのミリ秒)を取得する。
+    /// プロバイダが提供しない・取得に失敗した場合は None。
+    pub fn get_last_modified(&self, uri: &str) -> Option<u64> {
+        self.0
+            .run_mobile_plugin::<GetLastModifiedResponse>(
+                "getLastModified",
+                GetDisplayNameArgs { uri },
+            )
+            .ok()
+            .and_then(|r| r.last_modified)
+            .filter(|&ms| ms > 0)
     }
 }
 

@@ -41,6 +41,7 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "./hooks/usePlatform";
 import { useViewport } from "./hooks/useViewport";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
+import { formatModified } from "./lib/formatDate";
 import { useI18n } from "./lib/i18n";
 import { loadLastTool, saveLastTool } from "./lib/lastTool";
 import { formatFilenameForSpeech } from "./lib/speakName";
@@ -1253,6 +1254,7 @@ function FileRow({
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const mb = entry.sizeBytes > 0 ? `${(entry.sizeBytes / 1048576).toFixed(1)} MB` : "";
+  const modified = formatModified(entry.modifiedMs);
   return (
     <li
       // biome-ignore lint/a11y/noNoninteractiveTabindex: 各行はフォーカス時にファイル情報を読み上げ、ドラッグでの並び替えにも対応する操作対象。選択/削除自体は内部のボタンが担う。
@@ -1335,6 +1337,7 @@ function FileRow({
           {entry.pageCount}
           {t("file.pages_unit")}
           {mb ? `  ${mb}` : ""}
+          {modified ? `  ${modified}` : ""}
         </span>
       </div>
       <button

@@ -28,6 +28,7 @@ import { useViewport } from "../hooks/useViewport";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { type SortDirection, type SortKey, sortFileEntries } from "../lib/fileSort";
 import { type FileWithPath, hasImage, isMupdfExtension } from "../lib/fileTypes";
+import { formatModified } from "../lib/formatDate";
 import { useI18n } from "../lib/i18n";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { formatFilenameForSpeech } from "../lib/speakName";
@@ -834,6 +835,9 @@ useEffect(() => {
                     />
                     <span style={s.itemPages}>
                       {t("common.pages", { count: String(entry.pageCount) })}
+                      {formatModified(entry.modifiedMs)
+                        ? `  ${formatModified(entry.modifiedMs)}`
+                        : ""}
                     </span>
                   </div>
                   <div style={s.moveBtns}>
