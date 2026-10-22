@@ -677,6 +677,13 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   }, [processDir, deimpIndex, impositionMode, scale]);
 
   // 単体実行（面付け対応版）
+  // 実行ボタンのラベル用: 出力先が確定済みか。
+  // フォルダ選択が使えるモバイル(Android/iOS)では、保存先は「選択済みフォルダ」
+  // (永続化された前回のフォルダを含む)で決まり、outDir(一時ディレクトリ)は
+  // 判断材料にならない。以前は outDir が空の間ずっと「出力先を選択して実行」と
+  // 表示されたまま、保存済みフォルダがあるとピッカーを開かずに実行されていた。
+  const hasOutputTarget = androidUI ? androidFolder !== null : outDir !== "";
+
   const handleExecuteSingle = useCallback(async () => {
     setMobileSavedFiles(null);
     setMobileSaveError(null);
@@ -2338,7 +2345,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
                 disabled={conflictPaths.length > 0}
               >
-                {outDir
+                {hasOutputTarget
                   ? isBatch
                     ? outputMode === "pdf"
                       ? t("image.execute_batch_pdf", { count: String(batchFiles?.length) })
@@ -2547,7 +2554,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             onClick={isBatch ? handleExecuteBatch : handleExecuteSingle}
             disabled={conflictPaths.length > 0}
           >
-            {outDir
+            {hasOutputTarget
               ? isBatch
                 ? outputMode === "pdf"
                   ? t("image.execute_batch_pdf", { count: String(batchFiles?.length) })
