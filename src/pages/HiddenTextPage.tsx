@@ -35,6 +35,7 @@ import {
 import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { uniqueFileNames } from "../lib/uniqueName";
 import type { FileEntry } from "../store/usePdfStore";
 
 // ── 型定義 ─────────────────────────────────────────────────────────────────
@@ -467,6 +468,8 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     setProgress({ ...prog });
 
     const producedPaths: string[] = [];
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(batchFiles.map((x) => x.filename));
     for (let i = 0; i < batchFiles.length; i++) {
       const f = batchFiles[i];
       prog.current = i + 1;
@@ -499,7 +502,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
-          const outPath = joinPath(resolvedDir, buildName(f.filename, ["sanitized"]));
+          const outPath = joinPath(resolvedDir, buildName(outNames[i], ["sanitized"]));
           await sanitizeHiddenText({
             input: f.path,
             output: outPath,

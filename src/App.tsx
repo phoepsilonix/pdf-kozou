@@ -60,6 +60,7 @@ import type { ThemeId } from "./lib/themes";
 import { tts } from "./lib/tts";
 import { FS } from "./lib/typography";
 import { applyUiScale, loadUiScale, saveUiScale } from "./lib/uiScale";
+import { uniqueFileNames } from "./lib/uniqueName";
 import { type FileEntry, usePdfStore } from "./store/usePdfStore";
 
 const copyToClipboard = async (text: string) => {
@@ -502,6 +503,17 @@ export default function App() {
   });
 
   const sel = fileList.filter((f) => f.selected);
+  // 選択中のファイルに同名があると、バッチ出力では2つ目以降の名前に連番が付く。
+  // 追加の時点でそれを一覧に示す(元の名前は変えない)。
+  const renamedById = useMemo(() => {
+    const m = new Map<number, string>();
+    const picked = fileList.filter((f) => f.selected);
+    const names = uniqueFileNames(picked.map((f) => f.filename));
+    picked.forEach((f, i) => {
+      if (names[i] !== f.filename) m.set(f.id, names[i]);
+    });
+    return m;
+  }, [fileList]);
   const selCount = sel.length;
   const selPages = sel.reduce((s, f) => s + f.pageCount, 0);
   const selBytes = sel.reduce((s, f) => s + f.sizeBytes, 0);
@@ -1016,6 +1028,7 @@ export default function App() {
                           entry={f}
                           index={i}
                           mobilePlatform={mobilePlatform}
+                          renamedTo={renamedById.get(f.id)}
                           onToggle={() => {
                             // 対象PDFとして使うかどうかのオンオフ。新しい状態をファイル名付きで読み上げ
                             const willUse = !f.selected;
@@ -1239,6 +1252,7 @@ function FileRow({
   entry,
   index,
   mobilePlatform,
+  renamedTo,
   onToggle,
   onRemove,
   onDragReorder,
@@ -1246,6 +1260,8 @@ function FileRow({
   entry: FileEntry;
   index: number;
   mobilePlatform: boolean;
+  /** バッチ出力で同名のため連番が付く場合の、付与後の名前。 */
+  renamedTo?: string;
   onToggle: () => void;
   onRemove: () => void;
   onDragReorder: (f: number, t: number) => void;
@@ -1339,6 +1355,9 @@ function FileRow({
           {mb ? `  ${mb}` : ""}
           {modified ? `  ${modified}` : ""}
         </span>
+        {renamedTo && (
+          <span style={fr.dupNote}>{t("file.duplicate_name", { name: renamedTo })}</span>
+        )}
       </div>
       <button
         type="button"
@@ -1885,6 +1904,7 @@ const fr: Record<string, React.CSSProperties> = {
     wordBreak: "break-word",
   },
   meta: { fontSize: FS.small, color: "var(--c-textSub)" },
+  dupNote: { fontSize: FS.small, color: "var(--c-warn)" },
   del: {
     width: 26,
     height: 26,

@@ -57,6 +57,7 @@ import {
 import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { uniqueFileNames } from "../lib/uniqueName";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { useSaveNamePromptStore } from "../store/useSaveNamePromptStore";
 import { CompressPage } from "./CompressPage";
@@ -420,6 +421,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     };
     setBatchProgress({ ...prog });
     const producedPaths: string[] = [];
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       prog.current = i + 1;
@@ -438,7 +441,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .filter((p) => p.angle !== 0);
         let savedName: string | undefined;
         if (pages.length > 0) {
-          const out = joinPath(resolvedDir, buildName(f.filename, ["rotated"]));
+          const out = joinPath(resolvedDir, buildName(outNames[i], ["rotated"]));
           const psize = resolvePageSizePt(pageSizeId, pageOrientation);
           await rotatePdf(
             f.path,

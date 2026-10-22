@@ -45,6 +45,7 @@ import {
 import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { uniqueFileNames } from "../lib/uniqueName";
 import type { FileEntry } from "../store/usePdfStore";
 import { usePdfStore } from "../store/usePdfStore";
 
@@ -479,6 +480,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       errors: [],
     };
     setBatchProgress({ ...progress });
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       progress.current = i + 1;
@@ -494,7 +497,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         });
         const fLayout = calcComposeLayout(mode, info.page_count);
         const { sheetPages, nSheets: ns } = flattenComposeSheets(fLayout);
-        const stem = f.filename.replace(/\.[^/.]+$/, "");
+        const stem = outNames[i].replace(/\.[^/.]+$/, "");
         const out = joinPath(dir, composePdfName(stem, true));
         await composeImpositionPdf({
           input: f.path,

@@ -43,6 +43,7 @@ import {
 import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { uniqueFileNames } from "../lib/uniqueName";
 import { usePdfStore } from "../store/usePdfStore";
 
 interface Props {
@@ -720,6 +721,9 @@ export function CompressPage({
     };
     setBatchProg({ ...prog });
     const producedPaths: string[] = [];
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
+    const outNames = uniqueFileNames(batchFiles!.map((x) => x.filename));
 
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
     for (let i = 0; i < batchFiles!.length; i++) {
@@ -728,7 +732,7 @@ export function CompressPage({
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
-      const out = joinPath(resolvedDir, buildName(f.filename, ["compressed"]));
+      const out = joinPath(resolvedDir, buildName(outNames[i], ["compressed"]));
       try {
         let ratio = 0;
 

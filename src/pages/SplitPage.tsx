@@ -51,6 +51,7 @@ import {
 import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { uniqueFileNames } from "../lib/uniqueName";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 
 // ── 型 ───────────────────────────────────────────────────────────────────────
@@ -443,6 +444,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     };
     setBatchProgress({ ...progress });
     const producedPaths: string[] = [];
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -470,7 +473,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
                 };
         // バッチは全ファイルを1フォルダへ出すため、必ず元名を付けて衝突回避
         //   例: 書類_分割_0001.pdf
-        const filePrefix = splitPrefix(f.filename.replace(/\.[^/.]+$/, ""), true);
+        const filePrefix = splitPrefix(outNames[i].replace(/\.[^/.]+$/, ""), true);
         const res = await splitPdf(
           f.path,
           resolvedDir,

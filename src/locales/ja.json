@@ -57,6 +57,7 @@
     "sorted_name_desc": "ファイル名の降順に並び替えました。",
     "sorted_modified_asc": "更新日時の古い順に並び替えました。",
     "sorted_modified_desc": "更新日時の新しい順に並び替えました。",
+    "duplicate_name": "同名のファイルがあるため、出力では「{{name}}」になります",
     "pages_unit": "ページ"
   },
   "tool": {

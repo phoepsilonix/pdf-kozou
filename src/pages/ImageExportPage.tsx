@@ -66,6 +66,7 @@ import {
 import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { uniqueFileNames } from "../lib/uniqueName";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 
 interface Props {
@@ -1173,6 +1174,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     };
     setBatchProgress({ ...progress });
 
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
+
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       progress.current = i + 1;
@@ -1184,7 +1188,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       try {
-        const stem = f.filename.replace(/\.[^/.]+$/, "");
+        const stem = outNames[i].replace(/\.[^/.]+$/, "");
         const fileTotal = f.pageCount || 0;
         const filePageSpec = resolvePageSpec(pages || "", fileTotal).map((idx) => idx + 1);
         const filePageSet = new Set(filePageSpec);

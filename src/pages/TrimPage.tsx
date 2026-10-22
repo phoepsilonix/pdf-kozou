@@ -51,6 +51,7 @@ import { F } from "../lib/theme";
 import { compressTrimmedPdf } from "../lib/trimCompress";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { uniqueFileNames } from "../lib/uniqueName";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { CompressPage } from "./CompressPage";
 
@@ -335,6 +336,8 @@ function TrimPageBatch({
       };
       setProgress({ ...prog });
       const producedPaths: string[] = [];
+      // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+      const outNames = uniqueFileNames(files.map((x) => x.filename));
 
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
@@ -342,7 +345,7 @@ function TrimPageBatch({
         setProgress({ ...prog });
 
         try {
-          const out = joinPath(resolvedDir, buildName(f.filename, ["trimmed"]));
+          const out = joinPath(resolvedDir, buildName(outNames[i], ["trimmed"]));
 
           console.log(
             "[DEBUG] trim_pdf in out margin pages exclude extract: ",
