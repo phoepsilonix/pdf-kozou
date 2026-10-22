@@ -20,6 +20,7 @@ unsafe extern "C" {
     fn kozou_ios_pick_folder(
         ctx: *mut c_void,
         callback: extern "C" fn(*mut c_void, i32, *const c_char),
+        initial_path: *const c_char,
     );
 }
 
@@ -48,11 +49,19 @@ pub struct PickedFolder {
 }
 
 /// フォルダ選択ピッカーを表示し、選ばれたフォルダを返す。キャンセル時は `Ok(None)`。
-pub async fn pick_folder() -> Result<Option<PickedFolder>, String> {
+/// `initial_path` を渡すと、ピッカーをそのフォルダ(前回の保存先など)から開く。
+pub async fn pick_folder(initial_path: Option<&str>) -> Result<Option<PickedFolder>, String> {
+    // NUL を含むパスは無視して初期位置なしで開く。
+    let initial = initial_path
+        .filter(|p| !p.is_empty())
+        .and_then(|p| std::ffi::CString::new(p).ok());
     let (tx, rx) = mpsc::channel::<Reply>();
     let ctx = Box::into_raw(Box::new(tx)) as *mut c_void;
-    // SAFETY: コールバックは1回だけ呼ばれ、ctx はそこで回収される。
-    unsafe { kozou_ios_pick_folder(ctx, on_result) };
+    let initial_ptr = initial.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
+    // SAFETY: コールバックは1回だけ呼ばれ、ctx はそこで回収される。initial_ptr は
+    // 呼び出し中のみ参照され(ObjC側が即座に NSString へコピーする)、initial は
+    // この関数のスコープで生存する。
+    unsafe { kozou_ios_pick_folder(ctx, on_result, initial_ptr) };
 
     let (status, json) = tauri::async_runtime::spawn_blocking(move || rx.recv())
         .await

@@ -210,10 +210,11 @@ pub async fn pick_save_folder(
     }
     #[cfg(target_os = "ios")]
     {
-        let _ = (&app, &initial_tree_uri);
+        let _ = &app;
         // iOS: パスをそのまま tree_uri として扱う(以降の list_folder_names /
         // get_or_create_subfolder / commit_batch_to_folder にそのまま渡される)。
-        let picked = platform::ios_folder::pick_folder().await?;
+        // 前回の保存先(パス)があれば、ピッカーをそこから開く。
+        let picked = platform::ios_folder::pick_folder(initial_tree_uri.as_deref()).await?;
         Ok(picked.map(|p| PickedFolderDto {
             folder_name: if p.name.is_empty() {
                 p.path.clone()

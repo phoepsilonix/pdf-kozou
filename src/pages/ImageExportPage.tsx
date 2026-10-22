@@ -366,7 +366,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     androidUI,
     androidFolder,
     pickAndroidFolder,
-    ensureAndroidFolder,
     commitMobileOutput,
   } = useMobileBatchOutput();
   // batchFiles/srcStem の参照が変わるたびに再生成すると保存のたびに違う
@@ -678,11 +677,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
   // 単体実行（面付け対応版）
   // 実行ボタンのラベル用: 出力先が確定済みか。
-  // フォルダ選択が使えるモバイル(Android/iOS)では、保存先は「選択済みフォルダ」
-  // (永続化された前回のフォルダを含む)で決まり、outDir(一時ディレクトリ)は
-  // 判断材料にならない。以前は outDir が空の間ずっと「出力先を選択して実行」と
-  // 表示されたまま、保存済みフォルダがあるとピッカーを開かずに実行されていた。
-  const hasOutputTarget = androidUI ? androidFolder !== null : outDir !== "";
+  // フォルダ選択が使えるモバイル(Android/iOS)では、実行のたびに保存先フォルダを
+  // 選び直す(前回のフォルダが候補/初期位置になる)ため、常に「出力先を選択して
+  // 実行」と表示する。outDir(モバイルでは一時ディレクトリ)は判断材料にならない。
+  const hasOutputTarget = androidUI ? false : outDir !== "";
 
   const handleExecuteSingle = useCallback(async () => {
     setMobileSavedFiles(null);
@@ -767,7 +765,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (!resolvedDir) return;
       let androidFolderForRun: PickedFolder | null = null;
       if (await hasFolderPicker()) {
-        androidFolderForRun = await ensureAndroidFolder();
+        androidFolderForRun = await pickAndroidFolder();
         if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
       setPhase("processing");
@@ -836,7 +834,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (!resolvedDir) return; // キャンセル
       let androidFolderForRun: PickedFolder | null = null;
       if (await hasFolderPicker()) {
-        androidFolderForRun = await ensureAndroidFolder();
+        androidFolderForRun = await pickAndroidFolder();
         if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
       setPhase("processing");
@@ -958,7 +956,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     }
     let androidFolderForRun: PickedFolder | null = null;
     if (outputMode === "images" && (await hasFolderPicker())) {
-      androidFolderForRun = await ensureAndroidFolder();
+      androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
@@ -1136,7 +1134,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     pickSave,
     commitSave,
     pickDir,
-    ensureAndroidFolder,
+    pickAndroidFolder,
     finalizeMobileOutput,
     setError,
     announceSuccess,
@@ -1160,7 +1158,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     if (!batchDir) return; // キャンセル
     let androidFolderForRun: PickedFolder | null = null;
     if (await hasFolderPicker()) {
-      androidFolderForRun = await ensureAndroidFolder();
+      androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return;
@@ -1457,7 +1455,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     imageName,
     imagePrefix,
     pickDir,
-    ensureAndroidFolder,
+    pickAndroidFolder,
     finalizeMobileOutput,
     announceSuccess,
     t,

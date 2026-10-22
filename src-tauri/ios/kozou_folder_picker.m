@@ -99,7 +99,13 @@ static UIViewController *KozouTopViewController(void) {
 
 // フォルダ選択ピッカーを表示する。結果は callback で(メインスレッドから)通知する。
 // 任意のスレッドから呼べる。
-void kozou_ios_pick_folder(void *ctx, KozouFolderPickerCallback callback) {
+// initial_path: ピッカーを最初に開くフォルダの絶対パス(NULL/空なら指定なし)。
+// 前回選んだフォルダを渡すと、そこから選び直せる。
+void kozou_ios_pick_folder(void *ctx, KozouFolderPickerCallback callback,
+                           const char *initial_path) {
+  NSString *initial = (initial_path != NULL && initial_path[0] != '\0')
+                          ? [NSString stringWithUTF8String:initial_path]
+                          : nil;
   dispatch_async(dispatch_get_main_queue(), ^{
     UIViewController *presenter = KozouTopViewController();
     if (presenter == nil) {
@@ -111,6 +117,10 @@ void kozou_ios_pick_folder(void *ctx, KozouFolderPickerCallback callback) {
         [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]
                                                                     asCopy:NO];
     picker.allowsMultipleSelection = NO;
+    // 前回のフォルダを初期位置にする(存在しない/アクセス不可でもピッカー自体は開く)。
+    if (initial != nil) {
+      picker.directoryURL = [NSURL fileURLWithPath:initial isDirectory:YES];
+    }
     KozouFolderPickerDelegate *delegate = [[KozouFolderPickerDelegate alloc] init];
     delegate.ctx = ctx;
     delegate.callback = callback;
