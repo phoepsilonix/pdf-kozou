@@ -361,13 +361,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // 決め打ちのサブフォルダ名を「保存先プレビュー」として表示し、
   // 実行後に同じ名前で MediaStore の Downloads へコピーする(iOS) /
   // Android は SAF フォルダ選択によるバッチ出力 ──
-  const {
-    mobile,
-    androidUI,
-    androidFolder,
-    pickAndroidFolder,
-    commitMobileOutput,
-  } = useMobileBatchOutput();
+  const { mobile, androidUI, androidFolder, pickAndroidFolder, commitMobileOutput } =
+    useMobileBatchOutput();
   // batchFiles/srcStem の参照が変わるたびに再生成すると保存のたびに違う
   // フォルダ名になってしまうため、識別に必要な情報のみを依存にする。
   // biome-ignore lint/correctness/useExhaustiveDependencies: 上記コメント参照。

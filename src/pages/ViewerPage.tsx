@@ -1288,6 +1288,12 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     pdfInfo,
   ]);
 
+  // 切替先のファイルが現在のページ数より短い場合(ページ数が事前に分からなかった
+  // 場合を含む)は、総ページ数の確定後に最終ページへ寄せる。
+  useEffect(() => {
+    if (total > 0 && viewPage >= total) setViewPage(total - 1);
+  }, [total, viewPage]);
+
   // レイアウト変更時にレンダリングキャッシュをクリア（非 PDF 用）
   const lastLayoutKey = useRef(`${convertLayoutW}x${convertLayoutH}em${convertLayoutEm}`);
   useEffect(() => {
@@ -1685,7 +1691,11 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                         style={{ ...s.filePaneItem, ...(i === activeIdx ? s.filePaneItemOn : {}) }}
                         onClick={() => {
                           setActiveIdx(i);
-                          setViewPage(0);
+                          // ファイルを切り替えても表示ページは維持する(同種のPDFを
+                          // 同じ位置で見比べられるように)。スクロール位置は表示
+                          // コンテナが保持している。切替先のページ数が分かっていて
+                          // 範囲外になる場合のみ、最終ページへ寄せる。
+                          setViewPage((p) => (f.pageCount > 0 ? Math.min(p, f.pageCount - 1) : p));
                           setInfoOpen(false);
                         }}
                       >

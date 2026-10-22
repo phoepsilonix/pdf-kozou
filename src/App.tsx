@@ -142,6 +142,7 @@ export default function App() {
     selectNone,
     clearList,
     reorderFiles,
+    sortFilesByName,
     setFile,
     setError,
     lastError,
@@ -1043,6 +1044,30 @@ export default function App() {
                       </button>
                       <button type="button" style={s.btnSm} onClick={selectNone}>
                         {t("file.deselect")}
+                      </button>
+                      <button
+                        type="button"
+                        style={s.btnSm}
+                        onClick={() => {
+                          sortFilesByName("asc");
+                          announceSuccess("file.sorted_asc");
+                        }}
+                        aria-label={t("file.sort_asc_aria")}
+                        title={t("file.sort_asc_aria")}
+                      >
+                        {t("file.sort_asc")}
+                      </button>
+                      <button
+                        type="button"
+                        style={s.btnSm}
+                        onClick={() => {
+                          sortFilesByName("desc");
+                          announceSuccess("file.sorted_desc");
+                        }}
+                        aria-label={t("file.sort_desc_aria")}
+                        title={t("file.sort_desc_aria")}
+                      >
+                        {t("file.sort_desc")}
                       </button>
                       <div style={{ flex: 1 }} />
                       <button

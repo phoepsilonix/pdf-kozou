@@ -1,6 +1,7 @@
 // src/store/usePdfStore.ts
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { type SortDirection, sortByFilename } from "../lib/fileSort";
 import type { PdfInfo, TrimMargins } from "../lib/tauri";
 
 export type ImpositionMode = "1up" | "2up" | "4up" | "booklet" | "booklet-rtl";
@@ -28,6 +29,8 @@ interface PdfStore {
   selectNone: () => void;
   clearList: () => void;
   reorderFiles: (fromId: number, toId: number) => void;
+  /** ファイル名(数字は数値として比較)の昇順/降順に一覧を並び替える。 */
+  sortFilesByName: (direction: SortDirection) => void;
 
   filePath: string | null;
   pdfInfo: PdfInfo | null;
@@ -190,6 +193,8 @@ export const usePdfStore = create<PdfStore>()(
           arr.splice(ti, 0, item);
           return { fileList: arr };
         }),
+      sortFilesByName: (direction) =>
+        set((s) => ({ fileList: sortByFilename(s.fileList, (f) => f.filename, direction) })),
 
       filePath: null,
       pdfInfo: null,

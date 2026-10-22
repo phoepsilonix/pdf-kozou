@@ -47,6 +47,12 @@
     "select_all": "Select All",
     "deselect": "Deselect",
     "clear": "Clear",
+    "sort_asc": "Name ↑",
+    "sort_desc": "Name ↓",
+    "sort_asc_aria": "Sort by file name, ascending",
+    "sort_desc_aria": "Sort by file name, descending",
+    "sorted_asc": "Sorted by file name, ascending.",
+    "sorted_desc": "Sorted by file name, descending.",
     "pages_unit": " pages"
   },
   "tool": {

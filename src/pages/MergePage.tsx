@@ -25,6 +25,7 @@ import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
 import { buildName, opSuffix, stem } from "../lib/filename";
+import { type SortDirection, sortByFilename } from "../lib/fileSort";
 import { type FileWithPath, hasImage, isMupdfExtension } from "../lib/fileTypes";
 import { useI18n } from "../lib/i18n";
 import { resolvePageSizePt } from "../lib/pageSize";
@@ -307,6 +308,11 @@ useEffect(() => {
       return a;
     });
   const remove = (id: number) => setEntries((p) => p.filter((e) => e.id !== id));
+  // ファイル名(数字は数値として比較)の昇順/降順に並び替える。
+  const sortByName = (direction: SortDirection) => {
+    setEntries((p) => sortByFilename(p, (e) => e.filename, direction));
+    announceSuccess(direction === "asc" ? "file.sorted_asc" : "file.sorted_desc");
+  };
 
   // ── プレビュー ────────────────────────────────────────────────────────────
   const handlePreview = useCallback(async () => {
@@ -700,6 +706,26 @@ useEffect(() => {
             <div style={{ flex: 1 }} />
             <button
               type="button"
+              style={s.btnSort}
+              onClick={() => sortByName("asc")}
+              disabled={entries.length < 2}
+              aria-label={t("file.sort_asc_aria")}
+              title={t("file.sort_asc_aria")}
+            >
+              {t("file.sort_asc")}
+            </button>
+            <button
+              type="button"
+              style={s.btnSort}
+              onClick={() => sortByName("desc")}
+              disabled={entries.length < 2}
+              aria-label={t("file.sort_desc_aria")}
+              title={t("file.sort_desc_aria")}
+            >
+              {t("file.sort_desc")}
+            </button>
+            <button
+              type="button"
               style={s.btnClear}
               onClick={(e) => {
                 setEntries([]);
@@ -959,6 +985,16 @@ const s: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap" as const,
   },
   sub: { fontSize: FS.label, color: "var(--c-textSub)" },
+  btnSort: {
+    padding: "5px 14px",
+    background: "transparent",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 6,
+    color: "var(--c-textSub)",
+    cursor: "pointer",
+    fontSize: FS.small,
+    fontFamily: F,
+  },
   btnClear: {
     padding: "5px 14px",
     background: "transparent",

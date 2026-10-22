@@ -47,6 +47,12 @@
     "select_all": "全選択",
     "deselect": "解除",
     "clear": "クリア",
+    "sort_asc": "名前 ↑",
+    "sort_desc": "名前 ↓",
+    "sort_asc_aria": "ファイル名の昇順で並び替え",
+    "sort_desc_aria": "ファイル名の降順で並び替え",
+    "sorted_asc": "ファイル名の昇順に並び替えました。",
+    "sorted_desc": "ファイル名の降順に並び替えました。",
     "pages_unit": "ページ"
   },
   "tool": {
