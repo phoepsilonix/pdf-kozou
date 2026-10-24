@@ -68,10 +68,7 @@ pub fn render_page(
         return Err(format!("unsupported feature: {feature}"));
     }
 
-    let settings = InterpreterSettings {
-        font_resolver: Arc::new(resolve_font),
-        ..Default::default()
-    };
+    let settings = interpreter_settings();
     let render_settings = RenderSettings::default();
     let pixmap_settings = PixmapSettings {
         x_scale: scale,
@@ -89,17 +86,7 @@ pub fn render_page(
         rgb.extend_from_slice(&px[..3]);
     }
 
-    let mut out = Vec::new();
-    if png {
-        use image::ImageEncoder;
-        image::codecs::png::PngEncoder::new(&mut out)
-            .write_image(&rgb, width_px, height_px, image::ExtendedColorType::Rgb8)
-            .map_err(|e| format!("png encode: {e}"))?;
-    } else {
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100))
-            .encode(&rgb, width_px, height_px, image::ExtendedColorType::Rgb8)
-            .map_err(|e| format!("jpeg encode: {e}"))?;
-    }
+    let out = encode_rgb(&rgb, width_px, height_px, png, quality)?;
 
     Ok(HayroImage {
         bytes: out,
@@ -108,6 +95,299 @@ pub fn render_page(
         page_w_pt,
         page_h_pt,
     })
+}
+
+fn interpreter_settings() -> InterpreterSettings {
+    InterpreterSettings {
+        font_resolver: Arc::new(resolve_font),
+        ..Default::default()
+    }
+}
+
+/// RGB8 のピクセル列を PNG / JPEG にエンコードする
+pub fn encode_rgb(
+    rgb: &[u8],
+    width_px: u32,
+    height_px: u32,
+    png: bool,
+    quality: u8,
+) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    if png {
+        use image::ImageEncoder;
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(rgb, width_px, height_px, image::ExtendedColorType::Rgb8)
+            .map_err(|e| format!("png encode: {e}"))?;
+    } else {
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100))
+            .encode(rgb, width_px, height_px, image::ExtendedColorType::Rgb8)
+            .map_err(|e| format!("jpeg encode: {e}"))?;
+    }
+    Ok(out)
+}
+
+fn load_pdf(path: &str) -> Result<Pdf, String> {
+    let data = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
+    let head = &data[..data.len().min(1024)];
+    if !head.windows(5).any(|w| w == b"%PDF-") {
+        return Err("not a PDF".into());
+    }
+    Pdf::new(data).map_err(|e| format!("hayro load: {e:?}"))
+}
+
+// ── 面付け (シート合成) ──────────────────────────────────────────────────────
+//
+// MuPDF 実装 (mupdf_safe.c の kozou_render_imposition / kozou_compose_sheet_pixmap) と
+// 同じ配置規則:
+//   セルの大きさ = シート内の有効ページの最大幅・最大高さ (pt) × dpi/72 を四捨五入
+//   各ページはセルに縦横比を保って収め、セル内で中央寄せ
+//   セル間と外周に gap_px の隙間。空白セル (ページ番号 0 / 範囲外) は白のまま
+// 差異: hayro には高品質アンチエイリアス (supersample_max) が無いため無視する。
+//       ページ画像の寸法は切り捨てのため、MuPDF と最大 1px 異なることがある。
+
+/// 合成済みのシート (RGB8)
+pub struct Sheet {
+    pub rgb: Vec<u8>,
+    pub width_px: u32,
+    pub height_px: u32,
+    /// セルの大きさ (pt)。画像 PDF のページ寸法の算出に使う
+    pub cell_w_pt: f32,
+    pub cell_h_pt: f32,
+}
+
+/// 入力 PDF を一度だけ開き、各シートを合成して順に `on_sheet` へ渡す
+/// (メモリ上に同時に持つシートは 1 枚だけ)。
+/// 描画できない場合 (PDF 以外、未対応機能、サイズ超過など) は Err。
+pub fn compose_sheets(
+    path: &str,
+    sheets: &[&[i32]],
+    cols: i32,
+    rows: i32,
+    dpi: f32,
+    gap_px: i32,
+    mut on_sheet: impl FnMut(usize, Sheet) -> Result<(), String>,
+) -> Result<(), String> {
+    if cols < 1 || rows < 1 || !(dpi > 0.0) {
+        return Err("invalid imposition parameters".into());
+    }
+    let pdf = load_pdf(path)?;
+    let pages = pdf.pages();
+    let settings = interpreter_settings();
+    let cache = RenderCache::new();
+    for (si, nums) in sheets.iter().enumerate() {
+        let valid: Vec<Option<&Page<'_>>> = nums
+            .iter()
+            .map(|&n| usize::try_from(n - 1).ok().and_then(|i| pages.get(i)))
+            .collect();
+        let sheet = compose_one(&valid, &cache, &settings, cols, rows, dpi, gap_px)?;
+        on_sheet(si, sheet)?;
+    }
+    Ok(())
+}
+
+fn compose_one<'a>(
+    cells: &[Option<&'a Page<'a>>],
+    cache: &RenderCache<'a>,
+    settings: &InterpreterSettings,
+    cols: i32,
+    rows: i32,
+    dpi: f32,
+    gap_px: i32,
+) -> Result<Sheet, String> {
+    // セルの大きさ: 有効ページの最大寸法 (有効ページが無ければ A4)
+    let (mut max_w, mut max_h) = (595.0f32, 842.0f32);
+    let mut first = true;
+    for page in cells.iter().flatten() {
+        if let Some(feature) = unsupported_feature(page) {
+            return Err(format!("unsupported feature: {feature}"));
+        }
+        let (w, h) = page.render_dimensions();
+        if first {
+            (max_w, max_h) = (w, h);
+            first = false;
+        } else {
+            max_w = max_w.max(w);
+            max_h = max_h.max(h);
+        }
+    }
+    let scale = dpi / 72.0;
+    let cell_w = (max_w * scale + 0.5) as i64;
+    let cell_h = (max_h * scale + 0.5) as i64;
+    let g = gap_px.max(0) as i64;
+    let (cols_l, rows_l) = (cols as i64, rows as i64);
+    let total_w = cols_l * cell_w + (cols_l + 1) * g;
+    let total_h = rows_l * cell_h + (rows_l + 1) * g;
+    if cell_w < 1 || cell_h < 1 || cell_w > u16::MAX as i64 || cell_h > u16::MAX as i64 {
+        return Err(format!("unsupported cell size {cell_w}x{cell_h}"));
+    }
+    let total_bytes = (total_w as u128) * (total_h as u128) * 3;
+    if total_bytes > 1024 * 1024 * 1024 {
+        return Err(format!(
+            "imposition: output too large ({total_w}x{total_h} @ 3ch = {}MB > 1024MB)",
+            total_bytes / (1024 * 1024)
+        ));
+    }
+
+    let (tw, th) = (total_w as usize, total_h as usize);
+    let mut rgb = vec![255u8; tw * th * 3];
+    let render_settings = RenderSettings::default();
+
+    for (i, cell) in cells.iter().enumerate() {
+        let (col, row) = (i as i64 % cols_l, i as i64 / cols_l);
+        if row >= rows_l {
+            break;
+        }
+        let Some(page) = cell else { continue }; // 空白セルは白のまま
+        let (pw, ph) = page.render_dimensions();
+        if !(pw > 0.0 && ph > 0.0) {
+            continue;
+        }
+        let fit = (cell_w as f32 / pw).min(cell_h as f32 / ph);
+        let pixmap = render(
+            page,
+            cache,
+            settings,
+            &render_settings,
+            &PixmapSettings {
+                x_scale: fit,
+                y_scale: fit,
+                bg_color: WHITE,
+            },
+        );
+        let (rw, rh) = (pixmap.width() as i64, pixmap.height() as i64);
+        let cell_x = g + col * (cell_w + g);
+        let cell_y = g + row * (cell_h + g);
+        let off_x = cell_x + (cell_w - rw) / 2;
+        let off_y = cell_y + (cell_h - rh) / 2;
+        let copy_w = rw.min(total_w - off_x);
+        let copy_h = rh.min(total_h - off_y);
+        if copy_w <= 0 || copy_h <= 0 {
+            continue;
+        }
+        // 背景は不透明な白のため、premultiplied RGBA の RGB をそのまま使える
+        let src = pixmap.data_as_u8_slice();
+        for r in 0..copy_h as usize {
+            let s_row = &src[(r * rw as usize) * 4..];
+            let d_start = ((off_y as usize + r) * tw + off_x as usize) * 3;
+            let d_row = &mut rgb[d_start..d_start + copy_w as usize * 3];
+            for (c, d) in d_row.chunks_exact_mut(3).enumerate() {
+                d.copy_from_slice(&s_row[c * 4..c * 4 + 3]);
+            }
+        }
+    }
+
+    Ok(Sheet {
+        rgb,
+        width_px: total_w as u32,
+        height_px: total_h as u32,
+        cell_w_pt: max_w,
+        cell_h_pt: max_h,
+    })
+}
+
+/// 1 シートを合成して PNG / JPEG にエンコードして返す (render_imposition 用)
+pub fn render_sheet_encoded(
+    path: &str,
+    page_nums: &[i32],
+    cols: i32,
+    rows: i32,
+    dpi: f32,
+    gap_px: i32,
+    png: bool,
+    quality: u8,
+) -> Result<Vec<u8>, String> {
+    let mut out = None;
+    compose_sheets(path, &[page_nums], cols, rows, dpi, gap_px, |_, sheet| {
+        out = Some(encode_rgb(&sheet.rgb, sheet.width_px, sheet.height_px, png, quality)?);
+        Ok(())
+    })?;
+    out.ok_or_else(|| "no sheet".to_string())
+}
+
+/// 面付け画像 PDF を書き出す (rasterize_imposition 用)。
+/// 各シートを 1 枚の画像に合成し、1 PDF ページに埋め込む。PDF の組み立ては lopdf。
+///  - JPEG: DCT のまま埋め込む (再圧縮なし)
+///  - PNG : RGB を Flate で可逆圧縮して埋め込む
+/// ページ寸法 (pt) は MuPDF 実装と同じ: cols*cell_w + (cols+1)*gap (gap は px→pt 換算)。
+pub fn rasterize_imposition_pdf(
+    input: &str,
+    output: &str,
+    sheet_pages: &[i32],
+    cells_per_sheet: usize,
+    cols: i32,
+    rows: i32,
+    dpi: f32,
+    gap_px: i32,
+    png: bool,
+    quality: u8,
+) -> Result<(), String> {
+    use lopdf::{Document, Object, Stream, dictionary};
+
+    if cells_per_sheet == 0 {
+        return Err("cells_per_sheet is 0".into());
+    }
+    let sheets: Vec<&[i32]> = sheet_pages.chunks(cells_per_sheet).collect();
+    let mut doc = Document::with_version("1.5");
+    let pages_id = doc.new_object_id();
+    let mut kids: Vec<Object> = Vec::new();
+    let g_pt = if gap_px > 0 { gap_px as f32 * 72.0 / dpi } else { 0.0 };
+
+    compose_sheets(input, &sheets, cols, rows, dpi, gap_px, |_, sheet| {
+        let mut img_dict = dictionary! {
+            "Type" => "XObject",
+            "Subtype" => "Image",
+            "Width" => sheet.width_px as i64,
+            "Height" => sheet.height_px as i64,
+            "ColorSpace" => "DeviceRGB",
+            "BitsPerComponent" => 8,
+        };
+        let img_stream = if png {
+            let mut st = Stream::new(img_dict, sheet.rgb);
+            st.compress().map_err(|e| format!("flate: {e}"))?;
+            st
+        } else {
+            let jpeg = encode_rgb(&sheet.rgb, sheet.width_px, sheet.height_px, false, quality)?;
+            img_dict.set("Filter", "DCTDecode");
+            Stream::new(img_dict, jpeg)
+        };
+        let img_id = doc.add_object(img_stream);
+
+        let page_w = cols as f32 * sheet.cell_w_pt + (cols + 1) as f32 * g_pt;
+        let page_h = rows as f32 * sheet.cell_h_pt + (rows + 1) as f32 * g_pt;
+        let content = format!("q\n{page_w:.4} 0 0 {page_h:.4} 0 0 cm\n/Im0 Do\nQ\n");
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), page_w.into(), page_h.into()],
+            "Resources" => dictionary! {
+                "XObject" => dictionary! { "Im0" => img_id },
+            },
+            "Contents" => content_id,
+        });
+        kids.push(page_id.into());
+        Ok(())
+    })?;
+
+    if kids.is_empty() {
+        return Err("no sheets".into());
+    }
+    let count = kids.len() as i64;
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => kids,
+            "Count" => count,
+        }),
+    );
+    let catalog_id = doc.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages_id,
+    });
+    doc.trailer.set("Root", catalog_id);
+    doc.save(output).map_err(|e| format!("save: {e}"))?;
+    Ok(())
 }
 
 // ── 未対応機能の検出 ─────────────────────────────────────────────────────────

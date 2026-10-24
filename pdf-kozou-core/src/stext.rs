@@ -1463,6 +1463,55 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
     };
     use std::ffi::CString;
 
+    // hayro (純 Rust) での合成。"auto" は失敗時に下の MuPDF 実装へフォールバックする。
+    let engine = crate::render::Engine::resolve_default();
+    if engine != crate::render::Engine::MuPdf {
+        #[cfg(feature = "hayro")]
+        {
+            let png = req.format.as_deref() == Some("png");
+            let t0 = std::time::Instant::now();
+            match crate::render_hayro::render_sheet_encoded(
+                &req.path,
+                &req.page_nums,
+                req.cols,
+                req.rows,
+                req.dpi,
+                req.gap_px.unwrap_or(0),
+                png,
+                req.quality.unwrap_or(85).clamp(1, 100) as u8,
+            ) {
+                Ok(bytes) => {
+                    eprintln!(
+                        "[render] engine=hayro (requested={}) imposition {}x{} cells dpi={} {:?}",
+                        engine.name(),
+                        req.cols,
+                        req.rows,
+                        req.dpi,
+                        t0.elapsed()
+                    );
+                    use base64::Engine as _;
+                    return Ok(RenderImpositionResponse {
+                        ok: true,
+                        image_b64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                        format: req.format.clone().unwrap_or_else(|| "jpeg".into()),
+                    });
+                }
+                Err(e) if engine == crate::render::Engine::Hayro => {
+                    eprintln!("[render] engine=hayro imposition failed (no fallback): {e}");
+                    return Err(CoreError::Internal(format!("hayro imposition: {e}")));
+                }
+                Err(e) => eprintln!(
+                    "[render] engine=hayro imposition failed, falling back to mupdf: {e}"
+                ),
+            }
+        }
+        #[cfg(not(feature = "hayro"))]
+        eprintln!(
+            "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+            engine.name()
+        );
+    }
+
     let c_path = CString::new(req.path.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
@@ -1605,6 +1654,58 @@ pub fn rasterize_imposition(
         && !parent.as_os_str().is_empty()
     {
         let _ = std::fs::create_dir_all(parent);
+    }
+
+    // hayro (描画) + lopdf (PDF 組み立て) での出力。"auto" は失敗時に MuPDF 実装へフォールバック。
+    let engine = crate::render::Engine::resolve_default();
+    if engine != crate::render::Engine::MuPdf {
+        #[cfg(feature = "hayro")]
+        {
+            let t0 = std::time::Instant::now();
+            match crate::render_hayro::rasterize_imposition_pdf(
+                &req.input,
+                &req.output,
+                &req.sheet_pages,
+                cells_per_sheet as usize,
+                req.cols,
+                req.rows,
+                req.dpi,
+                req.gap_px.unwrap_or(0),
+                req.use_png.unwrap_or(false),
+                req.quality.unwrap_or(85).clamp(1, 100) as u8,
+            ) {
+                Ok(()) => {
+                    eprintln!(
+                        "[render] engine=hayro (requested={}) rasterize_imposition {} sheets {:?}",
+                        engine.name(),
+                        req.n_sheets,
+                        t0.elapsed()
+                    );
+                    // 入力PDFのメタデータ（/Info）を出力に継承する
+                    let metadata = crate::compress::collect_metadata(&req.input);
+                    if !metadata.is_empty() {
+                        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+                    }
+                    let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+                    return Ok(RasterizeImpositionResponse {
+                        ok: true,
+                        output_bytes: ob,
+                    });
+                }
+                Err(e) if engine == crate::render::Engine::Hayro => {
+                    eprintln!("[render] engine=hayro rasterize_imposition failed (no fallback): {e}");
+                    return Err(CoreError::Internal(format!("hayro rasterize_imposition: {e}")));
+                }
+                Err(e) => eprintln!(
+                    "[render] engine=hayro rasterize_imposition failed, falling back to mupdf: {e}"
+                ),
+            }
+        }
+        #[cfg(not(feature = "hayro"))]
+        eprintln!(
+            "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+            engine.name()
+        );
     }
 
     let tmp_dir = {

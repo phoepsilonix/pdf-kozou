@@ -42,7 +42,7 @@ pub struct RenderRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Engine {
+pub(crate) enum Engine {
     MuPdf,
     Auto,
     Hayro,
@@ -58,7 +58,7 @@ impl Engine {
         }
     }
 
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Engine::MuPdf => "mupdf",
             Engine::Auto => "auto",
@@ -68,7 +68,16 @@ impl Engine {
 
     /// 優先順位: リクエスト → set_default_engine → 環境変数 → MuPDF
     fn resolve(req: &RenderRequest) -> Self {
-        if let Some(v) = req.engine.as_deref()
+        Self::resolve_with(req.engine.as_deref())
+    }
+
+    /// リクエストに engine 指定が無い処理 (面付け等) 用
+    pub(crate) fn resolve_default() -> Self {
+        Self::resolve_with(None)
+    }
+
+    fn resolve_with(requested: Option<&str>) -> Self {
+        if let Some(v) = requested
             && let Some(e) = Self::parse(v)
         {
             return e;
