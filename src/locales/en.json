@@ -845,6 +845,16 @@
     "font_pt": "Font (pt)",
     "note": "※ Does not affect PDF / images / CBZ and other fixed-layout formats"
   },
+  "render_engine": {
+    "title": "Rendering engine",
+    "short": "Render",
+    "mupdf": "MuPDF",
+    "mupdf_desc": "Classic renderer, best compatibility (default)",
+    "auto": "hayro (auto)",
+    "auto_desc": "Render with hayro; fall back to MuPDF on failure or unsupported features",
+    "hayro": "hayro only",
+    "hayro_desc": "Render with hayro only (errors on failure). For comparison and testing"
+  },
   "theme": {
     "moss": "Moss Green",
     "ocean": "Ocean",

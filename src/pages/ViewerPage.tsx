@@ -20,6 +20,7 @@ import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { useMobilePlatformState } from "../hooks/usePlatform";
 import { useViewport } from "../hooks/useViewport";
 import { useI18n } from "../lib/i18n";
+import { useRenderEngine } from "../lib/renderEngine";
 import {
   getPageLinks,
   getPageText,
@@ -1311,6 +1312,18 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     lastInfoKey.current = "";
   }, [convertLayoutW, convertLayoutH, convertLayoutEm, imgCache]);
 
+  // 描画エンジン切替時は、旧エンジンで描画済みの画像を破棄して再描画させる
+  const { engine: renderEngine } = useRenderEngine();
+  const lastRenderEngine = useRef(renderEngine);
+  useEffect(() => {
+    if (renderEngine === lastRenderEngine.current) return;
+    lastRenderEngine.current = renderEngine;
+    for (const path of imgCache.paths()) {
+      imgCache.deletePath(path);
+      thumbCache.current.delete(path);
+    }
+  }, [renderEngine, imgCache]);
+
   // 非 PDF ファイルの変換済みパスキャッシュ（変換は1回だけ）
   // ── 2. メイン画像レンダリング（キャッシュ付き）────────────────────────────
   // 描画 dpi: 表示される実画素数（ズーム × devicePixelRatio × UI倍率）に合わせた段階。
@@ -1363,6 +1376,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   // stext/links を取得済みのページ（path + page）。dpi だけが変わった再実行では取り直さない。
   const textLoadedKey = useRef("");
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: renderEngine は描画エンジン切替時に再描画させるための意図的な依存
   useEffect(() => {
     if (!activePath) return;
     let cancelled = false;
@@ -1435,7 +1449,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activePath, viewPage, getOrRender, prefetch, total, renderDpi, imgCache]);
+  }, [activePath, viewPage, getOrRender, prefetch, total, renderDpi, imgCache, renderEngine]);
 
   // ── 4. サムネイル ──────────────────────────────────────────────────────────
   // ページ移動時に読み上げ

@@ -32,6 +32,7 @@ import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
 import { LazyBoundary } from "./components/LazyBoundary";
 import { PageSizeSelector } from "./components/PageSizeSelector";
+import { RenderEngineControl } from "./components/RenderEngineControl";
 import { SaveConflictModal } from "./components/SaveConflictModal";
 import { SaveNamePromptModal } from "./components/SaveNamePromptModal";
 import { ThemeSwitcher } from "./components/ThemeSwitcher";
@@ -44,6 +45,7 @@ import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
 import { useI18n } from "./lib/i18n";
 import { loadLastTool, saveLastTool } from "./lib/lastTool";
+import { initRenderEngine } from "./lib/renderEngine";
 import { formatFilenameForSpeech } from "./lib/speakName";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
 //import { C, F, setTheme, loadThemeId, getTheme, THEMES, applyThemeCssVars, initThemeCssVars } from "./lib/theme";
@@ -216,6 +218,11 @@ export default function App() {
     setUiScale(pct);
     applyUiScale(pct);
     saveUiScale(pct);
+  }, []);
+
+  // 起動時に描画エンジン (MuPDF / hayro) の保存済み選択をコアへ反映
+  useEffect(() => {
+    void initRenderEngine();
   }, []);
 
   // 起動時／復帰時に保存済みの表示スケールを適用
@@ -682,6 +689,7 @@ export default function App() {
                   <A11yControls />
                   <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
+                  <RenderEngineControl />
                   <LayoutModeControl
                     mode={layoutModeOverride}
                     onChange={setLayoutModeOverride}
@@ -710,6 +718,7 @@ export default function App() {
               <A11yControls />
               <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
               <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
+              <RenderEngineControl />
               <LayoutModeControl
                 mode={layoutModeOverride}
                 onChange={setLayoutModeOverride}
@@ -1508,6 +1517,7 @@ function ToolShell({
       <A11yControls />
       <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
       <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
+      <RenderEngineControl />
       <LayoutModeControl
         mode={layoutModeOverride}
         onChange={setLayoutModeOverride}

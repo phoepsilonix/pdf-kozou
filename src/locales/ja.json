@@ -845,6 +845,16 @@
     "font_pt": "フォント (pt)",
     "note": "※ PDF / 画像 / CBZ などレイアウト固定の形式には影響しません"
   },
+  "render_engine": {
+    "title": "描画エンジン",
+    "short": "描画",
+    "mupdf": "MuPDF",
+    "mupdf_desc": "従来の描画。互換性が最も高い（既定）",
+    "auto": "hayro（自動）",
+    "auto_desc": "hayroで描画し、失敗・未対応の機能はMuPDFに切り替える",
+    "hayro": "hayroのみ",
+    "hayro_desc": "hayroだけで描画する（失敗時はエラー）。比較・検証用"
+  },
   "theme": {
     "moss": "モスグリーン",
     "ocean": "オーシャン",

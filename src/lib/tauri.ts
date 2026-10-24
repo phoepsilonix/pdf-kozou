@@ -1601,3 +1601,21 @@ export async function getImageMetadata(path: string): Promise<MetadataField[]> {
 export async function setImageMetadata(path: string, metadata: MetadataField[]): Promise<void> {
   await invoke("set_image_metadata", { path, metadata });
 }
+
+// ── 描画エンジン (MuPDF / hayro) ────────────────────────────────────────────
+
+export interface RenderEngineInfo {
+  /** このビルドで選べるエンジン。hayro feature 無しなら ["mupdf"] のみ */
+  available: string[];
+  /** コアが現在使う既定エンジン */
+  current: string;
+}
+
+export async function getRenderEngineInfo(): Promise<RenderEngineInfo> {
+  return invoke<RenderEngineInfo>("get_render_engine_info");
+}
+
+/** プロセス全体の既定の描画エンジンを設定する ("mupdf" | "auto" | "hayro") */
+export async function setRenderEngineCore(engine: string): Promise<void> {
+  await invoke<void>("set_render_engine", { engine });
+}
