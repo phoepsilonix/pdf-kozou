@@ -12,11 +12,11 @@
     "tauri:dev2": "tauri dev",
     "build:core": "cargo build --release --bin pdf-kozou-core --features hayro",
     "build:frontend": "tsc && vite build",
-    "build": "tauri build --features hayro",
-    "build:android": "tauri android build --features hayro --apk",
-    "build:android:debug": "tauri android build --features hayro --debug --apk",
-    "tauri:android:build": "pnpm exec --no-install tauri android build --features hayro --apk --aab --ci",
-    "tauri:ios:build": "pnpm exec --no-install tauri ios build --features hayro --ci --no-sign",
+    "build": "tauri build",
+    "build:android": "tauri android build --apk",
+    "build:android:debug": "tauri android build --debug --apk",
+    "tauri:android:build": "pnpm exec --no-install tauri android build --apk --aab --ci",
+    "tauri:ios:build": "pnpm exec --no-install tauri ios build --ci --no-sign",
     "version": "echo $npm_package_version"
   },
   "dependencies": {

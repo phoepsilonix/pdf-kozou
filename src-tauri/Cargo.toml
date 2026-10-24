@@ -24,7 +24,7 @@ cc = "1"   # iOS: フォルダ選択ピッカー(Objective-C)のコンパイル�
 [dependencies]
 # サイドカー(別プロセス起動)を廃止し、ライブラリとして直接リンクする。
 # Android/iOS は外部プロセスの起動ができないため、これが唯一の構成。
-pdf-kozou-core       = { path = "../pdf-kozou-core" }
+pdf-kozou-core       = { path = "../pdf-kozou-core", features = ["hayro"] }
 tauri                = { version = "~2", features = ["protocol-asset"] }
 tauri-plugin-fs      = "~2.7"
 tauri-plugin-dialog  = "~2.8"
