@@ -17,8 +17,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use hayro::hayro_interpret::font::{FallbackFontQuery, FontData, FontQuery};
 use hayro::hayro_interpret::hayro_cmap::CidFamily;
+use hayro::hayro_interpret::hayro_syntax::object::{Dict, Stream};
+use hayro::hayro_interpret::hayro_syntax::page::{Page, Resources};
 use hayro::hayro_interpret::{InterpreterSettings, hayro_syntax::Pdf};
-use hayro::{RenderCache, RenderSettings, render};
+use hayro::{PixmapSettings, RenderCache, RenderSettings, render};
 use hayro::vello_cpu::color::palette::css::WHITE;
 
 /// hayro での描画結果 (エンコード済み画像)
@@ -61,18 +63,23 @@ pub fn render_page(
         return Err(format!("unsupported pixmap size {w}x{h}"));
     }
 
+    // hayro が未対応の機能を使うページは描画せず、呼び出し側 (MuPDF) に任せる
+    if let Some(feature) = unsupported_feature(page) {
+        return Err(format!("unsupported feature: {feature}"));
+    }
+
     let settings = InterpreterSettings {
         font_resolver: Arc::new(resolve_font),
         ..Default::default()
     };
-    let render_settings = RenderSettings {
+    let render_settings = RenderSettings::default();
+    let pixmap_settings = PixmapSettings {
         x_scale: scale,
         y_scale: scale,
         bg_color: WHITE,
-        ..Default::default()
     };
     let cache = RenderCache::new();
-    let pixmap = render(page, &cache, &settings, &render_settings);
+    let pixmap = render(page, &cache, &settings, &render_settings, &pixmap_settings);
 
     let (width_px, height_px) = (pixmap.width() as u32, pixmap.height() as u32);
     // 背景は不透明な白で塗っているため、premultiplied RGBA の RGB をそのまま使える
@@ -101,6 +108,79 @@ pub fn render_page(
         page_w_pt,
         page_h_pt,
     })
+}
+
+// ── 未対応機能の検出 ─────────────────────────────────────────────────────────
+//
+// hayro 0.8 で MuPDF と描画が食い違うことを確認済みの機能: ノックアウトグループ
+// (透明グループ辞書の /K true)。ブレンドモード・アイソレーション・色キーマスクは
+// 実測で一致したため検出対象にしていない (複合ケースは未検証)。
+
+const MAX_DEPTH: usize = 16;
+
+/// ページ (と、そこから辿れる Form XObject / SMask グループ) が未対応機能を使っていれば、
+/// その名前を返す。
+fn unsupported_feature(page: &Page<'_>) -> Option<&'static str> {
+    if is_knockout_group(page.raw()) {
+        return Some("knockout group");
+    }
+    let mut seen = std::collections::HashSet::new();
+    scan_resources(page.resources(), 0, &mut seen)
+}
+
+fn is_knockout_group(dict: &Dict<'_>) -> bool {
+    dict.get::<Dict<'_>>(b"Group")
+        .and_then(|g| g.get::<bool>(b"K"))
+        .unwrap_or(false)
+}
+
+fn scan_resources(
+    res: &Resources<'_>,
+    depth: usize,
+    seen: &mut std::collections::HashSet<String>,
+) -> Option<&'static str> {
+    if depth > MAX_DEPTH {
+        return None;
+    }
+    // Form XObject
+    for key in res.x_objects.keys() {
+        if let Some(stream) = res.x_objects.get::<Stream<'_>>(key.as_ref())
+            && let Some(f) = scan_form(&stream, depth, seen)
+        {
+            return Some(f);
+        }
+    }
+    // ExtGState の SMask グループ (/SMask << /G form >>)
+    for key in res.ext_g_states.keys() {
+        let Some(gs) = res.ext_g_states.get::<Dict<'_>>(key.as_ref()) else {
+            continue;
+        };
+        if let Some(stream) = gs
+            .get::<Dict<'_>>(b"SMask")
+            .and_then(|sm| sm.get::<Stream<'_>>(b"G"))
+            && let Some(f) = scan_form(&stream, depth, seen)
+        {
+            return Some(f);
+        }
+    }
+    None
+}
+
+fn scan_form(
+    stream: &Stream<'_>,
+    depth: usize,
+    seen: &mut std::collections::HashSet<String>,
+) -> Option<&'static str> {
+    // 循環参照・重複走査を避ける
+    if !seen.insert(format!("{:?}", stream.obj_id())) {
+        return None;
+    }
+    let dict = stream.dict();
+    if is_knockout_group(dict) {
+        return Some("knockout group");
+    }
+    let res = dict.get::<Dict<'_>>(b"Resources")?;
+    scan_resources(&Resources::new(res), depth + 1, seen)
 }
 
 // ── フォント解決 ─────────────────────────────────────────────────────────────
