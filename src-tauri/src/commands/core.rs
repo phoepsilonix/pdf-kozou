@@ -76,6 +76,27 @@ pub async fn get_pdf_info(
     .await
 }
 
+/// 描画エンジン (MuPDF / hayro) の切替状態。
+/// `available`: このビルドで選べるエンジン。hayro feature 無しなら ["mupdf"] のみ。
+#[tauri::command]
+pub fn get_render_engine_info() -> Value {
+    let mut available = vec!["mupdf"];
+    if pdf_kozou_core::render::hayro_available() {
+        available.extend(["auto", "hayro"]);
+    }
+    serde_json::json!({
+        "available": available,
+        "current": pdf_kozou_core::render::default_engine_name(),
+    })
+}
+
+/// プロセス全体の既定の描画エンジンを設定する ("mupdf" | "auto" | "hayro")。
+/// 以降の render_page / export_images など render::render を通る描画に反映される。
+#[tauri::command]
+pub fn set_render_engine(engine: String) -> Result<()> {
+    pdf_kozou_core::render::set_default_engine(&engine).map_err(Error::Core)
+}
+
 #[tauri::command]
 pub async fn render_page(
     path: String,

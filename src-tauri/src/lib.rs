@@ -155,6 +155,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             core::get_pdf_info,
             core::render_page,
+            core::get_render_engine_info,
+            core::set_render_engine,
             core::get_tmp_path,
             core::get_file_stat,
             core::get_default_save_dir,

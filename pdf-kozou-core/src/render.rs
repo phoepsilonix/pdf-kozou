@@ -7,6 +7,7 @@
 
 use crate::error::{CoreError, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RenderRequest {
@@ -31,9 +32,10 @@ pub struct RenderRequest {
     /// 細い罫線/ヘアラインの消失・フェードを緩和する(生成時間はやや増える)。
     #[serde(default)]
     pub supersample_max: Option<i32>,
-    /// 描画エンジン: "mupdf" (既定) / "auto" (hayro を試し、失敗時は MuPDF) /
-    /// "hayro" (hayro のみ。失敗はエラー)。省略時は環境変数
-    /// PDF_KOZOU_RENDER_ENGINE、それも無ければ "mupdf"。
+    /// 描画エンジン: "mupdf" / "auto" (hayro を試し、失敗時は MuPDF) /
+    /// "hayro" (hayro のみ。失敗はエラー)。
+    /// 省略時の優先順位: `set_default_engine` (GUI の設定) → 環境変数
+    /// PDF_KOZOU_RENDER_ENGINE → "mupdf"。
     /// hayro は feature "hayro" を付けてビルドした場合のみ有効 (無効時 "auto" は MuPDF)。
     #[serde(default)]
     pub engine: Option<String>,
@@ -47,17 +49,97 @@ enum Engine {
 }
 
 impl Engine {
-    fn from_request(req: &RenderRequest) -> Self {
-        let v = req
-            .engine
-            .clone()
-            .or_else(|| std::env::var("PDF_KOZOU_RENDER_ENGINE").ok());
-        match v.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-            Some("auto") => Engine::Auto,
-            Some("hayro") => Engine::Hayro,
-            _ => Engine::MuPdf,
+    fn parse(v: &str) -> Option<Self> {
+        match v.trim().to_ascii_lowercase().as_str() {
+            "mupdf" => Some(Engine::MuPdf),
+            "auto" => Some(Engine::Auto),
+            "hayro" => Some(Engine::Hayro),
+            _ => None,
         }
     }
+
+    fn name(self) -> &'static str {
+        match self {
+            Engine::MuPdf => "mupdf",
+            Engine::Auto => "auto",
+            Engine::Hayro => "hayro",
+        }
+    }
+
+    /// 優先順位: リクエスト → set_default_engine → 環境変数 → MuPDF
+    fn resolve(req: &RenderRequest) -> Self {
+        if let Some(v) = req.engine.as_deref()
+            && let Some(e) = Self::parse(v)
+        {
+            return e;
+        }
+        if let Some(e) = Self::from_code(DEFAULT_ENGINE.load(Ordering::Relaxed)) {
+            return e;
+        }
+        if let Ok(v) = std::env::var("PDF_KOZOU_RENDER_ENGINE")
+            && !v.trim().is_empty()
+        {
+            match Self::parse(&v) {
+                Some(e) => return e,
+                None => eprintln!(
+                    "[render] unknown PDF_KOZOU_RENDER_ENGINE={v:?} (use mupdf|auto|hayro); using mupdf"
+                ),
+            }
+        }
+        Engine::MuPdf
+    }
+
+    fn code(self) -> u8 {
+        match self {
+            Engine::MuPdf => 1,
+            Engine::Auto => 2,
+            Engine::Hayro => 3,
+        }
+    }
+
+    fn from_code(c: u8) -> Option<Self> {
+        match c {
+            1 => Some(Engine::MuPdf),
+            2 => Some(Engine::Auto),
+            3 => Some(Engine::Hayro),
+            _ => None,
+        }
+    }
+}
+
+/// GUI 等から設定するプロセス全体の既定エンジン (0 = 未設定)
+static DEFAULT_ENGINE: AtomicU8 = AtomicU8::new(0);
+
+/// プロセス全体の既定の描画エンジンを設定する。
+/// "mupdf" | "auto" | "hayro"。空文字 / "default" で未設定に戻す (環境変数に従う)。
+/// 不正な値は Err。feature "hayro" 無しのビルドでも設定自体は受け付ける
+/// (描画時は MuPDF になる。`hayro_available` で確認できる)。
+pub fn set_default_engine(name: &str) -> std::result::Result<(), String> {
+    let n = name.trim();
+    if n.is_empty() || n.eq_ignore_ascii_case("default") {
+        DEFAULT_ENGINE.store(0, Ordering::Relaxed);
+        return Ok(());
+    }
+    let e = Engine::parse(n).ok_or_else(|| format!("unknown render engine: {name:?}"))?;
+    DEFAULT_ENGINE.store(e.code(), Ordering::Relaxed);
+    Ok(())
+}
+
+/// 現在、リクエストで指定が無い場合に使われるエンジン名
+pub fn default_engine_name() -> &'static str {
+    Engine::from_code(DEFAULT_ENGINE.load(Ordering::Relaxed))
+        .or_else(|| {
+            std::env::var("PDF_KOZOU_RENDER_ENGINE")
+                .ok()
+                .and_then(|v| Engine::parse(&v))
+        })
+        .unwrap_or(Engine::MuPdf)
+        .name()
+}
+
+/// このビルドが hayro 描画を含むか (feature "hayro")
+pub fn hayro_available() -> bool {
+    cfg!(feature = "hayro")
 }
 
 #[derive(Serialize)]
@@ -107,9 +189,11 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
     // hayro (純 Rust) での描画。"auto" は失敗時に下の MuPDF 描画へフォールバックする。
     // 注: release プロファイルは panic=abort のため、hayro 内部の panic はフォールバック
     // できない。既定を MuPDF にしているのはそのため (自己検証の導入後に見直す)。
-    let engine = Engine::from_request(req);
+    // 診断ログは他の描画ログと同様に stderr (eprintln!) へ出す。
+    let engine = Engine::resolve(req);
     #[cfg(feature = "hayro")]
     if engine != Engine::MuPdf {
+        let t0 = std::time::Instant::now();
         match crate::render_hayro::render_page(
             &req.path,
             req.page_index,
@@ -118,6 +202,15 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
             req.quality.unwrap_or(85),
         ) {
             Ok(img) => {
+                eprintln!(
+                    "[render] engine=hayro (requested={}) page={} dpi={} {}x{}px {:?}",
+                    engine.name(),
+                    req.page_index,
+                    req.dpi,
+                    img.width_px,
+                    img.height_px,
+                    t0.elapsed()
+                );
                 return finish_render(
                     req,
                     format,
@@ -129,16 +222,26 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
                 );
             }
             Err(e) if engine == Engine::Hayro => {
+                eprintln!("[render] engine=hayro failed (no fallback): {e}");
                 return Err(CoreError::Internal(format!("hayro render: {e}")));
             }
-            Err(e) => tracing::warn!("hayro render failed, falling back to MuPDF: {e}"),
+            Err(e) => eprintln!(
+                "[render] engine=hayro failed, falling back to mupdf: {e} (page={})",
+                req.page_index
+            ),
         }
     }
     #[cfg(not(feature = "hayro"))]
-    if engine == Engine::Hayro {
-        return Err(CoreError::InvalidArg(
-            "built without the \"hayro\" feature".into(),
-        ));
+    if engine != Engine::MuPdf {
+        eprintln!(
+            "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+            engine.name()
+        );
+        if engine == Engine::Hayro {
+            return Err(CoreError::InvalidArg(
+                "built without the \"hayro\" feature".into(),
+            ));
+        }
     }
 
     let c_path = CString::new(req.path.as_str())
@@ -1914,3 +2017,39 @@ trait Pipe: Sized {
     }
 }
 impl<T> Pipe for T {}
+
+#[cfg(test)]
+mod engine_tests {
+    use super::*;
+
+    #[test]
+    fn engine_parse_and_default_override() {
+        assert_eq!(Engine::parse(" Auto "), Some(Engine::Auto));
+        assert_eq!(Engine::parse("HAYRO"), Some(Engine::Hayro));
+        assert_eq!(Engine::parse("mupdf"), Some(Engine::MuPdf));
+        assert_eq!(Engine::parse("x"), None);
+
+        // プロセス全体の既定は他テストと競合しうるため、このテスト内で完結させる
+        assert!(set_default_engine("bogus").is_err());
+        set_default_engine("hayro").unwrap();
+        assert_eq!(default_engine_name(), "hayro");
+        // リクエストの指定が最優先
+        let mut req = RenderRequest {
+            path: String::new(),
+            page_index: 0,
+            dpi: 72,
+            format: None,
+            quality: None,
+            output: None,
+            layout_w: None,
+            layout_h: None,
+            layout_em: None,
+            supersample_max: None,
+            engine: Some("mupdf".into()),
+        };
+        assert_eq!(Engine::resolve(&req), Engine::MuPdf);
+        req.engine = None;
+        assert_eq!(Engine::resolve(&req), Engine::Hayro);
+        set_default_engine("default").unwrap();
+    }
+}
