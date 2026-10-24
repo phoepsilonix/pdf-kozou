@@ -31,6 +31,33 @@ pub struct RenderRequest {
     /// 細い罫線/ヘアラインの消失・フェードを緩和する(生成時間はやや増える)。
     #[serde(default)]
     pub supersample_max: Option<i32>,
+    /// 描画エンジン: "mupdf" (既定) / "auto" (hayro を試し、失敗時は MuPDF) /
+    /// "hayro" (hayro のみ。失敗はエラー)。省略時は環境変数
+    /// PDF_KOZOU_RENDER_ENGINE、それも無ければ "mupdf"。
+    /// hayro は feature "hayro" を付けてビルドした場合のみ有効 (無効時 "auto" は MuPDF)。
+    #[serde(default)]
+    pub engine: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Engine {
+    MuPdf,
+    Auto,
+    Hayro,
+}
+
+impl Engine {
+    fn from_request(req: &RenderRequest) -> Self {
+        let v = req
+            .engine
+            .clone()
+            .or_else(|| std::env::var("PDF_KOZOU_RENDER_ENGINE").ok());
+        match v.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("auto") => Engine::Auto,
+            Some("hayro") => Engine::Hayro,
+            _ => Engine::MuPdf,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -75,6 +102,43 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
         let bounds = page.bounds().map_err(|e| CoreError::MuPdf(e.to_string()))?;
         let metadata = crate::compress::collect_metadata(&req.path);
         return render_svg(req, &page, &bounds, &metadata);
+    }
+
+    // hayro (純 Rust) での描画。"auto" は失敗時に下の MuPDF 描画へフォールバックする。
+    // 注: release プロファイルは panic=abort のため、hayro 内部の panic はフォールバック
+    // できない。既定を MuPDF にしているのはそのため (自己検証の導入後に見直す)。
+    let engine = Engine::from_request(req);
+    #[cfg(feature = "hayro")]
+    if engine != Engine::MuPdf {
+        match crate::render_hayro::render_page(
+            &req.path,
+            req.page_index,
+            req.dpi,
+            format == "png",
+            req.quality.unwrap_or(85),
+        ) {
+            Ok(img) => {
+                return finish_render(
+                    req,
+                    format,
+                    img.bytes,
+                    img.width_px,
+                    img.height_px,
+                    img.page_w_pt,
+                    img.page_h_pt,
+                );
+            }
+            Err(e) if engine == Engine::Hayro => {
+                return Err(CoreError::Internal(format!("hayro render: {e}")));
+            }
+            Err(e) => tracing::warn!("hayro render failed, falling back to MuPDF: {e}"),
+        }
+    }
+    #[cfg(not(feature = "hayro"))]
+    if engine == Engine::Hayro {
+        return Err(CoreError::InvalidArg(
+            "built without the \"hayro\" feature".into(),
+        ));
     }
 
     let c_path = CString::new(req.path.as_str())
@@ -144,6 +208,27 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
         bytes
     };
 
+    finish_render(
+        req,
+        format,
+        raw_bytes,
+        width as u32,
+        height as u32,
+        page_w_pt,
+        page_h_pt,
+    )
+}
+
+/// エンコード済み画像にメタデータを埋め込み、出力/レスポンスを組み立てる (エンジン共通)
+fn finish_render(
+    req: &RenderRequest,
+    format: &str,
+    raw_bytes: Vec<u8>,
+    width_px: u32,
+    height_px: u32,
+    page_w_pt: f32,
+    page_h_pt: f32,
+) -> Result<RenderResponse> {
     // メタデータを画像バイト列に埋め込む（PDF のみ・非 PDF はスキップ）
     let metadata = crate::compress::collect_metadata(&req.path);
     let image_bytes = if metadata.is_empty() {
@@ -161,8 +246,8 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
             ok: true,
             image_b64: String::new(),
             format: format.to_string(),
-            width_px: width as u32,
-            height_px: height as u32,
+            width_px,
+            height_px,
             page_w_pt,
             page_h_pt,
             dpi: req.dpi,
@@ -176,8 +261,8 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
         ok: true,
         image_b64,
         format: format.to_string(),
-        width_px: width as u32,
-        height_px: height as u32,
+        width_px,
+        height_px,
         page_w_pt,
         page_h_pt,
         dpi: req.dpi,

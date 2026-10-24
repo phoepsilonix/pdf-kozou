@@ -810,6 +810,7 @@ pub fn render_to_dir(
             layout_h,
             layout_em,
             supersample_max,
+            engine: None,
         };
 
         let resp = crate::render::render(&req)?;

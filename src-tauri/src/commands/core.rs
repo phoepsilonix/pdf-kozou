@@ -124,6 +124,7 @@ pub async fn render_page(
                 layout_h,
                 layout_em,
                 supersample_max: None,
+                engine: None,
             };
             let resp = pdf_kozou_core::render::render(&req).map_err(|e| e.to_string())?;
             serde_json::to_string(&resp).map_err(|e| e.to_string())

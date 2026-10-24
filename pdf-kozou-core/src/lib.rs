@@ -19,6 +19,8 @@ pub mod jpeg_lossless;
 pub mod merge;
 pub mod pixmap;
 pub mod render;
+#[cfg(feature = "hayro")]
+pub mod render_hayro;
 pub mod rotate;
 pub mod safe_load;
 pub mod split;

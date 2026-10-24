@@ -8,6 +8,12 @@ homepage = "https://github.com/phoepsilonix/pdf-kozou.git"
 repository = "https://github.com/phoepsilonix/pdf-kozou.git"
 authors = ["Masato TOYOSHIMA <phoepsilonix@gmail.com>"]
 
+[features]
+# hayro (純 Rust の PDF ラスタライザ) による描画。埋め込みフォントなしの PDF は
+# OS のシステムフォントで代替する。既定は無効 (従来どおり MuPDF のみ)。
+# hayro 0.6 は Rust 1.92 以上が必要。
+hayro = ["dep:hayro", "dep:fontdb"]
+
 [[bin]]
 name = "pdf-kozou-core"
 path = "src/main.rs"
@@ -51,6 +57,10 @@ tracing    = { workspace = true }
 svg2pdf    = { workspace = true }
 # svg2pdf::to_chunk で SVG を XObject 化し目標ページサイズに配置するために使用。
 pdf-writer = { workspace = true }
+
+# hayro 描画 + システムフォント探索 (feature "hayro" のときだけ)
+hayro  = { version = "0.6", optional = true }
+fontdb = { version = "0.24", optional = true }
 
 # CLI 引数
 clap = { version = "4", features = ["derive"] }
