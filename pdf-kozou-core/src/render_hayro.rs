@@ -347,6 +347,20 @@ pub fn rasterize_imposition_pdf(
             st
         } else {
             let jpeg = encode_rgb(&sheet.rgb, sheet.width_px, sheet.height_px, false, quality)?;
+            // jpegtran 方式の可逆最適化 (ハフマン表の最適化 / プログレッシブ化、画素は不変)。
+            // 小さくならない・画素が一致しない場合は元の JPEG をそのまま使う。
+            let jpeg = match crate::jpeg_optimize::optimize_jpeg(&jpeg) {
+                Some(o) => {
+                    eprintln!(
+                        "[render] jpeg optimized: {} -> {} bytes ({})",
+                        jpeg.len(),
+                        o.bytes.len(),
+                        if o.progressive { "progressive" } else { "baseline" }
+                    );
+                    o.bytes
+                }
+                None => jpeg,
+            };
             img_dict.set("Filter", "DCTDecode");
             Stream::new(img_dict, jpeg)
         };

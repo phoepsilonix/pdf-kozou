@@ -19,6 +19,8 @@ pub mod jpeg_lossless;
 pub mod merge;
 pub mod pixmap;
 pub mod render;
+#[cfg(feature = "jpeg-optimize")]
+pub mod jpeg_optimize;
 #[cfg(feature = "hayro")]
 pub mod render_hayro;
 pub mod rotate;

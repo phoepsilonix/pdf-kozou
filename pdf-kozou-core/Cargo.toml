@@ -12,7 +12,9 @@ authors = ["Masato TOYOSHIMA <phoepsilonix@gmail.com>"]
 # hayro (純 Rust の PDF ラスタライザ) による描画。埋め込みフォントなしの PDF は
 # OS のシステムフォントで代替する。既定は無効 (従来どおり MuPDF のみ)。
 # hayro 0.8 は Rust 1.92 以上が必要。
-hayro = ["dep:hayro", "dep:fontdb"]
+hayro = ["dep:hayro", "dep:fontdb", "jpeg-optimize"]
+# JPEG の可逆最適化 (jpegtran 方式。純 Rust の libjpeg-turbo-rs)
+jpeg-optimize = ["dep:libjpeg-turbo-rs"]
 
 [[bin]]
 name = "pdf-kozou-core"
@@ -61,6 +63,8 @@ pdf-writer = { workspace = true }
 # hayro 描画 + システムフォント探索 (feature "hayro" のときだけ)
 hayro  = { version = "0.8", optional = true }
 fontdb = { version = "0.24", optional = true }
+# JPEG の可逆最適化 (feature "jpeg-optimize")
+libjpeg-turbo-rs = { version = "0.8", optional = true }
 
 # CLI 引数
 clap = { version = "4", features = ["derive"] }
