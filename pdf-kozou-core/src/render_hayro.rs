@@ -407,6 +407,34 @@ pub fn rasterize_pdf(
     rasterize_imposition_pdf(input, output, &list, 1, 1, 1, dpi, 0, png, quality, supersample_max)
 }
 
+/// テキストを描かない 1 ページ 1 枚の画像化 PDF を書き出す (compress::rasterize_no_text 用)。
+/// lopdf でテキスト描画命令 (Tj / TJ / \' / ") を除いた複製 PDF を作り、それを hayro で描く。
+/// (hayro の描画デバイスは外から差し替えられないため、内容ストリーム側で除去する。)
+pub fn rasterize_pdf_no_text(
+    input: &str,
+    output: &str,
+    dpi: f32,
+    png: bool,
+    quality: u8,
+    pages: Option<&[i32]>,
+    supersample_max: i32,
+) -> Result<(), String> {
+    let data = std::fs::read(input).map_err(|e| format!("read: {e}"))?;
+    let (stripped, stats) = crate::content_filter::remove_text_bytes(&data)?;
+    eprintln!(
+        "[render] no-text: removed {} text operator(s) in {} content stream(s)",
+        stats.removed_ops, stats.streams
+    );
+    let dir = std::env::temp_dir().join("pdf-kozou");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("kozou_notext_{}.pdf", std::process::id()));
+    std::fs::write(&tmp, &stripped).map_err(|e| format!("write temp: {e}"))?;
+    let tmp_str = tmp.to_string_lossy().to_string();
+    let result = rasterize_pdf(&tmp_str, output, dpi, png, quality, pages, supersample_max);
+    let _ = std::fs::remove_file(&tmp);
+    result
+}
+
 /// 面付け画像 PDF を書き出す (rasterize_imposition 用)。
 /// 各シートを 1 枚の画像に合成し、1 PDF ページに埋め込む。PDF の組み立ては lopdf。
 ///  - JPEG: DCT のまま埋め込む (再圧縮なし)

@@ -1734,7 +1734,6 @@ pub fn rasterize_no_text_with_quality(
     use std::ffi::CString;
     use std::os::raw::c_int;
 
-    crate::render::note_mupdf_only("no-text rasterization");
     let metadata = collect_metadata(input);
 
     let c_input =
@@ -1762,32 +1761,81 @@ pub fn rasterize_no_text_with_quality(
         )
     };
 
-    unsafe {
-        let ctx = kozou_new_context();
-        if ctx.is_null() {
-            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
-        }
-        let mut res = FfiResult::default();
-        ffi_rasterize(
-            ctx,
-            c_input.as_ptr(),
-            c_output.as_ptr(),
-            dpi,
-            quality,
-            if use_png { 1 } else { 0 },
-            c_tmp_dir.as_ptr(),
-            indices_ptr,
-            indices_len,
-            &mut res,
-        );
-        mupdf_sys::fz_drop_context(ctx);
-        if res.ok == 0 {
-            return Err(CoreError::MuPdf(format!("{res}")));
+    // hayro (描画) + lopdf (テキスト除去・PDF 組み立て) での生成。
+    // "auto" は失敗時に MuPDF 実装へフォールバックする。
+    #[allow(unused_mut)]
+    let mut done = false;
+    {
+        let engine = crate::render::Engine::resolve_default();
+        if engine != crate::render::Engine::MuPdf {
+            #[cfg(feature = "hayro")]
+            {
+                let t0 = std::time::Instant::now();
+                match crate::render_hayro::rasterize_pdf_no_text(
+                    input,
+                    output,
+                    dpi,
+                    use_png,
+                    quality.clamp(1, 100) as u8,
+                    pages,
+                    1,
+                ) {
+                    Ok(()) => {
+                        eprintln!(
+                            "[render] engine=hayro (requested={}) rasterize_no_text {:?}",
+                            engine.name(),
+                            t0.elapsed()
+                        );
+                        done = true;
+                    }
+                    Err(e) if engine == crate::render::Engine::Hayro => {
+                        eprintln!("[render] engine=hayro rasterize_no_text failed (no fallback): {e}");
+                        return Err(CoreError::Internal(format!("hayro rasterize_no_text: {e}")));
+                    }
+                    Err(e) => eprintln!(
+                        "[render] engine=hayro rasterize_no_text failed, falling back to mupdf: {e}"
+                    ),
+                }
+            }
+            #[cfg(not(feature = "hayro"))]
+            eprintln!(
+                "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+                engine.name()
+            );
         }
     }
 
-    // 背景ラスタ (JPEG) を jpegtran 方式で可逆最適化する
-    crate::render::optimize_output_pdf_jpegs(output);
+    if !done {
+        unsafe {
+            let ctx = kozou_new_context();
+            if ctx.is_null() {
+                return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+            }
+            let mut res = FfiResult::default();
+            ffi_rasterize(
+                ctx,
+                c_input.as_ptr(),
+                c_output.as_ptr(),
+                dpi,
+                quality,
+                if use_png { 1 } else { 0 },
+                c_tmp_dir.as_ptr(),
+                indices_ptr,
+                indices_len,
+                &mut res,
+            );
+            mupdf_sys::fz_drop_context(ctx);
+            if res.ok == 0 {
+                return Err(CoreError::MuPdf(format!("{res}")));
+            }
+        }
+
+    }
+
+    // 背景ラスタ (JPEG) を jpegtran 方式で可逆最適化する (hayro 経路は生成時に済み)
+    if !done {
+        crate::render::optimize_output_pdf_jpegs(output);
+    }
     copy_metadata_after_write(output, &metadata);
 
     let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
