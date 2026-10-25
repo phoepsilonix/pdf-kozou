@@ -189,7 +189,7 @@ jobs:
           # linuxdeploy に除外させるライブラリを指定
           LINUXDEPLOY_EXCLUDE_LIBS: "libglib-2.0.so.0:libgobject-2.0.so.0:libgio-2.0.so.0:libgmodule-2.0.so.0:libdbus-1.so.3:libibus-1.0.so.5:libfcitx*.so:libwayland-client.so.0:libwayland-cursor.so.0:libwayland-server.so.0:libwayland-egl.so.1:libEGL.so.1:libGL.so.1:libGLX.so.0:libepoxy.so.0:libpcre2-8.so.0:libmount.so.1:libblkid.so.1"
         run: |
-          . $HOME/.cargo/env
+          #. $HOME/.cargo/env
           pnpm run build
           #cargo tauri build
 
@@ -649,7 +649,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ""   # 空で署名をスキップ
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
-          . $HOME/.cargo/env
+          #. $HOME/.cargo/env
           #pnpm run build -- --no-bundle   # まずバイナリだけビルド
           # または署名を明示的に無効化
           #pnpm run build -- --target universal-apple-darwin --no-bundle
