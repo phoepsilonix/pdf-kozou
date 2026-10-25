@@ -127,9 +127,15 @@ fn info_impl(path: &str, include_fonts: bool) -> Result<InfoResponse> {
 
     // PDF はまず lopdf で読み、読めない入力(破損・パスワード付き暗号化等)だけ
     // 従来の MuPDF 実装へフォールバックする（移行期間中の安全策）。
-    match info_pdf_lopdf(path, include_fonts, file_size) {
-        Ok(res) => return Ok(res),
-        Err(e) => eprintln!("[info] lopdf path failed ({e}); falling back to MuPDF"),
+    if crate::backend::try_lopdf("info") {
+        match info_pdf_lopdf(path, include_fonts, file_size) {
+            Ok(res) => return Ok(res),
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("info", &e) {
+                    return Err(CoreError::Internal(format!("info (lopdf): {e}")));
+                }
+            }
+        }
     }
 
     let c_path = CString::new(path).map_err(|_| CoreError::InvalidArg("invalid path".into()))?;

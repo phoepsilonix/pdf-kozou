@@ -855,6 +855,16 @@
     "hayro": "hayro only",
     "hayro_desc": "Render with hayro only (errors on failure). For comparison and testing"
   },
+  "pdf_backend": {
+    "title": "PDF processing engine",
+    "short": "Process",
+    "auto": "Auto (lopdf → MuPDF)",
+    "auto_desc": "Use lopdf; switch to MuPDF only for inputs lopdf cannot handle (default)",
+    "mupdf": "MuPDF only",
+    "mupdf_desc": "Use the classic MuPDF implementation only; lopdf is not used",
+    "lopdf": "lopdf only",
+    "lopdf_desc": "Use lopdf only, never fall back to MuPDF (errors are reported). For testing"
+  },
   "theme": {
     "moss": "Moss Green",
     "ocean": "Ocean",

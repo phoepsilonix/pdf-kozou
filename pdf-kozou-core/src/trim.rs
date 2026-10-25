@@ -326,14 +326,18 @@ fn resolve_selection(sel: &PageSelection, page_count: i32) -> Vec<i32> {
 /// まず lopdf 実装を試し、読み込み不能・パスワード付き暗号化など lopdf が扱えない入力
 /// のときだけ従来の MuPDF 実装へフォールバックする（移行期間中の安全策）。
 pub fn trim(req: &TrimRequest) -> Result<TrimResponse> {
-    match trim_with_lopdf(req) {
-        Ok(res) => Ok(res),
-        Err(e @ CoreError::InvalidArg(_)) => Err(e),
-        Err(e) => {
-            eprintln!("[trim] lopdf path failed ({e}); falling back to MuPDF");
-            trim_with_mupdf(req)
+    if crate::backend::try_lopdf("trim") {
+        match trim_with_lopdf(req) {
+            Ok(res) => return Ok(res),
+            Err(e @ CoreError::InvalidArg(_)) => return Err(e),
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("trim", &e) {
+                    return Err(e);
+                }
+            }
         }
     }
+    trim_with_mupdf(req)
 }
 
 // ── lopdf 実装 ─────────────────────────────────────────────────────────────
@@ -816,14 +820,18 @@ fn get_crop_box(page_obj: &mupdf::pdf::PdfObject) -> Option<(f32, f32, f32, f32)
 /// ページサイズ化のエントリポイント。lopdf 実装を先に試し、失敗したら MuPDF 実装へ
 /// フォールバックする（移行期間中の安全策）。
 pub fn crop_to_page(req: &CropToPageRequest) -> Result<CropToPageResponse> {
-    match crop_to_page_with_lopdf(req) {
-        Ok(res) => Ok(res),
-        Err(e @ CoreError::InvalidArg(_)) => Err(e),
-        Err(e) => {
-            eprintln!("[crop_to_page] lopdf path failed ({e}); falling back to MuPDF");
-            crop_to_page_with_mupdf(req)
+    if crate::backend::try_lopdf("crop_to_page") {
+        match crop_to_page_with_lopdf(req) {
+            Ok(res) => return Ok(res),
+            Err(e @ CoreError::InvalidArg(_)) => return Err(e),
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("crop_to_page", &e) {
+                    return Err(e);
+                }
+            }
         }
     }
+    crop_to_page_with_mupdf(req)
 }
 
 fn crop_to_page_with_lopdf(req: &CropToPageRequest) -> Result<CropToPageResponse> {

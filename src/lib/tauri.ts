@@ -1619,3 +1619,19 @@ export async function getRenderEngineInfo(): Promise<RenderEngineInfo> {
 export async function setRenderEngineCore(engine: string): Promise<void> {
   await invoke<void>("set_render_engine", { engine });
 }
+
+// ── PDF 操作エンジン (lopdf / MuPDF) ────────────────────────────────────────
+
+export interface BackendInfo {
+  available: string[];
+  current: string;
+}
+
+export async function getBackendInfo(): Promise<BackendInfo> {
+  return invoke<BackendInfo>("get_backend_info");
+}
+
+/** PDF 操作の実装エンジンを設定する ("auto" | "mupdf" | "lopdf") */
+export async function setPdfBackendCore(backend: string): Promise<void> {
+  await invoke<void>("set_pdf_backend", { backend });
+}

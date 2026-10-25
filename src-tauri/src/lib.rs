@@ -157,6 +157,8 @@ pub fn run() {
             core::render_page,
             core::get_render_engine_info,
             core::set_render_engine,
+            core::get_backend_info,
+            core::set_pdf_backend,
             core::get_tmp_path,
             core::get_file_stat,
             core::get_default_save_dir,

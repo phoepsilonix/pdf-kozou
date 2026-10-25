@@ -90,6 +90,22 @@ pub fn get_render_engine_info() -> Value {
     })
 }
 
+/// PDF 操作 (結合・分割・回転・トリミング・情報・メタデータ・面付け) の実装エンジンの状態。
+/// auto = lopdf を試し失敗時 MuPDF へ / mupdf = MuPDF のみ / lopdf = lopdf のみ (フォールバックなし)
+#[tauri::command]
+pub fn get_backend_info() -> Value {
+    serde_json::json!({
+        "available": ["auto", "mupdf", "lopdf"],
+        "current": pdf_kozou_core::backend::current_name(),
+    })
+}
+
+/// PDF 操作の実装エンジンを設定する ("auto" | "mupdf" | "lopdf")。
+#[tauri::command]
+pub fn set_pdf_backend(backend: String) -> Result<()> {
+    pdf_kozou_core::backend::set_backend(&backend).map_err(Error::Core)
+}
+
 /// プロセス全体の既定の描画エンジンを設定する ("mupdf" | "auto" | "hayro")。
 /// 以降の render_page / export_images など render::render を通る描画に反映される。
 #[tauri::command]

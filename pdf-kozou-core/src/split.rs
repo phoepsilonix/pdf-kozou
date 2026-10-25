@@ -37,14 +37,18 @@ pub struct SplitResponse {
 /// まず lopdf 実装を試し、読み込み不能・暗号化など lopdf が扱えない入力のときだけ
 /// 従来の MuPDF 実装へフォールバックする（移行期間中の安全策）。
 pub fn split(req: &SplitRequest) -> Result<SplitResponse> {
-    match split_with_lopdf(req) {
-        Ok(res) => Ok(res),
-        Err(e @ CoreError::InvalidArg(_)) => Err(e),
-        Err(e) => {
-            eprintln!("[split] lopdf path failed ({e}); falling back to MuPDF");
-            split_with_mupdf(req)
+    if crate::backend::try_lopdf("split") {
+        match split_with_lopdf(req) {
+            Ok(res) => return Ok(res),
+            Err(e @ CoreError::InvalidArg(_)) => return Err(e),
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("split", &e) {
+                    return Err(e);
+                }
+            }
         }
     }
+    split_with_mupdf(req)
 }
 
 /// 抽出時に参照をたどる際の文脈。

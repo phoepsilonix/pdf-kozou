@@ -18,6 +18,7 @@ pub mod info;
 pub mod jpeg_lossless;
 pub mod merge;
 pub mod pixmap;
+pub mod backend;
 pub mod render;
 #[cfg(feature = "jpeg-optimize")]
 pub mod jpeg_optimize;

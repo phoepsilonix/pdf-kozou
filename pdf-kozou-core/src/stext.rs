@@ -2095,16 +2095,22 @@ pub fn compose_imposition_pdf(
     // まず lopdf で面付けし、読めない入力(破損・暗号化等)だけ従来の MuPDF 実装へ
     // フォールバックする（移行期間中の安全策）。メタデータは lopdf 経路では保存前に
     // 設定済み。
-    match crate::imposition::compose_with_lopdf(req) {
-        Ok(()) => {
-            let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
-            return Ok(ComposeImpositionPdfResponse {
-                ok: true,
-                output_bytes: ob,
-            });
+    if crate::backend::try_lopdf("compose") {
+        match crate::imposition::compose_with_lopdf(req) {
+            Ok(()) => {
+                let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+                return Ok(ComposeImpositionPdfResponse {
+                    ok: true,
+                    output_bytes: ob,
+                });
+            }
+            Err(e @ CoreError::InvalidArg(_)) => return Err(e),
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("compose", &e) {
+                    return Err(e);
+                }
+            }
         }
-        Err(e @ CoreError::InvalidArg(_)) => return Err(e),
-        Err(e) => eprintln!("[compose] lopdf path failed ({e}); falling back to MuPDF"),
     }
 
     let c_input = CString::new(req.input.as_str())

@@ -58,14 +58,16 @@ pub fn collect_metadata(input: &str) -> Vec<(String, String)> {
 
     // PDF はまず lopdf で読み、読めない入力(破損・パスワード付き暗号化等)だけ
     // 従来の MuPDF 実装へフォールバックする（移行期間中の安全策）。
-    if is_pdf(input) {
+    if is_pdf(input) && crate::backend::try_lopdf("metadata") {
         match collect_metadata_lopdf(input) {
             Ok(result) => {
                 eprintln!("[metadata] collected {} keys from {input}", result.len());
                 return result;
             }
             Err(e) => {
-                eprintln!("[metadata] lopdf path failed ({e}); falling back to MuPDF");
+                if crate::backend::abort_on_lopdf_failure("metadata", &e) {
+                    return Vec::new();
+                }
             }
         }
     }
@@ -414,13 +416,20 @@ pub fn copy_metadata_after_write(output: &str, metadata: &[(String, String)]) {
         .iter()
         .map(|(k, v)| (k.clone(), Some(v.clone())))
         .collect();
-    match write_info_lopdf(output, &updates) {
-        Ok(()) => eprintln!("[metadata] wrote {} keys to {output}", metadata.len()),
-        Err(e) => {
-            eprintln!("[metadata] lopdf write failed ({e}); falling back to MuPDF");
-            copy_metadata_after_write_mupdf(output, metadata);
+    if crate::backend::try_lopdf("metadata") {
+        match write_info_lopdf(output, &updates) {
+            Ok(()) => {
+                eprintln!("[metadata] wrote {} keys to {output}", metadata.len());
+                return;
+            }
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("metadata", &e) {
+                    return;
+                }
+            }
         }
     }
+    copy_metadata_after_write_mupdf(output, metadata);
 }
 
 /// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。
@@ -2554,16 +2563,20 @@ pub fn set_metadata(path: &str, metadata: &[(String, String)]) -> std::result::R
         .iter()
         .map(|(k, v)| (k.clone(), (!v.trim().is_empty()).then(|| v.clone())))
         .collect();
-    match write_info_lopdf(path, &updates) {
-        Ok(()) => {
-            eprintln!("[metadata] set_metadata wrote {} keys to {path}", metadata.len());
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("[metadata] lopdf write failed ({e}); falling back to MuPDF");
-            set_metadata_mupdf(path, metadata)
+    if crate::backend::try_lopdf("metadata") {
+        match write_info_lopdf(path, &updates) {
+            Ok(()) => {
+                eprintln!("[metadata] set_metadata wrote {} keys to {path}", metadata.len());
+                return Ok(());
+            }
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("metadata", &e) {
+                    return Err(e.to_string());
+                }
+            }
         }
     }
+    set_metadata_mupdf(path, metadata)
 }
 
 /// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。

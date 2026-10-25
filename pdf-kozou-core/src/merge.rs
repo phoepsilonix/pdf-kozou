@@ -27,13 +27,17 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
     if req.inputs.is_empty() {
         return Err(CoreError::InvalidArg("inputs is empty".into()));
     }
-    match merge_with_lopdf(req) {
-        Ok(res) => Ok(res),
-        Err(e) => {
-            eprintln!("[merge] lopdf path failed ({e}); falling back to MuPDF");
-            merge_with_mupdf(req)
+    if crate::backend::try_lopdf("merge") {
+        match merge_with_lopdf(req) {
+            Ok(res) => return Ok(res),
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("merge", &e) {
+                    return Err(e);
+                }
+            }
         }
     }
+    merge_with_mupdf(req)
 }
 
 /// ページツリーの親をたどって継承属性 (Resources / MediaBox / CropBox / Rotate) を探す。

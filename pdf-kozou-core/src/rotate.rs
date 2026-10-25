@@ -52,14 +52,18 @@ fn validate_angle(deg: i32) -> Result<i32> {
 /// まず lopdf 実装を試し、読み込み不能など lopdf が扱えない入力のときだけ
 /// 従来の MuPDF 実装へフォールバックする（移行期間中の安全策）。
 pub fn rotate(req: &RotateRequest) -> Result<RotateResponse> {
-    match rotate_with_lopdf(req) {
-        Ok(res) => Ok(res),
-        Err(e @ CoreError::InvalidArg(_)) => Err(e),
-        Err(e) => {
-            eprintln!("[rotate] lopdf path failed ({e}); falling back to MuPDF");
-            rotate_with_mupdf(req)
+    if crate::backend::try_lopdf("rotate") {
+        match rotate_with_lopdf(req) {
+            Ok(res) => return Ok(res),
+            Err(e @ CoreError::InvalidArg(_)) => return Err(e),
+            Err(e) => {
+                if crate::backend::abort_on_lopdf_failure("rotate", &e) {
+                    return Err(e);
+                }
+            }
         }
     }
+    rotate_with_mupdf(req)
 }
 
 /// ページ(0始まり) -> 加える角度 の対応表を作る。

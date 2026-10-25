@@ -32,6 +32,7 @@ import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
 import { LazyBoundary } from "./components/LazyBoundary";
 import { PageSizeSelector } from "./components/PageSizeSelector";
+import { PdfBackendControl } from "./components/PdfBackendControl";
 import { RenderEngineControl } from "./components/RenderEngineControl";
 import { SaveConflictModal } from "./components/SaveConflictModal";
 import { SaveNamePromptModal } from "./components/SaveNamePromptModal";
@@ -45,6 +46,7 @@ import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
 import { useI18n } from "./lib/i18n";
 import { loadLastTool, saveLastTool } from "./lib/lastTool";
+import { initPdfBackend } from "./lib/pdfBackend";
 import { initRenderEngine } from "./lib/renderEngine";
 import { formatFilenameForSpeech } from "./lib/speakName";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
@@ -223,6 +225,7 @@ export default function App() {
   // 起動時に描画エンジン (MuPDF / hayro) の保存済み選択をコアへ反映
   useEffect(() => {
     void initRenderEngine();
+    void initPdfBackend();
   }, []);
 
   // 起動時／復帰時に保存済みの表示スケールを適用
@@ -690,6 +693,7 @@ export default function App() {
                   <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
                   <RenderEngineControl />
+                  <PdfBackendControl />
                   <LayoutModeControl
                     mode={layoutModeOverride}
                     onChange={setLayoutModeOverride}
@@ -719,6 +723,7 @@ export default function App() {
               <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
               <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
               <RenderEngineControl />
+              <PdfBackendControl />
               <LayoutModeControl
                 mode={layoutModeOverride}
                 onChange={setLayoutModeOverride}
@@ -1518,6 +1523,7 @@ function ToolShell({
       <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
       <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
       <RenderEngineControl />
+      <PdfBackendControl />
       <LayoutModeControl
         mode={layoutModeOverride}
         onChange={setLayoutModeOverride}
