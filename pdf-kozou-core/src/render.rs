@@ -209,6 +209,7 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
             req.dpi,
             format == "png",
             req.quality.unwrap_or(85),
+            req.supersample_max.unwrap_or(1),
         ) {
             Ok(img) => {
                 eprintln!(

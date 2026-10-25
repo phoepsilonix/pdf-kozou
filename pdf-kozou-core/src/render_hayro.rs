@@ -20,7 +20,10 @@ use hayro::hayro_interpret::hayro_cmap::CidFamily;
 use hayro::hayro_interpret::hayro_syntax::object::{Dict, Stream};
 use hayro::hayro_interpret::hayro_syntax::page::{Page, Resources};
 use hayro::hayro_interpret::{InterpreterSettings, hayro_syntax::Pdf};
-use hayro::{PixmapSettings, RenderCache, RenderSettings, render};
+use hayro::vello_cpu::{self, Pixmap, RenderContext};
+use hayro::hayro_interpret::TransformExt;
+use hayro::kurbo::Affine;
+use hayro::{RenderCache, RenderSettings, render_into};
 use hayro::vello_cpu::color::palette::css::WHITE;
 
 /// hayro での描画結果 (エンコード済み画像)
@@ -33,31 +36,30 @@ pub struct HayroImage {
 }
 
 /// 描画できない場合は Err(理由)。呼び出し側は MuPDF にフォールバックする。
+/// `supersample_max`: 高品質アンチエイリアス。1 以下 = 無効。2〜6 で dpi<300 のときだけ、
+/// 内部を最大その倍率の高解像度で描いてから目標サイズへ縮小する (MuPDF 実装と同じ方針)。
 pub fn render_page(
     path: &str,
     page_index: i32,
     dpi: u32,
     png: bool,
     quality: u8,
+    supersample_max: i32,
 ) -> Result<HayroImage, String> {
-    let data = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
-    // PDF 以外 (EPUB/XPS/SVG/画像等) は hayro の対象外
-    let head = &data[..data.len().min(1024)];
-    if !head.windows(5).any(|w| w == b"%PDF-") {
-        return Err("not a PDF".into());
-    }
-
-    let pdf = Pdf::new(data).map_err(|e| format!("hayro load: {e:?}"))?;
+    let pdf = load_pdf(path)?;
     let pages = pdf.pages();
     let idx = usize::try_from(page_index).map_err(|_| "negative page index".to_string())?;
     let page = pages
         .get(idx)
         .ok_or_else(|| format!("page {idx} out of range ({})", pages.len()))?;
 
-    let scale = dpi.max(1) as f32 / 72.0;
+    let dpi_f = dpi.max(1) as f32;
+    let scale = dpi_f / 72.0;
     let (page_w_pt, page_h_pt) = page.render_dimensions();
-    let w = (page_w_pt * scale).floor();
-    let h = (page_h_pt * scale).floor();
+    // 目標画素数は MuPDF と同様、ページ寸法×dpi/72 を切り上げる。倍率は軸ごとに
+    // 「目標画素数 / ページ寸法」とし、画素格子をページ範囲にぴったり合わせる。
+    let w = (page_w_pt * scale).ceil();
+    let h = (page_h_pt * scale).ceil();
     // hayro の Pixmap は u16 サイズ。範囲外は MuPDF に任せる。
     if !(w >= 1.0 && h >= 1.0 && w <= u16::MAX as f32 && h <= u16::MAX as f32) {
         return Err(format!("unsupported pixmap size {w}x{h}"));
@@ -69,23 +71,9 @@ pub fn render_page(
     }
 
     let settings = interpreter_settings();
-    let render_settings = RenderSettings::default();
-    let pixmap_settings = PixmapSettings {
-        x_scale: scale,
-        y_scale: scale,
-        bg_color: WHITE,
-    };
     let cache = RenderCache::new();
-    let pixmap = render(page, &cache, &settings, &render_settings, &pixmap_settings);
-
-    let (width_px, height_px) = (pixmap.width() as u32, pixmap.height() as u32);
-    // 背景は不透明な白で塗っているため、premultiplied RGBA の RGB をそのまま使える
-    let rgba = pixmap.data_as_u8_slice();
-    let mut rgb = Vec::with_capacity(rgba.len() / 4 * 3);
-    for px in rgba.chunks_exact(4) {
-        rgb.extend_from_slice(&px[..3]);
-    }
-
+    let (width_px, height_px) = (w as u32, h as u32);
+    let rgb = raster_rgb(page, &cache, &settings, width_px, height_px, dpi_f, supersample_max)?;
     let out = encode_rgb(&rgb, width_px, height_px, png, quality)?;
 
     Ok(HayroImage {
@@ -95,6 +83,112 @@ pub fn render_page(
         page_w_pt,
         page_h_pt,
     })
+}
+
+// ── 高品質アンチエイリアス (スーパーサンプリング) ────────────────────────────
+//
+// MuPDF 実装 (kozou_compute_supersample_mult) と同じ方針:
+//   - dpi が 300 以上なら無効 (細線の消失は起きない)
+//   - 内部 dpi は 600 を超えない / 内部ビットマップは 5,000 万画素を超えない
+//   - 呼び出し側の指定 (supersample_max) を超えない
+// 縮小は整数倍の箱平均 (面積平均)。目標サイズに整数倍でぴったり合わせて描くため、
+// 端数のリサンプリングは生じない。
+
+const SUPERSAMPLE_DPI_THRESHOLD: f32 = 300.0;
+const SUPERSAMPLE_ABS_DPI_CAP: f32 = 600.0;
+const SUPERSAMPLE_MAX_PIXELS: f64 = 50_000_000.0;
+
+/// 超解像度の倍率 (1 = 無効)
+pub(crate) fn supersample_mult(dpi: f32, supersample_max: i32, tw: u32, th: u32) -> u32 {
+    if supersample_max <= 1 || dpi <= 0.0 || dpi >= SUPERSAMPLE_DPI_THRESHOLD {
+        return 1;
+    }
+    let by_dpi = ((SUPERSAMPLE_ABS_DPI_CAP / dpi).floor() as i64).max(1);
+    let target_px = tw as f64 * th as f64;
+    let by_mem = if target_px > 0.0 {
+        ((SUPERSAMPLE_MAX_PIXELS / target_px).sqrt().floor() as i64).max(1)
+    } else {
+        supersample_max as i64
+    };
+    // hayro の Pixmap は u16 サイズ
+    let by_u16 = (u16::MAX as i64 / tw.max(th).max(1) as i64).max(1);
+    (supersample_max as i64).min(by_dpi).min(by_mem).min(by_u16).max(1) as u32
+}
+
+/// ページを `width`×`height` の Pixmap に描く。倍率は軸ごとに「画素数 / ページ寸法」。
+fn render_pixmap<'a>(
+    page: &'a Page<'a>,
+    cache: &RenderCache<'a>,
+    settings: &InterpreterSettings,
+    width: u16,
+    height: u16,
+) -> Pixmap {
+    let (pw, ph) = page.render_dimensions();
+    let sx = width as f64 / pw as f64;
+    let sy = height as f64 / ph as f64;
+    let mut ctx = RenderContext::new(width, height);
+    let transform = Affine::scale_non_uniform(sx, sy) * page.initial_transform(true).to_kurbo();
+    render_into(page, cache, settings, &RenderSettings::default(), &mut ctx, transform);
+    ctx.flush();
+    let mut pixmap = Pixmap::new(ctx.width(), ctx.height());
+    ctx.render_with(
+        &mut pixmap,
+        &mut vello_cpu::Resources::default(),
+        vello_cpu::RasterizerSettings {
+            target_init: vello_cpu::TargetInit::Clear(WHITE),
+            ..Default::default()
+        },
+    );
+    pixmap
+}
+
+/// ページを `tw`×`th` の RGB8 に描画する。`supersample_max` > 1 なら高解像度で描いて縮小。
+fn raster_rgb<'a>(
+    page: &'a Page<'a>,
+    cache: &RenderCache<'a>,
+    settings: &InterpreterSettings,
+    tw: u32,
+    th: u32,
+    dpi: f32,
+    supersample_max: i32,
+) -> Result<Vec<u8>, String> {
+    if tw < 1 || th < 1 || tw > u16::MAX as u32 || th > u16::MAX as u32 {
+        return Err(format!("unsupported pixmap size {tw}x{th}"));
+    }
+    let m = supersample_mult(dpi, supersample_max, tw, th);
+    let pixmap = render_pixmap(page, cache, settings, (tw * m) as u16, (th * m) as u16);
+    // 背景は不透明な白のため、premultiplied RGBA の RGB をそのまま使える
+    let src = pixmap.data_as_u8_slice();
+    let (tw, th, m) = (tw as usize, th as usize, m as usize);
+    let mut rgb = Vec::with_capacity(tw * th * 3);
+    if m == 1 {
+        for px in src.chunks_exact(4) {
+            rgb.extend_from_slice(&px[..3]);
+        }
+        return Ok(rgb);
+    }
+    // m×m の箱平均 (面積平均)
+    let big_w = tw * m;
+    let area = (m * m) as u32;
+    for y in 0..th {
+        for x in 0..tw {
+            let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
+            for dy in 0..m {
+                let row = ((y * m + dy) * big_w + x * m) * 4;
+                for px in src[row..row + m * 4].chunks_exact(4) {
+                    r += px[0] as u32;
+                    g += px[1] as u32;
+                    b += px[2] as u32;
+                }
+            }
+            rgb.extend_from_slice(&[
+                ((r + area / 2) / area) as u8,
+                ((g + area / 2) / area) as u8,
+                ((b + area / 2) / area) as u8,
+            ]);
+        }
+    }
+    Ok(rgb)
 }
 
 fn interpreter_settings() -> InterpreterSettings {
@@ -142,8 +236,7 @@ fn load_pdf(path: &str) -> Result<Pdf, String> {
 //   セルの大きさ = シート内の有効ページの最大幅・最大高さ (pt) × dpi/72 を四捨五入
 //   各ページはセルに縦横比を保って収め、セル内で中央寄せ
 //   セル間と外周に gap_px の隙間。空白セル (ページ番号 0 / 範囲外) は白のまま
-// 差異: hayro には高品質アンチエイリアス (supersample_max) が無いため無視する。
-//       ページ画像の寸法は切り捨てのため、MuPDF と最大 1px 異なることがある。
+// 高品質アンチエイリアス (supersample_max) も MuPDF と同じ方針で対応する (raster_rgb)。
 
 /// 合成済みのシート (RGB8)
 pub struct Sheet {
@@ -165,6 +258,7 @@ pub fn compose_sheets(
     rows: i32,
     dpi: f32,
     gap_px: i32,
+    supersample_max: i32,
     mut on_sheet: impl FnMut(usize, Sheet) -> Result<(), String>,
 ) -> Result<(), String> {
     if cols < 1 || rows < 1 || !(dpi > 0.0) {
@@ -179,7 +273,7 @@ pub fn compose_sheets(
             .iter()
             .map(|&n| usize::try_from(n - 1).ok().and_then(|i| pages.get(i)))
             .collect();
-        let sheet = compose_one(&valid, &cache, &settings, cols, rows, dpi, gap_px)?;
+        let sheet = compose_one(&valid, &cache, &settings, cols, rows, dpi, gap_px, supersample_max)?;
         on_sheet(si, sheet)?;
     }
     Ok(())
@@ -193,6 +287,7 @@ fn compose_one<'a>(
     rows: i32,
     dpi: f32,
     gap_px: i32,
+    supersample_max: i32,
 ) -> Result<Sheet, String> {
     // セルの大きさ: 有効ページの最大寸法 (有効ページが無ければ A4)
     let (mut max_w, mut max_h) = (595.0f32, 842.0f32);
@@ -230,8 +325,6 @@ fn compose_one<'a>(
 
     let (tw, th) = (total_w as usize, total_h as usize);
     let mut rgb = vec![255u8; tw * th * 3];
-    let render_settings = RenderSettings::default();
-
     for (i, cell) in cells.iter().enumerate() {
         let (col, row) = (i as i64 % cols_l, i as i64 / cols_l);
         if row >= rows_l {
@@ -243,18 +336,10 @@ fn compose_one<'a>(
             continue;
         }
         let fit = (cell_w as f32 / pw).min(cell_h as f32 / ph);
-        let pixmap = render(
-            page,
-            cache,
-            settings,
-            &render_settings,
-            &PixmapSettings {
-                x_scale: fit,
-                y_scale: fit,
-                bg_color: WHITE,
-            },
-        );
-        let (rw, rh) = (pixmap.width() as i64, pixmap.height() as i64);
+        // セル内の目標画素数 (四捨五入)。倍率は軸ごとに画素数/ページ寸法で合わせる
+        let rw = ((pw * fit + 0.5) as i64).clamp(1, cell_w);
+        let rh = ((ph * fit + 0.5) as i64).clamp(1, cell_h);
+        let cell_rgb = raster_rgb(page, cache, settings, rw as u32, rh as u32, dpi, supersample_max)?;
         let cell_x = g + col * (cell_w + g);
         let cell_y = g + row * (cell_h + g);
         let off_x = cell_x + (cell_w - rw) / 2;
@@ -264,15 +349,11 @@ fn compose_one<'a>(
         if copy_w <= 0 || copy_h <= 0 {
             continue;
         }
-        // 背景は不透明な白のため、premultiplied RGBA の RGB をそのまま使える
-        let src = pixmap.data_as_u8_slice();
         for r in 0..copy_h as usize {
-            let s_row = &src[(r * rw as usize) * 4..];
+            let s_start = r * rw as usize * 3;
             let d_start = ((off_y as usize + r) * tw + off_x as usize) * 3;
-            let d_row = &mut rgb[d_start..d_start + copy_w as usize * 3];
-            for (c, d) in d_row.chunks_exact_mut(3).enumerate() {
-                d.copy_from_slice(&s_row[c * 4..c * 4 + 3]);
-            }
+            let n = copy_w as usize * 3;
+            rgb[d_start..d_start + n].copy_from_slice(&cell_rgb[s_start..s_start + n]);
         }
     }
 
@@ -295,9 +376,10 @@ pub fn render_sheet_encoded(
     gap_px: i32,
     png: bool,
     quality: u8,
+    supersample_max: i32,
 ) -> Result<Vec<u8>, String> {
     let mut out = None;
-    compose_sheets(path, &[page_nums], cols, rows, dpi, gap_px, |_, sheet| {
+    compose_sheets(path, &[page_nums], cols, rows, dpi, gap_px, supersample_max, |_, sheet| {
         out = Some(encode_rgb(&sheet.rgb, sheet.width_px, sheet.height_px, png, quality)?);
         Ok(())
     })?;
@@ -313,6 +395,7 @@ pub fn rasterize_pdf(
     png: bool,
     quality: u8,
     pages: Option<&[i32]>,
+    supersample_max: i32,
 ) -> Result<(), String> {
     let list: Vec<i32> = match pages {
         Some(p) if !p.is_empty() => p.to_vec(),
@@ -321,7 +404,7 @@ pub fn rasterize_pdf(
             (1..=n as i32).collect()
         }
     };
-    rasterize_imposition_pdf(input, output, &list, 1, 1, 1, dpi, 0, png, quality)
+    rasterize_imposition_pdf(input, output, &list, 1, 1, 1, dpi, 0, png, quality, supersample_max)
 }
 
 /// 面付け画像 PDF を書き出す (rasterize_imposition 用)。
@@ -340,6 +423,7 @@ pub fn rasterize_imposition_pdf(
     gap_px: i32,
     png: bool,
     quality: u8,
+    supersample_max: i32,
 ) -> Result<(), String> {
     use lopdf::{Document, Object, Stream, dictionary};
 
@@ -352,7 +436,7 @@ pub fn rasterize_imposition_pdf(
     let mut kids: Vec<Object> = Vec::new();
     let g_pt = if gap_px > 0 { gap_px as f32 * 72.0 / dpi } else { 0.0 };
 
-    compose_sheets(input, &sheets, cols, rows, dpi, gap_px, |_, sheet| {
+    compose_sheets(input, &sheets, cols, rows, dpi, gap_px, supersample_max, |_, sheet| {
         let mut img_dict = dictionary! {
             "Type" => "XObject",
             "Subtype" => "Image",

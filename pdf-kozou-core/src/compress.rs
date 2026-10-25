@@ -1592,7 +1592,6 @@ pub fn rasterize_with_quality(
     };
 
     // hayro (描画) + lopdf (PDF 組み立て) での画像化。"auto" は失敗時に MuPDF 実装へフォールバック。
-    // 注: 高品質アンチエイリアス (supersample_max) は hayro では無視される。
     #[allow(unused_mut)]
     let mut done = false;
     {
@@ -1608,6 +1607,7 @@ pub fn rasterize_with_quality(
                     use_png,
                     quality.clamp(1, 100) as u8,
                     pages,
+                    supersample_max,
                 ) {
                     Ok(()) => {
                         eprintln!(

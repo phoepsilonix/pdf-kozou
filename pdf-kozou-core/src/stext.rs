@@ -1479,6 +1479,7 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
                 req.gap_px.unwrap_or(0),
                 png,
                 req.quality.unwrap_or(85).clamp(1, 100) as u8,
+                req.supersample_max.unwrap_or(1),
             ) {
                 Ok(bytes) => {
                     eprintln!(
@@ -1686,6 +1687,7 @@ pub fn rasterize_imposition(
                 req.gap_px.unwrap_or(0),
                 req.use_png.unwrap_or(false),
                 req.quality.unwrap_or(85).clamp(1, 100) as u8,
+                req.supersample_max.unwrap_or(1),
             ) {
                 Ok(()) => {
                     eprintln!(
