@@ -105,6 +105,35 @@ fn is_supported(data: &[u8]) -> bool {
     false
 }
 
+/// プログレッシブ JPEG (SOF2) か。SOS より前のマーカーだけを走査する。
+/// 既にプログレッシブ + 最適化済みの JPEG (MuPDF/libjpeg が出力するもの) は、
+/// 可逆最適化しても縮まない (実測 0.05%) ため、PDF 後処理ではスキップする。
+fn is_progressive(data: &[u8]) -> bool {
+    if data.len() < 4 || data[0] != 0xFF || data[1] != 0xD8 {
+        return false;
+    }
+    let mut i = 2;
+    while i + 4 <= data.len() && data[i] == 0xFF {
+        let m = data[i + 1];
+        if m == 0xFF {
+            i += 1;
+            continue;
+        }
+        if m == 0xDA || m == 0xD9 {
+            return false;
+        }
+        if m == 0xC2 {
+            return true;
+        }
+        let len = u16::from_be_bytes([data[i + 2], data[i + 3]]) as usize;
+        if len < 2 {
+            return false;
+        }
+        i += 2 + len;
+    }
+    false
+}
+
 /// SOS より前のマーカーのうち、表示に不要なものを落とす。
 /// 残す: SOF/DHT/DQT/DRI などの構造マーカー、APP0 (JFIF)、APP2 (ICC)、APP14 (Adobe)。
 /// 落とす: APP1 (EXIF/XMP)、その他の APPn、COM。
@@ -152,6 +181,116 @@ fn strip_markers(data: &[u8]) -> Option<Vec<u8>> {
             out.extend_from_slice(seg);
         }
         i += 2 + len;
+    }
+}
+
+// ── 出力パイプライン用の入口 ─────────────────────────────────────────────────
+
+/// 環境変数 PDF_KOZOU_JPEG_OPTIMIZE=0 / off / false で無効化できる (既定は有効)
+pub fn enabled() -> bool {
+    !std::env::var("PDF_KOZOU_JPEG_OPTIMIZE")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "off" | "false" | "no"))
+        .unwrap_or(false)
+}
+
+/// ラスタライズで生成した JPEG を可逆最適化する。小さくならない場合や無効化時は元のまま返す。
+pub fn optimize_or_keep(data: Vec<u8>) -> Vec<u8> {
+    if !enabled() {
+        return data;
+    }
+    match optimize_jpeg(&data) {
+        Some(o) => {
+            eprintln!(
+                "[jpeg] optimized: {} -> {} bytes ({})",
+                data.len(),
+                o.bytes.len(),
+                if o.progressive { "progressive" } else { "baseline" }
+            );
+            o.bytes
+        }
+        None => data,
+    }
+}
+
+/// 1 つの JPEG 画像 XObject か (Filter が DCTDecode のみ)
+fn is_dct_image(dict: &lopdf::Dictionary) -> bool {
+    let is_image = dict
+        .get(b"Subtype")
+        .ok()
+        .and_then(|o| o.as_name().ok())
+        .is_some_and(|n| n == b"Image");
+    if !is_image {
+        return false;
+    }
+    let is_dct = |o: &lopdf::Object| {
+        o.as_name()
+            .ok()
+            .is_some_and(|n| n == b"DCTDecode" || n == b"DCT")
+    };
+    match dict.get(b"Filter") {
+        Ok(f) => match f.as_array() {
+            Ok(a) => a.len() == 1 && is_dct(&a[0]),
+            Err(_) => is_dct(f),
+        },
+        Err(_) => false,
+    }
+}
+
+/// 出力済み PDF に含まれる JPEG 画像 (DCTDecode) をすべて可逆最適化して書き戻す。
+/// MuPDF が書き出した画像化 PDF / キープテキスト PDF 用の後処理 (エンジン非依存)。
+///   - 画像以外は一切変更しない。1 枚も小さくならなければファイルに触れない
+///   - 書き戻した結果が元のファイルより小さくならなければ破棄する (元のまま)
+///   - 暗号化 PDF など lopdf で扱えないものは何もしない
+/// 戻り値: (最適化した画像数, 削減バイト数)
+pub fn optimize_pdf_images(path: &str) -> Result<(usize, u64), String> {
+    use lopdf::{Document, Object};
+    if !enabled() {
+        return Ok((0, 0));
+    }
+    let orig_len = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+    let mut doc = Document::load(path).map_err(|e| format!("lopdf load: {e}"))?;
+    if doc.is_encrypted() {
+        return Err("encrypted".into());
+    }
+    let mut count = 0usize;
+    for (_, obj) in doc.objects.iter_mut() {
+        let Object::Stream(stream) = obj else { continue };
+        if !is_dct_image(&stream.dict) || is_progressive(&stream.content) {
+            continue;
+        }
+        if let Some(o) = optimize_jpeg(&stream.content) {
+            stream.set_content(o.bytes);
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return Ok((0, 0));
+    }
+    let tmp = format!("{path}.jpegopt.tmp");
+    // オブジェクトストリーム/xref ストリームで書き戻し、元のファイルより膨らまないようにする
+    let mut write = || -> Result<(), String> {
+        let file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let mut w = std::io::BufWriter::new(file);
+        doc.save_modern(&mut w).map_err(|e| e.to_string())?;
+        std::io::Write::flush(&mut w).map_err(|e| e.to_string())
+    };
+    if let Err(e) = write() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("lopdf save: {e}"));
+    }
+    let new_len = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(u64::MAX);
+    if new_len < orig_len {
+        std::fs::rename(&tmp, path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            e.to_string()
+        })?;
+        eprintln!(
+            "[jpeg] optimized {count} image(s) in {path}: {orig_len} -> {new_len} bytes"
+        );
+        Ok((count, orig_len - new_len))
+    } else {
+        let _ = std::fs::remove_file(&tmp);
+        Ok((0, 0))
     }
 }
 

@@ -341,6 +341,14 @@ fn finish_render(
     page_w_pt: f32,
     page_h_pt: f32,
 ) -> Result<RenderResponse> {
+    // 画像ファイルとして書き出す JPEG は、ラスタライズ時に jpegtran 方式で可逆最適化する
+    // (どのエンジンで描いても共通)。プレビュー (output 無し) は遅延を避けるため対象外。
+    #[cfg(feature = "jpeg-optimize")]
+    let raw_bytes = if format != "png" && req.output.is_some() {
+        crate::jpeg_optimize::optimize_or_keep(raw_bytes)
+    } else {
+        raw_bytes
+    };
     // メタデータを画像バイト列に埋め込む（PDF のみ・非 PDF はスキップ）
     let metadata = crate::compress::collect_metadata(&req.path);
     let image_bytes = if metadata.is_empty() {
@@ -2060,5 +2068,27 @@ mod engine_tests {
         req.engine = None;
         assert_eq!(Engine::resolve(&req), Engine::Hayro);
         set_default_engine("default").unwrap();
+    }
+}
+
+/// 出力 PDF 内の JPEG 画像を可逆最適化する後処理 (feature "jpeg-optimize" が無ければ何もしない)。
+/// 失敗しても出力自体は有効なので、ログだけ出して続行する。
+pub(crate) fn optimize_output_pdf_jpegs(path: &str) {
+    #[cfg(feature = "jpeg-optimize")]
+    if let Err(e) = crate::jpeg_optimize::optimize_pdf_images(path) {
+        eprintln!("[jpeg] skipped optimizing images in output PDF: {e}");
+    }
+    #[cfg(not(feature = "jpeg-optimize"))]
+    let _ = path;
+}
+
+/// hayro に未対応の出力 (キープテキスト合成など) で、hayro が要求されたときのログ
+pub(crate) fn note_mupdf_only(what: &str) {
+    let engine = Engine::resolve_default();
+    if engine != Engine::MuPdf {
+        eprintln!(
+            "[render] engine={} requested but {what} is MuPDF-only; using mupdf",
+            engine.name()
+        );
     }
 }

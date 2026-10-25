@@ -1591,29 +1591,80 @@ pub fn rasterize_with_quality(
         )
     };
 
-    unsafe {
-        let ctx = kozou_new_context();
-        if ctx.is_null() {
-            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+    // hayro (描画) + lopdf (PDF 組み立て) での画像化。"auto" は失敗時に MuPDF 実装へフォールバック。
+    // 注: 高品質アンチエイリアス (supersample_max) は hayro では無視される。
+    #[allow(unused_mut)]
+    let mut done = false;
+    {
+        let engine = crate::render::Engine::resolve_default();
+        if engine != crate::render::Engine::MuPdf {
+            #[cfg(feature = "hayro")]
+            {
+                let t0 = std::time::Instant::now();
+                match crate::render_hayro::rasterize_pdf(
+                    input,
+                    output,
+                    dpi,
+                    use_png,
+                    quality.clamp(1, 100) as u8,
+                    pages,
+                ) {
+                    Ok(()) => {
+                        eprintln!(
+                            "[render] engine=hayro (requested={}) rasterize {:?}",
+                            engine.name(),
+                            t0.elapsed()
+                        );
+                        done = true;
+                    }
+                    Err(e) if engine == crate::render::Engine::Hayro => {
+                        eprintln!("[render] engine=hayro rasterize failed (no fallback): {e}");
+                        return Err(CoreError::Internal(format!("hayro rasterize: {e}")));
+                    }
+                    Err(e) => eprintln!(
+                        "[render] engine=hayro rasterize failed, falling back to mupdf: {e}"
+                    ),
+                }
+            }
+            #[cfg(not(feature = "hayro"))]
+            eprintln!(
+                "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+                engine.name()
+            );
         }
-        let mut res = FfiResult::default();
-        ffi_rasterize(
-            ctx,
-            c_input.as_ptr(),
-            c_output.as_ptr(),
-            dpi,
-            quality,
-            if use_png { 1 } else { 0 },
-            c_tmp_dir.as_ptr(),
-            indices_ptr,
-            indices_len,
-            supersample_max as c_int,
-            &mut res,
-        );
-        mupdf_sys::fz_drop_context(ctx);
-        if res.ok == 0 {
-            return Err(CoreError::MuPdf(format!("{res}")));
+    }
+
+    if !done {
+        unsafe {
+            let ctx = kozou_new_context();
+            if ctx.is_null() {
+                return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+            }
+            let mut res = FfiResult::default();
+            ffi_rasterize(
+                ctx,
+                c_input.as_ptr(),
+                c_output.as_ptr(),
+                dpi,
+                quality,
+                if use_png { 1 } else { 0 },
+                c_tmp_dir.as_ptr(),
+                indices_ptr,
+                indices_len,
+                supersample_max as c_int,
+                &mut res,
+            );
+            mupdf_sys::fz_drop_context(ctx);
+            if res.ok == 0 {
+                return Err(CoreError::MuPdf(format!("{res}")));
+            }
         }
+
+    }
+
+    // MuPDF が埋め込んだ JPEG を、jpegtran 方式で可逆最適化する (hayro 経路は生成時に済み)
+    if !done {
+        crate::render::optimize_output_pdf_jpegs(output);
     }
 
     // DocumentWriter は /Info を引き継がないため書き戻す
@@ -1674,6 +1725,7 @@ pub fn rasterize_no_text_with_quality(
     use std::ffi::CString;
     use std::os::raw::c_int;
 
+    crate::render::note_mupdf_only("no-text rasterization");
     let metadata = collect_metadata(input);
 
     let c_input =
@@ -1725,6 +1777,8 @@ pub fn rasterize_no_text_with_quality(
         }
     }
 
+    // 背景ラスタ (JPEG) を jpegtran 方式で可逆最適化する
+    crate::render::optimize_output_pdf_jpegs(output);
     copy_metadata_after_write(output, &metadata);
 
     let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
@@ -1908,6 +1962,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
     use std::ffi::CString;
     use std::os::raw::c_int;
 
+    crate::render::note_mupdf_only("keep-text composition");
     let metadata = collect_metadata(input);
 
     let tmp_dir = {
@@ -2064,6 +2119,10 @@ pub fn compose_image_pdf_keep_text_with_quality(
             "keep_text: compress step failed and fallback copy also failed".into(),
         ));
     }
+
+    // 最終出力の背景ラスタ (JPEG) を jpegtran 方式で可逆最適化する
+    // (圧縮工程が画像を作り直すため、その前ではなく最終出力に対して行う)
+    crate::render::optimize_output_pdf_jpegs(output);
 
     // この処理でオブジェクトストリームがオフになっている可能性があるため圧縮前に移動。
     //copy_metadata_after_write(output, &metadata);

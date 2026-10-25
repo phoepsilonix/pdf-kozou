@@ -304,6 +304,26 @@ pub fn render_sheet_encoded(
     out.ok_or_else(|| "no sheet".to_string())
 }
 
+/// 1 ページ 1 枚の画像化 PDF を書き出す (compress::rasterize 用)。
+/// `pages` は 1 ベースのページ番号 (None = 全ページ)。ページ寸法は元ページと同じ。
+pub fn rasterize_pdf(
+    input: &str,
+    output: &str,
+    dpi: f32,
+    png: bool,
+    quality: u8,
+    pages: Option<&[i32]>,
+) -> Result<(), String> {
+    let list: Vec<i32> = match pages {
+        Some(p) if !p.is_empty() => p.to_vec(),
+        _ => {
+            let n = load_pdf(input)?.pages().len();
+            (1..=n as i32).collect()
+        }
+    };
+    rasterize_imposition_pdf(input, output, &list, 1, 1, 1, dpi, 0, png, quality)
+}
+
 /// 面付け画像 PDF を書き出す (rasterize_imposition 用)。
 /// 各シートを 1 枚の画像に合成し、1 PDF ページに埋め込む。PDF の組み立ては lopdf。
 ///  - JPEG: DCT のまま埋め込む (再圧縮なし)
@@ -349,18 +369,7 @@ pub fn rasterize_imposition_pdf(
             let jpeg = encode_rgb(&sheet.rgb, sheet.width_px, sheet.height_px, false, quality)?;
             // jpegtran 方式の可逆最適化 (ハフマン表の最適化 / プログレッシブ化、画素は不変)。
             // 小さくならない・画素が一致しない場合は元の JPEG をそのまま使う。
-            let jpeg = match crate::jpeg_optimize::optimize_jpeg(&jpeg) {
-                Some(o) => {
-                    eprintln!(
-                        "[render] jpeg optimized: {} -> {} bytes ({})",
-                        jpeg.len(),
-                        o.bytes.len(),
-                        if o.progressive { "progressive" } else { "baseline" }
-                    );
-                    o.bytes
-                }
-                None => jpeg,
-            };
+            let jpeg = crate::jpeg_optimize::optimize_or_keep(jpeg);
             img_dict.set("Filter", "DCTDecode");
             Stream::new(img_dict, jpeg)
         };

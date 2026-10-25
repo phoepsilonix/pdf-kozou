@@ -1490,6 +1490,12 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
                         t0.elapsed()
                     );
                     use base64::Engine as _;
+                    // 画像ファイルとして保存される JPEG は、jpegtran 方式で可逆最適化する
+                    let bytes = if png {
+                        bytes
+                    } else {
+                        crate::jpeg_optimize::optimize_or_keep(bytes)
+                    };
                     return Ok(RenderImpositionResponse {
                         ok: true,
                         image_b64: base64::engine::general_purpose::STANDARD.encode(&bytes),
@@ -1570,8 +1576,15 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
         let len = kozou_buffer_get_data(ctx, buf, &mut data_ptr);
         let b64 = if len > 0 && !data_ptr.is_null() {
             use base64::Engine;
-            base64::engine::general_purpose::STANDARD
-                .encode(std::slice::from_raw_parts(data_ptr, len))
+            let raw = std::slice::from_raw_parts(data_ptr, len).to_vec();
+            // 画像ファイルとして保存される JPEG は、jpegtran 方式で可逆最適化する
+            #[cfg(feature = "jpeg-optimize")]
+            let raw = if fmt_str != "png" {
+                crate::jpeg_optimize::optimize_or_keep(raw)
+            } else {
+                raw
+            };
+            base64::engine::general_purpose::STANDARD.encode(&raw)
         } else {
             String::new()
         };
@@ -1752,6 +1765,9 @@ pub fn rasterize_imposition(
         }
     }
 
+    // MuPDF が埋め込んだ JPEG を、jpegtran 方式で可逆最適化する (hayro 経路と同じ結果にそろえる)
+    crate::render::optimize_output_pdf_jpegs(&req.output);
+
     // 入力PDFのメタデータ（/Info）を出力に継承する（他の画像PDF出力と同様）
     let metadata = crate::compress::collect_metadata(&req.input);
     if !metadata.is_empty() {
@@ -1918,6 +1934,7 @@ pub fn compose_imposition_pdf_keep_text(
     use crate::ffi::{FfiResult, kozou_compose_imposition_pdf_keep_text, kozou_new_context};
     use std::ffi::CString;
 
+    crate::render::note_mupdf_only("keep-text composition");
     let per = (req.cols * req.rows).max(1);
     let expected = (req.n_sheets * per) as usize;
     if req.sheet_pages.len() != expected {
@@ -2002,6 +2019,9 @@ pub fn compose_imposition_pdf_keep_text(
             return Err(CoreError::MuPdf(format!("{res}")));
         }
     }
+
+    // 背景ラスタ (JPEG) を jpegtran 方式で可逆最適化する
+    crate::render::optimize_output_pdf_jpegs(&req.output);
 
     let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
     Ok(ComposeImpositionPdfKeepTextResponse {
