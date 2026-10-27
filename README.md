@@ -119,6 +119,8 @@ pdf-kozou-coreコマンドラインはv1.7.20以前のパッケージから取�
 
 [Releases](https://github.com/phoepsilonix/pdf-kozou/releases)
 
+Linux,Windows版バイナリは、上記リンクからも入手できます。
+
 ※AppImage版(Linux向け)について  
 現時点のAppImage版は、日本語入力やキー入力に制約があります。
 ページ範囲の選択やビューワーの検索ボタンを押してフリーズする場合があります。
@@ -149,14 +151,17 @@ GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除�
 
 ### MacBook(MacOS)
 
-TestFlightで公開テスト中（2026/10/06から90日間有効）  
+TestFlightで公開テスト中（2026/10/20から90日間有効）  
 https://testflight.apple.com/join/WTt5ZVsH
 
 実機環境がないため動作未確認です。
 
 ### iPhone(iOS)
 
-TestFlightで公開テスト中（2026/10/06から90日間有効）  
+App Store
+https://apps.apple.com/jp/app/pdf%E5%B0%8F%E5%83%A7/id6818161708
+
+TestFlight（公開テスト）（2026/10/20から90日間有効）  
 https://testflight.apple.com/join/WTt5ZVsH
 
 GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
