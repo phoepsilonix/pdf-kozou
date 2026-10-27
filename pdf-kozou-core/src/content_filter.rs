@@ -450,6 +450,11 @@ fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, 
     let content = Content::decode(chunk).map_err(|e| format!("content decode: {e}"))?;
     let mut c = Counts::default();
     let mut ops: Vec<Operation> = Vec::with_capacity(content.operations.len());
+    // TextOnly: 組み立て中のパス (m l c v y h re) と、そのパスに付いた W / W*。
+    // 塗り・線を捨てるとき、クリップに使われないパスは座標ごと捨てる
+    // (イラストの曲線が全部残ると、内容ストリームが数十倍に膨らむ)。
+    let mut path_buf: Vec<Operation> = Vec::new();
+    let mut pending_clip: Option<Operation> = None;
     for op in content.operations {
         // どちらのモードでも、文字の形によるクリップは再現できないので Err
         if is_clip_render_mode(&op) {
@@ -475,10 +480,22 @@ fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, 
                 _ => ops.push(op),
             },
             Mode::TextOnly => match op.operator.as_str() {
-                // パスの塗り・線: 描かずにパスを捨てる (W による clip はそのまま効く)
-                "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" => {
-                    c.paints += 1;
-                    ops.push(Operation::new("n", vec![]));
+                // パスの構築: いったん溜めて、終わり方で残すか捨てるか決める
+                "m" | "l" | "c" | "v" | "y" | "h" | "re" => path_buf.push(op),
+                // クリップの指定: パスの終わりまで保留する
+                "W" | "W*" => pending_clip = Some(op),
+                // パスの塗り・線・終端: 描かない。クリップに使うパスだけ「パス W n」で残す
+                "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" | "n" => {
+                    if op.operator != "n" {
+                        c.paints += 1;
+                    }
+                    if let Some(clip) = pending_clip.take() {
+                        ops.append(&mut path_buf);
+                        ops.push(clip);
+                        ops.push(Operation::new("n", vec![]));
+                    } else {
+                        path_buf.clear();
+                    }
                 }
                 // シェーディング: 除去 (背景ラスタに含まれる)
                 "sh" => c.images += 1,
@@ -731,7 +748,10 @@ mod tests {
             assert!(names.contains(&keep), "{keep} missing: {names:?}");
         }
         assert_eq!(names.iter().filter(|n| **n == "Do").count(), 1); // Fm1 だけ
-        assert_eq!(names.iter().filter(|n| **n == "n").count(), 4); // 元の n + 置換 3
+        // クリップに使うパス (re W n) だけが残り、塗り・線のパスは座標ごと消える
+        assert_eq!(names.iter().filter(|n| **n == "n").count(), 1);
+        assert_eq!(names.iter().filter(|n| **n == "re").count(), 1);
+        assert!(!names.contains(&"m") && !names.contains(&"l"));
     }
 
     #[test]
@@ -801,7 +821,8 @@ mod tests {
                 if t.contains("1 0 0 rg") {
                     saw_pattern = t.contains(" f"); // パターンの塗りは残る
                 } else if t.contains("Tj") {
-                    assert!(t.contains(" n") || t.contains("\nn"), "paint not neutralized: {t}");
+                    // 塗りも、そのパスの座標 (re) も消えている (クリップに使われていないため)
+                    assert!(!t.contains(" re"), "path remains: {t}");
                     assert!(!t.contains(" f\n") && !t.ends_with(" f"), "fill remains: {t}");
                 }
             }
