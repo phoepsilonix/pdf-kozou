@@ -1868,6 +1868,44 @@ pub fn rasterize_no_text_with_quality(
     })
 }
 
+/// 部分的に隠れたテキストがあるか (hayro 版のキープテキストは、隠れていた部分を覆い直す
+/// パッチに未対応のため、該当すれば MuPDF 実装を使う)。
+/// 完全に隠れたテキスト (覆われ率 0.8 以上) は前処理で除去済みの入力を渡す想定なので、
+/// 低い閾値 (0.02) でも "buried" と判定されるものが残っていれば、部分的な重なりがある。
+/// 戻り値: Some(true/false)、判定できなければ None。
+#[cfg(feature = "hayro")]
+fn has_partially_covered_text(path: &str, pages: Option<&[i32]>) -> Option<bool> {
+    use crate::stext::{DetectBuriedRequest, detect_buried_text};
+    let count = mupdf::pdf::PdfDocument::open(path).ok()?.page_count().ok()?;
+    if count <= 0 {
+        return None;
+    }
+    let list: Vec<i32> = match pages {
+        Some(p) if !p.is_empty() => p.iter().map(|&x| x - 1).collect(),
+        _ => (0..count).collect(),
+    };
+    for page in list {
+        let req = DetectBuriedRequest {
+            path: path.to_string(),
+            page,
+            cover_ratio: Some(0.02),
+            image_alpha_threshold: None,
+            layout_w: None,
+            layout_h: None,
+            layout_em: None,
+        };
+        match detect_buried_text(&req) {
+            Ok(r) => {
+                if r.hits.iter().any(|h| h.reason == "buried") {
+                    return Some(true);
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+    Some(false)
+}
+
 /// 画像PDF化(フォント保持版) Stage 2。
 ///
 /// 非テキスト要素(画像・イラスト・ベクター図形)を1枚の背景画像に
@@ -2019,7 +2057,6 @@ pub fn compose_image_pdf_keep_text_with_quality(
     use std::ffi::CString;
     use std::os::raw::c_int;
 
-    crate::render::note_mupdf_only("keep-text composition");
     let metadata = collect_metadata(input);
 
     let tmp_dir = {
@@ -2082,30 +2119,89 @@ pub fn compose_image_pdf_keep_text_with_quality(
         )
     };
 
+    // hayro (描画) + lopdf (テキスト層・PDF 組み立て) での生成。
+    // "auto" は、失敗したとき・部分的に隠れたテキストがあるときに MuPDF 実装へフォールバックする。
+    #[allow(unused_mut)]
+    let mut done = false;
+    {
+        let engine = crate::render::Engine::resolve_default();
+        if engine != crate::render::Engine::MuPdf {
+            #[cfg(feature = "hayro")]
+            {
+                let t0 = std::time::Instant::now();
+                let attempt: std::result::Result<(), String> =
+                    match has_partially_covered_text(compose_input, pages) {
+                        Some(false) => crate::render_hayro::keep_text_pdf(
+                            compose_input,
+                            &precompress_str,
+                            dpi,
+                            use_png,
+                            quality.clamp(1, 100) as u8,
+                            pages,
+                            supersample_max,
+                        ),
+                        Some(true) => {
+                            Err("partially covered text (MuPDF re-covers it with patches)".into())
+                        }
+                        None => Err("could not check for covered text".into()),
+                    };
+                match attempt {
+                    Ok(()) => {
+                        eprintln!(
+                            "[render] engine=hayro (requested={}) keep-text {:?}",
+                            engine.name(),
+                            t0.elapsed()
+                        );
+                        done = true;
+                    }
+                    Err(e) if engine == crate::render::Engine::Hayro => {
+                        eprintln!("[render] engine=hayro keep-text failed (no fallback): {e}");
+                        if let Some(p) = &buried_stripped {
+                            let _ = std::fs::remove_file(p);
+                        }
+                        let _ = std::fs::remove_file(&precompress_path);
+                        return Err(CoreError::Internal(format!("hayro keep-text: {e}")));
+                    }
+                    Err(e) => eprintln!(
+                        "[render] engine=hayro keep-text failed, falling back to mupdf: {e}"
+                    ),
+                }
+            }
+            #[cfg(not(feature = "hayro"))]
+            eprintln!(
+                "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+                engine.name()
+            );
+        }
+    }
+
     let mut compose_err: Option<CoreError> = None;
-    unsafe {
-        let ctx = kozou_new_context();
-        if ctx.is_null() {
-            return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+    if !done {
+        unsafe {
+            let ctx = kozou_new_context();
+            if ctx.is_null() {
+                return Err(CoreError::MuPdf("kozou_new_context failed".into()));
+            }
+            let mut res = FfiResult::default();
+            ffi_compose(
+                ctx,
+                c_input.as_ptr(),
+                c_output.as_ptr(),
+                dpi,
+                quality,
+                if use_png { 1 } else { 0 },
+                c_tmp_dir.as_ptr(),
+                indices_ptr,
+                indices_len,
+                supersample_max as c_int,
+                &mut res,
+            );
+            mupdf_sys::fz_drop_context(ctx);
+            if res.ok == 0 {
+                compose_err = Some(CoreError::MuPdf(format!("{res}")));
+            }
         }
-        let mut res = FfiResult::default();
-        ffi_compose(
-            ctx,
-            c_input.as_ptr(),
-            c_output.as_ptr(),
-            dpi,
-            quality,
-            if use_png { 1 } else { 0 },
-            c_tmp_dir.as_ptr(),
-            indices_ptr,
-            indices_len,
-            supersample_max as c_int,
-            &mut res,
-        );
-        mupdf_sys::fz_drop_context(ctx);
-        if res.ok == 0 {
-            compose_err = Some(CoreError::MuPdf(format!("{res}")));
-        }
+
     }
 
     // 前処理で作った一時ファイルは compose の成否に関わらず必ず削除する。

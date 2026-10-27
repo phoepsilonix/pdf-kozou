@@ -386,6 +386,39 @@ pub fn render_sheet_encoded(
     out.ok_or_else(|| "no sheet".to_string())
 }
 
+/// RGB8 のピクセル列から、PDF の画像 XObject (DeviceRGB, 8bit) を作る。
+///  - JPEG: jpegtran 方式で可逆最適化してから DCT のまま埋め込む (再圧縮なし)
+///  - PNG : RGB を Flate で可逆圧縮して埋め込む
+fn image_stream(
+    rgb: Vec<u8>,
+    width_px: u32,
+    height_px: u32,
+    png: bool,
+    quality: u8,
+) -> Result<lopdf::Stream, String> {
+    use lopdf::{Stream, dictionary};
+    let mut dict = dictionary! {
+        "Type" => "XObject",
+        "Subtype" => "Image",
+        "Width" => width_px as i64,
+        "Height" => height_px as i64,
+        "ColorSpace" => "DeviceRGB",
+        "BitsPerComponent" => 8,
+    };
+    if png {
+        let mut st = Stream::new(dict, rgb);
+        st.compress().map_err(|e| format!("flate: {e}"))?;
+        Ok(st)
+    } else {
+        let jpeg = encode_rgb(&rgb, width_px, height_px, false, quality)?;
+        // jpegtran 方式の可逆最適化 (ハフマン表の最適化 / プログレッシブ化、画素は不変)。
+        // 小さくならない・画素が一致しない場合は元の JPEG をそのまま使う。
+        let jpeg = crate::jpeg_optimize::optimize_or_keep(jpeg);
+        dict.set("Filter", "DCTDecode");
+        Ok(Stream::new(dict, jpeg))
+    }
+}
+
 /// 1 ページ 1 枚の画像化 PDF を書き出す (compress::rasterize 用)。
 /// `pages` は 1 ベースのページ番号 (None = 全ページ)。ページ寸法は元ページと同じ。
 pub fn rasterize_pdf(
@@ -465,26 +498,7 @@ pub fn rasterize_imposition_pdf(
     let g_pt = if gap_px > 0 { gap_px as f32 * 72.0 / dpi } else { 0.0 };
 
     compose_sheets(input, &sheets, cols, rows, dpi, gap_px, supersample_max, |_, sheet| {
-        let mut img_dict = dictionary! {
-            "Type" => "XObject",
-            "Subtype" => "Image",
-            "Width" => sheet.width_px as i64,
-            "Height" => sheet.height_px as i64,
-            "ColorSpace" => "DeviceRGB",
-            "BitsPerComponent" => 8,
-        };
-        let img_stream = if png {
-            let mut st = Stream::new(img_dict, sheet.rgb);
-            st.compress().map_err(|e| format!("flate: {e}"))?;
-            st
-        } else {
-            let jpeg = encode_rgb(&sheet.rgb, sheet.width_px, sheet.height_px, false, quality)?;
-            // jpegtran 方式の可逆最適化 (ハフマン表の最適化 / プログレッシブ化、画素は不変)。
-            // 小さくならない・画素が一致しない場合は元の JPEG をそのまま使う。
-            let jpeg = crate::jpeg_optimize::optimize_or_keep(jpeg);
-            img_dict.set("Filter", "DCTDecode");
-            Stream::new(img_dict, jpeg)
-        };
+        let img_stream = image_stream(sheet.rgb, sheet.width_px, sheet.height_px, png, quality)?;
         let img_id = doc.add_object(img_stream);
 
         let page_w = cols as f32 * sheet.cell_w_pt + (cols + 1) as f32 * g_pt;
@@ -522,6 +536,228 @@ pub fn rasterize_imposition_pdf(
     });
     doc.trailer.set("Root", catalog_id);
     doc.save(output).map_err(|e| format!("save: {e}"))?;
+    Ok(())
+}
+
+// ── キープテキスト (背景ラスタ + テキスト層) ─────────────────────────────────
+//
+// 非テキスト要素 (画像・図形) を 1 ページ 1 枚の背景ラスタに焼き込み、テキストは
+// 元のフォントのままベクターで残す。流れ:
+//   1. テキスト層: lopdf で内容ストリームからテキスト以外の描画を除く (content_filter::TextOnly)
+//   2. 背景: lopdf でテキストを除いた複製を hayro で描く (content_filter::RemoveText)
+//   3. 背景画像をページ内容の先頭に重ね、選ばれなかったページを落として保存
+// ページの /Rotate は、背景画像の配置行列で吸収する (テキスト層はページの座標系のまま)。
+//
+// 未対応 (Err を返し、呼び出し側が MuPDF にフォールバックする):
+//   - 部分的に隠れたテキストの隠し直し (呼び出し側が事前に検出して使い分ける)
+//   - Tr 4〜7、外観ストリームを持つ注釈、種類不明の XObject、/UserUnit != 1
+//   - ページ指定が昇順・重複なしでない場合
+
+/// 数値オブジェクト (参照を含む) を f32 にする
+fn num_of(doc: &lopdf::Document, o: &lopdf::Object) -> Option<f32> {
+    use lopdf::Object;
+    match o {
+        Object::Integer(i) => Some(*i as f32),
+        Object::Real(r) => Some(*r),
+        Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| num_of(doc, o)),
+        _ => None,
+    }
+}
+
+/// 継承を考慮してページの属性を探す (最も近い祖先のもの)
+fn inherited<'a>(
+    doc: &'a lopdf::Document,
+    page_id: lopdf::ObjectId,
+    key: &[u8],
+) -> Option<&'a lopdf::Object> {
+    let mut node = page_id;
+    for _ in 0..32 {
+        let d = doc.get_dictionary(node).ok()?;
+        if let Ok(v) = d.get(key) {
+            return Some(v);
+        }
+        node = d.get(b"Parent").ok()?.as_reference().ok()?;
+    }
+    None
+}
+
+fn box_of(doc: &lopdf::Document, page_id: lopdf::ObjectId, key: &[u8]) -> Option<[f32; 4]> {
+    let obj = inherited(doc, page_id, key)?;
+    let obj = match obj {
+        lopdf::Object::Reference(id) => doc.get_object(*id).ok()?,
+        o => o,
+    };
+    let a = obj.as_array().ok()?;
+    if a.len() != 4 {
+        return None;
+    }
+    let v: Vec<f32> = a.iter().filter_map(|o| num_of(doc, o)).collect();
+    if v.len() != 4 {
+        return None;
+    }
+    Some([v[0].min(v[2]), v[1].min(v[3]), v[0].max(v[2]), v[1].max(v[3])])
+}
+
+/// 表示領域 (CropBox ∩ MediaBox) と、正規化した /Rotate (0/90/180/270)
+fn page_geometry(
+    doc: &lopdf::Document,
+    page_id: lopdf::ObjectId,
+) -> Result<([f32; 4], i32), String> {
+    let media = box_of(doc, page_id, b"MediaBox").ok_or("no MediaBox")?;
+    let b = match box_of(doc, page_id, b"CropBox") {
+        Some(c) => [
+            media[0].max(c[0]),
+            media[1].max(c[1]),
+            media[2].min(c[2]),
+            media[3].min(c[3]),
+        ],
+        None => media,
+    };
+    if !(b[2] > b[0] && b[3] > b[1]) {
+        return Err("empty page box".into());
+    }
+    if let Some(u) = inherited(doc, page_id, b"UserUnit").and_then(|o| num_of(doc, o))
+        && (u - 1.0).abs() > 1e-6
+    {
+        return Err("UserUnit != 1".into());
+    }
+    let rot = inherited(doc, page_id, b"Rotate")
+        .and_then(|o| num_of(doc, o))
+        .map(|r| (r as i32).rem_euclid(360))
+        .unwrap_or(0);
+    if rot % 90 != 0 {
+        return Err(format!("unsupported /Rotate {rot}"));
+    }
+    Ok((b, rot))
+}
+
+/// 背景画像 (単位正方形) を表示領域 `b` いっぱいに、ページの回転 `rot` を打ち消して置く行列
+fn background_matrix(b: [f32; 4], rot: i32) -> [f32; 6] {
+    let (x0, y0, x1, y1) = (b[0], b[1], b[2], b[3]);
+    let (w, h) = (x1 - x0, y1 - y0);
+    match rot {
+        90 => [0.0, h, -w, 0.0, x1, y0],
+        180 => [-w, 0.0, 0.0, -h, x1, y1],
+        270 => [0.0, -h, w, 0.0, x0, y1],
+        _ => [w, 0.0, 0.0, h, x0, y0],
+    }
+}
+
+/// キープテキストの画像化 PDF (1up) を書き出す。`pages` は 1 ベース・昇順・重複なし (None = 全ページ)。
+pub fn keep_text_pdf(
+    input: &str,
+    output: &str,
+    dpi: f32,
+    png: bool,
+    quality: u8,
+    pages: Option<&[i32]>,
+    supersample_max: i32,
+) -> Result<(), String> {
+    use crate::content_filter::{self, Mode};
+    use lopdf::{Document, Object, Stream, dictionary};
+
+    let data = std::fs::read(input).map_err(|e| format!("read: {e}"))?;
+    if !data[..data.len().min(1024)].windows(5).any(|w| w == b"%PDF-") {
+        return Err("not a PDF".into());
+    }
+
+    // 1) テキスト層
+    let mut doc = Document::load_mem(&data).map_err(|e| format!("lopdf load: {e}"))?;
+    if doc.is_encrypted() {
+        return Err("encrypted".into());
+    }
+    let tstats = content_filter::transform(&mut doc, Mode::TextOnly)?;
+    // 2) 背景 (テキストを除いた複製を hayro で描く)
+    let (no_text, _) = content_filter::remove_text_bytes(&data)?;
+    let nt_pdf = Pdf::new(no_text).map_err(|e| format!("hayro load: {e:?}"))?;
+    let nt_pages = nt_pdf.pages();
+    let lo_pages = doc.get_pages();
+    if nt_pages.len() != lo_pages.len() {
+        return Err("page count mismatch".into());
+    }
+    let n = lo_pages.len() as i32;
+    let selected: Vec<i32> = match pages {
+        Some(p) if !p.is_empty() => p.to_vec(),
+        _ => (1..=n).collect(),
+    };
+    if selected.iter().any(|&p| p < 1 || p > n) || selected.windows(2).any(|w| w[0] >= w[1]) {
+        return Err("page list must be ascending, unique and within the document".into());
+    }
+
+    let settings = interpreter_settings();
+    let cache = RenderCache::new();
+    let dpi_f = dpi.max(1.0);
+    let scale = dpi_f / 72.0;
+    for &pno in &selected {
+        let page = nt_pages
+            .get((pno - 1) as usize)
+            .ok_or_else(|| format!("page {pno} out of range"))?;
+        if let Some(feature) = unsupported_feature(page) {
+            return Err(format!("page {pno}: unsupported feature: {feature}"));
+        }
+        let (pw, ph) = page.render_dimensions();
+        let (tw, th) = ((pw * scale).ceil(), (ph * scale).ceil());
+        if !(tw >= 1.0 && th >= 1.0 && tw <= u16::MAX as f32 && th <= u16::MAX as f32) {
+            return Err(format!("page {pno}: unsupported pixmap size {tw}x{th}"));
+        }
+        let (tw, th) = (tw as u32, th as u32);
+        let rgb = raster_rgb(page, &cache, &settings, tw, th, dpi_f, supersample_max)?;
+        let img_id = doc.add_object(image_stream(rgb, tw, th, png, quality)?);
+
+        // 表示領域とページ寸法の整合を確認してから背景を置く
+        let page_id = lo_pages[&(pno as u32)];
+        let (b, rot) = page_geometry(&doc, page_id)?;
+        let (w, h) = (b[2] - b[0], b[3] - b[1]);
+        let (ew, eh) = if rot % 180 == 0 { (w, h) } else { (h, w) };
+        if (ew - pw).abs() > 1.0 || (eh - ph).abs() > 1.0 {
+            return Err(format!("page {pno}: page box mismatch ({ew}x{eh} vs {pw}x{ph})"));
+        }
+        let m = background_matrix(b, rot);
+        let content = format!(
+            "q {:.5} {:.5} {:.5} {:.5} {:.5} {:.5} cm /KozouBg Do Q\n",
+            m[0], m[1], m[2], m[3], m[4], m[5]
+        );
+        let bg_content = doc.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        // Contents の先頭に背景を重ねる (内容ストリームの並びは保つ)
+        let mut contents: Vec<Object> = vec![bg_content.into()];
+        contents.extend(doc.get_page_contents(page_id).into_iter().map(Object::from));
+        // Resources (TextOnly 変換で、ページ自身の辞書として持たせてある) に背景を登録する
+        let page_dict = doc
+            .get_object_mut(page_id)
+            .and_then(Object::as_dict_mut)
+            .map_err(|e| format!("page dict: {e}"))?;
+        page_dict.set("Contents", Object::Array(contents));
+        let res = page_dict
+            .get_mut(b"Resources")
+            .and_then(Object::as_dict_mut)
+            .map_err(|e| format!("page resources: {e}"))?;
+        if !res.has(b"XObject") {
+            res.set("XObject", Object::Dictionary(lopdf::Dictionary::new()));
+        }
+        res.get_mut(b"XObject")
+            .and_then(Object::as_dict_mut)
+            .map_err(|e| format!("page XObject: {e}"))?
+            .set("KozouBg", Object::Reference(img_id));
+    }
+
+    // 選ばれなかったページを落とし、不要になったオブジェクトを捨てる
+    let drop: Vec<u32> = lo_pages
+        .keys()
+        .copied()
+        .filter(|k| !selected.contains(&(*k as i32)))
+        .collect();
+    if !drop.is_empty() {
+        doc.delete_pages(&drop);
+    }
+    doc.prune_objects();
+    doc.compress();
+    doc.save(output).map_err(|e| format!("save: {e}"))?;
+    eprintln!(
+        "[render] keep-text: {} page(s); text layer: {} paint op(s) neutralized, {} image op(s) removed",
+        selected.len(),
+        tstats.neutralized_paints,
+        tstats.removed_images
+    );
     Ok(())
 }
 
