@@ -128,7 +128,12 @@ fn render_pixmap<'a>(
     let sy = height as f64 / ph as f64;
     let mut ctx = RenderContext::new(width, height);
     let transform = Affine::scale_non_uniform(sx, sy) * page.initial_transform(true).to_kurbo();
-    render_into(page, cache, settings, &RenderSettings::default(), &mut ctx, transform);
+    // 画像は常にバイリニア補間で描く。hayro は /Interpolate の無い画像を最近傍補間 (拡大するとブロック状)
+    // で描くが、MuPDF や poppler など一般のビューアは拡大時にも補間して滑らかに描く。
+    let render_settings = RenderSettings {
+        force_image_interpolation: true,
+    };
+    render_into(page, cache, settings, &render_settings, &mut ctx, transform);
     ctx.flush();
     let mut pixmap = Pixmap::new(ctx.width(), ctx.height());
     ctx.render_with(
