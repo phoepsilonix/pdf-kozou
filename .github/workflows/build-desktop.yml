@@ -750,6 +750,9 @@ jobs:
             echo "<key>com.apple.application-identifier</key><string>${APP_ID}</string>"
             echo "<key>com.apple.developer.team-identifier</key><string>${TEAM_ID}</string>"
             echo '<key>com.apple.security.app-sandbox</key><true/>'
+            # WKWebView(Tauri)は App Sandbox 下で network.client が無いと、
+            # tauri:// のフロントを読み込めず空(黒)の窓のままになる。
+            echo '<key>com.apple.security.network.client</key><true/>'
             echo '<key>com.apple.security.files.user-selected.read-write</key><true/>'
             echo '<key>com.apple.security.files.downloads.read-write</key><true/>'
             echo '</dict></plist>'
