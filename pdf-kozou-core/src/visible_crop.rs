@@ -61,7 +61,14 @@ pub struct VisibleCropStats {
 const CROP_AREA_THRESHOLD: f64 = 0.9;
 /// この割合未満しか見えていなければ「実質不可視」としてプレースホルダに
 /// 置換する。
-const INVISIBLE_AREA_THRESHOLD: f64 = 0.02;
+///
+/// 面積比だけで判定するため、ごく小さい値にとどめる。以前は 0.02 (2%) だったが、
+/// 「幅は 2% しか見えていないが、縦はほぼ全面が見えている」ような細長い帯
+/// (ページ端からはみ出して置かれた背景画像の端、例えばページ左端の枠色の帯)
+/// まで不可視と見なして 1x1 に置換してしまい、その帯が消えていた。
+/// 細い帯でも実際に見えている画像は、プレースホルダではなく通常の切り詰め
+/// (見えている範囲だけを残す) に回す。
+const INVISIBLE_AREA_THRESHOLD: f64 = 1e-5;
 /// 切り出し矩形に足す安全マージン (px)。クリップ境界のアンチエイリアス等で
 /// ぎりぎり見えている画素を誤って切り落とさないため。
 const CROP_MARGIN_PX: i64 = 2;
@@ -1981,6 +1988,26 @@ mod tests {
         let d = &b.doc.get_object(b.image).unwrap().as_stream().unwrap().dict;
         assert!(!d.has(b"SMask") && !d.has(b"Mask"));
         assert_eq!(image_wh(&b.doc, b.image), (1, 1));
+    }
+
+    /// ページ端からはみ出して置かれた画像の、細い帯だけが見えている場合は、
+    /// 不可視扱いでプレースホルダにせず、その帯を残して切り詰める
+    /// (面積比は 2% 未満でも、帯の縦方向は全面が見えている)。
+    #[test]
+    fn thin_visible_strip_is_cropped_not_stubbed() {
+        // 画像は x=-1160..25 に置かれ、クリップ (x=0..600) から見えるのは右端約 2% のみ。
+        let c = "q 0 0 600 800 re W* n q 1185 0 0 1185 -1160 100 cm /Im0 Do Q Q";
+        let mut b = build(c, (800, 800), Some((800, 800)), vec![], false);
+        let st = crop_to_visible_area(&mut b.doc, 90);
+        assert_eq!(st.images_stubbed, 0, "visible strip must not become a 1x1 stub");
+        assert_eq!(st.images_cropped, 1);
+        let (w, h) = image_wh(&b.doc, b.image);
+        assert!(w >= 17 && w < 800, "strip width kept: {w}");
+        assert!(h > 1, "strip height kept: {h}");
+        // SMask も同じ窓で切り出され、本体と同じ寸法になる。
+        let d = &b.doc.get_object(b.image).unwrap().as_stream().unwrap().dict;
+        let mask = d.get(b"SMask").unwrap().as_reference().unwrap();
+        assert_eq!(image_wh(&b.doc, mask), (w, h));
     }
 
     /// 上下反転した配置 (d < 0) でも、切り詰め後に同じ範囲が見える。
