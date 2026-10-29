@@ -830,6 +830,12 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 Some(redact_margins),
             ) {
                 Ok(stats) if stats.pages_redacted > 0 => {
+                    // CropBox 外の消去は MuPDF の redaction で行っている (lopdf 実装は未対応)
+                    crate::backend::note_mupdf_only(
+                        "redact_crop",
+                        &req.input,
+                        "redaction outside the CropBox has no lopdf implementation",
+                    );
                     eprintln!(
                         "[compress] redact_outside_crop: {}/{} pages redacted (margins top={} bottom={} left={} right={})",
                         stats.pages_redacted,
@@ -968,6 +974,11 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
 
     let result_res: Result<CompressResponse> = if do_subset {
         // フォントサブセット化パス: font_subset::subset_and_write を呼ぶ
+        crate::backend::note_mupdf_only(
+            "compress_subset",
+            &req.input,
+            "font subsetting and compression have no lopdf implementation",
+        );
         let result = crate::font_subset::subset_and_write(
             &current_input,
             &req.output,
@@ -1030,6 +1041,11 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         })
     } else {
         // サブセット化なし: PdfWriteOptions のみで圧縮
+        crate::backend::note_mupdf_only(
+            "compress",
+            &req.input,
+            "lopdf compression is not implemented yet",
+        );
         let mut resp = safe_compress_only(
             &current_input,
             &req.output,
@@ -1352,6 +1368,11 @@ pub fn rewrite(
 ) -> Result<CompressResponse> {
     use mupdf::DocumentWriter;
 
+    crate::backend::note_mupdf_only(
+        "rewrite",
+        input,
+        "rewrite (DocumentWriter) has no lopdf implementation",
+    );
     let unsafe_fonts = detect_rewrite_unsafe_fonts(input);
 
     match unsafe_fonts {

@@ -1,5 +1,6 @@
 // src/store/useEngineFallbackStore.ts
-// 描画エンジン "auto" で hayro から MuPDF へフォールバックした記録。
+// 描画エンジン "auto" で hayro から MuPDF へ、または PDF 操作 (圧縮など) で lopdf から
+// MuPDF へフォールバックした記録。
 // コアが送る `engine-fallback` イベント (lib/engineFallback.ts) を溜め、
 // 画面右下の通知 (EngineFallbackToast) とバッチ処理のログ (EngineFallbackLog) が読む。
 //
@@ -9,7 +10,12 @@
 import { create } from "zustand";
 
 export interface EngineFallbackPayload {
-  /** "render" / "rasterize" / "rasterize_no_text" / "keep-text" / "imposition" / "rasterize_imposition" */
+  /** どのエンジンから MuPDF へ切り替わったか。省略時は "hayro" */
+  from?: "hayro" | "lopdf";
+  /**
+   * "render" / "rasterize" / "rasterize_no_text" / "keep-text" / "imposition" / "rasterize_imposition"
+   * (from = hayro)、"compress" / "compress_subset" / "redact_crop" / "rewrite" (from = lopdf)
+   */
   op: string;
   file: string | null;
   /** 0 始まり */
@@ -19,6 +25,7 @@ export interface EngineFallbackPayload {
 
 export interface EngineFallbackEntry {
   key: string;
+  from: "hayro" | "lopdf";
   op: string;
   file: string | null;
   reason: string;
@@ -50,7 +57,8 @@ export const useEngineFallbackStore = create<EngineFallbackState>((set, get) => 
   toastSuppressed: false,
   add: (p) =>
     set((s) => {
-      const key = `${p.file ?? ""}\u0000${p.op}\u0000${p.reason}`;
+      const from = p.from ?? "hayro";
+      const key = `${p.file ?? ""}\u0000${from}\u0000${p.op}\u0000${p.reason}`;
       const i = s.entries.findIndex((e) => e.key === key);
       if (i >= 0) {
         const cur = s.entries[i];
@@ -65,6 +73,7 @@ export const useEngineFallbackStore = create<EngineFallbackState>((set, get) => 
       }
       const entry: EngineFallbackEntry = {
         key,
+        from,
         op: p.op,
         file: p.file,
         reason: p.reason,

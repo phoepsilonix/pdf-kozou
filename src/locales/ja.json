@@ -847,6 +847,7 @@
   },
   "engine_fallback": {
     "log": "hayroで処理できなかったため、MuPDFに切り替えました（{{op}}）",
+    "log_lopdf": "lopdfで処理できないため、MuPDFで処理しました（{{op}}）",
     "pages": "ページ {{pages}}",
     "reason": "理由: {{reason}}",
     "close": "閉じる",
@@ -856,7 +857,11 @@
       "rasterize_no_text": "画像化PDF（テキストなし）",
       "keep_text": "画像化PDF（テキスト保持）",
       "imposition": "面付けプレビュー",
-      "rasterize_imposition": "面付け画像化PDF"
+      "rasterize_imposition": "面付け画像化PDF",
+      "compress": "圧縮",
+      "compress_subset": "圧縮（フォントサブセット）",
+      "redact_crop": "CropBox外の除去",
+      "rewrite": "再描画圧縮"
     }
   },
   "render_engine": {

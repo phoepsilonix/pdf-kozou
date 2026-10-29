@@ -246,6 +246,7 @@ pub fn run() {
                         let _ = handle.emit(
                             "engine-fallback",
                             serde_json::json!({
+                                "from": f.from,
                                 "op": f.op,
                                 "file": f.file,
                                 "page": f.page,

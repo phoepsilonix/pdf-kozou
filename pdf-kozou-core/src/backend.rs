@@ -122,6 +122,22 @@ pub fn abort_on_lopdf_failure(op: &str, err: &dyn std::fmt::Display) -> bool {
     }
 }
 
+/// lopdf 実装がまだ無く MuPDF でしか処理できない操作 (圧縮など) の冒頭で呼ぶ。
+/// - mupdf 指定: 明示的な選択なので通知しない
+/// - auto / lopdf 指定: MuPDF で処理することを stderr と GUI (engine-fallback) へ通知する
+///   (lopdf 指定でもまだ MuPDF にフォールバックするため、その旨を理由に付ける)
+pub fn note_mupdf_only(op: &'static str, file: &str, reason: &str) {
+    match current() {
+        Backend::MuPdf => {}
+        Backend::Auto => crate::engine_notice::report_pdf_fallback(op, Some(file), reason),
+        Backend::Lopdf => crate::engine_notice::report_pdf_fallback(
+            op,
+            Some(file),
+            &format!("{reason} (backend=lopdf, but MuPDF is still used)"),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

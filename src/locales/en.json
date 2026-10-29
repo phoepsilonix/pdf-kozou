@@ -847,6 +847,7 @@
   },
   "engine_fallback": {
     "log": "hayro could not process this, switched to MuPDF ({{op}})",
+    "log_lopdf": "lopdf could not process this, used MuPDF ({{op}})",
     "pages": "page {{pages}}",
     "reason": "Reason: {{reason}}",
     "close": "Close",
@@ -856,7 +857,11 @@
       "rasterize_no_text": "image PDF (no text)",
       "keep_text": "image PDF (keep text)",
       "imposition": "imposition preview",
-      "rasterize_imposition": "imposed image PDF"
+      "rasterize_imposition": "imposed image PDF",
+      "compress": "compression",
+      "compress_subset": "compression (font subsetting)",
+      "redact_crop": "removal outside CropBox",
+      "rewrite": "re-render compression"
     }
   },
   "render_engine": {

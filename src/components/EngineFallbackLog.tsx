@@ -12,11 +12,16 @@ export function opLabelKey(op: string): string {
   return `engine_fallback.op.${op.replace(/-/g, "_")}`;
 }
 
+/** 切り替え元のエンジンに応じた本文のキー (hayro: 描画、lopdf: 圧縮などの PDF 操作) */
+export function logKey(from: string): string {
+  return from === "lopdf" ? "engine_fallback.log_lopdf" : "engine_fallback.log";
+}
+
 /** バッチの結果行に持たせる、表示に必要な分だけの記録 */
-export type BatchFallback = Pick<EngineFallbackEntry, "op" | "reason" | "pages">;
+export type BatchFallback = Pick<EngineFallbackEntry, "from" | "op" | "reason" | "pages">;
 
 export function toBatchFallbacks(entries: EngineFallbackEntry[]): BatchFallback[] {
-  return entries.map(({ op, reason, pages }) => ({ op, reason, pages }));
+  return entries.map(({ from, op, reason, pages }) => ({ from, op, reason, pages }));
 }
 
 export function EngineFallbackNotes({ fallbacks }: { fallbacks?: BatchFallback[] }) {
@@ -33,10 +38,10 @@ export function EngineFallbackNotes({ fallbacks }: { fallbacks?: BatchFallback[]
       }}
     >
       {fallbacks.map((f) => (
-        <div key={`${f.op}\u0000${f.reason}`} style={{ fontSize: FS.caption, wordBreak: "break-all" }}>
+        <div key={`${f.from}\u0000${f.op}\u0000${f.reason}`} style={{ fontSize: FS.caption, wordBreak: "break-all" }}>
           <span style={{ color: "var(--c-warn)" }}>⚠ </span>
           <span style={{ color: "var(--c-text)" }}>
-            {t("engine_fallback.log", { op: t(opLabelKey(f.op)) })}
+            {t(logKey(f.from), { op: t(opLabelKey(f.op)) })}
             {f.pages.length > 0
               ? ` (${t("engine_fallback.pages", { pages: formatPages(f.pages) })})`
               : ""}

@@ -12,6 +12,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
 import { Spinner } from "../components/common";
+import {
+  type BatchFallback,
+  EngineFallbackNotes,
+  toBatchFallbacks,
+} from "../components/EngineFallbackLog";
 import { MetadataEditModal } from "../components/MetadataEditModal";
 import { NumInput } from "../components/NumInput";
 import { useA11y } from "../hooks/useA11y";
@@ -44,6 +49,7 @@ import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
 import { uniqueFileNames } from "../lib/uniqueName";
+import { useEngineFallbackStore } from "../store/useEngineFallbackStore";
 import { usePdfStore } from "../store/usePdfStore";
 
 interface Props {
@@ -58,6 +64,9 @@ interface Props {
   outputBaseName?: string;
   batchFiles?: import("../store/usePdfStore").FileEntry[];
 }
+
+/** 一括圧縮の完了行。MuPDF で処理した記録 (fallbacks) があれば進捗行の下に注記する */
+type BatchDone = { file: string; pct: number; saved: string; fallbacks?: BatchFallback[] };
 
 type Phase = "edit" | "processing" | "result" | "batchResult" | "error";
 
@@ -343,11 +352,16 @@ export function CompressPage({
   const [errMsg, setErrMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [outDir, setOutDir] = useState("");
+  // バッチ処理中に画面を離れても、右下の通知が出なくなったままにならないようにする
+  useEffect(
+    () => () => useEngineFallbackStore.getState().setToastSuppressed(false),
+    [],
+  );
   const [batchProg, setBatchProg] = useState<{
     cur: number;
     total: number;
     curFile: string;
-    done: { file: string; pct: number; saved: string }[];
+    done: BatchDone[];
     errors: { file: string; msg: string }[];
   } | null>(null);
 
@@ -716,7 +730,7 @@ export function CompressPage({
       // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
       total: batchFiles!.length,
       curFile: "",
-      done: [] as { file: string; pct: number; saved: string }[],
+      done: [] as BatchDone[],
       errors: [] as { file: string; msg: string }[],
     };
     setBatchProg({ ...prog });
@@ -724,6 +738,12 @@ export function CompressPage({
     // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
     const outNames = uniqueFileNames(batchFiles!.map((x) => x.filename));
+
+    // lopdf で処理できず MuPDF で圧縮した記録は、ファイルごとの進捗行に出す (右下の通知は止める)。
+    // 処理は 1 ファイルずつ順に行うので、1 ファイルの間に溜まった記録がそのファイルの分になる。
+    const fallbackStore = useEngineFallbackStore.getState();
+    fallbackStore.clear();
+    fallbackStore.setToastSuppressed(true);
 
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
     for (let i = 0; i < batchFiles!.length; i++) {
@@ -733,6 +753,7 @@ export function CompressPage({
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
       const out = joinPath(resolvedDir, buildName(outNames[i], ["compressed"]));
+      const doneBefore = prog.done.length;
       try {
         let ratio = 0;
 
@@ -789,8 +810,16 @@ export function CompressPage({
           });
         }
       }
+
+      // このファイルの処理中に MuPDF で処理した記録を、結果行へ付ける
+      const fallbacks = toBatchFallbacks(useEngineFallbackStore.getState().take());
+      if (fallbacks.length > 0 && prog.done.length > doneBefore) {
+        prog.done[prog.done.length - 1].fallbacks = fallbacks;
+      }
+
       setBatchProg({ ...prog });
     }
+    useEngineFallbackStore.getState().setToastSuppressed(false);
     await finalizeMobileOutput(resolvedDir, producedPaths, androidFolderForRun);
     setPhase("batchResult");
   }, [
@@ -872,6 +901,7 @@ export function CompressPage({
               ) : (
                 <span style={c.bpPct2}> +{Math.abs(d.pct)}%</span>
               )}
+              <EngineFallbackNotes fallbacks={d.fallbacks} />
             </div>
           ))}
           {batchProg.errors.map((e, idx) => (
@@ -959,6 +989,7 @@ export function CompressPage({
               ) : (
                 <span style={c.bpPct2}> +{Math.abs(d.pct)}%</span>
               )}
+              <EngineFallbackNotes fallbacks={d.fallbacks} />
             </div>
           ))}
           {batchProg.errors.map((e, idx) => (
