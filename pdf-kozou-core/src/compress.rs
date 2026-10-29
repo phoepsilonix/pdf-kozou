@@ -1874,13 +1874,13 @@ pub fn rasterize_no_text_with_quality(
     })
 }
 
-/// 部分的に隠れたテキストがあるか (hayro 版のキープテキストは、隠れていた部分を覆い直す
-/// パッチに未対応のため、該当すれば MuPDF 実装を使う)。
+/// 部分的に隠れたテキストがあるページ (1 ベース) を返す。hayro 版のキープテキストは、
+/// そのページだけ、隠れていた部分を背景の画素のパッチで覆い直す (render_hayro::keep_text_pdf)。
 /// 完全に隠れたテキスト (覆われ率 0.8 以上) は前処理で除去済みの入力を渡す想定なので、
 /// 低い閾値 (0.02) でも "buried" と判定されるものが残っていれば、部分的な重なりがある。
-/// 戻り値: Some(true/false)、判定できなければ None。
+/// 戻り値: Some(該当ページ。無ければ空)、判定できなければ None。
 #[cfg(feature = "hayro")]
-fn has_partially_covered_text(path: &str, pages: Option<&[i32]>) -> Option<bool> {
+fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>> {
     use crate::stext::{DetectBuriedRequest, detect_buried_text};
     let count = mupdf::pdf::PdfDocument::open(path).ok()?.page_count().ok()?;
     if count <= 0 {
@@ -1890,6 +1890,7 @@ fn has_partially_covered_text(path: &str, pages: Option<&[i32]>) -> Option<bool>
         Some(p) if !p.is_empty() => p.iter().map(|&x| x - 1).collect(),
         _ => (0..count).collect(),
     };
+    let mut found = Vec::new();
     for page in list {
         let req = DetectBuriedRequest {
             path: path.to_string(),
@@ -1903,13 +1904,13 @@ fn has_partially_covered_text(path: &str, pages: Option<&[i32]>) -> Option<bool>
         match detect_buried_text(&req) {
             Ok(r) => {
                 if r.hits.iter().any(|h| h.reason == "buried") {
-                    return Some(true);
+                    found.push(page + 1);
                 }
             }
             Err(_) => return None,
         }
     }
-    Some(false)
+    Some(found)
 }
 
 /// 画像PDF化(フォント保持版) Stage 2。
@@ -2135,22 +2136,31 @@ pub fn compose_image_pdf_keep_text_with_quality(
             #[cfg(feature = "hayro")]
             {
                 let t0 = std::time::Instant::now();
-                let attempt: std::result::Result<(), String> =
-                    match has_partially_covered_text(compose_input, pages) {
-                        Some(false) => crate::render_hayro::keep_text_pdf(
-                            compose_input,
-                            &precompress_str,
-                            dpi,
-                            use_png,
-                            quality.clamp(1, 100) as u8,
-                            pages,
-                            supersample_max,
-                        ),
-                        Some(true) => {
-                            Err("partially covered text (MuPDF re-covers it with patches)".into())
-                        }
-                        None => Err("could not check for covered text".into()),
-                    };
+                // 部分的に隠れたテキストのあるページだけ、hayro 側で隠し直す。
+                // KOZOU_KEEPTEXT_COVER: "0" = 隠し直しを使わず従来どおり MuPDF へ、
+                // "all" = 検出に頼らず全ページで元の描画と比べる (検証用)。
+                let cover_env = std::env::var("KOZOU_KEEPTEXT_COVER").unwrap_or_default();
+                let covered: Option<Vec<i32>> = if cover_env == "all" {
+                    Some(Vec::new())
+                } else {
+                    partially_covered_pages(compose_input, pages)
+                };
+                let attempt: std::result::Result<(), String> = match covered {
+                    Some(cov) if cover_env == "0" && !cov.is_empty() => {
+                        Err("partially covered text (cover patches disabled)".into())
+                    }
+                    Some(cov) => crate::render_hayro::keep_text_pdf(
+                        compose_input,
+                        &precompress_str,
+                        dpi,
+                        use_png,
+                        quality.clamp(1, 100) as u8,
+                        pages,
+                        supersample_max,
+                        if cover_env == "all" { None } else { Some(&cov) },
+                    ),
+                    None => Err("could not check for covered text".into()),
+                };
                 match attempt {
                     Ok(()) => {
                         eprintln!(

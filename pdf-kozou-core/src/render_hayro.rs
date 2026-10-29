@@ -648,7 +648,41 @@ fn background_matrix(b: [f32; 4], rot: i32) -> [f32; 6] {
     }
 }
 
+/// 隠し直しパッチ (cover_patch) を作るために、ページごとに持っておく情報
+struct CoverJob {
+    pno: i32,
+    page_id: lopdf::ObjectId,
+    tw: u32,
+    th: u32,
+    /// テキストを除いた描画 (背景画像の元になった画素)
+    nt: Vec<u8>,
+    /// 実際に埋め込む背景画像を復号した画素 (JPEG のときは圧縮後の画素)
+    bg: Vec<u8>,
+    /// 背景画像を置く行列
+    bg_m: [f32; 6],
+}
+
+/// 埋め込む JPEG を RGB8 に復号する (パッチの土台を、実際の背景画素に揃えるため)
+fn decode_jpeg_rgb(jpeg: &[u8], tw: u32, th: u32) -> Result<Vec<u8>, String> {
+    let img = image::load_from_memory_with_format(jpeg, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("jpeg decode: {e}"))?
+        .to_rgb8();
+    if img.width() != tw || img.height() != th {
+        return Err(format!(
+            "jpeg decode: size mismatch {}x{} vs {tw}x{th}",
+            img.width(),
+            img.height()
+        ));
+    }
+    Ok(img.into_raw())
+}
+
 /// キープテキストの画像化 PDF (1up) を書き出す。`pages` は 1 ベース・昇順・重複なし (None = 全ページ)。
+///
+/// `cover_pages`: 隠し直しパッチ (cover_patch) を試すページ (1 ベース。None = 選んだ全ページ)。
+/// 元の PDF で後から描いた物にテキストの一部が隠れていたページを渡す。そのページだけ、
+/// 元の描画と出力の描画を hayro で比べ、見え方が違う箇所を、背景の画素で作ったマスク付きパッチで
+/// テキストの上から隠し直す。
 pub fn keep_text_pdf(
     input: &str,
     output: &str,
@@ -657,6 +691,7 @@ pub fn keep_text_pdf(
     quality: u8,
     pages: Option<&[i32]>,
     supersample_max: i32,
+    cover_pages: Option<&[i32]>,
 ) -> Result<(), String> {
     use crate::content_filter::{self, Mode};
     use lopdf::{Document, Object, Stream, dictionary};
@@ -693,6 +728,7 @@ pub fn keep_text_pdf(
     let cache = RenderCache::new();
     let dpi_f = dpi.max(1.0);
     let scale = dpi_f / 72.0;
+    let mut covers: Vec<CoverJob> = Vec::new();
     for &pno in &selected {
         let page = nt_pages
             .get((pno - 1) as usize)
@@ -707,7 +743,24 @@ pub fn keep_text_pdf(
         }
         let (tw, th) = (tw as u32, th as u32);
         let rgb = raster_rgb(page, &cache, &settings, tw, th, dpi_f, supersample_max)?;
-        let img_id = doc.add_object(image_stream(rgb, tw, th, png, quality)?);
+        let want_cover = match cover_pages {
+            None => true,
+            Some(c) => c.contains(&pno),
+        };
+        let nt_rgb = if want_cover { Some(rgb.clone()) } else { None };
+        let bg_stream = image_stream(rgb, tw, th, png, quality)?;
+        let cover_src = match nt_rgb {
+            Some(nt) => {
+                let bg = if png {
+                    nt.clone()
+                } else {
+                    decode_jpeg_rgb(&bg_stream.content, tw, th)?
+                };
+                Some((nt, bg))
+            }
+            None => None,
+        };
+        let img_id = doc.add_object(bg_stream);
 
         // 表示領域とページ寸法の整合を確認してから背景を置く
         let page_id = lo_pages[&(pno as u32)];
@@ -718,6 +771,17 @@ pub fn keep_text_pdf(
             return Err(format!("page {pno}: page box mismatch ({ew}x{eh} vs {pw}x{ph})"));
         }
         let m = background_matrix(b, rot);
+        if let Some((nt, bg)) = cover_src {
+            covers.push(CoverJob {
+                pno,
+                page_id,
+                tw,
+                th,
+                nt,
+                bg,
+                bg_m: m,
+            });
+        }
         let content = format!(
             "q {:.5} {:.5} {:.5} {:.5} {:.5} {:.5} cm /KozouBg Do Q\n",
             m[0], m[1], m[2], m[3], m[4], m[5]
@@ -745,6 +809,12 @@ pub fn keep_text_pdf(
             .set("KozouBg", Object::Reference(img_id));
     }
 
+    // 部分的に隠れていたテキストを、背景の画素のパッチで隠し直す
+    let mut n_patches = 0usize;
+    if !covers.is_empty() {
+        n_patches = add_cover_patches(&mut doc, &data, &covers, dpi_f, supersample_max, &settings)?;
+    }
+
     // 選ばれなかったページを落とし、不要になったオブジェクトを捨てる
     let drop: Vec<u32> = lo_pages
         .keys()
@@ -758,12 +828,125 @@ pub fn keep_text_pdf(
     doc.compress();
     doc.save(output).map_err(|e| format!("save: {e}"))?;
     eprintln!(
-        "[render] keep-text: {} page(s); text layer: {} paint op(s) neutralized, {} image op(s) removed",
+        "[render] keep-text: {} page(s); text layer: {} paint op(s) neutralized, {} image op(s) removed; cover patches: {}",
         selected.len(),
         tstats.neutralized_paints,
-        tstats.removed_images
+        tstats.removed_images,
+        n_patches
     );
     Ok(())
+}
+
+/// 元のページと出力ページ (背景 + ベクターのテキスト) を hayro で描き比べ、見え方が違う箇所に
+/// マスク付きパッチ画像をテキストの上へ重ねる。作ったパッチの数を返す。
+///
+/// ページの内容ストリームは `[背景, 元の内容...]` の並びになっている前提。元の内容を
+/// `q` … `Q` で囲み (グラフィックス状態を元に戻して) から、最後にパッチを描く。
+fn add_cover_patches(
+    doc: &mut lopdf::Document,
+    orig: &[u8],
+    jobs: &[CoverJob],
+    dpi: f32,
+    supersample_max: i32,
+    settings: &InterpreterSettings,
+) -> Result<usize, String> {
+    use crate::cover_patch::{Params, compute_patches, patch_matrix};
+    use lopdf::{Object, Stream, dictionary};
+
+    // 出力ページの描画用に、現時点の文書をメモリ上へ書き出す
+    let mut buf = Vec::new();
+    doc.save_to(&mut buf).map_err(|e| format!("cover: save: {e}"))?;
+    let full_pdf = Pdf::new(orig.to_vec()).map_err(|e| format!("cover: hayro load (orig): {e:?}"))?;
+    let comp_pdf = Pdf::new(buf).map_err(|e| format!("cover: hayro load (output): {e:?}"))?;
+    let full_pages = full_pdf.pages();
+    let comp_pages = comp_pdf.pages();
+    let cache_full = RenderCache::new();
+    let cache_comp = RenderCache::new();
+    let params = Params::default();
+
+    let mut total = 0usize;
+    for job in jobs {
+        let idx = (job.pno - 1) as usize;
+        let fp = full_pages
+            .get(idx)
+            .ok_or_else(|| format!("cover: page {} missing in the original", job.pno))?;
+        let cp = comp_pages
+            .get(idx)
+            .ok_or_else(|| format!("cover: page {} missing in the output", job.pno))?;
+        let full = raster_rgb(fp, &cache_full, settings, job.tw, job.th, dpi, supersample_max)?;
+        let comp = raster_rgb(cp, &cache_comp, settings, job.tw, job.th, dpi, supersample_max)?;
+        let patches = compute_patches(&full, &job.nt, &comp, &job.bg, job.tw, job.th, &params);
+        if patches.is_empty() {
+            continue;
+        }
+
+        let mut tail = String::from("Q\n");
+        let mut xobjs: Vec<(String, lopdf::ObjectId)> = Vec::new();
+        for (k, p) in patches.iter().enumerate() {
+            let mut mask = Stream::new(
+                dictionary! {
+                    "Type" => "XObject",
+                    "Subtype" => "Image",
+                    "Width" => p.w as i64,
+                    "Height" => p.h as i64,
+                    "ColorSpace" => "DeviceGray",
+                    "BitsPerComponent" => 8,
+                },
+                p.mask.clone(),
+            );
+            mask.compress().map_err(|e| format!("cover: flate: {e}"))?;
+            let mask_id = doc.add_object(mask);
+            let mut img = Stream::new(
+                dictionary! {
+                    "Type" => "XObject",
+                    "Subtype" => "Image",
+                    "Width" => p.w as i64,
+                    "Height" => p.h as i64,
+                    "ColorSpace" => "DeviceRGB",
+                    "BitsPerComponent" => 8,
+                    "SMask" => Object::Reference(mask_id),
+                },
+                p.rgb.clone(),
+            );
+            img.compress().map_err(|e| format!("cover: flate: {e}"))?;
+            let img_id = doc.add_object(img);
+            let name = format!("KozouCov{k}");
+            let m = patch_matrix(job.bg_m, p.x0, p.y0, p.x0 + p.w, p.y0 + p.h, job.tw, job.th);
+            tail.push_str(&format!(
+                "q {:.5} {:.5} {:.5} {:.5} {:.5} {:.5} cm /{name} Do Q\n",
+                m[0], m[1], m[2], m[3], m[4], m[5]
+            ));
+            xobjs.push((name, img_id));
+        }
+        total += patches.len();
+
+        let q_open = doc.add_object(Stream::new(dictionary! {}, b"q\n".to_vec()));
+        let tail_id = doc.add_object(Stream::new(dictionary! {}, tail.into_bytes()));
+        let page_dict = doc
+            .get_object_mut(job.page_id)
+            .and_then(Object::as_dict_mut)
+            .map_err(|e| format!("cover: page dict: {e}"))?;
+        let mut contents: Vec<Object> = page_dict
+            .get(b"Contents")
+            .and_then(Object::as_array)
+            .map_err(|e| format!("cover: page contents: {e}"))?
+            .clone();
+        // contents[0] は背景。その直後 (元の内容の前) に q、最後に Q とパッチ
+        contents.insert(1.min(contents.len()), q_open.into());
+        contents.push(tail_id.into());
+        page_dict.set("Contents", Object::Array(contents));
+        let xo = page_dict
+            .get_mut(b"Resources")
+            .and_then(Object::as_dict_mut)
+            .map_err(|e| format!("cover: page resources: {e}"))?
+            .get_mut(b"XObject")
+            .and_then(Object::as_dict_mut)
+            .map_err(|e| format!("cover: page XObject: {e}"))?;
+        for (name, id) in xobjs {
+            xo.set(name, Object::Reference(id));
+        }
+    }
+    Ok(total)
 }
 
 // ── 未対応機能の検出 ─────────────────────────────────────────────────────────
