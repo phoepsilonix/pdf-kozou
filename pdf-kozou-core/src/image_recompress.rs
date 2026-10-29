@@ -452,7 +452,7 @@ fn recompress_one(
     use image::codecs::jpeg::JpegEncoder;
     use image::{ColorType, DynamicImage, GrayImage, ImageEncoder, RgbImage};
 
-    let (kind, raw_bytes, native_w, native_h, decode_inverted) = {
+    let (kind, raw_bytes, native_w, native_h, decode_inverted, orig_cs) = {
         let obj = doc
             .get_object(xref)
             .map_err(|e| format!("get image {xref:?}: {e}"))?;
@@ -481,7 +481,13 @@ fn recompress_one(
             }
             _ => stream_bytes(stream).map_err(|e| format!("image {xref:?} decompress: {e}"))?,
         };
-        (kind, raw_bytes, native_w, native_h, decode_inverted)
+        // 元の /ColorSpace (ICCBased / CalRGB / CalGray を含む) とその成分数。
+        // 再エンコード後も成分数が同じなら、色を変えないよう元の指定を保つ。
+        let orig_cs = dict
+            .get(b"ColorSpace")
+            .ok()
+            .and_then(|cs| colorspace_components(doc, cs).map(|n| (cs.clone(), n)));
+        (kind, raw_bytes, native_w, native_h, decode_inverted, orig_cs)
     };
 
     let (decoded, grayscale) = match kind {
@@ -593,14 +599,24 @@ fn recompress_one(
         .dict
         .set("Filter", Object::Name(b"DCTDecode".to_vec()));
     stream.dict.remove(b"Decode");
-    if grayscale {
-        stream
+    // ColorSpace は、元が Gray/RGB 系 (ICCBased・CalGray・CalRGB を含む) で、
+    // 出力の成分数と一致する場合は元の指定をそのまま残す。Device* に書き換える
+    // と ICC プロファイルが失われ、色味が変わる。CMYK から RGB に変換した場合や、
+    // 成分数が食い違う (JPEG の実際の成分数と辞書が不一致) 場合だけ Device* にする。
+    let out_components: u8 = if grayscale { 1 } else { 3 };
+    let keep_cs = match (kind, orig_cs) {
+        (SourceKind::RawCmyk8, _) => None,
+        (_, Some((cs, n))) if n == out_components => Some(cs),
+        _ => None,
+    };
+    match keep_cs {
+        Some(cs) => stream.dict.set("ColorSpace", cs),
+        None if grayscale => stream
             .dict
-            .set("ColorSpace", Object::Name(b"DeviceGray".to_vec()));
-    } else {
-        stream
+            .set("ColorSpace", Object::Name(b"DeviceGray".to_vec())),
+        None => stream
             .dict
-            .set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
+            .set("ColorSpace", Object::Name(b"DeviceRGB".to_vec())),
     }
 
     Ok(())
@@ -1143,5 +1159,81 @@ mod tests {
             "Filter" => "DCTDecode", "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8,
         };
         assert!(matches!(classify_source(&doc, &ok), Some(SourceKind::Dct)));
+    }
+
+    /// 指定の /ColorSpace を持つ `w`x`h` の生ビットマップ画像を文書に追加する。
+    fn add_raw_image(
+        doc: &mut Document,
+        cs: Object,
+        comps: usize,
+        (w, h): (i64, i64),
+    ) -> ObjectId {
+        doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Image", "Width" => w, "Height" => h,
+                "ColorSpace" => cs, "BitsPerComponent" => 8,
+            },
+            (0..(w * h) as usize * comps).map(|i| (i % 251) as u8).collect(),
+        ))
+    }
+
+    /// ICCBased の画像は、再エンコード後も ICC プロファイルの指定を保つ
+    /// (DeviceRGB / DeviceGray に書き換えると色味が変わる)。
+    #[test]
+    fn icc_colorspace_is_kept_when_components_match() {
+        let mut doc = Document::with_version("1.5");
+        let profile_rgb = doc.add_object(Stream::new(
+            dictionary! { "N" => 3, "Alternate" => "DeviceRGB" },
+            vec![0u8; 16],
+        ));
+        let profile_gray = doc.add_object(Stream::new(
+            dictionary! { "N" => 1, "Alternate" => "DeviceGray" },
+            vec![0u8; 16],
+        ));
+        let cs_rgb = Object::Array(vec![
+            Object::Name(b"ICCBased".to_vec()),
+            Object::Reference(profile_rgb),
+        ]);
+        let cs_gray = Object::Array(vec![
+            Object::Name(b"ICCBased".to_vec()),
+            Object::Reference(profile_gray),
+        ]);
+        let rgb = add_raw_image(&mut doc, cs_rgb.clone(), 3, (64, 64));
+        let gray = add_raw_image(&mut doc, cs_gray.clone(), 1, (64, 64));
+        recompress_one(&mut doc, rgb, 32, 32, 80).unwrap();
+        recompress_one(&mut doc, gray, 32, 32, 80).unwrap();
+        let d = dict_of(&doc, rgb);
+        assert_eq!(d.get(b"Filter").unwrap().as_name().unwrap(), b"DCTDecode");
+        assert_eq!(d.get(b"ColorSpace").unwrap(), &cs_rgb);
+        let d = dict_of(&doc, gray);
+        assert_eq!(d.get(b"ColorSpace").unwrap(), &cs_gray);
+    }
+
+    /// CalRGB などの校正済み色空間も、成分数が同じなら保つ。
+    #[test]
+    fn calibrated_colorspace_is_kept() {
+        let mut doc = Document::with_version("1.5");
+        let cs = Object::Array(vec![
+            Object::Name(b"CalRGB".to_vec()),
+            Object::Dictionary(dictionary! {
+                "WhitePoint" => vec![Object::Real(0.9505), Object::Real(1.0), Object::Real(1.089)],
+            }),
+        ]);
+        let id = add_raw_image(&mut doc, cs.clone(), 3, (64, 64));
+        recompress_one(&mut doc, id, 32, 32, 80).unwrap();
+        assert_eq!(dict_of(&doc, id).get(b"ColorSpace").unwrap(), &cs);
+    }
+
+    /// CMYK を RGB に変換して出力する場合は、DeviceRGB にする
+    /// (元の DeviceCMYK のままでは成分数が合わない)。
+    #[test]
+    fn cmyk_source_becomes_device_rgb() {
+        let mut doc = Document::with_version("1.5");
+        let id = add_raw_image(&mut doc, Object::Name(b"DeviceCMYK".to_vec()), 4, (64, 64));
+        recompress_one(&mut doc, id, 32, 32, 80).unwrap();
+        assert_eq!(
+            dict_of(&doc, id).get(b"ColorSpace").unwrap().as_name().unwrap(),
+            b"DeviceRGB"
+        );
     }
 }
