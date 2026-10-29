@@ -34,6 +34,12 @@ mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "b8f85d58c
 mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "b8f85d58cc405278a1b9e8dcb1a07944ccc0194c" }
 #mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "ecc74f78b5618b35333a8b015495a342447c4bd6" }
 #mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "ecc74f78b5618b35333a8b015495a342447c4bd6" }
+# hayro: 独自パッチ入りの fork を使う (CID-keyed CFF を内包する OpenType フォントで、
+# charset を引かずに CID を GID として扱うため、本来描画されない字形 (「◀」「▶」「★」など)
+# が出る問題の修正)。upstream に取り込まれたら削除して crates.io 版に戻す。
+# hayro の workspace 依存 (hayro-interpret, hayro-syntax など) は fork 内の path 依存として
+# 解決されるので、hayro だけを差し替えれば足りる。安定したら rev で固定する。
+hayro = { git = "https://github.com/phoepsilonix/hayro.git", branch = "pdf-kozou" }
 
 [profile.release]
 strip = "symbols"
