@@ -235,9 +235,11 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
                 eprintln!("[render] engine=hayro failed (no fallback): {e}");
                 return Err(CoreError::Internal(format!("hayro render: {e}")));
             }
-            Err(e) => eprintln!(
-                "[render] engine=hayro failed, falling back to mupdf: {e} (page={})",
-                req.page_index
+            Err(e) => crate::engine_notice::report_fallback(
+                "render",
+                Some(req.path.as_str()),
+                Some(req.page_index),
+                &e.to_string(),
             ),
         }
     }

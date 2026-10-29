@@ -845,6 +845,20 @@
     "font_pt": "フォント (pt)",
     "note": "※ PDF / 画像 / CBZ などレイアウト固定の形式には影響しません"
   },
+  "engine_fallback": {
+    "log": "hayroで処理できなかったため、MuPDFに切り替えました（{{op}}）",
+    "pages": "ページ {{pages}}",
+    "reason": "理由: {{reason}}",
+    "close": "閉じる",
+    "op": {
+      "render": "ページ描画",
+      "rasterize": "画像化PDF",
+      "rasterize_no_text": "画像化PDF（テキストなし）",
+      "keep_text": "画像化PDF（テキスト保持）",
+      "imposition": "面付けプレビュー",
+      "rasterize_imposition": "面付け画像化PDF"
+    }
+  },
   "render_engine": {
     "title": "描画エンジン",
     "short": "描画",

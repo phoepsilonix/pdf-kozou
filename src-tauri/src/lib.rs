@@ -236,6 +236,26 @@ pub fn run() {
             gs::run_gs_optimize,
         ])
         .setup(|app| {
+            // 描画エンジン "auto" で hayro から MuPDF へフォールバックしたことを、フロント
+            // エンドへ `engine-fallback` イベントとして伝える (GUI のログ・通知に出す)。
+            // core は Tauri に依存しないため、フック経由で受け取る。
+            {
+                let handle = app.handle().clone();
+                pdf_kozou_core::engine_notice::set_hook(
+                    move |f: &pdf_kozou_core::engine_notice::EngineFallback| {
+                        let _ = handle.emit(
+                            "engine-fallback",
+                            serde_json::json!({
+                                "op": f.op,
+                                "file": f.file,
+                                "page": f.page,
+                                "reason": f.reason,
+                            }),
+                        );
+                    },
+                );
+            }
+
             // Android/iOS: 書き込み可能なアプリ専用キャッシュディレクトリを解決し、
             // tempdir モジュールから使えるよう保存しておく
             // (std::env::temp_dir() は Android では書き込み不可のため)。

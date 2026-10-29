@@ -1630,8 +1630,11 @@ pub fn rasterize_with_quality(
                         eprintln!("[render] engine=hayro rasterize failed (no fallback): {e}");
                         return Err(CoreError::Internal(format!("hayro rasterize: {e}")));
                     }
-                    Err(e) => eprintln!(
-                        "[render] engine=hayro rasterize failed, falling back to mupdf: {e}"
+                    Err(e) => crate::engine_notice::report_fallback(
+                        "rasterize",
+                        Some(input),
+                        None,
+                        &e.to_string(),
                     ),
                 }
             }
@@ -1792,8 +1795,11 @@ pub fn rasterize_no_text_with_quality(
                         eprintln!("[render] engine=hayro rasterize_no_text failed (no fallback): {e}");
                         return Err(CoreError::Internal(format!("hayro rasterize_no_text: {e}")));
                     }
-                    Err(e) => eprintln!(
-                        "[render] engine=hayro rasterize_no_text failed, falling back to mupdf: {e}"
+                    Err(e) => crate::engine_notice::report_fallback(
+                        "rasterize_no_text",
+                        Some(input),
+                        None,
+                        &e.to_string(),
                     ),
                 }
             }
@@ -2162,8 +2168,11 @@ pub fn compose_image_pdf_keep_text_with_quality(
                         let _ = std::fs::remove_file(&precompress_path);
                         return Err(CoreError::Internal(format!("hayro keep-text: {e}")));
                     }
-                    Err(e) => eprintln!(
-                        "[render] engine=hayro keep-text failed, falling back to mupdf: {e}"
+                    Err(e) => crate::engine_notice::report_fallback(
+                        "keep-text",
+                        Some(input),
+                        None,
+                        &e.to_string(),
                     ),
                 }
             }

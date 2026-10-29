@@ -1507,8 +1507,11 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
                     eprintln!("[render] engine=hayro imposition failed (no fallback): {e}");
                     return Err(CoreError::Internal(format!("hayro imposition: {e}")));
                 }
-                Err(e) => eprintln!(
-                    "[render] engine=hayro imposition failed, falling back to mupdf: {e}"
+                Err(e) => crate::engine_notice::report_fallback(
+                    "imposition",
+                    Some(req.path.as_str()),
+                    None,
+                    &e.to_string(),
                 ),
             }
         }
@@ -1711,8 +1714,11 @@ pub fn rasterize_imposition(
                     eprintln!("[render] engine=hayro rasterize_imposition failed (no fallback): {e}");
                     return Err(CoreError::Internal(format!("hayro rasterize_imposition: {e}")));
                 }
-                Err(e) => eprintln!(
-                    "[render] engine=hayro rasterize_imposition failed, falling back to mupdf: {e}"
+                Err(e) => crate::engine_notice::report_fallback(
+                    "rasterize_imposition",
+                    Some(req.input.as_str()),
+                    None,
+                    &e.to_string(),
                 ),
             }
         }

@@ -44,6 +44,7 @@ import { useIsMobilePlatform } from "./hooks/usePlatform";
 import { useViewport } from "./hooks/useViewport";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
+import { initEngineFallback } from "./lib/engineFallback";
 import { useI18n } from "./lib/i18n";
 import { loadLastTool, saveLastTool } from "./lib/lastTool";
 import { initPdfBackend } from "./lib/pdfBackend";
@@ -226,6 +227,21 @@ export default function App() {
   useEffect(() => {
     void initRenderEngine();
     void initPdfBackend();
+  }, []);
+
+  // hayro → MuPDF の自動フォールバック (コアが送る engine-fallback イベント) を購読し、
+  // 通知とバッチのログに出せるようにする
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void initEngineFallback().then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   // 起動時／復帰時に保存済みの表示スケールを適用

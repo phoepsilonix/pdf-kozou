@@ -845,6 +845,20 @@
     "font_pt": "Font (pt)",
     "note": "※ Does not affect PDF / images / CBZ and other fixed-layout formats"
   },
+  "engine_fallback": {
+    "log": "hayro could not process this, switched to MuPDF ({{op}})",
+    "pages": "page {{pages}}",
+    "reason": "Reason: {{reason}}",
+    "close": "Close",
+    "op": {
+      "render": "page rendering",
+      "rasterize": "image PDF",
+      "rasterize_no_text": "image PDF (no text)",
+      "keep_text": "image PDF (keep text)",
+      "imposition": "imposition preview",
+      "rasterize_imposition": "imposed image PDF"
+    }
+  },
   "render_engine": {
     "title": "Rendering engine",
     "short": "Render",

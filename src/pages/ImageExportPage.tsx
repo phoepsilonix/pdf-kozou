@@ -17,6 +17,11 @@ import {
   TapRevealText,
   ThumbCard,
 } from "../components/common";
+import {
+  type BatchFallback,
+  EngineFallbackNotes,
+  toBatchFallbacks,
+} from "../components/EngineFallbackLog";
 import { FixedMobileNav } from "../components/FixedMobileNav";
 import { NumInput } from "../components/NumInput";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
@@ -68,6 +73,7 @@ import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
 import { uniqueFileNames } from "../lib/uniqueName";
 import { type FileEntry, usePdfStore } from "../store/usePdfStore";
+import { useEngineFallbackStore } from "../store/useEngineFallbackStore";
 
 interface Props {
   filePath: string;
@@ -164,7 +170,14 @@ interface BatchProgress {
   currentFilePath: string;
   // pdfPath: PDF 1ファイルとして保存した場合の出力パス
   // savedFiles: 画像分割など複数ファイルに出力した場合の全保存パス一覧
-  done: { file: string; count: number; pdfPath?: string; savedFiles?: string[] }[];
+  done: {
+    file: string;
+    count: number;
+    pdfPath?: string;
+    savedFiles?: string[];
+    /** このファイルの処理中に hayro から MuPDF へ切り替わった記録 */
+    fallbacks?: BatchFallback[];
+  }[];
   errors: { file: string; msg: string }[];
 }
 
@@ -482,6 +495,11 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [pdfPageCount, setPdfPageCount] = useState(0);
   const [errMsg, setErrMsg] = useState("");
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  // バッチ処理中に画面を離れても、右下の通知が出なくなったままにならないようにする
+  useEffect(
+    () => () => useEngineFallbackStore.getState().setToastSuppressed(false),
+    [],
+  );
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [previewIdx, setPreviewIdx] = useState(0);
   // 選択中バッチファイルの詳細プレビュー(単体と同じ面付け/面付け解除の
@@ -1177,12 +1195,19 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
     const outNames = uniqueFileNames(files.map((x) => x.filename));
 
+    // hayro から MuPDF へ切り替わった記録は、ファイルごとの進捗行に出す (右下の通知は止める)。
+    // 処理は 1 ファイルずつ順に行うので、1 ファイルの間に溜まった記録がそのファイルの分になる。
+    const fallbackStore = useEngineFallbackStore.getState();
+    fallbackStore.clear();
+    fallbackStore.setToastSuppressed(true);
+
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       progress.current = i + 1;
       progress.currentFile = f.filename;
       progress.currentFilePath = f.path;
       setBatchProgress({ ...progress });
+      const doneBefore = progress.done.length;
 
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1422,8 +1447,15 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         console.error(`Batch error on ${f.filename}:`, e);
       }
 
+      // このファイルの処理中に MuPDF へ切り替わった記録を、結果行へ付ける
+      const fallbacks = toBatchFallbacks(useEngineFallbackStore.getState().take());
+      if (fallbacks.length > 0 && progress.done.length > doneBefore) {
+        progress.done[progress.done.length - 1].fallbacks = fallbacks;
+      }
+
       setBatchProgress({ ...progress });
     }
+    useEngineFallbackStore.getState().setToastSuppressed(false);
 
     // Android: SAFで選択したフォルダへ、iOS: 従来通りDownloads配下へ。
     // ⚠ batchDir は共有の一時ディレクトリ (使い回し) なので、丸ごと
@@ -1538,6 +1570,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     {t("image.pages_count", { count: String(d.count) })}
                   </span>
                 )}
+                <EngineFallbackNotes fallbacks={d.fallbacks} />
               </div>
             ))}
           </div>
@@ -1636,6 +1669,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                     {t("image.pages_count", { count: String(d.count) })}
                   </span>
                 )}
+                <EngineFallbackNotes fallbacks={d.fallbacks} />
               </div>
             ))}
             {batchProgress.errors.map((e, idx) => (
