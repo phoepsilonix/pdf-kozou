@@ -6274,6 +6274,14 @@ typedef struct {
     int       is_image;
     fz_image *image;   /* NULL = 通常のパスカバー、またはマスク無し画像 */
     fz_matrix ctm;      /* この画像描画時の CTM (unit square → デバイス座標) */
+
+    /* 1 = bbox の全面を不透明に塗りつぶす覆い (alpha>=0.99 で、パスなら塗り率が
+     * ほぼ 1、画像ならマスク無しで軸に平行)。半透明・回転図形・マスク付き画像は 0。
+     * 文字 bbox をこの覆いがほぼ完全に覆うなら、画素検証 (kozou_buried_pixels_show_ink)
+     * を省いて埋没と確定できる。画素検証は元ページ全体とテキスト除外描画の差を見るため、
+     * 隠れた文字の bbox に重なる「別の見えている文字」のインクまで数えてしまうので、
+     * 覆いが確実に不透明な場合は使わない。 */
+    int       solid_opaque;
 } KozouCoverRect;
 
 /* 内部: テキスト文字イベント (fill_text) */
@@ -6815,6 +6823,7 @@ static void kozou_buried_fill_path(
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
     cr->x0 = clipped_bbox.x0; cr->y0 = clipped_bbox.y0;
     cr->x1 = clipped_bbox.x1; cr->y1 = clipped_bbox.y1;
+    cr->solid_opaque = (alpha >= 0.99f && fill_ratio >= 0.98f) ? 1 : 0;
     if (getenv("KOZOU_KEEPTEXT_DEBUG") && (bbox.x1 - bbox.x0) * (bbox.y1 - bbox.y0) > 3000.0f)
         fprintf(stderr, "[kozou cover-src] route=normal ev=%d bbox=(%.1f,%.1f)-(%.1f,%.1f) ratio=%.3f alpha=%.2f even_odd=%d\n",
                 cr->event_index, bbox.x0, bbox.y0, bbox.x1, bbox.y1, fill_ratio, alpha, even_odd);
@@ -6851,6 +6860,10 @@ static void kozou_buried_fill_image(
     cr->xobj_xref   = dev->xobj_stack[dev->xobj_depth].xref;
     cr->x0 = clipped_bbox.x0; cr->y0 = clipped_bbox.y0;
     cr->x1 = clipped_bbox.x1; cr->y1 = clipped_bbox.y1;
+
+    /* マスク無しで、軸に平行 (回転・斜めでない) な不透明画像は、bbox 全面を塗る。 */
+    cr->solid_opaque = (alpha >= 0.99f && !(image && image->mask) &&
+                        fabsf(ctm.b) < 0.01f && fabsf(ctm.c) < 0.01f) ? 1 : 0;
 
     /* SMask/Mask (PDFの /SMask, /Mask) を持つ画像だけ参照を保持する。
      * マスク無し画像は矩形全体が一様に不透明とみなしてよく、ピクセル
@@ -7422,10 +7435,12 @@ static int kozou_char_is_buried(
     const KozouTextEvt    *te,
     const fz_rect         *stext_bbox,  /* stextのより正確なbbox */
     float                  cover_ratio,
-    float                  image_alpha_threshold)
+    float                  image_alpha_threshold,
+    int                   *solid_full)  /* 出力: 不透明な覆いがほぼ全面を覆うなら 1 */
 {
     float tw = stext_bbox->x1 - stext_bbox->x0;
     float th = stext_bbox->y1 - stext_bbox->y0;
+    if (solid_full) *solid_full = 0;
     if (tw <= 0.5f || th <= 0.5f) return 0;
     float text_area = tw * th;
 
@@ -7447,6 +7462,8 @@ static int kozou_char_is_buried(
         if (!kozou_cover_alpha_ok(ctx, cr, stext_bbox, image_alpha_threshold))
             continue;
 
+        if (solid_full && cr->solid_opaque && overlap / text_area >= 0.999f)
+            *solid_full = 1;
         return 1;
     }
     return 0;
@@ -9369,8 +9386,10 @@ void kozou_detect_buried_text(
                     stext_bbox.y1 = q.ll.y > q.lr.y ? q.ll.y : q.lr.y;
 
                     int buried_is_clipped = 0;
+                    int buried_solid_full = 0;
                     if (!kozou_char_is_buried(ctx, list, matched, &stext_bbox,
-                            cover_ratio, image_alpha_threshold)) {
+                            cover_ratio, image_alpha_threshold,
+                            &buried_solid_full)) {
                         if (!kozou_char_is_clipped_out(matched, &stext_bbox, cover_ratio))
                             continue;
                         buried_is_clipped = 1;
@@ -9389,7 +9408,12 @@ void kozou_detect_buried_text(
                     /* 幾何判定で「埋没」でも、元の見た目でインクが実際に見えて
                      * いる文字 (回転図形のbbox隅・半透明の裏・一部が見えている
                      * 等) は埋没から外す (詳細は kozou_buried_pixels_show_ink)。 */
-                    if (!strcmp(buried_reason, "buried") &&
+                    /* ただし、不透明な塗り/画像が文字 bbox をほぼ全面覆っている場合は
+                     * 画素検証を省く。検証は文字 bbox 内の「全描画とテキスト除外描画の
+                     * 差」を見るため、隠れた文字に重なって見えている別の文字
+                     * (例: カレンダーの隠れた予定の上に重ねた見出し文字) のインクまで
+                     * 数えて、隠れた文字を「見えている」と誤判定してしまう。 */
+                    if (!strcmp(buried_reason, "buried") && !buried_solid_full &&
                         kozou_buried_pixels_show_ink(ctx, &vis, page, page_bounds, &stext_bbox))
                         continue;
 
