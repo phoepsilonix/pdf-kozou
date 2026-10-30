@@ -98,6 +98,19 @@ const SUPERSAMPLE_DPI_THRESHOLD: f32 = 300.0;
 const SUPERSAMPLE_ABS_DPI_CAP: f32 = 600.0;
 const SUPERSAMPLE_MAX_PIXELS: f64 = 50_000_000.0;
 
+/// hayro の細線の最小幅 (最終出力の画素単位)。
+///
+/// hayro は既定で「1 デバイス画素に満たない線を 1 画素に太らせる」(PDF 仕様どおり) ため、
+/// イラストの輪郭などの極細線 (例: 線幅 0.13pt) が、72〜150dpi 程度の描画では黒く太く見える。
+/// MuPDF は細線をほぼ被覆率どおりに描くため、これより小さい値にして見え方を揃える。
+/// 超解像度で描くときは内部画素に換算する (`min_stroke_width_for`)。
+const HAYRO_MIN_STROKE_WIDTH: f32 = 0.3;
+
+/// 内部描画が最終出力の `mult` 倍の解像度のときの、内部画素単位での最小線幅
+fn min_stroke_width_for(mult: u32) -> f32 {
+    HAYRO_MIN_STROKE_WIDTH * mult.max(1) as f32
+}
+
 /// 超解像度の倍率 (1 = 無効)
 pub(crate) fn supersample_mult(dpi: f32, supersample_max: i32, tw: u32, th: u32) -> u32 {
     if supersample_max <= 1 || dpi <= 0.0 || dpi >= SUPERSAMPLE_DPI_THRESHOLD {
@@ -116,12 +129,14 @@ pub(crate) fn supersample_mult(dpi: f32, supersample_max: i32, tw: u32, th: u32)
 }
 
 /// ページを `width`×`height` の Pixmap に描く。倍率は軸ごとに「画素数 / ページ寸法」。
+/// `mult` は最終出力に対する内部解像度の倍率 (超解像度なしなら 1)。細線の最小幅の換算に使う。
 fn render_pixmap<'a>(
     page: &'a Page<'a>,
     cache: &RenderCache<'a>,
     settings: &InterpreterSettings,
     width: u16,
     height: u16,
+    mult: u32,
 ) -> Pixmap {
     let (pw, ph) = page.render_dimensions();
     let sx = width as f64 / pw as f64;
@@ -132,6 +147,7 @@ fn render_pixmap<'a>(
     // で描くが、MuPDF や poppler など一般のビューアは拡大時にも補間して滑らかに描く。
     let render_settings = RenderSettings {
         force_image_interpolation: true,
+        min_stroke_width: min_stroke_width_for(mult),
     };
     render_into(page, cache, settings, &render_settings, &mut ctx, transform);
     ctx.flush();
@@ -161,7 +177,7 @@ fn raster_rgb<'a>(
         return Err(format!("unsupported pixmap size {tw}x{th}"));
     }
     let m = supersample_mult(dpi, supersample_max, tw, th);
-    let pixmap = render_pixmap(page, cache, settings, (tw * m) as u16, (th * m) as u16);
+    let pixmap = render_pixmap(page, cache, settings, (tw * m) as u16, (th * m) as u16, m);
     // 背景は不透明な白のため、premultiplied RGBA の RGB をそのまま使える
     let src = pixmap.data_as_u8_slice();
     let (tw, th, m) = (tw as usize, th as usize, m as usize);
@@ -1276,5 +1292,13 @@ mod tests {
         assert_eq!(family_stem("Arial-BoldMT"), "Arial");
         assert_eq!(family_stem("MS-PGothic,Bold"), "MS-PGothic");
         assert_eq!(family_stem("MS-Gothic"), "MS-Gothic");
+    }
+
+    #[test]
+    fn min_stroke_width_scales_with_supersample() {
+        assert_eq!(min_stroke_width_for(1), HAYRO_MIN_STROKE_WIDTH);
+        assert_eq!(min_stroke_width_for(2), HAYRO_MIN_STROKE_WIDTH * 2.0);
+        // 倍率 0 は 1 として扱う
+        assert_eq!(min_stroke_width_for(0), HAYRO_MIN_STROKE_WIDTH);
     }
 }
