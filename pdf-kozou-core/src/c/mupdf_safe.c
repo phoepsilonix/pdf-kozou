@@ -6337,10 +6337,21 @@ typedef struct {
     int            paint_count, paint_cap, paint_overflow;
     int            lowfill_raster_count; /* 低塗り率パスの実形状判定を行った回数 (上限あり) */
     int            lowfill_cover_count;  /* 低塗り率パス由来で登録した覆いの数 (上限あり) */
+    /* 1 = 探索 (cover_ratio < KOZOU_BURIED_PROBE_RATIO)。塗り率が低いパス (吊り紐の
+     * 付いた星・月を 1 本にまとめた複合パス等) も、実際に塗られた部分を覆いとして記録する。
+     * 通常の検出/無害化 (0) では従来どおり記録しない。 */
+    int            probe_lowfill;
 } KozouBuriedList;
 
 /* accept_translucent 時に覆いとして記録する塗りの最小 alpha */
 #define KOZOU_COVER_TRANSLUCENT_MIN_ALPHA 0.02f
+
+/* cover_ratio がこの値未満の検出は「少しでも覆われた文字を拾う探索」(hayro 版キープ
+ * テキストが、隠し直しパッチを試すページを選ぶ用途で 0.02 を渡す) とみなし、上の画素
+ * 検証をしない。画素検証は「見えている文字を除去対象から外す」ためのものなので、探索で
+ * 使うと、ほぼ全面が見えているが一部だけ星や線で覆われた文字 (タイトルの上に重ねた飾り
+ * 等) まで外れて、パッチが必要なページが見つからなくなる。 */
+#define KOZOU_BURIED_PROBE_RATIO 0.1f
 
 
 
@@ -6781,7 +6792,7 @@ static void kozou_buried_fill_path(
         /* 隠し直しパッチ用の収集 (accept_translucent=1) に限り、塗り率が低くても
          * 実際に塗られた部分だけを覆いとして登録する (細い吊り紐の付いた星・月など)。
          * 埋没テキストの検出/無害化 (accept_translucent=0) の挙動は変えない。 */
-        if (!dev->list->accept_translucent ||
+        if (!(dev->list->accept_translucent || dev->list->probe_lowfill) ||
             dev->list->lowfill_raster_count >= KOZOU_LOWFILL_MAX_PER_PAGE) return;
         fz_rect cb = kozou_buried_clip_intersect(dev, bbox);
         if (kozou_buried_rect_is_empty(cb)) return;
@@ -9192,13 +9203,6 @@ void kozou_collect_xobj_bboxes(
 #define KOZOU_VIS_MIN_INK_FRACTION 0.01f
 #endif
 
-/* cover_ratio がこの値未満の検出は「少しでも覆われた文字を拾う探索」(hayro 版キープ
- * テキストが、隠し直しパッチを試すページを選ぶ用途で 0.02 を渡す) とみなし、上の画素
- * 検証をしない。画素検証は「見えている文字を除去対象から外す」ためのものなので、探索で
- * 使うと、ほぼ全面が見えているが一部だけ星や線で覆われた文字 (タイトルの上に重ねた飾り
- * 等) まで外れて、パッチが必要なページが見つからなくなる。 */
-#define KOZOU_BURIED_PROBE_RATIO 0.1f
-
 typedef struct {
     fz_pixmap *full;
     fz_pixmap *nt;
@@ -9313,6 +9317,7 @@ void kozou_detect_buried_text(
         list = (KozouBuriedList *)fz_malloc(ctx, sizeof(KozouBuriedList));
         memset(list, 0, sizeof(KozouBuriedList));
         list->page_h = page_h;
+        list->probe_lowfill = (cover_ratio > 0.0f && cover_ratio < KOZOU_BURIED_PROBE_RATIO);
 
         /* Pass 1: 描画順を記録
          * CropBox外にはみ出した装飾 (デザインツール書き出しでよくある

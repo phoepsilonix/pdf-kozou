@@ -1979,7 +1979,7 @@ const HAYRO_FULLY_HIDDEN_RATIO: f32 = 0.999;
 /// 部分的に隠れたテキストがあるページ (1 ベース) を返す。hayro 版のキープテキストは、
 /// そのページだけ、隠れていた部分を背景の画素のパッチで覆い直す (render_hayro::keep_text_pdf)。
 /// 完全に隠れたテキスト (覆われ率 HAYRO_FULLY_HIDDEN_RATIO 以上) は前処理で除去済みの入力を渡す想定なので、
-/// 低い閾値 (0.02) でも "buried" と判定されるものが残っていれば、部分的な重なりがある。
+/// 低い閾値 (0.002) でも "buried" と判定されるものが残っていれば、部分的な重なりがある。
 /// 戻り値: Some(該当ページ。無ければ空)、判定できなければ None。
 #[cfg(feature = "hayro")]
 fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>> {
@@ -1997,7 +1997,10 @@ fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>
         let req = DetectBuriedRequest {
             path: path.to_string(),
             page,
-            cover_ratio: Some(0.02),
+            // 探索用の小さな値 (C 側 KOZOU_BURIED_PROBE_RATIO 未満)。吊り紐のような細い線は
+            // 文字 bbox との重なりが 2% に満たないので、ここでは取りこぼさない。実際に
+            // 見た目が違うかどうかは画素差分 (cover_patch) が判断する。
+            cover_ratio: Some(0.002),
             image_alpha_threshold: None,
             layout_w: None,
             layout_h: None,
