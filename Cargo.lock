@@ -2282,7 +2282,7 @@ dependencies = [
 [[package]]
 name = "hayro"
 version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 dependencies = [
  "bytemuck",
  "fearless_simd 1.2.0",
@@ -2297,12 +2297,12 @@ dependencies = [
 [[package]]
 name = "hayro-ccitt"
 version = "0.4.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 
 [[package]]
 name = "hayro-cmap"
 version = "0.1.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 dependencies = [
  "brotli 8.0.4",
  "hayro-postscript",
@@ -2311,7 +2311,7 @@ dependencies = [
 [[package]]
 name = "hayro-interpret"
 version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 dependencies = [
  "bitflags 2.13.2",
  "hayro-cmap",
@@ -2329,7 +2329,7 @@ dependencies = [
 [[package]]
 name = "hayro-jbig2"
 version = "0.3.1"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 dependencies = [
  "fearless_simd 1.2.0",
  "hayro-ccitt",
@@ -2338,7 +2338,7 @@ dependencies = [
 [[package]]
 name = "hayro-jpeg2000"
 version = "0.4.1"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 dependencies = [
  "fearless_simd 1.2.0",
 ]
@@ -2346,12 +2346,12 @@ dependencies = [
 [[package]]
 name = "hayro-postscript"
 version = "0.1.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 
 [[package]]
 name = "hayro-syntax"
 version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#2a9ebc1c20f774b534571c45a3322b519d9a10c0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#a0f03b040f4b6e928b7a195515452da14cb42604"
 dependencies = [
  "flate2",
  "hayro-ccitt",
