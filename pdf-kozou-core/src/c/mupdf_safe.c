@@ -9192,6 +9192,13 @@ void kozou_collect_xobj_bboxes(
 #define KOZOU_VIS_MIN_INK_FRACTION 0.01f
 #endif
 
+/* cover_ratio がこの値未満の検出は「少しでも覆われた文字を拾う探索」(hayro 版キープ
+ * テキストが、隠し直しパッチを試すページを選ぶ用途で 0.02 を渡す) とみなし、上の画素
+ * 検証をしない。画素検証は「見えている文字を除去対象から外す」ためのものなので、探索で
+ * 使うと、ほぼ全面が見えているが一部だけ星や線で覆われた文字 (タイトルの上に重ねた飾り
+ * 等) まで外れて、パッチが必要なページが見つからなくなる。 */
+#define KOZOU_BURIED_PROBE_RATIO 0.1f
+
 typedef struct {
     fz_pixmap *full;
     fz_pixmap *nt;
@@ -9334,6 +9341,7 @@ void kozou_detect_buried_text(
         stext = fz_new_stext_page_from_page(ctx, page, &opts);
 
         if (cover_ratio <= 0.0f || cover_ratio > 1.0f) cover_ratio = 0.8f;
+        const int probe_mode = cover_ratio < KOZOU_BURIED_PROBE_RATIO;
         /* SMask付き画像カバーの平均アルファがこの値未満なら「実質透明」と
          * みなし覆いから除外する。デフォルト0.5 = カバー領域の半分以上が
          * 不透明でなければ隠蔽と判定しない。 */
@@ -9413,7 +9421,7 @@ void kozou_detect_buried_text(
                      * 差」を見るため、隠れた文字に重なって見えている別の文字
                      * (例: カレンダーの隠れた予定の上に重ねた見出し文字) のインクまで
                      * 数えて、隠れた文字を「見えている」と誤判定してしまう。 */
-                    if (!strcmp(buried_reason, "buried") && !buried_solid_full &&
+                    if (!strcmp(buried_reason, "buried") && !buried_solid_full && !probe_mode &&
                         kozou_buried_pixels_show_ink(ctx, &vis, page, page_bounds, &stext_bbox))
                         continue;
 
