@@ -101,7 +101,7 @@ fn remap_doc(doc: &mut Document, map: &HashMap<ObjectId, ObjectId>, null_missing
 /// trailer を Root / Info / ID だけにする。xref ストリームから読んだ文書の trailer には
 /// Type / W / Index / Filter / Length などが混ざり、そのまま xref テーブルで保存すると
 /// 余計なキーが残る。Size などは保存時に lopdf が付け直す。
-fn clean_trailer(doc: &mut Document) {
+pub(crate) fn clean_trailer(doc: &mut Document) {
     let mut t = Dictionary::new();
     for key in [b"Root".as_slice(), b"Info".as_slice(), b"ID".as_slice()] {
         if let Ok(v) = doc.trailer.get(key) {
@@ -113,7 +113,7 @@ fn clean_trailer(doc: &mut Document) {
 
 /// trailer から辿れないオブジェクトを取り除く。取り除いた数を返す。
 /// (lopdf の prune_objects は参照の探索が Vec::contains で二乗時間になるため使わない)
-fn prune(doc: &mut Document) -> usize {
+pub(crate) fn prune(doc: &mut Document) -> usize {
     let mut seen: HashSet<ObjectId> = HashSet::new();
     let mut stack: Vec<ObjectId> = Vec::new();
     doc.trailer
@@ -344,12 +344,22 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
         doc.max_id = doc.objects.keys().map(|k| k.0).max().unwrap_or(0);
     }
 
-    if let Err(e) = save(&mut doc, output, p.object_stream) {
+    save_checked(&mut doc, output, p.object_stream, page_count)?;
+    Ok(stats)
+}
+
+/// 保存し、書いたものを読み直してページ数が `page_count` のままであることを確かめる。
+/// 失敗したら `output` を消して Err。
+pub(crate) fn save_checked(
+    doc: &mut Document,
+    output: &str,
+    object_stream: bool,
+    page_count: usize,
+) -> Result<()> {
+    if let Err(e) = save(doc, output, object_stream) {
         let _ = std::fs::remove_file(output);
         return Err(e);
     }
-
-    // 保存したものを読み直して、ページ数が変わっていないことを確かめる
     let written = Document::load(output)
         .map_err(|e| CoreError::Parse(format!("{output}: written file does not load: {e}")))?;
     let written_pages = written.get_pages().len();
@@ -359,7 +369,7 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
             "{output}: page count changed ({page_count} -> {written_pages})"
         )));
     }
-    Ok(stats)
+    Ok(())
 }
 
 fn save(doc: &mut Document, output: &str, object_stream: bool) -> Result<()> {

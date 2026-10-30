@@ -830,12 +830,6 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                 Some(redact_margins),
             ) {
                 Ok(stats) if stats.pages_redacted > 0 => {
-                    // CropBox 外の消去は MuPDF の redaction で行っている (lopdf 実装は未対応)
-                    crate::backend::note_mupdf_only(
-                        "redact_crop",
-                        &req.input,
-                        "redaction outside the CropBox has no lopdf implementation",
-                    );
                     eprintln!(
                         "[compress] redact_outside_crop: {}/{} pages redacted (margins top={} bottom={} left={} right={})",
                         stats.pages_redacted,

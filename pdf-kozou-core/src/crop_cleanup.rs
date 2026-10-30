@@ -450,7 +450,7 @@ pub struct RedactStats {
 }
 
 /// CropBox が MediaBox と実質的に同じとみなす許容誤差 (pt)
-const CROPBOX_EPS: f32 = 0.01;
+pub(crate) const CROPBOX_EPS: f32 = 0.01;
 
 /// CropBox 外側の余白（上下左右、pt 単位）のデフォルト値。
 /// ギリギリの部品が消えにくいように余裕を持たせるための値で、
@@ -481,7 +481,7 @@ impl RedactMargins {
         }
     }
 
-    fn clamped(self) -> Self {
+    pub(crate) fn clamped(self) -> Self {
         RedactMargins {
             top: self.top.max(0.0),
             bottom: self.bottom.max(0.0),
@@ -504,7 +504,31 @@ impl RedactMargins {
 /// - 消去対象のページが1つもなければ `input` を `output` にコピーするだけで終える。
 /// - `margins`: 上下左右に持たせる余裕 (pt)。`None` の場合は
 ///   `DEFAULT_REDACT_MARGIN_PT` (20pt) を上下左右均等に使う。
+///
+/// まず lopdf 実装 (crop_redact_lopdf: CropBox 外に完全に外れたものだけを削除) を試し、
+/// 暗号化・lopdf が扱えない入力のときだけ MuPDF 実装へフォールバックする
+/// (フォールバックは GUI へ通知する)。backend の設定は backend.rs を参照。
 pub fn redact_outside_cropbox(
+    input: &str,
+    output: &str,
+    margins: Option<RedactMargins>,
+) -> Result<RedactStats, String> {
+    if crate::backend::try_lopdf("redact_crop") {
+        match crate::crop_redact_lopdf::redact_with_lopdf(input, output, margins) {
+            Ok(stats) => return Ok(stats),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("redact_crop", input, &e) {
+                    return Err(e.to_string());
+                }
+            }
+        }
+    }
+    redact_outside_cropbox_mupdf(input, output, margins)
+}
+
+/// MuPDF の redaction による実装 (境界をまたぐものも境界で切り取る)。
+/// lopdf 実装が使えないときのフォールバック。
+fn redact_outside_cropbox_mupdf(
     input: &str,
     output: &str,
     margins: Option<RedactMargins>,
