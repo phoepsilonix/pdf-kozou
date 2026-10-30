@@ -24,6 +24,9 @@ pub enum CoreError {
     ImageEncode(String),
     #[error("Invalid argument: {0}")]
     InvalidArg(String),
+    /// 実装が対応していない指定・入力 (lopdf 実装が MuPDF 実装へ引き継ぐときなど)
+    #[error("Unsupported: {0}")]
+    Unsupported(String),
     #[error("Internal error: {0}")]
     Internal(String),
 }

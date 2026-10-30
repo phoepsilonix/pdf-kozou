@@ -122,6 +122,19 @@ pub fn abort_on_lopdf_failure(op: &str, err: &dyn std::fmt::Display) -> bool {
     }
 }
 
+/// `abort_on_lopdf_failure` と同じ判定で、フォールバックするときは GUI へも通知する版。
+/// 戻り値 true = フォールバックせずエラーにする (backend=lopdf)。
+/// false のときは MuPDF へフォールバックすることを stderr と GUI (engine-fallback) へ通知する。
+pub fn abort_or_notify_fallback(op: &'static str, file: &str, err: &dyn std::fmt::Display) -> bool {
+    if current() == Backend::Lopdf {
+        eprintln!("[{op}] lopdf path failed ({err}); MuPDF fallback disabled (backend=lopdf)");
+        true
+    } else {
+        crate::engine_notice::report_pdf_fallback(op, Some(file), &err.to_string());
+        false
+    }
+}
+
 /// lopdf 実装がまだ無く MuPDF でしか処理できない操作 (圧縮など) の冒頭で呼ぶ。
 /// - mupdf 指定: 明示的な選択なので通知しない
 /// - auto / lopdf 指定: MuPDF で処理することを stderr と GUI (engine-fallback) へ通知する

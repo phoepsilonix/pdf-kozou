@@ -1041,11 +1041,6 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
         })
     } else {
         // サブセット化なし: PdfWriteOptions のみで圧縮
-        crate::backend::note_mupdf_only(
-            "compress",
-            &req.input,
-            "lopdf compression is not implemented yet",
-        );
         let mut resp = safe_compress_only(
             &current_input,
             &req.output,
@@ -1233,7 +1228,86 @@ fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
 */
 
 /// サブセット化なしの通常圧縮 (Light プリセット or font_subset=false 時)
+/// 通常の圧縮 (フォントサブセット化なし)。
+/// まず lopdf 実装 (compress_lopdf) を試し、未対応の指定 (clean / sanitize / merge_fonts)・
+/// 暗号化・lopdf が読めない入力のときだけ MuPDF 実装へフォールバックする
+/// (フォールバックは GUI へ通知する)。backend の設定は backend.rs を参照。
 fn safe_compress_only(
+    input: &str,
+    output: &str,
+    compress_images: bool,
+    compress_fonts: bool,
+    gc: i32,
+    clean: bool,
+    sanitize: bool,
+    merge_fonts: bool,
+    object_stream: bool,
+) -> Result<CompressResponse> {
+    if crate::backend::try_lopdf("compress") {
+        let params = crate::compress_lopdf::Params {
+            compress_images,
+            compress_fonts,
+            garbage_level: gc,
+            clean,
+            sanitize,
+            merge_fonts,
+            object_stream,
+        };
+        match crate::compress_lopdf::compress_with_lopdf(input, output, &params) {
+            Ok(stats) => {
+                eprintln!(
+                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed",
+                    stats.pruned_objects, stats.merged_streams, stats.compressed_streams
+                );
+                let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
+                let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+                return Ok(CompressResponse {
+                    ok: true,
+                    input_bytes: ib,
+                    output_bytes: ob,
+                    ratio: safe_ratio(ib, ob),
+                    params_used: CompressParamsUsed {
+                        compress_images,
+                        compress_fonts,
+                        garbage_level: gc,
+                        clean,
+                        sanitize,
+                        merge_fonts,
+                        object_stream,
+                        redact_outside_crop: false,
+                        redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                        redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                        redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                        redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                        font_subset: false,
+                        subset_skipped: false,
+                        images_recompressed: None,
+                    },
+                    warning: None, // サイズ増加警告は compress() 末尾で真の入力サイズを使って一括判定する
+                });
+            }
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("compress", input, &e) {
+                    return Err(e);
+                }
+            }
+        }
+    }
+    safe_compress_only_mupdf(
+        input,
+        output,
+        compress_images,
+        compress_fonts,
+        gc,
+        clean,
+        sanitize,
+        merge_fonts,
+        object_stream,
+    )
+}
+
+/// 従来の MuPDF 実装（lopdf 実装が使えないときのフォールバック）。
+fn safe_compress_only_mupdf(
     input: &str,
     output: &str,
     compress_images: bool,
