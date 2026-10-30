@@ -1978,7 +1978,7 @@ pub fn compose_imposition_pdf_keep_text(
     // それをこのシート合成の実際の入力として使う。前処理は失敗しても
     // None を返すだけなので、対象なし/検出失敗時は常に元の input に
     // フォールバックする。
-    let buried_stripped = strip_fully_buried_text_for_keep_text(&req.input, &tmp_dir_path);
+    let buried_stripped = strip_fully_buried_text_for_keep_text(&req.input, &tmp_dir_path, None);
     let compose_input: &str = buried_stripped
         .as_deref()
         .and_then(|p| p.to_str())

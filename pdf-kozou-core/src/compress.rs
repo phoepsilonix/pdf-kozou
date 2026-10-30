@@ -1895,9 +1895,16 @@ pub fn rasterize_no_text_with_quality(
     })
 }
 
+/// hayro 版のキープテキストで、前処理が「隠れている」として除去する覆われ率の下限。
+/// 一部でも見えている文字は残して重ね合わせ (隠し直しパッチ) で再現する方針なので、
+/// 完全に隠れた文字だけを対象にする。覆われ率は浮動小数点の面積比で、完全に覆われても
+/// ちょうど 1.0 にならないことがあるため、わずかに下げた値にしている。
+#[cfg(feature = "hayro")]
+const HAYRO_FULLY_HIDDEN_RATIO: f32 = 0.999;
+
 /// 部分的に隠れたテキストがあるページ (1 ベース) を返す。hayro 版のキープテキストは、
 /// そのページだけ、隠れていた部分を背景の画素のパッチで覆い直す (render_hayro::keep_text_pdf)。
-/// 完全に隠れたテキスト (覆われ率 0.8 以上) は前処理で除去済みの入力を渡す想定なので、
+/// 完全に隠れたテキスト (覆われ率 HAYRO_FULLY_HIDDEN_RATIO 以上) は前処理で除去済みの入力を渡す想定なので、
 /// 低い閾値 (0.02) でも "buried" と判定されるものが残っていれば、部分的な重なりがある。
 /// 戻り値: Some(該当ページ。無ければ空)、判定できなければ None。
 #[cfg(feature = "hayro")]
@@ -1976,9 +1983,14 @@ fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>
 /// 検出/無害化に失敗した場合や対象が無い場合は None を返し、呼び出し元は
 /// 元の input をそのまま使う (従来動作にフォールバックするだけで、
 /// この前処理が無くても compose 自体は今まで通り動作する)。
+///
+/// `cover_ratio`: 「隠れている」とみなす覆われ率の下限 (None = 既定の 0.8)。
+/// hayro 版は、画素差分の隠し直しパッチで部分的に隠れた文字を元の見た目に重ね合わせられる
+/// ため、完全に (実質 100%) 隠れた文字だけを除去する (HAYRO_FULLY_HIDDEN_RATIO)。
 pub(crate) fn strip_fully_buried_text_for_keep_text(
     input: &str,
     tmp_dir: &std::path::Path,
+    cover_ratio: Option<f32>,
 ) -> Option<std::path::PathBuf> {
     use crate::stext::{
         DetectBuriedRequest, SanitizeOrigin, SanitizeRequest, detect_buried_text,
@@ -2000,7 +2012,7 @@ pub(crate) fn strip_fully_buried_text_for_keep_text(
             page,
             // 既定 0.8: 隠しテキストレビュー機能 (HiddenTextPage) が
             // 「buried」として表示するのと同じ基準に揃える。
-            cover_ratio: None,
+            cover_ratio,
             image_alpha_threshold: None,
             layout_w: None,
             layout_h: None,
@@ -2067,6 +2079,16 @@ pub(crate) fn strip_fully_buried_text_for_keep_text(
     }
 }
 
+/// 前処理の除去しきい値。hayro 版は完全に隠れた文字だけ、MuPDF 版は既定 (None = 0.8)。
+fn keep_text_strip_ratio(hayro_first: bool) -> Option<f32> {
+    #[cfg(feature = "hayro")]
+    if hayro_first {
+        return Some(HAYRO_FULLY_HIDDEN_RATIO);
+    }
+    let _ = hayro_first;
+    None
+}
+
 /// supersample_max: kozou_rasterize_with_quality と同じ意味(1以下=無効・既定)。
 /// 背景画像(非テキスト要素)のレンダリングと、/Rotate!=0 ページの全面
 /// ラスタライズ・フォールバックの両方に適用される。
@@ -2098,13 +2120,29 @@ pub fn compose_image_pdf_keep_text_with_quality(
     // コメント参照)。前処理済みの一時ファイルがあればそちらを compose の
     // 実際の入力として使う。前処理は失敗しても None を返すだけなので、
     // 対象なし/検出失敗時は常に元の input にフォールバックする。
-    let buried_stripped = strip_fully_buried_text_for_keep_text(input, &tmp_dir);
-    let compose_input: &str = buried_stripped
+    //
+    // hayro 版は、一部でも見えている文字を残して重ね合わせで再現できるので、完全に
+    // 隠れた文字だけを除去する。MuPDF 版 (既定) は 80% 以上で除去する。
+    let engine = crate::render::Engine::resolve_default();
+    #[cfg(feature = "hayro")]
+    let hayro_first = engine != crate::render::Engine::MuPdf;
+    #[cfg(not(feature = "hayro"))]
+    let hayro_first = false;
+    #[allow(unused_mut)]
+    let mut buried_stripped = strip_fully_buried_text_for_keep_text(
+        input,
+        &tmp_dir,
+        keep_text_strip_ratio(hayro_first),
+    );
+    #[allow(unused_mut)]
+    let mut compose_input: String = buried_stripped
         .as_deref()
         .and_then(|p| p.to_str())
-        .unwrap_or(input);
+        .unwrap_or(input)
+        .to_string();
 
-    let c_input = CString::new(compose_input)
+    #[allow(unused_mut)]
+    let mut c_input = CString::new(compose_input.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
 
     // compose の直接の出力先はまず一時ファイルにする。この後、GUIの
@@ -2152,7 +2190,6 @@ pub fn compose_image_pdf_keep_text_with_quality(
     #[allow(unused_mut)]
     let mut done = false;
     {
-        let engine = crate::render::Engine::resolve_default();
         if engine != crate::render::Engine::MuPdf {
             #[cfg(feature = "hayro")]
             {
@@ -2164,14 +2201,14 @@ pub fn compose_image_pdf_keep_text_with_quality(
                 let covered: Option<Vec<i32>> = if cover_env == "all" {
                     Some(Vec::new())
                 } else {
-                    partially_covered_pages(compose_input, pages)
+                    partially_covered_pages(&compose_input, pages)
                 };
                 let attempt: std::result::Result<(), String> = match covered {
                     Some(cov) if cover_env == "0" && !cov.is_empty() => {
                         Err("partially covered text (cover patches disabled)".into())
                     }
                     Some(cov) => crate::render_hayro::keep_text_pdf(
-                        compose_input,
+                        &compose_input,
                         &precompress_str,
                         dpi,
                         use_png,
@@ -2199,12 +2236,28 @@ pub fn compose_image_pdf_keep_text_with_quality(
                         let _ = std::fs::remove_file(&precompress_path);
                         return Err(CoreError::Internal(format!("hayro keep-text: {e}")));
                     }
-                    Err(e) => crate::engine_notice::report_fallback(
-                        "keep-text",
-                        Some(input),
-                        None,
-                        &e.to_string(),
-                    ),
+                    Err(e) => {
+                        crate::engine_notice::report_fallback(
+                            "keep-text",
+                            Some(input),
+                            None,
+                            &e.to_string(),
+                        );
+                        // MuPDF 実装は 80% 以上隠れた文字を前処理で除去する前提なので、
+                        // hayro 用に緩めた前処理の結果は捨て、既定のしきい値でやり直す。
+                        if let Some(p) = buried_stripped.take() {
+                            let _ = std::fs::remove_file(p);
+                        }
+                        buried_stripped =
+                            strip_fully_buried_text_for_keep_text(input, &tmp_dir, None);
+                        compose_input = buried_stripped
+                            .as_deref()
+                            .and_then(|p| p.to_str())
+                            .unwrap_or(input)
+                            .to_string();
+                        c_input = CString::new(compose_input.as_str())
+                            .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+                    }
                 }
             }
             #[cfg(not(feature = "hayro"))]
