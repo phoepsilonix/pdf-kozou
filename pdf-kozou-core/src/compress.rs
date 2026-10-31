@@ -1290,7 +1290,13 @@ fn safe_compress_only(
                 });
             }
             Err(e) => {
-                if crate::backend::abort_or_notify_fallback("compress", input, &e) {
+                // clean が原因のときは、通知にそう分かる処理名を使う (理由にも "lopdf clean:" が付く)
+                let op = if crate::compress_lopdf::is_clean_error(&e) {
+                    "compress_clean"
+                } else {
+                    "compress"
+                };
+                if crate::backend::abort_or_notify_fallback(op, input, &e) {
                     return Err(e);
                 }
             }

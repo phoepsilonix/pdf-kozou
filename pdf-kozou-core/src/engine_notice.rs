@@ -22,7 +22,7 @@ pub struct EngineFallback {
     pub from: &'static str,
     /// 処理の種類: "render" / "rasterize" / "rasterize_no_text" / "keep-text" /
     /// "imposition" / "rasterize_imposition" (from = "hayro")、
-    /// "compress" / "compress_subset" / "redact_crop" / "rewrite" (from = "lopdf")
+    /// "compress" / "compress_clean" / "compress_subset" / "redact_crop" / "rewrite" (from = "lopdf")
     pub op: &'static str,
     /// 入力 PDF のパス (分かるとき)
     pub file: Option<String>,

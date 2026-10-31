@@ -859,6 +859,7 @@
       "imposition": "面付けプレビュー",
       "rasterize_imposition": "面付け画像化PDF",
       "compress": "圧縮",
+      "compress_clean": "圧縮（cleanオプション: 内容ストリームの再構築）",
       "compress_subset": "圧縮（フォントサブセット）",
       "redact_crop": "CropBox外の除去",
       "rewrite": "再描画圧縮"

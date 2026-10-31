@@ -31,7 +31,7 @@
 // ラスタライズも同じ結果になる。)
 
 use lopdf::content::{Content, Operation};
-use lopdf::{Dictionary, Document, Object, ObjectId};
+use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
 use std::collections::{HashMap, HashSet};
 
 /// 加工モード
@@ -98,6 +98,9 @@ pub fn remove_text(doc: &mut Document) -> Result<Stats, String> {
 
 /// 文書内のすべてのページ (とそこから辿れる部品) を、モードに従って加工する。
 pub fn transform(doc: &mut Document, mode: Mode) -> Result<Stats, String> {
+    // /Contents が配列のページは、先に 1 本にまとめる。operand と演算子が別のストリームに
+    // 分かれていることがあり (仕様上は合法)、ストリームごとに解析すると壊れるため。
+    merge_page_contents(doc)?;
     let mut stats = Stats::default();
     let mut visited: HashSet<ObjectId> = HashSet::new();
     let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
@@ -432,6 +435,91 @@ fn transform_content(
     Ok((out, total))
 }
 
+/// 各ページの /Contents を 1 本のストリームにまとめる (中身は書き換えず、連結するだけ)。
+/// 仕様上、/Contents の配列は字句の境目でしか分割されないが、operand と演算子が別の
+/// ストリームに分かれることはある。連結してからでないと正しく解析できない。
+///
+/// - 他のページと共有されているストリームは書き換えず、新しいストリームに書く。
+///   (共有していないときは、先頭のストリームに書く。残りは未参照になる。)
+/// - 同じ並びの /Contents を持つページは、同じ 1 本のストリームを指す。
+/// - ストリームを 1 本しか持たないページは何も変えない。
+///
+/// 戻り値: 各ページの内容ストリーム (重複なし、ページ順)。
+/// フィルタをデコードできないストリームがあれば Err。
+pub(crate) fn merge_page_contents(doc: &mut Document) -> Result<Vec<ObjectId>, String> {
+    let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
+    // 各ページの /Contents を、実在するストリームの並びに直す
+    let page_streams: Vec<(ObjectId, Vec<ObjectId>)> = pages
+        .iter()
+        .map(|&page_id| {
+            let sig: Vec<ObjectId> = doc
+                .get_page_contents(page_id)
+                .into_iter()
+                .filter(|id| matches!(doc.objects.get(id), Some(Object::Stream(_))))
+                .collect();
+            (page_id, sig)
+        })
+        .collect();
+
+    // ストリームが、(重複を除いた) いくつの並びに使われているか
+    let mut usage: HashMap<ObjectId, usize> = HashMap::new();
+    let mut seen_sigs: HashSet<&Vec<ObjectId>> = HashSet::new();
+    for (_, sig) in &page_streams {
+        if !sig.is_empty() && seen_sigs.insert(sig) {
+            for id in sig {
+                *usage.entry(*id).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let mut result: Vec<ObjectId> = Vec::new();
+    let mut result_seen: HashSet<ObjectId> = HashSet::new();
+    let mut done: HashMap<Vec<ObjectId>, ObjectId> = HashMap::new();
+    for (page_id, sig) in &page_streams {
+        let target = match sig.len() {
+            0 => continue,
+            1 => sig[0],
+            _ => {
+                let target = match done.get(sig) {
+                    Some(t) => *t,
+                    None => {
+                        let mut joined: Vec<u8> = Vec::new();
+                        for id in sig {
+                            let Some(Object::Stream(st)) = doc.objects.get(id) else {
+                                continue;
+                            };
+                            let bytes = st
+                                .get_plain_content()
+                                .map_err(|e| format!("stream {id:?} decompress: {e}"))?;
+                            joined.extend_from_slice(&bytes);
+                            joined.push(b'\n');
+                        }
+                        let exclusive = sig.iter().all(|id| usage.get(id) == Some(&1));
+                        let target = if exclusive {
+                            if let Some(Object::Stream(st)) = doc.objects.get_mut(&sig[0]) {
+                                st.set_plain_content(joined);
+                            }
+                            sig[0]
+                        } else {
+                            doc.add_object(Stream::new(Dictionary::new(), joined))
+                        };
+                        done.insert(sig.clone(), target);
+                        target
+                    }
+                };
+                if let Ok(Object::Dictionary(page)) = doc.get_object_mut(*page_id) {
+                    page.set("Contents", Object::Reference(target));
+                }
+                target
+            }
+        };
+        if result_seen.insert(target) {
+            result.push(target);
+        }
+    }
+    Ok(result)
+}
+
 /// 内容ストリームを解析して書き直す。演算子と operand は変えず、空白・改行・数値の書式だけが
 /// 変わる (演算子ごとに改行する)。インライン画像 (BI ... EI) はそのまま保つ。
 /// 解析できない内容や、書き直すと壊れる値 (有限でない実数) があれば Err。
@@ -500,7 +588,9 @@ fn is_clip_render_mode(op: &Operation) -> bool {
 
 /// インライン画像を含まない部分を加工する
 fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, Counts), String> {
-    let content = Content::decode(chunk).map_err(|e| format!("content decode: {e}"))?;
+    // decode は、解析できない箇所から先を黙って捨てる (内容が欠ける) ので、
+    // 全体を解析しきれたかを確かめる decode_strict を使う。解析できなければ Err (MuPDF へ)
+    let content = Content::decode_strict(chunk).map_err(|e| format!("content decode: {e}"))?;
     let mut c = Counts::default();
     let mut ops: Vec<Operation> = Vec::with_capacity(content.operations.len());
     // TextOnly: 組み立て中のパス (m l c v y h re) と、そのパスに付いた W / W*。
@@ -687,6 +777,112 @@ fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String> {
 mod tests {
     use super::*;
     use lopdf::dictionary;
+
+    /// ページ 1 枚の PDF を作る。`contents` は /Contents に入れる値を作る関数
+    fn page_doc(build: impl FnOnce(&mut Document) -> Object) -> (Document, ObjectId) {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let contents = build(&mut doc);
+        let page_id = doc.add_object(dictionary! {
+            "Type"=>"Page","Parent"=>pages_id,
+            "MediaBox"=>vec![0.into(),0.into(),200.into(),200.into()],
+            "Resources"=>dictionary!{},
+            "Contents"=>contents,
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type"=>"Pages","Kids"=>vec![page_id.into()],"Count"=>1,
+            }),
+        );
+        let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+        doc.trailer.set("Root", cat);
+        (doc, page_id)
+    }
+
+    #[test]
+    fn operands_split_across_content_streams_are_joined_first() {
+        // 1 本目の末尾に operand (10 20)、2 本目の先頭に演算子 (Td)。
+        // ストリームごとに解析すると operand が落ち、Td が operand 無しで残ってしまう
+        let (mut doc, page_id) = page_doc(|doc| {
+            let a = doc.add_object(lopdf::Stream::new(
+                dictionary! {},
+                b"BT /F1 12 Tf 10 20".to_vec(),
+            ));
+            let b = doc.add_object(lopdf::Stream::new(
+                dictionary! {},
+                b"Td (hello) Tj ET 0 0 5 5 re f".to_vec(),
+            ));
+            Object::Array(vec![a.into(), b.into()])
+        });
+        let stats = transform(&mut doc, Mode::RemoveText).unwrap();
+        assert_eq!(stats.removed_ops, 1);
+        assert_eq!(doc.get_page_contents(page_id).len(), 1);
+        let ops = Content::decode_strict(&doc.get_page_content(page_id))
+            .unwrap()
+            .operations;
+        let names: Vec<&str> = ops.iter().map(|o| o.operator.as_str()).collect();
+        assert_eq!(names, ["BT", "Tf", "Td", "ET", "re", "f"]);
+        let td = ops.iter().find(|o| o.operator == "Td").unwrap();
+        assert_eq!(td.operands.len(), 2, "Td keeps its operands");
+    }
+
+    #[test]
+    fn unparsable_content_is_an_error_not_a_truncation() {
+        // decode は "@@@" から先を黙って捨てる。strict なので Err になる
+        let (mut doc, page_id) = page_doc(|doc| {
+            Object::Reference(doc.add_object(lopdf::Stream::new(
+                dictionary! {},
+                b"BT (a) Tj ET @@@ 0 0 1 1 re f".to_vec(),
+            )))
+        });
+        let before = doc.get_page_content(page_id);
+        assert!(transform(&mut doc, Mode::RemoveText).is_err());
+        assert!(transform(&mut doc, Mode::TextOnly).is_err());
+        assert_eq!(doc.get_page_content(page_id), before);
+    }
+
+    #[test]
+    fn merge_page_contents_leaves_shared_streams_alone() {
+        // 2 ページが 1 本目を共有し、片方だけ 2 本目を持つ
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let shared = doc.add_object(lopdf::Stream::new(
+            dictionary! {},
+            b"q 0 0 1 1 re f".to_vec(),
+        ));
+        let tail = doc.add_object(lopdf::Stream::new(dictionary! {}, b"Q".to_vec()));
+        let mk = |doc: &mut Document, c: Object| {
+            doc.add_object(dictionary! {
+                "Type"=>"Page","Parent"=>pages_id,
+                "MediaBox"=>vec![0.into(),0.into(),10.into(),10.into()],
+                "Resources"=>dictionary!{}, "Contents"=>c,
+            })
+        };
+        let p1 = mk(&mut doc, Object::Array(vec![shared.into(), tail.into()]));
+        let p2 = mk(&mut doc, Object::Reference(shared));
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type"=>"Pages","Kids"=>vec![p1.into(), p2.into()],"Count"=>2,
+            }),
+        );
+        let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+        doc.trailer.set("Root", cat);
+
+        let ids = merge_page_contents(&mut doc).unwrap();
+        assert_eq!(ids.len(), 2, "merged stream for p1 + the shared one for p2");
+        assert_eq!(doc.get_page_contents(p1).len(), 1);
+        // 共有されていた 1 本目はそのまま、p2 はそれを指し続ける
+        assert_eq!(doc.get_page_contents(p2), vec![shared]);
+        let kept = doc.get_object(shared).unwrap().as_stream().unwrap();
+        assert_eq!(kept.content, b"q 0 0 1 1 re f");
+        let joined = String::from_utf8(doc.get_page_content(p1)).unwrap();
+        assert_eq!(
+            joined.split_whitespace().collect::<Vec<_>>().join(" "),
+            "q 0 0 1 1 re f Q"
+        );
+    }
 
     #[test]
     fn strips_show_operators_keeps_state() {

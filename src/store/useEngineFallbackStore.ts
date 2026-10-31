@@ -14,7 +14,7 @@ export interface EngineFallbackPayload {
   from?: "hayro" | "lopdf";
   /**
    * "render" / "rasterize" / "rasterize_no_text" / "keep-text" / "imposition" / "rasterize_imposition"
-   * (from = hayro)、"compress" / "compress_subset" / "redact_crop" / "rewrite" (from = lopdf)
+   * (from = hayro)、"compress" / "compress_clean" / "compress_subset" / "redact_crop" / "rewrite" (from = lopdf)
    */
   op: string;
   file: string | null;

@@ -34,6 +34,16 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 
+/// clean が失敗したときのエラー文言の先頭。呼び出し側 (compress::safe_compress_only) が、
+/// GUI への通知で「clean が原因のフォールバック」だと示すために使う。
+const CLEAN_ERR_PREFIX: &str = "lopdf clean: ";
+
+/// `compress_with_lopdf` のエラーが、clean の失敗 (内容ストリームを解析できないなど) か。
+/// sanitize / merge_fonts の未対応や、暗号化・読み込み失敗は含まない。
+pub(crate) fn is_clean_error(e: &CoreError) -> bool {
+    matches!(e, CoreError::Unsupported(m) if m.starts_with(CLEAN_ERR_PREFIX))
+}
+
 /// 圧縮の指定 (MuPDF 実装 safe_compress_only の引数と同じ)
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Params {
@@ -332,7 +342,7 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
     if p.clean {
         // 内容ストリームを書き直す。解析できない内容があれば Err (MuPDF へフォールバック)
         stats.cleaned_streams = crate::clean_lopdf::clean_contents(&mut doc)
-            .map_err(|e| CoreError::Unsupported(format!("lopdf clean: {e}")))?;
+            .map_err(|e| CoreError::Unsupported(format!("{CLEAN_ERR_PREFIX}{e}")))?;
         if gc >= 1 {
             // 連結して要らなくなった内容ストリームを、圧縮する前に取り除く
             stats.pruned_objects += prune(&mut doc);
@@ -673,6 +683,10 @@ mod tests {
         p.clean = true;
         let e = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
         assert!(matches!(e, CoreError::Unsupported(_)), "{e}");
+        assert!(
+            is_clean_error(&e),
+            "clean failure must be reported as such: {e}"
+        );
         assert!(!dst.exists());
     }
 
@@ -691,6 +705,8 @@ mod tests {
             let e =
                 compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
             assert!(matches!(e, CoreError::Unsupported(_)), "{e}");
+            // sanitize / merge_fonts の未対応は、clean が原因ではない
+            assert!(!is_clean_error(&e), "{e}");
         }
         assert!(!dst.exists());
     }

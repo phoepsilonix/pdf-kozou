@@ -859,6 +859,7 @@
       "imposition": "imposition preview",
       "rasterize_imposition": "imposed image PDF",
       "compress": "compression",
+      "compress_clean": "compression (clean option: rebuilding content streams)",
       "compress_subset": "compression (font subsetting)",
       "redact_crop": "removal outside CropBox",
       "rewrite": "re-render compression"

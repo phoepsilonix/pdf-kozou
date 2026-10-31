@@ -25,9 +25,9 @@
 // 解析できない内容・デコードできないフィルタがあれば Err を返し、何も保証しない。
 // 呼び出し側 (compress_lopdf) は Err を受けて MuPDF 実装へフォールバックする。
 
-use crate::content_filter::reencode_bytes;
-use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
-use std::collections::{HashMap, HashSet};
+use crate::content_filter::{merge_page_contents, reencode_bytes};
+use lopdf::{Dictionary, Document, Object, ObjectId};
+use std::collections::HashSet;
 
 /// 文書内の内容ストリームを clean する。書き直したストリームの数を返す。
 pub(crate) fn clean_contents(doc: &mut Document) -> Result<usize, String> {
@@ -35,66 +35,14 @@ pub(crate) fn clean_contents(doc: &mut Document) -> Result<usize, String> {
     let mut touched: HashSet<ObjectId> = HashSet::new();
 
     // ── ページの内容ストリーム ──
-    // 各ページの /Contents を、実在するストリームの並びに直す
-    let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
-    let page_streams: Vec<(ObjectId, Vec<ObjectId>)> = pages
-        .iter()
-        .map(|&page_id| {
-            let sig: Vec<ObjectId> = doc
-                .get_page_contents(page_id)
-                .into_iter()
-                .filter(|id| matches!(doc.objects.get(id), Some(Object::Stream(_))))
-                .collect();
-            (page_id, sig)
-        })
-        .collect();
-
-    // ストリームが、(重複を除いた) いくつの並びに使われているか。
-    // 他の並びと共有されているストリームは、書き換えず、新しいストリームに書く。
-    let mut usage: HashMap<ObjectId, usize> = HashMap::new();
-    let mut seen_sigs: HashSet<&Vec<ObjectId>> = HashSet::new();
-    for (_, sig) in &page_streams {
-        if !sig.is_empty() && seen_sigs.insert(sig) {
-            for id in sig {
-                *usage.entry(*id).or_insert(0) += 1;
-            }
-        }
-    }
-
-    // 同じ並びを持つページ (内容を共有するページ) は、同じ結果のストリームを指す
-    let mut done: HashMap<Vec<ObjectId>, ObjectId> = HashMap::new();
-    for (page_id, sig) in &page_streams {
-        if sig.is_empty() {
-            continue;
-        }
-        let target = match done.get(sig) {
-            Some(t) => *t,
-            None => {
-                let mut joined: Vec<u8> = Vec::new();
-                for id in sig {
-                    let bytes = plain_content(doc, *id)?;
-                    joined.extend_from_slice(&bytes);
-                    joined.push(b'\n');
-                }
-                let new_bytes =
-                    reencode_bytes(&joined).map_err(|e| format!("page {page_id:?}: {e}"))?;
-                let exclusive = sig.iter().all(|id| usage.get(id) == Some(&1));
-                let target = if exclusive {
-                    set_content(doc, sig[0], new_bytes);
-                    sig[0]
-                } else {
-                    doc.add_object(Stream::new(Dictionary::new(), new_bytes))
-                };
-                touched.extend(sig.iter().copied());
-                touched.insert(target);
-                done.insert(sig.clone(), target);
-                cleaned += 1;
-                target
-            }
-        };
-        if let Ok(Object::Dictionary(page)) = doc.get_object_mut(*page_id) {
-            page.set("Contents", Object::Reference(target));
-        }
+    // /Contents が配列のページを 1 本にまとめてから、各ストリームを書き直す
+    // (他のページと共有しているストリームは、まとめるときに書き換えられない)
+    for id in merge_page_contents(doc)? {
+        let bytes = plain_content(doc, id)?;
+        let new_bytes = reencode_bytes(&bytes).map_err(|e| format!("stream {id:?}: {e}"))?;
+        set_content(doc, id, new_bytes);
+        touched.insert(id);
+        cleaned += 1;
     }
 
     // ── Form XObject / タイリングパターン ──
@@ -142,7 +90,7 @@ fn set_content(doc: &mut Document, id: ObjectId, bytes: Vec<u8>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lopdf::dictionary;
+    use lopdf::{Stream, dictionary};
 
     /// ページ 1 枚の文書を作る。`contents` は /Contents に入れる値、`extra` は追加のオブジェクト。
     fn doc_with(build: impl FnOnce(&mut Document, ObjectId) -> Object) -> (Document, ObjectId) {
