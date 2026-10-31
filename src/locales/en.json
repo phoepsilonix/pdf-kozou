@@ -878,9 +878,9 @@
     "title": "PDF processing engine",
     "short": "Process",
     "auto": "Auto (lopdf → MuPDF)",
-    "auto_desc": "Use lopdf; switch to MuPDF only for inputs lopdf cannot handle (default)",
+    "auto_desc": "Use lopdf; switch to MuPDF only for inputs lopdf cannot handle",
     "mupdf": "MuPDF only",
-    "mupdf_desc": "Use the classic MuPDF implementation only; lopdf is not used",
+    "mupdf_desc": "Use the classic MuPDF implementation only; lopdf is not used (default)",
     "lopdf": "lopdf only",
     "lopdf_desc": "Use lopdf only, never fall back to MuPDF (errors are reported). For testing"
   },

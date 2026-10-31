@@ -6,15 +6,15 @@
 // PDF 操作 (結合・分割・回転・トリミング・ページサイズ化・情報取得・メタデータ・面付け)
 // の実装エンジンの選択。
 //
-// 各操作には lopdf 実装と従来の MuPDF 実装がある。既定では lopdf を先に試し、
-// lopdf が扱えない入力のときだけ MuPDF にフォールバックする。
+// 各操作には lopdf 実装と従来の MuPDF 実装がある。既定は従来どおり MuPDF だけを使う。
+// auto を選ぶと lopdf を先に試し、lopdf が扱えない入力のときだけ MuPDF にフォールバックする。
 //
-//   auto  : lopdf を試し、失敗したら MuPDF へフォールバック (既定)
-//   mupdf : lopdf を使わず、従来の MuPDF 実装だけを使う
+//   auto  : lopdf を試し、失敗したら MuPDF へフォールバック
+//   mupdf : lopdf を使わず、従来の MuPDF 実装だけを使う (既定)
 //   lopdf : lopdf だけを使う。失敗はフォールバックせずエラーにする
 //           (MuPDF への依存がどの操作に残っているかを調べる検証用)
 //
-// 設定の優先順位: set_backend (GUI) → 環境変数 PDF_KOZOU_PDF_BACKEND → auto
+// 設定の優先順位: set_backend (GUI) → 環境変数 PDF_KOZOU_PDF_BACKEND → mupdf
 // 描画 (ラスタライズ) エンジンの選択 (render::Engine) とは独立。
 
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -65,7 +65,7 @@ impl Backend {
 /// GUI 等から設定するプロセス全体の既定 (0 = 未設定)
 static OVERRIDE: AtomicU8 = AtomicU8::new(0);
 
-/// 現在のバックエンド (set_backend → 環境変数 → auto)
+/// 現在のバックエンド (set_backend → 環境変数 → mupdf)
 pub fn current() -> Backend {
     if let Some(b) = Backend::from_code(OVERRIDE.load(Ordering::Relaxed)) {
         return b;
@@ -76,11 +76,11 @@ pub fn current() -> Backend {
         match Backend::parse(&v) {
             Some(b) => return b,
             None => eprintln!(
-                "[backend] unknown PDF_KOZOU_PDF_BACKEND={v:?} (use auto|mupdf|lopdf); using auto"
+                "[backend] unknown PDF_KOZOU_PDF_BACKEND={v:?} (use auto|mupdf|lopdf); using mupdf"
             ),
         }
     }
-    Backend::Auto
+    Backend::MuPdf
 }
 
 /// プロセス全体のバックエンドを設定する。"auto" | "mupdf" | "lopdf"。

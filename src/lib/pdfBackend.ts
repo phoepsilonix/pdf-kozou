@@ -4,8 +4,8 @@
 
 // src/lib/pdfBackend.ts — PDF 操作の実装エンジン (lopdf / MuPDF) の選択の永続化とコアへの反映
 //
-//   auto  : lopdf を試し、失敗したら MuPDF へフォールバック (既定)
-//   mupdf : lopdf を使わず、従来の MuPDF 実装だけを使う
+//   auto  : lopdf を試し、失敗したら MuPDF へフォールバック
+//   mupdf : lopdf を使わず、従来の MuPDF 実装だけを使う (既定)
 //   lopdf : lopdf だけを使う。失敗はフォールバックせずエラーにする
 //           (MuPDF への依存がどの操作に残っているかを調べる検証用)
 //

@@ -878,9 +878,9 @@
     "title": "PDF処理エンジン",
     "short": "処理",
     "auto": "自動（lopdf→MuPDF）",
-    "auto_desc": "lopdfで処理し、扱えない入力だけMuPDFに切り替える（既定）",
+    "auto_desc": "lopdfで処理し、扱えない入力だけMuPDFに切り替える",
     "mupdf": "MuPDFのみ",
-    "mupdf_desc": "従来のMuPDF実装だけを使う。lopdfは使わない",
+    "mupdf_desc": "従来のMuPDF実装だけを使う。lopdfは使わない（既定）",
     "lopdf": "lopdfのみ",
     "lopdf_desc": "lopdfだけを使う（MuPDFに切り替えず、失敗はエラーにする）。検証用"
   },
