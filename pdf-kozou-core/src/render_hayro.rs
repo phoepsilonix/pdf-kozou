@@ -670,7 +670,7 @@ struct CoverJob {
     page_id: lopdf::ObjectId,
     tw: u32,
     th: u32,
-    /// テキストを除いた描画 (背景画像の元になった画素)
+    /// テキストを除いた描画 (等倍 = 超解像度なし。`full` / `comp` と同じ条件で描いた画素)
     nt: Vec<u8>,
     /// 実際に埋め込む背景画像を復号した画素 (JPEG のときは圧縮後の画素)
     bg: Vec<u8>,
@@ -763,14 +763,28 @@ pub fn keep_text_pdf(
             None => true,
             Some(c) => c.contains(&pno),
         };
-        let nt_rgb = if want_cover { Some(rgb.clone()) } else { None };
+        // 隠し直しの比較 (nt / full / comp) は、超解像度を使わず等倍で行う。超解像度で描いた
+        // 出力ページ (comp) は、背景画像を拡大→箱平均で戻すため埋め込んだ背景 (bg) と一致せず、
+        // 背景の輪郭や細線がすべて「テキスト画素で見え方が違う」と判定され、巨大なパッチ
+        // (無損失 RGB + SMask) が大量に付いてファイルが肥大化する。等倍なら comp の背景は bg と
+        // 画素単位で一致する。パッチの画素 (bg + (full - nt)) は差分だけを使うので、
+        // 背景自体は超解像度のままでよい。
+        let (nt_rgb, bg_png) = if want_cover {
+            let nt = if supersample_mult(dpi_f, supersample_max, tw, th) > 1 {
+                raster_rgb(page, &cache, &settings, tw, th, dpi_f, 1)?
+            } else {
+                rgb.clone()
+            };
+            (Some(nt), if png { Some(rgb.clone()) } else { None })
+        } else {
+            (None, None)
+        };
         let bg_stream = image_stream(rgb, tw, th, png, quality)?;
         let cover_src = match nt_rgb {
             Some(nt) => {
-                let bg = if png {
-                    nt.clone()
-                } else {
-                    decode_jpeg_rgb(&bg_stream.content, tw, th)?
+                let bg = match bg_png {
+                    Some(b) => b,
+                    None => decode_jpeg_rgb(&bg_stream.content, tw, th)?,
                 };
                 Some((nt, bg))
             }
@@ -828,7 +842,7 @@ pub fn keep_text_pdf(
     // 部分的に隠れていたテキストを、背景の画素のパッチで隠し直す
     let mut n_patches = 0usize;
     if !covers.is_empty() {
-        n_patches = add_cover_patches(&mut doc, &data, &covers, dpi_f, supersample_max, &settings)?;
+        n_patches = add_cover_patches(&mut doc, &data, &covers, dpi_f, &settings)?;
     }
 
     // 選ばれなかったページを落とし、不要になったオブジェクトを捨てる
@@ -863,7 +877,6 @@ fn add_cover_patches(
     orig: &[u8],
     jobs: &[CoverJob],
     dpi: f32,
-    supersample_max: i32,
     settings: &InterpreterSettings,
 ) -> Result<usize, String> {
     use crate::cover_patch::{Params, compute_patches, patch_matrix};
@@ -889,8 +902,9 @@ fn add_cover_patches(
         let cp = comp_pages
             .get(idx)
             .ok_or_else(|| format!("cover: page {} missing in the output", job.pno))?;
-        let full = raster_rgb(fp, &cache_full, settings, job.tw, job.th, dpi, supersample_max)?;
-        let comp = raster_rgb(cp, &cache_comp, settings, job.tw, job.th, dpi, supersample_max)?;
+        // 等倍で描く (理由は keep_text_pdf の nt の説明を参照)
+        let full = raster_rgb(fp, &cache_full, settings, job.tw, job.th, dpi, 1)?;
+        let comp = raster_rgb(cp, &cache_comp, settings, job.tw, job.th, dpi, 1)?;
         let patches = compute_patches(&full, &job.nt, &comp, &job.bg, job.tw, job.th, &params);
         if patches.is_empty() {
             continue;
