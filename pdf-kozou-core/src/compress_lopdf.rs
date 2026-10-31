@@ -16,10 +16,11 @@
 //   compress_images : false のとき、画像 XObject は圧縮しない
 //   compress_fonts  : false のとき、埋め込みフォント (FontFile*) は圧縮しない
 //   object_stream   : オブジェクトストリームと xref ストリームで保存する
+//   clean           : 内容ストリームの連結・再構築 (clean_lopdf)
 //
 // 次は lopdf では行えないので、指定されていたら Err (Unsupported) を返す。
 // 呼び出し側 (backend) が MuPDF へフォールバックし、GUI へその旨を通知する。
-//   clean / sanitize : コンテンツストリームの再解釈・再構築
+//   sanitize         : 内容ストリームの整理 (未使用リソース・冗長な演算子の除去)
 //   merge_fonts      : 重複フォントの統合
 //
 // 暗号化された入力、lopdf が内容を落とす入力 (safe_load の検出) も Err にする。
@@ -51,6 +52,8 @@ pub(crate) struct Stats {
     pub pruned_objects: usize,
     pub merged_streams: usize,
     pub compressed_streams: usize,
+    /// clean で書き直した内容ストリーム (連結後のページ内容・Form XObject・パターン) の数
+    pub cleaned_streams: usize,
 }
 
 // ── 参照の走査・付け替え ──────────────────────────────────────────────────
@@ -295,9 +298,6 @@ fn compress_streams(doc: &mut Document, p: &Params) -> usize {
 /// 失敗や未対応の指定は Err。呼び出し側が MuPDF 実装へフォールバックする。
 pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Result<Stats> {
     let mut unsupported: Vec<&str> = Vec::new();
-    if p.clean {
-        unsupported.push("clean");
-    }
     if p.sanitize {
         unsupported.push("sanitize");
     }
@@ -328,6 +328,15 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
     clean_trailer(&mut doc);
     if gc >= 1 {
         stats.pruned_objects += prune(&mut doc);
+    }
+    if p.clean {
+        // 内容ストリームを書き直す。解析できない内容があれば Err (MuPDF へフォールバック)
+        stats.cleaned_streams = crate::clean_lopdf::clean_contents(&mut doc)
+            .map_err(|e| CoreError::Unsupported(format!("lopdf clean: {e}")))?;
+        if gc >= 1 {
+            // 連結して要らなくなった内容ストリームを、圧縮する前に取り除く
+            stats.pruned_objects += prune(&mut doc);
+        }
     }
     stats.compressed_streams = compress_streams(&mut doc, p);
     if gc >= 1 {
@@ -573,6 +582,100 @@ mod tests {
         );
     }
 
+    /// 内容ストリームが 2 本に分かれたページを持つ PDF
+    fn split_contents_sample(path: &std::path::Path) {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let a = doc.add_object(Stream::new(dictionary! {}, b"q 1 0 0 1 10 10".to_vec()));
+        let b = doc.add_object(Stream::new(dictionary! {}, b"cm 0 0 50 50 re f Q".to_vec()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+            "Contents" => vec![a.into(), b.into()],
+            "Resources" => dictionary! {},
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![page_id.into()], "Count" => 1,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog_id);
+        doc.save(path).unwrap();
+    }
+
+    #[test]
+    fn clean_merges_page_contents_and_drops_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        split_contents_sample(&src);
+        let mut p = params();
+        p.clean = true;
+        let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
+        assert_eq!(stats.cleaned_streams, 1, "{stats:?}");
+        assert!(
+            stats.pruned_objects >= 1,
+            "split stream should be dropped: {stats:?}"
+        );
+        let doc = Document::load(&dst).unwrap();
+        assert_eq!(doc.get_pages().len(), 1);
+        let page_id = *doc.get_pages().get(&1).unwrap();
+        assert_eq!(doc.get_page_contents(page_id).len(), 1);
+        let ops: Vec<String> = lopdf::content::Content::decode(&doc.get_page_content(page_id))
+            .unwrap()
+            .operations
+            .into_iter()
+            .map(|o| o.operator)
+            .collect();
+        assert_eq!(ops, ["q", "cm", "re", "f", "Q"]);
+    }
+
+    #[test]
+    fn clean_off_keeps_split_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        split_contents_sample(&src);
+        let stats =
+            compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &params()).unwrap();
+        assert_eq!(stats.cleaned_streams, 0);
+        let doc = Document::load(&dst).unwrap();
+        let page_id = *doc.get_pages().get(&1).unwrap();
+        assert_eq!(doc.get_page_contents(page_id).len(), 2);
+    }
+
+    #[test]
+    fn clean_with_unparsable_content_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        // sample() の内容ストリームを、閉じていない文字列に差し替える
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let c = doc.add_object(Stream::new(dictionary! {}, b"BT (abc Tj ET".to_vec()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+            "Contents" => c, "Resources" => dictionary! {},
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![page_id.into()], "Count" => 1,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog_id);
+        doc.save(&src).unwrap();
+        let mut p = params();
+        p.clean = true;
+        let e = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
+        assert!(matches!(e, CoreError::Unsupported(_)), "{e}");
+        assert!(!dst.exists());
+    }
+
     #[test]
     fn unsupported_options_are_errors() {
         let dir = tempfile::tempdir().unwrap();
@@ -580,7 +683,6 @@ mod tests {
         let dst = dir.path().join("out.pdf");
         sample(&src);
         for tweak in [
-            |p: &mut Params| p.clean = true,
             |p: &mut Params| p.sanitize = true,
             |p: &mut Params| p.merge_fonts = true,
         ] {

@@ -432,6 +432,59 @@ fn transform_content(
     Ok((out, total))
 }
 
+/// 内容ストリームを解析して書き直す。演算子と operand は変えず、空白・改行・数値の書式だけが
+/// 変わる (演算子ごとに改行する)。インライン画像 (BI ... EI) はそのまま保つ。
+/// 解析できない内容や、書き直すと壊れる値 (有限でない実数) があれば Err。
+/// 呼び出し側 (clean) は Err を受けて MuPDF 実装へフォールバックする。
+pub(crate) fn reencode_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let images = find_inline_images(bytes)?;
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut pos = 0usize;
+    for (start, end) in images
+        .iter()
+        .copied()
+        .chain(std::iter::once((bytes.len(), bytes.len())))
+    {
+        if start > pos {
+            // decode は、解析できない箇所から先を黙って捨てる (内容が欠ける) ので、
+            // 全体を解析しきれたかを確かめる decode_strict を使う
+            let content = Content::decode_strict(&bytes[pos..start])
+                .map_err(|e| format!("content decode: {e}"))?;
+            if content
+                .operations
+                .iter()
+                .any(|op| op.operands.iter().any(has_non_finite))
+            {
+                return Err("content has a non-finite number".into());
+            }
+            let chunk = content
+                .encode()
+                .map_err(|e| format!("content encode: {e}"))?;
+            if !chunk.is_empty() {
+                out.extend_from_slice(&chunk);
+                out.push(b'\n');
+            }
+        }
+        if end > start {
+            out.extend_from_slice(&bytes[start..end]);
+            out.push(b'\n');
+        }
+        pos = end;
+    }
+    Ok(out)
+}
+
+/// operand (配列・辞書の中を含む) に、有限でない実数 (f32 に収まらない値) があるか。
+/// lopdf の実数は f32 なので、極端に大きな数は inf になり、書き出すと壊れる。
+fn has_non_finite(o: &Object) -> bool {
+    match o {
+        Object::Real(r) => !r.is_finite(),
+        Object::Array(a) => a.iter().any(has_non_finite),
+        Object::Dictionary(d) => d.iter().any(|(_, v)| has_non_finite(v)),
+        _ => false,
+    }
+}
+
 /// 演算子 Tr の operand が 4〜7 (テキストをクリップに使う描画モード) か
 fn is_clip_render_mode(op: &Operation) -> bool {
     if op.operator != "Tr" {

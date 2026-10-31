@@ -1229,7 +1229,7 @@ fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
 
 /// サブセット化なしの通常圧縮 (Light プリセット or font_subset=false 時)
 /// 通常の圧縮 (フォントサブセット化なし)。
-/// まず lopdf 実装 (compress_lopdf) を試し、未対応の指定 (clean / sanitize / merge_fonts)・
+/// まず lopdf 実装 (compress_lopdf) を試し、未対応の指定 (sanitize / merge_fonts)・
 /// 暗号化・lopdf が読めない入力のときだけ MuPDF 実装へフォールバックする
 /// (フォールバックは GUI へ通知する)。backend の設定は backend.rs を参照。
 fn safe_compress_only(
@@ -1256,8 +1256,11 @@ fn safe_compress_only(
         match crate::compress_lopdf::compress_with_lopdf(input, output, &params) {
             Ok(stats) => {
                 eprintln!(
-                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed",
-                    stats.pruned_objects, stats.merged_streams, stats.compressed_streams
+                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned",
+                    stats.pruned_objects,
+                    stats.merged_streams,
+                    stats.compressed_streams,
+                    stats.cleaned_streams
                 );
                 let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
                 let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
