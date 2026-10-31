@@ -278,6 +278,7 @@ export function CompressPage({
       pickDir?.();
       tts.speak(t("aria.output_dir_btn"));
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     Escape: () => {
       if (phase === "result") {
         if (savedFilePath) discardSave(savedFilePath);
@@ -287,6 +288,7 @@ export function CompressPage({
         tts.speak(t("shortcut.back_to_edit"));
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.tool"),
   });
 
@@ -353,10 +355,7 @@ export function CompressPage({
   const [saving, setSaving] = useState(false);
   const [outDir, setOutDir] = useState("");
   // バッチ処理中に画面を離れても、右下の通知が出なくなったままにならないようにする
-  useEffect(
-    () => () => useEngineFallbackStore.getState().setToastSuppressed(false),
-    [],
-  );
+  useEffect(() => () => useEngineFallbackStore.getState().setToastSuppressed(false), []);
   const [batchProg, setBatchProg] = useState<{
     cur: number;
     total: number;

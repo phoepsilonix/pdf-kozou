@@ -345,12 +345,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         tts.speak(t("aria.range_input"));
       }, 50);
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     Escape: () => {
       if (phase === "result" || phase === "compress") {
         setPhase("edit");
         tts.speak(t("shortcut.back_to_edit"));
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.tool"),
   });
 

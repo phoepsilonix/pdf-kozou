@@ -38,7 +38,10 @@ export function EngineFallbackNotes({ fallbacks }: { fallbacks?: BatchFallback[]
       }}
     >
       {fallbacks.map((f) => (
-        <div key={`${f.from}\u0000${f.op}\u0000${f.reason}`} style={{ fontSize: FS.caption, wordBreak: "break-all" }}>
+        <div
+          key={`${f.from}\u0000${f.op}\u0000${f.reason}`}
+          style={{ fontSize: FS.caption, wordBreak: "break-all" }}
+        >
           <span style={{ color: "var(--c-warn)" }}>⚠ </span>
           <span style={{ color: "var(--c-text)" }}>
             {t(logKey(f.from), { op: t(opLabelKey(f.op)) })}

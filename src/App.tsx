@@ -28,12 +28,12 @@ import { FileSortSelect } from "./components/FileSortSelect";
 import { FloatingMenu } from "./components/FloatingMenu";
 import { FolderChooserModal } from "./components/FolderChooserModal";
 import { FontScaleControl } from "./components/FontScaleControl";
+import { HayroStrokeControl } from "./components/HayroStrokeControl";
 import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
 import { LazyBoundary } from "./components/LazyBoundary";
 import { PageSizeSelector } from "./components/PageSizeSelector";
 import { PdfBackendControl } from "./components/PdfBackendControl";
-import { HayroStrokeControl } from "./components/HayroStrokeControl";
 import { RenderEngineControl } from "./components/RenderEngineControl";
 import { SaveConflictModal } from "./components/SaveConflictModal";
 import { SaveNamePromptModal } from "./components/SaveNamePromptModal";
@@ -43,13 +43,13 @@ import { useFocusAnnouncer } from "./hooks/useFocusAnnouncer";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "./hooks/usePlatform";
 import { useViewport } from "./hooks/useViewport";
+import { initEngineFallback } from "./lib/engineFallback";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
-import { initEngineFallback } from "./lib/engineFallback";
+import { initHayroStroke } from "./lib/hayroStroke";
 import { useI18n } from "./lib/i18n";
 import { loadLastTool, saveLastTool } from "./lib/lastTool";
 import { initPdfBackend } from "./lib/pdfBackend";
-import { initHayroStroke } from "./lib/hayroStroke";
 import { initRenderEngine } from "./lib/renderEngine";
 import { formatFilenameForSpeech } from "./lib/speakName";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
@@ -528,6 +528,7 @@ export default function App() {
     },
     "Alt+T": () => tts.toggle(),
     "Alt+L": () => setLocale(locale === "ja" ? "en" : "ja"),
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey(activeTool ? "shortcut.tool" : "shortcut.home"),
   });
 
@@ -1513,6 +1514,7 @@ function ToolShell({
       onHome();
       tts.speak(t("screen.home"));
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.tool"),
   });
 

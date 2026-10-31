@@ -19,8 +19,8 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { useMobilePlatformState } from "../hooks/usePlatform";
 import { useViewport } from "../hooks/useViewport";
-import { useI18n } from "../lib/i18n";
 import { useHayroStroke } from "../lib/hayroStroke";
+import { useI18n } from "../lib/i18n";
 import { useRenderEngine } from "../lib/renderEngine";
 import {
   getPageLinks,
@@ -704,7 +704,7 @@ function InfoDrawer({
   const innerW = window.innerWidth;
   const DrawerDvh = isNarrow ? 0.8 : 0.6;
   const baseWidth = innerW * DrawerDvh;
-  const correctedWidth = Math.floor(baseWidth / (z > 1 ? z : 1));
+  const correctedWidth = Math.floor(baseWidth / Math.max(z, 1));
   // 高さは position:absolute の top:0/bottom:0 に任せる（ViewerPage の root が
   // position:relative になったことで、実際に使えるコンテンツ領域
   // ＝ナビバーの高さ（フローティングメニューのオン/オフ・縦積み/横並び・
@@ -967,7 +967,7 @@ function SearchBar({
         setSearching(false);
         if (hits.length > 0) {
           const firstIdx = hits.findIndex((h) => h.page >= currentPage);
-          const idx = firstIdx >= 0 ? firstIdx : 0;
+          const idx = Math.max(firstIdx, 0);
           setCurrent(idx);
           onNavigate(hits[idx].page, hits[idx]);
           onAllHits([...hits]);
@@ -1131,7 +1131,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
   // ショートカット（ビューワー固有）
   useKeyboardShortcuts({
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     ArrowLeft: () => setViewPage((p) => Math.max(0, p - 1)),
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     ArrowRight: () => setViewPage((p) => Math.min(total - 1, p + 1)),
     "Ctrl+F": () => {
       if (showSearch) {
@@ -1143,6 +1145,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
         setShowSearch(true);
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.viewer"),
   });
   const [activeInfo, setActiveInfo] = useState<PdfInfo | null>(pdfInfo ?? null);

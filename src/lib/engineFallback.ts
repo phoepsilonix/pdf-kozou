@@ -3,7 +3,10 @@
 // useEngineFallbackStore へ流し込む。起動時に一度だけ initEngineFallback() を呼ぶ。
 
 import { listen } from "@tauri-apps/api/event";
-import { type EngineFallbackPayload, useEngineFallbackStore } from "../store/useEngineFallbackStore";
+import {
+  type EngineFallbackPayload,
+  useEngineFallbackStore,
+} from "../store/useEngineFallbackStore";
 
 /** 戻り値は購読解除関数。Tauri 外 (vite dev など) では何もせず空の関数を返す。 */
 export async function initEngineFallback(): Promise<() => void> {

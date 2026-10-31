@@ -227,12 +227,14 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         isBatch ? handleBatch() : run();
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     Escape: () => {
       if (phase === "result" || phase === "error") {
         setPhase("edit");
         tts.speak(t("shortcut.back_to_edit"));
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.tool"),
   });
 

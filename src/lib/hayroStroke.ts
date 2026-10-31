@@ -97,8 +97,7 @@ export async function initHayroStroke(): Promise<void> {
       emit({ ...saved, recommendedPath, recommendedText });
       return;
     }
-    const mode: HayroStrokeMode =
-      info.mode === "off" || info.mode === "custom" ? info.mode : "on";
+    const mode: HayroStrokeMode = info.mode === "off" || info.mode === "custom" ? info.mode : "on";
     emit({
       mode,
       customPath: mode === "custom" ? info.path : state.customPath,

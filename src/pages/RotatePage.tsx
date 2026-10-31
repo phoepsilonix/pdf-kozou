@@ -154,12 +154,14 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
       pickDir();
       tts.speak(t("aria.output_dir_btn"));
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     Escape: () => {
       if (phase === "preview" || phase === "result") {
         setPhase("edit");
         tts.speak(t("shortcut.back_to_edit"));
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.tool"),
   });
 

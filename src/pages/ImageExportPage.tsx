@@ -72,8 +72,8 @@ import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
 import { uniqueFileNames } from "../lib/uniqueName";
-import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 import { useEngineFallbackStore } from "../store/useEngineFallbackStore";
+import { type FileEntry, usePdfStore } from "../store/usePdfStore";
 
 interface Props {
   filePath: string;
@@ -258,12 +258,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       pagesInputRef.current?.focus();
       tts.speak(t("aria.range_input"));
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     Escape: () => {
       if (phase === "result") {
         setPhase("edit");
         tts.speak(t("shortcut.back_to_edit"));
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.tool"),
   });
   const isBatch = (batchFiles?.length ?? 0) > 1;
@@ -496,10 +498,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [errMsg, setErrMsg] = useState("");
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   // バッチ処理中に画面を離れても、右下の通知が出なくなったままにならないようにする
-  useEffect(
-    () => () => useEngineFallbackStore.getState().setToastSuppressed(false),
-    [],
-  );
+  useEffect(() => () => useEngineFallbackStore.getState().setToastSuppressed(false), []);
   const [batchThumbs, setBatchThumbs] = useState<(string | undefined)[]>([]);
   const [previewIdx, setPreviewIdx] = useState(0);
   // 選択中バッチファイルの詳細プレビュー(単体と同じ面付け/面付け解除の

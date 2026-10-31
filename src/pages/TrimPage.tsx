@@ -1057,12 +1057,14 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
       const next = inputs[(cur + 1) % inputs.length] ?? inputs[0];
       next.focus();
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     Escape: () => {
       if (phase === "result") {
         setPhase("edit");
         tts.speak(t("shortcut.back_to_edit"));
       }
     },
+    // biome-ignore lint/correctness/noComponentHookFactories: ショートカットマップのキー名（Escape/F1等）であり、コンポーネント定義ではない（誤検出）
     F1: () => announceKey("shortcut.trim_tool"),
   });
 
