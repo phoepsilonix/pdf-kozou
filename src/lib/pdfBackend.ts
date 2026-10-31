@@ -28,7 +28,7 @@ interface State {
   available: PdfBackend[];
 }
 
-let state: State = { backend: "auto", available: [] };
+let state: State = { backend: "mupdf", available: [] };
 const listeners = new Set<() => void>();
 
 function emit(next: State) {
@@ -50,7 +50,7 @@ export async function initPdfBackend(): Promise<void> {
     const info = await getBackendInfo();
     const available = info.available.filter(isBackend);
     const saved = loadSaved();
-    let backend: PdfBackend = isBackend(info.current) ? info.current : "auto";
+    let backend: PdfBackend = isBackend(info.current) ? info.current : "mupdf";
     if (saved && available.includes(saved)) {
       backend = saved;
       await setPdfBackendCore(saved);
@@ -58,7 +58,7 @@ export async function initPdfBackend(): Promise<void> {
     emit({ backend, available });
   } catch {
     // ブラウザ単体 (vite dev) など Tauri 外: 選択肢なし
-    emit({ backend: "auto", available: [] });
+    emit({ backend: "mupdf", available: [] });
   }
 }
 
