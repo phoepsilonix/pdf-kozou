@@ -481,7 +481,7 @@ export function CompressPage({
         const res = await compressPdf(inputFile, tmp, {
           preset,
           merge_fonts: mergeFonts || undefined,
-          object_stream: objectStream || undefined,
+          object_stream: preset === "light" ? undefined : objectStream || undefined,
           redact_outside_crop: redactOutsideCrop,
           ...redactMarginOpts,
           image_dpi: imageRecompress ? imageDpi : undefined,
@@ -635,7 +635,7 @@ export function CompressPage({
           await compressPdf(inputFile, sp, {
             preset,
             merge_fonts: mergeFonts || undefined,
-            object_stream: objectStream || undefined,
+            object_stream: preset === "light" ? undefined : objectStream || undefined,
             redact_outside_crop: redactOutsideCrop,
             ...redactMarginOpts,
             image_dpi: imageRecompress ? imageDpi : undefined,
