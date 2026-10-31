@@ -312,7 +312,7 @@ export function CompressPage({
   // 結果画面では自動フォーカスを与えない（縦幅の短い画面で上部の結果表示が
   // スクロールで隠れるのを避けるため）。保存は Ctrl+S（圧縮して保存）で行える。
   const [preset, setPreset] = useState<CompressPreset>("standard");
-  const [mergeFonts, setMergeFonts] = useState(false);
+  const [mergeFonts, _setMergeFonts] = useState(false);
 
   const [result, setResult] = useState<CompressResponse | null>(null);
   const [tmpFile, setTmpFile] = useState("");
@@ -1567,20 +1567,6 @@ export function CompressPage({
                 </label>
               </div>
             )}
-            <div style={c.optRow}>
-              <label style={c.optLabel}>
-                <input
-                  type="checkbox"
-                  checked={mergeFonts}
-                  onChange={(e) => setMergeFonts(e.target.checked)}
-                  style={{ marginRight: 6 }}
-                />
-                {t("compress.merge_fonts_label")}
-              </label>
-              <span style={c.optHint}>
-                {mergeFonts ? t("compress.merge_fonts_on") : t("compress.merge_fonts_off")}
-              </span>
-            </div>
           </>
         ) : (
           <>
