@@ -875,6 +875,18 @@
     "hayro": "hayroのみ",
     "hayro_desc": "hayroだけで描画する（失敗時はエラー）。比較・検証用"
   },
+  "hayro_stroke": {
+    "title": "線・文字の太らせ補正",
+    "short": "線の太さ",
+    "on": "オン（推奨）",
+    "on_desc": "極細線が黒く太く見えるのを抑える（最小線幅 線{path}px / 文字{text}px・既定）",
+    "off": "オフ",
+    "off_desc": "補正しない。1画素に満たない線・文字もそのままの太さで描く",
+    "custom": "カスタム",
+    "custom_desc": "線と文字の最小線幅を数値で指定する（0で太らせない）",
+    "path_value": "線",
+    "text_value": "文字"
+  },
   "pdf_backend": {
     "title": "PDF処理エンジン",
     "short": "処理",

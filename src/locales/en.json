@@ -875,6 +875,18 @@
     "hayro": "hayro only",
     "hayro_desc": "Render with hayro only (errors on failure). For comparison and testing"
   },
+  "hayro_stroke": {
+    "title": "Thin line / text thickening",
+    "short": "Stroke",
+    "on": "On (recommended)",
+    "on_desc": "Keeps hairlines from looking bold (min width: lines {path}px / text {text}px, default)",
+    "off": "Off",
+    "off_desc": "No widening: strokes thinner than 1px keep their real weight",
+    "custom": "Custom",
+    "custom_desc": "Set the minimum width for lines and text yourself (0 = never widen)",
+    "path_value": "Lines",
+    "text_value": "Text"
+  },
   "pdf_backend": {
     "title": "PDF processing engine",
     "short": "Process",
