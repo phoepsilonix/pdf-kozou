@@ -574,7 +574,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             mobilePlatform={mobilePlatform}
             style={s.bpCurrent}
           />
-          <Spinner />
+          <Spinner compact />
           <div
             style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}
             ref={(el) => {

@@ -1539,6 +1539,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             mobilePlatform={mobilePlatform}
             style={s.bpCurrent}
           />
+          <Spinner compact />
           <div
             style={s.bpLogFlex}
             // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
@@ -1575,7 +1576,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
-        <Spinner />
       </div>
     );
 

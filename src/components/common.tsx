@@ -16,7 +16,9 @@ import { FS } from "../lib/typography";
  *  <style>{SPINNER_CSS}</style> を直接埋め込む。 */
 export const SPINNER_CSS = `@keyframes kozou-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.kozou-spinner{animation:kozou-spin 1.6s ease-in-out infinite}`;
 
-export function Spinner({ label }: { label?: string }) {
+/** compact: バッチ進捗など、他の要素と縦に並べる用途。height:100% を使わず内容の高さだけを取り、
+ *  兄弟要素(進捗ログなど)を押し潰さない。 */
+export function Spinner({ label, compact }: { label?: string; compact?: boolean }) {
   // スピナー表示中（=処理中）に長引いたら音声で知らせる。
   useBusyAnnouncer(true, label);
   return (
@@ -26,7 +28,8 @@ export function Spinner({ label }: { label?: string }) {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        height: "100%",
+        height: compact ? "auto" : "100%",
+        flexShrink: compact ? 0 : undefined,
         gap: 18,
         background: "var(--c-bg)",
       }}

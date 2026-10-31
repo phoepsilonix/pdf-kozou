@@ -882,7 +882,7 @@ export function CompressPage({
           <div style={{ ...c.bpBar, width: `${(batchProg.cur / batchProg.total) * 100}%` }} />
         </div>
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
-        <Spinner label={t("compress.processing")} />
+        <Spinner compact />
         <div
           style={c.bpLog}
           // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする

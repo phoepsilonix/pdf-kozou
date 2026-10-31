@@ -577,6 +577,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               mobilePlatform={mobilePlatform}
               style={s.currentFileBox}
             />
+            <Spinner compact />
           </div>
           {/* 右: ログ */}
           <div style={rightStyle}>
@@ -593,6 +594,12 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
                   <div key={`${d.file}:${idx}`} style={s.statusBox}>
                     {d.file} →{" "}
                     {d.hits === 0 ? t("hidden.batch_no_detection") : `${d.hits}字 → ${d.saved}`}
+                  </div>
+                ))}
+                {progress.errors.map((e, idx) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                  <div key={`${e.file}:${idx}`} style={{ ...s.statusBox, color: "var(--c-err)" }}>
+                    ✕ {e.file}: {e.msg}
                   </div>
                 ))}
               </div>

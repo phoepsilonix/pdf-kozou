@@ -473,6 +473,7 @@ function TrimPageBatch({
         <div style={b.barWrap}>
           <div style={{ ...b.bar, width: `${pct}%` }} />
         </div>
+        <Spinner compact />
         <div
           style={{ ...b.log, flex: "0 1 auto", minHeight: 0 }}
           ref={(el) => {
@@ -492,8 +493,15 @@ function TrimPageBatch({
             // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
             <WarnLogRow key={`${w.f}:${idx}`} file={w.f} msg={w.msg} />
           ))}
+          {progress.errors.map((e, idx) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+            <div key={`${e.f}:${idx}`} style={b.logRow}>
+              <span style={{ color: "var(--c-err)" }}>✕</span>
+              <span style={b.logFile}>{e.f}</span>
+              <span style={{ ...b.logMeta, color: "var(--c-err)" }}>{e.msg}</span>
+            </div>
+          ))}
         </div>
-        <Spinner />
       </div>
     );
   }

@@ -569,6 +569,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             mobilePlatform={mobilePlatform}
             style={s.bpCurrent}
           />
+          <Spinner compact />
           <div
             style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}
             ref={(el) => {
@@ -597,7 +598,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             ))}
           </div>
         </div>
-        <Spinner />
       </div>
     );
 
