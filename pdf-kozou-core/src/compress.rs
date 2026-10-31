@@ -843,7 +843,13 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
                     redact_applied = true;
                     TempFileGuard(Some(redact_tmp))
                 }
-                Ok(_) => TempFileGuard(None), // CropBox が無い/全ページ対象外 → スキップ
+                Ok(_) => {
+                    // CropBox が無い/全ページ対象外、または CropBox の外に取り除けるものが無かった
+                    eprintln!(
+                        "[compress] redact_outside_crop: no page changed (no CropBox, or nothing outside CropBox+margin)"
+                    );
+                    TempFileGuard(None)
+                }
                 Err(e) => {
                     eprintln!("[compress] redact_outside_crop warning (skipped): {e}");
                     TempFileGuard(None)

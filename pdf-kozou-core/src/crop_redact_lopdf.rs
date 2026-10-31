@@ -77,6 +77,11 @@ impl Rect {
     fn is_outside(&self, other: &Rect) -> bool {
         self.x1 < other.x0 || self.x0 > other.x1 || self.y1 < other.y0 || self.y0 > other.y1
     }
+
+    /// `other` の内側に完全に収まっている
+    fn is_inside(&self, other: &Rect) -> bool {
+        self.x0 >= other.x0 && self.y0 >= other.y0 && self.x1 <= other.x1 && self.y1 <= other.y1
+    }
 }
 
 /// 矩形 [x0 y0 x1 y1] を `m` で変換した、外接矩形
@@ -543,18 +548,36 @@ struct PageEdit {
     resources: Option<Dictionary>,
 }
 
+/// `process_page` の結果
+enum PageOutcome {
+    /// 取り除けるものがあり、内容を書き換える
+    Edited(PageEdit),
+    /// 取り除けるものが無かった。`opaque_forms` は、`keep` から外にはみ出しているため
+    /// 残した Form XObject の数 (lopdf 実装は Form の中身までは見ない)
+    Unchanged { opaque_forms: usize },
+}
+
 /// ページの内容から、`keep` に完全に外れているものを取り除く。
-/// 何も取り除けない・安全に扱えないページは None。
-fn process_page(doc: &Document, page_id: ObjectId, keep: &Rect) -> Option<PageEdit> {
-    let bytes = page_content(doc, page_id)?;
-    let content = Content::decode_strict(&bytes).ok()?;
+///
+/// - `Ok(Edited)`: 取り除くものがあった
+/// - `Ok(Unchanged)`: 安全に扱えたが、取り除けるものが無かった
+/// - `Err(理由)`: lopdf では安全に扱えないページ (呼び出し側で MuPDF へフォールバックする)
+fn process_page(
+    doc: &Document,
+    page_id: ObjectId,
+    keep: &Rect,
+) -> std::result::Result<PageOutcome, &'static str> {
+    let bytes = page_content(doc, page_id).ok_or("content stream cannot be read or decoded")?;
+    let content = Content::decode_strict(&bytes).map_err(|_| "content does not parse strictly")?;
     let ops = content.operations;
-    if ops.is_empty()
-        || ops
-            .iter()
-            .any(|o| matches!(o.operator.as_str(), "BI" | "ID" | "EI"))
+    if ops.is_empty() {
+        return Ok(PageOutcome::Unchanged { opaque_forms: 0 });
+    }
+    if ops
+        .iter()
+        .any(|o| matches!(o.operator.as_str(), "BI" | "ID" | "EI"))
     {
-        return None;
+        return Err("page has inline image(s)");
     }
 
     let res = inherited(doc, page_id, b"Resources").and_then(|o| dict_of(doc, o));
@@ -574,6 +597,7 @@ fn process_page(doc: &Document, page_id: ObjectId, keep: &Rect) -> Option<PageEd
     // 幅の分からない文字列を表示したあとは、次の位置指定までテキスト位置が分からない
     let mut tm_valid = true;
     let mut path = PathAcc::default();
+    let mut opaque_forms: usize = 0;
 
     for op in ops {
         let name = op.operator.clone();
@@ -681,6 +705,7 @@ fn process_page(doc: &Document, page_id: ObjectId, keep: &Rect) -> Option<PageEd
             // ── XObject ──
             "Do" => {
                 let nm = op.operands.first().and_then(|o| o.as_name().ok());
+                let mut straddling_form = false;
                 let remove = nm.is_some_and(|n| {
                     let info = xcache.entry(n.to_vec()).or_insert_with(|| {
                         xobjs
@@ -692,7 +717,14 @@ fn process_page(doc: &Document, page_id: ObjectId, keep: &Rect) -> Option<PageEd
                             transform_rect(&gs.ctm, [0.0, 0.0, 1.0, 1.0]).is_outside(keep)
                         }
                         Some(XKind::Form { bbox, matrix }) => {
-                            transform_rect(&mul(matrix, &gs.ctm), *bbox).is_outside(keep)
+                            let r = transform_rect(&mul(matrix, &gs.ctm), *bbox);
+                            if r.is_outside(keep) {
+                                true
+                            } else {
+                                // 中身までは見ないので、はみ出している Form は丸ごと残る
+                                straddling_form = !r.is_inside(keep);
+                                false
+                            }
                         }
                         None => false,
                     }
@@ -700,6 +732,9 @@ fn process_page(doc: &Document, page_id: ObjectId, keep: &Rect) -> Option<PageEd
                 if remove {
                     counts.xobjects += 1;
                 } else {
+                    if straddling_form {
+                        opaque_forms += 1;
+                    }
                     out.push(op);
                 }
             }
@@ -853,7 +888,7 @@ fn process_page(doc: &Document, page_id: ObjectId, keep: &Rect) -> Option<PageEd
     }
 
     if counts.total() == 0 {
-        return None;
+        return Ok(PageOutcome::Unchanged { opaque_forms });
     }
 
     // 削除した Do が参照していた XObject をリソースから外す。
@@ -888,12 +923,14 @@ fn process_page(doc: &Document, page_id: ObjectId, keep: &Rect) -> Option<PageEd
         }
     }
 
-    let content = Content { operations: out }.encode().ok()?;
-    Some(PageEdit {
+    let content = Content { operations: out }
+        .encode()
+        .map_err(|_| "content cannot be re-encoded")?;
+    Ok(PageOutcome::Edited(PageEdit {
         content,
         counts,
         resources,
-    })
+    }))
 }
 
 // ── 入口 ──────────────────────────────────────────────────────────────────
@@ -923,6 +960,12 @@ pub(crate) fn redact_with_lopdf(
         pages_total: page_count,
         pages_redacted: 0,
     };
+    // CropBox を持ち、実際に処理を試みたページ数
+    let mut cropped_pages: usize = 0;
+    // 処理できたが、取り除けるものが無かったページ数
+    let mut unchanged_pages: usize = 0;
+    // lopdf では安全に扱えなかったページ (ページ番号, 理由)
+    let mut unsupported: Vec<(u32, &'static str)> = Vec::new();
 
     for (page_no, page_id) in pages {
         let idx = page_no.saturating_sub(1);
@@ -959,8 +1002,24 @@ pub(crate) fn redact_with_lopdf(
             y1: cy1 + f64::from(m.top),
         };
 
-        let Some(edit) = process_page(&doc, page_id, &keep) else {
-            continue;
+        cropped_pages += 1;
+        let edit = match process_page(&doc, page_id, &keep) {
+            Ok(PageOutcome::Edited(edit)) => edit,
+            Ok(PageOutcome::Unchanged { opaque_forms }) => {
+                unchanged_pages += 1;
+                if opaque_forms > 0 {
+                    eprintln!(
+                        "[redact_crop] page {idx}: nothing removed by lopdf; {opaque_forms} Form XObject(s) \
+                         reaching outside CropBox+margin were kept (lopdf does not descend into Forms)"
+                    );
+                }
+                continue;
+            }
+            Err(reason) => {
+                eprintln!("[redact_crop] page {idx}: lopdf cannot process this page ({reason})");
+                unsupported.push((idx, reason));
+                continue;
+            }
         };
         let mut stream = Stream::new(Dictionary::new(), edit.content);
         let _ = stream.compress();
@@ -978,6 +1037,21 @@ pub(crate) fn redact_with_lopdf(
             edit.counts.paths, edit.counts.xobjects, edit.counts.texts
         );
     }
+
+    // lopdf で扱えないページがあれば、一部のページだけ処理した状態にはせず、
+    // Err にして呼び出し側 (crop_cleanup::redact_outside_cropbox) に MuPDF へ
+    // フォールバックさせる。何も出力しないままの「成功」にしない。
+    if let Some(&(idx, reason)) = unsupported.first() {
+        return Err(CoreError::Unsupported(format!(
+            "lopdf cannot process {} of {} cropped page(s) (first: page {idx}: {reason})",
+            unsupported.len(),
+            cropped_pages
+        )));
+    }
+    eprintln!(
+        "[redact_crop] lopdf: {}/{} cropped page(s) edited, {} had nothing to remove outside CropBox+margin ({} page(s) total)",
+        stats.pages_redacted, cropped_pages, unchanged_pages, page_count
+    );
 
     if stats.pages_redacted == 0 {
         if input != output {
@@ -1232,11 +1306,31 @@ q 1 0 0 1 500 500 cm /Fm1 Do Q";
     }
 
     #[test]
-    fn inline_images_make_the_page_untouched() {
+    fn inline_images_make_the_page_unsupported() {
+        // lopdf で扱えないページは、成功 (0 ページ処理) ではなく Err にして
+        // 呼び出し側が MuPDF へフォールバックできるようにする
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
         let content =
             "q 450 50 100 100 re f Q q 10 0 0 10 0 0 cm BI /W 1 /H 1 /CS /G /BPC 8 ID \u{0} EI Q";
-        let (stats, _doc, _ops) = run(CROP_LEFT, content);
+        build(&src, CROP_LEFT, content);
+        let err =
+            redact_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), None).unwrap_err();
+        assert!(matches!(err, CoreError::Unsupported(_)), "{err}");
+        assert!(!dst.exists());
+    }
+
+    #[test]
+    fn nothing_to_remove_is_ok_and_copies_input() {
+        // 扱えるが取り除くものが無いページは、エラーではなく 0 ページ処理の成功
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        build(&src, CROP_LEFT, "q 1 0 0 rg 50 50 100 100 re f Q");
+        let stats = redact_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), None).unwrap();
         assert_eq!(stats.pages_redacted, 0);
+        assert_eq!(std::fs::read(&src).unwrap(), std::fs::read(&dst).unwrap());
     }
 
     #[test]
