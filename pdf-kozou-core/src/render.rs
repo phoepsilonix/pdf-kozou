@@ -146,6 +146,41 @@ pub fn default_engine_name() -> &'static str {
         .name()
 }
 
+/// hayro の細線・文字の太らせ補正を設定する (プロセス全体)。
+/// "on" (推奨値) | "off" (hayro 本来の挙動) | 数値 (画素幅。0 で太らせない)。
+/// 空文字 / "default" で未設定に戻す (環境変数 PDF_KOZOU_HAYRO_MIN_STROKE → on)。
+/// feature "hayro" 無しのビルドでは何もしない (MuPDF の描画には影響しない)。
+pub fn set_hayro_min_stroke(spec: &str) -> std::result::Result<(), String> {
+    #[cfg(feature = "hayro")]
+    {
+        crate::render_hayro::set_min_stroke(spec)
+    }
+    #[cfg(not(feature = "hayro"))]
+    {
+        let _ = spec;
+        Ok(())
+    }
+}
+
+/// 現在の太らせ補正: (モード "on" | "off" | "custom", 実際の画素幅, 推奨値)
+pub fn hayro_min_stroke_state() -> (&'static str, f32, f32) {
+    #[cfg(feature = "hayro")]
+    {
+        use crate::render_hayro::{MinStroke, current_min_stroke, recommended_min_stroke};
+        let m = current_min_stroke();
+        let mode = match m {
+            MinStroke::On => "on",
+            MinStroke::Off => "off",
+            MinStroke::Custom(_) => "custom",
+        };
+        (mode, m.width(), recommended_min_stroke())
+    }
+    #[cfg(not(feature = "hayro"))]
+    {
+        ("on", 0.3, 0.3)
+    }
+}
+
 /// このビルドが hayro 描画を含むか (feature "hayro")
 pub fn hayro_available() -> bool {
     cfg!(feature = "hayro")

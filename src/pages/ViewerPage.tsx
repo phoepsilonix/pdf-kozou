@@ -20,6 +20,7 @@ import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { useMobilePlatformState } from "../hooks/usePlatform";
 import { useViewport } from "../hooks/useViewport";
 import { useI18n } from "../lib/i18n";
+import { useHayroStroke } from "../lib/hayroStroke";
 import { useRenderEngine } from "../lib/renderEngine";
 import {
   getPageLinks,
@@ -1313,7 +1314,10 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   }, [convertLayoutW, convertLayoutH, convertLayoutEm, imgCache]);
 
   // 描画エンジン切替時は、旧エンジンで描画済みの画像を破棄して再描画させる
-  const { engine: renderEngine } = useRenderEngine();
+  // hayro の太らせ補正 (オン/オフ/数値) の変更時も同様
+  const { engine: baseEngine } = useRenderEngine();
+  const { mode: strokeMode, custom: strokeCustom } = useHayroStroke();
+  const renderEngine = `${baseEngine}:${strokeMode}:${strokeMode === "custom" ? strokeCustom : ""}`;
   const lastRenderEngine = useRef(renderEngine);
   useEffect(() => {
     if (renderEngine === lastRenderEngine.current) return;

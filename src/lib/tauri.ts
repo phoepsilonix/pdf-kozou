@@ -1620,6 +1620,26 @@ export async function setRenderEngineCore(engine: string): Promise<void> {
   await invoke<void>("set_render_engine", { engine });
 }
 
+// ── hayro の細線・文字の太らせ補正 ─────────────────────────────────────────
+
+export interface HayroStrokeInfo {
+  /** "on" (推奨値) | "off" (hayro 本来の挙動) | "custom" */
+  mode: string;
+  /** 現在有効な画素幅 */
+  value: number;
+  /** 「オン」の画素幅 */
+  recommended: number;
+}
+
+export async function getHayroStrokeInfo(): Promise<HayroStrokeInfo> {
+  return invoke<HayroStrokeInfo>("get_hayro_stroke_info");
+}
+
+/** hayro の太らせ補正を設定する ("on" | "off" | 数値(画素幅)を文字列で) */
+export async function setHayroStrokeCore(spec: string): Promise<void> {
+  await invoke<void>("set_hayro_stroke", { spec });
+}
+
 // ── PDF 操作エンジン (lopdf / MuPDF) ────────────────────────────────────────
 
 export interface BackendInfo {

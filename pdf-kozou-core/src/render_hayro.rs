@@ -98,17 +98,103 @@ const SUPERSAMPLE_DPI_THRESHOLD: f32 = 300.0;
 const SUPERSAMPLE_ABS_DPI_CAP: f32 = 600.0;
 const SUPERSAMPLE_MAX_PIXELS: f64 = 50_000_000.0;
 
-/// hayro の細線の最小幅 (最終出力の画素単位)。
+/// hayro の細線の最小幅 (最終出力の画素単位) の推奨値。既定 (「オン」)。
 ///
 /// hayro は既定で「1 デバイス画素に満たない線を 1 画素に太らせる」(PDF 仕様どおり) ため、
 /// イラストの輪郭などの極細線 (例: 線幅 0.13pt) が、72〜150dpi 程度の描画では黒く太く見える。
 /// MuPDF は細線をほぼ被覆率どおりに描くため、これより小さい値にして見え方を揃える。
 /// 超解像度で描くときは内部画素に換算する (`min_stroke_width_for`)。
+///
+/// 文字の輪郭線 (テキスト描画モード 1/2) は hayro 側で `min(0.25, 設定値)` が使われるため、
+/// 0.25 未満の値を指定すると文字の輪郭線もそれに合わせて細くなる。
 const HAYRO_MIN_STROKE_WIDTH: f32 = 0.3;
+
+/// 「オフ」の値。hayro 本来の挙動 (PDF 仕様どおり 1 画素まで太らせる)。
+const HAYRO_MIN_STROKE_WIDTH_OFF: f32 = 1.0;
+
+/// カスタム値の上限 (これ以上は「オフ」と実質同じ。入力ミスの防止)
+const HAYRO_MIN_STROKE_WIDTH_MAX: f32 = 4.0;
+
+/// 環境変数 (GUI / API で未設定のときの既定。CLI からの指定手段)
+pub const MIN_STROKE_ENV: &str = "PDF_KOZOU_HAYRO_MIN_STROKE";
+
+/// 太らせ補正の設定
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MinStroke {
+    /// オン: 推奨値 (`HAYRO_MIN_STROKE_WIDTH`)
+    On,
+    /// オフ: hayro 本来の挙動 (1 画素まで太らせる)
+    Off,
+    /// カスタム: 指定した画素幅 (0 なら太らせない)
+    Custom(f32),
+}
+
+impl MinStroke {
+    /// 実際に hayro へ渡す画素幅
+    pub fn width(self) -> f32 {
+        match self {
+            MinStroke::On => HAYRO_MIN_STROKE_WIDTH,
+            MinStroke::Off => HAYRO_MIN_STROKE_WIDTH_OFF,
+            MinStroke::Custom(v) => v,
+        }
+    }
+}
+
+/// "on" | "off" | 数値 を解釈する。空文字 / "default" は None (未設定に戻す)。
+pub fn parse_min_stroke(spec: &str) -> Result<Option<MinStroke>, String> {
+    let t = spec.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("default") {
+        return Ok(None);
+    }
+    if t.eq_ignore_ascii_case("on") {
+        return Ok(Some(MinStroke::On));
+    }
+    if t.eq_ignore_ascii_case("off") {
+        return Ok(Some(MinStroke::Off));
+    }
+    let v: f32 = t
+        .parse()
+        .map_err(|_| format!("invalid min stroke width: {spec:?} (use on|off|<number>)"))?;
+    if !v.is_finite() || v < 0.0 {
+        return Err(format!("min stroke width must be >= 0: {spec:?}"));
+    }
+    Ok(Some(MinStroke::Custom(v.min(HAYRO_MIN_STROKE_WIDTH_MAX))))
+}
+
+/// GUI 等から設定するプロセス全体の値 (None = 未設定)
+static MIN_STROKE: Mutex<Option<MinStroke>> = Mutex::new(None);
+
+/// 太らせ補正を設定する (プロセス全体)。"on" | "off" | 数値(画素幅)。
+/// 空文字 / "default" で未設定に戻す (環境変数 `PDF_KOZOU_HAYRO_MIN_STROKE` → オン)。
+pub fn set_min_stroke(spec: &str) -> Result<(), String> {
+    let m = parse_min_stroke(spec)?;
+    *MIN_STROKE.lock().unwrap_or_else(|e| e.into_inner()) = m;
+    Ok(())
+}
+
+/// 現在有効な太らせ補正 (設定 → 環境変数 → オン)
+pub fn current_min_stroke() -> MinStroke {
+    if let Some(m) = *MIN_STROKE.lock().unwrap_or_else(|e| e.into_inner()) {
+        return m;
+    }
+    if let Ok(v) = std::env::var(MIN_STROKE_ENV) {
+        match parse_min_stroke(&v) {
+            Ok(Some(m)) => return m,
+            Ok(None) => {}
+            Err(e) => eprintln!("[render] {MIN_STROKE_ENV}: {e}; using on"),
+        }
+    }
+    MinStroke::On
+}
+
+/// 推奨値 (「オン」の画素幅)。UI の初期値表示用
+pub fn recommended_min_stroke() -> f32 {
+    HAYRO_MIN_STROKE_WIDTH
+}
 
 /// 内部描画が最終出力の `mult` 倍の解像度のときの、内部画素単位での最小線幅
 fn min_stroke_width_for(mult: u32) -> f32 {
-    HAYRO_MIN_STROKE_WIDTH * mult.max(1) as f32
+    current_min_stroke().width() * mult.max(1) as f32
 }
 
 /// 超解像度の倍率 (1 = 無効)
@@ -1310,9 +1396,36 @@ mod tests {
 
     #[test]
     fn min_stroke_width_scales_with_supersample() {
-        assert_eq!(min_stroke_width_for(1), HAYRO_MIN_STROKE_WIDTH);
-        assert_eq!(min_stroke_width_for(2), HAYRO_MIN_STROKE_WIDTH * 2.0);
+        // グローバル設定に依存しないよう、現在値を基準に倍率だけを確かめる
+        let base = current_min_stroke().width();
+        assert_eq!(min_stroke_width_for(1), base);
+        assert_eq!(min_stroke_width_for(2), base * 2.0);
         // 倍率 0 は 1 として扱う
-        assert_eq!(min_stroke_width_for(0), HAYRO_MIN_STROKE_WIDTH);
+        assert_eq!(min_stroke_width_for(0), base);
+    }
+
+    #[test]
+    fn min_stroke_parse() {
+        assert_eq!(parse_min_stroke("").unwrap(), None);
+        assert_eq!(parse_min_stroke(" default ").unwrap(), None);
+        assert_eq!(parse_min_stroke("ON").unwrap(), Some(MinStroke::On));
+        assert_eq!(parse_min_stroke("off").unwrap(), Some(MinStroke::Off));
+        assert_eq!(parse_min_stroke("0.15").unwrap(), Some(MinStroke::Custom(0.15)));
+        assert_eq!(parse_min_stroke("0").unwrap(), Some(MinStroke::Custom(0.0)));
+        // 上限で丸める
+        assert_eq!(
+            parse_min_stroke("99").unwrap(),
+            Some(MinStroke::Custom(HAYRO_MIN_STROKE_WIDTH_MAX))
+        );
+        assert!(parse_min_stroke("-1").is_err());
+        assert!(parse_min_stroke("nan").is_err());
+        assert!(parse_min_stroke("abc").is_err());
+    }
+
+    #[test]
+    fn min_stroke_width_values() {
+        assert_eq!(MinStroke::On.width(), HAYRO_MIN_STROKE_WIDTH);
+        assert_eq!(MinStroke::Off.width(), 1.0);
+        assert_eq!(MinStroke::Custom(0.2).width(), 0.2);
     }
 }

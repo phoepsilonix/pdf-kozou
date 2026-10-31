@@ -113,6 +113,26 @@ pub fn set_render_engine(engine: String) -> Result<()> {
     pdf_kozou_core::render::set_default_engine(&engine).map_err(Error::Core)
 }
 
+/// hayro の細線・文字の太らせ補正の状態。
+/// `mode`: "on" (推奨値) | "off" (hayro 本来の挙動) | "custom"。
+/// `value`: 現在有効な画素幅。`recommended`: 「オン」の画素幅。
+#[tauri::command]
+pub fn get_hayro_stroke_info() -> Value {
+    let (mode, value, recommended) = pdf_kozou_core::render::hayro_min_stroke_state();
+    serde_json::json!({
+        "mode": mode,
+        "value": value,
+        "recommended": recommended,
+    })
+}
+
+/// hayro の細線・文字の太らせ補正を設定する ("on" | "off" | 数値(画素幅))。
+/// 以降の hayro 描画に反映される。
+#[tauri::command]
+pub fn set_hayro_stroke(spec: String) -> Result<()> {
+    pdf_kozou_core::render::set_hayro_min_stroke(&spec).map_err(Error::Core)
+}
+
 #[tauri::command]
 pub async fn render_page(
     path: String,

@@ -33,6 +33,7 @@ import { LayoutModeControl } from "./components/LayoutModeControl";
 import { LazyBoundary } from "./components/LazyBoundary";
 import { PageSizeSelector } from "./components/PageSizeSelector";
 import { PdfBackendControl } from "./components/PdfBackendControl";
+import { HayroStrokeControl } from "./components/HayroStrokeControl";
 import { RenderEngineControl } from "./components/RenderEngineControl";
 import { SaveConflictModal } from "./components/SaveConflictModal";
 import { SaveNamePromptModal } from "./components/SaveNamePromptModal";
@@ -48,6 +49,7 @@ import { initEngineFallback } from "./lib/engineFallback";
 import { useI18n } from "./lib/i18n";
 import { loadLastTool, saveLastTool } from "./lib/lastTool";
 import { initPdfBackend } from "./lib/pdfBackend";
+import { initHayroStroke } from "./lib/hayroStroke";
 import { initRenderEngine } from "./lib/renderEngine";
 import { formatFilenameForSpeech } from "./lib/speakName";
 import { getPdfInfo, type PdfInfo } from "./lib/tauri";
@@ -226,6 +228,7 @@ export default function App() {
   // 起動時に描画エンジン (MuPDF / hayro) の保存済み選択をコアへ反映
   useEffect(() => {
     void initRenderEngine();
+    void initHayroStroke();
     void initPdfBackend();
   }, []);
 
@@ -709,6 +712,7 @@ export default function App() {
                   <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
                   <RenderEngineControl />
+                  <HayroStrokeControl />
                   <PdfBackendControl />
                   <LayoutModeControl
                     mode={layoutModeOverride}
@@ -739,6 +743,7 @@ export default function App() {
               <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
               <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
               <RenderEngineControl />
+              <HayroStrokeControl />
               <PdfBackendControl />
               <LayoutModeControl
                 mode={layoutModeOverride}
@@ -1539,6 +1544,7 @@ function ToolShell({
       <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
       <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
       <RenderEngineControl />
+      <HayroStrokeControl />
       <PdfBackendControl />
       <LayoutModeControl
         mode={layoutModeOverride}
