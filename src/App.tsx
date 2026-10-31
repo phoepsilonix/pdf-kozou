@@ -713,8 +713,8 @@ export default function App() {
                   <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
                   <RenderEngineControl />
-                  <HayroStrokeControl />
                   <PdfBackendControl />
+                  <HayroStrokeControl />
                   <LayoutModeControl
                     mode={layoutModeOverride}
                     onChange={setLayoutModeOverride}
@@ -744,8 +744,8 @@ export default function App() {
               <FontScaleControl scale={uiScale} onChange={handleUiScaleChange} />
               <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
               <RenderEngineControl />
-              <HayroStrokeControl />
               <PdfBackendControl />
+              <HayroStrokeControl />
               <LayoutModeControl
                 mode={layoutModeOverride}
                 onChange={setLayoutModeOverride}
@@ -1546,8 +1546,8 @@ function ToolShell({
       <FontScaleControl scale={uiScale} onChange={onUiScaleChange} />
       <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
       <RenderEngineControl />
-      <HayroStrokeControl />
       <PdfBackendControl />
+      <HayroStrokeControl />
       <LayoutModeControl
         mode={layoutModeOverride}
         onChange={setLayoutModeOverride}
