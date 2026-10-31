@@ -151,7 +151,7 @@ GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除�
 
 ### MacBook(MacOS)
 
-TestFlightで公開テスト中（2026/10/20から90日間有効）  
+TestFlightで公開テスト中（2026/10/31から90日間有効）  
 https://testflight.apple.com/join/WTt5ZVsH
 
 実機環境がないため動作未確認です。

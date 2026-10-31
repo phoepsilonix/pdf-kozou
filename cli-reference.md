@@ -79,10 +79,10 @@ pdf-kozou-core trim [OPTIONS] <INPUT> <OUTPUT>
 pdf-kozou-core crop-to-page <INPUT> <OUTPUT>
 ```
 
-| 引数・オプション | 説明                                                                                   |
-| ---------------- | -------------------------------------------------------------------------------------- |
-| `<INPUT>`        | 入力 PDF（`trim` 済みのもの）                                                          |
-| `<OUTPUT>`       | 出力 PDF                                                                               |
+| 引数・オプション | 説明                          |
+| ---------------- | ----------------------------- |
+| `<INPUT>`        | 入力 PDF（`trim` 済みのもの） |
+| `<OUTPUT>`       | 出力 PDF                      |
 
 CropBox が MediaBox と異なるページ（`trim` でトリミングしたページ）の MediaBox を CropBox に揃え、ページサイズをトリミング後の大きさにします。表示内容は変わりません。CropBox の無いページ・MediaBox と同一のページは変更しません。
 
