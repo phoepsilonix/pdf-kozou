@@ -12,7 +12,10 @@
 //
 // 削除するもの (いずれも、外接矩形が CropBox + 余白 の外にあるときだけ):
 //   - パスの描画 (構築 + 塗り/線)。クリップ (W / W*) を伴うパスは残す
-//   - XObject の Do (画像と Form)。Form の中までは入らない
+//   - XObject の Do (画像と Form)。CropBox + 余白 の境界をまたぐ Form は、中へ入って
+//     同じ処理をする (Canva など、ページ全体を 1 つの Form に入れる PDF のため)。
+//     中を処理した Form は複製して新しいオブジェクトにし、親のリソースをそちらへ向ける
+//     (元の Form は他のページと共有されうるので書き換えない)
 //   - テキストの表示 (Tj / TJ)。幅が分かるフォントだけ。削除した文字列の送り幅は
 //     TJ の位置調整で再現し、後続のテキストの位置がずれないようにする
 // 削除で参照されなくなった XObject は、そのページのリソースから外す (リソース辞書は
@@ -23,7 +26,9 @@
 //   - インライン画像 (BI) を含むページ、内容ストリームが読めない/不完全なページ
 //   - 幅が分からないフォント (標準 14 フォントの /Widths 無し、Type3、縦書き、
 //     Identity 以外の CMap)、描画モードがクリップを含むテキスト (Tr 4〜7)
-//   - 注釈、Form の内部
+//   - 注釈
+//   - 中へ入れない Form (自前の /Resources が無い、同じ名前で複数回呼ばれている、
+//     内容が読めない/インライン画像を含む、入れ子が深い)。境界をまたぐ場合は丸ごと残す
 //
 // 暗号化された入力は Err (Unsupported)。呼び出し側が MuPDF 実装へフォールバックする。
 
@@ -546,18 +551,503 @@ struct PageEdit {
     counts: Counts,
     /// 差し替える Resources (削除した XObject を外したもの)。None = 変更しない
     resources: Option<Dictionary>,
+    /// 中身を処理した Form の複製。文書へ登録する
+    new_objects: Vec<(ObjectId, Object)>,
 }
 
 /// `process_page` の結果
 enum PageOutcome {
     /// 取り除けるものがあり、内容を書き換える
     Edited(PageEdit),
-    /// 取り除けるものが無かった。`opaque_forms` は、`keep` から外にはみ出しているため
-    /// 残した Form XObject の数 (lopdf 実装は Form の中身までは見ない)
+    /// 取り除けるものが無かった。`opaque_forms` は、`keep` から外にはみ出していて、
+    /// 中へ入れずに残した Form XObject の数
     Unchanged { opaque_forms: usize },
 }
 
+/// ページ/Form の内容ストリーム 1 本の処理結果
+struct StreamEdit {
+    content: Vec<u8>,
+    /// 差し替える Resources (削除した XObject を外し、差し替えた Form を向け直したもの)。
+    /// None = 変更しない
+    resources: Option<Dictionary>,
+}
+
+/// Form XObject の中へ入る深さの上限
+const MAX_FORM_DEPTH: usize = 8;
+const CONTENT_LIMIT: usize = 512 * 1024 * 1024;
+
+/// 1 ページ分の処理の状態。Form の中へ入るとき、処理した Form は複製して新しい
+/// オブジェクトにする (元の Form は他のページと共有されていることがあるため)。
+/// 新しいオブジェクトの番号は `next_id` から振り、呼び出し側が文書へ登録する。
+struct Walker<'a> {
+    doc: &'a Document,
+    keep: &'a Rect,
+    next_id: u32,
+    new_objects: Vec<(ObjectId, Object)>,
+    /// ページと、その中の Form を合わせた削除数
+    counts: Counts,
+    /// `keep` からはみ出していて、中へ入れなかった (残した) Form の数
+    opaque_forms: usize,
+    /// 処理中の Form (循環参照の防止)
+    stack: Vec<ObjectId>,
+}
+
+impl<'a> Walker<'a> {
+    fn alloc_id(&mut self) -> ObjectId {
+        let id = (self.next_id, 0);
+        self.next_id += 1;
+        id
+    }
+
+    /// 境界をまたぐ Form の中身を処理する。取り除くものがあれば、処理した複製を
+    /// 新しいオブジェクトとして登録してその番号を返す。無い・扱えないときは None
+    /// (呼び出し側は元の Form をそのまま残す)。
+    fn process_form(
+        &mut self,
+        fid: ObjectId,
+        outer: &Gs,
+        matrix: &Mat,
+        depth: usize,
+    ) -> Option<ObjectId> {
+        if depth > MAX_FORM_DEPTH || self.stack.contains(&fid) {
+            return None;
+        }
+        let doc = self.doc;
+        let s = doc.get_object(fid).ok()?.as_stream().ok()?;
+        let own_res = sub_dict(doc, &s.dict, b"Resources")?;
+        let data = s.decompressed_content_with_limit(CONTENT_LIMIT).ok()?;
+        let ops = Content::decode_strict(&data).ok()?.operations;
+        if ops.is_empty()
+            || ops
+                .iter()
+                .any(|o| matches!(o.operator.as_str(), "BI" | "ID" | "EI"))
+        {
+            return None;
+        }
+        // Form の中の座標は、Form の Matrix と、呼んだ時点の CTM で変換される。
+        // 線の太さなどの状態は、呼んだ時点のものを引き継ぐ
+        let mut init = outer.clone();
+        init.ctm = mul(matrix, &outer.ctm);
+
+        self.stack.push(fid);
+        let edit = self.process_stream(ops, Some(own_res), init, depth);
+        self.stack.pop();
+        let edit = edit.ok()??;
+
+        let mut dict = s.dict.clone();
+        for k in [&b"Filter"[..], b"DecodeParms", b"Length", b"DL"] {
+            dict.remove(k);
+        }
+        if let Some(r) = edit.resources {
+            dict.set("Resources", Object::Dictionary(r));
+        }
+        let mut stream = Stream::new(dict, edit.content);
+        let _ = stream.compress();
+        let id = self.alloc_id();
+        self.new_objects.push((id, Object::Stream(stream)));
+        Some(id)
+    }
+
+    /// 内容ストリーム (ページまたは Form) 1 本から、`keep` に完全に外れているものを
+    /// 取り除く。変更が無ければ Ok(None)。
+    fn process_stream(
+        &mut self,
+        ops: Vec<Operation>,
+        res: Option<&'a Dictionary>,
+        init: Gs,
+        depth: usize,
+    ) -> std::result::Result<Option<StreamEdit>, &'static str> {
+        let doc = self.doc;
+        let keep = self.keep;
+        let xobjs = res.and_then(|r| sub_dict(doc, r, b"XObject"));
+        let fonts = res.and_then(|r| sub_dict(doc, r, b"Font"));
+        let ext = res.and_then(|r| sub_dict(doc, r, b"ExtGState"));
+
+        // 同じ名前の XObject を何回呼んでいるか (複数回なら、Form の中へは入らない)
+        let mut do_count: HashMap<Vec<u8>, usize> = HashMap::new();
+        for o in &ops {
+            if o.operator == "Do" {
+                if let Some(n) = o.operands.first().and_then(|x| x.as_name().ok()) {
+                    *do_count.entry(n.to_vec()).or_insert(0) += 1;
+                }
+            }
+        }
+
+        let mut xcache: HashMap<Vec<u8>, Option<XInfo>> = HashMap::new();
+        let mut fcache: HashMap<Vec<u8>, Option<FontInfo>> = HashMap::new();
+        // 処理した複製に差し替える Form (リソース名 → 新しいオブジェクト)
+        let mut replaced: HashMap<Vec<u8>, ObjectId> = HashMap::new();
+
+        let mut out: Vec<Operation> = Vec::with_capacity(ops.len());
+        let mut counts = Counts::default();
+        let mut gs = init;
+        let mut stack: Vec<Gs> = Vec::new();
+        let mut tm = IDENT;
+        let mut tlm = IDENT;
+        // 幅の分からない文字列を表示したあとは、次の位置指定までテキスト位置が分からない
+        let mut tm_valid = true;
+        let mut path = PathAcc::default();
+
+        for op in ops {
+            let name = op.operator.clone();
+            let name = name.as_str();
+            // パスの途中で、パスと無関係な命令が来たら、そのパスは追跡をやめる (残す)
+            if path.start.is_some() && !is_path_op(name) {
+                path = PathAcc::default();
+            }
+            match name {
+                "q" => {
+                    stack.push(gs.clone());
+                    out.push(op);
+                }
+                "Q" => {
+                    if let Some(g) = stack.pop() {
+                        gs = g;
+                    }
+                    out.push(op);
+                }
+                "cm" => {
+                    if let Some(m) = mat_of(&op) {
+                        gs.ctm = mul(&m, &gs.ctm);
+                    }
+                    out.push(op);
+                }
+                "w" => {
+                    if let Some(v) = op.operands.first().and_then(num) {
+                        gs.lw = v.abs();
+                    }
+                    out.push(op);
+                }
+                "M" => {
+                    if let Some(v) = op.operands.first().and_then(num) {
+                        gs.miter = v.abs();
+                    }
+                    out.push(op);
+                }
+                "gs" => {
+                    let d = op
+                        .operands
+                        .first()
+                        .and_then(|o| o.as_name().ok())
+                        .and_then(|n| ext.and_then(|e| sub_dict(doc, e, n)));
+                    if let Some(d) = d {
+                        if let Some(v) = d.get(b"LW").ok().and_then(|o| num_deref(doc, o)) {
+                            gs.lw = v.abs();
+                        }
+                        if let Some(v) = d.get(b"ML").ok().and_then(|o| num_deref(doc, o)) {
+                            gs.miter = v.abs();
+                        }
+                    }
+                    out.push(op);
+                }
+                // ── パス ──
+                "m" | "l" | "c" | "v" | "y" | "re" | "h" => {
+                    if path.start.is_none() {
+                        path.start = Some(out.len());
+                    }
+                    if let Some(v) = operand_nums(&op) {
+                        if name == "re" && v.len() == 4 {
+                            let r = transform_rect(&gs.ctm, [v[0], v[1], v[0] + v[2], v[1] + v[3]]);
+                            path.add((r.x0, r.y0));
+                            path.add((r.x1, r.y1));
+                        } else {
+                            for p in v.chunks_exact(2) {
+                                path.add(apply(&gs.ctm, p[0], p[1]));
+                            }
+                        }
+                    }
+                    out.push(op);
+                }
+                "W" | "W*" => {
+                    path.clip = true;
+                    out.push(op);
+                }
+                "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" | "n" => {
+                    let stroke = matches!(name, "S" | "s" | "B" | "B*" | "b" | "b*");
+                    let removable = name != "n" && !path.clip && path.start.is_some() && {
+                        match path.bbox {
+                            Some(b) => {
+                                let m = &gs.ctm;
+                                // 線の太さ・ミター・キャップで広がる分 (CTM のノルムの上限で見積もる)
+                                let scale =
+                                    (m[0] * m[0] + m[1] * m[1] + m[2] * m[2] + m[3] * m[3]).sqrt();
+                                let grow = if stroke {
+                                    (gs.lw * scale * gs.miter.max(1.5)).max(2.0)
+                                } else {
+                                    0.0
+                                };
+                                b.grow(grow).is_outside(keep)
+                            }
+                            None => false,
+                        }
+                    };
+                    if removable {
+                        if let Some(start) = path.start {
+                            out.truncate(start);
+                        }
+                        counts.paths += 1;
+                    } else {
+                        out.push(op);
+                    }
+                    path = PathAcc::default();
+                }
+                // ── XObject ──
+                "Do" => {
+                    let nm: Option<Vec<u8>> = op
+                        .operands
+                        .first()
+                        .and_then(|o| o.as_name().ok())
+                        .map(<[u8]>::to_vec);
+                    let mut remove = false;
+                    let mut replace: Option<ObjectId> = None;
+                    if let Some(n) = nm.as_deref() {
+                        let xo_ref = xobjs.and_then(|x| x.get(n).ok());
+                        let info = xcache
+                            .entry(n.to_vec())
+                            .or_insert_with(|| xo_ref.and_then(|o| load_xobject(doc, o)));
+                        match info.as_ref().map(|i| (&i.kind, i.own_resources)) {
+                            Some((XKind::Image, _)) => {
+                                remove =
+                                    transform_rect(&gs.ctm, [0.0, 0.0, 1.0, 1.0]).is_outside(keep);
+                            }
+                            Some((XKind::Form { bbox, matrix }, own_resources)) => {
+                                let r = transform_rect(&mul(matrix, &gs.ctm), *bbox);
+                                if r.is_outside(keep) {
+                                    remove = true;
+                                } else if !r.is_inside(keep) {
+                                    // 境界をまたぐ Form: 中身を処理した複製に差し替える。
+                                    // 自前の /Resources が無い Form、同じ名前で複数回呼ばれている Form
+                                    // (呼ぶたびに CTM が違いうる)、読めない Form は丸ごと残す
+                                    let fid = match xo_ref {
+                                        Some(Object::Reference(id)) => Some(*id),
+                                        _ => None,
+                                    };
+                                    if let (true, Some(1), Some(fid)) =
+                                        (own_resources, do_count.get(n).copied(), fid)
+                                    {
+                                        replace = self.process_form(fid, &gs, matrix, depth + 1);
+                                    }
+                                    if replace.is_none() {
+                                        self.opaque_forms += 1;
+                                    }
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                    if remove {
+                        counts.xobjects += 1;
+                    } else {
+                        if let (Some(n), Some(id)) = (nm, replace) {
+                            replaced.insert(n, id);
+                        }
+                        out.push(op);
+                    }
+                }
+                // ── テキスト ──
+                "BT" => {
+                    tm = IDENT;
+                    tlm = IDENT;
+                    tm_valid = true;
+                    out.push(op);
+                }
+                "Tf" => {
+                    gs.font = op
+                        .operands
+                        .first()
+                        .and_then(|o| o.as_name().ok())
+                        .map(<[u8]>::to_vec);
+                    gs.size = op.operands.get(1).and_then(num).unwrap_or(0.0);
+                    out.push(op);
+                }
+                "Tc" | "Tw" | "Tz" | "TL" | "Ts" | "Tr" => {
+                    if let Some(v) = op.operands.first().and_then(num) {
+                        match name {
+                            "Tc" => gs.tc = v,
+                            "Tw" => gs.tw = v,
+                            "Tz" => gs.th = v / 100.0,
+                            "TL" => gs.tl = v,
+                            "Ts" => gs.trise = v,
+                            _ => gs.tr = v as i64,
+                        }
+                    }
+                    out.push(op);
+                }
+                "Td" | "TD" => {
+                    if let Some(v) = operand_nums(&op).filter(|v| v.len() == 2) {
+                        if name == "TD" {
+                            gs.tl = -v[1];
+                        }
+                        tlm = mul(&[1.0, 0.0, 0.0, 1.0, v[0], v[1]], &tlm);
+                        tm = tlm;
+                        tm_valid = true;
+                    } else {
+                        tm_valid = false;
+                    }
+                    out.push(op);
+                }
+                "Tm" => {
+                    match mat_of(&op) {
+                        Some(m) => {
+                            tlm = m;
+                            tm = m;
+                            tm_valid = true;
+                        }
+                        None => tm_valid = false,
+                    }
+                    out.push(op);
+                }
+                "T*" => {
+                    tlm = mul(&[1.0, 0.0, 0.0, 1.0, 0.0, -gs.tl], &tlm);
+                    tm = tlm;
+                    tm_valid = true;
+                    out.push(op);
+                }
+                "Tj" | "TJ" | "'" | "\"" => {
+                    // ' と " は、次の行へ移ってから表示する。" は先に語間・字間を設定する
+                    if name == "'" || name == "\"" {
+                        if name == "\"" {
+                            if let Some(aw) = op.operands.first().and_then(num) {
+                                gs.tw = aw;
+                            }
+                            if let Some(ac) = op.operands.get(1).and_then(num) {
+                                gs.tc = ac;
+                            }
+                        }
+                        tlm = mul(&[1.0, 0.0, 0.0, 1.0, 0.0, -gs.tl], &tlm);
+                        tm = tlm;
+                        tm_valid = true;
+                    }
+                    let mut items: Vec<Item> = Vec::new();
+                    match name {
+                        "TJ" => {
+                            if let Some(Object::Array(a)) = op.operands.first() {
+                                for e in a {
+                                    match e {
+                                        Object::String(s, _) => items.push(Item::Str(s)),
+                                        other => {
+                                            if let Some(n) = num(other) {
+                                                items.push(Item::Adj(n));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            if let Some(Object::String(s, _)) = op.operands.last() {
+                                items.push(Item::Str(s));
+                            }
+                        }
+                    }
+
+                    let font = gs.font.clone().and_then(|n| {
+                        fcache
+                            .entry(n.clone())
+                            .or_insert_with(|| {
+                                fonts
+                                    .and_then(|f| sub_dict(doc, f, &n))
+                                    .and_then(|d| load_font(doc, d))
+                            })
+                            .as_ref()
+                            .map(|f| (f.glyph_em, measure(&gs, f, &items)))
+                    });
+                    match font {
+                        Some((glyph_em, Some((lo, hi, adv)))) => {
+                            let step = gs.size * gs.th;
+                            let removable = matches!(name, "Tj" | "TJ")
+                                && tm_valid
+                                && gs.tr < 4
+                                && step.abs() > 1e-9
+                                && {
+                                    let gy = glyph_em * gs.size.abs();
+                                    let gx = gy * gs.th.abs().max(1.0);
+                                    let m = mul(&tm, &gs.ctm);
+                                    transform_rect(
+                                        &m,
+                                        [lo - gx, gs.trise - gy, hi + gx, gs.trise + gy],
+                                    )
+                                    .is_outside(keep)
+                                };
+                            if removable {
+                                counts.texts += 1;
+                                // 文字列を消す代わりに、同じ送り幅だけ位置を進める
+                                if adv.abs() > 1e-9 {
+                                    let n = (-adv * 1000.0 / step) as f32;
+                                    out.push(Operation::new(
+                                        "TJ",
+                                        vec![Object::Array(vec![Object::Real(n)])],
+                                    ));
+                                }
+                            } else {
+                                out.push(op);
+                            }
+                            if tm_valid {
+                                tm = mul(&[1.0, 0.0, 0.0, 1.0, adv, 0.0], &tm);
+                            }
+                        }
+                        _ => {
+                            tm_valid = false;
+                            out.push(op);
+                        }
+                    }
+                }
+                _ => out.push(op),
+            }
+        }
+
+        if counts.total() == 0 && replaced.is_empty() {
+            return Ok(None);
+        }
+
+        // 削除した Do が参照していた XObject をリソースから外し、差し替えた Form を
+        // 新しいオブジェクトへ向け直す。
+        // リソースを使う Form (自前の /Resources が無いもの) が残っていると、
+        // その中でどの名前が使われるか分からないので、外さない (向け直しだけする)。
+        let mut resources = None;
+        if let (Some(res), Some(xo)) = (res, xobjs) {
+            if counts.xobjects > 0 || !replaced.is_empty() {
+                let used: HashSet<Vec<u8>> = out
+                    .iter()
+                    .filter(|o| o.operator == "Do")
+                    .filter_map(|o| o.operands.first().and_then(|x| x.as_name().ok()))
+                    .map(<[u8]>::to_vec)
+                    .collect();
+                let needs_page_resources = used.iter().any(|n| {
+                    xo.get(n)
+                        .ok()
+                        .and_then(|o| load_xobject(doc, o))
+                        .is_some_and(|i| matches!(i.kind, XKind::Form { .. }) && !i.own_resources)
+                });
+                let drop_unused = counts.xobjects > 0 && !needs_page_resources;
+                let mut nx = Dictionary::new();
+                for (k, v) in xo.iter() {
+                    if drop_unused && !used.contains(k) {
+                        continue;
+                    }
+                    match replaced.get(k) {
+                        Some(id) => nx.set(k.clone(), Object::Reference(*id)),
+                        None => nx.set(k.clone(), v.clone()),
+                    }
+                }
+                let mut new_res = res.clone();
+                new_res.set("XObject", Object::Dictionary(nx));
+                resources = Some(new_res);
+            }
+        }
+
+        let content = Content { operations: out }
+            .encode()
+            .map_err(|_| "content cannot be re-encoded")?;
+        self.counts.paths += counts.paths;
+        self.counts.xobjects += counts.xobjects;
+        self.counts.texts += counts.texts;
+        Ok(Some(StreamEdit { content, resources }))
+    }
+}
+
 /// ページの内容から、`keep` に完全に外れているものを取り除く。
+/// 境界をまたぐ Form XObject は、中身まで入って同じ処理をする。
 ///
 /// - `Ok(Edited)`: 取り除くものがあった
 /// - `Ok(Unchanged)`: 安全に扱えたが、取り除けるものが無かった
@@ -581,356 +1071,26 @@ fn process_page(
     }
 
     let res = inherited(doc, page_id, b"Resources").and_then(|o| dict_of(doc, o));
-    let xobjs = res.and_then(|r| sub_dict(doc, r, b"XObject"));
-    let fonts = res.and_then(|r| sub_dict(doc, r, b"Font"));
-    let ext = res.and_then(|r| sub_dict(doc, r, b"ExtGState"));
-
-    let mut xcache: HashMap<Vec<u8>, Option<XInfo>> = HashMap::new();
-    let mut fcache: HashMap<Vec<u8>, Option<FontInfo>> = HashMap::new();
-
-    let mut out: Vec<Operation> = Vec::with_capacity(ops.len());
-    let mut counts = Counts::default();
-    let mut gs = Gs::default();
-    let mut stack: Vec<Gs> = Vec::new();
-    let mut tm = IDENT;
-    let mut tlm = IDENT;
-    // 幅の分からない文字列を表示したあとは、次の位置指定までテキスト位置が分からない
-    let mut tm_valid = true;
-    let mut path = PathAcc::default();
-    let mut opaque_forms: usize = 0;
-
-    for op in ops {
-        let name = op.operator.clone();
-        let name = name.as_str();
-        // パスの途中で、パスと無関係な命令が来たら、そのパスは追跡をやめる (残す)
-        if path.start.is_some() && !is_path_op(name) {
-            path = PathAcc::default();
-        }
-        match name {
-            "q" => {
-                stack.push(gs.clone());
-                out.push(op);
-            }
-            "Q" => {
-                if let Some(g) = stack.pop() {
-                    gs = g;
-                }
-                out.push(op);
-            }
-            "cm" => {
-                if let Some(m) = mat_of(&op) {
-                    gs.ctm = mul(&m, &gs.ctm);
-                }
-                out.push(op);
-            }
-            "w" => {
-                if let Some(v) = op.operands.first().and_then(num) {
-                    gs.lw = v.abs();
-                }
-                out.push(op);
-            }
-            "M" => {
-                if let Some(v) = op.operands.first().and_then(num) {
-                    gs.miter = v.abs();
-                }
-                out.push(op);
-            }
-            "gs" => {
-                let d = op
-                    .operands
-                    .first()
-                    .and_then(|o| o.as_name().ok())
-                    .and_then(|n| ext.and_then(|e| sub_dict(doc, e, n)));
-                if let Some(d) = d {
-                    if let Some(v) = d.get(b"LW").ok().and_then(|o| num_deref(doc, o)) {
-                        gs.lw = v.abs();
-                    }
-                    if let Some(v) = d.get(b"ML").ok().and_then(|o| num_deref(doc, o)) {
-                        gs.miter = v.abs();
-                    }
-                }
-                out.push(op);
-            }
-            // ── パス ──
-            "m" | "l" | "c" | "v" | "y" | "re" | "h" => {
-                if path.start.is_none() {
-                    path.start = Some(out.len());
-                }
-                if let Some(v) = operand_nums(&op) {
-                    if name == "re" && v.len() == 4 {
-                        let r = transform_rect(&gs.ctm, [v[0], v[1], v[0] + v[2], v[1] + v[3]]);
-                        path.add((r.x0, r.y0));
-                        path.add((r.x1, r.y1));
-                    } else {
-                        for p in v.chunks_exact(2) {
-                            path.add(apply(&gs.ctm, p[0], p[1]));
-                        }
-                    }
-                }
-                out.push(op);
-            }
-            "W" | "W*" => {
-                path.clip = true;
-                out.push(op);
-            }
-            "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" | "n" => {
-                let stroke = matches!(name, "S" | "s" | "B" | "B*" | "b" | "b*");
-                let removable = name != "n" && !path.clip && path.start.is_some() && {
-                    match path.bbox {
-                        Some(b) => {
-                            let m = &gs.ctm;
-                            // 線の太さ・ミター・キャップで広がる分 (CTM のノルムの上限で見積もる)
-                            let scale =
-                                (m[0] * m[0] + m[1] * m[1] + m[2] * m[2] + m[3] * m[3]).sqrt();
-                            let grow = if stroke {
-                                (gs.lw * scale * gs.miter.max(1.5)).max(2.0)
-                            } else {
-                                0.0
-                            };
-                            b.grow(grow).is_outside(keep)
-                        }
-                        None => false,
-                    }
-                };
-                if removable {
-                    if let Some(start) = path.start {
-                        out.truncate(start);
-                    }
-                    counts.paths += 1;
-                } else {
-                    out.push(op);
-                }
-                path = PathAcc::default();
-            }
-            // ── XObject ──
-            "Do" => {
-                let nm = op.operands.first().and_then(|o| o.as_name().ok());
-                let mut straddling_form = false;
-                let remove = nm.is_some_and(|n| {
-                    let info = xcache.entry(n.to_vec()).or_insert_with(|| {
-                        xobjs
-                            .and_then(|x| x.get(n).ok())
-                            .and_then(|o| load_xobject(doc, o))
-                    });
-                    match info.as_ref().map(|i| &i.kind) {
-                        Some(XKind::Image) => {
-                            transform_rect(&gs.ctm, [0.0, 0.0, 1.0, 1.0]).is_outside(keep)
-                        }
-                        Some(XKind::Form { bbox, matrix }) => {
-                            let r = transform_rect(&mul(matrix, &gs.ctm), *bbox);
-                            if r.is_outside(keep) {
-                                true
-                            } else {
-                                // 中身までは見ないので、はみ出している Form は丸ごと残る
-                                straddling_form = !r.is_inside(keep);
-                                false
-                            }
-                        }
-                        None => false,
-                    }
-                });
-                if remove {
-                    counts.xobjects += 1;
-                } else {
-                    if straddling_form {
-                        opaque_forms += 1;
-                    }
-                    out.push(op);
-                }
-            }
-            // ── テキスト ──
-            "BT" => {
-                tm = IDENT;
-                tlm = IDENT;
-                tm_valid = true;
-                out.push(op);
-            }
-            "Tf" => {
-                gs.font = op
-                    .operands
-                    .first()
-                    .and_then(|o| o.as_name().ok())
-                    .map(<[u8]>::to_vec);
-                gs.size = op.operands.get(1).and_then(num).unwrap_or(0.0);
-                out.push(op);
-            }
-            "Tc" | "Tw" | "Tz" | "TL" | "Ts" | "Tr" => {
-                if let Some(v) = op.operands.first().and_then(num) {
-                    match name {
-                        "Tc" => gs.tc = v,
-                        "Tw" => gs.tw = v,
-                        "Tz" => gs.th = v / 100.0,
-                        "TL" => gs.tl = v,
-                        "Ts" => gs.trise = v,
-                        _ => gs.tr = v as i64,
-                    }
-                }
-                out.push(op);
-            }
-            "Td" | "TD" => {
-                if let Some(v) = operand_nums(&op).filter(|v| v.len() == 2) {
-                    if name == "TD" {
-                        gs.tl = -v[1];
-                    }
-                    tlm = mul(&[1.0, 0.0, 0.0, 1.0, v[0], v[1]], &tlm);
-                    tm = tlm;
-                    tm_valid = true;
-                } else {
-                    tm_valid = false;
-                }
-                out.push(op);
-            }
-            "Tm" => {
-                match mat_of(&op) {
-                    Some(m) => {
-                        tlm = m;
-                        tm = m;
-                        tm_valid = true;
-                    }
-                    None => tm_valid = false,
-                }
-                out.push(op);
-            }
-            "T*" => {
-                tlm = mul(&[1.0, 0.0, 0.0, 1.0, 0.0, -gs.tl], &tlm);
-                tm = tlm;
-                tm_valid = true;
-                out.push(op);
-            }
-            "Tj" | "TJ" | "'" | "\"" => {
-                // ' と " は、次の行へ移ってから表示する。" は先に語間・字間を設定する
-                if name == "'" || name == "\"" {
-                    if name == "\"" {
-                        if let Some(aw) = op.operands.first().and_then(num) {
-                            gs.tw = aw;
-                        }
-                        if let Some(ac) = op.operands.get(1).and_then(num) {
-                            gs.tc = ac;
-                        }
-                    }
-                    tlm = mul(&[1.0, 0.0, 0.0, 1.0, 0.0, -gs.tl], &tlm);
-                    tm = tlm;
-                    tm_valid = true;
-                }
-                let mut items: Vec<Item> = Vec::new();
-                match name {
-                    "TJ" => {
-                        if let Some(Object::Array(a)) = op.operands.first() {
-                            for e in a {
-                                match e {
-                                    Object::String(s, _) => items.push(Item::Str(s)),
-                                    other => {
-                                        if let Some(n) = num(other) {
-                                            items.push(Item::Adj(n));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        if let Some(Object::String(s, _)) = op.operands.last() {
-                            items.push(Item::Str(s));
-                        }
-                    }
-                }
-
-                let font = gs.font.clone().and_then(|n| {
-                    fcache
-                        .entry(n.clone())
-                        .or_insert_with(|| {
-                            fonts
-                                .and_then(|f| sub_dict(doc, f, &n))
-                                .and_then(|d| load_font(doc, d))
-                        })
-                        .as_ref()
-                        .map(|f| (f.glyph_em, measure(&gs, f, &items)))
-                });
-                match font {
-                    Some((glyph_em, Some((lo, hi, adv)))) => {
-                        let step = gs.size * gs.th;
-                        let removable = matches!(name, "Tj" | "TJ")
-                            && tm_valid
-                            && gs.tr < 4
-                            && step.abs() > 1e-9
-                            && {
-                                let gy = glyph_em * gs.size.abs();
-                                let gx = gy * gs.th.abs().max(1.0);
-                                let m = mul(&tm, &gs.ctm);
-                                transform_rect(&m, [lo - gx, gs.trise - gy, hi + gx, gs.trise + gy])
-                                    .is_outside(keep)
-                            };
-                        if removable {
-                            counts.texts += 1;
-                            // 文字列を消す代わりに、同じ送り幅だけ位置を進める
-                            if adv.abs() > 1e-9 {
-                                let n = (-adv * 1000.0 / step) as f32;
-                                out.push(Operation::new(
-                                    "TJ",
-                                    vec![Object::Array(vec![Object::Real(n)])],
-                                ));
-                            }
-                        } else {
-                            out.push(op);
-                        }
-                        if tm_valid {
-                            tm = mul(&[1.0, 0.0, 0.0, 1.0, adv, 0.0], &tm);
-                        }
-                    }
-                    _ => {
-                        tm_valid = false;
-                        out.push(op);
-                    }
-                }
-            }
-            _ => out.push(op),
-        }
+    let mut walker = Walker {
+        doc,
+        keep,
+        next_id: doc.max_id + 1,
+        new_objects: Vec::new(),
+        counts: Counts::default(),
+        opaque_forms: 0,
+        stack: Vec::new(),
+    };
+    match walker.process_stream(ops, res, Gs::default(), 0)? {
+        None => Ok(PageOutcome::Unchanged {
+            opaque_forms: walker.opaque_forms,
+        }),
+        Some(edit) => Ok(PageOutcome::Edited(PageEdit {
+            content: edit.content,
+            counts: walker.counts,
+            resources: edit.resources,
+            new_objects: walker.new_objects,
+        })),
     }
-
-    if counts.total() == 0 {
-        return Ok(PageOutcome::Unchanged { opaque_forms });
-    }
-
-    // 削除した Do が参照していた XObject をリソースから外す。
-    // ページのリソースを使う Form (自前の /Resources が無いもの) が残っていると、
-    // その中でどの名前が使われるか分からないので、外さない。
-    let mut resources = None;
-    if counts.xobjects > 0 {
-        if let (Some(res), Some(xo)) = (res, xobjs) {
-            let used: HashSet<Vec<u8>> = out
-                .iter()
-                .filter(|o| o.operator == "Do")
-                .filter_map(|o| o.operands.first().and_then(|x| x.as_name().ok()))
-                .map(<[u8]>::to_vec)
-                .collect();
-            let needs_page_resources = used.iter().any(|n| {
-                xo.get(n)
-                    .ok()
-                    .and_then(|o| load_xobject(doc, o))
-                    .is_some_and(|i| matches!(i.kind, XKind::Form { .. }) && !i.own_resources)
-            });
-            if !needs_page_resources {
-                let mut nx = Dictionary::new();
-                for (k, v) in xo.iter() {
-                    if used.contains(k) {
-                        nx.set(k.clone(), v.clone());
-                    }
-                }
-                let mut new_res = res.clone();
-                new_res.set("XObject", Object::Dictionary(nx));
-                resources = Some(new_res);
-            }
-        }
-    }
-
-    let content = Content { operations: out }
-        .encode()
-        .map_err(|_| "content cannot be re-encoded")?;
-    Ok(PageOutcome::Edited(PageEdit {
-        content,
-        counts,
-        resources,
-    }))
 }
 
 // ── 入口 ──────────────────────────────────────────────────────────────────
@@ -948,6 +1108,14 @@ pub(crate) fn redact_with_lopdf(
             "lopdf crop redaction does not support encrypted PDFs".into(),
         ));
     }
+    // 新しいオブジェクトの番号を、既存の番号と重ならないように振るための基準
+    doc.max_id = doc
+        .objects
+        .keys()
+        .map(|k| k.0)
+        .max()
+        .unwrap_or(0)
+        .max(doc.max_id);
     let m = margins
         .unwrap_or(RedactMargins::uniform(DEFAULT_REDACT_MARGIN_PT))
         .clamped();
@@ -1010,7 +1178,8 @@ pub(crate) fn redact_with_lopdf(
                 if opaque_forms > 0 {
                     eprintln!(
                         "[redact_crop] page {idx}: nothing removed by lopdf; {opaque_forms} Form XObject(s) \
-                         reaching outside CropBox+margin were kept (lopdf does not descend into Forms)"
+                         reaching outside CropBox+margin were kept (no own /Resources, called more than \
+                         once under one name, or content not readable)"
                     );
                 }
                 continue;
@@ -1021,6 +1190,11 @@ pub(crate) fn redact_with_lopdf(
                 continue;
             }
         };
+        // 中身を処理した Form の複製を登録する (番号は process_page が doc.max_id の次から振った)
+        for (id, obj) in edit.new_objects {
+            doc.max_id = doc.max_id.max(id.0);
+            doc.objects.insert(id, obj);
+        }
         let mut stream = Stream::new(Dictionary::new(), edit.content);
         let _ = stream.compress();
         let new_id = doc.add_object(stream);
@@ -1331,6 +1505,160 @@ q 1 0 0 1 500 500 cm /Fm1 Do Q";
         let stats = redact_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), None).unwrap();
         assert_eq!(stats.pages_redacted, 0);
         assert_eq!(std::fs::read(&src).unwrap(), std::fs::read(&dst).unwrap());
+    }
+
+    /// 2 ページの PDF。ページ全体を 1 つの Form (BBox 400x400) に入れ、2 ページ目は
+    /// 同じリソースと Form を共有する (CropBox なし)。Form の中身:
+    ///   x=10..60 の矩形 (中)、x=100..150 の矩形 (外)、ImIn (中)、ImOut (外)。
+    /// 1 ページ目は Form を (250, 100) だけ動かして呼ぶ。
+    fn build_wrapped(path: &std::path::Path, crop: [i64; 4]) -> ObjectId {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let img = |w: i64| {
+            Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Image", "Width" => w, "Height" => 2,
+                    "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+                },
+                vec![0u8; (w * 2) as usize],
+            )
+        };
+        let im_out = doc.add_object(img(7));
+        let im_in = doc.add_object(img(5));
+        let form = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Form",
+                "BBox" => vec![0.into(), 0.into(), 400.into(), 400.into()],
+                "Resources" => dictionary! {
+                    "XObject" => dictionary! { "ImOut" => im_out, "ImIn" => im_in },
+                },
+            },
+            b"q 1 0 0 rg 10 10 50 50 re f Q q 0 0 1 rg 100 10 50 50 re f Q \
+              q 50 0 0 50 10 100 cm /ImIn Do Q q 50 0 0 50 200 100 cm /ImOut Do Q"
+                .to_vec(),
+        ));
+        let res = doc.add_object(dictionary! { "XObject" => dictionary! { "Fm" => form } });
+        let c1 = doc.add_object(Stream::new(
+            dictionary! {},
+            b"q 1 0 0 1 250 100 cm /Fm Do Q".to_vec(),
+        ));
+        let c2 = doc.add_object(Stream::new(
+            dictionary! {},
+            b"q 1 0 0 1 250 100 cm /Fm Do Q".to_vec(),
+        ));
+        let mb = || vec![0.into(), 0.into(), 600.into(), 800.into()];
+        let p1 = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id, "MediaBox" => mb(),
+            "CropBox" => crop.iter().map(|v| Object::Integer(*v)).collect::<Vec<_>>(),
+            "Resources" => res, "Contents" => c1,
+        });
+        let p2 = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id, "MediaBox" => mb(),
+            "Resources" => res, "Contents" => c2,
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![p1.into(), p2.into()], "Count" => 2,
+            }),
+        );
+        let cat = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", cat);
+        doc.save(path).unwrap();
+        form
+    }
+
+    /// ページの /Resources /XObject /Fm が指す Form の内容 (命令) と、Form の /Resources の XObject 名
+    fn form_of_page(doc: &Document, page_no: u32) -> (ObjectId, Vec<Operation>, Vec<String>) {
+        let page = *doc.get_pages().get(&page_no).unwrap();
+        let res = doc.get_dictionary(page).unwrap().get(b"Resources").unwrap();
+        let res = doc.dereference(res).unwrap().1.as_dict().unwrap();
+        let xo = doc
+            .dereference(res.get(b"XObject").unwrap())
+            .unwrap()
+            .1
+            .as_dict()
+            .unwrap();
+        let fid = xo.get(b"Fm").unwrap().as_reference().unwrap();
+        let s = doc.get_object(fid).unwrap().as_stream().unwrap();
+        let ops = Content::decode(&s.decompressed_content().unwrap())
+            .unwrap()
+            .operations;
+        let fres = doc
+            .dereference(s.dict.get(b"Resources").unwrap())
+            .unwrap()
+            .1
+            .as_dict()
+            .unwrap();
+        let names = doc
+            .dereference(fres.get(b"XObject").unwrap())
+            .unwrap()
+            .1
+            .as_dict()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| String::from_utf8_lossy(k).into_owned())
+            .collect();
+        (fid, ops, names)
+    }
+
+    #[test]
+    fn descends_into_a_straddling_form_and_works_on_a_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        let orig_form = build_wrapped(&src, CROP_LEFT);
+        let stats = redact_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), None).unwrap();
+        assert_eq!(stats.pages_redacted, 1);
+        let doc = Document::load(&dst).unwrap();
+
+        // 1 ページ目: 新しい Form (複製) を指し、外側の矩形と画像が消えている
+        let (fid1, ops1, names1) = form_of_page(&doc, 1);
+        assert_ne!(fid1, orig_form);
+        assert_eq!(count(&ops1, "re"), 1);
+        assert_eq!(count(&ops1, "Do"), 1);
+        assert_eq!(names1, vec!["ImIn".to_string()]);
+        assert!(has_image_width(&doc, 5));
+        assert!(has_image_width(&doc, 7)); // 2 ページ目の元の Form がまだ使う
+
+        // 2 ページ目 (CropBox なし): 元の Form のまま、中身も変わらない
+        let (fid2, ops2, names2) = form_of_page(&doc, 2);
+        assert_eq!(count(&ops2, "re"), 2);
+        assert_eq!(count(&ops2, "Do"), 2);
+        assert_eq!(names2.len(), 2);
+        assert_ne!(fid1, fid2);
+    }
+
+    #[test]
+    fn form_called_twice_under_one_name_is_kept_whole() {
+        // 同じ名前で 2 回呼ぶと、呼ぶたびに CTM が違いうるので、中へは入らない
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        let orig_form = build_wrapped(&src, CROP_LEFT);
+        // 1 ページ目の内容を、同じ Form を 2 回呼ぶものに差し替える
+        let mut doc = Document::load(&src).unwrap();
+        let p1 = *doc.get_pages().get(&1).unwrap();
+        let c = doc
+            .get_dictionary(p1)
+            .unwrap()
+            .get(b"Contents")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        if let Ok(Object::Stream(s)) = doc.get_object_mut(c) {
+            s.set_plain_content(
+                b"q 1 0 0 1 250 100 cm /Fm Do Q q 1 0 0 1 0 0 cm /Fm Do Q".to_vec(),
+            );
+        }
+        doc.save(&src).unwrap();
+        let err_or_stats = redact_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), None);
+        let stats = err_or_stats.unwrap();
+        assert_eq!(stats.pages_redacted, 0);
+        let doc = Document::load(&dst).unwrap();
+        let (fid1, ops1, _) = form_of_page(&doc, 1);
+        assert_eq!(fid1, orig_form);
+        assert_eq!(count(&ops1, "re"), 2);
     }
 
     #[test]
