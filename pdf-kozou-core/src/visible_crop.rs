@@ -54,6 +54,8 @@ pub struct VisibleCropStats {
     pub images_stubbed: usize,
     /// 使われていない /XObject リソース参照 (画像・Form) を外した数。
     pub xobjects_pruned: usize,
+    /// 内容ストリームを解析できず、見えている範囲を確定できなかったため、対象にしなかった画像。
+    pub unparsable_images: HashSet<ObjectId>,
 }
 
 /// 見えている範囲がこの割合未満なら crop 対象にする (savings が小さすぎる
@@ -246,6 +248,9 @@ struct CropAnalysis {
     uv_union: HashMap<ObjectId, Rect>,
     /// 回転/スキュー配置などで安全に解析できなかった xref (crop 対象外)。
     ineligible: HashSet<ObjectId>,
+    /// 内容ストリームを解析できなかったために、使われ方を確定できなかった XObject
+    /// (`ineligible` にも入れる。通知のために原因を分けて持つ)。
+    unparsable: HashSet<ObjectId>,
     /// 各画像 xref を実際に描画している全箇所: (それを含むストリームの
     /// ObjectId, そのストリーム自身の Content::operations 内でのインデックス)。
     do_sites: HashMap<ObjectId, HashSet<(ObjectId, usize)>>,
@@ -272,9 +277,9 @@ fn walk(
     let content = match crate::content_filter::decode_content(content_bytes) {
         Ok(c) => c,
         Err(_) => {
-            analysis
-                .ineligible
-                .extend(collect_resource_xobjects(doc, resources));
+            let ids = collect_resource_xobjects(doc, resources);
+            analysis.ineligible.extend(ids.iter().copied());
+            analysis.unparsable.extend(ids);
             return;
         }
     };
@@ -1549,6 +1554,12 @@ pub fn crop_to_visible_area(doc: &mut Document, jpeg_quality: u8) -> VisibleCrop
     stats.xobjects_pruned = prune_unused_xobjects(doc);
     let analysis = analyze(doc);
     let shielded = shielded_images(doc);
+    stats.unparsable_images = analysis
+        .unparsable
+        .iter()
+        .copied()
+        .filter(|id| crate::image_recompress::is_image_xobject(doc, *id))
+        .collect();
 
     let mut crop_plans: HashMap<ObjectId, Rect> = HashMap::new();
     let mut stub_targets: HashSet<ObjectId> = HashSet::new();
@@ -1771,6 +1782,7 @@ mod tests {
         let st = crop_to_visible_area(&mut b.doc, 90);
         assert_eq!(st.images_stubbed, 0);
         assert_eq!(st.images_cropped, 0);
+        assert_eq!(st.unparsable_images, HashSet::from([b.image]));
         assert_eq!(image_wh(&b.doc, b.image), (200, 200));
         let d = &b.doc.get_object(b.image).unwrap().as_stream().unwrap().dict;
         assert!(d.has(b"SMask"));

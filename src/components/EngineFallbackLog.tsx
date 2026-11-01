@@ -12,8 +12,12 @@ export function opLabelKey(op: string): string {
   return `engine_fallback.op.${op.replace(/-/g, "_")}`;
 }
 
-/** 切り替え元のエンジンに応じた本文のキー (hayro: 描画、lopdf: 圧縮などの PDF 操作) */
-export function logKey(from: string): string {
+/**
+ * 本文のキー。切り替え元のエンジンに応じて選ぶ (hayro: 描画、lopdf: 圧縮などの PDF 操作)。
+ * 画像の最適化 (op が "image_opt" で始まる) は MuPDF への切り替えではないので、別の本文にする。
+ */
+export function logKey(from: string, op?: string): string {
+  if (op?.startsWith("image_opt")) return "engine_fallback.log_image_opt";
   return from === "lopdf" ? "engine_fallback.log_lopdf" : "engine_fallback.log";
 }
 
@@ -44,7 +48,7 @@ export function EngineFallbackNotes({ fallbacks }: { fallbacks?: BatchFallback[]
         >
           <span style={{ color: "var(--c-warn)" }}>⚠ </span>
           <span style={{ color: "var(--c-text)" }}>
-            {t(logKey(f.from), { op: t(opLabelKey(f.op)) })}
+            {t(logKey(f.from, f.op), { op: t(opLabelKey(f.op)) })}
             {f.pages.length > 0
               ? ` (${t("engine_fallback.pages", { pages: formatPages(f.pages) })})`
               : ""}

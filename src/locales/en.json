@@ -848,6 +848,7 @@
   "engine_fallback": {
     "log": "hayro could not process this, switched to MuPDF ({{op}})",
     "log_lopdf": "lopdf could not process this, used MuPDF ({{op}})",
+    "log_image_opt": "Image optimization (DPI / crop) was not fully applied ({{op}})",
     "pages": "page {{pages}}",
     "reason": "Reason: {{reason}}",
     "close": "Close",
@@ -860,6 +861,8 @@
       "rasterize_imposition": "imposed image PDF",
       "compress": "compression",
       "compress_clean": "compression (clean option: rebuilding content streams)",
+      "image_opt_partial": "left images with unparsable content as is",
+      "image_opt_failed": "could not process the PDF",
       "compress_subset": "compression (font subsetting)",
       "redact_crop": "removal outside CropBox",
       "rewrite": "re-render compression"

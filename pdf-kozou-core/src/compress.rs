@@ -878,13 +878,33 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
             let recompress_tmp = kozou_tmp_unique_path("imgdpi", "pdf")
                 .to_string_lossy()
                 .into_owned();
-            match crate::image_recompress::recompress_images(
+            let recompress_res = crate::image_recompress::recompress_images(
                 &current_input,
                 &recompress_tmp,
                 target_dpi,
                 quality,
                 crop_to_visible,
-            ) {
+            );
+            // この処理は lopdf だけで行い、MuPDF の代替実装は無い (バックエンドの指定に関わらず
+            // 実行される)。適用できなかったことは、MuPDF へのフォールバックとは別に通知する。
+            // 設計上の対象外 (未対応の画像形式など) は通知しない。
+            match &recompress_res {
+                Ok(stats) => {
+                    if let Some(reason) = stats.notice_reason() {
+                        crate::engine_notice::report_image_opt(
+                            crate::engine_notice::OP_IMAGE_OPT_PARTIAL,
+                            Some(req.input.as_str()),
+                            &reason,
+                        );
+                    }
+                }
+                Err(e) => crate::engine_notice::report_image_opt(
+                    crate::engine_notice::OP_IMAGE_OPT_FAILED,
+                    Some(req.input.as_str()),
+                    e,
+                ),
+            }
+            match recompress_res {
                 Ok(stats)
                     if stats.images_recompressed > 0
                         || stats.images_cropped > 0

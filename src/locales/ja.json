@@ -848,6 +848,7 @@
   "engine_fallback": {
     "log": "hayroで処理できなかったため、MuPDFに切り替えました（{{op}}）",
     "log_lopdf": "lopdfで処理できないため、MuPDFで処理しました（{{op}}）",
+    "log_image_opt": "画像の最適化（DPI指定・クロップ）を完全には適用できませんでした（{{op}}）",
     "pages": "ページ {{pages}}",
     "reason": "理由: {{reason}}",
     "close": "閉じる",
@@ -860,6 +861,8 @@
       "rasterize_imposition": "面付け画像化PDF",
       "compress": "圧縮",
       "compress_clean": "圧縮（cleanオプション: 内容ストリームの再構築）",
+      "image_opt_partial": "内容を解析できない画像を元のまま残した",
+      "image_opt_failed": "PDFを処理できない",
       "compress_subset": "圧縮（フォントサブセット）",
       "redact_crop": "CropBox外の除去",
       "rewrite": "再描画圧縮"

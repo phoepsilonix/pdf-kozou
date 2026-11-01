@@ -38,11 +38,44 @@
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::{HashMap, HashSet};
 
+/// 画像を最適化 (ダウンサンプル・クロップ) の対象にしなかった理由。
+/// 通知するかどうかは理由ごとに決める (`notify`)。
+///
+/// 対応する画像形式を増やす (例: パレット PNG = Indexed) と、`UnsupportedFormat` に当たる
+/// 画像が減るだけで、通知の仕組みは変えなくてよい。新しい理由を足すときは `ALL` / `notify` /
+/// `describe` にも足す。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SkipReason {
+    /// 内容ストリームを解析できず、画像の描かれ方 (表示サイズ・見えている範囲) を確定できない。
+    /// 本来は処理できるはずの画像なので、利用者へ通知する。
+    UnparsableContent,
+    /// 対応していない画像形式 (JBIG2 / JPX / CCITT / Indexed など)。設計上の対象外なので通知しない。
+    UnsupportedFormat,
+}
+
+impl SkipReason {
+    pub const ALL: [SkipReason; 2] = [SkipReason::UnparsableContent, SkipReason::UnsupportedFormat];
+
+    /// 利用者へ通知するか ("処理できるはずなのにできなかった" 理由だけ true)。
+    pub fn notify(self) -> bool {
+        matches!(self, SkipReason::UnparsableContent)
+    }
+
+    /// 通知の理由文 (他の通知の理由と同じく英語)。
+    fn describe(self) -> &'static str {
+        match self {
+            SkipReason::UnparsableContent => "content stream could not be parsed",
+            SkipReason::UnsupportedFormat => "unsupported image format",
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ImageRecompressStats {
     pub images_scanned: usize,
     pub images_recompressed: usize,
-    pub images_skipped_filter: usize,
+    /// 最適化の対象にしなかった画像の数 (理由別)。
+    pub skipped: HashMap<SkipReason, usize>,
     pub images_cropped: usize,
     pub images_stubbed: usize,
     /// 使われていない /XObject リソース参照を外した数 (切り詰めオプション時)。
@@ -166,6 +199,46 @@ fn get_content_bytes(doc: &Document, obj: &Object) -> Vec<u8> {
 }
 
 /// 1 つの XObject 辞書 (/Image or /Form) を CTM 付きで走査し、
+impl ImageRecompressStats {
+    /// `reason` で対象にしなかった画像の数
+    pub fn skipped(&self, reason: SkipReason) -> usize {
+        self.skipped.get(&reason).copied().unwrap_or(0)
+    }
+
+    fn set_skipped(&mut self, reason: SkipReason, n: usize) {
+        if n > 0 {
+            self.skipped.insert(reason, n);
+        }
+    }
+
+    fn add_skipped(&mut self, reason: SkipReason) {
+        *self.skipped.entry(reason).or_insert(0) += 1;
+    }
+
+    /// 利用者へ通知すべきスキップの説明 (例: "3 image(s) left as is: content stream could not
+    /// be parsed")。通知すべきものが無ければ None。
+    pub fn notice_reason(&self) -> Option<String> {
+        let parts: Vec<String> = SkipReason::ALL
+            .iter()
+            .filter(|r| r.notify())
+            .filter_map(|&r| {
+                let n = self.skipped(r);
+                (n > 0).then(|| format!("{n} image(s) left as is: {}", r.describe()))
+            })
+            .collect();
+        (!parts.is_empty()).then(|| parts.join("; "))
+    }
+}
+
+/// Image XObject か
+pub(crate) fn is_image_xobject(doc: &Document, id: ObjectId) -> bool {
+    matches!(
+        doc.get_object(id),
+        Ok(Object::Stream(s))
+            if s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) == Some(b"Image")
+    )
+}
+
 /// `resources` の /XObject が指すオブジェクトを、Form XObject の /Resources をたどって
 /// すべて集める。内容ストリームを解析できなかったとき、そこから描かれうる画像を
 /// 「判定不能」として扱う (表示サイズやクロップを確定しない) のに使う。
@@ -829,12 +902,16 @@ pub fn recompress_images(
     // 0. (オプション) 実際に見えている範囲だけへの画像クロップ。
     //    表示サイズ(pt) 集計より前に行うことで、この後の DPI 判定が
     //    正しく縮小された表示サイズを基準にできるようにする。
+    // 内容ストリームを解析できず、対象にできなかった画像 (クロップ側・縮小側の和集合)
+    let mut unparsable_images: HashSet<ObjectId> = HashSet::new();
     if crop_to_visible {
         let crop_stats = crate::visible_crop::crop_to_visible_area(&mut doc, jpeg_quality);
         stats.images_cropped = crop_stats.images_cropped;
         stats.images_stubbed = crop_stats.images_stubbed;
         stats.xobjects_pruned = crop_stats.xobjects_pruned;
+        unparsable_images.extend(crop_stats.unparsable_images);
     }
+    stats.set_skipped(SkipReason::UnparsableContent, unparsable_images.len());
 
     if target_dpi <= 0.0 {
         doc.save(output).map_err(|e| format!("lopdf save: {e}"))?;
@@ -874,6 +951,13 @@ pub fn recompress_images(
         // 内容を解析できなかったストリームから描かれうる画像は、表示サイズを確定できない。
         // 小さく見積もって縮小しすぎないよう、対象から外す
         needed.retain(|xref, _| !unparsable.contains(xref));
+        unparsable_images.extend(
+            unparsable
+                .iter()
+                .copied()
+                .filter(|id| is_image_xobject(&doc, *id)),
+        );
+        stats.set_skipped(SkipReason::UnparsableContent, unparsable_images.len());
     }
 
     if needed.is_empty() {
@@ -897,7 +981,7 @@ pub fn recompress_images(
             continue;
         };
         let Some(kind) = classify_source(&doc, dict) else {
-            stats.images_skipped_filter += 1;
+            stats.add_skipped(SkipReason::UnsupportedFormat);
             continue;
         };
         let Some((native_w, native_h)) = image_native_size(dict) else {
@@ -1201,14 +1285,47 @@ mod tests {
             }
         }
         doc.save(&i).unwrap();
-        recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, false).unwrap();
-        let doc = Document::load(&o).unwrap();
-        for id in [im0, mask] {
+        // クロップも有効にしても、同じ画像を二重に数えない (クロップ側・縮小側の和集合)
+        for crop in [false, true] {
+            let stats = recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, crop)
+                .unwrap();
             assert_eq!(
-                dict_of(&doc, id).get(b"Width").unwrap().as_i64().unwrap(),
-                400
+                stats.skipped(SkipReason::UnparsableContent),
+                1,
+                "crop={crop}"
             );
+            assert_eq!(
+                stats.notice_reason().as_deref(),
+                Some("1 image(s) left as is: content stream could not be parsed")
+            );
+            let doc = Document::load(&o).unwrap();
+            for id in [im0, mask] {
+                assert_eq!(
+                    dict_of(&doc, id).get(b"Width").unwrap().as_i64().unwrap(),
+                    400
+                );
+            }
         }
+        let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+    }
+
+    /// 対応していない画像形式は数えるが、通知はしない (設計上の対象外)。
+    /// 対応形式が増えれば、この数が減るだけになる。
+    #[test]
+    fn unsupported_format_is_counted_but_not_notified() {
+        let (i, o) = (tmp("g.pdf"), tmp("g_out.pdf"));
+        let (im0, _) = write_doc(&i, false);
+        let mut doc = Document::load(&i).unwrap();
+        if let Some(Object::Stream(s)) = doc.objects.get_mut(&im0) {
+            s.dict.set("Filter", "JBIG2Decode");
+        }
+        doc.save(&i).unwrap();
+        let stats =
+            recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, false).unwrap();
+        assert_eq!(stats.skipped(SkipReason::UnsupportedFormat), 1);
+        assert_eq!(stats.skipped(SkipReason::UnparsableContent), 0);
+        assert_eq!(stats.notice_reason(), None);
+        assert!(SkipReason::UnparsableContent.notify() && !SkipReason::UnsupportedFormat.notify());
         let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
     }
 

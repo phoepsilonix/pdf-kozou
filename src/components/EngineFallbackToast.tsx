@@ -53,7 +53,7 @@ export function EngineFallbackToast() {
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
             <span style={{ fontSize: FS.small, color: "var(--c-text)", wordBreak: "break-all" }}>
               {e.file ? `${baseName(e.file)} — ` : ""}
-              {t(logKey(e.from), { op: t(opLabelKey(e.op)) })}
+              {t(logKey(e.from, e.op), { op: t(opLabelKey(e.op)) })}
               {e.pages.length > 0
                 ? ` (${t("engine_fallback.pages", { pages: formatPages(e.pages) })})`
                 : ""}
