@@ -35,7 +35,6 @@
 //     他の画像のマスクとして使われている画像は、本体側の JPEG 変換の
 //     対象から外す。
 
-use lopdf::content::Content;
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::{HashMap, HashSet};
 
@@ -217,7 +216,7 @@ fn collect_xobjects_into(
 
 /// 画像の表示サイズ最大値を `needed` に集計する。
 /// 内容ストリームを解析しきれなかったときは、そこから描かれうる画像を `unparsable` に集める
-/// (decode は解析できない箇所から先を黙って捨てるので、decode_strict で確かめる)。
+/// (decode は解析できない箇所から先を黙って捨てるので、decode_content で確かめる)。
 #[allow(clippy::too_many_arguments)]
 fn walk_content(
     doc: &Document,
@@ -232,7 +231,7 @@ fn walk_content(
     if depth > 12 {
         return;
     }
-    let content = match Content::decode_strict(content_bytes) {
+    let content = match crate::content_filter::decode_content(content_bytes) {
         Ok(c) => c,
         Err(_) => {
             unparsable.extend(collect_resource_xobjects(doc, resources));
@@ -1210,6 +1209,28 @@ mod tests {
                 400
             );
         }
+        let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+    }
+
+    /// 末尾に NUL や改ページが付いただけの内容ストリームは、解析できないものとして
+    /// 扱わず、通常どおり縮小する。
+    #[test]
+    fn trailing_nul_does_not_block_downsampling() {
+        let (i, o) = (tmp("f.pdf"), tmp("f_out.pdf"));
+        let (_, mask) = write_doc(&i, false);
+        let mut doc = Document::load(&i).unwrap();
+        let page = *doc.get_pages().get(&1).unwrap();
+        let cid = doc.get_page_contents(page)[0];
+        if let Some(Object::Stream(s)) = doc.objects.get_mut(&cid) {
+            s.set_plain_content(b"q 100 0 0 100 10 10 cm /Im0 Do Q\n\0\x0c".to_vec());
+        }
+        doc.save(&i).unwrap();
+        recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, false).unwrap();
+        let doc = Document::load(&o).unwrap();
+        assert_eq!(
+            dict_of(&doc, mask).get(b"Width").unwrap().as_i64().unwrap(),
+            100
+        );
         let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
     }
 

@@ -266,10 +266,10 @@ fn walk(
     if depth > 12 {
         return;
     }
-    // decode は解析できない箇所から先を黙って捨てるので、decode_strict で確かめる。
+    // decode は解析できない箇所から先を黙って捨てるので、decode_content で確かめる。
     // 解析しきれなければ、そこから描かれうる画像は「見えている範囲」を確定できない。
     // 範囲が欠けたまま切り詰めたり、見えないものとして置換したりしないよう、対象外にする
-    let content = match Content::decode_strict(content_bytes) {
+    let content = match crate::content_filter::decode_content(content_bytes) {
         Ok(c) => c,
         Err(_) => {
             analysis
@@ -1057,8 +1057,8 @@ fn rewrite_stream(
         .map_err(|e| format!("stream {stream_id:?} as_stream: {e}"))?;
     let bytes = crate::image_recompress::stream_bytes(stream)
         .map_err(|e| format!("stream {stream_id:?} decompress: {e}"))?;
-    let content =
-        Content::decode_strict(&bytes).map_err(|e| format!("stream {stream_id:?} decode: {e}"))?;
+    let content = crate::content_filter::decode_content(&bytes)
+        .map_err(|e| format!("stream {stream_id:?} decode: {e}"))?;
 
     let mut new_ops: Vec<Operation> =
         Vec::with_capacity(content.operations.len() + targets.len() * 3);
@@ -1266,9 +1266,9 @@ fn find_xo_slot(doc: &Document, start: ObjectId, climb: bool) -> Option<(XoSlot,
 /// 内容ストリームのバイト列から `Do` の名前を集める。解釈できなければ None。
 fn content_do_names(bytes: &[u8]) -> Option<HashSet<Vec<u8>>> {
     // decode は解析できない箇所から先を黙って捨て、後ろにある Do を見落とす (使用中の XObject を
-    // 未使用と誤判定する) ので、decode_strict で確かめる。解析しきれなければ None
-    let content = Content::decode_strict(bytes)
-        .or_else(|_| Content::decode_strict(&mask_type3_width_ops(bytes)))
+    // 未使用と誤判定する) ので、decode_content で確かめる。解析しきれなければ None
+    let content = crate::content_filter::decode_content(bytes)
+        .or_else(|_| crate::content_filter::decode_content(&mask_type3_width_ops(bytes)))
         .ok()?;
     let mut names = HashSet::new();
     for op in &content.operations {
@@ -1283,7 +1283,7 @@ fn content_do_names(bytes: &[u8]) -> Option<HashSet<Vec<u8>>> {
 
 /// Type3 の文字定義が使う演算子 d0 / d1 の数字を空白に変える。lopdf の内容パーサは演算子に
 /// 英字しか認めないので、"250 0 d0" は演算子 d と、演算子の無い operand 0 に分かれ、
-/// decode_strict が失敗してしまう。Do の名前を集める用途では d0/d1 の中身は要らない。
+/// decode_content が失敗してしまう。Do の名前を集める用途では d0/d1 の中身は要らない。
 fn mask_type3_width_ops(bytes: &[u8]) -> Vec<u8> {
     let is_space = |b: u8| matches!(b, b' ' | b'\t' | b'\r' | b'\n' | 0 | 0x0c);
     let mut out = bytes.to_vec();
@@ -1774,6 +1774,14 @@ mod tests {
         assert_eq!(image_wh(&b.doc, b.image), (200, 200));
         let d = &b.doc.get_object(b.image).unwrap().as_stream().unwrap().dict;
         assert!(d.has(b"SMask"));
+    }
+
+    #[test]
+    fn trailing_nul_does_not_block_crop() {
+        let c = format!("{CLIPPED}\n\0");
+        let mut b = build(&c, (605, 807), None, vec![], false);
+        let st = crop_to_visible_area(&mut b.doc, 90);
+        assert_eq!(st.images_cropped, 1);
     }
 
     #[test]

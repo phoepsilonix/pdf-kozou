@@ -321,6 +321,22 @@ mod tests {
     }
 
     #[test]
+    fn trailing_nul_and_form_feed_are_tolerated() {
+        let (mut doc, page_id) = doc_with(|doc, _| {
+            Object::Reference(doc.add_object(Stream::new(
+                dictionary! {},
+                b"q 0 0 1 1 re f Q\n\0\x0c".to_vec(),
+            )))
+        });
+        assert_eq!(clean_contents(&mut doc).unwrap(), 1);
+        let names: Vec<String> = ops(&page_bytes(&doc, page_id))
+            .into_iter()
+            .map(|o| o.0)
+            .collect();
+        assert_eq!(names, ["q", "re", "f", "Q"]);
+    }
+
+    #[test]
     fn non_finite_numbers_are_an_error() {
         // f32 に収まらない実数 (書き出すと inf になる)
         let huge = format!("{}.5 0 0 1 0 0 cm", "1".repeat(60));

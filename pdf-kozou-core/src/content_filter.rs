@@ -435,6 +435,22 @@ fn transform_content(
     Ok((out, total))
 }
 
+/// 内容ストリームを最後まで解析する (`Content::decode_strict`)。ただし、末尾の空白・NUL・
+/// 改ページは無視する。
+///
+/// `Content::decode` は、解析できないトークンに当たるとそこから先を黙って捨てる (内容が欠ける)。
+/// 一方 `decode_strict` は、全体を解析しきれなければ Err にするが、lopdf のパーサは空白を
+/// " \t\r\n" としか認めないので、末尾に NUL や改ページが付いただけの実害のないストリームも
+/// 弾いてしまう。そうしたストリームは decode でも欠けずに読めるので、末尾だけは許容する。
+/// 途中の NUL や不正なトークンは許容しない (decode はそこで打ち切ってしまう)。
+pub(crate) fn decode_content(bytes: &[u8]) -> Result<Content, lopdf::Error> {
+    let end = bytes
+        .iter()
+        .rposition(|b| !matches!(b, b' ' | b'\t' | b'\r' | b'\n' | 0 | 0x0c))
+        .map_or(0, |i| i + 1);
+    Content::decode_strict(&bytes[..end])
+}
+
 /// 各ページの /Contents を 1 本のストリームにまとめる (中身は書き換えず、連結するだけ)。
 /// 仕様上、/Contents の配列は字句の境目でしか分割されないが、operand と演算子が別の
 /// ストリームに分かれることはある。連結してからでないと正しく解析できない。
@@ -535,9 +551,9 @@ pub(crate) fn reencode_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
     {
         if start > pos {
             // decode は、解析できない箇所から先を黙って捨てる (内容が欠ける) ので、
-            // 全体を解析しきれたかを確かめる decode_strict を使う
-            let content = Content::decode_strict(&bytes[pos..start])
-                .map_err(|e| format!("content decode: {e}"))?;
+            // 全体を解析しきれたかを確かめる (末尾の空白・NUL だけは許容する)
+            let content =
+                decode_content(&bytes[pos..start]).map_err(|e| format!("content decode: {e}"))?;
             if content
                 .operations
                 .iter()
@@ -589,8 +605,8 @@ fn is_clip_render_mode(op: &Operation) -> bool {
 /// インライン画像を含まない部分を加工する
 fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, Counts), String> {
     // decode は、解析できない箇所から先を黙って捨てる (内容が欠ける) ので、
-    // 全体を解析しきれたかを確かめる decode_strict を使う。解析できなければ Err (MuPDF へ)
-    let content = Content::decode_strict(chunk).map_err(|e| format!("content decode: {e}"))?;
+    // 全体を解析しきれたかを確かめる (末尾の空白・NUL だけは許容する)。解析できなければ Err (MuPDF へ)
+    let content = decode_content(chunk).map_err(|e| format!("content decode: {e}"))?;
     let mut c = Counts::default();
     let mut ops: Vec<Operation> = Vec::with_capacity(content.operations.len());
     // TextOnly: 組み立て中のパス (m l c v y h re) と、そのパスに付いた W / W*。
@@ -798,6 +814,50 @@ mod tests {
         let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
         doc.trailer.set("Root", cat);
         (doc, page_id)
+    }
+
+    #[test]
+    fn decode_content_tolerates_only_trailing_junk() {
+        // 末尾の空白・NUL・改ページだけは許容する (decode でも欠けずに読めるため)
+        for ok in [
+            &b"q 0 0 1 1 re f Q\0"[..],
+            b"q 0 0 1 1 re f Q\x0c\x0c",
+            b"q 0 0 1 1 re f Q \r\n\0\0",
+            b"",
+        ] {
+            assert!(decode_content(ok).is_ok(), "{ok:?}");
+        }
+        assert_eq!(
+            decode_content(b"q 0 0 1 1 re f Q\0")
+                .unwrap()
+                .operations
+                .len(),
+            4
+        );
+        // 途中の NUL や不正なトークンは許容しない (decode はそこで打ち切ってしまう)
+        for bad in [
+            &b"q\0 0 0 1 1 re f Q"[..],
+            b"q 0 0 1 1 re f Q @@@",
+            b"BT (abc Tj ET",
+        ] {
+            assert!(decode_content(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn trailing_nul_does_not_block_text_removal() {
+        let (mut doc, page_id) = page_doc(|doc| {
+            Object::Reference(doc.add_object(lopdf::Stream::new(
+                dictionary! {},
+                b"BT /F1 12 Tf (a) Tj ET 0 0 5 5 re f\n\0\0".to_vec(),
+            )))
+        });
+        let stats = transform(&mut doc, Mode::RemoveText).unwrap();
+        assert_eq!(stats.removed_ops, 1);
+        let ops = Content::decode_strict(&doc.get_page_content(page_id))
+            .unwrap()
+            .operations;
+        assert!(ops.iter().all(|o| o.operator != "Tj"));
     }
 
     #[test]
