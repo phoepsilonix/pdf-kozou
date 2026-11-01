@@ -452,6 +452,19 @@ pub struct RedactStats {
 /// CropBox が MediaBox と実質的に同じとみなす許容誤差 (pt)
 pub(crate) const CROPBOX_EPS: f32 = 0.01;
 
+/// CropBox が MediaBox と同じ大きさ (＝実質トリムなし) かどうか。
+///
+/// mupdf-rs の `crop_box()` は MediaBox の左上を原点にした (Y 下向きの) ページ空間、
+/// `media_box()` は生の PDF 座標 (Y 上向き) で返る。両者は原点が異なるため、
+/// MediaBox が (0,0) 始まりでないページ (例: Canva 製 PDF の [0 7.83 595.5 850.08]) では、
+/// 座標値どうしを比べると一致せず、トリミングされていないページを「トリミング済み」と
+/// 誤判定して redaction を掛けてしまう (内容ストリームが MuPDF に書き直され、
+/// 文字の位置ずれや画像の欠落が起きる)。
+/// 幅・高さの比較は原点の違いに左右されないので、一致判定にはこちらを使う。
+pub(crate) fn crop_is_full_media(media_w: f32, media_h: f32, crop_w: f32, crop_h: f32) -> bool {
+    (media_w - crop_w).abs() < CROPBOX_EPS && (media_h - crop_h).abs() < CROPBOX_EPS
+}
+
 /// CropBox 外側の余白（上下左右、pt 単位）のデフォルト値。
 /// ギリギリの部品が消えにくいように余裕を持たせるための値で、
 /// ユーザーが `RedactMargins` で上書きできる。
@@ -553,10 +566,11 @@ fn redact_outside_cropbox_mupdf(
             }
         };
 
-        // media_box() / crop_box() はどちらも Rotate 適用前の同一座標系で
-        // 返るため、視覚上の回転を考慮した変換は不要（CropBox 未指定時は
-        // MuPDF が内部で MediaBox と同じ値を返すため、その場合は below の
-        // is_uncropped 判定で自動的にスキップされる）。
+        // media_box() / crop_box() はどちらも Rotate 適用前の値で返るため、
+        // 視覚上の回転を考慮した変換は不要。ただし座標の原点は異なる
+        // (media_box() は生の PDF 座標、crop_box() は MediaBox 左上を原点とする
+        // Y 下向きの座標)。CropBox 未指定のページは crop_box() が MediaBox と
+        // 同じ大きさを返すので、下の crop_is_full_media() で自動的にスキップされる。
         let media = match page.media_box() {
             Ok(r) => r,
             Err(e) => {
@@ -573,6 +587,14 @@ fn redact_outside_cropbox_mupdf(
         };
 
         let (mx0, my0, mx1, my1) = (media.x0, media.y0, media.x1, media.y1);
+
+        // トリミングされていないページ (CropBox が MediaBox と同じ大きさ) は何もしない。
+        // 座標値ではなく大きさで比べる (MediaBox の原点が (0,0) でないページ対策。
+        // crop_is_full_media() のコメント参照)。
+        if crop_is_full_media(mx1 - mx0, my1 - my0, crop.x1 - crop.x0, crop.y1 - crop.y0) {
+            continue;
+        }
+
         // CropBox は必ず MediaBox の内側に収める（不正な CropBox 対策）
         let (cx0, cy0, cx1, cy1) = (
             crop.x0.max(mx0),
@@ -702,6 +724,19 @@ mod tests {
         assert!(!result.contains("X13"));
         assert!(result.contains("/X14"));
         assert!(result.contains("Do"));
+    }
+
+    #[test]
+    fn test_crop_is_full_media() {
+        // MediaBox [0 7.83 595.5 850.08] (Canva 製 PDF) で CropBox 未指定:
+        // crop_box() は原点が違うだけで大きさは MediaBox と同じ → トリムなし
+        assert!(crop_is_full_media(595.5, 842.25, 595.5, 842.249_97));
+        // 原点が (0,0) の通常のページ
+        assert!(crop_is_full_media(595.0, 842.0, 595.0, 842.0));
+        // 下半分だけにトリミングされている
+        assert!(!crop_is_full_media(595.5, 842.25, 595.5, 428.6));
+        // 左右がトリミングされている
+        assert!(!crop_is_full_media(595.5, 842.25, 400.0, 842.25));
     }
 
     #[test]
