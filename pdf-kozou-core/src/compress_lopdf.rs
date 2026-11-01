@@ -633,7 +633,7 @@ mod tests {
         assert_eq!(doc.get_pages().len(), 1);
         let page_id = *doc.get_pages().get(&1).unwrap();
         assert_eq!(doc.get_page_contents(page_id).len(), 1);
-        let ops: Vec<String> = lopdf::content::Content::decode(&doc.get_page_content(page_id))
+        let ops: Vec<String> = lopdf::content::Content::decode_strict(&doc.get_page_content(page_id))
             .unwrap()
             .operations
             .into_iter()

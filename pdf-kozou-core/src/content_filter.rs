@@ -889,7 +889,7 @@ mod tests {
         let src = b"q 1 0 0 rg 10 10 50 50 re f Q BT /F1 12 Tf 20 700 Td (Hello) Tj [(A) 20 (B)] TJ 14 TL (x) ' 1 2 (y) \" ET";
         let (out, n) = strip_text_ops(src).unwrap();
         assert_eq!(n, 4);
-        let ops = Content::decode(&out).unwrap().operations;
+        let ops = Content::decode_strict(&out).unwrap().operations;
         let names: Vec<&str> = ops.iter().map(|o| o.operator.as_str()).collect();
         assert!(!names.contains(&"Tj") && !names.contains(&"TJ") && !names.contains(&"'") && !names.contains(&"\""));
         // 状態演算子と図形はそのまま
@@ -987,7 +987,7 @@ mod tests {
         let (out, c) = transform_content(src, Mode::TextOnly, &kinds_for_test()).unwrap();
         assert_eq!(c.paints, 3); // f / S / b*
         assert_eq!(c.images, 2); // Im1 / sh
-        let ops = Content::decode(&out).unwrap().operations;
+        let ops = Content::decode_strict(&out).unwrap().operations;
         let names: Vec<&str> = ops.iter().map(|o| o.operator.as_str()).collect();
         for gone in ["f", "S", "b*", "sh"] {
             assert!(!names.contains(&gone), "{gone} remains: {names:?}");

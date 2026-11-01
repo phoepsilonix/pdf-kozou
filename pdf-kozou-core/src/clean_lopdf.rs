@@ -120,7 +120,7 @@ mod tests {
 
     /// 内容ストリームを演算子の列に直す (書式の違いを無視して比べるため)
     fn ops(bytes: &[u8]) -> Vec<(String, Vec<String>)> {
-        lopdf::content::Content::decode(bytes)
+        lopdf::content::Content::decode_strict(bytes)
             .unwrap()
             .operations
             .into_iter()

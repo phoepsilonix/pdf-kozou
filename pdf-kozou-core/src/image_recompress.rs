@@ -167,7 +167,57 @@ fn get_content_bytes(doc: &Document, obj: &Object) -> Vec<u8> {
 }
 
 /// 1 つの XObject 辞書 (/Image or /Form) を CTM 付きで走査し、
+/// `resources` の /XObject が指すオブジェクトを、Form XObject の /Resources をたどって
+/// すべて集める。内容ストリームを解析できなかったとき、そこから描かれうる画像を
+/// 「判定不能」として扱う (表示サイズやクロップを確定しない) のに使う。
+pub(crate) fn collect_resource_xobjects(
+    doc: &Document,
+    resources: &Dictionary,
+) -> HashSet<ObjectId> {
+    let mut out = HashSet::new();
+    collect_xobjects_into(doc, resources, &mut out, 0);
+    out
+}
+
+fn collect_xobjects_into(
+    doc: &Document,
+    resources: &Dictionary,
+    out: &mut HashSet<ObjectId>,
+    depth: u32,
+) {
+    if depth > 12 {
+        return;
+    }
+    let Some(xobjects) = resources
+        .get(b"XObject")
+        .ok()
+        .and_then(|o| resolve_dict(doc, o))
+    else {
+        return;
+    };
+    for (_, v) in xobjects.iter() {
+        let Object::Reference(id) = v else {
+            continue;
+        };
+        if !out.insert(*id) {
+            continue;
+        }
+        if let Ok(Object::Stream(s)) = doc.get_object(*id) {
+            if let Some(res) = s
+                .dict
+                .get(b"Resources")
+                .ok()
+                .and_then(|o| resolve_dict(doc, o))
+            {
+                collect_xobjects_into(doc, &res, out, depth + 1);
+            }
+        }
+    }
+}
+
 /// 画像の表示サイズ最大値を `needed` に集計する。
+/// 内容ストリームを解析しきれなかったときは、そこから描かれうる画像を `unparsable` に集める
+/// (decode は解析できない箇所から先を黙って捨てるので、decode_strict で確かめる)。
 #[allow(clippy::too_many_arguments)]
 fn walk_content(
     doc: &Document,
@@ -177,13 +227,17 @@ fn walk_content(
     depth: u32,
     visiting: &mut HashSet<ObjectId>,
     needed: &mut HashMap<ObjectId, (f64, f64)>,
+    unparsable: &mut HashSet<ObjectId>,
 ) {
     if depth > 12 {
         return;
     }
-    let content = match Content::decode(content_bytes) {
+    let content = match Content::decode_strict(content_bytes) {
         Ok(c) => c,
-        Err(_) => return,
+        Err(_) => {
+            unparsable.extend(collect_resource_xobjects(doc, resources));
+            return;
+        }
     };
 
     let mut stack: Vec<Matrix> = Vec::new();
@@ -288,6 +342,7 @@ fn walk_content(
                             depth + 1,
                             visiting,
                             needed,
+                            unparsable,
                         );
                         visiting.remove(xref);
                     }
@@ -789,6 +844,7 @@ pub fn recompress_images(
 
     // 1. 表示サイズ集計
     let mut needed: HashMap<ObjectId, (f64, f64)> = HashMap::new();
+    let mut unparsable: HashSet<ObjectId> = HashSet::new();
     for page_id in doc.page_iter() {
         let Some(resources) = resolve_resources(&doc, page_id) else {
             continue;
@@ -812,7 +868,13 @@ pub fn recompress_images(
             0,
             &mut visiting,
             &mut needed,
+            &mut unparsable,
         );
+    }
+    if !unparsable.is_empty() {
+        // 内容を解析できなかったストリームから描かれうる画像は、表示サイズを確定できない。
+        // 小さく見積もって縮小しすぎないよう、対象から外す
+        needed.retain(|xref, _| !unparsable.contains(xref));
     }
 
     if needed.is_empty() {
@@ -1108,6 +1170,46 @@ mod tests {
         assert_eq!(d.get(b"Height").unwrap().as_i64().unwrap(), 100);
         let s = doc.get_object(mask).unwrap().as_stream().unwrap();
         assert_eq!(stream_bytes(s).unwrap().len(), 100 * 100);
+        let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+    }
+
+    /// 内容ストリームに解析できない箇所があるとき、decode は先を黙って捨て、手前の表示サイズだけで
+    /// 縮小してしまっていた。ページでは 100pt で描かれる画像が、解析できない Form の中では
+    /// 400pt で描かれる、という場合に、100 画素まで縮めてはいけない。
+    #[test]
+    fn unparsable_form_keeps_its_images_full_size() {
+        let (i, o) = (tmp("d.pdf"), tmp("d_out.pdf"));
+        let (im0, mask) = write_doc(&i, false);
+        let mut doc = Document::load(&i).unwrap();
+        let form = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Form",
+                "BBox" => vec![0.into(), 0.into(), 600.into(), 800.into()],
+                "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => im0 } },
+            },
+            b"@@@ q 400 0 0 400 0 0 cm /Im0 Do Q".to_vec(),
+        ));
+        let page = *doc.get_pages().get(&1).unwrap();
+        let cid = doc.get_page_contents(page)[0];
+        if let Some(Object::Stream(s)) = doc.objects.get_mut(&cid) {
+            s.set_plain_content(b"q 100 0 0 100 10 10 cm /Im0 Do Q\n/Fm Do\n".to_vec());
+        }
+        if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
+            if let Ok(Object::Dictionary(res)) = p.get_mut(b"Resources") {
+                if let Ok(Object::Dictionary(xo)) = res.get_mut(b"XObject") {
+                    xo.set("Fm", Object::Reference(form));
+                }
+            }
+        }
+        doc.save(&i).unwrap();
+        recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, false).unwrap();
+        let doc = Document::load(&o).unwrap();
+        for id in [im0, mask] {
+            assert_eq!(
+                dict_of(&doc, id).get(b"Width").unwrap().as_i64().unwrap(),
+                400
+            );
+        }
         let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
     }
 

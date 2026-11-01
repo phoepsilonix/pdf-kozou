@@ -41,7 +41,7 @@
 //      部分を誤って切り落とすことはない。
 
 use crate::image_recompress::{
-    SourceKind, classify_source, image_native_size, set_flate_content,
+    SourceKind, classify_source, collect_resource_xobjects, image_native_size, set_flate_content,
 };
 use lopdf::content::{Content, Operation};
 use lopdf::{Dictionary, Document, Object, ObjectId};
@@ -266,9 +266,17 @@ fn walk(
     if depth > 12 {
         return;
     }
-    let content = match Content::decode(content_bytes) {
+    // decode は解析できない箇所から先を黙って捨てるので、decode_strict で確かめる。
+    // 解析しきれなければ、そこから描かれうる画像は「見えている範囲」を確定できない。
+    // 範囲が欠けたまま切り詰めたり、見えないものとして置換したりしないよう、対象外にする
+    let content = match Content::decode_strict(content_bytes) {
         Ok(c) => c,
-        Err(_) => return,
+        Err(_) => {
+            analysis
+                .ineligible
+                .extend(collect_resource_xobjects(doc, resources));
+            return;
+        }
     };
 
     let mut mstack: Vec<Matrix> = Vec::new();
@@ -1050,7 +1058,7 @@ fn rewrite_stream(
     let bytes = crate::image_recompress::stream_bytes(stream)
         .map_err(|e| format!("stream {stream_id:?} decompress: {e}"))?;
     let content =
-        Content::decode(&bytes).map_err(|e| format!("stream {stream_id:?} decode: {e}"))?;
+        Content::decode_strict(&bytes).map_err(|e| format!("stream {stream_id:?} decode: {e}"))?;
 
     let mut new_ops: Vec<Operation> =
         Vec::with_capacity(content.operations.len() + targets.len() * 3);
@@ -1257,7 +1265,11 @@ fn find_xo_slot(doc: &Document, start: ObjectId, climb: bool) -> Option<(XoSlot,
 
 /// 内容ストリームのバイト列から `Do` の名前を集める。解釈できなければ None。
 fn content_do_names(bytes: &[u8]) -> Option<HashSet<Vec<u8>>> {
-    let content = Content::decode(bytes).ok()?;
+    // decode は解析できない箇所から先を黙って捨て、後ろにある Do を見落とす (使用中の XObject を
+    // 未使用と誤判定する) ので、decode_strict で確かめる。解析しきれなければ None
+    let content = Content::decode_strict(bytes)
+        .or_else(|_| Content::decode_strict(&mask_type3_width_ops(bytes)))
+        .ok()?;
     let mut names = HashSet::new();
     for op in &content.operations {
         if op.operator == "Do" {
@@ -1267,6 +1279,24 @@ fn content_do_names(bytes: &[u8]) -> Option<HashSet<Vec<u8>>> {
         }
     }
     Some(names)
+}
+
+/// Type3 の文字定義が使う演算子 d0 / d1 の数字を空白に変える。lopdf の内容パーサは演算子に
+/// 英字しか認めないので、"250 0 d0" は演算子 d と、演算子の無い operand 0 に分かれ、
+/// decode_strict が失敗してしまう。Do の名前を集める用途では d0/d1 の中身は要らない。
+fn mask_type3_width_ops(bytes: &[u8]) -> Vec<u8> {
+    let is_space = |b: u8| matches!(b, b' ' | b'\t' | b'\r' | b'\n' | 0 | 0x0c);
+    let mut out = bytes.to_vec();
+    for i in 0..bytes.len().saturating_sub(1) {
+        if bytes[i] == b'd'
+            && matches!(bytes[i + 1], b'0' | b'1')
+            && (i == 0 || is_space(bytes[i - 1]))
+            && (i + 2 >= bytes.len() || is_space(bytes[i + 2]))
+        {
+            out[i + 1] = b' ';
+        }
+    }
+    out
 }
 
 fn stream_do_names(stream: &lopdf::Stream) -> Option<HashSet<Vec<u8>>> {
@@ -1707,7 +1737,7 @@ mod tests {
     fn ops(doc: &Document, content: ObjectId) -> Vec<Operation> {
         let s = doc.get_object(content).unwrap().as_stream().unwrap();
         let bytes = crate::image_recompress::stream_bytes(s).unwrap();
-        Content::decode(&bytes).unwrap().operations
+        Content::decode_strict(&bytes).unwrap().operations
     }
 
     fn image_wh(doc: &Document, id: ObjectId) -> (i64, i64) {
@@ -1719,6 +1749,49 @@ mod tests {
     }
 
     const CLIPPED: &str = "q 100 200 300 250 re W* n q 600 0 0 800 0 0 cm /Im0 Do Q Q";
+
+    /// 内容ストリームに解析できない箇所があるとき、decode は先を黙って捨てていた。
+    /// 1 本目では画像がクリップの外 (不可視) でも、2 本目の解析できない後半に見える描画が
+    /// あるかもしれない。解析しきれないストリームから描かれうる画像には触らない。
+    #[test]
+    fn unparsable_content_leaves_images_alone() {
+        let c = "q 0 0 10 10 re W* n q 100 0 0 100 300 300 cm /Im0 Do Q Q";
+        let mut b = build(c, (200, 200), Some((200, 200)), vec![], false);
+        let second = b.doc.add_object(Stream::new(
+            dictionary! {},
+            b"@@@ q 600 0 0 800 0 0 cm /Im0 Do Q".to_vec(),
+        ));
+        let page = *b.doc.get_pages().get(&1).unwrap();
+        if let Ok(Object::Dictionary(d)) = b.doc.get_object_mut(page) {
+            d.set(
+                "Contents",
+                vec![Object::Reference(b.content), Object::Reference(second)],
+            );
+        }
+        let st = crop_to_visible_area(&mut b.doc, 90);
+        assert_eq!(st.images_stubbed, 0);
+        assert_eq!(st.images_cropped, 0);
+        assert_eq!(image_wh(&b.doc, b.image), (200, 200));
+        let d = &b.doc.get_object(b.image).unwrap().as_stream().unwrap().dict;
+        assert!(d.has(b"SMask"));
+    }
+
+    #[test]
+    fn do_names_need_a_complete_parse() {
+        let names = |s: &[u8]| content_do_names(s);
+        assert_eq!(
+            names(b"q /Im1 Do Q"),
+            Some(HashSet::from([b"Im1".to_vec()]))
+        );
+        // 解析できない箇所があれば、後ろの Do を見落とさず None (= 不明) にする
+        assert_eq!(names(b"q /Im1 Do Q @@@ /Im2 Do"), None);
+        // Type3 の文字定義 (d0 / d1) は、Do が無いものとして読める
+        assert_eq!(names(b"250 0 d0"), Some(HashSet::new()));
+        assert_eq!(
+            names(b"1000 0 0 0 750 750 d1 q /Im3 Do Q"),
+            Some(HashSet::from([b"Im3".to_vec()]))
+        );
+    }
 
     /// 補正行列は、切り出した整数画素矩形とぴったり対応する
     /// (a*W, d*H, 左端・上端の画素位置がすべて整数になる)。

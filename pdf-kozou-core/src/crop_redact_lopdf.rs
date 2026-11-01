@@ -1581,7 +1581,7 @@ q 1 0 0 1 500 500 cm /Fm1 Do Q";
             .unwrap();
         let fid = xo.get(b"Fm").unwrap().as_reference().unwrap();
         let s = doc.get_object(fid).unwrap().as_stream().unwrap();
-        let ops = Content::decode(&s.decompressed_content().unwrap())
+        let ops = Content::decode_strict(&s.decompressed_content().unwrap())
             .unwrap()
             .operations;
         let fres = doc
