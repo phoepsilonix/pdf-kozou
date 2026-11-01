@@ -19,6 +19,7 @@ import { EngineDropdown } from "./EngineDropdown";
 import { NumInput } from "./NumInput";
 
 const MODES: HayroStrokeMode[] = ["on", "off", "custom"];
+const formatNum = (val: number): string => Number(val.toFixed(10)).toString();
 
 export function HayroStrokeControl() {
   const { t } = useI18n();
@@ -41,8 +42,8 @@ export function HayroStrokeControl() {
         desc:
           id === "on"
             ? t("hayro_stroke.on_desc")
-                .replace("{path}", String(recommendedPath))
-                .replace("{text}", String(recommendedText))
+                .replace("{path}", formatNum(recommendedPath))
+                .replace("{text}", formatNum(recommendedText))
             : t(`hayro_stroke.${id}_desc`),
       }))}
       keepOpenIds={["custom"]}
