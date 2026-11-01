@@ -30,8 +30,8 @@ svg2pdf    = "=0.11.0"
 pdf-writer = "0.10"
 
 [patch.crates-io]
-mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "b8f85d58cc405278a1b9e8dcb1a07944ccc0194c" }
-mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "b8f85d58cc405278a1b9e8dcb1a07944ccc0194c" }
+mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "faf69a5dc92306d2244b11b1f8f201b516bc49d1" }
+mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "faf69a5dc92306d2244b11b1f8f201b516bc49d1" }
 #mupdf = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "ecc74f78b5618b35333a8b015495a342447c4bd6" }
 #mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "ecc74f78b5618b35333a8b015495a342447c4bd6" }
 # hayro: 独自パッチ入りの fork を使う (CID-keyed CFF を内包する OpenType フォントで、
