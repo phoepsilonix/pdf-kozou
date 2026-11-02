@@ -1152,10 +1152,11 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [viewPage, setViewPage] = useState(0);
-  const [total, setTotal] = useState(0);
+  // getPdfInfo で確定した総ページ数と、その持ち主のパス。ファイルを切り替えた直後は
+  // 前のファイルのページ数が残るため、total は下で activePath と照合して導出する。
+  const [confirmedTotal, setConfirmedTotal] = useState(0);
+  const [confirmedTotalPath, setConfirmedTotalPath] = useState("");
   const [zoom, setZoom] = useState(isNarrow ? 0.5 : 1.0);
-  // 左ペインで選択中ページが変わったら「何ページ目か」を読み上げる
-  usePageAnnouncer(viewPage, total);
 
   // ホーム画面のレイアウト設定（リフロー可能文書用）
   const { convertLayoutW, convertLayoutH, convertLayoutEm } = usePdfStore();
@@ -1212,6 +1213,16 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     ? fileList[activeIdx]?.path || ""
     : filePath || fileList[0]?.path || "";
 
+  // 表示中ファイルの総ページ数。getPdfInfo の結果が表示中ファイルのものならそれを使い、
+  // 切替直後で未確定の間はファイル一覧が持つ既知のページ数 (不明なら 0) を使う。
+  // 前のファイルのページ数のまま描画・プリフェッチすると、短いファイルに存在しない
+  // ページを要求して hayro の範囲外エラー → MuPDF フォールバック通知になる。
+  const knownPageCount = isMulti ? (fileList[activeIdx]?.pageCount ?? 0) : 0;
+  const pageCountUnknown = confirmedTotalPath !== activePath && knownPageCount <= 0;
+  const total = confirmedTotalPath === activePath ? confirmedTotal : Math.max(0, knownPageCount);
+  // 左ペインで選択中ページが変わったら「何ページ目か」を読み上げる
+  usePageAnnouncer(viewPage, total);
+
   // currentHit が変わったとき（同ページ内移動）スクロール
   useEffect(() => {
     if (!currentHit || !scrollRef.current) return;
@@ -1241,11 +1252,15 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
 
   useEffect(() => {
     const path = isMulti ? fileList[activeIdx]?.path || "" : activePath;
+    const applyTotal = (n: number) => {
+      setConfirmedTotal(n);
+      setConfirmedTotalPath(path);
+    };
 
     if (!path) {
       if (pdfInfo) {
         setActiveInfo(pdfInfo);
-        setTotal(pdfInfo.page_count);
+        applyTotal(pdfInfo.page_count);
       }
       return;
     }
@@ -1263,7 +1278,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     const forceRefresh = lastInfoKey.current === infoKey && infoKey !== "";
     if (isPdf && pdfInfo && !isMulti && !forceRefresh) {
       setActiveInfo(pdfInfo);
-      setTotal(pdfInfo.page_count);
+      applyTotal(pdfInfo.page_count);
       return;
     }
 
@@ -1274,12 +1289,12 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     })
       .then((i) => {
         setActiveInfo(i);
-        setTotal(i.page_count);
+        applyTotal(i.page_count);
       })
       .catch(() => {
         if (pdfInfo) {
           setActiveInfo(pdfInfo);
-          setTotal(pdfInfo.page_count);
+          applyTotal(pdfInfo.page_count);
         }
       });
   }, [
@@ -1386,6 +1401,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: renderEngine は描画エンジン切替時に再描画させるための意図的な依存
   useEffect(() => {
     if (!activePath) return;
+    // 切替先のページ数が未確定で、保持したページが先頭でない間は描画を待つ。
+    // 総ページ数の確定後に範囲内へ寄せられてから描画する (範囲外ページの要求を避ける)。
+    if (pageCountUnknown && viewPage > 0) return;
     let cancelled = false;
     const pageKey = `${activePath}\u0000${viewPage}`;
     if (textLoadedKey.current !== pageKey) {
@@ -1456,7 +1474,17 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activePath, viewPage, getOrRender, prefetch, total, renderDpi, imgCache, renderEngine]);
+  }, [
+    activePath,
+    viewPage,
+    getOrRender,
+    prefetch,
+    total,
+    pageCountUnknown,
+    renderDpi,
+    imgCache,
+    renderEngine,
+  ]);
 
   // ── 4. サムネイル ──────────────────────────────────────────────────────────
   // ページ移動時に読み上げ
