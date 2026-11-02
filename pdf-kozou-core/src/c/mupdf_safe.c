@@ -6485,7 +6485,22 @@ typedef struct {
     int             group_bad;       /* 非標準ブレンド/不透明度<1/knockout のグループの入れ子の数 */
     unsigned char   group_bad_stack[64];
     int             group_sp;
+
+    /* 透明グループ (Form XObject に ca<1 を掛けて Do した場合など) の不透明度の積。
+     * グループ内の塗りは alpha=1 で通知されるが、実際の見た目はグループ全体の不透明度で
+     * 薄まる。これを掛けないと、半透明の白い円などを「完全に不透明な覆い」と誤認し、
+     * 透けて見えている文字を埋没テキストとして除去してしまう。 */
+    float           group_alpha;            /* 現在の積 (初期値 1.0) */
+    float           group_alpha_stack[64];  /* begin_group 直前の積 */
+    int             group_alpha_sp;
+    int             group_alpha_over;       /* 深すぎる入れ子 (積は変えずに対応だけ取る) */
 } KozouBuriedDevice;
+
+/* 塗りの alpha に、囲んでいる透明グループの不透明度を掛けた実効 alpha */
+static float kozou_buried_eff_alpha(const KozouBuriedDevice *dev, float alpha)
+{
+    return alpha * dev->group_alpha;
+}
 
 /* 現在有効なクリップ矩形との交差を返す。clip_depth==0 (クリップ無し) の
  * 場合は bbox をそのまま返す。fz_infinite_rect 等の特別な番兵値の解釈に
@@ -6775,6 +6790,7 @@ static void kozou_buried_fill_path(
     if (dev->list && dev->list->record_paints && dev->depth_mask == 0)
         prec_ev = kozou_paint_record(dev, fz_bound_path(ctx, path, NULL, ctm));
     if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
+    alpha = kozou_buried_eff_alpha(dev, alpha);
     if (alpha < (dev->list->accept_translucent
                      ? KOZOU_COVER_TRANSLUCENT_MIN_ALPHA : 0.5f)) return;
 
@@ -6850,6 +6866,7 @@ static void kozou_buried_fill_image(
     if (dev->list && dev->list->record_paints && dev->depth_mask == 0)
         prec_ev = kozou_paint_record(dev, fz_transform_rect(fz_unit_rect, ctm));
     if (!dev->list || dev->list->cover_count >= KOZOU_MAX_COVERS) return;
+    alpha = kozou_buried_eff_alpha(dev, alpha);
     if (alpha < (dev->list->accept_translucent
                      ? KOZOU_COVER_TRANSLUCENT_MIN_ALPHA : 0.5f)) return;
 
@@ -6979,6 +6996,14 @@ static void kozou_buried_begin_group(
             dev->group_sp++;
         }
     }
+    /* グループの不透明度を積に反映する (xobj の深さ上限による早期 return より前に行い、
+     * end_group 側の pop と必ず対応させる)。 */
+    if (dev->group_alpha_sp < (int)(sizeof(dev->group_alpha_stack) / sizeof(float))) {
+        dev->group_alpha_stack[dev->group_alpha_sp++] = dev->group_alpha;
+        if (alpha >= 0.0f && alpha < 1.0f) dev->group_alpha *= alpha;
+    } else {
+        dev->group_alpha_over++;
+    }
     if (dev->xobj_depth + 1 >= KOZOU_XOBJ_MAX_DEPTH) return;
     /* 深さを増やすが xref は変わらない（通常の透明グループ）*/
     dev->xobj_depth++;
@@ -6996,6 +7021,11 @@ static void kozou_buried_end_group(
             dev->group_bad -= dev->group_bad_stack[dev->group_sp];
         else
             dev->group_bad--;
+    }
+    if (dev->group_alpha_over > 0) {
+        dev->group_alpha_over--;
+    } else if (dev->group_alpha_sp > 0) {
+        dev->group_alpha = dev->group_alpha_stack[--dev->group_alpha_sp];
     }
     if (dev->xobj_depth > 0) dev->xobj_depth--;
 }
@@ -7041,6 +7071,9 @@ static fz_device *kozou_new_buried_device(fz_context *ctx, KozouBuriedList *list
     dev->xobj_stack[0].inv_ctm = fz_identity;
     dev->clip_depth      = 0;
     dev->clip_over_depth = 0;
+    dev->group_alpha     = 1.0f;
+    dev->group_alpha_sp  = 0;
+    dev->group_alpha_over = 0;
     return (fz_device *)dev;
 }
 
