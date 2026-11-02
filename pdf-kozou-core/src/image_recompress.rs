@@ -172,27 +172,28 @@ fn resolve_resources(doc: &Document, obj_id: ObjectId) -> Option<Dictionary> {
     }
 }
 
-fn get_content_bytes(doc: &Document, obj: &Object) -> Vec<u8> {
+/// 内容ストリーム (配列なら連結) の中身。
+/// 伸長できないストリームがあれば `complete` を false にする (その内容は結果に入らない)。
+fn get_content_bytes(doc: &Document, obj: &Object, complete: &mut bool) -> Vec<u8> {
     let mut out = Vec::new();
     match obj {
         Object::Reference(id) => {
             if let Ok(resolved) = doc.get_object(*id) {
-                out.extend(get_content_bytes(doc, resolved));
+                out.extend(get_content_bytes(doc, resolved, complete));
             }
         }
         Object::Array(arr) => {
             for item in arr {
-                out.extend(get_content_bytes(doc, item));
+                out.extend(get_content_bytes(doc, item, complete));
                 if !out.ends_with(b"\n") {
                     out.push(b'\n');
                 }
             }
         }
-        Object::Stream(s) => {
-            if let Ok(data) = stream_bytes(s) {
-                out.extend(data);
-            }
-        }
+        Object::Stream(s) => match content_stream_bytes(s) {
+            Ok(data) => out.extend(data),
+            Err(_) => *complete = false,
+        },
         _ => {}
     }
     out
@@ -401,7 +402,11 @@ fn walk_content(
                             .and_then(|o| resolve_dict(doc, o))
                             .unwrap_or_else(|| resources.clone());
                         let form_bytes = if let Object::Stream(s) = xobj {
-                            stream_bytes(s).unwrap_or_default()
+                            content_stream_bytes(s).unwrap_or_else(|_| {
+                                // 伸長できない Form。中で描かれうる画像は、表示サイズを確定できない
+                                unparsable.extend(collect_resource_xobjects(doc, &form_resources));
+                                Vec::new()
+                            })
                         } else {
                             Vec::new()
                         };
@@ -492,6 +497,66 @@ pub(crate) fn stream_bytes(stream: &lopdf::Stream) -> Result<Vec<u8>, lopdf::Err
     } else {
         stream.decompressed_content()
     }
+}
+
+/// Flate として最後まで伸長できるか。
+///
+/// lopdf の伸長は、壊れた・途中で切れた Flate でも Err にせず、空か途中までの内容を Ok で返す。
+/// 内容ストリームの一部が欠けても、そのままでは気づけないので、別に確かめる。
+/// zlib のチェックサム (adler32) の欠落・不一致だけなら、lopdf と同じく 2 バイトの zlib ヘッダを
+/// 飛ばして生の deflate として読み直し、最後まで伸長できれば完全とみなす。
+/// (壊れたデータがたまたま有効な deflate になり、チェックサムだけが合わない場合は、
+/// チェックサムの不一致と区別できない。lopdf やビューアと同じ許容範囲として受け入れる。)
+pub(crate) fn flate_is_complete(input: &[u8]) -> bool {
+    use flate2::read::{DeflateDecoder, ZlibDecoder};
+    if input.is_empty() {
+        return true;
+    }
+    if std::io::copy(&mut ZlibDecoder::new(input), &mut std::io::sink()).is_ok() {
+        return true;
+    }
+    input.len() > 2
+        && std::io::copy(&mut DeflateDecoder::new(&input[2..]), &mut std::io::sink()).is_ok()
+}
+
+/// 内容ストリーム (ページの内容・Form XObject) の中身。`stream_bytes` と違い、Flate が壊れて
+/// いたり途中で切れていたりして内容が欠けるときも Err にする。
+/// 画像データには使わない (内容ストリームより大きく、二重に伸長するのは無駄なため)。
+pub(crate) fn content_stream_bytes(stream: &lopdf::Stream) -> Result<Vec<u8>, String> {
+    let flate_only = stream
+        .filters()
+        .map(|f| f.len() == 1 && f[0] == b"FlateDecode")
+        .unwrap_or(false);
+    if flate_only && !flate_is_complete(&stream.content) {
+        return Err("corrupt or truncated Flate stream".into());
+    }
+    stream_bytes(stream).map_err(|e| e.to_string())
+}
+
+/// テスト用: 伸長できない、または内容が欠ける内容ストリームの例 (種類名, ストリーム)。
+/// lopdf の伸長は壊れた Flate を Err にしないので、`content_stream_bytes` が検出する。
+#[cfg(test)]
+pub(crate) fn broken_content_streams() -> Vec<(&'static str, lopdf::Stream)> {
+    use flate2::{Compression, write::ZlibEncoder};
+    use std::io::Write;
+    let mut enc = ZlibEncoder::new(Vec::new(), Compression::default());
+    enc.write_all(&b"q 1 0 0 1 0 0 cm 0 0 5 5 re f Q ".repeat(50))
+        .unwrap();
+    let z = enc.finish().unwrap();
+    let mk = |filter: &str, data: Vec<u8>| {
+        lopdf::Stream::new(lopdf::dictionary! { "Filter" => filter }, data)
+    };
+    vec![
+        (
+            "garbage",
+            mk("FlateDecode", b"this is not zlib data".to_vec()),
+        ),
+        ("truncated", mk("FlateDecode", z[..z.len() / 2].to_vec())),
+        (
+            "unimplemented filter",
+            mk("RunLengthDecode", b"\x02abc\x80".to_vec()),
+        ),
+    ]
 }
 
 /// /Decode が無い、または各成分が恒等 ([0 1 0 1 ...]) かどうか。
@@ -931,7 +996,13 @@ pub fn recompress_images(
         let Ok(contents) = page_dict.get(b"Contents") else {
             continue;
         };
-        let content_bytes = get_content_bytes(&doc, contents);
+        let mut complete = true;
+        let content_bytes = get_content_bytes(&doc, contents, &mut complete);
+        if !complete {
+            // 伸長できない内容ストリームがある。そこから描かれうる画像は、表示サイズを
+            // 確定できない (空の内容として黙って飛ばさない)
+            unparsable.extend(collect_resource_xobjects(&doc, &resources));
+        }
         if content_bytes.is_empty() {
             continue;
         }
@@ -1327,6 +1398,109 @@ mod tests {
         assert_eq!(stats.notice_reason(), None);
         assert!(SkipReason::UnparsableContent.notify() && !SkipReason::UnsupportedFormat.notify());
         let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+    }
+
+    /// 伸長できない (Flate が壊れている・途中で切れている・未対応のフィルタ) Form の中の画像は、
+    /// 空の内容として黙って飛ばさず、縮小しない。
+    #[test]
+    fn undecompressable_form_keeps_its_images_full_size() {
+        for (kind, mut form) in broken_content_streams() {
+            let (i, o) = (tmp("h.pdf"), tmp("h_out.pdf"));
+            let (im0, mask) = write_doc(&i, false);
+            let mut doc = Document::load(&i).unwrap();
+            form.dict.set("Type", "XObject");
+            form.dict.set("Subtype", "Form");
+            form.dict
+                .set("BBox", vec![0.into(), 0.into(), 600.into(), 800.into()]);
+            form.dict.set(
+                "Resources",
+                dictionary! { "XObject" => dictionary! { "Im0" => im0 } },
+            );
+            let form = doc.add_object(form);
+            let page = *doc.get_pages().get(&1).unwrap();
+            let cid = doc.get_page_contents(page)[0];
+            if let Some(Object::Stream(s)) = doc.objects.get_mut(&cid) {
+                s.set_plain_content(b"q 100 0 0 100 10 10 cm /Im0 Do Q\n/Fm Do\n".to_vec());
+            }
+            if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
+                if let Ok(Object::Dictionary(res)) = p.get_mut(b"Resources") {
+                    if let Ok(Object::Dictionary(xo)) = res.get_mut(b"XObject") {
+                        xo.set("Fm", Object::Reference(form));
+                    }
+                }
+            }
+            doc.save(&i).unwrap();
+            for crop in [false, true] {
+                let stats =
+                    recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, crop)
+                        .unwrap();
+                assert_eq!(
+                    stats.skipped(SkipReason::UnparsableContent),
+                    1,
+                    "{kind} crop={crop}"
+                );
+                let doc = Document::load(&o).unwrap();
+                for id in [im0, mask] {
+                    assert_eq!(
+                        dict_of(&doc, id).get(b"Width").unwrap().as_i64().unwrap(),
+                        400,
+                        "{kind} crop={crop}"
+                    );
+                }
+            }
+            let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+        }
+    }
+
+    /// 伸長できないページの内容ストリームも同じ。空の内容として黙って飛ばさない。
+    #[test]
+    fn undecompressable_page_content_keeps_images_full_size() {
+        for (kind, broken) in broken_content_streams() {
+            let (i, o) = (tmp("i.pdf"), tmp("i_out.pdf"));
+            let (im0, mask) = write_doc(&i, false);
+            let mut doc = Document::load(&i).unwrap();
+            let page = *doc.get_pages().get(&1).unwrap();
+            let cid = doc.get_page_contents(page)[0];
+            doc.objects.insert(cid, Object::Stream(broken));
+            doc.save(&i).unwrap();
+            let stats =
+                recompress_images(i.to_str().unwrap(), o.to_str().unwrap(), 72.0, 80, false)
+                    .unwrap();
+            assert_eq!(stats.skipped(SkipReason::UnparsableContent), 1, "{kind}");
+            let doc = Document::load(&o).unwrap();
+            for id in [im0, mask] {
+                assert_eq!(
+                    dict_of(&doc, id).get(b"Width").unwrap().as_i64().unwrap(),
+                    400,
+                    "{kind}"
+                );
+            }
+            let _ = (std::fs::remove_file(i), std::fs::remove_file(o));
+        }
+    }
+
+    #[test]
+    fn flate_completeness_check() {
+        use flate2::{Compression, write::ZlibEncoder};
+        use std::io::Write;
+        let data: Vec<u8> = (0..5000u32).map(|i| (i * 7 % 251) as u8).collect();
+        let mut enc = ZlibEncoder::new(Vec::new(), Compression::default());
+        enc.write_all(&data).unwrap();
+        let z = enc.finish().unwrap();
+        assert!(flate_is_complete(&z));
+        assert!(flate_is_complete(b""));
+        // adler32 が無い・合わないだけで、伸長はできる
+        assert!(flate_is_complete(&z[..z.len() - 4]));
+        let mut bad_sum = z.clone();
+        *bad_sum.last_mut().unwrap() ^= 0xff;
+        assert!(flate_is_complete(&bad_sum));
+        // 途中で切れた・壊れた
+        assert!(!flate_is_complete(&z[..z.len() / 2]));
+        assert!(!flate_is_complete(b"this is not zlib data"));
+        let mut mid = z.clone();
+        let m = mid.len() / 2;
+        mid[m..m + 24].fill(0xff);
+        assert!(!flate_is_complete(&mid));
     }
 
     /// 末尾に NUL や改ページが付いただけの内容ストリームは、解析できないものとして

@@ -465,7 +465,13 @@ fn walk(
                             (None, None) => None,
                         };
                         let form_bytes = if let Object::Stream(s) = xobj {
-                            crate::image_recompress::stream_bytes(s).unwrap_or_default()
+                            crate::image_recompress::content_stream_bytes(s).unwrap_or_else(|_| {
+                                // 伸長できない Form。中で描かれうる画像は、見えている範囲を確定できない
+                                let ids = collect_resource_xobjects(doc, &form_resources);
+                                analysis.ineligible.extend(ids.iter().copied());
+                                analysis.unparsable.extend(ids);
+                                Vec::new()
+                            })
                         } else {
                             Vec::new()
                         };
@@ -507,8 +513,8 @@ fn analyze(doc: &Document) -> CropAnalysis {
         let mut visiting = HashSet::new();
         let mut walk_one = |id: ObjectId| {
             if let Ok(Object::Stream(s)) = doc.get_object(id) {
-                if let Ok(bytes) = crate::image_recompress::stream_bytes(s) {
-                    walk(
+                match crate::image_recompress::content_stream_bytes(s) {
+                    Ok(bytes) => walk(
                         doc,
                         id,
                         &bytes,
@@ -518,7 +524,14 @@ fn analyze(doc: &Document) -> CropAnalysis {
                         0,
                         &mut visiting,
                         &mut analysis,
-                    );
+                    ),
+                    Err(_) => {
+                        // 伸長できない内容ストリーム。そこから描かれうる画像は、
+                        // 見えている範囲を確定できない (黙って飛ばさない)
+                        let ids = collect_resource_xobjects(doc, &resources);
+                        analysis.ineligible.extend(ids.iter().copied());
+                        analysis.unparsable.extend(ids);
+                    }
                 }
             }
         };
@@ -1060,7 +1073,7 @@ fn rewrite_stream(
     let stream = obj
         .as_stream()
         .map_err(|e| format!("stream {stream_id:?} as_stream: {e}"))?;
-    let bytes = crate::image_recompress::stream_bytes(stream)
+    let bytes = crate::image_recompress::content_stream_bytes(stream)
         .map_err(|e| format!("stream {stream_id:?} decompress: {e}"))?;
     let content = crate::content_filter::decode_content(&bytes)
         .map_err(|e| format!("stream {stream_id:?} decode: {e}"))?;
@@ -1304,7 +1317,7 @@ fn mask_type3_width_ops(bytes: &[u8]) -> Vec<u8> {
 }
 
 fn stream_do_names(stream: &lopdf::Stream) -> Option<HashSet<Vec<u8>>> {
-    content_do_names(&crate::image_recompress::stream_bytes(stream).ok()?)
+    content_do_names(&crate::image_recompress::content_stream_bytes(stream).ok()?)
 }
 
 /// ページの /Contents (単一ストリームまたはその配列) の Do 名を集める。
@@ -1785,6 +1798,61 @@ mod tests {
         assert_eq!(image_wh(&b.doc, b.image), (200, 200));
         let d = &b.doc.get_object(b.image).unwrap().as_stream().unwrap().dict;
         assert!(d.has(b"SMask"));
+    }
+
+    /// 2 本目の内容ストリームを伸長できない (Flate が壊れている・途中で切れている・未対応の
+    /// フィルタ) とき、そこから描かれうる画像を「見えない」と誤判定して置換してはいけない
+    /// (空の内容として黙って飛ばさない)。
+    #[test]
+    fn undecompressable_content_leaves_images_alone() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let c = "q 0 0 10 10 re W* n q 100 0 0 100 300 300 cm /Im0 Do Q Q";
+            let mut b = build(c, (200, 200), Some((200, 200)), vec![], false);
+            let second = b.doc.add_object(broken);
+            let page = *b.doc.get_pages().get(&1).unwrap();
+            if let Ok(Object::Dictionary(d)) = b.doc.get_object_mut(page) {
+                d.set(
+                    "Contents",
+                    vec![Object::Reference(b.content), Object::Reference(second)],
+                );
+            }
+            let st = crop_to_visible_area(&mut b.doc, 90);
+            assert_eq!(st.images_stubbed, 0, "{kind}");
+            assert_eq!(st.images_cropped, 0, "{kind}");
+            assert_eq!(st.unparsable_images, HashSet::from([b.image]), "{kind}");
+            assert_eq!(image_wh(&b.doc, b.image), (200, 200), "{kind}");
+        }
+    }
+
+    /// 伸長できない Form の中で使われうる画像も同じ。
+    #[test]
+    fn undecompressable_form_leaves_images_alone() {
+        for (kind, mut form) in crate::image_recompress::broken_content_streams() {
+            let c = "q 0 0 10 10 re W* n q 100 0 0 100 300 300 cm /Im0 Do Q Q\n/Fm Do";
+            let mut b = build(c, (200, 200), Some((200, 200)), vec![], false);
+            form.dict.set("Type", "XObject");
+            form.dict.set("Subtype", "Form");
+            form.dict
+                .set("BBox", vec![0.into(), 0.into(), 600.into(), 800.into()]);
+            form.dict.set(
+                "Resources",
+                dictionary! { "XObject" => dictionary! { "Im0" => b.image } },
+            );
+            let form = b.doc.add_object(form);
+            let page = *b.doc.get_pages().get(&1).unwrap();
+            if let Ok(Object::Dictionary(p)) = b.doc.get_object_mut(page) {
+                if let Ok(Object::Dictionary(res)) = p.get_mut(b"Resources") {
+                    if let Ok(Object::Dictionary(xo)) = res.get_mut(b"XObject") {
+                        xo.set("Fm", Object::Reference(form));
+                    }
+                }
+            }
+            let st = crop_to_visible_area(&mut b.doc, 90);
+            assert_eq!(st.images_stubbed, 0, "{kind}");
+            assert_eq!(st.images_cropped, 0, "{kind}");
+            assert_eq!(st.unparsable_images, HashSet::from([b.image]), "{kind}");
+            assert_eq!(image_wh(&b.doc, b.image), (200, 200), "{kind}");
+        }
     }
 
     #[test]
