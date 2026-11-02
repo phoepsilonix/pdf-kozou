@@ -2030,7 +2030,9 @@ fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>
             // 文字 bbox との重なりが 2% に満たないので、ここでは取りこぼさない。実際に
             // 見た目が違うかどうかは画素差分 (cover_patch) が判断する。
             cover_ratio: Some(0.002),
-            image_alpha_threshold: None,
+            // 薄い影 (SMask 付き半透明画像) も覆いとして拾う。既定 (0.5) だと拾えず、
+            // 隠し直しパッチを作るページとして選ばれない。
+            image_alpha_threshold: Some(0.02),
             layout_w: None,
             layout_h: None,
             layout_em: None,

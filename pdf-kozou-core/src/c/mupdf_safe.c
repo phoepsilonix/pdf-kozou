@@ -9351,6 +9351,11 @@ void kozou_detect_buried_text(
         memset(list, 0, sizeof(KozouBuriedList));
         list->page_h = page_h;
         list->probe_lowfill = (cover_ratio > 0.0f && cover_ratio < KOZOU_BURIED_PROBE_RATIO);
+        /* 探索 (隠し直しパッチを試すページ選び) では、半透明の塗り・薄い影の画像も覆いに数える。
+         * 数えないと、白い文字の上に半透明の影画像を重ねたデザイン (Canva の影付き文字等) が
+         * 「覆われていない」と判定されてパッチが作られず、文字が影の手前に出てしまう。
+         * 埋没テキストの検出/無害化 (探索でない通常の呼び出し) の挙動は変えない。 */
+        list->accept_translucent = list->probe_lowfill;
 
         /* Pass 1: 描画順を記録
          * CropBox外にはみ出した装飾 (デザインツール書き出しでよくある
