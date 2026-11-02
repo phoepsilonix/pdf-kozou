@@ -25,6 +25,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
+import { setMergeListToolbarPosition, useMergeListToolbarPosition } from "../lib/fileListToolbar";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { type SortDirection, type SortKey, sortFileEntries } from "../lib/fileSort";
 import { type FileWithPath, hasImage, isMupdfExtension } from "../lib/fileTypes";
@@ -67,6 +68,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
     usePdfStore();
   const { announceScreen, announceSuccess, announceError, announceKey } = useA11y();
   const { t } = useI18n();
+  const toolbarPos = useMergeListToolbarPosition();
   const { isNarrow } = useViewport();
   const mobilePlatform = useIsMobilePlatform();
   const [statusMsg] = useState("");
@@ -710,30 +712,55 @@ useEffect(() => {
     : s.summaryRow;
 
   // ── 編集画面 ─────────────────────────────────────────────────────────────
+  // 追加・並び替え・クリア。一覧の上(標準)か下。ホーム画面とは別に覚える。
+  const listToolbar = (
+    <div style={toolbarPos === "top" ? s.listToolbarTop : s.listToolbarBottom}>
+      <button type="button" style={s.btnAdd} onClick={pickFiles}>
+        {t("merge.add_btn")}
+      </button>
+      <FileSortSelect
+        onSort={sortEntries}
+        disabled={entries.length < 2}
+        style={{ padding: "6px 10px", fontSize: FS.body, borderRadius: 7 }}
+      />
+      <div style={{ flex: 1 }} />
+      <button
+        type="button"
+        style={s.btnClear}
+        onClick={(e) => {
+          setEntries([]);
+          (e.currentTarget as HTMLButtonElement).blur();
+        }}
+        aria-label={t("file.clear_aria")}
+        title={t("file.clear_aria")}
+      >
+        {t("file.clear")}
+      </button>
+      <button
+        type="button"
+        style={s.btnSm}
+        onClick={() => {
+          const next = toolbarPos === "top" ? "bottom" : "top";
+          setMergeListToolbarPosition(next);
+          announceSuccess(next === "top" ? "file.toolbar_moved_top" : "file.toolbar_moved_bottom");
+        }}
+        aria-label={t(toolbarPos === "top" ? "file.toolbar_to_bottom" : "file.toolbar_to_top")}
+        title={t(toolbarPos === "top" ? "file.toolbar_to_bottom" : "file.toolbar_to_top")}
+      >
+        {toolbarPos === "top" ? "↓" : "↑"}
+      </button>
+    </div>
+  );
+
   return (
     <div style={s.root}>
       <PageHeader>
         <span style={s.title}>{t("merge.edit_title")}</span>
         {entries.length > 0 && (
-          <>
-            <span style={s.sub}>
-              {t("merge.file_count", { count: String(entries.length), pages: String(totalPages) })}
-            </span>
-            <div style={{ flex: 1 }} />
-            <FileSortSelect onSort={sortEntries} disabled={entries.length < 2} />
-            <button
-              type="button"
-              style={s.btnClear}
-              onClick={(e) => {
-                setEntries([]);
-                (e.currentTarget as HTMLButtonElement).blur();
-              }}
-            >
-              クリア
-            </button>
-          </>
+          <span style={s.sub}>
+            {t("merge.file_count", { count: String(entries.length), pages: String(totalPages) })}
+          </span>
         )}
-        {entries.length === 0 && <div style={{ flex: 1 }} />}
       </PageHeader>
 
       <div style={s.body}>
@@ -773,7 +800,43 @@ useEffect(() => {
           </div>
         ) : (
           <div style={s.listArea}>
-            <div style={s.list}>
+            {toolbarPos === "top" && listToolbar}
+
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: ファイルのドラッグ＆ドロップ受け入れ領域。キーボード操作は「ファイルを追加」ボタンが担う。 */}
+            <div
+              style={{ ...s.list, ...(dropOver ? s.listDrop : {}) }}
+              onDragOver={(e) => {
+                if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "copy";
+              }}
+              onDragEnter={(e) => {
+                if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+                e.preventDefault();
+                dragCounter.current++;
+                setDropOver(true);
+              }}
+              onDragLeave={(e) => {
+                if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+                if (--dragCounter.current <= 0) {
+                  setDropOver(false);
+                  dragCounter.current = 0;
+                }
+              }}
+              onDrop={(e) => {
+                if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setDropOver(false);
+                dragCounter.current = 0;
+                const ps = Array.from(e.dataTransfer.files)
+                  .filter((f) => isMupdfExtension(f.name))
+                  .map((f) => (f as FileWithPath).path || f.webkitRelativePath || "")
+                  .filter((p) => p !== "");
+                if (ps.length) loadPaths(ps);
+              }}
+            >
               {entries.map((entry, i) => (
                 // biome-ignore lint/a11y/noStaticElementInteractions: マウスドラッグによる並び替え用ハンドル。項目の削除・選択等の操作は内部のボタン等が担う。
                 <div
@@ -785,9 +848,14 @@ useEffect(() => {
                     e.dataTransfer.setData("mergeId", String(entry.id));
                     onDragStart(entry.id);
                   }}
-                  onDragEnter={() => onDragEnter(entry.id)}
+                  onDragEnter={(e) => {
+                    if (Array.from(e.dataTransfer.types).includes("Files")) return;
+                    onDragEnter(entry.id);
+                  }}
                   onDragEnd={onDragEnd}
                   onDragOver={(e) => {
+                    // 外部ファイルのドロップは親の一覧で受け取る。
+                    if (Array.from(e.dataTransfer.types).includes("Files")) return;
                     e.preventDefault();
                     e.stopPropagation(); // App.tsx のリスナーまでイベントを届けない
                   }}
@@ -872,56 +940,8 @@ useEffect(() => {
                   </button>
                 </div>
               ))}
-
-              {/* biome-ignore lint/a11y/noStaticElementInteractions: ファイル追加用のドロップゾーン。クリック操作は別途用意されたボタンが担う。 */}
-              <div
-                style={{ ...s.addZone, ...(dropOver ? s.addZoneOn : {}) }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.dataTransfer.dropEffect = "copy"; // コピー（追加）であることを示す
-                }}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  dragCounter.current++;
-                  setDropOver(true);
-                }}
-                onDragLeave={() => {
-                  if (--dragCounter.current <= 0) {
-                    setDropOver(false);
-                    dragCounter.current = 0;
-                  }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation(); // イベントの伝播を止める
-                  setDropOver(false);
-                  dragCounter.current = 0;
-
-                  // FileListを配列に変換
-                  const files = Array.from(e.dataTransfer.files);
-
-                  const ps = files
-                    .filter((f) => isMupdfExtension(f.name))
-                    .map((f) => {
-                      // Tauri環境下では、Fileオブジェクトに 'path' というプロパティが注入されています
-                      return (f as FileWithPath).path || f.webkitRelativePath || "";
-                    })
-                    .filter((p) => p !== ""); // 空のパスを除外
-
-                  if (ps.length) {
-                    loadPaths(ps);
-                  } else {
-                    console.warn("No valid PDF paths found in drop event.");
-                  }
-                }}
-              >
-                <button type="button" style={s.btnAdd} onClick={pickFiles}>
-                  {t("merge.add_btn")}
-                </button>
-                {/*<span style={s.addHint}>ここにドロップしても追加できます</span>*/}
-              </div>
             </div>
+            {toolbarPos === "bottom" && listToolbar}
 
             <div style={s.execArea}>
               {entries.some((e) => hasImage([e.filename])) && (
@@ -986,13 +1006,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   sub: { fontSize: FS.label, color: "var(--c-textSub)" },
   btnClear: {
-    padding: "5px 14px",
+    padding: "6px 14px",
     background: "transparent",
     border: `1px solid var(--c-errBd)`,
-    borderRadius: 6,
+    borderRadius: 7,
     color: "var(--c-err)",
     cursor: "pointer",
-    fontSize: FS.small,
+    fontSize: FS.body,
     fontFamily: F,
   },
 
@@ -1041,6 +1061,35 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 7,
     paddingBottom: 7,
+  },
+  listToolbarTop: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "0 2px 10px",
+    flexShrink: 0,
+  },
+  listToolbarBottom: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 2px 0",
+    flexShrink: 0,
+  },
+  listDrop: {
+    outline: "2px dashed var(--c-accent)",
+    outlineOffset: -4,
+    borderRadius: 8,
+  },
+  btnSm: {
+    padding: "6px 13px",
+    background: "transparent",
+    border: `1px solid var(--c-borderHi)`,
+    borderRadius: 7,
+    color: "var(--c-textSub)",
+    cursor: "pointer",
+    fontSize: FS.body,
+    fontFamily: F,
   },
   listItem: {
     display: "flex",
@@ -1119,28 +1168,18 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: F,
     flexShrink: 0,
   },
-  addZone: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "11px 12px",
-    borderRadius: 8,
-    border: `1px dashed var(--c-border)`,
-    transition: "all 0.12s",
-  },
-  addZoneOn: { borderColor: "var(--c-accent)", background: "var(--c-accentBg)" },
   btnAdd: {
-    padding: "7px 16px",
-    background: "transparent",
-    border: `1px solid var(--c-borderHi)`,
-    borderRadius: 6,
-    color: "var(--c-textSub)",
+    padding: "6px 16px",
+    background: "var(--c-accentBg)",
+    border: `1px solid var(--c-accentBd)`,
+    borderRadius: 7,
+    color: "var(--c-accent)",
     cursor: "pointer",
-    fontSize: FS.small,
+    fontSize: FS.body,
     fontFamily: F,
+    fontWeight: 600,
     flexShrink: 0,
   },
-  addHint: { fontSize: FS.caption, color: "var(--c-textDim)" },
 
   execArea: {
     flexShrink: 0,
