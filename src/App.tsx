@@ -44,6 +44,7 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "./hooks/usePlatform";
 import { useViewport } from "./hooks/useViewport";
 import { initEngineFallback } from "./lib/engineFallback";
+import { setFileListToolbarPosition, useFileListToolbarPosition } from "./lib/fileListToolbar";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
 import { initHayroStroke } from "./lib/hayroStroke";
@@ -184,6 +185,7 @@ export default function App() {
   const [photoOverlayHover, setPhotoOverlayHover] = useState(false);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemeId);
   const [uiScale, setUiScale] = useState<number>(loadUiScale);
+  const toolbarPos = useFileListToolbarPosition();
   // 狭幅時、上部の表示設定メニューを畳んでおくためのトグル（フローティング表示）
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dragCounter = useRef(0);
@@ -646,6 +648,56 @@ export default function App() {
   // 狭幅時は % ではなく実測pxから計算した固定値を使う。
   const narrowContentWidth = Math.max(240, Math.min(720, viewportWidth - 48));
 
+  // ファイル一覧のツールバー(追加・全選択・解除・並び替え・クリア)。
+  // 一覧の上(標準)/下に置けるよう、JSXを1つにまとめて配置側で出し分ける。
+  const listToolbar = (
+    <div style={toolbarPos === "top" ? s.listHeader : s.listFooter}>
+      <button type="button" style={s.btnAdd} onClick={handlePickFiles}>
+        {t("file.add")}
+      </button>
+      <button type="button" style={s.btnSm} onClick={selectAll}>
+        {t("file.select_all")}
+      </button>
+      <button type="button" style={s.btnSm} onClick={selectNone}>
+        {t("file.deselect")}
+      </button>
+      <FileSortSelect
+        onSort={(key, direction) => {
+          sortFiles(key, direction);
+          announceSuccess(`file.sorted_${key}_${direction}`);
+        }}
+        style={{ padding: "6px 10px", fontSize: FS.body, borderRadius: 7 }}
+      />
+      <div style={{ flex: 1 }} />
+      <button
+        type="button"
+        style={s.btnClear}
+        onClick={() => {
+          // 全ファイルを読み込み対象の一覧から外す（ディスクからの削除ではない）
+          clearList();
+          announceSuccess("file.cleared");
+        }}
+        aria-label={t("file.clear_aria")}
+        title={t("file.clear_aria")}
+      >
+        {t("file.clear")}
+      </button>
+      <button
+        type="button"
+        style={s.btnSm}
+        onClick={() => {
+          const next = toolbarPos === "top" ? "bottom" : "top";
+          setFileListToolbarPosition(next);
+          announceSuccess(next === "top" ? "file.toolbar_moved_top" : "file.toolbar_moved_bottom");
+        }}
+        aria-label={t(toolbarPos === "top" ? "file.toolbar_to_bottom" : "file.toolbar_to_top")}
+        title={t(toolbarPos === "top" ? "file.toolbar_to_bottom" : "file.toolbar_to_top")}
+      >
+        {toolbarPos === "top" ? "↓" : "↑"}
+      </button>
+    </div>
+  );
+
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: アプリ全体のファイルドロップ受け皿。クリック操作は各ページ内のボタン等が担う。
     <div
@@ -1057,6 +1109,7 @@ export default function App() {
                   </div>
                 ) : (
                   <>
+                    {toolbarPos === "top" && listToolbar}
                     <ul style={{ ...s.fileRows, listStyle: "none", margin: 0, padding: 0 }}>
                       {fileList.map((f, i) => (
                         <FileRow
@@ -1087,38 +1140,7 @@ export default function App() {
                         />
                       ))}
                     </ul>
-                    <div style={s.listFooter}>
-                      <button type="button" style={s.btnAdd} onClick={handlePickFiles}>
-                        {t("file.add")}
-                      </button>
-                      <button type="button" style={s.btnSm} onClick={selectAll}>
-                        {t("file.select_all")}
-                      </button>
-                      <button type="button" style={s.btnSm} onClick={selectNone}>
-                        {t("file.deselect")}
-                      </button>
-                      <FileSortSelect
-                        onSort={(key, direction) => {
-                          sortFiles(key, direction);
-                          announceSuccess(`file.sorted_${key}_${direction}`);
-                        }}
-                        style={{ padding: "6px 10px", fontSize: FS.body, borderRadius: 7 }}
-                      />
-                      <div style={{ flex: 1 }} />
-                      <button
-                        type="button"
-                        style={s.btnClear}
-                        onClick={() => {
-                          // 全ファイルを読み込み対象の一覧から外す（ディスクからの削除ではない）
-                          clearList();
-                          announceSuccess("file.cleared");
-                        }}
-                        aria-label={t("file.clear_aria")}
-                        title={t("file.clear_aria")}
-                      >
-                        {t("file.clear")}
-                      </button>
-                    </div>
+                    {toolbarPos === "bottom" && listToolbar}
                   </>
                 )}
                 {/* ファイル一欄 閉じ */}
@@ -1785,6 +1807,14 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     padding: "10px 16px",
     borderTop: `1px solid var(--c-border)`,
+    background: "var(--c-bg)",
+  },
+  listHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 16px",
+    borderBottom: `1px solid var(--c-border)`,
     background: "var(--c-bg)",
   },
   btnAdd: {

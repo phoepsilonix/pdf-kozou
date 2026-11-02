@@ -57,6 +57,10 @@
     "sorted_name_desc": "Sorted by file name, descending.",
     "sorted_modified_asc": "Sorted by modified date, oldest first.",
     "sorted_modified_desc": "Sorted by modified date, newest first.",
+    "toolbar_to_top": "Move toolbar above the list",
+    "toolbar_to_bottom": "Move toolbar below the list",
+    "toolbar_moved_top": "Toolbar moved above the list.",
+    "toolbar_moved_bottom": "Toolbar moved below the list.",
     "duplicate_name": "Another file has the same name, so the output uses “{{name}}”",
     "pages_unit": " pages"
   },
