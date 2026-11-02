@@ -1087,10 +1087,9 @@ fn rewrite_stream(
             new_ops.push(op.clone());
         }
     }
-    Content {
+    crate::content_filter::encode_content_eol_safe(&Content {
         operations: new_ops,
-    }
-    .encode()
+    })
     .map_err(|e| format!("stream {stream_id:?} encode: {e}"))
 }
 

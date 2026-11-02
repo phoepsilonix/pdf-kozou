@@ -34,6 +34,57 @@ use lopdf::content::{Content, Operation};
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
 use std::collections::{HashMap, HashSet};
 
+/// `Content::encode()` の出力を、行単位で内容ストリームを読む処理 (MuPDF 側の隠しテキスト
+/// 無害化など) が壊さない形にして返す。
+///
+/// lopdf の `Content::encode()` はリテラル文字列の中の改行 (0x0A) をエスケープせず、そのまま
+/// 書き出す。例えば文字コード `0A 24` の文字列が `(<LF>$)` になる (元の PDF では `(\n$)`)。
+/// PDF としては正しいが、行ごとに読む処理は文字列の途中で行を割ってしまい、閉じ括弧のない `(`
+/// を作る。以降のトークン解析は、その `(` からストリームの終わりまでを 1 つの文字列として
+/// 飲み込み、除去処理とフォント収集が途中で止まる。
+///
+/// そこで、制御文字 (LF / CR) を含むリテラル文字列は 16 進文字列 (`<0A24>`) に置き換えてから
+/// エンコードする。16 進文字列は意味が同じで、改行を含まない。
+pub(crate) fn encode_content_eol_safe(content: &Content) -> Result<Vec<u8>, lopdf::Error> {
+    fn fix(obj: &mut Object) {
+        match obj {
+            Object::String(bytes, fmt) => {
+                if matches!(fmt, lopdf::StringFormat::Literal)
+                    && bytes.iter().any(|&b| b == b'\n' || b == b'\r')
+                {
+                    *fmt = lopdf::StringFormat::Hexadecimal;
+                }
+            }
+            Object::Array(items) => items.iter_mut().for_each(fix),
+            Object::Dictionary(d) => d.iter_mut().for_each(|(_, v)| fix(v)),
+            _ => {}
+        }
+    }
+    if !content
+        .operations
+        .iter()
+        .any(|op| op.operands.iter().any(needs_eol_fix))
+    {
+        return content.encode();
+    }
+    let mut c = content.clone();
+    for op in &mut c.operations {
+        op.operands.iter_mut().for_each(fix);
+    }
+    c.encode()
+}
+
+fn needs_eol_fix(obj: &Object) -> bool {
+    match obj {
+        Object::String(bytes, lopdf::StringFormat::Literal) => {
+            bytes.iter().any(|&b| b == b'\n' || b == b'\r')
+        }
+        Object::Array(items) => items.iter().any(needs_eol_fix),
+        Object::Dictionary(d) => d.iter().any(|(_, v)| needs_eol_fix(v)),
+        _ => false,
+    }
+}
+
 /// 加工モード
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -561,8 +612,7 @@ pub(crate) fn reencode_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
             {
                 return Err("content has a non-finite number".into());
             }
-            let chunk = content
-                .encode()
+            let chunk = encode_content_eol_safe(&content)
                 .map_err(|e| format!("content encode: {e}"))?;
             if !chunk.is_empty() {
                 out.extend_from_slice(&chunk);
@@ -671,8 +721,7 @@ fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, 
             },
         }
     }
-    let out = Content { operations: ops }
-        .encode()
+    let out = encode_content_eol_safe(&Content { operations: ops })
         .map_err(|e| format!("content encode: {e}"))?;
     Ok((out, c))
 }
@@ -1137,5 +1186,49 @@ mod tests {
             }
         }
         assert!(saw_pattern, "tiling pattern must stay untouched");
+    }
+    /// lopdf の encode はリテラル文字列中の LF をそのまま書く。行単位で読む処理が文字列を
+    /// 割らないよう、LF / CR を含む文字列は 16 進文字列で書き出し、値は変わらないこと。
+    #[test]
+    fn encode_eol_safe_hexes_strings_with_line_breaks() {
+        let ops = vec![
+            Operation::new(
+                "Tj",
+                vec![Object::String(vec![0x0a, 0x24], lopdf::StringFormat::Literal)],
+            ),
+            Operation::new(
+                "TJ",
+                vec![Object::Array(vec![
+                    Object::String(b"ab".to_vec(), lopdf::StringFormat::Literal),
+                    Object::Integer(-10),
+                    Object::String(vec![0x0d, 0x41], lopdf::StringFormat::Literal),
+                ])],
+            ),
+            Operation::new(
+                "Tj",
+                vec![Object::String(b"plain (ok)".to_vec(), lopdf::StringFormat::Literal)],
+            ),
+        ];
+        let out = encode_content_eol_safe(&Content { operations: ops }).unwrap();
+        // 文字列の外側以外に生の LF が現れるのは演算子の区切りだけ。括弧の中には無い。
+        let text = String::from_utf8_lossy(&out).to_string();
+        for line in text.lines() {
+            let opens = line.matches('(').count();
+            let closes = line.matches(')').count();
+            assert_eq!(opens, closes, "unbalanced parentheses in line: {line:?}");
+        }
+        let back = Content::decode_strict(&out).unwrap().operations;
+        assert_eq!(back.len(), 3);
+        assert_eq!(
+            back[0].operands[0].as_str().unwrap(),
+            &[0x0a, 0x24][..]
+        );
+        match &back[1].operands[0] {
+            Object::Array(a) => {
+                assert_eq!(a[2].as_str().unwrap(), &[0x0d, 0x41][..]);
+            }
+            o => panic!("unexpected {o:?}"),
+        }
+        assert_eq!(back[2].operands[0].as_str().unwrap(), b"plain (ok)");
     }
 }

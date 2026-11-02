@@ -1036,8 +1036,7 @@ impl<'a> Walker<'a> {
             }
         }
 
-        let content = Content { operations: out }
-            .encode()
+        let content = crate::content_filter::encode_content_eol_safe(&Content { operations: out })
             .map_err(|_| "content cannot be re-encoded")?;
         self.counts.paths += counts.paths;
         self.counts.xobjects += counts.xobjects;
