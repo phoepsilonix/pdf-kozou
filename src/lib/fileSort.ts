@@ -1,7 +1,9 @@
 // src/lib/fileSort.ts
 // ファイル一覧(ホーム画面・結合画面)の並び替え。ファイル名と更新日時に対応する。
 //
-// ファイル名の比較は一般的なファイラー(Explorer / Finder / Nautilus)に合わせる。
+// ファイル名の比較は二種類。
+//
+// natural（「名前」）は一般的なファイラー(Explorer / Finder / Nautilus)に合わせる。
 //   - 数字は数値として比較する(natural sort): "file2.pdf" は "file10.pdf" より前。
 //   - 拡張子を除いた本体名を先に比較し、同じなら拡張子で比較する。拡張子込みで
 //     比較すると "." が " " "-" "_" より後ろになり、"file.pdf" が "file (1).pdf" や
@@ -14,12 +16,21 @@
 //     NFC へ正規化する。
 //   - 照合順序は実行環境の既定ロケールではなくアプリの表示言語で決める
 //     (WebKitGTK 等では既定が en-US/C になり、日本語の並びが期待とずれるため)。
-// 更新日時が同じ(または取得できていない)もの同士はファイル名順にし、それでも
-// 同順位なら元の並びを保つ(Array.prototype.sort は安定ソート)。
+//
+// hash（「ハッシュ名」）はハッシュ値・UUID のような英数字の羅列向け。
+//   - 数字を数値にまとめず、文字コード順で 1 文字ずつ比較する。
+//     natural だと "ab10cd…" は "ab2cde…" より後ろ(10 > 2)になるが、
+//     ハッシュとしては "ab10…" が先("1" < "2")である。
+//   - 十六進数の大文字小文字(A/a)は同順位とし、表記だけ違うときは元の文字列で決める。
+//   - 拡張子の分け方と NFC 正規化は natural と同じ。ロケール照合は使わない
+//     (ASCII の並びが表示言語で揺れないようにする)。
+//
+// 更新日時が同じ(または取得できていない)もの同士はファイル名の natural 順にし、
+// それでも同順位なら元の並びを保つ(Array.prototype.sort は安定ソート)。
 
 import { getCurrentLocale } from "./i18n";
 
-export type SortKey = "name" | "modified";
+export type SortKey = "name" | "hash" | "modified";
 export type SortDirection = "asc" | "desc";
 
 interface Collators {
@@ -49,6 +60,15 @@ function splitExt(name: string): [string, string] {
   return m ? [m[1] ?? name, m[2] ?? ""] : [name, ""];
 }
 
+function cmpCode(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** ASCII の A–Z だけを小文字にする。十六進数の桁であり、ロケールの大小変換は使わない。 */
+function foldHexCase(s: string): string {
+  return s.replace(/[A-Z]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 32));
+}
+
 export function compareFilenames(a: string, b: string): number {
   const { loose, strict } = collatorsFor(getCurrentLocale());
   const na = a.normalize("NFC");
@@ -60,7 +80,20 @@ export function compareFilenames(a: string, b: string): number {
     loose.compare(ea, eb) ||
     strict.compare(na, nb) ||
     // 照合上も完全に同じ場合の決定的な最終手段(コードポイント順)
-    (na < nb ? -1 : na > nb ? 1 : 0)
+    cmpCode(na, nb)
+  );
+}
+
+/** ハッシュ名向け。数字の並びは数値ではなく文字として比較する。 */
+function compareHashFilenames(a: string, b: string): number {
+  const na = a.normalize("NFC");
+  const nb = b.normalize("NFC");
+  const [sa, ea] = splitExt(na);
+  const [sb, eb] = splitExt(nb);
+  return (
+    cmpCode(foldHexCase(sa), foldHexCase(sb)) ||
+    cmpCode(foldHexCase(ea), foldHexCase(eb)) ||
+    cmpCode(na, nb)
   );
 }
 
@@ -76,12 +109,13 @@ export function sortFileEntries<T>(
   direction: SortDirection,
 ): T[] {
   const sign = direction === "asc" ? 1 : -1;
+  const byName = key === "hash" ? compareHashFilenames : compareFilenames;
   return [...items].sort((x, y) => {
     if (key === "modified") {
       const d = (get.modified(x) ?? 0) - (get.modified(y) ?? 0);
       if (d !== 0) return sign * d;
       return sign * compareFilenames(get.name(x), get.name(y));
     }
-    return sign * compareFilenames(get.name(x), get.name(y));
+    return sign * byName(get.name(x), get.name(y));
   });
 }

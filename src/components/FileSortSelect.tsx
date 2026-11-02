@@ -18,6 +18,8 @@ interface Props {
 const OPTIONS: { value: `${SortKey}:${SortDirection}`; labelKey: string }[] = [
   { value: "name:asc", labelKey: "file.sort_name_asc" },
   { value: "name:desc", labelKey: "file.sort_name_desc" },
+  { value: "hash:asc", labelKey: "file.sort_hash_asc" },
+  { value: "hash:desc", labelKey: "file.sort_hash_desc" },
   { value: "modified:asc", labelKey: "file.sort_modified_asc" },
   { value: "modified:desc", labelKey: "file.sort_modified_desc" },
 ];

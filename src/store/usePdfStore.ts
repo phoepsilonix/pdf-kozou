@@ -31,7 +31,7 @@ interface PdfStore {
   selectNone: () => void;
   clearList: () => void;
   reorderFiles: (fromId: number, toId: number) => void;
-  /** ファイル名(数字は数値として比較)または更新日時の昇順/降順に一覧を並び替える。 */
+  /** ファイル名(数値順またはハッシュ名の文字コード順)または更新日時の昇順/降順に一覧を並び替える。 */
   sortFiles: (key: SortKey, direction: SortDirection) => void;
 
   filePath: string | null;

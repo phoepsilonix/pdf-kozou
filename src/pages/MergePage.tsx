@@ -317,7 +317,7 @@ useEffect(() => {
       return a;
     });
   const remove = (id: number) => setEntries((p) => p.filter((e) => e.id !== id));
-  // ファイル名(数字は数値として比較)または更新日時の昇順/降順に並び替える。
+  // ファイル名(数値順またはハッシュ名の文字コード順)または更新日時の昇順/降順に並び替える。
   const sortEntries = (key: SortKey, direction: SortDirection) => {
     setEntries((p) =>
       sortFileEntries(
