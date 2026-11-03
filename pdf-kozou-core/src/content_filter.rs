@@ -747,7 +747,7 @@ fn is_delim(c: u8) -> bool {
 /// 内容ストリーム中のインライン画像 (BI ... EI) の範囲 [開始, 終了) を列挙する。
 /// 文字列・16 進文字列・コメント・名前の中の "BI" は無視する。
 /// BI に対応する ID / EI が見つからないときは Err (呼び出し側はフォールバックする)。
-fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String> {
+pub(crate) fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String> {
     let n = b.len();
     let mut spans = Vec::new();
     let mut i = 0usize;

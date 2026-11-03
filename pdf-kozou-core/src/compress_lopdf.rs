@@ -64,6 +64,8 @@ pub(crate) struct Stats {
     pub compressed_streams: usize,
     /// clean で書き直した内容ストリーム (連結後のページ内容・Form XObject・パターン) の数
     pub cleaned_streams: usize,
+    /// clean で、使われていないリソースを外したページ・Form・パターンの数
+    pub cleaned_resources: usize,
 }
 
 // ── 参照の走査・付け替え ──────────────────────────────────────────────────
@@ -341,8 +343,10 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
     }
     if p.clean {
         // 内容ストリームを書き直す。解析できない内容があれば Err (MuPDF へフォールバック)
-        stats.cleaned_streams = crate::clean_lopdf::clean_contents(&mut doc)
+        let outcome = crate::clean_lopdf::clean_contents(&mut doc)
             .map_err(|e| CoreError::Unsupported(format!("{CLEAN_ERR_PREFIX}{e}")))?;
+        stats.cleaned_streams = outcome.streams;
+        stats.cleaned_resources = outcome.resources;
         if gc >= 1 {
             // 連結して要らなくなった内容ストリームを、圧縮する前に取り除く
             stats.pruned_objects += prune(&mut doc);
@@ -633,13 +637,68 @@ mod tests {
         assert_eq!(doc.get_pages().len(), 1);
         let page_id = *doc.get_pages().get(&1).unwrap();
         assert_eq!(doc.get_page_contents(page_id).len(), 1);
-        let ops: Vec<String> = lopdf::content::Content::decode_strict(&doc.get_page_content(page_id))
-            .unwrap()
-            .operations
-            .into_iter()
-            .map(|o| o.operator)
-            .collect();
+        let ops: Vec<String> =
+            lopdf::content::Content::decode_strict(&doc.get_page_content(page_id))
+                .unwrap()
+                .operations
+                .into_iter()
+                .map(|o| o.operator)
+                .collect();
         assert_eq!(ops, ["q", "cm", "re", "f", "Q"]);
+    }
+
+    /// clean は、使われていないリソースを外し、それだけが参照していた画像をファイルから落とす。
+    #[test]
+    fn clean_drops_resources_only_the_unused_entries_referenced() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let img = |doc: &mut Document, byte: u8| {
+            doc.add_object(Stream::new(
+                dictionary! {"Type"=>"XObject","Subtype"=>"Image","Width"=>8,"Height"=>8,
+                "ColorSpace"=>"DeviceGray","BitsPerComponent"=>8},
+                vec![byte; 64],
+            ))
+        };
+        let (used, unused) = (img(&mut doc, 1), img(&mut doc, 2));
+        let c = doc.add_object(Stream::new(
+            dictionary! {},
+            b"q 10 0 0 10 0 0 cm /Used Do Q".to_vec(),
+        ));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+            "Contents" => c,
+            "Resources" => dictionary! { "XObject" => dictionary! { "Used" => used, "Unused" => unused } },
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![page_id.into()], "Count" => 1,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog_id);
+        doc.save(&src).unwrap();
+
+        let count_images = |path: &std::path::Path| {
+            let d = Document::load(path).unwrap();
+            d.objects
+                .values()
+                .filter(|o| matches!(o, Object::Stream(s) if s.dict.get(b"Subtype").ok().and_then(|n| n.as_name().ok()) == Some(b"Image")))
+                .count()
+        };
+        // clean 無しでは、使われていない画像も残る (参照されているため)
+        compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &params()).unwrap();
+        assert_eq!(count_images(&dst), 2);
+        // clean ありでは落ちる
+        let mut p = params();
+        p.clean = true;
+        let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
+        assert_eq!(stats.cleaned_resources, 1, "{stats:?}");
+        assert_eq!(count_images(&dst), 1);
     }
 
     #[test]

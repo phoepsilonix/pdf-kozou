@@ -1276,11 +1276,12 @@ fn safe_compress_only(
         match crate::compress_lopdf::compress_with_lopdf(input, output, &params) {
             Ok(stats) => {
                 eprintln!(
-                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned",
+                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned, {} resource dict(s) pruned",
                     stats.pruned_objects,
                     stats.merged_streams,
                     stats.compressed_streams,
-                    stats.cleaned_streams
+                    stats.cleaned_streams,
+                    stats.cleaned_resources
                 );
                 let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
                 let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);

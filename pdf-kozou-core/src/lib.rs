@@ -8,6 +8,7 @@
 pub mod api;
 pub mod compress;
 mod clean_lopdf;
+mod resource_prune;
 mod compress_lopdf;
 mod crop_redact_lopdf;
 pub mod convert;

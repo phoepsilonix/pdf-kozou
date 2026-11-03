@@ -14,8 +14,12 @@
 //   - Form XObject とタイリングパターンの内容ストリームも同様に書き直す
 //     (注釈の外観ストリームや SMask グループは Form XObject なので含まれる)。
 //
-// 行わないこと (sanitize の領域):
-//   - 未使用リソースの除去、冗長な演算子の整理
+//   - 使われていないリソースを /Resources から外す (resource_prune)。MuPDF の clean も、
+//     リソースを「使われたものだけ」で作り直す。外した結果どこからも参照されなくなった
+//     画像・フォントなどは、garbage_level 1 以上で取り除かれる。
+//
+// 行わないこと:
+//   - 冗長な演算子の整理 (sanitize)
 //   - Type3 フォントの文字定義 (CharProcs) の書き直し
 //
 // 書き直したストリームのフィルタは外れる。Flate での再圧縮は、そのあとの
@@ -29,8 +33,17 @@ use crate::content_filter::{merge_page_contents, reencode_bytes};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::HashSet;
 
-/// 文書内の内容ストリームを clean する。書き直したストリームの数を返す。
-pub(crate) fn clean_contents(doc: &mut Document) -> Result<usize, String> {
+/// clean の結果
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct CleanOutcome {
+    /// 書き直した内容ストリームの数
+    pub streams: usize,
+    /// 使われていないリソースを外した持ち主 (ページ・Form・パターン) の数
+    pub resources: usize,
+}
+
+/// 文書内の内容ストリームを clean する。
+pub(crate) fn clean_contents(doc: &mut Document) -> Result<CleanOutcome, String> {
     let mut cleaned = 0usize;
     let mut touched: HashSet<ObjectId> = HashSet::new();
 
@@ -60,7 +73,13 @@ pub(crate) fn clean_contents(doc: &mut Document) -> Result<usize, String> {
         set_content(doc, id, new_bytes);
         cleaned += 1;
     }
-    Ok(cleaned)
+
+    // ── 使われていないリソースを外す ──
+    let resources = crate::resource_prune::prune_unused_resources(doc);
+    Ok(CleanOutcome {
+        streams: cleaned,
+        resources,
+    })
 }
 
 /// 内容ストリームを持つ部品か (Form XObject / タイリングパターン)
@@ -141,7 +160,7 @@ mod tests {
             let b = doc.add_object(Stream::new(dictionary! {}, b"cm 0 0 50 50 re f Q".to_vec()));
             Object::Array(vec![a.into(), b.into()])
         });
-        let n = clean_contents(&mut doc).unwrap();
+        let n = clean_contents(&mut doc).unwrap().streams;
         assert_eq!(n, 1);
         // /Contents は 1 本のストリームへの参照
         let page = doc.get_dictionary(page_id).unwrap();
@@ -243,7 +262,7 @@ mod tests {
         );
         let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
         doc.trailer.set("Root", catalog);
-        let n = clean_contents(&mut doc).unwrap();
+        let n = clean_contents(&mut doc).unwrap().streams;
         assert_eq!(n, 1, "same /Contents list is cleaned once");
         let c1 = doc
             .get_dictionary(p1)
@@ -278,7 +297,7 @@ mod tests {
             dictionary! { "Type" => "XObject", "Subtype" => "Image" },
             b"0 0 1 1 re   f".to_vec(),
         ));
-        let n = clean_contents(&mut doc).unwrap();
+        let n = clean_contents(&mut doc).unwrap().streams;
         assert_eq!(n, 3, "page + form + pattern");
         let text = |id: ObjectId| {
             doc.get_object(id)
@@ -328,7 +347,7 @@ mod tests {
                 b"q 0 0 1 1 re f Q\n\0\x0c".to_vec(),
             )))
         });
-        assert_eq!(clean_contents(&mut doc).unwrap(), 1);
+        assert_eq!(clean_contents(&mut doc).unwrap().streams, 1);
         let names: Vec<String> = ops(&page_bytes(&doc, page_id))
             .into_iter()
             .map(|o| o.0)
@@ -358,6 +377,6 @@ mod tests {
         if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page_id) {
             p.remove(b"Contents");
         }
-        assert_eq!(clean_contents(&mut doc).unwrap(), 0);
+        assert_eq!(clean_contents(&mut doc).unwrap().streams, 0);
     }
 }
