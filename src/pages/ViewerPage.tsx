@@ -1496,14 +1496,18 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   }, [viewPage]);
 
   useEffect(() => {
-    if (!activePath || !activeInfo) {
+    // activeInfo / confirmedTotal は getPdfInfo の完了まで前のファイルのものが残る。
+    // activePath と持ち主が一致するまでは作らない (旧ファイルのページ数で新ファイルを
+    // 描画して範囲外エラー → フォールバック通知になり、thumbCache も壊れるため)。
+    if (!activePath || !activeInfo || confirmedTotalPath !== activePath) {
       setThumbs([]);
       return;
     }
+    const pageCount = confirmedTotal;
     const cached = thumbCache.current.get(activePath);
     if (cached) setThumbs([...cached]);
     else {
-      const a = new Array(activeInfo.page_count).fill(undefined);
+      const a = new Array(pageCount).fill(undefined);
       thumbCache.current.set(activePath, a);
       setThumbs([]);
     }
@@ -1511,7 +1515,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     (async () => {
       // biome-ignore lint/style/noNonNullAssertion: 直前の分岐(cached有無)でthumbCache.current.setが必ず実行済み
       const cur = thumbCache.current.get(activePath)!;
-      for (let i = 0; i < activeInfo.page_count; i++) {
+      for (let i = 0; i < pageCount; i++) {
         if (cur[i]) continue;
         try {
           const b64 = await renderPage(activePath, i, THUMB_DPI, {
@@ -1528,7 +1532,15 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activePath, activeInfo, convertLayoutEm, convertLayoutH, convertLayoutW]);
+  }, [
+    activePath,
+    activeInfo,
+    confirmedTotal,
+    confirmedTotalPath,
+    convertLayoutEm,
+    convertLayoutH,
+    convertLayoutW,
+  ]);
 
   // ── 5. ファイルカバー ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1802,7 +1814,10 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
                 </div>
                 <div style={thumbListStyle}>
                   {Array.from({ length: total }, (_, i) => {
-                    const th = Math.round(THUMB_W / pageAspect(activeInfo, i));
+                    const th = Math.round(
+                      THUMB_W /
+                        pageAspect(confirmedTotalPath === activePath ? activeInfo : null, i),
+                    );
                     return (
                       <button
                         type="button"
