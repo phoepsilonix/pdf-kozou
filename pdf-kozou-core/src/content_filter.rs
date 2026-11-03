@@ -589,9 +589,12 @@ pub(crate) fn merge_page_contents(doc: &mut Document) -> Result<Vec<ObjectId>, S
 
 /// 内容ストリームを解析して書き直す。演算子と operand は変えず、空白・改行・数値の書式だけが
 /// 変わる (演算子ごとに改行する)。インライン画像 (BI ... EI) はそのまま保つ。
+/// `sanitize` なら、演算子列の整理 (sanitize_ops) も行い、取り除いた演算子の数を返す
+/// (整理は、インライン画像で区切られた部分ごとに行い、画像をまたがない)。
 /// 解析できない内容や、書き直すと壊れる値 (有限でない実数) があれば Err。
 /// 呼び出し側 (clean) は Err を受けて MuPDF 実装へフォールバックする。
-pub(crate) fn reencode_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn reencode_with(bytes: &[u8], sanitize: bool) -> Result<(Vec<u8>, usize), String> {
+    let mut removed = 0usize;
     let images = find_inline_images(bytes)?;
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut pos = 0usize;
@@ -603,7 +606,7 @@ pub(crate) fn reencode_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
         if start > pos {
             // decode は、解析できない箇所から先を黙って捨てる (内容が欠ける) ので、
             // 全体を解析しきれたかを確かめる (末尾の空白・NUL だけは許容する)
-            let content =
+            let mut content =
                 decode_content(&bytes[pos..start]).map_err(|e| format!("content decode: {e}"))?;
             if content
                 .operations
@@ -611,6 +614,11 @@ pub(crate) fn reencode_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
                 .any(|op| op.operands.iter().any(has_non_finite))
             {
                 return Err("content has a non-finite number".into());
+            }
+            if sanitize {
+                let (ops, n) = crate::sanitize_ops::sanitize_operations(content.operations);
+                content.operations = ops;
+                removed += n;
             }
             let chunk = encode_content_eol_safe(&content)
                 .map_err(|e| format!("content encode: {e}"))?;
@@ -625,7 +633,7 @@ pub(crate) fn reencode_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
         }
         pos = end;
     }
-    Ok(out)
+    Ok((out, removed))
 }
 
 /// operand (配列・辞書の中を含む) に、有限でない実数 (f32 に収まらない値) があるか。

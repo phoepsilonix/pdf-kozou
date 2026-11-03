@@ -29,7 +29,7 @@
 // 解析できない内容・デコードできないフィルタがあれば Err を返し、何も保証しない。
 // 呼び出し側 (compress_lopdf) は Err を受けて MuPDF 実装へフォールバックする。
 
-use crate::content_filter::{merge_page_contents, reencode_bytes};
+use crate::content_filter::{merge_page_contents, reencode_with};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::HashSet;
 
@@ -40,11 +40,16 @@ pub(crate) struct CleanOutcome {
     pub streams: usize,
     /// 使われていないリソースを外した持ち主 (ページ・Form・パターン) の数
     pub resources: usize,
+    /// sanitize で取り除いた演算子の数
+    pub ops_removed: usize,
 }
 
-/// 文書内の内容ストリームを clean する。
-pub(crate) fn clean_contents(doc: &mut Document) -> Result<CleanOutcome, String> {
+/// 文書内の内容ストリームを clean する。`sanitize` なら、書き直すときに演算子列も整理する
+/// (sanitize_ops)。MuPDF も、clean と sanitize のどちらでも内容ストリームを書き直し、
+/// sanitize のときだけ描画状態を整理するフィルタを通す。
+pub(crate) fn clean_contents(doc: &mut Document, sanitize: bool) -> Result<CleanOutcome, String> {
     let mut cleaned = 0usize;
+    let mut ops_removed = 0usize;
     let mut touched: HashSet<ObjectId> = HashSet::new();
 
     // ── ページの内容ストリーム ──
@@ -52,10 +57,12 @@ pub(crate) fn clean_contents(doc: &mut Document) -> Result<CleanOutcome, String>
     // (他のページと共有しているストリームは、まとめるときに書き換えられない)
     for id in merge_page_contents(doc)? {
         let bytes = plain_content(doc, id)?;
-        let new_bytes = reencode_bytes(&bytes).map_err(|e| format!("stream {id:?}: {e}"))?;
+        let (new_bytes, removed) =
+            reencode_with(&bytes, sanitize).map_err(|e| format!("stream {id:?}: {e}"))?;
         set_content(doc, id, new_bytes);
         touched.insert(id);
         cleaned += 1;
+        ops_removed += removed;
     }
 
     // ── Form XObject / タイリングパターン ──
@@ -69,9 +76,11 @@ pub(crate) fn clean_contents(doc: &mut Document) -> Result<CleanOutcome, String>
         .collect();
     for id in parts {
         let bytes = plain_content(doc, id)?;
-        let new_bytes = reencode_bytes(&bytes).map_err(|e| format!("stream {id:?}: {e}"))?;
+        let (new_bytes, removed) =
+            reencode_with(&bytes, sanitize).map_err(|e| format!("stream {id:?}: {e}"))?;
         set_content(doc, id, new_bytes);
         cleaned += 1;
+        ops_removed += removed;
     }
 
     // ── 使われていないリソースを外す ──
@@ -79,6 +88,7 @@ pub(crate) fn clean_contents(doc: &mut Document) -> Result<CleanOutcome, String>
     Ok(CleanOutcome {
         streams: cleaned,
         resources,
+        ops_removed,
     })
 }
 
@@ -160,7 +170,7 @@ mod tests {
             let b = doc.add_object(Stream::new(dictionary! {}, b"cm 0 0 50 50 re f Q".to_vec()));
             Object::Array(vec![a.into(), b.into()])
         });
-        let n = clean_contents(&mut doc).unwrap().streams;
+        let n = clean_contents(&mut doc, false).unwrap().streams;
         assert_eq!(n, 1);
         // /Contents は 1 本のストリームへの参照
         let page = doc.get_dictionary(page_id).unwrap();
@@ -186,7 +196,7 @@ mod tests {
         let (mut doc, page_id) = doc_with(|doc, _| {
             Object::Reference(doc.add_object(Stream::new(dictionary! {}, src.clone())))
         });
-        clean_contents(&mut doc).unwrap();
+        clean_contents(&mut doc, false).unwrap();
         let out = page_bytes(&doc, page_id);
         // インライン画像のバイト列はそのまま残る
         let needle: &[u8] = b"BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\n\x42\x49 EI";
@@ -225,7 +235,7 @@ mod tests {
         let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
         doc.trailer.set("Root", catalog);
 
-        clean_contents(&mut doc).unwrap();
+        clean_contents(&mut doc, false).unwrap();
         let b1 = ops(&page_bytes(&doc, p1));
         let b2 = ops(&page_bytes(&doc, p2));
         assert_eq!(
@@ -262,7 +272,7 @@ mod tests {
         );
         let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
         doc.trailer.set("Root", catalog);
-        let n = clean_contents(&mut doc).unwrap().streams;
+        let n = clean_contents(&mut doc, false).unwrap().streams;
         assert_eq!(n, 1, "same /Contents list is cleaned once");
         let c1 = doc
             .get_dictionary(p1)
@@ -297,7 +307,7 @@ mod tests {
             dictionary! { "Type" => "XObject", "Subtype" => "Image" },
             b"0 0 1 1 re   f".to_vec(),
         ));
-        let n = clean_contents(&mut doc).unwrap().streams;
+        let n = clean_contents(&mut doc, false).unwrap().streams;
         assert_eq!(n, 3, "page + form + pattern");
         let text = |id: ObjectId| {
             doc.get_object(id)
@@ -321,7 +331,7 @@ mod tests {
                 doc.add_object(Stream::new(dictionary! {}, b"BT (abc Tj ET".to_vec())),
             )
         });
-        assert!(clean_contents(&mut doc).is_err());
+        assert!(clean_contents(&mut doc, false).is_err());
     }
 
     #[test]
@@ -334,7 +344,7 @@ mod tests {
             )))
         });
         let before = page_bytes(&doc, page_id);
-        assert!(clean_contents(&mut doc).is_err());
+        assert!(clean_contents(&mut doc, false).is_err());
         // Err のとき、ページの内容は変わっていない
         assert_eq!(page_bytes(&doc, page_id), before);
     }
@@ -347,7 +357,7 @@ mod tests {
                 b"q 0 0 1 1 re f Q\n\0\x0c".to_vec(),
             )))
         });
-        assert_eq!(clean_contents(&mut doc).unwrap().streams, 1);
+        assert_eq!(clean_contents(&mut doc, false).unwrap().streams, 1);
         let names: Vec<String> = ops(&page_bytes(&doc, page_id))
             .into_iter()
             .map(|o| o.0)
@@ -362,13 +372,13 @@ mod tests {
         let (mut doc, _) = doc_with(|doc, _| {
             Object::Reference(doc.add_object(Stream::new(dictionary! {}, huge.into_bytes())))
         });
-        assert!(clean_contents(&mut doc).is_err());
+        assert!(clean_contents(&mut doc, false).is_err());
         // 整数として大きすぎる値も、黙って欠けずに Err になる
         let huge_int = format!("{} 0 0 1 0 0 cm", "9".repeat(60));
         let (mut doc, _) = doc_with(|doc, _| {
             Object::Reference(doc.add_object(Stream::new(dictionary! {}, huge_int.into_bytes())))
         });
-        assert!(clean_contents(&mut doc).is_err());
+        assert!(clean_contents(&mut doc, false).is_err());
     }
 
     #[test]
@@ -377,6 +387,6 @@ mod tests {
         if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page_id) {
             p.remove(b"Contents");
         }
-        assert_eq!(clean_contents(&mut doc).unwrap().streams, 0);
+        assert_eq!(clean_contents(&mut doc, false).unwrap().streams, 0);
     }
 }

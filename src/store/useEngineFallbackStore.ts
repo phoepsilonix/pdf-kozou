@@ -14,7 +14,7 @@ export interface EngineFallbackPayload {
   from?: "hayro" | "lopdf";
   /**
    * "render" / "rasterize" / "rasterize_no_text" / "keep-text" / "imposition" / "rasterize_imposition"
-   * (from = hayro)、"compress" / "compress_clean" / "compress_subset" / "redact_crop" / "rewrite" (from = lopdf)、
+   * (from = hayro)、"compress" / "compress_clean" / "compress_sanitize" / "compress_subset" / "redact_crop" / "rewrite" (from = lopdf)、
    * "image_opt_partial" / "image_opt_failed" (from = lopdf。画像の最適化を適用できなかった通知で、MuPDF への切り替えではない)
    */
   op: string;

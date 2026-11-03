@@ -16,11 +16,12 @@
 //   compress_images : false のとき、画像 XObject は圧縮しない
 //   compress_fonts  : false のとき、埋め込みフォント (FontFile*) は圧縮しない
 //   object_stream   : オブジェクトストリームと xref ストリームで保存する
-//   clean           : 内容ストリームの連結・再構築 (clean_lopdf)
+//   clean           : 内容ストリームの連結・再構築、使われていないリソースの除去 (clean_lopdf)
+//   sanitize        : clean に加えて、描画結果を変えない演算子の整理 (sanitize_ops)。
+//                     MuPDF も、clean と sanitize のどちらでも内容を書き直す
 //
 // 次は lopdf では行えないので、指定されていたら Err (Unsupported) を返す。
 // 呼び出し側 (backend) が MuPDF へフォールバックし、GUI へその旨を通知する。
-//   sanitize         : 内容ストリームの整理 (未使用リソース・冗長な演算子の除去)
 //   merge_fonts      : 重複フォントの統合
 //
 // 暗号化された入力、lopdf が内容を落とす入力 (safe_load の検出) も Err にする。
@@ -34,14 +35,23 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 
-/// clean が失敗したときのエラー文言の先頭。呼び出し側 (compress::safe_compress_only) が、
-/// GUI への通知で「clean が原因のフォールバック」だと示すために使う。
+/// 内容ストリームの書き直しが失敗したときのエラー文言の先頭。呼び出し側
+/// (compress::safe_compress_only) が、GUI への通知で「clean / sanitize が原因のフォールバック」
+/// だと示すために使う。
 const CLEAN_ERR_PREFIX: &str = "lopdf clean: ";
+const SANITIZE_ERR_PREFIX: &str = "lopdf sanitize: ";
 
-/// `compress_with_lopdf` のエラーが、clean の失敗 (内容ストリームを解析できないなど) か。
-/// sanitize / merge_fonts の未対応や、暗号化・読み込み失敗は含まない。
-pub(crate) fn is_clean_error(e: &CoreError) -> bool {
-    matches!(e, CoreError::Unsupported(m) if m.starts_with(CLEAN_ERR_PREFIX))
+/// `compress_with_lopdf` のエラーが、内容ストリームの書き直し (clean / sanitize) の失敗
+/// (内容ストリームを解析できないなど) なら、通知に使う処理名 ("compress_clean" /
+/// "compress_sanitize")。merge_fonts の未対応や、暗号化・読み込み失敗は None。
+pub(crate) fn content_rewrite_op(e: &CoreError) -> Option<&'static str> {
+    match e {
+        CoreError::Unsupported(m) if m.starts_with(CLEAN_ERR_PREFIX) => Some("compress_clean"),
+        CoreError::Unsupported(m) if m.starts_with(SANITIZE_ERR_PREFIX) => {
+            Some("compress_sanitize")
+        }
+        _ => None,
+    }
 }
 
 /// 圧縮の指定 (MuPDF 実装 safe_compress_only の引数と同じ)
@@ -66,6 +76,8 @@ pub(crate) struct Stats {
     pub cleaned_streams: usize,
     /// clean で、使われていないリソースを外したページ・Form・パターンの数
     pub cleaned_resources: usize,
+    /// sanitize で取り除いた演算子の数
+    pub sanitized_ops: usize,
 }
 
 // ── 参照の走査・付け替え ──────────────────────────────────────────────────
@@ -310,9 +322,6 @@ fn compress_streams(doc: &mut Document, p: &Params) -> usize {
 /// 失敗や未対応の指定は Err。呼び出し側が MuPDF 実装へフォールバックする。
 pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Result<Stats> {
     let mut unsupported: Vec<&str> = Vec::new();
-    if p.sanitize {
-        unsupported.push("sanitize");
-    }
     if p.merge_fonts {
         unsupported.push("merge_fonts");
     }
@@ -341,12 +350,20 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
     if gc >= 1 {
         stats.pruned_objects += prune(&mut doc);
     }
-    if p.clean {
-        // 内容ストリームを書き直す。解析できない内容があれば Err (MuPDF へフォールバック)
-        let outcome = crate::clean_lopdf::clean_contents(&mut doc)
-            .map_err(|e| CoreError::Unsupported(format!("{CLEAN_ERR_PREFIX}{e}")))?;
+    if p.clean || p.sanitize {
+        // 内容ストリームを書き直す (MuPDF も clean / sanitize のどちらでも書き直す)。
+        // 解析できない内容があれば Err (MuPDF へフォールバック)。通知で原因のオプションが分かるよう、
+        // clean を指定していなければ sanitize の失敗として返す
+        let prefix = if p.clean {
+            CLEAN_ERR_PREFIX
+        } else {
+            SANITIZE_ERR_PREFIX
+        };
+        let outcome = crate::clean_lopdf::clean_contents(&mut doc, p.sanitize)
+            .map_err(|e| CoreError::Unsupported(format!("{prefix}{e}")))?;
         stats.cleaned_streams = outcome.streams;
         stats.cleaned_resources = outcome.resources;
+        stats.sanitized_ops = outcome.ops_removed;
         if gc >= 1 {
             // 連結して要らなくなった内容ストリームを、圧縮する前に取り除く
             stats.pruned_objects += prune(&mut doc);
@@ -742,11 +759,81 @@ mod tests {
         p.clean = true;
         let e = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
         assert!(matches!(e, CoreError::Unsupported(_)), "{e}");
-        assert!(
-            is_clean_error(&e),
+        assert_eq!(
+            content_rewrite_op(&e),
+            Some("compress_clean"),
             "clean failure must be reported as such: {e}"
         );
         assert!(!dst.exists());
+        // clean を指定せず sanitize だけのときは、sanitize の失敗として報告する
+        let mut p = params();
+        p.sanitize = true;
+        let e = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
+        assert_eq!(content_rewrite_op(&e), Some("compress_sanitize"), "{e}");
+        // 両方のときは clean が先
+        p.clean = true;
+        let e = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
+        assert_eq!(content_rewrite_op(&e), Some("compress_clean"), "{e}");
+        assert!(!dst.exists());
+    }
+
+    /// 無駄な演算子を含むページを持つ PDF
+    fn wasteful_sample(path: &std::path::Path) {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let c = doc.add_object(Stream::new(
+            dictionary! {},
+            b"1 0 0 1 0 0 cm 1 w 2 w q 3 w Q q 0 0 10 10 re f 5 w Q BT ET".to_vec(),
+        ));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+            "Contents" => c, "Resources" => dictionary! {},
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![page_id.into()], "Count" => 1,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog_id);
+        doc.save(path).unwrap();
+    }
+
+    fn page_ops(path: &std::path::Path) -> Vec<String> {
+        let doc = Document::load(path).unwrap();
+        let page_id = *doc.get_pages().get(&1).unwrap();
+        lopdf::content::Content::decode_strict(&doc.get_page_content(page_id))
+            .unwrap()
+            .operations
+            .into_iter()
+            .map(|o| o.operator)
+            .collect()
+    }
+
+    /// sanitize だけでも内容を書き直し (MuPDF と同じ)、無駄な演算子を取り除く。
+    /// clean だけのときは演算子を取り除かない。
+    #[test]
+    fn sanitize_rewrites_content_and_drops_useless_ops() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        wasteful_sample(&src);
+
+        let mut p = params();
+        p.sanitize = true;
+        let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
+        assert_eq!(stats.cleaned_streams, 1, "{stats:?}");
+        // cm(単位) / 上書きされる w / 空の q Q / q..w..Q の w / 空の BT ET
+        assert_eq!(stats.sanitized_ops, 8, "{stats:?}");
+        assert_eq!(page_ops(&dst), ["w", "q", "re", "f", "Q"]);
+
+        let mut p = params();
+        p.clean = true;
+        let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
+        assert_eq!(stats.sanitized_ops, 0);
+        assert_eq!(page_ops(&dst).len(), 13);
     }
 
     #[test]
@@ -755,17 +842,14 @@ mod tests {
         let src = dir.path().join("in.pdf");
         let dst = dir.path().join("out.pdf");
         sample(&src);
-        for tweak in [
-            |p: &mut Params| p.sanitize = true,
-            |p: &mut Params| p.merge_fonts = true,
-        ] {
+        for tweak in [|p: &mut Params| p.merge_fonts = true] {
             let mut p = params();
             tweak(&mut p);
             let e =
                 compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
             assert!(matches!(e, CoreError::Unsupported(_)), "{e}");
-            // sanitize / merge_fonts の未対応は、clean が原因ではない
-            assert!(!is_clean_error(&e), "{e}");
+            // merge_fonts の未対応は、clean / sanitize が原因ではない
+            assert_eq!(content_rewrite_op(&e), None, "{e}");
         }
         assert!(!dst.exists());
     }

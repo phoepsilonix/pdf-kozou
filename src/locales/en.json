@@ -869,6 +869,7 @@
       "rasterize_imposition": "imposed image PDF",
       "compress": "compression",
       "compress_clean": "compression (clean option: rebuilding content streams)",
+      "compress_sanitize": "compression (sanitize option: tidying content streams)",
       "image_opt_partial": "left images with unparsable content as is",
       "image_opt_failed": "could not process the PDF",
       "compress_subset": "compression (font subsetting)",

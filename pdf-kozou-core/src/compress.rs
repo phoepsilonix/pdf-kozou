@@ -1249,7 +1249,7 @@ fn execute_font_purge_pass(input: &str, output: &str) -> Result<()> {
 
 /// サブセット化なしの通常圧縮 (Light プリセット or font_subset=false 時)
 /// 通常の圧縮 (フォントサブセット化なし)。
-/// まず lopdf 実装 (compress_lopdf) を試し、未対応の指定 (sanitize / merge_fonts)・
+/// まず lopdf 実装 (compress_lopdf) を試し、未対応の指定 (merge_fonts)・
 /// 暗号化・lopdf が読めない入力のときだけ MuPDF 実装へフォールバックする
 /// (フォールバックは GUI へ通知する)。backend の設定は backend.rs を参照。
 fn safe_compress_only(
@@ -1276,12 +1276,13 @@ fn safe_compress_only(
         match crate::compress_lopdf::compress_with_lopdf(input, output, &params) {
             Ok(stats) => {
                 eprintln!(
-                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned, {} resource dict(s) pruned",
+                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned, {} resource dict(s) pruned, {} op(s) sanitized",
                     stats.pruned_objects,
                     stats.merged_streams,
                     stats.compressed_streams,
                     stats.cleaned_streams,
-                    stats.cleaned_resources
+                    stats.cleaned_resources,
+                    stats.sanitized_ops
                 );
                 let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
                 let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
@@ -1312,11 +1313,7 @@ fn safe_compress_only(
             }
             Err(e) => {
                 // clean が原因のときは、通知にそう分かる処理名を使う (理由にも "lopdf clean:" が付く)
-                let op = if crate::compress_lopdf::is_clean_error(&e) {
-                    "compress_clean"
-                } else {
-                    "compress"
-                };
+                let op = crate::compress_lopdf::content_rewrite_op(&e).unwrap_or("compress");
                 if crate::backend::abort_or_notify_fallback(op, input, &e) {
                     return Err(e);
                 }
