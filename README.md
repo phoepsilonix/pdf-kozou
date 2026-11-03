@@ -151,7 +151,7 @@ GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除�
 
 ### MacBook(MacOS)
 
-TestFlightで公開テスト中（2026/10/31から90日間有効）  
+TestFlightで公開テスト中（2026/11/03から90日間有効）  
 https://testflight.apple.com/join/WTt5ZVsH
 
 実機環境がないため動作未確認です。
@@ -161,7 +161,7 @@ https://testflight.apple.com/join/WTt5ZVsH
 App Store
 https://apps.apple.com/jp/app/pdf%E5%B0%8F%E5%83%A7/id6818161708
 
-TestFlight（公開テスト）（2026/10/20から90日間有効）  
+TestFlight（公開テスト）（2026/11/03から90日間有効）  
 https://testflight.apple.com/join/WTt5ZVsH
 
 GhostScriptは呼び出せないので、圧縮でのGS連携機能は取り除いています。
@@ -323,4 +323,6 @@ Issue・PR 歓迎です。バグ報告は Issue に、コード変更は Fork �
 
 - [MuPDF 公式サイト](https://mupdf.com/)
 - [mupdf crate (crates.io)](https://crates.io/crates/mupdf)
+- [lopdf crate (crates.io)](https://crates.io/crates/lopdf)
+- [hayro crate (crates.io)](https://crates.io/crates/hayro)
 - [Tauri 公式サイト](https://tauri.app/)
