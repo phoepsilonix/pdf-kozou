@@ -114,7 +114,7 @@ fn collect(bytes: &[u8], used: &mut Used) -> Result<(), String> {
     Ok(())
 }
 
-fn dict_of(doc: &Document, obj: &Object) -> Option<Dictionary> {
+pub(crate) fn dict_of(doc: &Document, obj: &Object) -> Option<Dictionary> {
     let (_, o) = doc.dereference(obj).ok()?;
     match o {
         Object::Dictionary(d) => Some(d.clone()),
@@ -125,7 +125,7 @@ fn dict_of(doc: &Document, obj: &Object) -> Option<Dictionary> {
 
 /// `resources` の `category` 辞書から `name` が指すオブジェクトの (参照先の ID, 辞書, ストリームか)。
 /// ストリームの中身 (画像データなど) は複製しない。
-fn lookup(
+pub(crate) fn lookup(
     doc: &Document,
     resources: &Dictionary,
     category: &[u8],
@@ -293,7 +293,7 @@ fn pruned(doc: &Document, resources: &Dictionary, used: &Used) -> Option<Diction
 }
 
 /// 効くリソース (ページ自身、なければ /Parent をたどって継承)
-fn page_resources(doc: &Document, page_id: ObjectId) -> Option<Dictionary> {
+pub(crate) fn page_resources(doc: &Document, page_id: ObjectId) -> Option<Dictionary> {
     let mut current = page_id;
     for _ in 0..64 {
         let d = doc.get_object(current).ok()?.as_dict().ok()?;
@@ -312,7 +312,7 @@ fn page_resources(doc: &Document, page_id: ObjectId) -> Option<Dictionary> {
 
 /// /AP に /Resources を持たない外観ストリームがある注釈を持つページか。
 /// そうした外観は、ページのリソースを使っているかもしれない。
-fn has_resourceless_annot_ap(doc: &Document, page_id: ObjectId) -> bool {
+pub(crate) fn has_resourceless_annot_ap(doc: &Document, page_id: ObjectId) -> bool {
     let Ok(page) = doc.get_object(page_id).and_then(|o| o.as_dict()) else {
         return false;
     };

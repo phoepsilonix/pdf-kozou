@@ -8,6 +8,8 @@
 pub mod api;
 pub mod compress;
 mod clean_lopdf;
+#[allow(dead_code)] // 次のコミット (フォントのサブセット化) で使う
+mod font_usage;
 mod resource_prune;
 mod sanitize_ops;
 mod compress_lopdf;

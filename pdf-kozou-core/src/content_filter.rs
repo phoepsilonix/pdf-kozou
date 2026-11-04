@@ -587,6 +587,29 @@ pub(crate) fn merge_page_contents(doc: &mut Document) -> Result<Vec<ObjectId>, S
     Ok(result)
 }
 
+/// 内容ストリームの演算子を順に `f` へ渡す。インライン画像 (BI ... EI) は読み飛ばす。
+/// 最後まで解析できなければ Err (decode_content と同じ基準)。
+pub(crate) fn for_each_operation(
+    bytes: &[u8],
+    mut f: impl FnMut(&lopdf::content::Operation),
+) -> Result<(), String> {
+    let images = find_inline_images(bytes)?;
+    let mut pos = 0usize;
+    for (start, end) in images
+        .iter()
+        .copied()
+        .chain(std::iter::once((bytes.len(), bytes.len())))
+    {
+        if start > pos {
+            let content =
+                decode_content(&bytes[pos..start]).map_err(|e| format!("content decode: {e}"))?;
+            content.operations.iter().for_each(&mut f);
+        }
+        pos = end;
+    }
+    Ok(())
+}
+
 /// 内容ストリームを解析して書き直す。演算子と operand は変えず、空白・改行・数値の書式だけが
 /// 変わる (演算子ごとに改行する)。インライン画像 (BI ... EI) はそのまま保つ。
 /// `sanitize` なら、演算子列の整理 (sanitize_ops) も行い、取り除いた演算子の数を返す
