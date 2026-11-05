@@ -4,11 +4,24 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: 'friday'
+      time: '19:00'
+      timezone: 'Asia/Tokyo'
     cooldown:
       default-days: 7
+      semver-major-days: 21
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: 'friday'
+      time: '19:00'
+      timezone: 'Asia/Tokyo'
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
