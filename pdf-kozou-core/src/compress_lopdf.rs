@@ -22,6 +22,9 @@
 //
 // 次は lopdf では行えないので、指定されていたら Err (Unsupported) を返す。
 // 呼び出し側 (backend) が MuPDF へフォールバックし、GUI へその旨を通知する。
+//   subset          : TrueType の CID フォント (Identity-H/V) のサブセット化 (font_usage /
+//                     font_subset_lopdf)。MuPDF が縮めるフォントを 1 つでも縮められないときは、
+//                     Unsupported (MuPDF へフォールバック)
 //   merge_fonts      : 重複フォントの統合
 //
 // 暗号化された入力、lopdf が内容を落とす入力 (safe_load の検出) も Err にする。
@@ -40,16 +43,19 @@ use std::io::Write;
 /// だと示すために使う。
 const CLEAN_ERR_PREFIX: &str = "lopdf clean: ";
 const SANITIZE_ERR_PREFIX: &str = "lopdf sanitize: ";
+const SUBSET_ERR_PREFIX: &str = "lopdf subset: ";
 
-/// `compress_with_lopdf` のエラーが、内容ストリームの書き直し (clean / sanitize) の失敗
-/// (内容ストリームを解析できないなど) なら、通知に使う処理名 ("compress_clean" /
-/// "compress_sanitize")。merge_fonts の未対応や、暗号化・読み込み失敗は None。
+/// `compress_with_lopdf` のエラーが、clean / sanitize / サブセット化の失敗 (内容ストリームを
+/// 解析できない、サブセット化できないフォントがあるなど) なら、通知に使う処理名
+/// ("compress_clean" / "compress_sanitize" / "compress_subset")。
+/// merge_fonts の未対応や、暗号化・読み込み失敗は None。
 pub(crate) fn content_rewrite_op(e: &CoreError) -> Option<&'static str> {
     match e {
         CoreError::Unsupported(m) if m.starts_with(CLEAN_ERR_PREFIX) => Some("compress_clean"),
         CoreError::Unsupported(m) if m.starts_with(SANITIZE_ERR_PREFIX) => {
             Some("compress_sanitize")
         }
+        CoreError::Unsupported(m) if m.starts_with(SUBSET_ERR_PREFIX) => Some("compress_subset"),
         _ => None,
     }
 }
@@ -64,6 +70,8 @@ pub(crate) struct Params {
     pub sanitize: bool,
     pub merge_fonts: bool,
     pub object_stream: bool,
+    /// フォントのサブセット化 (TrueType の CID フォントだけ)
+    pub font_subset: bool,
 }
 
 /// 処理の内訳 (ログ用)
@@ -78,6 +86,10 @@ pub(crate) struct Stats {
     pub cleaned_resources: usize,
     /// sanitize で取り除いた演算子の数
     pub sanitized_ops: usize,
+    /// サブセット化したフォントの数
+    pub subset_fonts: usize,
+    /// サブセット化で減ったフォントプログラムのバイト数 (展開後)
+    pub subset_bytes_saved: usize,
 }
 
 // ── 参照の走査・付け替え ──────────────────────────────────────────────────
@@ -369,6 +381,21 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
             stats.pruned_objects += prune(&mut doc);
         }
     }
+    if p.font_subset {
+        // MuPDF が縮めるフォントを 1 つでも縮められないときは Err (MuPDF へフォールバック)。
+        // clean / sanitize のあとに行う (使われないフォントを先に取り除いておく)
+        let analysis = crate::font_usage::analyze_fonts(&doc);
+        if !analysis.unsupported.is_empty() {
+            return Err(CoreError::Unsupported(format!(
+                "{SUBSET_ERR_PREFIX}{}",
+                analysis.unsupported.join("; ")
+            )));
+        }
+        let outcome = crate::font_subset_lopdf::subset_fonts(&mut doc, &analysis.usable)
+            .map_err(|e| CoreError::Unsupported(format!("{SUBSET_ERR_PREFIX}{e}")))?;
+        stats.subset_fonts = outcome.fonts;
+        stats.subset_bytes_saved = outcome.bytes_saved;
+    }
     stats.compressed_streams = compress_streams(&mut doc, p);
     if gc >= 1 {
         // 圧縮で直接の /Length に置き換わった、間接オブジェクトの /Length などを取り除く
@@ -446,6 +473,7 @@ mod tests {
             sanitize: false,
             merge_fonts: false,
             object_stream: false,
+            font_subset: false,
         }
     }
 
@@ -716,6 +744,125 @@ mod tests {
         let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
         assert_eq!(stats.cleaned_resources, 1, "{stats:?}");
         assert_eq!(count_images(&dst), 1);
+    }
+
+    /// 内容 (Tj の文字列) をそのまま取り出す
+    fn page_text_ops(path: &std::path::Path) -> Vec<String> {
+        let doc = Document::load(path).unwrap();
+        let page_id = *doc.get_pages().get(&1).unwrap();
+        lopdf::content::Content::decode_strict(&doc.get_page_content(page_id))
+            .unwrap()
+            .operations
+            .into_iter()
+            .map(|o| format!("{} {:?}", o.operator, o.operands))
+            .collect()
+    }
+
+    /// TrueType の CID フォントのサブセット化: フォントが縮み、内容 (文字コード) は変わらず、
+    /// 新しい /CIDToGIDMap が付く。object_stream でも保存できる。
+    #[test]
+    fn font_subset_shrinks_a_cid_font_and_keeps_the_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        let (mut doc, _, _) = crate::font_subset_lopdf::pdf_with_mock_font(
+            "BT /F1 20 Tf 10 10 Td <00010009001E> Tj ET",
+            true,
+        );
+        doc.save(&src).unwrap();
+        let before = page_text_ops(&src);
+
+        // 出力は番号が振り直される。CIDFont は、種類で探す
+        let cid_font = |d: &Document| -> Dictionary {
+            d.objects
+                .values()
+                .filter_map(|o| o.as_dict().ok())
+                .find(|x| {
+                    x.get(b"Subtype").ok().and_then(|n| n.as_name().ok()) == Some(b"CIDFontType2")
+                })
+                .unwrap()
+                .clone()
+        };
+        let font_len = |d: &Document| {
+            let cf = cid_font(d);
+            let desc = cf.get(b"FontDescriptor").unwrap().as_reference().unwrap();
+            let ff = d
+                .get_object(desc)
+                .unwrap()
+                .as_dict()
+                .unwrap()
+                .get(b"FontFile2")
+                .unwrap()
+                .as_reference()
+                .unwrap();
+            let s = d.get_object(ff).unwrap().as_stream().unwrap();
+            s.decompressed_content().unwrap().len()
+        };
+
+        // font_subset なしでは、フォントはそのまま (全グリフ)
+        compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &params()).unwrap();
+        let original_len = font_len(&Document::load(&dst).unwrap());
+        assert_eq!(original_len, 3296);
+
+        for object_stream in [false, true] {
+            let mut p = params();
+            p.font_subset = true;
+            p.object_stream = object_stream;
+            let stats =
+                compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
+            assert_eq!(stats.subset_fonts, 1, "{stats:?}");
+            assert!(stats.subset_bytes_saved > 1000, "{stats:?}");
+            let out = Document::load(&dst).unwrap();
+            assert!(font_len(&out) < original_len);
+            // 内容 (文字コード) は変わらない
+            assert_eq!(page_text_ops(&dst), before);
+            // CIDToGIDMap はストリーム
+            assert!(matches!(
+                cid_font(&out).get(b"CIDToGIDMap"),
+                Ok(Object::Reference(_))
+            ));
+        }
+    }
+
+    /// サブセット化できない埋め込みフォント (CFF など) が 1 つでもあれば Unsupported
+    /// (MuPDF へフォールバックさせる)。通知の処理名は compress_subset。
+    #[test]
+    fn font_subset_with_an_unsupported_font_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        let (mut doc, _, _) =
+            crate::font_subset_lopdf::pdf_with_mock_font("BT /F1 20 Tf <0001> Tj ET", false);
+        // CFF の CID フォントを 1 つ足す
+        let ff = doc.add_object(Stream::new(
+            dictionary! {"Subtype"=>"CIDFontType0C"},
+            vec![1, 0, 4, 1],
+        ));
+        let desc = doc.add_object(dictionary! {"Type"=>"FontDescriptor","FontFile3"=>ff});
+        let cf = doc.add_object(
+            dictionary! {"Type"=>"Font","Subtype"=>"CIDFontType0","FontDescriptor"=>desc},
+        );
+        let cff = doc.add_object(
+            dictionary! {"Type"=>"Font","Subtype"=>"Type0","Encoding"=>"Identity-H",
+            "DescendantFonts"=>vec![cf.into()]},
+        );
+        // ページのリソースから参照する (参照されないフォントは、先に取り除かれる)
+        let page = *doc.get_pages().get(&1).unwrap();
+        if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
+            if let Ok(Object::Dictionary(res)) = p.get_mut(b"Resources") {
+                if let Ok(Object::Dictionary(fonts)) = res.get_mut(b"Font") {
+                    fonts.set("F2", Object::Reference(cff));
+                }
+            }
+        }
+        doc.save(&src).unwrap();
+
+        let mut p = params();
+        p.font_subset = true;
+        let e = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap_err();
+        assert!(matches!(e, CoreError::Unsupported(_)), "{e}");
+        assert_eq!(content_rewrite_op(&e), Some("compress_subset"), "{e}");
+        assert!(!dst.exists());
     }
 
     #[test]

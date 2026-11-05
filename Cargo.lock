@@ -3922,10 +3922,12 @@ dependencies = [
  "pdf-writer",
  "serde",
  "serde_json",
+ "subsetter 0.2.6",
  "svg2pdf",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
+ "ttf-parser",
  "uuid",
  "zip",
 ]
@@ -5252,6 +5254,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09eab8a83bff89ba2200bd4c59be45c7c787f988431b936099a5a266c957f2f9"
 
 [[package]]
+name = "subsetter"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38803281d1c23166c5ebcb455439a5d2afe711cc909cf88af72448c297756ad6"
+dependencies = [
+ "rustc-hash",
+]
+
+[[package]]
 name = "svg2pdf"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5265,7 +5276,7 @@ dependencies = [
  "pdf-writer",
  "resvg",
  "siphasher",
- "subsetter",
+ "subsetter 0.1.1",
  "tiny-skia",
  "ttf-parser",
  "unicode-properties",

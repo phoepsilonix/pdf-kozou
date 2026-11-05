@@ -50,6 +50,9 @@ anyhow     = { workspace = true }
 base64     = { workspace = true }
 lopdf      = { workspace = true }
 flate2     = { workspace = true }
+# TrueType の CID フォントのサブセット化 (font_subset_lopdf)。cmap などを取り除き、グリフ番号を
+# 詰め直す PDF 向けのサブセッタ (MIT OR Apache-2.0)。CFF2・可変フォントの feature は使わない。
+subsetter  = { version = "0.2", default-features = false }
 image      = { workspace = true }
 uuid       = { workspace = true }
 tempfile   = { workspace = true }
@@ -96,3 +99,6 @@ mupdf = { version = "0.8", features = ["bundled-fonts-droid", "bundled-fonts-not
 # mupdf_safe.c のコンパイルに使う
 cc = "1"
 
+[dev-dependencies]
+# font_subset_lopdf のテストで、サブセット化したフォントのグリフ (アウトライン・送り幅) を読む
+ttf-parser = "0.21"

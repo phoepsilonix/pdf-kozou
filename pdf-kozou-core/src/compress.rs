@@ -992,13 +992,38 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
     //    current_input = temp_purge_path.clone();
     //}
 
-    let result_res: Result<CompressResponse> = if do_subset {
-        // フォントサブセット化パス: font_subset::subset_and_write を呼ぶ
-        crate::backend::note_mupdf_only(
-            "compress_subset",
-            &req.input,
-            "font subsetting and compression have no lopdf implementation",
-        );
+    // サブセット化は、まず lopdf で試す (TrueType の CID フォントだけの PDF のとき)。
+    // 使えないときは、理由を通知して MuPDF 実装へフォールバックする。
+    let lopdf_subset = if do_subset {
+        let params = crate::compress_lopdf::Params {
+            compress_images,
+            compress_fonts,
+            garbage_level,
+            clean,
+            sanitize,
+            merge_fonts,
+            object_stream,
+            font_subset: true,
+        };
+        try_lopdf_compress("compress_subset", &current_input, &req.output, params)?
+    } else {
+        None
+    };
+    let result_res: Result<CompressResponse> = if let Some(mut r) = lopdf_subset {
+        r.params_used.redact_outside_crop = redact_applied;
+        r.params_used.redact_margin_top = redact_margins.top;
+        r.params_used.redact_margin_bottom = redact_margins.bottom;
+        r.params_used.redact_margin_left = redact_margins.left;
+        r.params_used.redact_margin_right = redact_margins.right;
+        r.params_used.images_recompressed = if images_recompressed > 0 {
+            Some(images_recompressed)
+        } else {
+            None
+        };
+        Ok(r)
+    } else if do_subset {
+        // フォントサブセット化パス (MuPDF): font_subset::subset_and_write を呼ぶ。
+        // lopdf で処理できなかった理由は、上の try_lopdf_compress が通知済み
         let result = crate::font_subset::subset_and_write(
             &current_input,
             &req.output,
@@ -1263,62 +1288,18 @@ fn safe_compress_only(
     merge_fonts: bool,
     object_stream: bool,
 ) -> Result<CompressResponse> {
-    if crate::backend::try_lopdf("compress") {
-        let params = crate::compress_lopdf::Params {
-            compress_images,
-            compress_fonts,
-            garbage_level: gc,
-            clean,
-            sanitize,
-            merge_fonts,
-            object_stream,
-        };
-        match crate::compress_lopdf::compress_with_lopdf(input, output, &params) {
-            Ok(stats) => {
-                eprintln!(
-                    "[compress] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned, {} resource dict(s) pruned, {} op(s) sanitized",
-                    stats.pruned_objects,
-                    stats.merged_streams,
-                    stats.compressed_streams,
-                    stats.cleaned_streams,
-                    stats.cleaned_resources,
-                    stats.sanitized_ops
-                );
-                let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
-                let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
-                return Ok(CompressResponse {
-                    ok: true,
-                    input_bytes: ib,
-                    output_bytes: ob,
-                    ratio: safe_ratio(ib, ob),
-                    params_used: CompressParamsUsed {
-                        compress_images,
-                        compress_fonts,
-                        garbage_level: gc,
-                        clean,
-                        sanitize,
-                        merge_fonts,
-                        object_stream,
-                        redact_outside_crop: false,
-                        redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
-                        redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
-                        redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
-                        redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
-                        font_subset: false,
-                        subset_skipped: false,
-                        images_recompressed: None,
-                    },
-                    warning: None, // サイズ増加警告は compress() 末尾で真の入力サイズを使って一括判定する
-                });
-            }
-            Err(e) => {
-                // clean が原因のときは、通知にそう分かる処理名を使う (理由にも "lopdf clean:" が付く)
-                let op = crate::compress_lopdf::content_rewrite_op(&e).unwrap_or("compress");
-                if crate::backend::abort_or_notify_fallback(op, input, &e) {
-                    return Err(e);
-                }
-            }
-        }
+    let params = crate::compress_lopdf::Params {
+        compress_images,
+        compress_fonts,
+        garbage_level: gc,
+        clean,
+        sanitize,
+        merge_fonts,
+        object_stream,
+        font_subset: false,
+    };
+    if let Some(resp) = try_lopdf_compress("compress", input, output, params)? {
+        return Ok(resp);
     }
     safe_compress_only_mupdf(
         input,
@@ -1331,6 +1312,71 @@ fn safe_compress_only(
         merge_fonts,
         object_stream,
     )
+}
+
+/// lopdf 実装で圧縮する (`params.font_subset` ならサブセット化も行う)。
+/// lopdf 実装を使わない指定 (backend=mupdf)、または使えないとき (Unsupported など。通知する) は
+/// Ok(None) を返し、呼び出し側が MuPDF 実装へフォールバックする。backend=lopdf で失敗したときは Err。
+/// `op` は、通知に使う処理名 (clean / sanitize / サブセット化が原因なら、それに応じた名前になる)。
+fn try_lopdf_compress(
+    op: &'static str,
+    input: &str,
+    output: &str,
+    params: crate::compress_lopdf::Params,
+) -> Result<Option<CompressResponse>> {
+    if !crate::backend::try_lopdf(op) {
+        return Ok(None);
+    }
+    match crate::compress_lopdf::compress_with_lopdf(input, output, &params) {
+        Ok(stats) => {
+            eprintln!(
+                "[{op}] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned, {} resource dict(s) pruned, {} op(s) sanitized, {} font(s) subset ({} byte(s) saved)",
+                stats.pruned_objects,
+                stats.merged_streams,
+                stats.compressed_streams,
+                stats.cleaned_streams,
+                stats.cleaned_resources,
+                stats.sanitized_ops,
+                stats.subset_fonts,
+                stats.subset_bytes_saved
+            );
+            let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
+            let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+            Ok(Some(CompressResponse {
+                ok: true,
+                input_bytes: ib,
+                output_bytes: ob,
+                ratio: safe_ratio(ib, ob),
+                params_used: CompressParamsUsed {
+                    compress_images: params.compress_images,
+                    compress_fonts: params.compress_fonts,
+                    garbage_level: params.garbage_level,
+                    clean: params.clean,
+                    sanitize: params.sanitize,
+                    merge_fonts: params.merge_fonts,
+                    object_stream: params.object_stream,
+                    redact_outside_crop: false,
+                    redact_margin_top: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_bottom: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_left: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    redact_margin_right: crate::crop_cleanup::DEFAULT_REDACT_MARGIN_PT,
+                    font_subset: params.font_subset,
+                    subset_skipped: false,
+                    images_recompressed: None,
+                },
+                warning: None, // サイズ増加警告は compress() 末尾で真の入力サイズを使って一括判定する
+            }))
+        }
+        Err(e) => {
+            // clean / sanitize / サブセット化が原因のときは、通知にそう分かる処理名を使う
+            // (理由にも "lopdf clean:" などが付く)
+            let op = crate::compress_lopdf::content_rewrite_op(&e).unwrap_or(op);
+            if crate::backend::abort_or_notify_fallback(op, input, &e) {
+                return Err(e);
+            }
+            Ok(None)
+        }
+    }
 }
 
 /// 従来の MuPDF 実装（lopdf 実装が使えないときのフォールバック）。
