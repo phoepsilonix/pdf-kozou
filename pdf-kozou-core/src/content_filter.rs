@@ -396,12 +396,10 @@ fn filter_stream(
     let Ok(Object::Stream(stream)) = doc.get_object_mut(id) else {
         return Ok(()); // ストリームでなければ対象外
     };
-    let bytes = match stream.decompressed_content() {
-        Ok(b) => b,
-        // Filter が無い (無圧縮) ストリームは content そのまま
-        Err(_) if stream.dict.get(b"Filter").is_err() => stream.content.clone(),
-        Err(e) => return Err(format!("stream {id:?} decompress: {e}")),
-    };
+    // Filter が無い (無圧縮) ストリームは content そのまま。Flate が壊れている・途中で切れていて
+    // 内容が欠けるものは Err (欠けたまま書き戻すと、残りの描画が失われる)
+    let bytes = crate::image_recompress::content_stream_bytes(stream)
+        .map_err(|e| format!("stream {id:?} decompress: {e}"))?;
     let (new_bytes, c) =
         transform_content(&bytes, mode, kinds).map_err(|e| format!("stream {id:?}: {e}"))?;
     if c.changed() {
@@ -555,8 +553,8 @@ pub(crate) fn merge_page_contents(doc: &mut Document) -> Result<Vec<ObjectId>, S
                             let Some(Object::Stream(st)) = doc.objects.get(id) else {
                                 continue;
                             };
-                            let bytes = st
-                                .get_plain_content()
+                            // 内容が欠けるもの (壊れた・途中で切れた Flate) は Err
+                            let bytes = crate::image_recompress::content_stream_bytes(st)
                                 .map_err(|e| format!("stream {id:?} decompress: {e}"))?;
                             joined.extend_from_slice(&bytes);
                             joined.push(b'\n');
@@ -894,6 +892,72 @@ mod tests {
         let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
         doc.trailer.set("Root", cat);
         (doc, page_id)
+    }
+
+    /// 壊れた・途中で切れた Flate (lopdf は Err にせず、空か途中までの内容を返す) や、未対応の
+    /// フィルタの内容ストリームは、欠けたまま書き戻さず Err にする (MuPDF へフォールバックさせる)。
+    #[test]
+    fn text_removal_rejects_content_streams_that_cannot_be_read_completely() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            for mode in [Mode::RemoveText, Mode::TextOnly] {
+                let (mut doc, page_id) =
+                    page_doc(|doc| Object::Reference(doc.add_object(broken.clone())));
+                let before = doc
+                    .get_object(doc.get_page_contents(page_id)[0])
+                    .unwrap()
+                    .clone();
+                assert!(transform(&mut doc, mode).is_err(), "{kind} {mode:?}");
+                // Err のとき、内容ストリームは変わっていない
+                assert_eq!(
+                    doc.get_object(doc.get_page_contents(page_id)[0]).unwrap(),
+                    &before,
+                    "{kind} {mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn merging_split_contents_rejects_streams_that_cannot_be_read_completely() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let (mut doc, page_id) = page_doc(|doc| {
+                let ok = doc.add_object(lopdf::Stream::new(
+                    dictionary! {},
+                    b"q 0 0 5 5 re f".to_vec(),
+                ));
+                let bad = doc.add_object(broken.clone());
+                Object::Array(vec![ok.into(), bad.into()])
+            });
+            assert!(merge_page_contents(&mut doc).is_err(), "{kind}");
+            // Err のとき、ページの /Contents は 2 本のまま
+            assert_eq!(doc.get_page_contents(page_id).len(), 2, "{kind}");
+        }
+    }
+
+    /// 正しく圧縮された内容は、これまでどおり処理できる。zlib のチェックサム (adler32) だけが
+    /// 合わないものも、内容は欠けていないので、処理できる。
+    #[test]
+    fn valid_and_checksum_only_damaged_flate_content_is_still_processed() {
+        for damage_checksum in [false, true] {
+            let (mut doc, page_id) = page_doc(|doc| {
+                let mut s = lopdf::Stream::new(
+                    dictionary! {},
+                    b"BT /F1 12 Tf (a) Tj ET 0 0 5 5 re f".repeat(20),
+                );
+                s.compress().unwrap();
+                assert!(s.dict.has(b"Filter"));
+                if damage_checksum {
+                    *s.content.last_mut().unwrap() ^= 0xff;
+                }
+                Object::Reference(doc.add_object(s))
+            });
+            let stats = transform(&mut doc, Mode::RemoveText).unwrap();
+            assert_eq!(stats.removed_ops, 20, "damage_checksum={damage_checksum}");
+            let ops = Content::decode_strict(&doc.get_page_content(page_id))
+                .unwrap()
+                .operations;
+            assert_eq!(ops.iter().filter(|o| o.operator == "re").count(), 20);
+        }
     }
 
     #[test]

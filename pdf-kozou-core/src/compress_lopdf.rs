@@ -865,6 +865,49 @@ mod tests {
         assert!(!dst.exists());
     }
 
+    /// 内容ストリームが壊れた Flate (lopdf は Err にせず、欠けた内容を返す) なら、欠けたまま
+    /// 書き直さず、clean / sanitize の失敗として Unsupported (MuPDF へフォールバック) にする。
+    #[test]
+    fn clean_with_a_damaged_content_stream_falls_back() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let dir = tempfile::tempdir().unwrap();
+            let src = dir.path().join("in.pdf");
+            let dst = dir.path().join("out.pdf");
+            let mut doc = Document::with_version("1.5");
+            let pages_id = doc.new_object_id();
+            let c = doc.add_object(broken);
+            let page_id = doc.add_object(dictionary! {
+                "Type" => "Page", "Parent" => pages_id,
+                "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+                "Contents" => c, "Resources" => dictionary! {},
+            });
+            doc.objects.insert(
+                pages_id,
+                Object::Dictionary(dictionary! {
+                    "Type" => "Pages", "Kids" => vec![page_id.into()], "Count" => 1,
+                }),
+            );
+            let catalog_id =
+                doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+            doc.trailer.set("Root", catalog_id);
+            doc.save(&src).unwrap();
+
+            for (clean, sanitize, op) in [
+                (true, false, "compress_clean"),
+                (false, true, "compress_sanitize"),
+                (true, true, "compress_clean"),
+            ] {
+                let mut p = params();
+                p.clean = clean;
+                p.sanitize = sanitize;
+                let e = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p)
+                    .unwrap_err();
+                assert_eq!(content_rewrite_op(&e), Some(op), "{kind}: {e}");
+                assert!(!dst.exists());
+            }
+        }
+    }
+
     #[test]
     fn clean_off_keeps_split_contents() {
         let dir = tempfile::tempdir().unwrap();

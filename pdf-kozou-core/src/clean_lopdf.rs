@@ -99,11 +99,11 @@ fn is_content_part(d: &Dictionary) -> bool {
     is_form || is_tiling
 }
 
-/// ストリームのフィルタを外した内容。デコードできなければ Err
+/// ストリームのフィルタを外した内容。デコードできない、または (Flate が壊れている・途中で切れている
+/// ために) 内容が欠けるときは Err。欠けたまま書き直すと、残りの描画が失われるため
 fn plain_content(doc: &Document, id: ObjectId) -> Result<Vec<u8>, String> {
     match doc.objects.get(&id) {
-        Some(Object::Stream(s)) => s
-            .get_plain_content()
+        Some(Object::Stream(s)) => crate::image_recompress::content_stream_bytes(s)
             .map_err(|e| format!("stream {id:?} decompress: {e}")),
         _ => Err(format!("stream {id:?} is missing")),
     }
@@ -347,6 +347,55 @@ mod tests {
         assert!(clean_contents(&mut doc, false).is_err());
         // Err のとき、ページの内容は変わっていない
         assert_eq!(page_bytes(&doc, page_id), before);
+    }
+
+    /// 壊れた・途中で切れた Flate や未対応フィルタの内容ストリームは、欠けたまま書き直さず Err
+    /// (MuPDF へフォールバックさせる)。ページの内容でも Form でも同じ。
+    #[test]
+    fn content_that_cannot_be_read_completely_is_an_error() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let (mut doc, page_id) =
+                doc_with(|doc, _| Object::Reference(doc.add_object(broken.clone())));
+            let cid = doc.get_page_contents(page_id)[0];
+            let before = doc.get_object(cid).unwrap().clone();
+            assert!(clean_contents(&mut doc, false).is_err(), "page {kind}");
+            assert!(
+                clean_contents(&mut doc, true).is_err(),
+                "page {kind} (sanitize)"
+            );
+            assert_eq!(doc.get_object(cid).unwrap(), &before, "{kind}");
+
+            let (mut doc, _) = doc_with(|doc, _| {
+                Object::Reference(doc.add_object(Stream::new(dictionary! {}, b"q Q".to_vec())))
+            });
+            let mut form = broken.clone();
+            form.dict.set("Type", "XObject");
+            form.dict.set("Subtype", "Form");
+            form.dict
+                .set("BBox", vec![0.into(), 0.into(), 1.into(), 1.into()]);
+            doc.add_object(form);
+            assert!(clean_contents(&mut doc, false).is_err(), "form {kind}");
+        }
+    }
+
+    #[test]
+    fn valid_and_checksum_only_damaged_flate_content_is_cleaned() {
+        for damage_checksum in [false, true] {
+            let (mut doc, page_id) = doc_with(|doc, _| {
+                let mut s = Stream::new(dictionary! {}, b"q 0 0 5 5 re f Q ".repeat(30));
+                s.compress().unwrap();
+                if damage_checksum {
+                    *s.content.last_mut().unwrap() ^= 0xff;
+                }
+                Object::Reference(doc.add_object(s))
+            });
+            assert_eq!(clean_contents(&mut doc, false).unwrap().streams, 1);
+            assert_eq!(
+                ops(&page_bytes(&doc, page_id)).len(),
+                4 * 30,
+                "damage_checksum={damage_checksum}"
+            );
+        }
     }
 
     #[test]
