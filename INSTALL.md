@@ -28,6 +28,7 @@ https://github.com/phoepsilonix/pdf-kozou/releases/download/v1.5.4/PDF-Kozou_1.5
 2. インストール先のフォルダ`pdf-kozou-core.exe` のあるフォルダを**システムの環境変数 PATH** に追加
    - スタートメニュー →「環境変数を編集」→ Path → 新規
 3. コマンドプロンプト / PowerShell で確認:
+
    ```
    pdf-kozou-core --version
    ```
