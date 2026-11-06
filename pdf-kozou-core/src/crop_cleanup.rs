@@ -244,7 +244,7 @@ fn edit_page_content(
     };
 
     let mut all_bytes = Vec::new();
-    collect_content_bytes(doc, &contents_ref, &mut all_bytes);
+    collect_content_bytes(doc, &contents_ref, &mut all_bytes)?;
     if all_bytes.is_empty() {
         return Ok(0);
     }
@@ -275,8 +275,9 @@ fn edit_xobj_stream(
         let stream = obj
             .as_stream()
             .map_err(|e| format!("xobj {xref} as_stream: {e}"))?;
-        stream
-            .decompressed_content()
+        // 壊れた・途中で切れた Flate (lopdf は Err にせず、欠けた内容を返す) は Err。
+        // 欠けたまま書き戻すと、残りの描画が失われる
+        crate::image_recompress::content_stream_bytes(stream)
             .map_err(|e| format!("xobj {xref} decompress: {e}"))?
     };
 
@@ -301,31 +302,35 @@ fn edit_xobj_stream(
     Ok(removed)
 }
 
-fn collect_content_bytes(doc: &Document, obj: &Object, out: &mut Vec<u8>) {
+/// ページの内容 (stream または stream の配列) を連結して `out` に集める。
+/// 読めないストリーム (未対応のフィルタ、壊れた・途中で切れた Flate) があれば Err。
+/// 読めたものだけで内容を書き換えると、読めなかったストリームの描画が失われるため。
+fn collect_content_bytes(doc: &Document, obj: &Object, out: &mut Vec<u8>) -> Result<(), String> {
     match obj {
         Object::Reference(id) => {
             if let Ok(resolved) = doc.get_object(*id) {
-                collect_content_bytes(doc, resolved, out);
+                collect_content_bytes(doc, resolved, out)?;
             }
         }
         Object::Array(arr) => {
             for item in arr {
-                collect_content_bytes(doc, item, out);
+                collect_content_bytes(doc, item, out)?;
                 if !out.ends_with(b"\n") {
                     out.push(b'\n');
                 }
             }
         }
         Object::Stream(stream) => {
-            if let Ok(data) = stream.decompressed_content() {
-                out.extend_from_slice(&data);
-                if !out.ends_with(b"\n") {
-                    out.push(b'\n');
-                }
+            let data = crate::image_recompress::content_stream_bytes(stream)
+                .map_err(|e| format!("page content decompress: {e}"))?;
+            out.extend_from_slice(&data);
+            if !out.ends_with(b"\n") {
+                out.push(b'\n');
             }
         }
         _ => {}
     }
+    Ok(())
 }
 
 fn update_page_contents(
@@ -710,6 +715,95 @@ fn redact_outside_cropbox_mupdf(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Do を含む内容のストリームを持つ文書。`stream` はそのまま追加する
+    fn doc_with_stream(stream: lopdf::Stream) -> (Document, ObjectId) {
+        let mut doc = Document::with_version("1.5");
+        let id = doc.add_object(stream);
+        (doc, id)
+    }
+
+    fn names(list: &[&str]) -> HashSet<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    const DO_CONTENT: &[u8] = b"/X11\nDo\n/X14\nDo\n";
+
+    /// 正しく圧縮された内容と、zlib のチェックサムだけが合わない内容 (欠けていない) は処理できる
+    #[test]
+    fn edit_xobj_stream_handles_valid_and_checksum_only_damaged_flate() {
+        for damage_checksum in [false, true] {
+            // 圧縮が効く (Flate になる) 長さにするため、繰り返す
+            let mut s = lopdf::Stream::new(lopdf::dictionary! {}, DO_CONTENT.repeat(30));
+            s.compress().unwrap();
+            assert!(s.dict.has(b"Filter"), "the content must really be Flate");
+            if damage_checksum {
+                *s.content.last_mut().unwrap() ^= 0xff;
+            }
+            let (mut doc, id) = doc_with_stream(s);
+            assert_eq!(edit_xobj_stream(&mut doc, id.0, &names(&["X11"])), Ok(30));
+            let text = doc
+                .get_object(id)
+                .unwrap()
+                .as_stream()
+                .unwrap()
+                .decompressed_content()
+                .unwrap();
+            let text = String::from_utf8(text).unwrap();
+            assert!(!text.contains("X11") && text.contains("X14"), "{text}");
+        }
+    }
+
+    /// 壊れた・途中で切れた Flate や未対応フィルタの XObject は、欠けたまま書き戻さず Err
+    #[test]
+    fn edit_xobj_stream_rejects_content_that_cannot_be_read_completely() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let (mut doc, id) = doc_with_stream(broken);
+            let before = doc.get_object(id).unwrap().clone();
+            assert!(
+                edit_xobj_stream(&mut doc, id.0, &names(&["X11"])).is_err(),
+                "{kind}"
+            );
+            assert_eq!(doc.get_object(id).unwrap(), &before, "{kind}");
+        }
+    }
+
+    /// ページの内容が 2 本あって 1 本が読めないとき、読めた方だけで書き換えると、読めなかった方の
+    /// 描画が失われる。Err にして、ページは変えない。
+    #[test]
+    fn edit_page_content_rejects_a_page_with_an_unreadable_stream() {
+        use lopdf::dictionary;
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let mut doc = Document::with_version("1.5");
+            let ok = doc.add_object(lopdf::Stream::new(
+                lopdf::dictionary! {},
+                DO_CONTENT.to_vec(),
+            ));
+            let bad = doc.add_object(broken);
+            let contents = Object::Array(vec![ok.into(), bad.into()]);
+            let page = doc.add_object(dictionary! {"Type"=>"Page","Contents"=>contents.clone()});
+            assert!(
+                edit_page_content(&mut doc, page, &names(&["X11"])).is_err(),
+                "{kind}"
+            );
+            let p = doc.get_object(page).unwrap().as_dict().unwrap();
+            assert_eq!(p.get(b"Contents").unwrap(), &contents, "{kind}");
+            // 読めたストリームも書き換わっていない
+            let s = doc.get_object(ok).unwrap().as_stream().unwrap();
+            assert_eq!(s.content, DO_CONTENT, "{kind}");
+        }
+        // すべて読めるなら、これまでどおり処理する
+        let mut doc = Document::with_version("1.5");
+        let a = doc.add_object(lopdf::Stream::new(
+            lopdf::dictionary! {},
+            DO_CONTENT.to_vec(),
+        ));
+        let b = doc.add_object(lopdf::Stream::new(lopdf::dictionary! {}, b"q Q".to_vec()));
+        let page = doc.add_object(
+            dictionary! {"Type"=>"Page","Contents"=>Object::Array(vec![a.into(), b.into()])},
+        );
+        assert_eq!(edit_page_content(&mut doc, page, &names(&["X11"])), Ok(1));
+    }
 
     #[test]
     fn test_remove_do_ops() {

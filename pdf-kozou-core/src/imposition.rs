@@ -73,8 +73,9 @@ fn read_contents(doc: &Document, pid: ObjectId) -> Result<Vec<u8>> {
     let resolved = crate::info::lp_resolve(doc, contents);
     let decode = |obj: &Object| -> Result<Vec<u8>> {
         match crate::info::lp_resolve(doc, obj) {
-            Some(Object::Stream(s)) => s
-                .decompressed_content()
+            // 壊れた・途中で切れた Flate は Err (lopdf は Err にせず、欠けた内容を返す)。
+            // 欠けたまま Form に写すと、残りの描画が失われる (呼び出し側が MuPDF へフォールバック)
+            Some(Object::Stream(s)) => crate::image_recompress::content_stream_bytes(s)
                 .map_err(|e| CoreError::Parse(format!("page contents: {e}"))),
             _ => Ok(Vec::new()),
         }
@@ -298,4 +299,55 @@ pub(crate) fn compose_with_lopdf(req: &ComposeImpositionPdfRequest) -> Result<()
     dst.save(&req.output)
         .map_err(|e| CoreError::Parse(format!("{}: {e}", req.output)))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::dictionary;
+
+    fn page_with_contents(contents: Object, doc: &mut Document) -> ObjectId {
+        doc.add_object(dictionary! {"Type"=>"Page","Contents"=>contents})
+    }
+
+    /// 内容の読み取りは、壊れた・途中で切れた Flate や未対応フィルタのストリームを Err にする
+    /// (欠けたまま Form に写さず、呼び出し側が MuPDF へフォールバックする)。
+    #[test]
+    fn read_contents_rejects_streams_that_cannot_be_read_completely() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let mut doc = Document::with_version("1.5");
+            let ok = doc.add_object(Stream::new(dictionary! {}, b"q Q".to_vec()));
+            let bad = doc.add_object(broken);
+            let single = page_with_contents(Object::Reference(bad), &mut doc);
+            let array = page_with_contents(Object::Array(vec![ok.into(), bad.into()]), &mut doc);
+            for pid in [single, array] {
+                assert!(
+                    matches!(read_contents(&doc, pid), Err(CoreError::Parse(_))),
+                    "{kind}"
+                );
+            }
+        }
+    }
+
+    /// 正しく圧縮された内容と、zlib のチェックサムだけが合わない内容 (欠けていない) は読める
+    #[test]
+    fn read_contents_reads_valid_and_checksum_only_damaged_flate() {
+        for damage_checksum in [false, true] {
+            let mut doc = Document::with_version("1.5");
+            let mut s = Stream::new(dictionary! {}, b"q 0 0 5 5 re f Q".repeat(20));
+            s.compress().unwrap();
+            assert!(s.dict.has(b"Filter"), "the content must really be Flate");
+            if damage_checksum {
+                *s.content.last_mut().unwrap() ^= 0xff;
+            }
+            let id = doc.add_object(s);
+            let pid = page_with_contents(Object::Reference(id), &mut doc);
+            let bytes = read_contents(&doc, pid).unwrap();
+            assert_eq!(
+                bytes,
+                b"q 0 0 5 5 re f Q".repeat(20),
+                "damage_checksum={damage_checksum}"
+            );
+        }
+    }
 }

@@ -196,8 +196,9 @@ fn process_content_stream(doc: &mut Document, stream_id: ObjectId) -> Result<usi
         let stream = obj
             .as_stream()
             .map_err(|e| format!("as_stream {stream_id:?}: {e}"))?;
-        stream
-            .decompressed_content()
+        // 壊れた・途中で切れた Flate (lopdf は Err にせず、欠けた内容を返す) は Err。
+        // 欠けたまま書き戻すと、残りの描画が失われる
+        crate::image_recompress::content_stream_bytes(stream)
             .map_err(|e| format!("decompress {stream_id:?}: {e}"))?
     };
 
@@ -460,6 +461,88 @@ mod tests {
 
         assert!(uses_type3_font(block_with, &type3));
         assert!(!uses_type3_font(block_without, &type3));
+    }
+
+    /// Type3 フォント (F32) を使う BT ブロックを含む Form XObject を持つ 1 ページの PDF を書く
+    fn write_pdf_with_form(form: lopdf::Stream, path: &std::path::Path) {
+        use lopdf::dictionary;
+        let mut doc = Document::with_version("1.5");
+        let t3 = doc.add_object(dictionary! {"Type"=>"Font","Subtype"=>"Type3"});
+        let plain =
+            doc.add_object(dictionary! {"Type"=>"Font","Subtype"=>"Type1","BaseFont"=>"Helvetica"});
+        let mut form = form;
+        form.dict.set("Type", "XObject");
+        form.dict.set("Subtype", "Form");
+        form.dict
+            .set("BBox", vec![0.into(), 0.into(), 100.into(), 100.into()]);
+        form.dict.set(
+            "Resources",
+            dictionary! {"Font"=>dictionary!{"F32"=>t3,"F10"=>plain}},
+        );
+        let form = doc.add_object(form);
+        let pages_id = doc.new_object_id();
+        let c = doc.add_object(lopdf::Stream::new(dictionary! {}, b"/Fm Do".to_vec()));
+        let page = doc.add_object(dictionary! {"Type"=>"Page","Parent"=>pages_id,
+        "MediaBox"=>vec![0.into(),0.into(),100.into(),100.into()],
+        "Resources"=>dictionary!{"XObject"=>dictionary!{"Fm"=>form}},"Contents"=>c});
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {"Type"=>"Pages","Kids"=>vec![page.into()],"Count"=>1}),
+        );
+        let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+        doc.trailer.set("Root", cat);
+        doc.save(path).unwrap();
+    }
+
+    /// F10 (通常のフォント) と F32 (Type3) の BT ブロックを 1 組ずつ。繰り返して、
+    /// 圧縮が効く (Flate になる) 長さにする
+    const FORM_BLOCKS: &[u8] = b"BT\n/F10 13 Tf\n<0057> Tj\nET\nBT\n/F32 90 Tf\n(&) Tj\nET\n";
+    const REPEAT: usize = 20;
+
+    fn form_text(path: &std::path::Path) -> String {
+        let doc = Document::load(path).unwrap();
+        let form = doc
+            .objects
+            .values()
+            .filter_map(|o| o.as_stream().ok())
+            .find(|s| s.dict.get(b"Subtype").ok().and_then(|n| n.as_name().ok()) == Some(b"Form"))
+            .unwrap();
+        String::from_utf8(form.decompressed_content().unwrap()).unwrap()
+    }
+
+    /// 正しく圧縮された内容と、zlib のチェックサムだけが合わない内容 (欠けていない) は処理できる
+    #[test]
+    fn sanitize_processes_valid_and_checksum_only_damaged_flate() {
+        for damage_checksum in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let (src, dst) = (dir.path().join("in.pdf"), dir.path().join("out.pdf"));
+            let mut form = lopdf::Stream::new(lopdf::dictionary! {}, FORM_BLOCKS.repeat(REPEAT));
+            form.compress().unwrap();
+            assert!(form.dict.has(b"Filter"), "the content must really be Flate");
+            if damage_checksum {
+                *form.content.last_mut().unwrap() ^= 0xff;
+            }
+            write_pdf_with_form(form, &src);
+            let removed =
+                sanitize_type3_blocks(src.to_str().unwrap(), dst.to_str().unwrap()).unwrap();
+            assert_eq!(removed, REPEAT, "damage_checksum={damage_checksum}");
+            let text = form_text(&dst);
+            assert!(text.contains("/F10") && !text.contains("/F32"), "{text}");
+        }
+    }
+
+    /// 壊れた・途中で切れた Flate や未対応フィルタの内容は、欠けたまま書き戻さず Err
+    /// (出力ファイルも作らない)。
+    #[test]
+    fn sanitize_rejects_content_that_cannot_be_read_completely() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let dir = tempfile::tempdir().unwrap();
+            let (src, dst) = (dir.path().join("in.pdf"), dir.path().join("out.pdf"));
+            write_pdf_with_form(broken, &src);
+            let r = sanitize_type3_blocks(src.to_str().unwrap(), dst.to_str().unwrap());
+            assert!(r.is_err(), "{kind}: {r:?}");
+            assert!(!dst.exists(), "{kind}");
+        }
     }
 
     #[test]
