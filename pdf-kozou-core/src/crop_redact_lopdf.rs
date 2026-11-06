@@ -190,14 +190,16 @@ fn parse_box(doc: &Document, o: &Object) -> Option<[f64; 4]> {
     ])
 }
 
-/// ページの内容ストリームを連結して返す。デコードできないストリームがあれば None
+/// ページの内容ストリームを連結して返す。デコードできないストリームがあれば None。
+/// 壊れた・途中で切れた Flate (lopdf は Err にせず、欠けた内容を返す) も None。
+/// 欠けたまま書き戻すと、残りの描画が失われる (呼び出し側は MuPDF へフォールバックする)
 fn page_content(doc: &Document, page_id: ObjectId) -> Option<Vec<u8>> {
     const LIMIT: usize = 512 * 1024 * 1024;
     let mut out = Vec::new();
     for id in doc.get_page_contents(page_id) {
         let s = doc.get_object(id).ok()?.as_stream().ok()?;
         let remaining = LIMIT.saturating_sub(out.len());
-        let data = s.decompressed_content_with_limit(remaining).ok()?;
+        let data = crate::image_recompress::content_stream_bytes_with_limit(s, remaining).ok()?;
         out.extend_from_slice(&data);
         out.push(b'\n');
     }
@@ -615,7 +617,10 @@ impl<'a> Walker<'a> {
         let doc = self.doc;
         let s = doc.get_object(fid).ok()?.as_stream().ok()?;
         let own_res = sub_dict(doc, &s.dict, b"Resources")?;
-        let data = s.decompressed_content_with_limit(CONTENT_LIMIT).ok()?;
+        // 壊れた・途中で切れた Flate は None (元の Form をそのまま残す)。
+        // 欠けた内容から複製を作ると、残りの描画が失われる
+        let data =
+            crate::image_recompress::content_stream_bytes_with_limit(s, CONTENT_LIMIT).ok()?;
         let ops = Content::decode_strict(&data).ok()?.operations;
         if ops.is_empty()
             || ops
@@ -1626,6 +1631,110 @@ q 1 0 0 1 500 500 cm /Fm1 Do Q";
         assert_eq!(count(&ops2, "Do"), 2);
         assert_eq!(names2.len(), 2);
         assert_ne!(fid1, fid2);
+    }
+
+    /// 内容の読み取りは、壊れた・途中で切れた Flate や未対応フィルタのストリームを含むページを
+    /// None にする (欠けたまま書き戻さず、呼び出し側が MuPDF へフォールバックする)。
+    #[test]
+    fn page_content_rejects_streams_that_cannot_be_read_completely() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let mut doc = Document::with_version("1.5");
+            let ok = doc.add_object(Stream::new(dictionary! {}, b"q Q".to_vec()));
+            let bad = doc.add_object(broken);
+            let single = doc.add_object(dictionary! {"Type"=>"Page","Contents"=>bad});
+            let array = doc.add_object(
+                dictionary! {"Type"=>"Page","Contents"=>Object::Array(vec![ok.into(), bad.into()])},
+            );
+            for pid in [single, array] {
+                assert!(page_content(&doc, pid).is_none(), "{kind}");
+            }
+        }
+    }
+
+    /// 正しく圧縮された内容と、zlib のチェックサムだけが合わない内容 (欠けていない) は読める
+    #[test]
+    fn page_content_reads_valid_and_checksum_only_damaged_flate() {
+        for damage_checksum in [false, true] {
+            let mut doc = Document::with_version("1.5");
+            // 圧縮が効く (Flate になる) 長さにするため、繰り返す
+            let mut s = Stream::new(dictionary! {}, b"q 0 0 5 5 re f Q".repeat(20));
+            s.compress().unwrap();
+            assert!(s.dict.has(b"Filter"), "the content must really be Flate");
+            if damage_checksum {
+                *s.content.last_mut().unwrap() ^= 0xff;
+            }
+            let id = doc.add_object(s);
+            let pid = doc.add_object(dictionary! {"Type"=>"Page","Contents"=>id});
+            assert_eq!(
+                page_content(&doc, pid).unwrap(),
+                [b"q 0 0 5 5 re f Q".repeat(20), b"\n".to_vec()].concat(),
+                "damage_checksum={damage_checksum}"
+            );
+        }
+    }
+
+    /// 境界をまたぐ Form の内容を `content` (と、その Filter) に差し替えた PDF を作り直す
+    fn replace_form_stream(path: &std::path::Path, form: ObjectId, with: &Stream) {
+        let mut doc = Document::load(path).unwrap();
+        if let Ok(Object::Stream(s)) = doc.get_object_mut(form) {
+            s.dict.remove(b"Filter");
+            if let Ok(f) = with.dict.get(b"Filter") {
+                s.dict.set("Filter", f.clone());
+            }
+            s.content = with.content.clone();
+        }
+        doc.save(path).unwrap();
+    }
+
+    /// 壊れた・途中で切れた Flate や未対応フィルタの Form は、欠けた内容から複製を作らず、
+    /// 元の Form をそのまま残す。
+    #[test]
+    fn form_that_cannot_be_read_completely_is_kept_whole() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let dir = tempfile::tempdir().unwrap();
+            let src = dir.path().join("in.pdf");
+            let dst = dir.path().join("out.pdf");
+            let orig_form = build_wrapped(&src, CROP_LEFT);
+            replace_form_stream(&src, orig_form, &broken);
+            let stats =
+                redact_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), None).unwrap();
+            assert_eq!(stats.pages_redacted, 0, "{kind}");
+            let doc = Document::load(&dst).unwrap();
+            let s = doc.get_object(orig_form).unwrap().as_stream().unwrap();
+            assert_eq!(s.content, broken.content, "{kind}");
+            let (fid1, _, _) = form_of_page(&doc, 1);
+            assert_eq!(fid1, orig_form, "{kind}");
+        }
+    }
+
+    /// 正しく圧縮された Form と、zlib のチェックサムだけが合わない Form (欠けていない) は、
+    /// これまでどおり処理する
+    #[test]
+    fn valid_and_checksum_only_damaged_flate_form_is_processed() {
+        const FORM: &[u8] = b"q 1 0 0 rg 10 10 50 50 re f Q q 0 0 1 rg 100 10 50 50 re f Q \
+              q 50 0 0 50 10 100 cm /ImIn Do Q q 50 0 0 50 200 100 cm /ImOut Do Q ";
+        const REPEAT: usize = 10;
+        for damage_checksum in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let src = dir.path().join("in.pdf");
+            let dst = dir.path().join("out.pdf");
+            let orig_form = build_wrapped(&src, CROP_LEFT);
+            // 圧縮が効く (Flate になる) 長さにするため、繰り返す
+            let mut z = Stream::new(dictionary! {}, FORM.repeat(REPEAT));
+            z.compress().unwrap();
+            assert!(z.dict.has(b"Filter"), "the content must really be Flate");
+            if damage_checksum {
+                *z.content.last_mut().unwrap() ^= 0xff;
+            }
+            replace_form_stream(&src, orig_form, &z);
+            let stats =
+                redact_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), None).unwrap();
+            assert_eq!(stats.pages_redacted, 1, "damage_checksum={damage_checksum}");
+            let doc = Document::load(&dst).unwrap();
+            let (fid1, ops1, _) = form_of_page(&doc, 1);
+            assert_ne!(fid1, orig_form, "damage_checksum={damage_checksum}");
+            assert_eq!(count(&ops1, "re"), REPEAT, "damage_checksum={damage_checksum}");
+        }
     }
 
     #[test]

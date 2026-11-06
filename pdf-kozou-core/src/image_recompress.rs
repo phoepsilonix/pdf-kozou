@@ -523,6 +523,24 @@ pub(crate) fn flate_is_complete(input: &[u8]) -> bool {
 /// いたり途中で切れていたりして内容が欠けるときも Err にする。
 /// 画像データには使わない (内容ストリームより大きく、二重に伸長するのは無駄なため)。
 pub(crate) fn content_stream_bytes(stream: &lopdf::Stream) -> Result<Vec<u8>, String> {
+    ensure_flate_complete(stream)?;
+    stream_bytes(stream).map_err(|e| e.to_string())
+}
+
+/// `content_stream_bytes` の、伸長後の大きさに上限 (`limit` バイト) を設ける版。
+/// 超えるとき、壊れた・途中で切れた Flate のとき、伸長できないときは Err。
+pub(crate) fn content_stream_bytes_with_limit(
+    stream: &lopdf::Stream,
+    limit: usize,
+) -> Result<Vec<u8>, String> {
+    ensure_flate_complete(stream)?;
+    stream
+        .decompressed_content_with_limit(limit)
+        .map_err(|e| e.to_string())
+}
+
+/// Flate だけで符号化されたストリームが、最後まで伸長できなければ Err
+fn ensure_flate_complete(stream: &lopdf::Stream) -> Result<(), String> {
     let flate_only = stream
         .filters()
         .map(|f| f.len() == 1 && f[0] == b"FlateDecode")
@@ -530,7 +548,7 @@ pub(crate) fn content_stream_bytes(stream: &lopdf::Stream) -> Result<Vec<u8>, St
     if flate_only && !flate_is_complete(&stream.content) {
         return Err("corrupt or truncated Flate stream".into());
     }
-    stream_bytes(stream).map_err(|e| e.to_string())
+    Ok(())
 }
 
 /// テスト用: 伸長できない、または内容が欠ける内容ストリームの例 (種類名, ストリーム)。
