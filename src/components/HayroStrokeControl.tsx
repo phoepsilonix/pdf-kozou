@@ -19,7 +19,7 @@ import { EngineDropdown } from "./EngineDropdown";
 import { NumInput } from "./NumInput";
 
 const MODES: HayroStrokeMode[] = ["on", "off", "custom"];
-const formatNum = (val: number): string => Number(val.toFixed(10)).toString();
+const formatNum = (val: number): string => Number(val.toFixed(5)).toString();
 
 export function HayroStrokeControl() {
   const { t } = useI18n();
