@@ -674,7 +674,14 @@ export default function App() {
   // ファイル一覧のツールバー(追加・全選択・解除・並び替え・クリア)。
   // 一覧の上(標準)/下に置けるよう、JSXを1つにまとめて配置側で出し分ける。
   const listToolbar = (
-    <div style={toolbarPos === "top" ? s.listHeader : s.listFooter}>
+    <div
+      style={{
+        ...(toolbarPos === "top" ? s.listHeader : s.listFooter),
+        // 狭幅では、並び替え等が増えてもクリア・移動ボタンが隠れないよう折り返し可にし、
+        // 余白も詰める。
+        ...(isNarrow ? { flexWrap: "wrap" as const, gap: 6, padding: "8px 10px" } : {}),
+      }}
+    >
       <button type="button" style={s.btnAdd} onClick={handlePickFiles}>
         {t("file.add")}
       </button>
@@ -689,6 +696,7 @@ export default function App() {
           sortFiles(key, direction);
           announceSuccess(`file.sorted_${key}_${direction}`);
         }}
+        compact={isNarrow}
         style={{ padding: "6px 10px", fontSize: FS.body, borderRadius: 7 }}
       />
       <div style={{ flex: 1 }} />

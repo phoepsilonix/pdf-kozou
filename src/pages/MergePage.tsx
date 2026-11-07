@@ -721,6 +721,7 @@ useEffect(() => {
       <FileSortSelect
         onSort={sortEntries}
         disabled={entries.length < 2}
+        compact={isNarrow}
         style={{ padding: "6px 10px", fontSize: FS.body, borderRadius: 7 }}
       />
       <div style={{ flex: 1 }} />
