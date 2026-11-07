@@ -512,6 +512,17 @@ pub(crate) fn decode_content(bytes: &[u8]) -> Result<Content, lopdf::Error> {
 /// 戻り値: 各ページの内容ストリーム (重複なし、ページ順)。
 /// フィルタをデコードできないストリームがあれば Err。
 pub(crate) fn merge_page_contents(doc: &mut Document) -> Result<Vec<ObjectId>, String> {
+    merge_page_contents_with(doc, false, &mut Vec::new())
+}
+
+/// `merge_page_contents` の本体。`lenient` のとき、連結できない (内容が欠ける・デコードできない
+/// ストリームを含む) ページは /Contents をそのままにして、理由を `skipped` へ積み、
+/// 他のページの処理を続ける。strict (`lenient` が false) のときは、最初の失敗で Err。
+pub(crate) fn merge_page_contents_with(
+    doc: &mut Document,
+    lenient: bool,
+    skipped: &mut Vec<String>,
+) -> Result<Vec<ObjectId>, String> {
     let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
     // 各ページの /Contents を、実在するストリームの並びに直す
     let page_streams: Vec<(ObjectId, Vec<ObjectId>)> = pages
@@ -540,24 +551,44 @@ pub(crate) fn merge_page_contents(doc: &mut Document) -> Result<Vec<ObjectId>, S
     let mut result: Vec<ObjectId> = Vec::new();
     let mut result_seen: HashSet<ObjectId> = HashSet::new();
     let mut done: HashMap<Vec<ObjectId>, ObjectId> = HashMap::new();
+    // lenient で連結を諦めた並び (同じ並びを使う他のページも、そのままにする)
+    let mut gave_up: HashSet<Vec<ObjectId>> = HashSet::new();
     for (page_id, sig) in &page_streams {
         let target = match sig.len() {
             0 => continue,
             1 => sig[0],
             _ => {
+                if gave_up.contains(sig) {
+                    continue;
+                }
                 let target = match done.get(sig) {
                     Some(t) => *t,
                     None => {
                         let mut joined: Vec<u8> = Vec::new();
+                        let mut failure: Option<String> = None;
                         for id in sig {
                             let Some(Object::Stream(st)) = doc.objects.get(id) else {
                                 continue;
                             };
                             // 内容が欠けるもの (壊れた・途中で切れた Flate) は Err
-                            let bytes = crate::image_recompress::content_stream_bytes(st)
-                                .map_err(|e| format!("stream {id:?} decompress: {e}"))?;
-                            joined.extend_from_slice(&bytes);
-                            joined.push(b'\n');
+                            match crate::image_recompress::content_stream_bytes(st) {
+                                Ok(bytes) => {
+                                    joined.extend_from_slice(&bytes);
+                                    joined.push(b'\n');
+                                }
+                                Err(e) => {
+                                    failure = Some(format!("stream {id:?} decompress: {e}"));
+                                    break;
+                                }
+                            }
+                        }
+                        if let Some(msg) = failure {
+                            if !lenient {
+                                return Err(msg);
+                            }
+                            skipped.push(format!("page {page_id:?} /Contents kept as is ({msg})"));
+                            gave_up.insert(sig.clone());
+                            continue;
                         }
                         let exclusive = sig.iter().all(|id| usage.get(id) == Some(&1));
                         let target = if exclusive {

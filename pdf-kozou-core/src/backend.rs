@@ -110,6 +110,12 @@ pub fn try_lopdf(op: &str) -> bool {
     }
 }
 
+/// MuPDF へフォールバックしない指定 (backend=lopdf) か。true のとき lopdf 実装は、解釈できない
+/// 部品を Err にせず、そのまま書き戻して処理を続ける (見た目を変えない)。
+pub fn no_fallback() -> bool {
+    current() == Backend::Lopdf
+}
+
 /// lopdf 実装が失敗したときの扱い。戻り値 true = フォールバックせずエラーにする。
 /// (false のときは「MuPDF へフォールバックする」ログを出す)
 pub fn abort_on_lopdf_failure(op: &str, err: &dyn std::fmt::Display) -> bool {

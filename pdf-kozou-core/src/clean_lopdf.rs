@@ -29,7 +29,7 @@
 // 解析できない内容・デコードできないフィルタがあれば Err を返し、何も保証しない。
 // 呼び出し側 (compress_lopdf) は Err を受けて MuPDF 実装へフォールバックする。
 
-use crate::content_filter::{merge_page_contents, reencode_with};
+use crate::content_filter::{merge_page_contents_with, reencode_with};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::HashSet;
 
@@ -42,27 +42,45 @@ pub(crate) struct CleanOutcome {
     pub resources: usize,
     /// sanitize で取り除いた演算子の数
     pub ops_removed: usize,
+    /// lenient のとき、解釈できなかったためそのままにした部品の理由 (strict では常に空)
+    pub skipped: Vec<String>,
 }
 
 /// 文書内の内容ストリームを clean する。`sanitize` なら、書き直すときに演算子列も整理する
 /// (sanitize_ops)。MuPDF も、clean と sanitize のどちらでも内容ストリームを書き直し、
 /// sanitize のときだけ描画状態を整理するフィルタを通す。
+/// 解釈できない内容があれば Err (呼び出し側が MuPDF へフォールバックする)。
 pub(crate) fn clean_contents(doc: &mut Document, sanitize: bool) -> Result<CleanOutcome, String> {
+    clean_contents_with(doc, sanitize, false)
+}
+
+/// `clean_contents` の本体。`lenient` のとき、解釈できない・読み切れない内容ストリームは
+/// 書き直さずに元のまま残し (理由を `CleanOutcome::skipped` へ積み)、他の部品の処理を続ける。
+/// MuPDF へフォールバックしない指定 (backend=lopdf) で、見た目を保ったまま処理を続けるための動作。
+/// 書き直さなかった部品は、resource_prune が名前を集められないので /Resources も外さない。
+pub(crate) fn clean_contents_with(
+    doc: &mut Document,
+    sanitize: bool,
+    lenient: bool,
+) -> Result<CleanOutcome, String> {
     let mut cleaned = 0usize;
     let mut ops_removed = 0usize;
+    let mut skipped: Vec<String> = Vec::new();
     let mut touched: HashSet<ObjectId> = HashSet::new();
 
     // ── ページの内容ストリーム ──
     // /Contents が配列のページを 1 本にまとめてから、各ストリームを書き直す
     // (他のページと共有しているストリームは、まとめるときに書き換えられない)
-    for id in merge_page_contents(doc)? {
-        let bytes = plain_content(doc, id)?;
-        let (new_bytes, removed) =
-            reencode_with(&bytes, sanitize).map_err(|e| format!("stream {id:?}: {e}"))?;
-        set_content(doc, id, new_bytes);
+    for id in merge_page_contents_with(doc, lenient, &mut skipped)? {
         touched.insert(id);
-        cleaned += 1;
-        ops_removed += removed;
+        match rewrite_stream(doc, id, sanitize) {
+            Ok(removed) => {
+                cleaned += 1;
+                ops_removed += removed;
+            }
+            Err(e) if lenient => skipped.push(format!("content stream {id:?} kept as is ({e})")),
+            Err(e) => return Err(e),
+        }
     }
 
     // ── Form XObject / タイリングパターン ──
@@ -75,12 +93,14 @@ pub(crate) fn clean_contents(doc: &mut Document, sanitize: bool) -> Result<Clean
         })
         .collect();
     for id in parts {
-        let bytes = plain_content(doc, id)?;
-        let (new_bytes, removed) =
-            reencode_with(&bytes, sanitize).map_err(|e| format!("stream {id:?}: {e}"))?;
-        set_content(doc, id, new_bytes);
-        cleaned += 1;
-        ops_removed += removed;
+        match rewrite_stream(doc, id, sanitize) {
+            Ok(removed) => {
+                cleaned += 1;
+                ops_removed += removed;
+            }
+            Err(e) if lenient => skipped.push(format!("content stream {id:?} kept as is ({e})")),
+            Err(e) => return Err(e),
+        }
     }
 
     // ── 使われていないリソースを外す ──
@@ -89,7 +109,17 @@ pub(crate) fn clean_contents(doc: &mut Document, sanitize: bool) -> Result<Clean
         streams: cleaned,
         resources,
         ops_removed,
+        skipped,
     })
+}
+
+/// 内容ストリーム 1 本を書き直す (成功したときだけ文書を書き換える)。取り除いた演算子の数を返す。
+fn rewrite_stream(doc: &mut Document, id: ObjectId, sanitize: bool) -> Result<usize, String> {
+    let bytes = plain_content(doc, id)?;
+    let (new_bytes, removed) =
+        reencode_with(&bytes, sanitize).map_err(|e| format!("stream {id:?}: {e}"))?;
+    set_content(doc, id, new_bytes);
+    Ok(removed)
 }
 
 /// 内容ストリームを持つ部品か (Form XObject / タイリングパターン)
@@ -437,5 +467,50 @@ mod tests {
             p.remove(b"Contents");
         }
         assert_eq!(clean_contents(&mut doc, false).unwrap().streams, 0);
+    }
+
+    /// lenient: 読み切れない・解析できない内容ストリームは、Err にせずそのまま残す。
+    /// 他の読める部品は書き直し、そのページの /Resources は外さない。
+    #[test]
+    fn lenient_keeps_unreadable_content_as_is() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let (mut doc, page_id) =
+                doc_with(|doc, _| Object::Reference(doc.add_object(broken.clone())));
+            let cid = doc.get_page_contents(page_id)[0];
+            let before = doc.get_object(cid).unwrap().clone();
+            let out =
+                clean_contents_with(&mut doc, true, true).unwrap_or_else(|e| panic!("{kind}: {e}"));
+            assert_eq!(out.streams, 0, "{kind}");
+            assert_eq!(out.skipped.len(), 1, "{kind}");
+            assert_eq!(doc.get_object(cid).unwrap(), &before, "{kind}");
+        }
+        // 解析できない内容 (閉じていない文字列)
+        let (mut doc, page_id) = doc_with(|doc, _| {
+            Object::Reference(
+                doc.add_object(Stream::new(dictionary! {}, b"BT (abc Tj ET".to_vec())),
+            )
+        });
+        let cid = doc.get_page_contents(page_id)[0];
+        let before = doc.get_object(cid).unwrap().clone();
+        let out = clean_contents_with(&mut doc, false, true).unwrap();
+        assert_eq!((out.streams, out.skipped.len()), (0, 1));
+        assert_eq!(doc.get_object(cid).unwrap(), &before);
+    }
+
+    /// lenient: /Contents の配列に読めないストリームが混じるページは、連結せずそのままにする
+    #[test]
+    fn lenient_keeps_a_contents_array_with_a_damaged_stream() {
+        let (_, broken) = crate::image_recompress::broken_content_streams()
+            .into_iter()
+            .next()
+            .unwrap();
+        let (mut doc, page_id) = doc_with(|doc, _| {
+            let ok = doc.add_object(Stream::new(dictionary! {}, b"q 0 0 5 5 re f Q".to_vec()));
+            let bad = doc.add_object(broken.clone());
+            Object::Array(vec![ok.into(), bad.into()])
+        });
+        let out = clean_contents_with(&mut doc, false, true).unwrap();
+        assert!(!out.skipped.is_empty());
+        assert_eq!(doc.get_page_contents(page_id).len(), 2);
     }
 }

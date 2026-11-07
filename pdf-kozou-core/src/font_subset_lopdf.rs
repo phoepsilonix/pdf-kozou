@@ -30,6 +30,8 @@ pub(crate) struct SubsetOutcome {
     pub fonts: usize,
     /// 減ったフォントプログラムのバイト数 (展開後)
     pub bytes_saved: usize,
+    /// lenient のとき、縮められなかったためそのままにしたフォントの理由 (strict では常に空)
+    pub skipped: Vec<String>,
 }
 
 /// 1 つのフォントを縮めた結果
@@ -126,22 +128,43 @@ fn rewrite_cid_set(doc: &mut Document, cid_font: ObjectId, cids: &BTreeSet<u16>)
     }
 }
 
-/// `usages` のフォントを縮めて、文書に書き戻す。
+/// `usages` のフォントを縮めて、文書に書き戻す。縮められないフォントがあれば Err。
 pub(crate) fn subset_fonts(
     doc: &mut Document,
     usages: &[CidFontUsage],
 ) -> Result<SubsetOutcome, String> {
+    subset_fonts_with(doc, usages, false)
+}
+
+/// `subset_fonts` の本体。`lenient` のとき、読めない・縮められないフォントは何も変えずに残し
+/// (理由を `SubsetOutcome::skipped` へ積み)、残りのフォントの処理を続ける。
+/// フォントは、縮めるのに成功してから文書を書き換えるので、失敗したフォントは元のまま残る。
+pub(crate) fn subset_fonts_with(
+    doc: &mut Document,
+    usages: &[CidFontUsage],
+    lenient: bool,
+) -> Result<SubsetOutcome, String> {
     let mut outcome = SubsetOutcome::default();
     for u in usages {
         let ff = u.info.font_file;
-        let original = match doc.objects.get(&ff) {
-            Some(Object::Stream(s)) => {
-                stream_bytes(s).map_err(|e| format!("FontFile2 {ff:?}: {e}"))?
-            }
+        let shrunk = match doc.objects.get(&ff) {
+            Some(Object::Stream(s)) => stream_bytes(s)
+                .map_err(|e| format!("FontFile2 {ff:?}: {e}"))
+                .and_then(|original| {
+                    subset_cid_font(&original, &u.cids, &u.info.cid_to_gid)
+                        .map(|sub| (original, sub))
+                        .map_err(|e| format!("FontFile2 {ff:?}: {e}"))
+                }),
             _ => continue,
         };
-        let sub = subset_cid_font(&original, &u.cids, &u.info.cid_to_gid)
-            .map_err(|e| format!("FontFile2 {ff:?}: {e}"))?;
+        let (original, sub) = match shrunk {
+            Ok(v) => v,
+            Err(e) if lenient => {
+                outcome.skipped.push(format!("{e} (kept as is)"));
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
         if sub.font.len() >= original.len() {
             continue; // 小さくならないので、そのままにする
         }

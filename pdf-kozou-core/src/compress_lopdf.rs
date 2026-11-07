@@ -27,6 +27,14 @@
 //                     Unsupported (MuPDF へフォールバック)
 //   merge_fonts      : 重複フォントの統合
 //
+// MuPDF へフォールバックしない指定 (backend=lopdf。Params::lenient) のときは、上の Err にする代わりに、
+// 解釈できない部品をそのまま書き戻して処理を続ける (見た目を変えない)。
+//   - clean / sanitize : 解析できない・読み切れない内容ストリームは書き直さず、元のまま残す
+//                        (そのページ・Form の /Resources も外さない)
+//   - subset           : 縮められないフォントは元のまま残す。使われ方が分からないとき
+//                        (内容ストリームを解析できないなど) は、サブセット化そのものを行わない
+//   - merge_fonts      : 行わず、フォントはそのまま残す
+//
 // 暗号化された入力、lopdf が内容を落とす入力 (safe_load の検出) も Err にする。
 // 保存したあとに読み直してページ数を確かめ、食い違えば Err にする。
 
@@ -72,6 +80,9 @@ pub(crate) struct Params {
     pub object_stream: bool,
     /// フォントのサブセット化 (TrueType の CID フォントだけ)
     pub font_subset: bool,
+    /// MuPDF へフォールバックしない (backend=lopdf)。lopdf で解釈できない部品は、Err にせず
+    /// そのまま書き戻して処理を続ける
+    pub lenient: bool,
 }
 
 /// 処理の内訳 (ログ用)
@@ -90,6 +101,13 @@ pub(crate) struct Stats {
     pub subset_fonts: usize,
     /// サブセット化で減ったフォントプログラムのバイト数 (展開後)
     pub subset_bytes_saved: usize,
+    /// lenient のとき、解釈できずそのまま書き戻した部品の数 (内容ストリーム・ページの /Contents)
+    pub kept_content_parts: usize,
+    /// lenient のとき、サブセット化できずそのまま残したフォントの数
+    /// (使われ方が分からず、サブセット化そのものを行わなかったときは 1 以上)
+    pub kept_fonts: usize,
+    /// lenient のとき、merge_fonts を行わなかった
+    pub skipped_merge_fonts: bool,
 }
 
 // ── 参照の走査・付け替え ──────────────────────────────────────────────────
@@ -333,15 +351,17 @@ fn compress_streams(doc: &mut Document, p: &Params) -> usize {
 /// `input` を lopdf だけで圧縮して `output` へ書く。
 /// 失敗や未対応の指定は Err。呼び出し側が MuPDF 実装へフォールバックする。
 pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Result<Stats> {
-    let mut unsupported: Vec<&str> = Vec::new();
+    let mut stats = Stats::default();
     if p.merge_fonts {
-        unsupported.push("merge_fonts");
-    }
-    if !unsupported.is_empty() {
-        return Err(CoreError::Unsupported(format!(
-            "lopdf compression does not support {}",
-            unsupported.join(", ")
-        )));
+        if p.lenient {
+            // 重複フォントの統合は lopdf では行えない。フォントはそのまま書き戻す
+            eprintln!("[lopdf] merge_fonts is not supported; fonts are kept as is");
+            stats.skipped_merge_fonts = true;
+        } else {
+            return Err(CoreError::Unsupported(
+                "lopdf compression does not support merge_fonts".into(),
+            ));
+        }
     }
 
     let (mut doc, _bytes) = crate::safe_load::load_checked(input)?;
@@ -356,7 +376,6 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
     }
 
     let gc = p.garbage_level;
-    let mut stats = Stats::default();
 
     clean_trailer(&mut doc);
     if gc >= 1 {
@@ -371,8 +390,12 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
         } else {
             SANITIZE_ERR_PREFIX
         };
-        let outcome = crate::clean_lopdf::clean_contents(&mut doc, p.sanitize)
+        let outcome = crate::clean_lopdf::clean_contents_with(&mut doc, p.sanitize, p.lenient)
             .map_err(|e| CoreError::Unsupported(format!("{prefix}{e}")))?;
+        for why in &outcome.skipped {
+            eprintln!("[lopdf] {prefix}{why}");
+        }
+        stats.kept_content_parts = outcome.skipped.len();
         stats.cleaned_streams = outcome.streams;
         stats.cleaned_resources = outcome.resources;
         stats.sanitized_ops = outcome.ops_removed;
@@ -386,13 +409,26 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
         // clean / sanitize のあとに行う (使われないフォントを先に取り除いておく)
         let analysis = crate::font_usage::analyze_fonts(&doc);
         if !analysis.unsupported.is_empty() {
-            return Err(CoreError::Unsupported(format!(
-                "{SUBSET_ERR_PREFIX}{}",
-                analysis.unsupported.join("; ")
-            )));
+            if !p.lenient {
+                return Err(CoreError::Unsupported(format!(
+                    "{SUBSET_ERR_PREFIX}{}",
+                    analysis.unsupported.join("; ")
+                )));
+            }
+            // サブセット化できないフォントは、そのまま残す (analyze_fonts は、使われ方を
+            // 確かめられないときは usable を空にするので、そのときはサブセット化しない)
+            for why in &analysis.unsupported {
+                eprintln!("[lopdf] {SUBSET_ERR_PREFIX}{why} (kept as is)");
+            }
+            stats.kept_fonts += analysis.unsupported.len();
         }
-        let outcome = crate::font_subset_lopdf::subset_fonts(&mut doc, &analysis.usable)
-            .map_err(|e| CoreError::Unsupported(format!("{SUBSET_ERR_PREFIX}{e}")))?;
+        let outcome =
+            crate::font_subset_lopdf::subset_fonts_with(&mut doc, &analysis.usable, p.lenient)
+                .map_err(|e| CoreError::Unsupported(format!("{SUBSET_ERR_PREFIX}{e}")))?;
+        for why in &outcome.skipped {
+            eprintln!("[lopdf] {SUBSET_ERR_PREFIX}{why}");
+        }
+        stats.kept_fonts += outcome.skipped.len();
         stats.subset_fonts = outcome.fonts;
         stats.subset_bytes_saved = outcome.bytes_saved;
     }
@@ -474,6 +510,7 @@ mod tests {
             merge_fonts: false,
             object_stream: false,
             font_subset: false,
+            lenient: false,
         }
     }
 
@@ -1042,5 +1079,98 @@ mod tests {
             assert_eq!(content_rewrite_op(&e), None, "{e}");
         }
         assert!(!dst.exists());
+    }
+
+    /// 1 ページ・内容ストリーム 1 本だけの PDF を書く (`stream` を内容にする)。
+    fn single_stream_pdf(path: &std::path::Path, stream: lopdf::Stream) {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let c = doc.add_object(stream);
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+            "Contents" => c, "Resources" => dictionary! {},
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![page_id.into()], "Count" => 1,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog_id);
+        doc.save(path).unwrap();
+    }
+
+    /// backend=lopdf (lenient) では、読み切れない内容ストリームを Err にせず、
+    /// 元のバイト列のまま書き戻して処理を続ける (clean / sanitize / サブセット化のどれでも)。
+    #[test]
+    fn lenient_keeps_a_damaged_content_stream_as_is() {
+        for (kind, broken) in crate::image_recompress::broken_content_streams() {
+            let dir = tempfile::tempdir().unwrap();
+            let src = dir.path().join("in.pdf");
+            let dst = dir.path().join("out.pdf");
+            single_stream_pdf(&src, broken.clone());
+            for (clean, sanitize, subset) in [
+                (true, false, false),
+                (false, true, false),
+                (true, true, true),
+            ] {
+                let mut p = params();
+                p.clean = clean;
+                p.sanitize = sanitize;
+                p.font_subset = subset;
+                p.lenient = true;
+                let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p)
+                    .unwrap_or_else(|e| panic!("{kind}: {e}"));
+                assert_eq!(stats.kept_content_parts, 1, "{kind}");
+                assert_eq!(stats.cleaned_streams, 0, "{kind}");
+                let out = Document::load(&dst).unwrap();
+                let page_id = *out.get_pages().values().next().unwrap();
+                let cid = out.get_page_contents(page_id)[0];
+                let Object::Stream(s) = out.get_object(cid).unwrap() else {
+                    panic!("{kind}: contents is not a stream");
+                };
+                assert_eq!(s.content, broken.content, "{kind}: bytes changed");
+                assert_eq!(
+                    s.dict.get(b"Filter").ok(),
+                    broken.dict.get(b"Filter").ok(),
+                    "{kind}"
+                );
+            }
+        }
+    }
+
+    /// lenient でも、読める内容ストリームは書き直す (壊れた部品だけをそのままにする)
+    #[test]
+    fn lenient_still_cleans_what_it_can_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        single_stream_pdf(
+            &src,
+            lopdf::Stream::new(dictionary! {}, b"q   0 0 5 5 re   f Q".to_vec()),
+        );
+        let mut p = params();
+        p.clean = true;
+        p.lenient = true;
+        let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
+        assert_eq!(stats.cleaned_streams, 1);
+        assert_eq!(stats.kept_content_parts, 0);
+    }
+
+    /// lenient では、merge_fonts を行わずに書き戻す (strict は Unsupported)
+    #[test]
+    fn lenient_skips_merge_fonts() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.pdf");
+        let dst = dir.path().join("out.pdf");
+        sample(&src);
+        let mut p = params();
+        p.merge_fonts = true;
+        p.lenient = true;
+        let stats = compress_with_lopdf(src.to_str().unwrap(), dst.to_str().unwrap(), &p).unwrap();
+        assert!(stats.skipped_merge_fonts);
+        assert!(Document::load(&dst).is_ok());
     }
 }

@@ -1004,6 +1004,7 @@ pub fn compress(req: &CompressRequest) -> Result<CompressResponse> {
             merge_fonts,
             object_stream,
             font_subset: true,
+            lenient: crate::backend::no_fallback(),
         };
         try_lopdf_compress("compress_subset", &current_input, &req.output, params)?
     } else {
@@ -1297,6 +1298,7 @@ fn safe_compress_only(
         merge_fonts,
         object_stream,
         font_subset: false,
+        lenient: crate::backend::no_fallback(),
     };
     if let Some(resp) = try_lopdf_compress("compress", input, output, params)? {
         return Ok(resp);
@@ -1330,7 +1332,7 @@ fn try_lopdf_compress(
     match crate::compress_lopdf::compress_with_lopdf(input, output, &params) {
         Ok(stats) => {
             eprintln!(
-                "[{op}] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned, {} resource dict(s) pruned, {} op(s) sanitized, {} font(s) subset ({} byte(s) saved)",
+                "[{op}] lopdf: {} unused object(s) dropped, {} duplicate stream(s) merged, {} stream(s) compressed, {} content stream(s) cleaned, {} resource dict(s) pruned, {} op(s) sanitized, {} font(s) subset ({} byte(s) saved), {} content part(s) and {} font(s) kept as is{}",
                 stats.pruned_objects,
                 stats.merged_streams,
                 stats.compressed_streams,
@@ -1338,7 +1340,14 @@ fn try_lopdf_compress(
                 stats.cleaned_resources,
                 stats.sanitized_ops,
                 stats.subset_fonts,
-                stats.subset_bytes_saved
+                stats.subset_bytes_saved,
+                stats.kept_content_parts,
+                stats.kept_fonts,
+                if stats.skipped_merge_fonts {
+                    " (merge_fonts skipped)"
+                } else {
+                    ""
+                }
             );
             let ib = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
             let ob = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
