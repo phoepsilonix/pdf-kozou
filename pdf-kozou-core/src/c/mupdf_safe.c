@@ -1543,6 +1543,121 @@ static fz_device *kozou_new_page_draw_device(fz_context *ctx, fz_matrix transfor
     return fz_new_draw_device_type3(ctx, transform, dest);
 }
 
+/* ------------------------------------------------------------------ */
+/* シェーディングパターンの極端な /Matrix の描画前補正                    */
+/*                                                                     */
+/* Canva 等が出力する PDF には、放射/軸方向グラデーション             */
+/* (PatternType 2) の /Matrix 要素が int64 の飽和値                    */
+/*   [9223372036854775807 -9223372036854775808 ... 3201746.8 32555642] */
+/* になっているものがある。hayro / poppler / PDFium は double で計算   */
+/* するため「円の外側 = Extend の端の色」で単色に塗れるが、MuPDF の    */
+/* メッシュ描画は float32 で、Extend 部を半径 HUGENUM(32000) 倍の円環  */
+/* 三角形で作る。スケール 1e19 が掛かると頂点が 1e23 級になり、         */
+/* fz_paint_triangle の (int) 変換・刻みが破綻して何も塗られない        */
+/* (実測: 1e6 までは描画され、1e7 以上で欠落)。                         */
+/*                                                                     */
+/* 対策: 線形部 a,b,c,d の最大絶対値が KOZOU_PATTERN_MATRIX_LIMIT を    */
+/* 超えるときだけ、行列全体(e,f 含む)を同じ係数 k で縮小する。          */
+/* 逆変換 s = L^-1 (p - t) は (kL)^-1 (p - kt) = s0 + (1/k) L^-1 p と   */
+/* なり、パターン空間の原点がシェーディング空間で占める位置 s0 を保つ   */
+/* (ページ全体の広がりが 1e-16 → 1e-2 程度になるだけ)。つまり           */
+/* 「円の外側か内側か」といった元の意味を変えずに MuPDF が扱える大きさ  */
+/* へ落とせる。メモリ上のオブジェクトだけを書き換え、元ファイルは       */
+/* 変更しない。正常な PDF (要素が閾値以下) には一切触れない。           */
+/* ------------------------------------------------------------------ */
+#define KOZOU_PATTERN_MATRIX_LIMIT  1.0e5
+#define KOZOU_PATTERN_WALK_DEPTH    8
+#define KOZOU_PATTERN_WALK_BUDGET   20000
+
+static void kozou_clamp_shading_pattern_matrix(fz_context *ctx, pdf_obj *pat)
+{
+    pdf_obj *m;
+    double v[6];
+    double mx = 0.0, k;
+    int i;
+
+    if (!pdf_is_dict(ctx, pat)) return;
+    if (pdf_dict_get_int(ctx, pat, PDF_NAME(PatternType)) != 2) return;
+    m = pdf_dict_get(ctx, pat, PDF_NAME(Matrix));
+    if (!pdf_is_array(ctx, m) || pdf_array_len(ctx, m) != 6) return;
+
+    for (i = 0; i < 6; i++) {
+        v[i] = (double)pdf_to_real(ctx, pdf_array_get(ctx, m, i));
+        if (!isfinite(v[i])) return;
+    }
+    for (i = 0; i < 4; i++) {
+        double a = fabs(v[i]);
+        if (a > mx) mx = a;
+    }
+    if (mx <= KOZOU_PATTERN_MATRIX_LIMIT) return;
+
+    k = KOZOU_PATTERN_MATRIX_LIMIT / mx;
+    for (i = 0; i < 6; i++)
+        pdf_array_put_real(ctx, m, i, v[i] * k);
+}
+
+/* Resources 辞書から /Pattern を補正し、Form XObject とタイリング
+ * パターン内の /Resources へ再帰する。循環・巨大構造に備えて深さと
+ * 訪問数に上限を設ける。 */
+static void kozou_walk_resources_for_patterns(
+    fz_context *ctx, pdf_obj *res, int depth, int *budget)
+{
+    pdf_obj *pats, *xobjs;
+    int i, n;
+
+    if (!pdf_is_dict(ctx, res)) return;
+    if (depth > KOZOU_PATTERN_WALK_DEPTH || *budget <= 0) return;
+    (*budget)--;
+
+    pats = pdf_dict_get(ctx, res, PDF_NAME(Pattern));
+    if (pdf_is_dict(ctx, pats)) {
+        n = pdf_dict_len(ctx, pats);
+        for (i = 0; i < n && *budget > 0; i++) {
+            pdf_obj *pat = pdf_dict_get_val(ctx, pats, i);
+            (*budget)--;
+            kozou_clamp_shading_pattern_matrix(ctx, pat);
+            /* タイリングパターン (PatternType 1) は独自の Resources を持つ */
+            kozou_walk_resources_for_patterns(
+                ctx, pdf_dict_get(ctx, pat, PDF_NAME(Resources)),
+                depth + 1, budget);
+        }
+    }
+
+    xobjs = pdf_dict_get(ctx, res, PDF_NAME(XObject));
+    if (pdf_is_dict(ctx, xobjs)) {
+        n = pdf_dict_len(ctx, xobjs);
+        for (i = 0; i < n && *budget > 0; i++) {
+            pdf_obj *xo = pdf_dict_get_val(ctx, xobjs, i);
+            pdf_obj *st = pdf_dict_get(ctx, xo, PDF_NAME(Subtype));
+            (*budget)--;
+            if (pdf_is_name(ctx, st) && pdf_name_eq(ctx, st, PDF_NAME(Form)))
+                kozou_walk_resources_for_patterns(
+                    ctx, pdf_dict_get(ctx, xo, PDF_NAME(Resources)),
+                    depth + 1, budget);
+        }
+    }
+}
+
+/* page から辿れるシェーディングパターンの /Matrix を補正する。
+ * PDF 以外のページや失敗時は何もしない (描画自体は続行する)。 */
+static void kozou_sanitize_page_pattern_matrices(fz_context *ctx, fz_page *page)
+{
+    int budget = KOZOU_PATTERN_WALK_BUDGET;
+
+    if (!page) return;
+    fz_try(ctx) {
+        pdf_page *ppage = pdf_page_from_fz_page(ctx, page);
+        if (ppage)
+            kozou_walk_resources_for_patterns(
+                ctx, pdf_page_resources(ctx, ppage), 0, &budget);
+    }
+    fz_catch(ctx) {
+        if (fz_caught(ctx) == FZ_ERROR_SYSTEM)
+            fz_rethrow(ctx);
+        fz_ignore_error(ctx);
+    }
+}
+
 /* 汎用の低レベルプリミティブ: 与えられた ctm・目標サイズでページを
  * pixmap にレンダリングする。mult<=1 なら直接描画(従来と同一)。
  * mult>1 なら ctm をさらに mult 倍したデバイス空間で一時的に描いてから
@@ -1557,6 +1672,9 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
     fz_colorspace *rgb = fz_device_rgb(ctx);
     fz_irect target_bbox = { 0, 0, target_w, target_h };
     fz_pixmap *pixmap = NULL;
+
+    /* 壊れたシェーディングパターン行列で MuPDF の描画が欠落するのを防ぐ */
+    kozou_sanitize_page_pattern_matrices(ctx, page);
 
     if (mult <= 1) {
         pixmap = fz_new_pixmap_with_bbox(ctx, rgb, target_bbox, NULL, 0);
