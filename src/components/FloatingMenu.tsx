@@ -28,6 +28,11 @@
 // 高さについても、固定の "70vh" のような割合ではなく、アンカーの下から
 // 画面下端までの「実際に使える領域」を都度計算して使うようにしている
 // （UI拡大率が高い場合でも、使える領域を最大限使う）。
+// 画面下端は window.visualViewport から求める。モバイルではソフトキーボードが
+// 出ても window.innerHeight が変わらない環境(Chrome系のAndroid、iOS)があり、
+// innerHeight だけを見ると、下側の入力欄がキーボードの裏に隠れてしまうため。
+// 入力欄にフォーカスしたとき、またはキーボードで高さが変わったときは、
+// フォーカス中の入力欄がパネル内で見える位置になるようスクロールする。
 //
 // 3. 入れ子になった FloatingMenu 同士の干渉:
 //    テーマ選択などの各コントロールも自身のドロップダウンを FloatingMenu で
@@ -86,6 +91,9 @@ interface FloatingMenuProps {
 const MARGIN = 8;
 const GAP = 6;
 const MIN_PANEL_HEIGHT = 120;
+// ソフトキーボード表示中(見える範囲が縮んでいるとき)の下限。横向きなどで
+// 見える範囲が狭くても、パネルがその外にはみ出さないよう小さめにする。
+const MIN_PANEL_HEIGHT_KEYBOARD = 80;
 
 export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMenuProps) {
   const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
@@ -111,22 +119,44 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       setScale(getUiScale());
       const rect = el.getBoundingClientRect();
       const top = rect.bottom + GAP;
+      // 画面下端(実際に見える範囲の下端)。ピンチズーム中は visualViewport が
+      // 縮んで見えるだけでキーボードとは無関係なので、その間は innerHeight を使う。
+      const vv = window.visualViewport;
+      const useVv = !!vv && vv.scale <= 1.01;
+      const visibleBottom = useVv && vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const keyboardShown = useVv && !!vv && vv.height < window.innerHeight - 1;
+      const minHeight = keyboardShown ? MIN_PANEL_HEIGHT_KEYBOARD : MIN_PANEL_HEIGHT;
       // アンカー下端から画面下端までの実際に使える高さをそのまま使う
-      const available = Math.max(MIN_PANEL_HEIGHT, window.innerHeight - top - MARGIN);
-      setPos({
+      const available = Math.max(minHeight, visibleBottom - top - MARGIN);
+      const next = {
         top,
         right: Math.max(MARGIN, window.innerWidth - rect.right),
         maxHeight: available,
-      });
+      };
+      // visualViewport の scroll/resize やパネル内スクロールで頻繁に呼ばれるため、
+      // 値が(1px未満の差で)変わらないときは state を更新せず再描画を避ける。
+      setPos((prev) =>
+        prev &&
+        Math.abs(prev.top - next.top) < 1 &&
+        Math.abs(prev.right - next.right) < 1 &&
+        Math.abs(prev.maxHeight - next.maxHeight) < 1
+          ? prev
+          : next,
+      );
     };
     update();
+    const vv = window.visualViewport;
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     window.addEventListener("kozou-uiscale-change", update);
+    vv?.addEventListener("resize", update);
+    vv?.addEventListener("scroll", update);
     return () => {
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("kozou-uiscale-change", update);
+      vv?.removeEventListener("resize", update);
+      vv?.removeEventListener("scroll", update);
     };
   }, [open, anchorRef]);
 
@@ -217,6 +247,28 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
     wasOpenRef.current = open;
   }, [open, anchorRef]);
 
+  // フォーカス中の入力欄がパネル内で隠れていたら見える位置へスクロールする。
+  // scrollIntoView の対象になるスクロール祖先は、このパネルだけ
+  // (html/body は overflow:hidden でスクロール範囲もない)。
+  // 要素の座標は CSS zoom 下でも自身と同じ座標系で処理されるため、
+  // scrollTop を自前で換算せずに済む scrollIntoView を使う。
+  const ensureFocusedVisible = () => {
+    const panel = panelRef.current;
+    const el = document.activeElement;
+    if (!panel || !(el instanceof HTMLElement) || !panel.contains(el)) return;
+    if (!el.matches("input, textarea, select")) return;
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
+  // キーボードの表示/非表示などでパネルの最大高さが変わったとき(描画反映後)にも
+  // 入力欄が見える位置に保つ。
+  const maxHeight = pos?.maxHeight;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: maxHeight の変化だけを契機に実行したい(ensureFocusedVisible は ref のみ参照)。
+  useEffect(() => {
+    if (maxHeight === undefined) return;
+    ensureFocusedVisible();
+  }, [maxHeight]);
+
   if (!open || !pos || typeof document === "undefined") return null;
 
   return createPortal(
@@ -225,6 +277,11 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       ref={panelRef}
       {...{ [PANEL_MARKER]: true }}
       onKeyDown={handlePanelKeyDown}
+      onFocus={() => {
+        // フォーカス直後はキーボードがまだ出ていないことがあるため、描画後に1度。
+        // その後のキーボード表示による高さ変化は上の effect が拾う。
+        window.requestAnimationFrame(ensureFocusedVisible);
+      }}
       style={
         {
           position: "fixed",
