@@ -648,6 +648,29 @@ export default function App() {
   // 狭幅時は % ではなく実測pxから計算した固定値を使う。
   const narrowContentWidth = Math.max(240, Math.min(720, viewportWidth - 48));
 
+  // 選択数・ページ数・サイズのサマリ。ファイル一覧ツールバー(並び替え等)の
+  // 上下位置に合わせ、ツールバーが上なら一覧の上、下なら一覧の下に出す。
+  const summaryEl =
+    fileList.length > 0 ? (
+      <div style={toolbarPos === "top" ? { ...s.summary, marginBottom: 6 } : s.summary}>
+        {selCount > 0 ? (
+          <>
+            <span style={s.sumSel}>{t("file.sel_count", { count: String(selCount) })}</span>
+            <span style={s.sumDot}>·</span>
+            <span style={s.sumInfo}>{t("file.sel_pages", { pages: String(selPages) })}</span>
+            {selBytes > 0 && (
+              <>
+                <span style={s.sumDot}>·</span>
+                <span style={s.sumInfo}>{(selBytes / 1048576).toFixed(1)} MB</span>
+              </>
+            )}
+          </>
+        ) : (
+          <span style={s.sumNone}>{t("app.no_file_hint")}</span>
+        )}
+      </div>
+    ) : null;
+
   // ファイル一覧のツールバー(追加・全選択・解除・並び替え・クリア)。
   // 一覧の上(標準)/下に置けるよう、JSXを1つにまとめて配置側で出し分ける。
   const listToolbar = (
@@ -1082,6 +1105,7 @@ export default function App() {
           >
             {/* ファイル一覧とファイル情報のサマリ */}
             <div ref={fileListTopRef}>
+              {toolbarPos === "top" && summaryEl}
               {/* ファイル一覧エリア */}
               <div
                 style={{
@@ -1146,29 +1170,7 @@ export default function App() {
                 {/* ファイル一欄 閉じ */}
               </div>
 
-              {fileList.length > 0 && (
-                <div style={s.summary}>
-                  {selCount > 0 ? (
-                    <>
-                      <span style={s.sumSel}>
-                        {t("file.sel_count", { count: String(selCount) })}
-                      </span>
-                      <span style={s.sumDot}>·</span>
-                      <span style={s.sumInfo}>
-                        {t("file.sel_pages", { pages: String(selPages) })}
-                      </span>
-                      {selBytes > 0 && (
-                        <>
-                          <span style={s.sumDot}>·</span>
-                          <span style={s.sumInfo}>{(selBytes / 1048576).toFixed(1)} MB</span>
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <span style={s.sumNone}>{t("app.no_file_hint")}</span>
-                  )}
-                </div>
-              )}
+              {toolbarPos === "bottom" && summaryEl}
               {/* ファイル一覧とファイル情報のサマリ 閉じ*/}
               {isNarrow && showOptions && (
                 <div style={{ paddingTop: 12 }}>
