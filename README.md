@@ -12,7 +12,7 @@
 PDF小僧は [MuPDF](https://mupdf.com/) を処理エンジンとする PDF ユーティリティです。
 分割、結合、回転、トリミング、圧縮、画像変換、簡易ビューワーなどの機能を備えています。
 
-PDF小僧は、標準で強力な MuPDF エンジンを搭載しており、インストール後すぐに PDF の分割・結合・トリミング・回転・圧縮・画像変換などが可能です。  
+PDF小僧は、インストール後すぐに PDF の分割・結合・トリミング・回転・圧縮・画像変換などが可能です。  
 さらに、より高度な画質調整やクリーンアップを求めるプロユーザー向けに、外部エンジン（Ghostscript）との連携オプションも提供しています。
 
 The app is a fully functional PDF tool out-of-the-box using the built-in MuPDF engine.  
