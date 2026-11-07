@@ -37,6 +37,7 @@ import {
   type MobileSavedFileInfo,
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import { createOverwriteGuard } from "../lib/overwriteGuard";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { resolveSaveConflict } from "../lib/saveConflict";
 import { formatFilenameForSpeech } from "../lib/speakName";
@@ -425,6 +426,8 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     const producedPaths: string[] = [];
     // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
     const outNames = uniqueFileNames(files.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       prog.current = i + 1;
@@ -443,7 +446,14 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           .filter((p) => p.angle !== 0);
         let savedName: string | undefined;
         if (pages.length > 0) {
-          const out = joinPath(resolvedDir, buildName(outNames[i], ["rotated"]));
+          const out = await overwriteGuard.resolve(
+            joinPath(resolvedDir, buildName(outNames[i], ["rotated"])),
+          );
+          if (out === null) {
+            // 上書き確認でキャンセル: このファイル以降は処理しない
+            prog.errors.push({ file: f.filename, msg: t("batch_save_conflict.cancelled_run") });
+            break;
+          }
           const psize = resolvePageSizePt(pageSizeId, pageOrientation);
           await rotatePdf(
             f.path,
@@ -482,6 +492,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutH,
     convertLayoutEm,
     changedPages.length,
+    t,
   ]);
 
   // ── フェーズ ──────────────────────────────────────────────────────────────

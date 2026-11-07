@@ -31,10 +31,15 @@ export function BatchSaveConflictModal() {
 
         <div style={s.body}>
           <p style={s.message}>
-            {t("batch_save_conflict.message", {
-              count: String(request.conflictCount),
-              folder: request.folderName,
-            })}
+            {request.fileName != null
+              ? t("batch_save_conflict.message_run", {
+                  name: request.fileName,
+                  folder: request.folderName,
+                })
+              : t("batch_save_conflict.message", {
+                  count: String(request.conflictCount),
+                  folder: request.folderName,
+                })}
           </p>
 
           <div style={s.choices}>

@@ -881,6 +881,11 @@ export async function isMobile(): Promise<boolean> {
   return _isMobileCache;
 }
 
+/** 指定パスにファイル/フォルダが既に存在するか(デスクトップのバッチ出力の上書き確認用)。 */
+export async function pathExists(path: string): Promise<boolean> {
+  return await invoke<boolean>("path_exists", { path });
+}
+
 let _isAndroidCache: boolean | null = null;
 
 /**

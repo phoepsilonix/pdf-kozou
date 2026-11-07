@@ -1068,6 +1068,8 @@
   "batch_save_conflict": {
     "title": "Some file names already exist",
     "message": "{{count}} file(s) with the same name already exist in \"{{folder}}\".",
+    "message_run": "A file named \"{{name}}\" already exists in \"{{folder}}\". The option you choose is applied to any other files with the same name in this run.",
+    "cancelled_run": "Cancelled at the overwrite prompt. This file and the remaining files were not processed.",
     "overwrite": "Overwrite all",
     "auto_rename": "Auto-number the conflicting files",
     "cancel": "Cancel"

@@ -36,6 +36,7 @@ import {
   type MobileSavedFileInfo,
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import { createOverwriteGuard, withOverwriteGuard } from "../lib/overwriteGuard";
 import {
   getPdfInfo,
   hasFolderPicker,
@@ -377,16 +378,24 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           : modeId === "every"
             ? { type: "EveryN", n: everyN }
             : { type: "Ranges", ranges };
-      const res = await splitPdf(
-        filePath,
-        resolvedDir,
-        mode,
-        splitPrefix(srcStem, keepOriginalName),
-        convertLayoutW,
-        convertLayoutH,
-        convertLayoutEm,
-        overrideMetadata,
+      // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+      const res = await withOverwriteGuard(createOverwriteGuard(), resolvedDir, (dir) =>
+        splitPdf(
+          filePath,
+          dir,
+          mode,
+          splitPrefix(srcStem, keepOriginalName),
+          convertLayoutW,
+          convertLayoutH,
+          convertLayoutEm,
+          overrideMetadata,
+        ),
       );
+      if (res === null) {
+        // 上書き確認でキャンセル: 設定画面へ戻る
+        setPhase("edit");
+        return;
+      }
       setResult(res);
       setSavedDir(resolvedDir);
       const msg = t("common.files_split_done", { count: String(res.files.length) });
@@ -450,6 +459,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     const producedPaths: string[] = [];
     // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
     const outNames = uniqueFileNames(files.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -478,16 +489,23 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
         // バッチは全ファイルを1フォルダへ出すため、必ず元名を付けて衝突回避
         //   例: 書類_分割_0001.pdf
         const filePrefix = splitPrefix(outNames[i].replace(/\.[^/.]+$/, ""), true);
-        const res = await splitPdf(
-          f.path,
-          resolvedDir,
-          mode,
-          filePrefix,
-          convertLayoutW,
-          convertLayoutH,
-          convertLayoutEm,
-          overrideMetadata,
+        const res = await withOverwriteGuard(overwriteGuard, resolvedDir, (dir) =>
+          splitPdf(
+            f.path,
+            dir,
+            mode,
+            filePrefix,
+            convertLayoutW,
+            convertLayoutH,
+            convertLayoutEm,
+            overrideMetadata,
+          ),
         );
+        if (res === null) {
+          // 上書き確認でキャンセル: このファイル以降は処理しない
+          progress.errors.push({ file: f.filename, msg: t("batch_save_conflict.cancelled_run") });
+          break;
+        }
         const baseName = (p: string) => p.split(/[/\\]/).pop() ?? p;
         progress.done.push({
           file: f.filename,
@@ -521,6 +539,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     convertLayoutW,
     convertLayoutH,
     convertLayoutEm,
+    t,
   ]);
 
   // ── グループプレビュー計算 ────────────────────────────────────────────────

@@ -18,6 +18,7 @@ import {
   type MobileSavedFileInfo,
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import { createOverwriteGuard } from "../lib/overwriteGuard";
 import {
   detectBuriedText,
   detectControlChars,
@@ -470,6 +471,8 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     const producedPaths: string[] = [];
     // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
     const outNames = uniqueFileNames(batchFiles.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
     for (let i = 0; i < batchFiles.length; i++) {
       const f = batchFiles[i];
       prog.current = i + 1;
@@ -502,7 +505,14 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
         if (targets.length === 0) {
           prog.done.push({ file: f.filename, hits: 0 });
         } else {
-          const outPath = joinPath(resolvedDir, buildName(outNames[i], ["sanitized"]));
+          const outPath = await overwriteGuard.resolve(
+            joinPath(resolvedDir, buildName(outNames[i], ["sanitized"])),
+          );
+          if (outPath === null) {
+            // 上書き確認でキャンセル: このファイル以降は処理しない
+            prog.errors.push({ file: f.filename, msg: t("batch_save_conflict.cancelled_run") });
+            break;
+          }
           await sanitizeHiddenText({
             input: f.path,
             output: outPath,
@@ -534,6 +544,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     pickAndroidFolder,
     skipType3,
     finalizeMobileOutput,
+    t,
   ]);
 
   const { announceKey } = useA11y();

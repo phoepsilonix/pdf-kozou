@@ -32,6 +32,7 @@ import {
   type MobileSavedFileInfo,
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import { createOverwriteGuard } from "../lib/overwriteGuard";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import {
   type CompressPreset,
@@ -737,6 +738,8 @@ export function CompressPage({
     // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
     const outNames = uniqueFileNames(batchFiles!.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
 
     // lopdf で処理できず MuPDF で圧縮した記録は、ファイルごとの進捗行に出す (右下の通知は止める)。
     // 処理は 1 ファイルずつ順に行うので、1 ファイルの間に溜まった記録がそのファイルの分になる。
@@ -751,7 +754,14 @@ export function CompressPage({
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
-      const out = joinPath(resolvedDir, buildName(outNames[i], ["compressed"]));
+      const out = await overwriteGuard.resolve(
+        joinPath(resolvedDir, buildName(outNames[i], ["compressed"])),
+      );
+      if (out === null) {
+        // 上書き確認でキャンセル: このファイル以降は処理しない
+        prog.errors.push({ file: f.filename, msg: t("batch_save_conflict.cancelled_run") });
+        break;
+      }
       const doneBefore = prog.done.length;
       try {
         let ratio = 0;

@@ -31,6 +31,7 @@ import {
   type MobileSavedFileInfo,
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import { createOverwriteGuard } from "../lib/overwriteGuard";
 import { resolvePageSizePt } from "../lib/pageSize";
 import { formatFilenameForSpeech } from "../lib/speakName";
 import {
@@ -338,6 +339,8 @@ function TrimPageBatch({
       const producedPaths: string[] = [];
       // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
       const outNames = uniqueFileNames(files.map((x) => x.filename));
+      // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+      const overwriteGuard = createOverwriteGuard();
 
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
@@ -345,7 +348,14 @@ function TrimPageBatch({
         setProgress({ ...prog });
 
         try {
-          const out = joinPath(resolvedDir, buildName(outNames[i], ["trimmed"]));
+          const out = await overwriteGuard.resolve(
+            joinPath(resolvedDir, buildName(outNames[i], ["trimmed"])),
+          );
+          if (out === null) {
+            // 上書き確認でキャンセル: このファイル以降は処理しない
+            prog.errors.push({ f: f.filename, msg: t("batch_save_conflict.cancelled_run") });
+            break;
+          }
 
           console.log(
             "[DEBUG] trim_pdf in out margin pages exclude extract: ",

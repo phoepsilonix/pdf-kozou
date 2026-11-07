@@ -16,21 +16,31 @@ export type BatchSaveConflictChoice =
 interface BatchSaveConflictRequest {
   conflictCount: number;
   folderName: string;
+  /**
+   * 指定時は「このファイルが既にある。以降の同名ファイルにも同じ選択を適用する」
+   * 形式の文言にする(デスクトップのバッチ出力: 書き出しの途中で1件目の
+   * 衝突に当たった時点で聞き、その回の残りにも適用するため)。
+   */
+  fileName?: string;
 }
 
 interface BatchSaveConflictState {
   request: BatchSaveConflictRequest | null;
   resolver: ((choice: BatchSaveConflictChoice) => void) | null;
-  ask: (conflictCount: number, folderName: string) => Promise<BatchSaveConflictChoice>;
+  ask: (
+    conflictCount: number,
+    folderName: string,
+    fileName?: string,
+  ) => Promise<BatchSaveConflictChoice>;
   resolve: (choice: BatchSaveConflictChoice) => void;
 }
 
 export const useBatchSaveConflictStore = create<BatchSaveConflictState>((set, get) => ({
   request: null,
   resolver: null,
-  ask: (conflictCount, folderName) => {
+  ask: (conflictCount, folderName, fileName) => {
     return new Promise<BatchSaveConflictChoice>((resolvePromise) => {
-      set({ request: { conflictCount, folderName }, resolver: resolvePromise });
+      set({ request: { conflictCount, folderName, fileName }, resolver: resolvePromise });
     });
   },
   resolve: (choice) => {

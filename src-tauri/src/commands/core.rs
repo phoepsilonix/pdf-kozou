@@ -874,6 +874,16 @@ pub async fn get_file_stat(path: String) -> Result<Value> {
     Ok(json!({ "size": meta.len(), "modified": modified }))
 }
 
+/// 指定パスにファイル(またはフォルダ)が既に存在するかを返す。
+///
+/// デスクトップのバッチ出力で、書き出し前に同名ファイルの上書き確認を
+/// 行うために使う。大文字小文字の扱いはファイルシステムに従う
+/// (Windows / macOS は同一視、Linux は区別)。
+#[tauri::command]
+pub async fn path_exists(path: String) -> Result<bool> {
+    Ok(std::path::Path::new(&path).exists())
+}
+
 /// 一時ファイルパスを返す (pdf-kozou temp dir + name)
 #[tauri::command]
 pub async fn get_temp_path(name: String) -> Result<String> {
@@ -892,6 +902,14 @@ pub async fn get_unique_temp_path(prefix: String, ext: String) -> Result<String>
 /// ファイルを移動 (rename → 失敗なら copy + delete)
 #[tauri::command]
 pub async fn move_file(src: String, dst: String) -> Result<()> {
+    // 移動先のフォルダがまだ無ければ作る(バッチ出力の「入力PDFごとのサブフォルダ」等)
+    if let Some(parent) = std::path::Path::new(&dst)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::Core(format!("mkdir {}: {e}", parent.display())))?;
+    }
     if std::fs::rename(&src, &dst).is_ok() {
         return Ok(());
     }

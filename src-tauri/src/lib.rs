@@ -163,6 +163,7 @@ pub fn run() {
             core::set_pdf_backend,
             core::get_tmp_path,
             core::get_file_stat,
+            core::path_exists,
             core::get_default_save_dir,
             core::trim_pdf,
             core::crop_to_page_pdf,

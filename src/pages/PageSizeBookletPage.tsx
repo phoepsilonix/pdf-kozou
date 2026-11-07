@@ -32,6 +32,7 @@ import {
   type MobileSavedFileInfo,
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import { createOverwriteGuard } from "../lib/overwriteGuard";
 import { PAGE_SIZE_PT, type PageSizeId } from "../lib/pageSize";
 import {
   composeImpositionPdf,
@@ -484,6 +485,8 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     setBatchProgress({ ...progress });
     // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
     const outNames = uniqueFileNames(files.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       progress.current = i + 1;
@@ -500,7 +503,12 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
         const fLayout = calcComposeLayout(mode, info.page_count);
         const { sheetPages, nSheets: ns } = flattenComposeSheets(fLayout);
         const stem = outNames[i].replace(/\.[^/.]+$/, "");
-        const out = joinPath(dir, composePdfName(stem, true));
+        const out = await overwriteGuard.resolve(joinPath(dir, composePdfName(stem, true)));
+        if (out === null) {
+          // 上書き確認でキャンセル: このファイル以降は処理しない
+          progress.errors.push({ file: f.filename, msg: t("batch_save_conflict.cancelled_run") });
+          break;
+        }
         await composeImpositionPdf({
           input: f.path,
           output: out,
@@ -546,6 +554,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     convertLayoutEm,
     announceSuccess,
     finalizeMobileOutput,
+    t,
   ]);
 
   // ── バッチ進捗・結果（単体フローより先に分岐）──

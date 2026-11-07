@@ -49,6 +49,7 @@ import {
   type MobileSavedFileInfo,
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
+import { createOverwriteGuard, withOverwriteGuard } from "../lib/overwriteGuard";
 import {
   checkPathConflict,
   composeImpositionPdfKeepText,
@@ -696,6 +697,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const hasOutputTarget = androidUI ? false : outDir !== "";
 
   const handleExecuteSingle = useCallback(async () => {
+    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard(t("batch_save_conflict.cancelled_run"));
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     // ── 面付け解除（split / de-imposition）: A3見開きなどを分割 ──
@@ -810,7 +813,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             layoutEm: convertLayoutEm,
           });
           const outName = imageName(srcStem, keepOriginalName, k + 1, ext);
-          const outPath = joinPath(resolvedDir, outName);
+          const outPath = await overwriteGuard.resolveOrThrow(joinPath(resolvedDir, outName));
           await invoke("save_base64_image", {
             data: res.data_b64,
             path: outPath,
@@ -935,7 +938,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           // base64 → ファイル保存（ラベルが操作トークンを内包）
           const outName = imageName(srcStem, keepOriginalName, si + 1, ext);
-          const outPath = joinPath(resolvedDir, outName);
+          const outPath = await overwriteGuard.resolveOrThrow(joinPath(resolvedDir, outName));
           setStatusMsg(
             t("image.imposition_saving", {
               current: String(si + 1),
@@ -1104,17 +1107,24 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         announceSuccess("done.image");
         setPhase("result");
       } else {
-        const res = await exportImages(
-          filePath,
-          effectiveOutDir,
-          format,
-          dpi,
-          format === "jpeg" ? quality : undefined,
-          imagePrefix(srcStem, keepOriginalName),
-          pages || undefined,
-          { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
-          supersample ? SUPERSAMPLE_MAX_MULT : undefined,
+        const res = await withOverwriteGuard(overwriteGuard, effectiveOutDir, (dir) =>
+          exportImages(
+            filePath,
+            dir,
+            format,
+            dpi,
+            format === "jpeg" ? quality : undefined,
+            imagePrefix(srcStem, keepOriginalName),
+            pages || undefined,
+            { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
+            supersample ? SUPERSAMPLE_MAX_MULT : undefined,
+          ),
         );
+        if (res === null) {
+          // 上書き確認でキャンセル: 設定画面へ戻る
+          setPhase("edit");
+          return;
+        }
         console.log("res", res);
         setImages(res.files);
         await finalizeMobileOutput(effectiveOutDir, res.files, androidFolderForRun);
@@ -1167,6 +1177,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   // バッチ実行
   // バッチ実行（面付け解除・面付けPDF・全モード対応版）
   const handleExecuteBatch = useCallback(async () => {
+    const overwriteGuard = createOverwriteGuard(t("batch_save_conflict.cancelled_run"));
     const batchDir = outDir || (await pickDir());
     if (!batchDir) return; // キャンセル
     let androidFolderForRun: PickedFolder | null = null;
@@ -1202,6 +1213,8 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
+      // 上書き確認でキャンセル済みなら、残りのファイルは処理しない
+      if (overwriteGuard.isCancelled()) break;
       progress.current = i + 1;
       progress.currentFile = f.filename;
       progress.currentFilePath = f.path;
@@ -1252,7 +1265,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
 
           if (outputMode === "pdf") {
             // PDF出力（1ファイル）
-            const outPath = joinPath(batchDir, composePdfName(stem, true));
+            const outPath = await overwriteGuard.resolveOrThrow(
+              joinPath(batchDir, composePdfName(stem, true)),
+            );
             await splitImpositionPdf({
               input: f.path,
               output: outPath,
@@ -1291,7 +1306,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               });
 
               const outName = imageName(stem, false, k + 1, ext);
-              const outPath = joinPath(subDir, outName);
+              const outPath = await overwriteGuard.resolveOrThrow(joinPath(subDir, outName));
               await invoke("save_base64_image", {
                 data: res.data_b64,
                 path: outPath,
@@ -1308,7 +1323,9 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         }
         // ==================== 通常モード（面付け含む） ====================
         else if (outputMode === "pdf") {
-          const outPath = joinPath(batchDir, composePdfName(stem, true));
+          const outPath = await overwriteGuard.resolveOrThrow(
+            joinPath(batchDir, composePdfName(stem, true)),
+          );
 
           if (impositionMode !== "1up") {
             // 面付けPDF（rasterizeImposition）
@@ -1416,7 +1433,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             });
 
             const outName = imageName(stem, false, si + 1, ext);
-            const outPath = joinPath(subDir, outName);
+            const outPath = await overwriteGuard.resolveOrThrow(joinPath(subDir, outName));
             await invoke("save_base64_image", {
               data: result.image_b64,
               path: outPath,
@@ -1428,17 +1445,20 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         } else {
           // 1-up 画像（既存）
           const subDir = joinPath(batchDir, stem);
-          const res = await exportImages(
-            f.path,
-            subDir,
-            format,
-            dpi,
-            format === "jpeg" ? quality : undefined,
-            imagePrefix(stem, false),
-            pages || undefined,
-            { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
-            supersample ? SUPERSAMPLE_MAX_MULT : undefined,
+          const res = await withOverwriteGuard(overwriteGuard, subDir, (dir) =>
+            exportImages(
+              f.path,
+              dir,
+              format,
+              dpi,
+              format === "jpeg" ? quality : undefined,
+              imagePrefix(stem, false),
+              pages || undefined,
+              { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
+              supersample ? SUPERSAMPLE_MAX_MULT : undefined,
+            ),
           );
+          if (res === null) throw new Error(t("batch_save_conflict.cancelled_run"));
           progress.done.push({ file: f.filename, count: res.files.length, savedFiles: res.files });
         }
       } catch (e) {
