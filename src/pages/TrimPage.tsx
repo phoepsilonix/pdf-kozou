@@ -981,6 +981,7 @@ function TrimPageBatch({
           onToggle={toggleSection}
           toSecondLabel={t("common.jump_to_trim_settings")}
           toFirstLabel={t("common.jump_to_canvas")}
+          reserveSpace
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
             <PreviewCompressOption
@@ -1725,6 +1726,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
           onToggle={toggleSection}
           toSecondLabel={t("common.jump_to_trim_settings")}
           toFirstLabel={t("common.jump_to_canvas")}
+          reserveSpace
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
             <PreviewCompressOption
