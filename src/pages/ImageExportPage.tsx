@@ -308,12 +308,12 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   const [format, setFormat] = useState<ImageFormat>(() => loadLastImageFormat() ?? "jpeg");
   const [dpi, setDpi] = useState(144);
   const [quality, setQuality] = useState(85);
-  // 高品質アンチエイリアス(スーパーサンプリング)。既定ON(オプトアウト)。
+  // 高品質アンチエイリアス(スーパーサンプリング)。既定OFF(オプトイン)。
   // ONの場合、dpi<300 のときのみ内部を高dpiでレンダリングしてから縮小し、
   // 細い罫線/ヘアラインの消失・フェードを緩和する(出力のdpi/qualityは
   // 変わらないが生成時間はやや増える)。
-  // 前回の選択を記憶する（無ければ既定のON）。
-  const [supersample, setSupersample] = useState(() => loadLastBool(LAST_SUPERSAMPLE_KEY) ?? true);
+  // 前回の選択を記憶する（無ければ既定のOFF）。
+  const [supersample, setSupersample] = useState(() => loadLastBool(LAST_SUPERSAMPLE_KEY) ?? false);
   const SUPERSAMPLE_MAX_MULT = 6;
   // 出力ファイル名の中間ラベル（初期値はモードの操作トークン。空可・自由入力可）
   const [label, setLabel] = useState("");
@@ -2053,7 +2053,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               </div>
             )}
 
-            {/* 高品質アンチエイリアス(スーパーサンプリング、既定ON)。
+            {/* 高品質アンチエイリアス(スーパーサンプリング、既定OFF)。
              * dpiが低いとき、細い罫線や装飾文字画像がラスタライズ時の
              * サブピクセル位相の影響で消失/フェードする現象への対策。
              * dpi/quality設定自体は変えず、生成時だけ内部で高dpiに
