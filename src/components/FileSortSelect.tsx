@@ -39,13 +39,17 @@ export function FileSortSelect({ onSort, disabled, style, compact }: Props) {
     (e.currentTarget as HTMLSelectElement).blur();
   };
 
+  // ドロップダウン(選択肢の一覧)もテーマに合わせる。select本体は透明/不可視のことがあり、
+  // 一覧の背景・文字色はブラウザ既定(白地など)になりがちなので、option側にも指定する。
+  // (ConvertOptionsPanel の select と同じ --c-bg / --c-text)
+  const optionStyle: CSSProperties = { background: "var(--c-bg)", color: "var(--c-text)" };
   const options = (
     <>
-      <option value="" disabled hidden>
+      <option value="" disabled hidden style={optionStyle}>
         {t("file.sort")}
       </option>
       {OPTIONS.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value} value={o.value} style={optionStyle}>
           {t(o.labelKey)}
         </option>
       ))}
@@ -114,6 +118,10 @@ export function FileSortSelect({ onSort, disabled, style, compact }: Props) {
             padding: 0,
             opacity: 0,
             cursor: disabled ? "default" : "pointer",
+            // 一覧の表示(背景・文字色・大きさ)をテーマと通常表示に揃える
+            background: "var(--c-bg)",
+            color: "var(--c-text)",
+            fontSize: FS.body,
             fontFamily: F,
           }}
         >
