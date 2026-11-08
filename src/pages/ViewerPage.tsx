@@ -13,12 +13,14 @@ export default ViewerPage;
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, Spinner } from "../components/common";
+import { HayroJpegControl } from "../components/HayroJpegControl";
 import { MetadataEditModal, type PdfMeta } from "../components/MetadataEditModal";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { useMobilePlatformState } from "../hooks/usePlatform";
 import { useViewport } from "../hooks/useViewport";
+import { useHayroJpeg } from "../lib/hayroJpeg";
 import { useHayroStroke } from "../lib/hayroStroke";
 import { useI18n } from "../lib/i18n";
 import { useRenderEngine } from "../lib/renderEngine";
@@ -1335,7 +1337,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   // hayro の太らせ補正 (オン/オフ/数値) の変更時も同様
   const { engine: baseEngine } = useRenderEngine();
   const { mode: strokeMode, customPath, customText } = useHayroStroke();
-  const renderEngine = `${baseEngine}:${strokeMode}:${strokeMode === "custom" ? `${customPath},${customText}` : ""}`;
+  // JPEG の色差サブサンプリングは表示画像の画素に効く (トレリスは表示用には使わないので含めない)
+  const { subsampling: jpegSubsampling } = useHayroJpeg();
+  const renderEngine = `${baseEngine}:${strokeMode}:${strokeMode === "custom" ? `${customPath},${customText}` : ""}:${jpegSubsampling}`;
   const lastRenderEngine = useRef(renderEngine);
   useEffect(() => {
     if (renderEngine === lastRenderEngine.current) return;
@@ -1986,6 +1990,7 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
               >
                 ▶
               </button>
+              <HayroJpegControl context="viewer" />
             </div>
           </div>
           <div style={s.footer} />
@@ -2268,6 +2273,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   pageNav: {
     display: "flex",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,

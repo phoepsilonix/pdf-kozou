@@ -23,6 +23,7 @@ import {
   toBatchFallbacks,
 } from "../components/EngineFallbackLog";
 import { FixedMobileNav } from "../components/FixedMobileNav";
+import { HayroJpegControl } from "../components/HayroJpegControl";
 import { NumInput } from "../components/NumInput";
 import { PageSelector, resolvePageSpec } from "../components/PageSelector";
 import { PreviewPane } from "../components/PreviewPane";
@@ -2279,6 +2280,10 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <div style={s.rangeLabels}>
                   <span>{t("image.quality_low")}</span>
                   <span>{t("image.quality_high")}</span>
+                </div>
+                {/* JPEG の色差サブサンプリング / トレリスの現在値 (hayro 描画時のみ表示) */}
+                <div style={{ marginTop: 6 }}>
+                  <HayroJpegControl context="convert" />
                 </div>
               </>
             )}

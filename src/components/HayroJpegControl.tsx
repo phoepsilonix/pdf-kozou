@@ -7,6 +7,12 @@
 // トレリス量子化 (オン / オフ)。画像変換の出力に反映される。ビューワーの描画には、
 // トレリスだけは使わない (ページ送りを遅くしないため)。
 // hayro を使わない設定 (描画エンジン = MuPDF) のときは何も表示しない。
+//
+// ボタンには現在の設定 (サブサンプリング / トレリスのオン・オフ) を常に表示する。
+// 置き場所ごとに context を渡す:
+//   menu    : ヘッダーのメニュー (既定)
+//   convert : 画像変換 (画像書き出し) の画面。トレリスの設定がそのまま出力に効く
+//   viewer  : ビューワー。表示用の描画ではトレリスを使わないので、その旨を表示する
 import { changeHayroJpeg, type JpegSubsampling, useHayroJpeg } from "../lib/hayroJpeg";
 import { useI18n } from "../lib/i18n";
 import { useRenderEngine } from "../lib/renderEngine";
@@ -15,14 +21,22 @@ import { EngineDropdown } from "./EngineDropdown";
 
 const SUBSAMPLING: JpegSubsampling[] = [444, 420];
 
-export function HayroJpegControl() {
+export type HayroJpegContext = "menu" | "convert" | "viewer";
+
+export function HayroJpegControl({ context = "menu" }: { context?: HayroJpegContext }) {
   const { t } = useI18n();
   const { engine, available } = useRenderEngine();
   const { subsampling, trellis } = useHayroJpeg();
   if (available.length < 2 || engine === "mupdf") return null;
+  // 選択中の項目 (= ボタンに出る名前) には、トレリスの状態も付ける
   const label = (id: JpegSubsampling) => {
     const base = t(`hayro_jpeg.s${id}`);
-    return id === subsampling && trellis ? `${base} + ${t("hayro_jpeg.trellis_short")}` : base;
+    if (id !== subsampling) return base;
+    const tr =
+      context === "viewer"
+        ? t("hayro_jpeg.trellis_viewer")
+        : t(trellis ? "hayro_jpeg.trellis_on" : "hayro_jpeg.trellis_off");
+    return `${base} / ${tr}`;
   };
   return (
     <EngineDropdown
