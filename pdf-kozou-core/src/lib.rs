@@ -14,6 +14,7 @@ mod resource_prune;
 mod sanitize_ops;
 mod compress_lopdf;
 mod crop_redact_lopdf;
+mod hidden_text_lopdf;
 pub mod convert;
 pub mod crop_cleanup;
 pub mod error;

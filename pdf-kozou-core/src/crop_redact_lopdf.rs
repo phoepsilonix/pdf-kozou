@@ -42,10 +42,10 @@ use std::collections::{HashMap, HashSet};
 // ── 幾何 ──────────────────────────────────────────────────────────────────
 
 /// PDF の変換行列 [a b c d e f]。点は行ベクトルで、`mul(m, n)` は「m の後に n」。
-type Mat = [f64; 6];
-const IDENT: Mat = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+pub(crate) type Mat = [f64; 6];
+pub(crate) const IDENT: Mat = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 
-fn mul(m: &Mat, n: &Mat) -> Mat {
+pub(crate) fn mul(m: &Mat, n: &Mat) -> Mat {
     [
         m[0] * n[0] + m[1] * n[2],
         m[0] * n[1] + m[1] * n[3],
@@ -56,16 +56,16 @@ fn mul(m: &Mat, n: &Mat) -> Mat {
     ]
 }
 
-fn apply(m: &Mat, x: f64, y: f64) -> (f64, f64) {
+pub(crate) fn apply(m: &Mat, x: f64, y: f64) -> (f64, f64) {
     (x * m[0] + y * m[2] + m[4], x * m[1] + y * m[3] + m[5])
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Rect {
-    x0: f64,
-    y0: f64,
-    x1: f64,
-    y1: f64,
+pub(crate) struct Rect {
+    pub(crate) x0: f64,
+    pub(crate) y0: f64,
+    pub(crate) x1: f64,
+    pub(crate) y1: f64,
 }
 
 impl Rect {
@@ -90,7 +90,7 @@ impl Rect {
 }
 
 /// 矩形 [x0 y0 x1 y1] を `m` で変換した、外接矩形
-fn transform_rect(m: &Mat, r: [f64; 4]) -> Rect {
+pub(crate) fn transform_rect(m: &Mat, r: [f64; 4]) -> Rect {
     let pts = [
         apply(m, r[0], r[1]),
         apply(m, r[2], r[1]),
@@ -117,7 +117,7 @@ fn transform_rect(m: &Mat, r: [f64; 4]) -> Rect {
 static NULL: Object = Object::Null;
 
 /// 間接参照をたどる (深さ 16 まで)。無ければ null
-fn deref<'a>(doc: &'a Document, o: &'a Object) -> &'a Object {
+pub(crate) fn deref<'a>(doc: &'a Document, o: &'a Object) -> &'a Object {
     let mut cur = o;
     for _ in 0..16 {
         match cur {
@@ -131,7 +131,7 @@ fn deref<'a>(doc: &'a Document, o: &'a Object) -> &'a Object {
     &NULL
 }
 
-fn num(o: &Object) -> Option<f64> {
+pub(crate) fn num(o: &Object) -> Option<f64> {
     match o {
         Object::Integer(i) => Some(*i as f64),
         Object::Real(r) => Some(f64::from(*r)),
@@ -139,11 +139,11 @@ fn num(o: &Object) -> Option<f64> {
     }
 }
 
-fn num_deref(doc: &Document, o: &Object) -> Option<f64> {
+pub(crate) fn num_deref(doc: &Document, o: &Object) -> Option<f64> {
     num(deref(doc, o))
 }
 
-fn dict_of<'a>(doc: &'a Document, o: &'a Object) -> Option<&'a Dictionary> {
+pub(crate) fn dict_of<'a>(doc: &'a Document, o: &'a Object) -> Option<&'a Dictionary> {
     match deref(doc, o) {
         Object::Dictionary(d) => Some(d),
         Object::Stream(s) => Some(&s.dict),
@@ -151,12 +151,12 @@ fn dict_of<'a>(doc: &'a Document, o: &'a Object) -> Option<&'a Dictionary> {
     }
 }
 
-fn sub_dict<'a>(doc: &'a Document, d: &'a Dictionary, key: &[u8]) -> Option<&'a Dictionary> {
+pub(crate) fn sub_dict<'a>(doc: &'a Document, d: &'a Dictionary, key: &[u8]) -> Option<&'a Dictionary> {
     d.get(key).ok().and_then(|o| dict_of(doc, o))
 }
 
 /// ページ → 親の順で、属性を探す (MediaBox / CropBox / Resources の継承)
-fn inherited<'a>(doc: &'a Document, page_id: ObjectId, key: &[u8]) -> Option<&'a Object> {
+pub(crate) fn inherited<'a>(doc: &'a Document, page_id: ObjectId, key: &[u8]) -> Option<&'a Object> {
     let mut id = page_id;
     for _ in 0..32 {
         let d = doc.get_dictionary(id).ok()?;
@@ -172,7 +172,7 @@ fn inherited<'a>(doc: &'a Document, page_id: ObjectId, key: &[u8]) -> Option<&'a
 }
 
 /// [x0 y0 x1 y1] を読む。x0 < x1、y0 < y1 に直す
-fn parse_box(doc: &Document, o: &Object) -> Option<[f64; 4]> {
+pub(crate) fn parse_box(doc: &Document, o: &Object) -> Option<[f64; 4]> {
     let arr = deref(doc, o).as_array().ok()?;
     if arr.len() < 4 {
         return None;
@@ -208,7 +208,7 @@ fn page_content(doc: &Document, page_id: ObjectId) -> Option<Vec<u8>> {
 
 // ── フォントの幅 ──────────────────────────────────────────────────────────
 
-enum Widths {
+pub(crate) enum Widths {
     /// 1 バイト 1 文字。code - first の位置の幅 (範囲外は missing)
     Simple {
         first: i64,
@@ -219,10 +219,10 @@ enum Widths {
     Cid { dw: f64, w: HashMap<u32, f64> },
 }
 
-struct FontInfo {
-    widths: Widths,
+pub(crate) struct FontInfo {
+    pub(crate) widths: Widths,
     /// グリフが原点から広がる範囲の上限 (em 単位)。FontBBox が無ければ大きめの値
-    glyph_em: f64,
+    pub(crate) glyph_em: f64,
 }
 
 fn font_bbox_em(doc: &Document, desc: Option<&Dictionary>) -> f64 {
@@ -280,7 +280,7 @@ fn parse_cid_widths(doc: &Document, arr: &[Object]) -> HashMap<u32, f64> {
     map
 }
 
-fn load_font(doc: &Document, font: &Dictionary) -> Option<FontInfo> {
+pub(crate) fn load_font(doc: &Document, font: &Dictionary) -> Option<FontInfo> {
     let subtype = font
         .get(b"Subtype")
         .ok()
@@ -340,18 +340,18 @@ fn load_font(doc: &Document, font: &Dictionary) -> Option<FontInfo> {
 
 // ── XObject ───────────────────────────────────────────────────────────────
 
-enum XKind {
+pub(crate) enum XKind {
     Image,
     Form { bbox: [f64; 4], matrix: Mat },
 }
 
-struct XInfo {
-    kind: XKind,
+pub(crate) struct XInfo {
+    pub(crate) kind: XKind,
     /// Form が自前の /Resources を持つか (持たないと、ページのリソースを使う)
-    own_resources: bool,
+    pub(crate) own_resources: bool,
 }
 
-fn load_xobject(doc: &Document, o: &Object) -> Option<XInfo> {
+pub(crate) fn load_xobject(doc: &Document, o: &Object) -> Option<XInfo> {
     let s = deref(doc, o).as_stream().ok()?;
     let subtype = s
         .dict
@@ -447,11 +447,11 @@ impl PathAcc {
     }
 }
 
-fn operand_nums(op: &Operation) -> Option<Vec<f64>> {
+pub(crate) fn operand_nums(op: &Operation) -> Option<Vec<f64>> {
     op.operands.iter().map(num).collect()
 }
 
-fn mat_of(op: &Operation) -> Option<Mat> {
+pub(crate) fn mat_of(op: &Operation) -> Option<Mat> {
     let v = operand_nums(op)?;
     (v.len() == 6).then(|| [v[0], v[1], v[2], v[3], v[4], v[5]])
 }

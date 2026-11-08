@@ -2066,6 +2066,18 @@ const HAYRO_FULLY_HIDDEN_RATIO: f32 = 0.999;
 #[cfg(feature = "hayro")]
 fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>> {
     use crate::stext::{DetectBuriedRequest, detect_buried_text};
+    // まず lopdf で調べる (MuPDF を使わない)。解析できないページは、隠れた文字があるかもしれない
+    // ページとして含める。読めない入力だけ MuPDF 実装へフォールバックする。
+    if crate::backend::try_lopdf("keep-text-probe") {
+        match crate::hidden_text_lopdf::partially_covered_pages_file(path, pages, 0.002) {
+            Ok(v) => return Some(v),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("keep-text-probe", path, &e) {
+                    return None;
+                }
+            }
+        }
+    }
     let count = mupdf::pdf::PdfDocument::open(path).ok()?.page_count().ok()?;
     if count <= 0 {
         return None;
@@ -2157,6 +2169,38 @@ pub(crate) fn strip_fully_buried_text_for_keep_text(
         DetectBuriedRequest, SanitizeOrigin, SanitizeRequest, detect_buried_text,
         sanitize_hidden_text,
     };
+
+    // まず lopdf で、検出と除去を一度に行う (MuPDF を使わない)。読めない入力・暗号化は
+    // MuPDF 実装へフォールバックする。backend=lopdf のときはフォールバックせず、前処理なし
+    // (入力のまま) で進める。
+    if crate::backend::try_lopdf("keep-text-strip") {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp_path = tmp_dir.join(format!(
+            "kozou_keeptext_buried_stripped_{}_{unique:x}.pdf",
+            std::process::id()
+        ));
+        let ratio = f64::from(cover_ratio.unwrap_or(0.8));
+        match crate::hidden_text_lopdf::strip_buried_text_file(
+            input,
+            &tmp_path.to_string_lossy(),
+            ratio,
+        ) {
+            Ok(Some(n)) => {
+                eprintln!("[keep-text] lopdf: removed {n} hidden glyph(s)");
+                return Some(tmp_path);
+            }
+            Ok(None) => return None,
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                if crate::backend::abort_or_notify_fallback("keep-text-strip", input, &e) {
+                    return None;
+                }
+            }
+        }
+    }
 
     let page_count = mupdf::pdf::PdfDocument::open(input)
         .ok()
