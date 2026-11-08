@@ -290,6 +290,27 @@ export function PageSelector({
   }
 }
 
+// バックエンド(Rust)へ渡すページ指定を、1始まりの明示リスト("1-3,5,7")へ展開する。
+// コア側の parse_page_list / parse_string_pages は数字と範囲("1-3,5")しか解釈できず、
+// "all" / "odd" / "even" / 末尾省略("7-") / 除外("^3") をそのまま渡すと
+// 変換が失敗するため、total を知っているこちらで展開してから渡す。
+// 空 / "all" は undefined (= 全ページ) を返す。
+export function toBackendPageSpec(rawSpec: string, total: number): string | undefined {
+  const spec = normalizePageSpec(rawSpec ?? "").trim();
+  if (!spec || spec === "all") return undefined;
+  // 総ページ数が不明(0)のときは展開できないので、そのまま渡す
+  if (total <= 0) return spec;
+  const idx = resolvePageSpec(spec, total).map((i) => i + 1);
+  const out: string[] = [];
+  for (let i = 0; i < idx.length; ) {
+    let j = i;
+    while (j + 1 < idx.length && idx[j + 1] === idx[j] + 1) j++;
+    out.push(j > i ? `${idx[i]}-${idx[j]}` : `${idx[i]}`);
+    i = j + 1;
+  }
+  return out.join(",");
+}
+
 // ページ指定文字列を実際のページインデックス配列に展開
 export function resolvePageSpec(rawSpec: string, total: number): number[] {
   // 全角数字・全角記号・各種ハイフンを半角に統一してから解釈する

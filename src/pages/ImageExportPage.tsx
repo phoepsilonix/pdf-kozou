@@ -25,7 +25,7 @@ import {
 import { FixedMobileNav } from "../components/FixedMobileNav";
 import { HayroJpegControl } from "../components/HayroJpegControl";
 import { NumInput } from "../components/NumInput";
-import { PageSelector, resolvePageSpec } from "../components/PageSelector";
+import { PageSelector, resolvePageSpec, toBackendPageSpec } from "../components/PageSelector";
 import { PreviewPane } from "../components/PreviewPane";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -1088,7 +1088,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
           dpi,
           quality,
           format === "png",
-          pages || undefined,
+          toBackendPageSpec(pages, total),
           { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
           supersample ? SUPERSAMPLE_MAX_MULT : undefined,
         );
@@ -1116,7 +1116,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             dpi,
             format === "jpeg" ? quality : undefined,
             imagePrefix(srcStem, keepOriginalName),
-            pages || undefined,
+            toBackendPageSpec(pages, total),
             { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
             supersample ? SUPERSAMPLE_MAX_MULT : undefined,
           ),
@@ -1394,7 +1394,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               dpi,
               quality,
               format === "png",
-              pages || undefined,
+              toBackendPageSpec(pages, fileTotal),
               { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
               supersample ? SUPERSAMPLE_MAX_MULT : undefined,
             );
@@ -1454,7 +1454,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               dpi,
               format === "jpeg" ? quality : undefined,
               imagePrefix(stem, false),
-              pages || undefined,
+              toBackendPageSpec(pages, fileTotal),
               { layoutW: convertLayoutW, layoutH: convertLayoutH, layoutEm: convertLayoutEm },
               supersample ? SUPERSAMPLE_MAX_MULT : undefined,
             ),
