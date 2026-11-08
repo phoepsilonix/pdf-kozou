@@ -210,7 +210,7 @@ pub fn hayro_min_stroke_state() -> HayroStrokeState {
 /// hayro 描画結果の JPEG エンコード設定を変更する (プロセス全体)。
 /// "<サブサンプリング>[,trellis]" (例: "444" / "420" / "420,trellis")。
 /// 空文字 / "default" で未設定に戻す (環境変数 PDF_KOZOU_JPEG_SUBSAMPLING /
-/// PDF_KOZOU_JPEG_TRELLIS → 4:4:4・トレリスなし)。
+/// PDF_KOZOU_JPEG_TRELLIS → 4:4:4・トレリスあり)。
 /// feature "hayro" 無しのビルドでは何もしない (MuPDF の描画には影響しない)。
 pub fn set_hayro_jpeg_options(spec: &str) -> std::result::Result<(), String> {
     #[cfg(feature = "hayro")]
@@ -241,7 +241,7 @@ pub fn hayro_jpeg_options_state() -> HayroJpegState {
     }
     #[cfg(not(feature = "hayro"))]
     {
-        HayroJpegState { subsampling: 444, trellis: false }
+        HayroJpegState { subsampling: 444, trellis: true }
     }
 }
 

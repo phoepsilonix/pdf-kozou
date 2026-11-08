@@ -25,6 +25,13 @@
 //    → ネイティブの pointerdown リスナーを「次のイベントループ」まで登録を
 //      遅延させる方式に変更し、開いた瞬間のクリックで即座に閉じないようにする。
 //
+// 5. 画面左側のアンカーで左にはみ出す問題:
+//    パネルは基本的にアンカーの右端に右揃えで出す(ヘッダー右側のボタン向け)。
+//    だが画像変換画面の左側パネルなどにアンカーがあると、右揃えではパネルの
+//    左端が画面の外へはみ出して項目が読めなくなる。
+//    → 描画後にパネルの実幅を測り、左端が画面外になる場合はアンカーの左端に
+//      揃えて(さらに右端も画面内に収めて)配置し直す。
+//
 // 高さについても、固定の "70vh" のような割合ではなく、アンカーの下から
 // 画面下端までの「実際に使える領域」を都度計算して使うようにしている
 // （UI拡大率が高い場合でも、使える領域を最大限使う）。
@@ -105,6 +112,8 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
   // 指定すると、その値自体も他の長さと同様に scale 倍されて描画されるため)。
   // パネル自身の描画にだけ同じ倍率を掛けて他のUIと見た目を揃える。
   const [scale, setScale] = useState(() => getUiScale());
+  // 右揃えだと左へはみ出すときの左端位置(実ビューポート px)。null なら右揃え。
+  const [leftOverride, setLeftOverride] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // アンカーの実座標から配置・高さを計算する。
@@ -159,6 +168,34 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       vv?.removeEventListener("scroll", update);
     };
   }, [open, anchorRef]);
+
+  // 描画後にパネルの実幅を測り、右揃えで左へはみ出すなら左端基準に切り替える。
+  // pos(アンカー位置・スケール)が変わるたびに測り直す。
+  const posTop = pos?.top;
+  const posRight = pos?.right;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: posTop/posRight/scale の変化を契機に測り直したい。
+  useLayoutEffect(() => {
+    if (!open || posTop === undefined) {
+      setLeftOverride(null);
+      return;
+    }
+    const panel = panelRef.current;
+    const anchor = anchorRef.current;
+    if (!panel || !anchor) return;
+    const rect = panel.getBoundingClientRect();
+    const width = rect.right - rect.left;
+    const a = anchor.getBoundingClientRect();
+    const rightAlignedLeft = a.right - width;
+    let next: number | null = null;
+    if (rightAlignedLeft < MARGIN) {
+      // アンカーの左端に揃える。右端が画面外に出るなら画面内に収める。
+      const maxLeft = window.innerWidth - MARGIN - width;
+      next = Math.max(MARGIN, Math.min(a.left, maxLeft));
+    }
+    setLeftOverride((prev) =>
+      prev === next || (prev !== null && next !== null && Math.abs(prev - next) < 1) ? prev : next,
+    );
+  }, [open, anchorRef, posTop, posRight, scale]);
 
   // 外側クリックで閉じる。全画面オーバーレイでの即時クローズは環境によって
   // 「開いた瞬間のクリックで即座に閉じる」不具合を起こすため、
@@ -292,7 +329,9 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
           // scale 倍されてレンダリングされてしまい、位置がズレる。
           // そのため先に scale で割っておき、zoom 適用後に実際の座標へ戻す。
           top: pos.top / scale,
-          right: pos.right / scale,
+          ...(leftOverride === null
+            ? { right: pos.right / scale }
+            : { left: leftOverride / scale }),
           zIndex: 1200,
           maxWidth: "calc(100vw - 16px)",
           // maxHeight も同様に、zoom で拡大される分を先に差し引いておく。

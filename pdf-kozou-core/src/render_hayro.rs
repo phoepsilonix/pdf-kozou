@@ -377,12 +377,12 @@ pub fn encode_rgb_with(
 //   - オーバーシュート・デリンギング (白地の硬いエッジ向け)
 //   - ハフマン表の最適化 (同じ画質でファイルが小さくなる)
 //   - 色差サブサンプリング (既定は 4:4:4 = なし。色付きの細線の色にじみを避ける)
-// トレリス量子化は遅く、画質・ファイルサイズへの出方も画像によるため、既定では使わない。
+// トレリス量子化は遅くなるが、サイズ・画質のバランスが良くなるため、既定では使う。
 // ビューワーの描画 (render_page の preview) では、設定にかかわらず使わない。
 
 /// 色差サブサンプリング。"444" (既定) / "422" / "420"
 pub const JPEG_SUBSAMPLING_ENV: &str = "PDF_KOZOU_JPEG_SUBSAMPLING";
-/// トレリス量子化を使う。"1" / "on" / "true" で有効 (既定は無効)
+/// トレリス量子化の有無。"1" / "on" / "true" で有効、それ以外で無効 (未設定なら既定の有効)
 pub const JPEG_TRELLIS_ENV: &str = "PDF_KOZOU_JPEG_TRELLIS";
 
 /// JPEG エンコードの設定
@@ -396,7 +396,7 @@ pub struct JpegOptions {
 
 impl Default for JpegOptions {
     fn default() -> Self {
-        Self { subsampling: 444, trellis: false }
+        Self { subsampling: 444, trellis: true }
     }
 }
 
@@ -1615,6 +1615,6 @@ mod tests {
         );
         assert!(parse_jpeg_options("411").is_err());
         assert!(parse_jpeg_options("444,fast").is_err());
-        assert_eq!(JpegOptions::default(), JpegOptions { subsampling: 444, trellis: false });
+        assert_eq!(JpegOptions::default(), JpegOptions { subsampling: 444, trellis: true });
     }
 }

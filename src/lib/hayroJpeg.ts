@@ -5,7 +5,7 @@
 // src/lib/hayroJpeg.ts — hayro 描画結果の JPEG エンコード設定の永続化とコアへの反映
 //
 //   subsampling : 色差サブサンプリング。444 (既定。色付きの細線の色にじみを避ける) / 420 (小さい)
-//   trellis     : トレリス量子化 (既定はオフ。遅くなるが、サイズ・画質の出方が変わる)
+//   trellis     : トレリス量子化 (既定はオン。遅くなるが、サイズ・画質のバランスが良くなる)
 //
 // 画像変換 (画像書き出し・画像化 PDF・面付け・テキスト保持版) に反映される。
 // ビューワーの描画には、トレリスだけは使わない (ページ送りを遅くしないため)。
@@ -23,7 +23,7 @@ interface State {
   trellis: boolean;
 }
 
-let state: State = { subsampling: 444, trellis: false };
+let state: State = { subsampling: 444, trellis: true };
 const listeners = new Set<() => void>();
 
 function emit(next: State) {
