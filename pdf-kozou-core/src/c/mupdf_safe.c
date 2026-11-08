@@ -12730,6 +12730,15 @@ void kozou_sanitize_hidden_text(
                         snprintf(op.s, sizeof(op.s), "/%s", lxb.scratch); break;
                     case PDF_TOK_OPEN_ARRAY:  strcpy(op.s, "["); break;
                     case PDF_TOK_CLOSE_ARRAY: strcpy(op.s, "]"); break;
+                    /* インライン辞書 (/Span <</ActualText ...>> BDC など) と true/false/null。
+                     * これらを default で捨てると "<<" ">>" が欠けた不正な BDC
+                     * (/Span /ActualText (..) BDC) が書き出され、Windows/Linux 版 Edge で
+                     * そのページのテキストが表示されなくなる。 */
+                    case PDF_TOK_OPEN_DICT:   strcpy(op.s, "<<"); break;
+                    case PDF_TOK_CLOSE_DICT:  strcpy(op.s, ">>"); break;
+                    case PDF_TOK_TRUE:        strcpy(op.s, "true"); break;
+                    case PDF_TOK_FALSE:       strcpy(op.s, "false"); break;
+                    case PDF_TOK_NULL:        strcpy(op.s, "null"); break;
                     case PDF_TOK_KEYWORD:
                         strncpy(op.s, lxb.scratch, sizeof(op.s)-1); break;
                     default: break;
