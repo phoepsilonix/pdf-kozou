@@ -899,6 +899,17 @@
     "path_value": "Lines",
     "text_value": "Text"
   },
+  "hayro_jpeg": {
+    "title": "JPEG output (hayro rendering)",
+    "short": "JPEG",
+    "s444": "4:4:4 (no chroma subsampling)",
+    "s444_desc": "Avoids color bleeding on colored hairlines (default). Larger files",
+    "s420": "4:2:0 (chroma subsampling)",
+    "s420_desc": "Smaller files. Colored hairlines may bleed",
+    "trellis": "Trellis quantization",
+    "trellis_desc": "Optimizes the size/quality balance. Slows down image conversion. Not used for viewer display",
+    "trellis_short": "trellis"
+  },
   "pdf_backend": {
     "title": "PDF processing engine",
     "short": "Process",

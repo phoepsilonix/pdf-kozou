@@ -39,6 +39,10 @@ pub struct RenderRequest {
     /// hayro は feature "hayro" を付けてビルドした場合のみ有効 (無効時 "auto" は MuPDF)。
     #[serde(default)]
     pub engine: Option<String>,
+    /// 画面表示用の描画 (ビューワー)。true のとき、JPEG のトレリス量子化は設定にかかわらず
+    /// 使わない (ページ送りを遅くしないため)。省略 = false
+    #[serde(default)]
+    pub preview: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,6 +207,44 @@ pub fn hayro_min_stroke_state() -> HayroStrokeState {
     }
 }
 
+/// hayro 描画結果の JPEG エンコード設定を変更する (プロセス全体)。
+/// "<サブサンプリング>[,trellis]" (例: "444" / "420" / "420,trellis")。
+/// 空文字 / "default" で未設定に戻す (環境変数 PDF_KOZOU_JPEG_SUBSAMPLING /
+/// PDF_KOZOU_JPEG_TRELLIS → 4:4:4・トレリスなし)。
+/// feature "hayro" 無しのビルドでは何もしない (MuPDF の描画には影響しない)。
+pub fn set_hayro_jpeg_options(spec: &str) -> std::result::Result<(), String> {
+    #[cfg(feature = "hayro")]
+    {
+        crate::render_hayro::set_jpeg_options(spec)
+    }
+    #[cfg(not(feature = "hayro"))]
+    {
+        let _ = spec;
+        Ok(())
+    }
+}
+
+/// 現在の JPEG エンコード設定 (GUI 表示用)
+#[derive(Serialize)]
+pub struct HayroJpegState {
+    /// 色差サブサンプリング: 444 | 422 | 420
+    pub subsampling: u16,
+    /// トレリス量子化 (ビューワーの描画では、この設定にかかわらず使わない)
+    pub trellis: bool,
+}
+
+pub fn hayro_jpeg_options_state() -> HayroJpegState {
+    #[cfg(feature = "hayro")]
+    {
+        let o = crate::render_hayro::current_jpeg_options();
+        HayroJpegState { subsampling: o.subsampling, trellis: o.trellis }
+    }
+    #[cfg(not(feature = "hayro"))]
+    {
+        HayroJpegState { subsampling: 444, trellis: false }
+    }
+}
+
 /// このビルドが hayro 描画を含むか (feature "hayro")
 pub fn hayro_available() -> bool {
     cfg!(feature = "hayro")
@@ -267,6 +309,7 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
             format == "png",
             req.quality.unwrap_or(85),
             req.supersample_max.unwrap_or(1),
+            req.preview.unwrap_or(false),
         ) {
             Ok(img) => {
                 eprintln!(
@@ -2123,6 +2166,7 @@ mod engine_tests {
             layout_em: None,
             supersample_max: None,
             engine: Some("mupdf".into()),
+            preview: None,
         };
         assert_eq!(Engine::resolve(&req), Engine::MuPdf);
         req.engine = None;

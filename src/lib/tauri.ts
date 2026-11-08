@@ -1647,6 +1647,24 @@ export async function setHayroStrokeCore(spec: string): Promise<void> {
   await invoke<void>("set_hayro_stroke", { spec });
 }
 
+// ── hayro 描画結果の JPEG エンコード設定 ───────────────────────────────────
+
+export interface HayroJpegInfo {
+  /** 色差サブサンプリング: 444 | 422 | 420 */
+  subsampling: number;
+  /** トレリス量子化 (ビューワーの描画では、この設定にかかわらず使わない) */
+  trellis: boolean;
+}
+
+export async function getHayroJpegInfo(): Promise<HayroJpegInfo> {
+  return invoke<HayroJpegInfo>("get_hayro_jpeg_info");
+}
+
+/** JPEG エンコード設定を変更する ("<サブサンプリング>[,trellis]"。例: "444" / "420,trellis") */
+export async function setHayroJpegCore(spec: string): Promise<void> {
+  await invoke<void>("set_hayro_jpeg", { spec });
+}
+
 // ── PDF 操作エンジン (lopdf / MuPDF) ────────────────────────────────────────
 
 export interface BackendInfo {

@@ -28,6 +28,7 @@ import { FileSortSelect } from "./components/FileSortSelect";
 import { FloatingMenu } from "./components/FloatingMenu";
 import { FolderChooserModal } from "./components/FolderChooserModal";
 import { FontScaleControl } from "./components/FontScaleControl";
+import { HayroJpegControl } from "./components/HayroJpegControl";
 import { HayroStrokeControl } from "./components/HayroStrokeControl";
 import { JumpButton } from "./components/JumpNav";
 import { LayoutModeControl } from "./components/LayoutModeControl";
@@ -47,6 +48,7 @@ import { initEngineFallback } from "./lib/engineFallback";
 import { setFileListToolbarPosition, useFileListToolbarPosition } from "./lib/fileListToolbar";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
+import { initHayroJpeg } from "./lib/hayroJpeg";
 import { initHayroStroke } from "./lib/hayroStroke";
 import { useI18n } from "./lib/i18n";
 import { loadLastTool, saveLastTool } from "./lib/lastTool";
@@ -231,6 +233,7 @@ export default function App() {
   useEffect(() => {
     void initRenderEngine();
     void initHayroStroke();
+    void initHayroJpeg();
     void initPdfBackend();
   }, []);
 
@@ -798,6 +801,7 @@ export default function App() {
                   <PdfBackendControl />
                   <RenderEngineControl />
                   <HayroStrokeControl />
+                  <HayroJpegControl />
                   <LayoutModeControl
                     mode={layoutModeOverride}
                     onChange={setLayoutModeOverride}
@@ -829,6 +833,7 @@ export default function App() {
               <PdfBackendControl />
               <RenderEngineControl />
               <HayroStrokeControl />
+              <HayroJpegControl />
               <LayoutModeControl
                 mode={layoutModeOverride}
                 onChange={setLayoutModeOverride}
@@ -1580,6 +1585,7 @@ function ToolShell({
       <PdfBackendControl />
       <RenderEngineControl />
       <HayroStrokeControl />
+      <HayroJpegControl />
       <LayoutModeControl
         mode={layoutModeOverride}
         onChange={setLayoutModeOverride}

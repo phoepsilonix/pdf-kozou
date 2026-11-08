@@ -45,6 +45,7 @@ pub fn render_page(
     png: bool,
     quality: u8,
     supersample_max: i32,
+    preview: bool,
 ) -> Result<HayroImage, String> {
     let pdf = load_pdf(path)?;
     let pages = pdf.pages();
@@ -74,7 +75,12 @@ pub fn render_page(
     let cache = RenderCache::new();
     let (width_px, height_px) = (w as u32, h as u32);
     let rgb = raster_rgb(page, &cache, &settings, width_px, height_px, dpi_f, supersample_max)?;
-    let out = encode_rgb(&rgb, width_px, height_px, png, quality)?;
+    // ビューワー用 (preview) はトレリスを使わない (ページ送りを遅くしないため)
+    let mut jpeg_opts = current_jpeg_options();
+    if preview {
+        jpeg_opts.trellis = false;
+    }
+    let out = encode_rgb_with(&rgb, width_px, height_px, png, quality, jpeg_opts)?;
 
     Ok(HayroImage {
         bytes: out,
@@ -322,13 +328,25 @@ fn interpreter_settings() -> InterpreterSettings {
     }
 }
 
-/// RGB8 のピクセル列を PNG / JPEG にエンコードする
+/// RGB8 のピクセル列を PNG / JPEG にエンコードする (JPEG の設定は `current_jpeg_options`)
 pub fn encode_rgb(
     rgb: &[u8],
     width_px: u32,
     height_px: u32,
     png: bool,
     quality: u8,
+) -> Result<Vec<u8>, String> {
+    encode_rgb_with(rgb, width_px, height_px, png, quality, current_jpeg_options())
+}
+
+/// `encode_rgb` の JPEG 設定指定版
+pub fn encode_rgb_with(
+    rgb: &[u8],
+    width_px: u32,
+    height_px: u32,
+    png: bool,
+    quality: u8,
+    jpeg_opts: JpegOptions,
 ) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
     if png {
@@ -339,10 +357,12 @@ pub fn encode_rgb(
     } else {
         // feature "mozjpeg" が有効なら mozjpeg-rs で。失敗したときは image クレートに任せる。
         #[cfg(feature = "mozjpeg")]
-        match encode_jpeg_mozjpeg(rgb, width_px, height_px, quality) {
+        match encode_jpeg_mozjpeg(rgb, width_px, height_px, quality, jpeg_opts) {
             Ok(v) => return Ok(v),
             Err(e) => eprintln!("[render] {e}; falling back to image crate"),
         }
+        #[cfg(not(feature = "mozjpeg"))]
+        let _ = jpeg_opts;
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100))
             .encode(rgb, width_px, height_px, image::ExtendedColorType::Rgb8)
             .map_err(|e| format!("jpeg encode: {e}"))?;
@@ -356,13 +376,88 @@ pub fn encode_rgb(
 // mozjpeg-rs の既定構成のうち、次を使って抑える。
 //   - オーバーシュート・デリンギング (白地の硬いエッジ向け)
 //   - ハフマン表の最適化 (同じ画質でファイルが小さくなる)
-//   - 色差サブサンプリングなし (4:4:4)。色付きの細線の色にじみを避ける
-// トレリス量子化は遅く、画質の出方も画像によるため、既定では使わない (環境変数で有効化)。
+//   - 色差サブサンプリング (既定は 4:4:4 = なし。色付きの細線の色にじみを避ける)
+// トレリス量子化は遅く、画質・ファイルサイズへの出方も画像によるため、既定では使わない。
+// ビューワーの描画 (render_page の preview) では、設定にかかわらず使わない。
 
-/// トレリス量子化を使う。"1" / "on" / "true" で有効 (既定は無効)
-pub const JPEG_TRELLIS_ENV: &str = "PDF_KOZOU_JPEG_TRELLIS";
 /// 色差サブサンプリング。"444" (既定) / "422" / "420"
 pub const JPEG_SUBSAMPLING_ENV: &str = "PDF_KOZOU_JPEG_SUBSAMPLING";
+/// トレリス量子化を使う。"1" / "on" / "true" で有効 (既定は無効)
+pub const JPEG_TRELLIS_ENV: &str = "PDF_KOZOU_JPEG_TRELLIS";
+
+/// JPEG エンコードの設定
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JpegOptions {
+    /// 色差サブサンプリング: 444 | 422 | 420
+    pub subsampling: u16,
+    /// トレリス量子化
+    pub trellis: bool,
+}
+
+impl Default for JpegOptions {
+    fn default() -> Self {
+        Self { subsampling: 444, trellis: false }
+    }
+}
+
+fn parse_subsampling(t: &str) -> Option<u16> {
+    match t.trim() {
+        "444" | "4:4:4" => Some(444),
+        "422" | "4:2:2" => Some(422),
+        "420" | "4:2:0" => Some(420),
+        _ => None,
+    }
+}
+
+/// "<サブサンプリング>[,trellis]" を解釈する (例: "444" / "420,trellis")。
+/// 空文字 / "default" は未設定 (None)。
+pub fn parse_jpeg_options(spec: &str) -> Result<Option<JpegOptions>, String> {
+    let t = spec.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("default") {
+        return Ok(None);
+    }
+    let mut parts = t.split(',');
+    let sub = parts.next().unwrap_or("");
+    let subsampling = parse_subsampling(sub)
+        .ok_or_else(|| format!("invalid jpeg subsampling {sub:?} (444 | 422 | 420)"))?;
+    let mut trellis = false;
+    for flag in parts {
+        match flag.trim().to_ascii_lowercase().as_str() {
+            "trellis" => trellis = true,
+            other => return Err(format!("invalid jpeg option {other:?} (trellis)")),
+        }
+    }
+    Ok(Some(JpegOptions { subsampling, trellis }))
+}
+
+/// GUI 等から設定するプロセス全体の値 (None = 未設定)
+static JPEG_OPTIONS: Mutex<Option<JpegOptions>> = Mutex::new(None);
+
+/// JPEG エンコードの設定を変更する (プロセス全体)。
+/// 空文字 / "default" で未設定に戻す (環境変数 → 既定)。
+pub fn set_jpeg_options(spec: &str) -> Result<(), String> {
+    let o = parse_jpeg_options(spec)?;
+    *JPEG_OPTIONS.lock().unwrap_or_else(|e| e.into_inner()) = o;
+    Ok(())
+}
+
+/// 現在有効な JPEG エンコードの設定 (設定 → 環境変数 → 既定)
+pub fn current_jpeg_options() -> JpegOptions {
+    if let Some(o) = *JPEG_OPTIONS.lock().unwrap_or_else(|e| e.into_inner()) {
+        return o;
+    }
+    let mut o = JpegOptions::default();
+    if let Ok(v) = std::env::var(JPEG_SUBSAMPLING_ENV) {
+        match parse_subsampling(&v) {
+            Some(s) => o.subsampling = s,
+            None => eprintln!("[render] {JPEG_SUBSAMPLING_ENV}: unknown value {v:?}; using 444"),
+        }
+    }
+    if let Ok(v) = std::env::var(JPEG_TRELLIS_ENV) {
+        o.trellis = matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "on" | "true");
+    }
+    o
+}
 
 #[cfg(feature = "mozjpeg")]
 fn encode_jpeg_mozjpeg(
@@ -370,28 +465,21 @@ fn encode_jpeg_mozjpeg(
     width_px: u32,
     height_px: u32,
     quality: u8,
+    opts: JpegOptions,
 ) -> Result<Vec<u8>, String> {
     use mozjpeg_rs::{Encoder, Subsampling, TrellisConfig};
 
-    let trellis = std::env::var(JPEG_TRELLIS_ENV)
-        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "on" | "true"))
-        .unwrap_or(false);
-    let subsampling = match std::env::var(JPEG_SUBSAMPLING_ENV).as_deref().map(str::trim) {
-        Ok("420") | Ok("4:2:0") => Subsampling::S420,
-        Ok("422") | Ok("4:2:2") => Subsampling::S422,
-        Ok("444") | Ok("4:4:4") | Err(_) => Subsampling::S444,
-        Ok(other) => {
-            eprintln!("[render] {JPEG_SUBSAMPLING_ENV}: unknown value {other:?}; using 444");
-            Subsampling::S444
-        }
+    let subsampling = match opts.subsampling {
+        420 => Subsampling::S420,
+        422 => Subsampling::S422,
+        _ => Subsampling::S444,
     };
-
     // baseline_optimized: ハフマン最適化 + デリンギング (+ 既定ではトレリス)。
     // 出力はベースライン JPEG。必要ならこの後の optimize_or_keep がプログレッシブ化を試す。
     let mut enc = Encoder::baseline_optimized()
         .quality(quality.clamp(1, 100))
         .subsampling(subsampling);
-    if !trellis {
+    if !opts.trellis {
         enc = enc.trellis(TrellisConfig::disabled());
     }
     enc.encode_rgb(rgb, width_px, height_px)
@@ -1507,5 +1595,26 @@ mod tests {
         assert_eq!(MinStroke::On.widths(), (0.3, 0.25));
         assert_eq!(MinStroke::Off.widths(), (0.0, 0.0));
         assert_eq!(MinStroke::Custom { path: 0.2, text: 0.1 }.widths(), (0.2, 0.1));
+    }
+
+    #[test]
+    fn jpeg_options_spec() {
+        assert_eq!(parse_jpeg_options(""), Ok(None));
+        assert_eq!(parse_jpeg_options("default"), Ok(None));
+        assert_eq!(
+            parse_jpeg_options("444"),
+            Ok(Some(JpegOptions { subsampling: 444, trellis: false }))
+        );
+        assert_eq!(
+            parse_jpeg_options("420,trellis"),
+            Ok(Some(JpegOptions { subsampling: 420, trellis: true }))
+        );
+        assert_eq!(
+            parse_jpeg_options("4:2:2, Trellis"),
+            Ok(Some(JpegOptions { subsampling: 422, trellis: true }))
+        );
+        assert!(parse_jpeg_options("411").is_err());
+        assert!(parse_jpeg_options("444,fast").is_err());
+        assert_eq!(JpegOptions::default(), JpegOptions { subsampling: 444, trellis: false });
     }
 }

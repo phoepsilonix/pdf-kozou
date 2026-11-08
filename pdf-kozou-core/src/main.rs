@@ -575,6 +575,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                         layout_em,
                         supersample_max: None,
                         engine: None,
+                        preview: None,
                     };
                     let resp = pdf_kozou_core::render::render(&req)?;
                     println!("{}", serde_json::to_string(&resp)?);
@@ -1152,6 +1153,7 @@ fn render_to_json(
             layout_em,
             supersample_max: None,
             engine: None,
+            preview: None,
         };
         let resp = pdf_kozou_core::render::render(&req)?;
         pages.push(serde_json::json!({

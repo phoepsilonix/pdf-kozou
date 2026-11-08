@@ -136,6 +136,25 @@ pub fn set_hayro_stroke(spec: String) -> Result<()> {
     pdf_kozou_core::render::set_hayro_min_stroke(&spec).map_err(Error::Core)
 }
 
+/// hayro 描画結果の JPEG エンコード設定の状態。
+/// `subsampling`: 色差サブサンプリング (444 | 422 | 420)。
+/// `trellis`: トレリス量子化 (ビューワーの描画では、この設定にかかわらず使わない)。
+#[tauri::command]
+pub fn get_hayro_jpeg_info() -> Value {
+    let st = pdf_kozou_core::render::hayro_jpeg_options_state();
+    serde_json::json!({
+        "subsampling": st.subsampling,
+        "trellis": st.trellis,
+    })
+}
+
+/// hayro 描画結果の JPEG エンコード設定を変更する ("<サブサンプリング>[,trellis]")。
+/// 以降の hayro 描画に反映される。
+#[tauri::command]
+pub fn set_hayro_jpeg(spec: String) -> Result<()> {
+    pdf_kozou_core::render::set_hayro_jpeg_options(&spec).map_err(Error::Core)
+}
+
 #[tauri::command]
 pub async fn render_page(
     path: String,
@@ -185,6 +204,8 @@ pub async fn render_page(
                 layout_em,
                 supersample_max: None,
                 engine: None,
+                // ビューワー等の画面表示用。トレリス量子化は使わない
+                preview: Some(true),
             };
             let resp = pdf_kozou_core::render::render(&req).map_err(|e| e.to_string())?;
             serde_json::to_string(&resp).map_err(|e| e.to_string())
