@@ -876,6 +876,25 @@ function TrimPageBatch({
             >
               ▶
             </button>
+            {/* トリミング選択の解除。選択領域を操作するキャンバスの傍に置く */}
+            <div
+              style={{
+                width: 1,
+                height: 18,
+                background: "var(--c-border)",
+                margin: "0 4px",
+                flexShrink: 0,
+              }}
+            />
+            <button
+              type="button"
+              style={{ ...s.zBtn, opacity: phase !== "edit" ? 0.35 : 1 }}
+              disabled={phase !== "edit"}
+              onClick={() => setTrimMargins(zero())}
+              aria-label={t("trim_controls.reset")}
+            >
+              {t("trim_controls.reset")}
+            </button>
             {!isNarrow && (
               <span style={{ fontSize: FS.caption, color: "var(--c-textDim)", marginLeft: 4 }}>
                 {t("trim.scroll_hint")}
@@ -936,7 +955,6 @@ function TrimPageBatch({
               totalPages={curPages}
               onMargins={setTrimMargins}
               onApply={handleExecute}
-              onReset={() => setTrimMargins(zero())}
               processing={phase !== "edit"}
               applyLabel={
                 outDir || mobile
@@ -1656,6 +1674,25 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             <button type="button" style={s.zBtn} onClick={() => setZoom(1.0)}>
               100%
             </button>
+            {/* トリミング選択の解除。選択領域を操作するキャンバスの傍に置く */}
+            <div
+              style={{
+                width: 1,
+                height: 18,
+                background: "var(--c-border)",
+                margin: "0 4px",
+                flexShrink: 0,
+              }}
+            />
+            <button
+              type="button"
+              style={{ ...s.zBtn, opacity: phase !== "edit" ? 0.35 : 1 }}
+              disabled={phase !== "edit"}
+              onClick={() => setTrimMargins(zero())}
+              aria-label={t("trim_controls.reset")}
+            >
+              {t("trim_controls.reset")}
+            </button>
           </div>
         </div>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: PDFプレビュー用のスクロール可能なキャンバスビューポート。Ctrl+/-/0でのズーム操作のためtabIndexでフォーカス可能にしている。標準のARIA roleでは表現しきれない専用ウィジェットのため、role指定は行わない。 */}
@@ -1704,7 +1741,6 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
             topInputRef={marginTopRef}
             rangeInputRef={rangeRef}
             onApply={handleExecute}
-            onReset={() => setTrimMargins(zero())}
             processing={phase !== "edit"}
             excludeSpec={excludeSpec}
             onExclude={onExclude}

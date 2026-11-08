@@ -24,7 +24,6 @@ interface Props {
   totalPages: number;
   onMargins: (m: TrimMargins) => void;
   onApply: () => void;
-  onReset: () => void;
   processing: boolean;
   applyLabel?: string;
   /** プレビュー時に redact + オブジェクトストリーム有効の標準圧縮を掛けるか */
@@ -48,7 +47,7 @@ interface Props {
   rangeInputRef?: React.RefObject<HTMLInputElement | null>;
   /** 画像入力があるとき、画像用ページサイズ指定を表示する */
   showImagePageSize?: boolean;
-  /** true のとき下部の操作帯(リセット/実行ボタン)を描画しない。
+  /** true のとき下部の操作帯(実行ボタン等)を描画しない。
    * 呼び出し側で共通の固定実行ボタンを別途用意する場合に使う。 */
   hideActionBar?: boolean;
 }
@@ -67,7 +66,6 @@ export function TrimControls({
   onMargins,
   onPages,
   onApply,
-  onReset,
   processing,
   applyLabel,
   previewCompress = false,
@@ -307,31 +305,21 @@ export function TrimControls({
       </div>
 
       {/* 下部固定の操作帯（スクロールしない・常に最下部に表示）
-          hideActionBar=true のときは実行ボタンのみ非表示にする
-          （呼び出し側が共通の固定実行ボタンを別途用意している場合）。
-          リセットは他に導線がないため常に表示する。 */}
-      <section style={s.actions}>
-        {/* プレビュー時の圧縮オプション。プレビューボタンの直上に置く。
-            hideActionBar 時（狭幅）は呼び出し側の固定ナビ側に同等のものを出す。 */}
-        {!hideActionBar && onPreviewCompressChange && (
-          <PreviewCompressOption
-            checked={previewCompress}
-            onChange={onPreviewCompressChange}
-            disabled={processing}
-            variant={previewCompressVariant}
-          />
-        )}
-        <div style={s.actionsRow}>
-          <button
-            type="button"
-            style={s.btnReset}
-            onClick={onReset}
-            disabled={processing}
-            aria-label={t("trim_controls.reset")}
-          >
-            {t("trim_controls.reset")}
-          </button>
-          {!hideActionBar && (
+          hideActionBar=true のとき(狭幅)は呼び出し側の固定ナビに実行ボタンがあるため、
+          この帯ごと描画しない。
+          トリミング選択のリセットは、選択領域を操作するキャンバス側のツールバーに置く。 */}
+      {!hideActionBar && (
+        <section style={s.actions}>
+          {/* プレビュー時の圧縮オプション。プレビューボタンの直上に置く。 */}
+          {onPreviewCompressChange && (
+            <PreviewCompressOption
+              checked={previewCompress}
+              onChange={onPreviewCompressChange}
+              disabled={processing}
+              variant={previewCompressVariant}
+            />
+          )}
+          <div style={s.actionsRow}>
             <button
               type="button"
               style={{ ...s.btnApply, ...(processing ? s.btnDisabled : {}) }}
@@ -342,9 +330,9 @@ export function TrimControls({
                 ? t("trim_controls.processing")
                 : (applyLabel ?? t("trim_controls.preview"))}
             </button>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -549,16 +537,6 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--c-bgCard)",
   },
   actionsRow: { display: "flex", gap: 8 },
-  btnReset: {
-    padding: "10px 14px",
-    background: "transparent",
-    border: `1px solid var(--c-borderHi)`,
-    borderRadius: 7,
-    color: "var(--c-textSub)",
-    cursor: "pointer",
-    fontFamily: F,
-    fontSize: FS.body,
-  },
   btnApply: {
     flex: 1,
     padding: "10px 0",
