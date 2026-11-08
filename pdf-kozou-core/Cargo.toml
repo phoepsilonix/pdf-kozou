@@ -12,9 +12,14 @@ authors = ["Masato TOYOSHIMA <phoepsilonix@gmail.com>"]
 # hayro (純 Rust の PDF ラスタライザ) による描画。埋め込みフォントなしの PDF は
 # OS のシステムフォントで代替する。既定は無効 (従来どおり MuPDF のみ)。
 # hayro 0.8 は Rust 1.92 以上が必要。
-hayro = ["dep:hayro", "dep:fontdb", "jpeg-optimize"]
+hayro = ["dep:hayro", "dep:fontdb", "jpeg-optimize", "mozjpeg"]
 # JPEG の可逆最適化 (jpegtran 方式。純 Rust の libjpeg-turbo-rs)
 jpeg-optimize = ["dep:libjpeg-turbo-rs"]
+# hayro 描画結果の JPEG エンコードに mozjpeg-rs (純 Rust・BSD-3-Clause) を使う。
+# オーバーシュート・デリンギング + ハフマン最適化 + 4:4:4 を既定とし、細線イラストの
+# リンギング (荒れ) を抑える。トレリス量子化は環境変数 PDF_KOZOU_JPEG_TRELLIS で有効化。
+# 無効なビルドでは従来どおり image クレートでエンコードする。
+mozjpeg = ["dep:mozjpeg-rs"]
 
 [[bin]]
 name = "pdf-kozou-core"
@@ -68,6 +73,9 @@ hayro  = { version = "0.8", optional = true }
 fontdb = { version = "0.24", optional = true }
 # JPEG の可逆最適化 (feature "jpeg-optimize")
 libjpeg-turbo-rs = { version = "0.8", optional = true }
+
+# JPEG エンコーダ (feature "mozjpeg")。fast-yuv / imgref は使わないので既定 feature は切る
+mozjpeg-rs = { version = "0.9", optional = true, default-features = false }
 
 # CLI 引数
 clap = { version = "4", features = ["derive"] }

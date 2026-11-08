@@ -337,11 +337,65 @@ pub fn encode_rgb(
             .write_image(rgb, width_px, height_px, image::ExtendedColorType::Rgb8)
             .map_err(|e| format!("png encode: {e}"))?;
     } else {
+        // feature "mozjpeg" が有効なら mozjpeg-rs で。失敗したときは image クレートに任せる。
+        #[cfg(feature = "mozjpeg")]
+        match encode_jpeg_mozjpeg(rgb, width_px, height_px, quality) {
+            Ok(v) => return Ok(v),
+            Err(e) => eprintln!("[render] {e}; falling back to image crate"),
+        }
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100))
             .encode(rgb, width_px, height_px, image::ExtendedColorType::Rgb8)
             .map_err(|e| format!("jpeg encode: {e}"))?;
     }
     Ok(out)
+}
+
+// ── JPEG エンコーダ (mozjpeg-rs) ─────────────────────────────────────────────
+//
+// 白地に細線のイラストは、JPEG の量子化で線の周りにリンギング (にじみ・ざらつき) が出やすい。
+// mozjpeg-rs の既定構成のうち、次を使って抑える。
+//   - オーバーシュート・デリンギング (白地の硬いエッジ向け)
+//   - ハフマン表の最適化 (同じ画質でファイルが小さくなる)
+//   - 色差サブサンプリングなし (4:4:4)。色付きの細線の色にじみを避ける
+// トレリス量子化は遅く、画質の出方も画像によるため、既定では使わない (環境変数で有効化)。
+
+/// トレリス量子化を使う。"1" / "on" / "true" で有効 (既定は無効)
+pub const JPEG_TRELLIS_ENV: &str = "PDF_KOZOU_JPEG_TRELLIS";
+/// 色差サブサンプリング。"444" (既定) / "422" / "420"
+pub const JPEG_SUBSAMPLING_ENV: &str = "PDF_KOZOU_JPEG_SUBSAMPLING";
+
+#[cfg(feature = "mozjpeg")]
+fn encode_jpeg_mozjpeg(
+    rgb: &[u8],
+    width_px: u32,
+    height_px: u32,
+    quality: u8,
+) -> Result<Vec<u8>, String> {
+    use mozjpeg_rs::{Encoder, Subsampling, TrellisConfig};
+
+    let trellis = std::env::var(JPEG_TRELLIS_ENV)
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "on" | "true"))
+        .unwrap_or(false);
+    let subsampling = match std::env::var(JPEG_SUBSAMPLING_ENV).as_deref().map(str::trim) {
+        Ok("420") | Ok("4:2:0") => Subsampling::S420,
+        Ok("422") | Ok("4:2:2") => Subsampling::S422,
+        Ok("444") | Ok("4:4:4") | Err(_) => Subsampling::S444,
+        Ok(other) => {
+            eprintln!("[render] {JPEG_SUBSAMPLING_ENV}: unknown value {other:?}; using 444");
+            Subsampling::S444
+        }
+    };
+
+    // baseline_optimized: ハフマン最適化 + デリンギング (+ 既定ではトレリス)。
+    // 出力はベースライン JPEG。必要ならこの後の optimize_or_keep がプログレッシブ化を試す。
+    let mut enc = Encoder::baseline_optimized()
+        .quality(quality.clamp(1, 100))
+        .subsampling(subsampling);
+    if !trellis {
+        enc = enc.trellis(TrellisConfig::disabled());
+    }
+    enc.encode_rgb(rgb, width_px, height_px)
+        .map_err(|e| format!("mozjpeg encode: {e}"))
 }
 
 fn load_pdf(path: &str) -> Result<Pdf, String> {
