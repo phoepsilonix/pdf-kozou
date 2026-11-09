@@ -46,8 +46,9 @@
 
 use crate::crop_redact_lopdf::{
     FontInfo, IDENT, Mat, Rect, Widths, XKind, apply, deref, dict_of, inherited, load_font,
-    load_xobject, mat_of, mul, num, num_deref, operand_nums, sub_dict, transform_rect,
+    load_xobject, mat_of, mul, num, num_deref, operand_nums, parse_box, sub_dict, transform_rect,
 };
+use crate::tounicode_lopdf::UniMap;
 use lopdf::content::{Content, Operation};
 use lopdf::{Dictionary, Document, Object, ObjectId, StringFormat};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -203,6 +204,9 @@ struct HFont {
     desc: f64,
     /// 1 文字のバイト数 (Simple = 1, Cid = 2)
     code_len: u8,
+    /// 文字コード → Unicode
+    uni: UniMap,
+    is_type3: bool,
 }
 
 /// FontDescriptor から (Ascent, Descent) を em 単位で読む。無い・不正なら既定値
@@ -276,6 +280,8 @@ fn load_hfont(doc: &Document, font: &Dictionary) -> Option<HFont> {
             asc,
             desc,
             code_len: 1,
+            uni: crate::tounicode_lopdf::build(doc, font),
+            is_type3: true,
         });
     }
     let info = load_font(doc, font)?;
@@ -299,6 +305,8 @@ fn load_hfont(doc: &Document, font: &Dictionary) -> Option<HFont> {
         asc,
         desc,
         code_len,
+        uni: crate::tounicode_lopdf::build(doc, font),
+        is_type3: false,
     })
 }
 
@@ -349,6 +357,84 @@ struct St {
     clip_exact: bool,
     /// 不透明度の指定された透明グループの中でない (覆いを不透明と認められる)
     opaque_ok: bool,
+    /// 塗りの色空間 (成分数が分かるものだけ)
+    fill_cs: Cs,
+    /// 塗りの色 (RGB)。分からなければ None
+    fill_rgb: Option<[u8; 3]>,
+}
+
+/// 塗りの色空間
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Cs {
+    Gray,
+    Rgb,
+    Cmyk,
+    /// Indexed / Separation / DeviceN / Lab / Pattern など (色を RGB にできない)
+    Other,
+}
+
+fn to_u8(v: f64) -> u8 {
+    (v.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+/// 色空間と成分から RGB を求める (CMYK は単純な換算)
+fn rgb_of(cs: Cs, v: &[f64]) -> Option<[u8; 3]> {
+    match (cs, v.len()) {
+        (Cs::Gray, 1) => Some([to_u8(v[0]); 3]),
+        (Cs::Rgb, 3) => Some([to_u8(v[0]), to_u8(v[1]), to_u8(v[2])]),
+        (Cs::Cmyk, 4) => {
+            let k = 1.0 - v[3].clamp(0.0, 1.0);
+            Some([
+                to_u8((1.0 - v[0].clamp(0.0, 1.0)) * k),
+                to_u8((1.0 - v[1].clamp(0.0, 1.0)) * k),
+                to_u8((1.0 - v[2].clamp(0.0, 1.0)) * k),
+            ])
+        }
+        _ => None,
+    }
+}
+
+/// `cs` 演算子の色空間名から、色空間と初期色を決める
+fn resolve_cs(doc: &Document, cspaces: Option<&Dictionary>, name: &[u8]) -> (Cs, Option<[u8; 3]>) {
+    let black = Some([0, 0, 0]);
+    match name {
+        b"DeviceGray" | b"G" | b"CalGray" => return (Cs::Gray, black),
+        b"DeviceRGB" | b"RGB" | b"CalRGB" => return (Cs::Rgb, black),
+        b"DeviceCMYK" | b"CMYK" => return (Cs::Cmyk, black),
+        b"Pattern" => return (Cs::Other, None),
+        _ => {}
+    }
+    let Some(obj) = cspaces.and_then(|c| c.get(name).ok()) else {
+        return (Cs::Other, None);
+    };
+    match deref(doc, obj) {
+        Object::Name(n) => match n.as_slice() {
+            b"DeviceGray" | b"CalGray" => (Cs::Gray, black),
+            b"DeviceRGB" | b"CalRGB" => (Cs::Rgb, black),
+            b"DeviceCMYK" => (Cs::Cmyk, black),
+            _ => (Cs::Other, None),
+        },
+        Object::Array(a) => match a.first().and_then(|o| deref(doc, o).as_name().ok()) {
+            Some(b"CalGray") => (Cs::Gray, black),
+            Some(b"CalRGB") => (Cs::Rgb, black),
+            Some(b"ICCBased") => {
+                let n = a
+                    .get(1)
+                    .and_then(|o| deref(doc, o).as_stream().ok())
+                    .and_then(|s| s.dict.get(b"N").ok())
+                    .and_then(|o| num_deref(doc, o))
+                    .map(|v| v as i64);
+                match n {
+                    Some(1) => (Cs::Gray, black),
+                    Some(3) => (Cs::Rgb, black),
+                    Some(4) => (Cs::Cmyk, black),
+                    _ => (Cs::Other, None),
+                }
+            }
+            _ => (Cs::Other, None),
+        },
+        _ => (Cs::Other, None),
+    }
 }
 
 impl St {
@@ -370,6 +456,8 @@ impl St {
             clip: None,
             clip_exact: true,
             opaque_ok: true,
+            fill_cs: Cs::Gray,
+            fill_rgb: Some([0, 0, 0]),
         }
     }
 
@@ -455,12 +543,60 @@ enum Ev {
         rect: Rect,
         adj: f64,
         code_len: u8,
+        /// 「埋もれた文字」の候補 (描画モードが塗り/線で、半分以上不透明)
+        cand: bool,
+        /// `Walker::glyphs` の番号 (記録しないときは usize::MAX)
+        rec: usize,
     },
     Cover {
         rect: Rect,
         /// 不透明で、文字を完全に隠せる覆い
         opaque: bool,
+        /// 塗りの色 (画像・色が分からないものは None)
+        rgb: Option<[u8; 3]>,
     },
+}
+
+/// 文字 1 つの記録 (隠しテキストの検出用)。座標はデバイス座標 (MuPDF と同じ。
+/// CropBox の左上が原点、y は下向き、/Rotate 適用後)
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub(crate) struct GlyphRec {
+    /// 0 始まりのページ番号
+    pub(crate) page: i32,
+    /// 属する内容ストリーム
+    pub(crate) sid: ObjectId,
+    /// 0 = ページの内容、それ以外 = 属する Form XObject の番号
+    pub(crate) xref: i32,
+    /// そのストリームの中での、Tj/TJ/'/" の通し番号 (0 始まり)
+    pub(crate) tj_seq: i32,
+    /// ストリームの中での演算子の番号と、その演算子の中での文字の番号
+    pub(crate) op: usize,
+    pub(crate) gi: usize,
+    pub(crate) code: u32,
+    pub(crate) code_len: u8,
+    /// Unicode (複数コードポイントになりうる)
+    pub(crate) text: String,
+    pub(crate) origin: (f64, f64),
+    /// [ul.x, ul.y, ur.x, ur.y, ll.x, ll.y, lr.x, lr.y]
+    pub(crate) quad: [f64; 8],
+    pub(crate) rect: Rect,
+    /// フォントサイズ (デバイス座標での pt)
+    pub(crate) size: f64,
+    pub(crate) rgb: Option<[u8; 3]>,
+    /// 塗りの不透明度 (ca)
+    pub(crate) ca: f64,
+    /// 描画モード (Tr)
+    pub(crate) tr: i64,
+    pub(crate) is_type3: bool,
+    /// 取り除いたあとに送り幅を保つ TJ の位置調整
+    pub(crate) adj: f64,
+    /// 「埋もれた文字」の候補か
+    pub(crate) cand: bool,
+    /// 後から描かれた不透明な覆いに覆われる割合 (候補のみ)
+    pub(crate) cover: f64,
+    /// 背景色の推定。None = 分からない (画像・曲線・半透明の上など)
+    pub(crate) bg: Option<[u8; 3]>,
 }
 
 /// 1 つのストリームを走査できなかった理由
@@ -473,6 +609,12 @@ struct Walker<'a> {
     n_covers: usize,
     /// 処理中の Form (循環参照の防止)
     stack: Vec<ObjectId>,
+    /// 全文字を記録する (検出用)。false のときは候補の文字だけをイベントに積む
+    want_glyphs: bool,
+    glyphs: Vec<GlyphRec>,
+    page_no: i32,
+    /// ページ自身の内容ストリーム (xref = 0 の判定用)
+    page_sid: ObjectId,
 }
 
 /// 内容ストリームのバイト列を、演算子の列にする。インライン画像を含む・解析しきれない場合は Err
@@ -508,12 +650,17 @@ fn ext_gstate<'a>(
 }
 
 impl<'a> Walker<'a> {
-    fn push_cover(&mut self, rect: Rect, opaque: bool) -> Result<(), Unwalkable> {
+    fn push_cover(
+        &mut self,
+        rect: Rect,
+        opaque: bool,
+        rgb: Option<[u8; 3]>,
+    ) -> Result<(), Unwalkable> {
         self.n_covers += 1;
         if self.n_covers > MAX_COVERS {
             return Err("too many covering objects".into());
         }
-        self.events.push(Ev::Cover { rect, opaque });
+        self.events.push(Ev::Cover { rect, opaque, rgb });
         Ok(())
     }
 
@@ -530,7 +677,16 @@ impl<'a> Walker<'a> {
         let xobjs = res.and_then(|r| sub_dict(doc, r, b"XObject"));
         let fonts = res.and_then(|r| sub_dict(doc, r, b"Font"));
         let ext = res.and_then(|r| sub_dict(doc, r, b"ExtGState"));
+        let cspaces = res.and_then(|r| sub_dict(doc, r, b"ColorSpace"));
         let mut fcache: HashMap<Vec<u8>, Option<HFont>> = HashMap::new();
+        // 0 = ページの内容、それ以外 = Form XObject の番号
+        let xref = if sid == self.page_sid {
+            0
+        } else {
+            sid.0 as i32
+        };
+        // このストリームの中での、文字列表示演算子 (Tj/TJ/'/") の通し番号
+        let mut tj_seq: i32 = 0;
 
         let mut st = init;
         let mut stack: Vec<St> = Vec::new();
@@ -574,17 +730,29 @@ impl<'a> Walker<'a> {
                         }
                     }
                 }
-                // ── 塗りの色 (パターンかどうかだけ追う) ──
-                "g" | "rg" | "k" => st.fill_pattern = false,
+                // ── 塗りの色 (パターンかどうかと、RGB にできる色) ──
+                "g" | "rg" | "k" => {
+                    st.fill_pattern = false;
+                    st.fill_cs = match name {
+                        "g" => Cs::Gray,
+                        "rg" => Cs::Rgb,
+                        _ => Cs::Cmyk,
+                    };
+                    st.fill_rgb = operand_nums(op).and_then(|v| rgb_of(st.fill_cs, &v));
+                }
                 "cs" => {
-                    st.fill_pattern = matches!(
-                        op.operands.first().and_then(|o| o.as_name().ok()),
-                        Some(b"Pattern")
-                    );
+                    let n = op.operands.first().and_then(|o| o.as_name().ok());
+                    st.fill_pattern = matches!(n, Some(b"Pattern"));
+                    let (cs, rgb) = n.map_or((Cs::Other, None), |n| resolve_cs(doc, cspaces, n));
+                    st.fill_cs = cs;
+                    st.fill_rgb = rgb;
                 }
                 "sc" | "scn" => {
                     if matches!(op.operands.last(), Some(Object::Name(_))) {
                         st.fill_pattern = true;
+                        st.fill_rgb = None;
+                    } else {
+                        st.fill_rgb = operand_nums(op).and_then(|v| rgb_of(st.fill_cs, &v));
                     }
                 }
                 // ── パス ──
@@ -626,10 +794,11 @@ impl<'a> Walker<'a> {
                             if let Some(r) = st.clip.map_or(Some(bb), |c| intersect(&bb, &c)) {
                                 let thick = (r.x1 - r.x0).min(r.y1 - r.y0);
                                 let opaque = path.is_exact_rect() && st.can_cover_opaque();
+                                let rgb = if st.fill_pattern { None } else { st.fill_rgb };
                                 if opaque {
-                                    self.push_cover(r, true)?;
+                                    self.push_cover(r, true, rgb)?;
                                 } else if st.ca >= PROBE_MIN_ALPHA && thick >= PROBE_MIN_THICKNESS {
-                                    self.push_cover(r, false)?;
+                                    self.push_cover(r, false, rgb)?;
                                 }
                             }
                         }
@@ -690,9 +859,9 @@ impl<'a> Walker<'a> {
                                     && is_axis_aligned(&st.ctm)
                                     && st.can_cover_opaque();
                                 if opaque {
-                                    self.push_cover(r, true)?;
+                                    self.push_cover(r, true, None)?;
                                 } else if st.ca >= PROBE_MIN_ALPHA {
-                                    self.push_cover(r, false)?;
+                                    self.push_cover(r, false, None)?;
                                 }
                             }
                         }
@@ -770,6 +939,8 @@ impl<'a> Walker<'a> {
                         tm = tlm;
                         tm_valid = true;
                     }
+                    let this_seq = tj_seq;
+                    tj_seq += 1;
                     let items = show_items(op);
                     let font = st.font.clone().and_then(|n| {
                         fcache
@@ -798,6 +969,8 @@ impl<'a> Walker<'a> {
                         && !st.smask
                         && st.size.abs() > 1e-9;
                     let m = mul(&tm, &st.ctm);
+                    // テキスト空間の 1 単位が、デバイス座標でどれだけの長さか (縦方向)
+                    let scale_y = (m[2] * m[2] + m[3] * m[3]).sqrt();
                     let mut x = 0.0f64;
                     let mut gi = 0usize;
                     let mut ok = true;
@@ -816,7 +989,8 @@ impl<'a> Walker<'a> {
                                     let w = code_width(&font.info, code);
                                     let space = if cl == 1 && code == 32 { st.tw } else { 0.0 };
                                     let adv = (w / 1000.0 * st.size + st.tc + space) * st.th;
-                                    if candidate && w > 0.0 {
+                                    let cand = candidate && w > 0.0;
+                                    if cand || self.want_glyphs {
                                         let gw = w / 1000.0 * st.size * st.th;
                                         let y0 = st.trise + font.desc * st.size;
                                         let y1 = st.trise + font.asc * st.size;
@@ -826,12 +1000,54 @@ impl<'a> Walker<'a> {
                                             return Err("too many glyphs".into());
                                         }
                                         // 取り除いたあとに送り幅を保つ TJ の位置調整
-                                        let adj = -(w + (st.tc + space) * 1000.0 / st.size);
+                                        let adj = if st.size.abs() > 1e-9 {
+                                            -(w + (st.tc + space) * 1000.0 / st.size)
+                                        } else {
+                                            0.0
+                                        };
+                                        let mut rec = usize::MAX;
+                                        if self.want_glyphs {
+                                            let p = |px: f64, py: f64| apply(&m, px, py);
+                                            let (ul, ur) = (p(x, y1), p(x + gw, y1));
+                                            let (ll, lr) = (p(x, y0), p(x + gw, y0));
+                                            rec = self.glyphs.len();
+                                            self.glyphs.push(GlyphRec {
+                                                page: self.page_no,
+                                                sid,
+                                                xref,
+                                                tj_seq: this_seq,
+                                                op: opi,
+                                                gi,
+                                                code,
+                                                code_len: font.code_len,
+                                                text: font.uni.get(code),
+                                                origin: p(x, st.trise),
+                                                quad: [
+                                                    ul.0, ul.1, ur.0, ur.1, ll.0, ll.1, lr.0, lr.1,
+                                                ],
+                                                rect: bb,
+                                                size: st.size.abs() * scale_y,
+                                                rgb: if st.fill_pattern {
+                                                    None
+                                                } else {
+                                                    st.fill_rgb
+                                                },
+                                                ca: st.ca,
+                                                tr: st.tr,
+                                                is_type3: font.is_type3,
+                                                adj,
+                                                cand,
+                                                cover: 0.0,
+                                                bg: None,
+                                            });
+                                        }
                                         self.events.push(Ev::Glyph {
                                             key: (sid, opi, gi),
                                             rect: bb,
                                             adj,
                                             code_len: font.code_len,
+                                            cand,
+                                            rec,
                                         });
                                     }
                                     gi += 1;
@@ -989,15 +1205,55 @@ fn reference_counts(doc: &Document) -> HashMap<ObjectId, usize> {
 struct PageScan {
     /// probe_ratio 以上の割合で覆われる文字がある
     probe: bool,
+    /// 全文字の記録 (`ScanOpts::want_glyphs` のときだけ)
+    glyphs: Vec<GlyphRec>,
+}
+
+struct ScanOpts {
+    strip_ratio: f64,
+    probe_ratio: f64,
+    /// 全文字を記録する (隠しテキストの検出用)
+    want_glyphs: bool,
+    /// 0 始まりのページ番号
+    page_no: i32,
+}
+
+/// ページ空間 → デバイス座標 (MuPDF と同じ: CropBox (MediaBox との共通部分) の左上が原点、
+/// y は下向き、/Rotate を適用)。
+fn page_device_matrix(doc: &Document, page_id: ObjectId) -> Mat {
+    let boxof = |key: &[u8]| inherited(doc, page_id, key).and_then(|o| parse_box(doc, o));
+    let media = boxof(b"MediaBox").unwrap_or([0.0, 0.0, 612.0, 792.0]);
+    let crop = boxof(b"CropBox").map_or(media, |c| {
+        let b = [
+            c[0].max(media[0]),
+            c[1].max(media[1]),
+            c[2].min(media[2]),
+            c[3].min(media[3]),
+        ];
+        if b[2] > b[0] && b[3] > b[1] { b } else { media }
+    });
+    let rot = inherited(doc, page_id, b"Rotate")
+        .and_then(|o| num_deref(doc, o))
+        .map_or(0, |v| (v as i64).rem_euclid(360));
+    let (x0, y0, x1, y1) = (crop[0], crop[1], crop[2], crop[3]);
+    match rot {
+        90 => [0.0, 1.0, 1.0, 0.0, -y0, -x0],
+        180 => [-1.0, 0.0, 0.0, 1.0, x1, -y0],
+        270 => [0.0, -1.0, -1.0, 0.0, y1, x1],
+        _ => [1.0, 0.0, 0.0, -1.0, -x0, y1],
+    }
 }
 
 fn scan_page(
     doc: &Document,
     page_id: ObjectId,
-    strip_ratio: f64,
-    probe_ratio: f64,
+    o: &ScanOpts,
     votes: &mut HashMap<Key, Vote>,
 ) -> Result<PageScan, Unwalkable> {
+    let empty = || PageScan {
+        probe: false,
+        glyphs: Vec::new(),
+    };
     // /Contents は、事前に 1 本へまとめてある (まとめられなかったページは Err)
     let streams: Vec<ObjectId> = doc
         .get_page_contents(page_id)
@@ -1005,13 +1261,13 @@ fn scan_page(
         .filter(|id| matches!(doc.objects.get(id), Some(Object::Stream(_))))
         .collect();
     let sid = match streams.as_slice() {
-        [] => return Ok(PageScan { probe: false }),
+        [] => return Ok(empty()),
         [one] => *one,
         _ => return Err("page /Contents has several streams".into()),
     };
     let ops = decode_ops(&stream_bytes(doc, sid)?)?;
     if ops.is_empty() {
-        return Ok(PageScan { probe: false });
+        return Ok(empty());
     }
     let res = inherited(doc, page_id, b"Resources").and_then(|o| dict_of(doc, o));
     let mut w = Walker {
@@ -1020,17 +1276,24 @@ fn scan_page(
         n_glyphs: 0,
         n_covers: 0,
         stack: Vec::new(),
+        want_glyphs: o.want_glyphs,
+        glyphs: Vec::new(),
+        page_no: o.page_no,
+        page_sid: sid,
     };
-    w.walk(sid, &ops, res, St::new(), 0)?;
+    let mut init = St::new();
+    init.ctm = page_device_matrix(doc, page_id);
+    w.walk(sid, &ops, res, init, 0)?;
+    let (strip_ratio, probe_ratio) = (o.strip_ratio, o.probe_ratio);
 
     // 文字ごとに、あとから描かれた覆いに覆われる割合を求める
     let events = w.events;
-    // (イベントの番号, 外接矩形, 不透明か)
-    let covers: Vec<(usize, Rect, bool)> = events
+    // (イベントの番号, 外接矩形, 不透明か, 塗りの色)
+    let covers: Vec<(usize, Rect, bool, Option<[u8; 3]>)> = events
         .iter()
         .enumerate()
         .filter_map(|(i, e)| match e {
-            Ev::Cover { rect, opaque } => Some((i, *rect, *opaque)),
+            Ev::Cover { rect, opaque, rgb } => Some((i, *rect, *opaque, *rgb)),
             _ => None,
         })
         .collect();
@@ -1046,14 +1309,39 @@ fn scan_page(
             rect,
             adj,
             code_len,
+            cand,
+            rec,
         } = e
         else {
             continue;
         };
+        let first = covers.partition_point(|(ci, _, _, _)| *ci < gi);
+        if *rec != usize::MAX {
+            // 背景色の推定: 先に描かれた覆いのうち、文字を完全に含む不透明な塗りの色。
+            // 一部だけ重なる物・不透明でない物 (画像・曲線・半透明) があれば分からない
+            let mut bg: Option<Option<[u8; 3]>> = Some(Some([255, 255, 255]));
+            for (_, c, opaque, rgb) in &covers[..first] {
+                if !overlaps(rect, c) {
+                    continue;
+                }
+                let contains = c.x0 <= rect.x0 + EPS
+                    && c.y0 <= rect.y0 + EPS
+                    && c.x1 >= rect.x1 - EPS
+                    && c.y1 >= rect.y1 - EPS;
+                bg = if *opaque && contains {
+                    Some(*rgb)
+                } else {
+                    Some(None)
+                };
+            }
+            w.glyphs[*rec].bg = bg.flatten();
+        }
+        if !*cand {
+            continue;
+        }
         opaque_list.clear();
         any_list.clear();
-        let first = covers.partition_point(|(ci, _, _)| *ci < gi);
-        for (_, c, opaque) in &covers[first..] {
+        for (_, c, opaque, _) in &covers[first..] {
             if !overlaps(rect, c) {
                 continue;
             }
@@ -1064,8 +1352,15 @@ fn scan_page(
                 opaque_list.push(*c);
             }
         }
-        let buried =
-            !opaque_list.is_empty() && covered_fraction(rect, &opaque_list) >= strip_ratio - 1e-9;
+        let frac = if opaque_list.is_empty() {
+            0.0
+        } else {
+            covered_fraction(rect, &opaque_list)
+        };
+        if *rec != usize::MAX {
+            w.glyphs[*rec].cover = frac;
+        }
+        let buried = !opaque_list.is_empty() && frac >= strip_ratio - 1e-9;
         if !probe
             && probe_ratio.is_finite()
             && !any_list.is_empty()
@@ -1088,7 +1383,36 @@ fn scan_page(
             v.inconsistent = true;
         }
     }
-    Ok(PageScan { probe })
+    Ok(PageScan {
+        probe,
+        glyphs: w.glyphs,
+    })
+}
+
+/// 1 ページの全文字を記録して返す (隠しテキストの検出用)。`page` は 0 始まり。
+/// 文字ごとに、覆われる割合 (`cover`) と背景色の推定 (`bg`) も求める。
+/// `doc` は、ページの /Contents を 1 本にまとめる形に書き換わる (内容は変わらない)。
+/// 暗号化・解析できないページは Err。
+pub(crate) fn scan_glyphs(doc: &mut Document, page: i32) -> Result<Vec<GlyphRec>, String> {
+    if doc.is_encrypted() || doc.was_encrypted() {
+        return Err("encrypted".into());
+    }
+    let pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+    let Some(&(_, page_id)) = usize::try_from(page).ok().and_then(|i| pages.get(i)) else {
+        return Err(format!("page {page} out of range"));
+    };
+    let mut skipped: Vec<String> = Vec::new();
+    crate::content_filter::merge_page_contents_with(doc, true, &mut skipped)?;
+    let opts = ScanOpts {
+        strip_ratio: f64::INFINITY,
+        probe_ratio: f64::INFINITY,
+        want_glyphs: true,
+        page_no: page,
+    };
+    let mut votes = HashMap::new();
+    scan_page(doc, page_id, &opts, &mut votes)
+        .map(|s| s.glyphs)
+        .map_err(|e| format!("page {}: {e}", page + 1))
 }
 
 /// 文書を解析して、取り除く文字と、部分的に隠れた文字があるページを求める。
@@ -1115,7 +1439,13 @@ pub(crate) fn analyze(
     let mut out = Analysis::default();
     for (no, page_id) in pages {
         let no = no as i32;
-        match scan_page(doc, page_id, strip_ratio, probe_ratio, &mut votes) {
+        let opts = ScanOpts {
+            strip_ratio,
+            probe_ratio,
+            want_glyphs: false,
+            page_no: no - 1,
+        };
+        match scan_page(doc, page_id, &opts, &mut votes) {
             Ok(scan) => {
                 if scan.probe {
                     out.probe_pages.push(no);
@@ -1242,6 +1572,26 @@ fn rewrite_show(op: &Operation, remove: &BTreeMap<usize, (f64, u8)>) -> Option<O
     Some(Operation::new("TJ", vec![Object::Array(arr)]))
 }
 
+/// 取り除く文字の記録から、`apply_removals` に渡す解析結果を作る (隠しテキストの無害化用)。
+/// 同じ文字を重ねて指定しても、1 回だけ数える。
+pub(crate) fn analysis_from_glyphs(glyphs: &[&GlyphRec]) -> Analysis {
+    let mut a = Analysis::default();
+    for g in glyphs {
+        let fresh = a
+            .removals
+            .entry(g.sid)
+            .or_default()
+            .entry(g.op)
+            .or_default()
+            .insert(g.gi, (g.adj, g.code_len))
+            .is_none();
+        if fresh {
+            a.removed_glyphs += 1;
+        }
+    }
+    a
+}
+
 /// 解析結果に従って、文字を取り除く。取り除いた文字の数を返す。
 /// 内容ストリームを読み直せない・書き換えられないときは、そのストリームを変えずに進める。
 pub(crate) fn apply_removals(doc: &mut Document, analysis: &Analysis) -> usize {
@@ -1333,7 +1683,7 @@ pub(crate) fn partially_covered_pages_file(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use lopdf::{Stream, dictionary};
 
@@ -1383,7 +1733,11 @@ mod tests {
     }
 
     /// 1 ページの PDF を作る。`forms` は (名前, 内容) の Form XObject (Resources はフォント F1 / F2)
-    fn build(content: &str, forms: &[(&str, &str)], extra_res: Option<Dictionary>) -> Document {
+    pub(crate) fn build(
+        content: &str,
+        forms: &[(&str, &str)],
+        extra_res: Option<Dictionary>,
+    ) -> Document {
         let mut doc = Document::with_version("1.5");
         let (f1, f2) = add_fonts(&mut doc);
         let fonts = dictionary! { "F1" => f1, "F2" => f2 };

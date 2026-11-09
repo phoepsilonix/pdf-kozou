@@ -2065,7 +2065,7 @@ const FULLY_HIDDEN_RATIO: f32 = 0.999;
 /// 戻り値: Some(該当ページ。無ければ空)、判定できなければ None。
 #[cfg(feature = "hayro")]
 fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>> {
-    use crate::stext::{DetectBuriedRequest, detect_buried_text};
+    use crate::stext::{DetectBuriedRequest, detect_buried_text_mupdf};
     // まず lopdf で調べる (MuPDF を使わない)。解析できないページは、隠れた文字があるかもしれない
     // ページとして含める。読めない入力だけ MuPDF 実装へフォールバックする。
     if crate::backend::try_lopdf("keep-text-probe") {
@@ -2102,7 +2102,7 @@ fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>
             layout_h: None,
             layout_em: None,
         };
-        match detect_buried_text(&req) {
+        match detect_buried_text_mupdf(&req) {
             Ok(r) => {
                 if r.hits.iter().any(|h| h.reason == "buried") {
                     found.push(page + 1);
@@ -2216,8 +2216,8 @@ fn strip_buried_text_mupdf(
     cover_ratio: Option<f32>,
 ) -> Option<std::path::PathBuf> {
     use crate::stext::{
-        DetectBuriedRequest, SanitizeOrigin, SanitizeRequest, detect_buried_text,
-        sanitize_hidden_text,
+        DetectBuriedRequest, SanitizeOrigin, SanitizeRequest, detect_buried_text_mupdf,
+        sanitize_hidden_text_mupdf,
     };
 
     let page_count = mupdf::pdf::PdfDocument::open(input)
@@ -2241,7 +2241,7 @@ fn strip_buried_text_mupdf(
             layout_h: None,
             layout_em: None,
         };
-        let resp = match detect_buried_text(&req) {
+        let resp = match detect_buried_text_mupdf(&req) {
             Ok(r) => r,
             // 検出失敗時は安全側 (前処理なし=従来動作) にフォールバック。
             Err(_) => continue,
@@ -2296,7 +2296,7 @@ fn strip_buried_text_mupdf(
         layout_em: None,
         alpha_threshold: None,
     };
-    match sanitize_hidden_text(&sreq) {
+    match sanitize_hidden_text_mupdf(&sreq) {
         Ok(r) if r.ok && r.replaced > 0 => Some(tmp_path),
         _ => None,
     }

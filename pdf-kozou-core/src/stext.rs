@@ -357,6 +357,22 @@ pub struct DetectTransparentRequest {
 pub fn detect_transparent_text(
     req: &DetectTransparentRequest,
 ) -> Result<DetectTransparentResponse> {
+    // lopdf 実装 (backend が mupdf 以外のとき)。読めない入力などは、auto なら MuPDF 実装へ
+    // フォールバックし、lopdf のみなら失敗として返す。
+    if crate::backend::try_lopdf("hidden-transparent") {
+        match crate::hidden_scan_lopdf::detect_transparent(
+            &req.path,
+            req.page,
+            req.alpha_threshold.unwrap_or(0),
+        ) {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("hidden-transparent", &req.path, &e) {
+                    return Err(CoreError::Unsupported(format!("hidden-transparent: {e}")));
+                }
+            }
+        }
+    }
     use crate::ffi::{
         FfiResult, kozou_buffer_get_data, kozou_detect_transparent_text, kozou_drop_buffer,
         kozou_new_context,
@@ -553,6 +569,22 @@ pub struct DetectLowContrastRequest {
 pub fn detect_low_contrast_text(
     req: &DetectLowContrastRequest,
 ) -> Result<DetectLowContrastResponse> {
+    // lopdf 実装 (backend が mupdf 以外のとき)。読めない入力などは、auto なら MuPDF 実装へ
+    // フォールバックし、lopdf のみなら失敗として返す。
+    if crate::backend::try_lopdf("hidden-low-contrast") {
+        match crate::hidden_scan_lopdf::detect_low_contrast(
+            &req.path,
+            req.page,
+            req.contrast_threshold,
+        ) {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("hidden-low-contrast", &req.path, &e) {
+                    return Err(CoreError::Unsupported(format!("hidden-low-contrast: {e}")));
+                }
+            }
+        }
+    }
     use crate::ffi::{
         FfiResult, kozou_buffer_get_data, kozou_detect_low_contrast_text, kozou_drop_buffer,
         kozou_new_context,
@@ -727,6 +759,22 @@ pub struct DetectTinyRequest {
 }
 
 pub fn detect_tiny_text(req: &DetectTinyRequest) -> Result<DetectTinyResponse> {
+    // lopdf 実装 (backend が mupdf 以外のとき)。読めない入力などは、auto なら MuPDF 実装へ
+    // フォールバックし、lopdf のみなら失敗として返す。
+    if crate::backend::try_lopdf("hidden-tiny") {
+        match crate::hidden_scan_lopdf::detect_tiny(
+            &req.path,
+            req.page,
+            req.size_threshold.unwrap_or(0.0),
+        ) {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("hidden-tiny", &req.path, &e) {
+                    return Err(CoreError::Unsupported(format!("hidden-tiny: {e}")));
+                }
+            }
+        }
+    }
     use crate::ffi::{
         FfiResult, kozou_buffer_get_data, kozou_detect_tiny_text, kozou_drop_buffer,
         kozou_new_context,
@@ -898,6 +946,25 @@ pub struct DetectBuriedRequest {
 }
 
 pub fn detect_buried_text(req: &DetectBuriedRequest) -> Result<DetectBuriedResponse> {
+    // lopdf 実装 (backend が mupdf 以外のとき)。読めない入力などは、auto なら MuPDF 実装へ
+    // フォールバックし、lopdf のみなら失敗として返す。
+    if crate::backend::try_lopdf("hidden-buried") {
+        match crate::hidden_scan_lopdf::detect_buried(&req.path, req.page, req.cover_ratio) {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("hidden-buried", &req.path, &e) {
+                    return Err(CoreError::Unsupported(format!("hidden-buried: {e}")));
+                }
+            }
+        }
+    }
+    detect_buried_text_mupdf(req)
+}
+
+/// MuPDF 実装の埋没テキスト検出。MuPDF 実装の前処理 (compress.rs) など、検出と無害化を
+/// 同じ実装で揃えたい内部の呼び出しは、backend に関わらずこちらを使う
+/// (lopdf と MuPDF では、文字の番号 xobj_tj_seq の数え方が違い、混ぜると照合できない)。
+pub(crate) fn detect_buried_text_mupdf(req: &DetectBuriedRequest) -> Result<DetectBuriedResponse> {
     use crate::ffi::{
         FfiResult, kozou_buffer_get_data, kozou_detect_buried_text, kozou_drop_buffer,
         kozou_new_context,
@@ -1152,6 +1219,32 @@ pub struct SanitizeRequest {
 /// ⚠ この機能は試験的です。全ての隠しテキスト手法を網羅できる保証はなく、
 ///   本機能の使用による損害について開発者は責任を負いません。
 pub fn sanitize_hidden_text(req: &SanitizeRequest) -> Result<SanitizeResponse> {
+    if req.targets.is_empty() {
+        return Ok(SanitizeResponse {
+            ok: true,
+            replaced: 0,
+            warning: Some("no targets specified".into()),
+        });
+    }
+
+    // lopdf 実装 (backend が mupdf 以外のとき)。読めない入力などは、auto なら MuPDF 実装へ
+    // フォールバックし、lopdf のみなら失敗として返す。
+    if crate::backend::try_lopdf("hidden-sanitize") {
+        match crate::hidden_scan_lopdf::sanitize(req) {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("hidden-sanitize", &req.input, &e) {
+                    return Err(CoreError::Unsupported(format!("hidden-sanitize: {e}")));
+                }
+            }
+        }
+    }
+    sanitize_hidden_text_mupdf(req)
+}
+
+/// MuPDF 実装の隠しテキスト無害化。`detect_buried_text_mupdf` と同じ理由で、MuPDF 実装の
+/// 前処理 (compress.rs) など内部の呼び出しは、backend に関わらずこちらを使う。
+pub(crate) fn sanitize_hidden_text_mupdf(req: &SanitizeRequest) -> Result<SanitizeResponse> {
     use crate::ffi::{FfiResult, kozou_new_context, kozou_sanitize_hidden_text};
     use std::ffi::CString;
 
@@ -1310,6 +1403,18 @@ pub struct DetectControlCharsRequest {
 }
 
 pub fn detect_control_chars(req: &DetectControlCharsRequest) -> Result<DetectControlCharsResponse> {
+    // lopdf 実装 (backend が mupdf 以外のとき)。読めない入力などは、auto なら MuPDF 実装へ
+    // フォールバックし、lopdf のみなら失敗として返す。
+    if crate::backend::try_lopdf("hidden-control") {
+        match crate::hidden_scan_lopdf::detect_control_chars(&req.path, req.page) {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                if crate::backend::abort_or_notify_fallback("hidden-control", &req.path, &e) {
+                    return Err(CoreError::Unsupported(format!("hidden-control: {e}")));
+                }
+            }
+        }
+    }
     use crate::ffi::{
         FfiResult, kozou_buffer_get_data, kozou_detect_control_chars, kozou_drop_buffer,
         kozou_new_context,
