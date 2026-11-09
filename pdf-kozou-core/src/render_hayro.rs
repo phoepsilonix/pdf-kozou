@@ -1137,15 +1137,63 @@ pub fn keep_text_pdf(
     Ok(())
 }
 
-/// 覆い (文字の上に半透明に重なるベクターの Form XObject) を、背景に焼かずベクターのまま
-/// 文字層に残してよいページを決める。
+/// 覆いの層分割を検証する最大回数 (食い違いが多いとき、覆いを 1 つずつ外して再検証する)
+const MAX_LAYER_TRIES: usize = 6;
+
+/// `bytes` の PDF の `idx` ページ目を、`tw`×`th` の RGB8 に等倍で描く。
+fn render_page_1x(
+    bytes: Vec<u8>,
+    idx: usize,
+    tw: u32,
+    th: u32,
+    dpi: f32,
+    settings: &InterpreterSettings,
+) -> Result<Vec<u8>, String> {
+    let pdf = Pdf::new(bytes).map_err(|e| format!("hayro load: {e:?}"))?;
+    let pages = pdf.pages();
+    let page = pages
+        .get(idx)
+        .ok_or_else(|| format!("page {idx} out of range"))?;
+    let cache = RenderCache::new();
+    raster_rgb(page, &cache, settings, tw, th, dpi, 1)
+}
+
+/// 覆い `set` を背景から抜いて文字層へ移したときの、見え方の検証 (cover_patch::check_layering)。
+/// 描けない・変換できないときは None。
+#[allow(clippy::too_many_arguments)]
+fn check_cover_layering(
+    data: &[u8],
+    set: &std::collections::HashSet<lopdf::ObjectId>,
+    idx: usize,
+    tw: u32,
+    th: u32,
+    dpi: f32,
+    settings: &InterpreterSettings,
+    nt: &[u8],
+    near: &[bool],
+) -> Option<crate::cover_patch::LayerCheck> {
+    use crate::content_filter;
+    let below_pdf = content_filter::remove_text_bytes_covers(data, set).ok()?.0;
+    let cw_pdf = content_filter::covers_only_bytes(data, set, false).ok()?;
+    let cb_pdf = content_filter::covers_only_bytes(data, set, true).ok()?;
+    let below = render_page_1x(below_pdf, idx, tw, th, dpi, settings).ok()?;
+    let cw = render_page_1x(cw_pdf, idx, tw, th, dpi, settings).ok()?;
+    let cb = render_page_1x(cb_pdf, idx, tw, th, dpi, settings).ok()?;
+    crate::cover_patch::check_layering(nt, &below, &cw, &cb, near, tw, th)
+}
+
+/// 覆い (文字の前後に重なるベクターの Form XObject。content_filter::find_cover_forms) を、
+/// 背景に焼かずベクターのまま文字層に残してよいページと覆いを決める。
 ///
 /// 戻り値: (残す覆いの Form XObject, 層分割するページ → そのページの「文字だけを除いた描画」(等倍 RGB8))。
 ///
-/// 覆いを背景から外すと、覆いの下が (背景の下層として) そのまま埋め込まれる。下に写真などが
-/// あると、覆い (ぼかし・モザイク・半透明の目隠し) を外せる形になってしまうので、覆いが塗る領域の
-/// 下層がほぼ単色のページだけを対象にする (cover_patch::underlay_is_flat)。
-/// 判定できない (描画に失敗した) ページは対象にしない。
+/// 覆いを背景から抜くと、元の描画順で覆いより後に描かれる画像・図形が、覆いの下に回ってしまう
+/// ことがある。そこで、覆いを抜いた背景に覆いの層 (白地・黒地の 2 回の描画から復元) を重ねた
+/// 予測が、元の「文字を除いた描画」と一致するかを画素で確かめる。食い違いが多ければ、最も早く
+/// 描かれた覆いから外して再検証する (後から描かれる図形に隠されやすいため)。
+/// また、覆いが文字に掛かっていない (近くに文字の画素が無い) ページは、層分割せず、従来どおり
+/// 一枚画像に焼き込む (目隠しの半透明・ぼかしなどを、外せる形にしないため)。
+/// 判定できない (描画・変換に失敗した) ページは対象にしない。
 fn plan_cover_layers(
     doc: &lopdf::Document,
     data: &[u8],
@@ -1157,7 +1205,7 @@ fn plan_cover_layers(
     HashMap<i32, Vec<u8>>,
 ) {
     use crate::content_filter;
-    use crate::cover_patch::underlay_is_flat;
+    use crate::cover_patch::{LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, text_near_mask};
     use std::collections::HashSet;
 
     let none = || (HashSet::new(), HashMap::new());
@@ -1175,18 +1223,14 @@ fn plan_cover_layers(
     if cands.is_empty() {
         return none();
     }
-    let all: HashSet<lopdf::ObjectId> = cands.iter().flat_map(|(_, f)| f.iter().copied()).collect();
     let Ok((plain, _)) = content_filter::remove_text_bytes(data) else {
         return none();
     };
-    let Ok((below, _)) = content_filter::remove_text_bytes_covers(data, &all) else {
+    let (Ok(plain_pdf), Ok(full_pdf)) = (Pdf::new(plain), Pdf::new(data.to_vec())) else {
         return none();
     };
-    let (Ok(plain_pdf), Ok(below_pdf)) = (Pdf::new(plain), Pdf::new(below)) else {
-        return none();
-    };
-    let (plain_pages, below_pages) = (plain_pdf.pages(), below_pdf.pages());
-    let (cache_p, cache_b) = (RenderCache::new(), RenderCache::new());
+    let (plain_pages, full_pages) = (plain_pdf.pages(), full_pdf.pages());
+    let (cache_p, cache_f) = (RenderCache::new(), RenderCache::new());
     let scale = dpi / 72.0;
 
     let mut keep: HashSet<lopdf::ObjectId> = HashSet::new();
@@ -1194,7 +1238,7 @@ fn plan_cover_layers(
     let mut nts: HashMap<i32, Vec<u8>> = HashMap::new();
     for (pno, forms) in cands {
         let idx = (pno - 1) as usize;
-        let (Some(pp), Some(bp)) = (plain_pages.get(idx), below_pages.get(idx)) else {
+        let (Some(pp), Some(fp)) = (plain_pages.get(idx), full_pages.get(idx)) else {
             rejected.extend(forms);
             continue;
         };
@@ -1205,14 +1249,44 @@ fn plan_cover_layers(
             continue;
         }
         let (tw, th) = (tw as u32, th as u32);
-        let nt = raster_rgb(pp, &cache_p, settings, tw, th, dpi, 1);
-        let below = raster_rgb(bp, &cache_b, settings, tw, th, dpi, 1);
-        match (nt, below) {
-            (Ok(nt), Ok(below)) if underlay_is_flat(&nt, &below, tw, th) => {
-                keep.extend(forms);
-                nts.insert(pno, nt);
+        let pixels = (tw as usize) * (th as usize);
+        let (Ok(nt), Ok(full)) = (
+            raster_rgb(pp, &cache_p, settings, tw, th, dpi, 1),
+            raster_rgb(fp, &cache_f, settings, tw, th, dpi, 1),
+        ) else {
+            rejected.extend(forms);
+            continue;
+        };
+        let Some(near) = text_near_mask(&full, &nt, tw, th, LAYER_TEXT_DILATE) else {
+            rejected.extend(forms);
+            continue;
+        };
+        let mut k = forms.clone();
+        let mut accepted = false;
+        for _ in 0..MAX_LAYER_TRIES {
+            if k.is_empty() {
+                break;
             }
-            _ => rejected.extend(forms),
+            let set: HashSet<lopdf::ObjectId> = k.iter().copied().collect();
+            let Some(chk) = check_cover_layering(data, &set, idx, tw, th, dpi, settings, &nt, &near)
+            else {
+                break;
+            };
+            if chk.order_ok(pixels) {
+                // 描画順は保てる。文字に掛かっていれば採用、掛かっていなければ一枚画像のまま
+                accepted = chk.text_overlap >= LAYER_MIN_OVERLAP;
+                break;
+            }
+            // 食い違いが多い: 最も早く描かれた覆いから外して再検証する
+            rejected.insert(k.remove(0));
+        }
+        if accepted {
+            let kept: HashSet<lopdf::ObjectId> = k.iter().copied().collect();
+            rejected.extend(forms.iter().copied().filter(|f| !kept.contains(f)));
+            keep.extend(kept);
+            nts.insert(pno, nt);
+        } else {
+            rejected.extend(forms);
         }
     }
     // 別のページで条件を満たさなかった覆いは、共有されていても残さない

@@ -947,23 +947,23 @@ pub(crate) fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String
 }
 
 
-// ── 覆い (文字の上に重なる半透明のベクター) の検出 ─────────────────────────────
+// ── 覆い (文字の前後に重なるベクターの Form XObject) の検出 ──────────────────────
 //
 // キープテキストの画像化は、非テキストを 1 枚の背景に焼き込み、文字をその上に重ねる。
-// 元の PDF が「文字 → 半透明の帯 (文字の上に薄く掛かる)」の順に描いていると、背景に帯が
-// 入った上に文字が最前面に来るので、見え方が変わる。ラスターのパッチで直すと、文字が
-// 背景の解像度で焼き込まれてにじむ。
+// 元の PDF が「文字 → 半透明の帯 (文字の上に薄く掛かる)」「文字 → 縁取り → 文字」のように
+// 文字と図形を交互に描いていると、背景に図形が入った上に文字が最前面に来るので、見え方が
+// 変わる。ラスターのパッチで直すと、文字が背景の解像度で焼き込まれてジャギーになる。
 //
-// そこで、次の条件を満たす Form XObject (= 覆い) だけは、背景に焼かず、ベクターのまま
-// 文字層に残す。文字との描画順は元のままなので、文字はベクターのまま、元と同じ順に合成される。
-//   - 不透明度 (ExtGState の ca) が 1 未満の状態で、`Do` で描かれる
-//   - 描画順で、文字を描く命令より後
+// そこで、次の条件を満たす Form XObject (= 覆い) は、背景に焼かず、ベクターのまま文字層に
+// 残す。文字層では文字と覆いが元の描画順のままなので、文字はベクターのまま、元と同じ順に合成される。
 //   - 中身がパスの塗り・線だけ (画像・シェーディング・パターン・文字・ソフトマスクを含まない)
-// 覆いの下に写真などがある領域は、覆いを外すと下が見えてしまうので、呼び出し側が
-// 画素で確かめて、層分割しない (cover_patch::underlay_is_flat)。
+//   - 不透明度 (ExtGState の ca) が 1 未満で、描画順で文字を描く命令より後、または
+//   - 不透明でも、曲線か線 (`c v y S s B b`) を含み (縁取り・影・文字の輪郭のような形)、
+//     描画順で文字の前にも後にも文字がある (矩形の塗りだけの不透明な帯は対象外)
+// 覆いを背景から外しても元と同じになるか (後から描かれる画像・図形が覆いの下に回らないか) は、
+// 呼び出し側が画素で検証する (cover_patch::check_layering)。
 
-/// 描画順で文字より後に、不透明度 1 未満で描かれるベクターだけの Form XObject を返す
-/// (重複なし、描画順)。解析できないページは空を返す。
+/// 覆いの候補の Form XObject を、描画順に返す (重複なし)。解析できないページは空を返す。
 pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
     let mut bytes: Vec<u8> = Vec::new();
     for sid in doc.get_page_contents(page_id) {
@@ -980,17 +980,43 @@ pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
     let res = effective_resources(doc, page_id).unwrap_or_default();
     let mut w = CoverWalk {
         doc,
-        seen_text: false,
-        found: Vec::new(),
+        clock: 0,
+        last_text: 0,
+        first_text: None,
+        cands: Vec::new(),
     };
     w.walk(&bytes, &res, 1.0, 0);
-    w.found
+    let mut out: Vec<ObjectId> = Vec::new();
+    for c in &w.cands {
+        let Some(first) = w.first_text else { continue };
+        let ok = if c.alpha < 0.999 {
+            // 半透明: 文字より後
+            c.at > first
+        } else {
+            // 不透明: 縁取り・影のように、文字の前にも後にも文字がある曲線・線の図形だけ
+            c.at > first && c.at < w.last_text && is_outline_like(doc, c.id)
+        };
+        if ok && !out.contains(&c.id) {
+            out.push(c.id);
+        }
+    }
+    out
+}
+
+struct CoverCand {
+    id: ObjectId,
+    /// 描かれたときの不透明度 (ca)
+    alpha: f32,
+    /// 描画順の時刻 (文字の描画・覆いの描画ごとに進む)
+    at: usize,
 }
 
 struct CoverWalk<'a> {
     doc: &'a Document,
-    seen_text: bool,
-    found: Vec<ObjectId>,
+    clock: usize,
+    last_text: usize,
+    first_text: Option<usize>,
+    cands: Vec<CoverCand>,
 }
 
 impl CoverWalk<'_> {
@@ -1025,7 +1051,11 @@ impl CoverWalk<'_> {
                     cur = ca;
                 }
             }
-            "Tj" | "TJ" | "'" | "\"" => self.seen_text = true,
+            "Tj" | "TJ" | "'" | "\"" => {
+                self.clock += 1;
+                self.last_text = self.clock;
+                self.first_text.get_or_insert(self.clock);
+            }
             "Do" => {
                 let id = op
                     .operands
@@ -1040,10 +1070,13 @@ impl CoverWalk<'_> {
                 if st.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) != Some(b"Form") {
                     return;
                 }
-                if cur < 0.999 && self.seen_text && is_vector_form(doc, id, 0) {
-                    if !self.found.contains(&id) {
-                        self.found.push(id);
-                    }
+                if is_vector_form(doc, id, 0) {
+                    self.clock += 1;
+                    self.cands.push(CoverCand {
+                        id,
+                        alpha: cur,
+                        at: self.clock,
+                    });
                     return;
                 }
                 // 覆いでない Form は、中の描画順をたどる (自身のリソースが無ければ親のもの)
@@ -1058,6 +1091,61 @@ impl CoverWalk<'_> {
             _ => {}
         });
     }
+}
+
+/// Form XObject が、曲線か線を含むか (縁取り・影・輪郭のような形。矩形の塗りだけの帯は含まない)
+fn is_outline_like(doc: &Document, id: ObjectId) -> bool {
+    let Ok(Object::Stream(st)) = doc.get_object(id) else {
+        return false;
+    };
+    let Ok(bytes) = crate::image_recompress::content_stream_bytes(st) else {
+        return false;
+    };
+    let mut found = false;
+    let _ = for_each_operation(&bytes, |op| {
+        if matches!(
+            op.operator.as_str(),
+            "c" | "v" | "y" | "S" | "s" | "B" | "B*" | "b" | "b*"
+        ) {
+            found = true;
+        }
+    });
+    found
+}
+
+/// 覆いだけを描く複製 (文字と、覆い以外の描画を取り除いたもの) を返す。
+/// 覆いの色とアルファを、白地と黒地の 2 回の描画から復元するために使う。
+/// `black_backdrop`: ページの先頭に黒の全面塗りを置く (黒地に描くため)。
+pub fn covers_only_bytes(
+    input: &[u8],
+    covers: &HashSet<ObjectId>,
+    black_backdrop: bool,
+) -> Result<Vec<u8>, String> {
+    let mut doc = Document::load_mem(input).map_err(|e| format!("lopdf load: {e}"))?;
+    if doc.is_encrypted() {
+        return Err("encrypted".into());
+    }
+    // 覆い以外の描画を除き (文字は残る)、続けて文字を除く
+    transform_covers(&mut doc, Mode::TextOnly, covers)?;
+    transform_covers(&mut doc, Mode::RemoveText, &HashSet::new())?;
+    if black_backdrop {
+        let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
+        for page_id in pages {
+            let Some(sid) = doc.get_page_contents(page_id).first().copied() else {
+                continue;
+            };
+            if let Ok(Object::Stream(st)) = doc.get_object_mut(sid) {
+                let old = crate::image_recompress::content_stream_bytes(st)
+                    .map_err(|e| format!("stream {sid:?} decompress: {e}"))?;
+                let mut nb = b"q 0 g -100000 -100000 200000 200000 re f Q\n".to_vec();
+                nb.extend_from_slice(&old);
+                st.set_plain_content(nb);
+            }
+        }
+    }
+    let mut out = Vec::with_capacity(input.len());
+    doc.save_to(&mut out).map_err(|e| format!("lopdf save: {e}"))?;
+    Ok(out)
 }
 
 /// Form XObject の中身が、パスの塗り・線だけか (画像・シェーディング・パターン・文字・
@@ -1493,6 +1581,50 @@ mod tests {
         assert!(find_cover_forms(&doc, page).is_empty());
         let (doc, page) = cover_doc("/Sh1 sh", "BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q");
         assert!(find_cover_forms(&doc, page).is_empty());
+    }
+
+    #[test]
+    fn opaque_outline_between_texts_is_a_cover_but_plain_band_is_not() {
+        // 文字 → 縁取り (線) → 文字: 対象
+        let (doc, page) = cover_doc(
+            "1 0 0 RG 2 w 0 0 m 50 50 l S",
+            "BT /F1 12 Tf (a) Tj ET /Fm1 Do BT /F1 12 Tf (b) Tj ET",
+        );
+        assert_eq!(find_cover_forms(&doc, page).len(), 1);
+        // 文字 → 矩形の塗りだけの不透明な帯 → 文字: 対象外
+        let (doc, page) = cover_doc(
+            "1 0 0 rg 0 0 50 50 re f",
+            "BT /F1 12 Tf (a) Tj ET /Fm1 Do BT /F1 12 Tf (b) Tj ET",
+        );
+        assert!(find_cover_forms(&doc, page).is_empty());
+        // 縁取りでも、後ろに文字が無ければ対象外 (不透明な図形は文字の前後にあるものだけ)
+        let (doc, page) = cover_doc(
+            "1 0 0 RG 2 w 0 0 m 50 50 l S",
+            "BT /F1 12 Tf (a) Tj ET /Fm1 Do",
+        );
+        assert!(find_cover_forms(&doc, page).is_empty());
+    }
+
+    #[test]
+    fn covers_only_keeps_nothing_but_the_cover() {
+        let (doc, page) = cover_doc(
+            "1 0 0 rg 0 0 50 50 re f",
+            "0 0 1 rg 0 0 9 9 re f BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q",
+        );
+        let covers: HashSet<ObjectId> = find_cover_forms(&doc, page).into_iter().collect();
+        assert_eq!(covers.len(), 1);
+        let mut buf = Vec::new();
+        doc.clone().save_to(&mut buf).unwrap();
+        let out = covers_only_bytes(&buf, &covers, true).unwrap();
+        let d2 = Document::load_mem(&out).unwrap();
+        let pid = *d2.get_pages().values().next().unwrap();
+        let sid = d2.get_page_contents(pid)[0];
+        let Ok(Object::Stream(st)) = d2.get_object(sid) else { panic!() };
+        let txt = String::from_utf8_lossy(&st.decompressed_content().unwrap_or(st.content.clone())).to_string();
+        assert!(txt.contains("-100000"), "{txt}");
+        assert!(txt.contains("Do"), "{txt}");
+        assert!(!txt.contains("Tj"), "{txt}");
+        assert!(!txt.contains("0 0 9 9 re f"), "{txt}");
     }
 
     #[test]

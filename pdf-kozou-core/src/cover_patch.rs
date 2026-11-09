@@ -228,61 +228,134 @@ pub fn compute_patches(
     patches
 }
 
-/// 層分割 (覆いをベクターのまま文字の上に残す) をしてよいかの判定に使う値。
-/// 覆いを外すと下層が見えるので、覆いが塗る領域の下層が「ほぼ単色」のときだけ許す
-/// (写真・ぼかし・モザイクなどの目隠しを、誤って外せる形にしないため)。
-pub const FLAT_DIFF_THR: i32 = 3;
-/// 領域の代表色 (各チャンネルの中央値) からこの値を超えて離れた画素を「単色でない」とみなす
-pub const FLAT_DEV_THR: i32 = 24;
-/// 「単色でない」画素がこの割合を超えたら、平坦とみなさない
-pub const FLAT_MAX_DEV_RATIO: f32 = 0.10;
+/// 層分割 (覆いをベクターのまま文字層に残す) の検証に使う値。
+///
+/// 覆いを背景から抜いて文字層へ移すと、元の描画順で覆いより後に描かれる画像・図形が、
+/// 覆いの下に回ってしまうことがある。そこで、
+///   予測 = 覆いの層 (白地と黒地の 2 回の描画から色とアルファを復元) を、覆いを除いた背景の上に重ねたもの
+/// が、元の「文字を除いた描画」(nt) と一致するかを画素で確かめる。文字は元の順序のまま文字層に
+/// 残るので、ここでは文字を除いた描画だけを比べる。
+pub const LAYER_ERR_THR: i32 = 24;
+/// 許す食い違いの画素数 = `LAYER_BAD_BASE + 画素数 / LAYER_BAD_DIV`
+pub const LAYER_BAD_BASE: usize = 120;
+pub const LAYER_BAD_DIV: usize = 10_000;
+/// 覆いが、文字の近く (`text_near` が真の画素) に掛かっている画素数の下限。
+/// 文字に掛からない覆いは、層分割せず従来どおり一枚画像に焼き込む。
+pub const LAYER_MIN_OVERLAP: usize = 30;
+/// 文字の画素を、覆いとの重なりの判定のために広げる半径 (画素)
+pub const LAYER_TEXT_DILATE: usize = 3;
+/// `text_near_mask` で、full と nt の差がこの値を超えた画素を文字とみなす (0-255)
+const TEXT_DIFF_THR: i32 = 10;
 
-/// `nt` (テキストを除いた描画) と `below` (そこから覆いも除いた描画) の画素から、
-/// 覆いが塗る領域 (両者が違う画素) の下層が、ほぼ単色かを返す。
-/// 長さが合わない・覆いが何も塗らない (差が無い) ときは false。
-pub fn underlay_is_flat(nt: &[u8], below: &[u8], w: u32, h: u32) -> bool {
+/// 層分割の検証結果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerCheck {
+    /// 予測と nt が `LAYER_ERR_THR` を超えて食い違う画素数
+    pub bad: usize,
+    /// 覆い (アルファがある画素) が、文字の近くに掛かる画素数
+    pub text_overlap: usize,
+}
+
+impl LayerCheck {
+    /// 描画順を保てているか (予測との食い違いが少ないか)
+    pub fn order_ok(&self, pixels: usize) -> bool {
+        self.bad <= LAYER_BAD_BASE + pixels / LAYER_BAD_DIV
+    }
+
+    /// 描画順を保てていて、かつ覆いが文字に掛かっているか
+    pub fn accepted(&self, pixels: usize) -> bool {
+        self.order_ok(pixels) && self.text_overlap >= LAYER_MIN_OVERLAP
+    }
+}
+
+/// 文字の画素 (`full` = 元のページ、`nt` = そこから文字を除いたもの。差がある画素) を
+/// `r` 画素だけ四方に広げたマスクを返す。長さが合わなければ None。
+pub fn text_near_mask(full: &[u8], nt: &[u8], w: u32, h: u32, r: usize) -> Option<Vec<bool>> {
+    let (w, h) = (w as usize, h as usize);
+    let n = w * h;
+    if n == 0 || full.len() != n * 3 || nt.len() != n * 3 {
+        return None;
+    }
+    let mut m = vec![false; n];
+    for i in 0..n {
+        m[i] = max_abs_diff(&full[i * 3..i * 3 + 3], &nt[i * 3..i * 3 + 3]) > TEXT_DIFF_THR;
+    }
+    if r == 0 {
+        return Some(m);
+    }
+    // 横方向 → 縦方向の順に、半径 r の箱で広げる
+    let mut hz = vec![false; n];
+    for y in 0..h {
+        let row = &m[y * w..(y + 1) * w];
+        for x in 0..w {
+            let lo = x.saturating_sub(r);
+            let hi = (x + r).min(w - 1);
+            hz[y * w + x] = row[lo..=hi].iter().any(|&b| b);
+        }
+    }
+    let mut out = vec![false; n];
+    for y in 0..h {
+        let lo = y.saturating_sub(r);
+        let hi = (y + r).min(h - 1);
+        for x in 0..w {
+            out[y * w + x] = (lo..=hi).any(|yy| hz[yy * w + x]);
+        }
+    }
+    Some(out)
+}
+
+/// 層分割を検証する。
+/// - `nt`: 元の、文字を除いた描画
+/// - `below`: そこから覆いも除いた描画 (覆いの下層)
+/// - `cw` / `cb`: 覆いだけの描画を、白地・黒地に描いたもの
+/// - `text_near`: `text_near_mask` の結果
+///
+/// 覆いの層の、チャンネルごとの (アルファ, 色) は
+///   cw = A·C + (1−A)·255,  cb = A·C   →   (1−A) = (cw − cb) / 255
+/// で復元でき、背景の上に重ねた予測は `cb + (cw − cb)/255 · below` になる。
+/// 長さが合わなければ None。
+pub fn check_layering(
+    nt: &[u8],
+    below: &[u8],
+    cw: &[u8],
+    cb: &[u8],
+    text_near: &[bool],
+    w: u32,
+    h: u32,
+) -> Option<LayerCheck> {
     let n = (w as usize) * (h as usize);
-    if n == 0 || nt.len() != n * 3 || below.len() != n * 3 {
-        return false;
+    if n == 0
+        || [nt.len(), below.len(), cw.len(), cb.len()].iter().any(|&l| l != n * 3)
+        || text_near.len() != n
+    {
+        return None;
     }
-    let mut hist = [[0u32; 256]; 3];
-    let mut count = 0u64;
+    let (mut bad, mut overlap) = (0usize, 0usize);
     for i in 0..n {
         let o = i * 3;
-        if max_abs_diff(&nt[o..o + 3], &below[o..o + 3]) <= FLAT_DIFF_THR {
-            continue;
-        }
-        count += 1;
+        let mut worst = 0i32;
+        let mut covered = false;
         for c in 0..3 {
-            hist[c][below[o + c] as usize] += 1;
-        }
-    }
-    if count == 0 {
-        return false;
-    }
-    // 各チャンネルの中央値
-    let mut med = [0i32; 3];
-    for c in 0..3 {
-        let mut acc = 0u64;
-        for v in 0..256 {
-            acc += hist[c][v] as u64;
-            if acc * 2 >= count {
-                med[c] = v as i32;
-                break;
+            let (wv, bv) = (cw[o + c] as i32, cb[o + c] as i32);
+            // 覆いが塗らない画素は cw == 255, cb == 0 (透明)
+            let trans = (wv - bv).clamp(0, 255);
+            if trans < 250 {
+                covered = true;
             }
+            let pred = bv + (trans * below[o + c] as i32 + 127) / 255;
+            worst = worst.max((pred - nt[o + c] as i32).abs());
+        }
+        if worst > LAYER_ERR_THR {
+            bad += 1;
+        }
+        if covered && text_near[i] {
+            overlap += 1;
         }
     }
-    let mut dev = 0u64;
-    for i in 0..n {
-        let o = i * 3;
-        if max_abs_diff(&nt[o..o + 3], &below[o..o + 3]) <= FLAT_DIFF_THR {
-            continue;
-        }
-        if (0..3).any(|c| (below[o + c] as i32 - med[c]).abs() > FLAT_DEV_THR) {
-            dev += 1;
-        }
-    }
-    (dev as f32 / count as f32) <= FLAT_MAX_DEV_RATIO
+    Some(LayerCheck {
+        bad,
+        text_overlap: overlap,
+    })
 }
 
 /// 行列の合成 (`a` を先に適用し、次に `b`)。PDF の [a b c d e f]
@@ -381,34 +454,87 @@ mod tests {
     }
 
     #[test]
-    fn flat_underlay_is_accepted_and_photo_is_rejected() {
-        let (w, h) = (64u32, 48u32);
-        let below = solid(w, h, 255);
-        // 覆いが塗った領域 (nt では薄いピンク)
+    fn layering_matches_when_cover_is_on_top() {
+        let (w, h) = (40u32, 30u32);
+        let below = solid(w, h, 200);
+        // 覆い: 赤 (255,0,0) をアルファ 0.5 で、(10..30, 10..20) に
+        let (mut cw, mut cb) = (solid(w, h, 255), solid(w, h, 0));
         let mut nt = below.clone();
-        for y in 10..30 {
-            for x in 10..50 {
+        for y in 10..20 {
+            for x in 10..30 {
                 let o = ((y * w + x) * 3) as usize;
-                nt[o..o + 3].copy_from_slice(&[250, 220, 225]);
+                // 白地: 0.5·C + 0.5·255, 黒地: 0.5·C
+                cw[o..o + 3].copy_from_slice(&[255, 128, 128]);
+                cb[o..o + 3].copy_from_slice(&[128, 0, 0]);
+                // 元の nt: 背景 200 の上に重ねた結果
+                nt[o..o + 3].copy_from_slice(&[228, 100, 100]);
             }
         }
-        assert!(underlay_is_flat(&nt, &below, w, h));
-        // 下層が写真 (画素がばらつく) なら不可
-        let mut photo = below.clone();
-        for y in 10..30 {
-            for x in 10..50 {
-                let v = ((x * 37 + y * 91) % 200) as u8;
+        let mut near = vec![false; (w * h) as usize];
+        for x in 5..35 {
+            near[(12 * w + x) as usize] = true;
+        }
+        let c = check_layering(&nt, &below, &cw, &cb, &near, w, h).unwrap();
+        assert_eq!(c.bad, 0);
+        assert_eq!(c.text_overlap, 20);
+        assert!(c.accepted((w * h) as usize) == (c.text_overlap >= LAYER_MIN_OVERLAP));
+    }
+
+    #[test]
+    fn layering_detects_later_paint_hiding_the_cover() {
+        let (w, h) = (200u32, 100u32);
+        let below = solid(w, h, 200);
+        let (mut cw, mut cb) = (solid(w, h, 255), solid(w, h, 0));
+        // 覆いは広い範囲を塗るが、元の描画では、後から描かれた不透明な図形 (nt が青) で隠れている
+        let mut nt = below.clone();
+        for y in 10..90 {
+            for x in 10..190 {
                 let o = ((y * w + x) * 3) as usize;
-                photo[o..o + 3].fill(v);
+                cw[o..o + 3].copy_from_slice(&[255, 128, 128]);
+                cb[o..o + 3].copy_from_slice(&[128, 0, 0]);
+                nt[o..o + 3].copy_from_slice(&[0, 0, 255]);
             }
         }
-        let mut nt2 = photo.clone();
-        for t in nt2.iter_mut() {
-            *t = t.saturating_add(40);
+        let near = vec![true; (w * h) as usize];
+        let c = check_layering(&nt, &below, &cw, &cb, &near, w, h).unwrap();
+        assert!(c.bad > 10_000);
+        assert!(!c.accepted((w * h) as usize));
+    }
+
+    #[test]
+    fn cover_away_from_text_is_not_accepted() {
+        let (w, h) = (60u32, 40u32);
+        let below = solid(w, h, 255);
+        let (mut cw, mut cb) = (solid(w, h, 255), solid(w, h, 0));
+        let mut nt = below.clone();
+        for y in 5..35 {
+            for x in 5..55 {
+                let o = ((y * w + x) * 3) as usize;
+                cw[o..o + 3].copy_from_slice(&[255, 200, 200]);
+                cb[o..o + 3].copy_from_slice(&[0, 0, 0]);
+                nt[o..o + 3].copy_from_slice(&[255, 200, 200]);
+            }
         }
-        assert!(!underlay_is_flat(&nt2, &photo, w, h));
-        // 覆いが何も塗らない
-        assert!(!underlay_is_flat(&below, &below, w, h));
+        // 文字は覆いから離れた隅だけ
+        let mut full = nt.clone();
+        full[0] = 0;
+        let near = text_near_mask(&full, &nt, w, h, LAYER_TEXT_DILATE).unwrap();
+        let c = check_layering(&nt, &below, &cw, &cb, &near, w, h).unwrap();
+        assert_eq!(c.bad, 0);
+        assert!(c.text_overlap < LAYER_MIN_OVERLAP);
+        assert!(!c.accepted((w * h) as usize));
+    }
+
+    #[test]
+    fn text_near_mask_dilates() {
+        let (w, h) = (20u32, 20u32);
+        let nt = solid(w, h, 255);
+        let mut full = nt.clone();
+        let o = ((10 * w + 10) * 3) as usize;
+        full[o..o + 3].copy_from_slice(&[0, 0, 0]);
+        let m = text_near_mask(&full, &nt, w, h, 2).unwrap();
+        assert!(m[(10 * w + 10) as usize] && m[(12 * w + 12) as usize] && m[(8 * w + 8) as usize]);
+        assert!(!m[(13 * w + 10) as usize]);
     }
 
     #[test]
