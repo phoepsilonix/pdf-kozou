@@ -2051,16 +2051,16 @@ pub fn rasterize_no_text_with_quality(
     })
 }
 
-/// hayro 版のキープテキストで、前処理が「隠れている」として除去する覆われ率の下限。
-/// 一部でも見えている文字は残して重ね合わせ (隠し直しパッチ) で再現する方針なので、
-/// 完全に隠れた文字だけを対象にする。覆われ率は浮動小数点の面積比で、完全に覆われても
-/// ちょうど 1.0 にならないことがあるため、わずかに下げた値にしている。
-#[cfg(feature = "hayro")]
-const HAYRO_FULLY_HIDDEN_RATIO: f32 = 0.999;
+/// キープテキストの前処理 (lopdf 実装、hayro 版) が「隠れている」として除去する覆われ率の下限。
+/// MuPDF 版の既定 (0.8) には合わせない。一部でも見えている文字は残して、重ね合わせ
+/// (隠し直しパッチ) で再現する方針なので、完全に隠れた文字だけを対象にする。覆われ率は
+/// 浮動小数点の面積比で、完全に覆われてもちょうど 1.0 にならないことがあるため、
+/// わずかに下げた値にしている。
+const FULLY_HIDDEN_RATIO: f32 = 0.999;
 
 /// 部分的に隠れたテキストがあるページ (1 ベース) を返す。hayro 版のキープテキストは、
 /// そのページだけ、隠れていた部分を背景の画素のパッチで覆い直す (render_hayro::keep_text_pdf)。
-/// 完全に隠れたテキスト (覆われ率 HAYRO_FULLY_HIDDEN_RATIO 以上) は前処理で除去済みの入力を渡す想定なので、
+/// 完全に隠れたテキスト (覆われ率 FULLY_HIDDEN_RATIO 以上) は前処理で除去済みの入力を渡す想定なので、
 /// 低い閾値 (0.002) でも "buried" と判定されるものが残っていれば、部分的な重なりがある。
 /// 戻り値: Some(該当ページ。無ければ空)、判定できなければ None。
 #[cfg(feature = "hayro")]
@@ -2157,22 +2157,28 @@ fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>
 /// 元の input をそのまま使う (従来動作にフォールバックするだけで、
 /// この前処理が無くても compose 自体は今まで通り動作する)。
 ///
-/// `cover_ratio`: 「隠れている」とみなす覆われ率の下限 (None = 既定の 0.8)。
-/// hayro 版は、画素差分の隠し直しパッチで部分的に隠れた文字を元の見た目に重ね合わせられる
-/// ため、完全に (実質 100%) 隠れた文字だけを除去する (HAYRO_FULLY_HIDDEN_RATIO)。
+/// `cover_ratio`: MuPDF 実装で「隠れている」とみなす覆われ率の下限 (None = 既定の 0.8)。
+/// lopdf 実装は、この値に関わらず、完全に (実質 100%) 隠れた文字だけを除去する
+/// (FULLY_HIDDEN_RATIO)。部分的に隠れた文字は、重ね合わせ (隠し直しパッチ) で再現する。
 pub(crate) fn strip_fully_buried_text_for_keep_text(
     input: &str,
     tmp_dir: &std::path::Path,
     cover_ratio: Option<f32>,
 ) -> Option<std::path::PathBuf> {
-    use crate::stext::{
-        DetectBuriedRequest, SanitizeOrigin, SanitizeRequest, detect_buried_text,
-        sanitize_hidden_text,
-    };
+    strip_buried_for_keep_text(input, tmp_dir, cover_ratio).0
+}
 
-    // まず lopdf で、検出と除去を一度に行う (MuPDF を使わない)。読めない入力・暗号化は
-    // MuPDF 実装へフォールバックする。backend=lopdf のときはフォールバックせず、前処理なし
-    // (入力のまま) で進める。
+/// `strip_fully_buried_text_for_keep_text` の本体。戻り値の 2 つ目は、lopdf 実装で処理した
+/// (成否にかかわらず MuPDF 実装へ進まなかった) か。
+///
+/// まず lopdf で、検出と除去を一度に行う (MuPDF を使わない)。読めない入力・暗号化は
+/// MuPDF 実装へフォールバックする。backend=lopdf のときはフォールバックせず、前処理なし
+/// (入力のまま) で進める。
+pub(crate) fn strip_buried_for_keep_text(
+    input: &str,
+    tmp_dir: &std::path::Path,
+    cover_ratio: Option<f32>,
+) -> (Option<std::path::PathBuf>, bool) {
     if crate::backend::try_lopdf("keep-text-strip") {
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2182,25 +2188,37 @@ pub(crate) fn strip_fully_buried_text_for_keep_text(
             "kozou_keeptext_buried_stripped_{}_{unique:x}.pdf",
             std::process::id()
         ));
-        let ratio = f64::from(cover_ratio.unwrap_or(0.8));
         match crate::hidden_text_lopdf::strip_buried_text_file(
             input,
             &tmp_path.to_string_lossy(),
-            ratio,
+            f64::from(FULLY_HIDDEN_RATIO),
         ) {
             Ok(Some(n)) => {
                 eprintln!("[keep-text] lopdf: removed {n} hidden glyph(s)");
-                return Some(tmp_path);
+                return (Some(tmp_path), true);
             }
-            Ok(None) => return None,
+            Ok(None) => return (None, true),
             Err(e) => {
                 let _ = std::fs::remove_file(&tmp_path);
                 if crate::backend::abort_or_notify_fallback("keep-text-strip", input, &e) {
-                    return None;
+                    return (None, true);
                 }
             }
         }
     }
+    (strip_buried_text_mupdf(input, tmp_dir, cover_ratio), false)
+}
+
+/// 従来の MuPDF 実装 (C の検出 + 無害化)。
+fn strip_buried_text_mupdf(
+    input: &str,
+    tmp_dir: &std::path::Path,
+    cover_ratio: Option<f32>,
+) -> Option<std::path::PathBuf> {
+    use crate::stext::{
+        DetectBuriedRequest, SanitizeOrigin, SanitizeRequest, detect_buried_text,
+        sanitize_hidden_text,
+    };
 
     let page_count = mupdf::pdf::PdfDocument::open(input)
         .ok()
@@ -2288,7 +2306,7 @@ pub(crate) fn strip_fully_buried_text_for_keep_text(
 fn keep_text_strip_ratio(hayro_first: bool) -> Option<f32> {
     #[cfg(feature = "hayro")]
     if hayro_first {
-        return Some(HAYRO_FULLY_HIDDEN_RATIO);
+        return Some(FULLY_HIDDEN_RATIO);
     }
     let _ = hayro_first;
     None
@@ -2326,19 +2344,24 @@ pub fn compose_image_pdf_keep_text_with_quality(
     // 実際の入力として使う。前処理は失敗しても None を返すだけなので、
     // 対象なし/検出失敗時は常に元の input にフォールバックする。
     //
-    // hayro 版は、一部でも見えている文字を残して重ね合わせで再現できるので、完全に
-    // 隠れた文字だけを除去する。MuPDF 版 (既定) は 80% 以上で除去する。
+    // 一部でも見えている文字は残して重ね合わせで再現できるので、lopdf 実装の前処理は
+    // 完全に隠れた文字だけを除去する (MuPDF の 0.8 には合わせない)。MuPDF 実装の前処理は、
+    // hayro 版なら完全に隠れた文字だけ、MuPDF 版 (既定) は 80% 以上で除去する。
     let engine = crate::render::Engine::resolve_default();
     #[cfg(feature = "hayro")]
     let hayro_first = engine != crate::render::Engine::MuPdf;
     #[cfg(not(feature = "hayro"))]
     let hayro_first = false;
-    #[allow(unused_mut)]
-    let mut buried_stripped = strip_fully_buried_text_for_keep_text(
+    // lopdf 実装の前処理は、エンジンに関わらず、完全に隠れた文字だけを除去する
+    // (部分的に隠れた文字は重ね合わせで再現する)。
+    #[allow(unused_variables)]
+    let (first_strip, stripped_by_lopdf) = strip_buried_for_keep_text(
         input,
         &tmp_dir,
         keep_text_strip_ratio(hayro_first),
     );
+    #[allow(unused_mut)]
+    let mut buried_stripped = first_strip;
     #[allow(unused_mut)]
     let mut compose_input: String = buried_stripped
         .as_deref()
@@ -2448,13 +2471,16 @@ pub fn compose_image_pdf_keep_text_with_quality(
                             None,
                             &e.to_string(),
                         );
-                        // MuPDF 実装は 80% 以上隠れた文字を前処理で除去する前提なので、
-                        // hayro 用に緩めた前処理の結果は捨て、既定のしきい値でやり直す。
-                        if let Some(p) = buried_stripped.take() {
-                            let _ = std::fs::remove_file(p);
+                        // MuPDF 実装の前処理は 80% 以上隠れた文字を除去する前提なので、MuPDF の
+                        // 前処理 (hayro 用に緩めたもの) の結果は捨て、既定のしきい値でやり直す。
+                        // lopdf 実装の前処理 (完全に隠れた文字のみ) は、そのまま使う。
+                        if !stripped_by_lopdf {
+                            if let Some(p) = buried_stripped.take() {
+                                let _ = std::fs::remove_file(p);
+                            }
+                            buried_stripped =
+                                strip_fully_buried_text_for_keep_text(input, &tmp_dir, None);
                         }
-                        buried_stripped =
-                            strip_fully_buried_text_for_keep_text(input, &tmp_dir, None);
                         compose_input = buried_stripped
                             .as_deref()
                             .and_then(|p| p.to_str())
