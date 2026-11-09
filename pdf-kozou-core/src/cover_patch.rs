@@ -228,6 +228,63 @@ pub fn compute_patches(
     patches
 }
 
+/// 層分割 (覆いをベクターのまま文字の上に残す) をしてよいかの判定に使う値。
+/// 覆いを外すと下層が見えるので、覆いが塗る領域の下層が「ほぼ単色」のときだけ許す
+/// (写真・ぼかし・モザイクなどの目隠しを、誤って外せる形にしないため)。
+pub const FLAT_DIFF_THR: i32 = 3;
+/// 領域の代表色 (各チャンネルの中央値) からこの値を超えて離れた画素を「単色でない」とみなす
+pub const FLAT_DEV_THR: i32 = 24;
+/// 「単色でない」画素がこの割合を超えたら、平坦とみなさない
+pub const FLAT_MAX_DEV_RATIO: f32 = 0.10;
+
+/// `nt` (テキストを除いた描画) と `below` (そこから覆いも除いた描画) の画素から、
+/// 覆いが塗る領域 (両者が違う画素) の下層が、ほぼ単色かを返す。
+/// 長さが合わない・覆いが何も塗らない (差が無い) ときは false。
+pub fn underlay_is_flat(nt: &[u8], below: &[u8], w: u32, h: u32) -> bool {
+    let n = (w as usize) * (h as usize);
+    if n == 0 || nt.len() != n * 3 || below.len() != n * 3 {
+        return false;
+    }
+    let mut hist = [[0u32; 256]; 3];
+    let mut count = 0u64;
+    for i in 0..n {
+        let o = i * 3;
+        if max_abs_diff(&nt[o..o + 3], &below[o..o + 3]) <= FLAT_DIFF_THR {
+            continue;
+        }
+        count += 1;
+        for c in 0..3 {
+            hist[c][below[o + c] as usize] += 1;
+        }
+    }
+    if count == 0 {
+        return false;
+    }
+    // 各チャンネルの中央値
+    let mut med = [0i32; 3];
+    for c in 0..3 {
+        let mut acc = 0u64;
+        for v in 0..256 {
+            acc += hist[c][v] as u64;
+            if acc * 2 >= count {
+                med[c] = v as i32;
+                break;
+            }
+        }
+    }
+    let mut dev = 0u64;
+    for i in 0..n {
+        let o = i * 3;
+        if max_abs_diff(&nt[o..o + 3], &below[o..o + 3]) <= FLAT_DIFF_THR {
+            continue;
+        }
+        if (0..3).any(|c| (below[o + c] as i32 - med[c]).abs() > FLAT_DEV_THR) {
+            dev += 1;
+        }
+    }
+    (dev as f32 / count as f32) <= FLAT_MAX_DEV_RATIO
+}
+
 /// 行列の合成 (`a` を先に適用し、次に `b`)。PDF の [a b c d e f]
 pub fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
     [
@@ -321,6 +378,37 @@ mod tests {
         let (lx, ly) = (12 - p.x0, 11 - p.y0);
         let o = ((ly * p.w + lx) * 3) as usize;
         assert_eq!(&p.rgb[o..o + 3], &[180, 180, 180]);
+    }
+
+    #[test]
+    fn flat_underlay_is_accepted_and_photo_is_rejected() {
+        let (w, h) = (64u32, 48u32);
+        let below = solid(w, h, 255);
+        // 覆いが塗った領域 (nt では薄いピンク)
+        let mut nt = below.clone();
+        for y in 10..30 {
+            for x in 10..50 {
+                let o = ((y * w + x) * 3) as usize;
+                nt[o..o + 3].copy_from_slice(&[250, 220, 225]);
+            }
+        }
+        assert!(underlay_is_flat(&nt, &below, w, h));
+        // 下層が写真 (画素がばらつく) なら不可
+        let mut photo = below.clone();
+        for y in 10..30 {
+            for x in 10..50 {
+                let v = ((x * 37 + y * 91) % 200) as u8;
+                let o = ((y * w + x) * 3) as usize;
+                photo[o..o + 3].fill(v);
+            }
+        }
+        let mut nt2 = photo.clone();
+        for t in nt2.iter_mut() {
+            *t = t.saturating_add(40);
+        }
+        assert!(!underlay_is_flat(&nt2, &photo, w, h));
+        // 覆いが何も塗らない
+        assert!(!underlay_is_flat(&below, &below, w, h));
     }
 
     #[test]

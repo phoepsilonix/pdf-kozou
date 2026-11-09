@@ -967,9 +967,19 @@ pub fn keep_text_pdf(
     if doc.is_encrypted() {
         return Err("encrypted".into());
     }
-    let tstats = content_filter::transform(&mut doc, Mode::TextOnly)?;
-    // 2) 背景 (テキストを除いた複製を hayro で描く)
-    let (no_text, _) = content_filter::remove_text_bytes(&data)?;
+    // 覆い (文字の上に半透明に重なるベクターの Form) は、写真などの上でなければ、背景に焼かず
+    // ベクターのまま文字層に残す (文字との描画順が元のままになり、文字がにじまない)。
+    let settings = interpreter_settings();
+    let dpi_f = dpi.max(1.0);
+    let n_doc = doc.get_pages().len() as i32;
+    let selected_pre: Vec<i32> = match pages {
+        Some(p) if !p.is_empty() => p.iter().copied().filter(|&x| x >= 1 && x <= n_doc).collect(),
+        _ => (1..=n_doc).collect(),
+    };
+    let (cover_forms, plain_nts) = plan_cover_layers(&doc, &data, &selected_pre, dpi_f, &settings);
+    let tstats = content_filter::transform_covers(&mut doc, Mode::TextOnly, &cover_forms)?;
+    // 2) 背景 (テキストと覆いを除いた複製を hayro で描く)
+    let (no_text, _) = content_filter::remove_text_bytes_covers(&data, &cover_forms)?;
     let nt_pdf = Pdf::new(no_text).map_err(|e| format!("hayro load: {e:?}"))?;
     let nt_pages = nt_pdf.pages();
     let lo_pages = doc.get_pages();
@@ -985,9 +995,7 @@ pub fn keep_text_pdf(
         return Err("page list must be ascending, unique and within the document".into());
     }
 
-    let settings = interpreter_settings();
     let cache = RenderCache::new();
-    let dpi_f = dpi.max(1.0);
     let scale = dpi_f / 72.0;
     let mut covers: Vec<CoverJob> = Vec::new();
     for &pno in &selected {
@@ -1004,10 +1012,14 @@ pub fn keep_text_pdf(
         }
         let (tw, th) = (tw as u32, th as u32);
         let rgb = raster_rgb(page, &cache, &settings, tw, th, dpi_f, supersample_max)?;
-        let want_cover = match cover_pages {
-            None => true,
-            Some(c) => c.contains(&pno),
-        };
+        // 覆いを層分割したページ (背景 rgb は覆いを除いた下層)。その元の見た目 (文字だけを除いた
+        // 描画) は plan_cover_layers が等倍で描いてある
+        let layered = plain_nts.get(&pno);
+        let want_cover = layered.is_some()
+            || match cover_pages {
+                None => true,
+                Some(c) => c.contains(&pno),
+            };
         // 隠し直しの比較 (nt / full / comp) は、超解像度を使わず等倍で行う。超解像度で描いた
         // 出力ページ (comp) は、背景画像を拡大→箱平均で戻すため埋め込んだ背景 (bg) と一致せず、
         // 背景の輪郭や細線がすべて「テキスト画素で見え方が違う」と判定され、巨大なパッチ
@@ -1015,21 +1027,33 @@ pub fn keep_text_pdf(
         // 画素単位で一致する。パッチの画素 (bg + (full - nt)) は差分だけを使うので、
         // 背景自体は超解像度のままでよい。
         let (nt_rgb, bg_png) = if want_cover {
-            let nt = if supersample_mult(dpi_f, supersample_max, tw, th) > 1 {
+            let nt = if let Some(p) = layered {
+                p.clone()
+            } else if supersample_mult(dpi_f, supersample_max, tw, th) > 1 {
                 raster_rgb(page, &cache, &settings, tw, th, dpi_f, 1)?
             } else {
                 rgb.clone()
             };
-            (Some(nt), if png { Some(rgb.clone()) } else { None })
+            (
+                Some(nt),
+                if png && layered.is_none() { Some(rgb.clone()) } else { None },
+            )
         } else {
             (None, None)
         };
         let bg_stream = image_stream(rgb, tw, th, png, quality)?;
         let cover_src = match nt_rgb {
             Some(nt) => {
-                let bg = match bg_png {
-                    Some(b) => b,
-                    None => decode_jpeg_rgb(&bg_stream.content, tw, th)?,
+                // 層分割したページは、パッチの土台を「覆いを含む、文字だけを除いた描画」にする。
+                // 出力ページ (背景 + 文字 + 覆い) との差は文字の画素だけになり、残った食い違いだけが
+                // パッチになる (背景は覆いを除いた下層なので、背景の画素は土台に使えない)。
+                let bg = if layered.is_some() {
+                    nt.clone()
+                } else {
+                    match bg_png {
+                        Some(b) => b,
+                        None => decode_jpeg_rgb(&bg_stream.content, tw, th)?,
+                    }
                 };
                 Some((nt, bg))
             }
@@ -1103,13 +1127,97 @@ pub fn keep_text_pdf(
     doc.compress();
     doc.save(output).map_err(|e| format!("save: {e}"))?;
     eprintln!(
-        "[render] keep-text: {} page(s); text layer: {} paint op(s) neutralized, {} image op(s) removed; cover patches: {}",
+        "[render] keep-text: {} page(s); text layer: {} paint op(s) neutralized, {} image op(s) removed; vector cover form(s): {}; cover patches: {}",
         selected.len(),
         tstats.neutralized_paints,
         tstats.removed_images,
+        cover_forms.len(),
         n_patches
     );
     Ok(())
+}
+
+/// 覆い (文字の上に半透明に重なるベクターの Form XObject) を、背景に焼かずベクターのまま
+/// 文字層に残してよいページを決める。
+///
+/// 戻り値: (残す覆いの Form XObject, 層分割するページ → そのページの「文字だけを除いた描画」(等倍 RGB8))。
+///
+/// 覆いを背景から外すと、覆いの下が (背景の下層として) そのまま埋め込まれる。下に写真などが
+/// あると、覆い (ぼかし・モザイク・半透明の目隠し) を外せる形になってしまうので、覆いが塗る領域の
+/// 下層がほぼ単色のページだけを対象にする (cover_patch::underlay_is_flat)。
+/// 判定できない (描画に失敗した) ページは対象にしない。
+fn plan_cover_layers(
+    doc: &lopdf::Document,
+    data: &[u8],
+    selected: &[i32],
+    dpi: f32,
+    settings: &InterpreterSettings,
+) -> (
+    std::collections::HashSet<lopdf::ObjectId>,
+    HashMap<i32, Vec<u8>>,
+) {
+    use crate::content_filter;
+    use crate::cover_patch::underlay_is_flat;
+    use std::collections::HashSet;
+
+    let none = || (HashSet::new(), HashMap::new());
+    let lo_pages = doc.get_pages();
+    let mut cands: Vec<(i32, Vec<lopdf::ObjectId>)> = Vec::new();
+    for &pno in selected {
+        let Some(&pid) = lo_pages.get(&(pno as u32)) else {
+            continue;
+        };
+        let forms = content_filter::find_cover_forms(doc, pid);
+        if !forms.is_empty() {
+            cands.push((pno, forms));
+        }
+    }
+    if cands.is_empty() {
+        return none();
+    }
+    let all: HashSet<lopdf::ObjectId> = cands.iter().flat_map(|(_, f)| f.iter().copied()).collect();
+    let Ok((plain, _)) = content_filter::remove_text_bytes(data) else {
+        return none();
+    };
+    let Ok((below, _)) = content_filter::remove_text_bytes_covers(data, &all) else {
+        return none();
+    };
+    let (Ok(plain_pdf), Ok(below_pdf)) = (Pdf::new(plain), Pdf::new(below)) else {
+        return none();
+    };
+    let (plain_pages, below_pages) = (plain_pdf.pages(), below_pdf.pages());
+    let (cache_p, cache_b) = (RenderCache::new(), RenderCache::new());
+    let scale = dpi / 72.0;
+
+    let mut keep: HashSet<lopdf::ObjectId> = HashSet::new();
+    let mut rejected: HashSet<lopdf::ObjectId> = HashSet::new();
+    let mut nts: HashMap<i32, Vec<u8>> = HashMap::new();
+    for (pno, forms) in cands {
+        let idx = (pno - 1) as usize;
+        let (Some(pp), Some(bp)) = (plain_pages.get(idx), below_pages.get(idx)) else {
+            rejected.extend(forms);
+            continue;
+        };
+        let (pw, ph) = pp.render_dimensions();
+        let (tw, th) = ((pw * scale).ceil(), (ph * scale).ceil());
+        if !(tw >= 1.0 && th >= 1.0 && tw <= u16::MAX as f32 && th <= u16::MAX as f32) {
+            rejected.extend(forms);
+            continue;
+        }
+        let (tw, th) = (tw as u32, th as u32);
+        let nt = raster_rgb(pp, &cache_p, settings, tw, th, dpi, 1);
+        let below = raster_rgb(bp, &cache_b, settings, tw, th, dpi, 1);
+        match (nt, below) {
+            (Ok(nt), Ok(below)) if underlay_is_flat(&nt, &below, tw, th) => {
+                keep.extend(forms);
+                nts.insert(pno, nt);
+            }
+            _ => rejected.extend(forms),
+        }
+    }
+    // 別のページで条件を満たさなかった覆いは、共有されていても残さない
+    keep.retain(|f| !rejected.contains(f));
+    (keep, nts)
 }
 
 /// 元のページと出力ページ (背景 + ベクターのテキスト) を hayro で描き比べ、見え方が違う箇所に

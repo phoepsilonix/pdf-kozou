@@ -112,6 +112,9 @@ pub struct Stats {
 enum XKind {
     Image,
     Form,
+    /// 覆いとして扱う Form XObject (`find_cover_forms` が選んだもの)。
+    /// TextOnly では (中身も含めて) そのまま残し、RemoveText では `Do` を取り除く。
+    Cover,
     Other,
 }
 type Kinds = HashMap<Vec<u8>, XKind>;
@@ -127,11 +130,28 @@ pub fn text_only_bytes(input: &[u8]) -> Result<(Vec<u8>, Stats), String> {
 }
 
 pub fn transform_bytes(input: &[u8], mode: Mode) -> Result<(Vec<u8>, Stats), String> {
+    transform_bytes_covers(input, mode, &HashSet::new())
+}
+
+/// `remove_text_bytes` に、覆い (`find_cover_forms` が選んだ Form XObject) の `Do` を取り除く
+/// 指定を加えたもの。覆いを除いた「文字の下層」の背景を描くために使う。
+pub fn remove_text_bytes_covers(
+    input: &[u8],
+    covers: &HashSet<ObjectId>,
+) -> Result<(Vec<u8>, Stats), String> {
+    transform_bytes_covers(input, Mode::RemoveText, covers)
+}
+
+fn transform_bytes_covers(
+    input: &[u8],
+    mode: Mode,
+    covers: &HashSet<ObjectId>,
+) -> Result<(Vec<u8>, Stats), String> {
     let mut doc = Document::load_mem(input).map_err(|e| format!("lopdf load: {e}"))?;
     if doc.is_encrypted() {
         return Err("encrypted".into());
     }
-    let stats = transform(&mut doc, mode)?;
+    let stats = transform_covers(&mut doc, mode, covers)?;
     if mode == Mode::TextOnly {
         // 画像を外したので、どこからも参照されなくなったオブジェクトを捨て、ストリームを圧縮する
         doc.prune_objects();
@@ -149,6 +169,17 @@ pub fn remove_text(doc: &mut Document) -> Result<Stats, String> {
 
 /// 文書内のすべてのページ (とそこから辿れる部品) を、モードに従って加工する。
 pub fn transform(doc: &mut Document, mode: Mode) -> Result<Stats, String> {
+    transform_covers(doc, mode, &HashSet::new())
+}
+
+/// `transform` に、覆い (`find_cover_forms` が選んだ Form XObject) の扱いを加えたもの。
+/// - TextOnly: 覆いは加工せず、`Do` も残す (文字との描画順を保ったまま、ベクターで重ねる)。
+/// - RemoveText: 覆いの `Do` を取り除く (背景ラスタは、覆いを除いた文字の下層になる)。
+pub fn transform_covers(
+    doc: &mut Document,
+    mode: Mode,
+    covers: &HashSet<ObjectId>,
+) -> Result<Stats, String> {
     // /Contents が配列のページは、先に 1 本にまとめる。operand と演算子が別のストリームに
     // 分かれていることがあり (仕様上は合法)、ストリームごとに解析すると壊れるため。
     merge_page_contents(doc)?;
@@ -164,7 +195,7 @@ pub fn transform(doc: &mut Document, mode: Mode) -> Result<Stats, String> {
         let res = effective_resources(doc, page_id).unwrap_or_default();
         let mut kinds = Kinds::new();
         let mut children = Vec::new();
-        collect_kinds(doc, &res, &mut kinds);
+        collect_kinds(doc, &res, &mut kinds, covers);
         collect_children(doc, &res, mode, &mut children);
         // ページ自身の内容ストリーム
         for sid in doc.get_page_contents(page_id) {
@@ -177,7 +208,7 @@ pub fn transform(doc: &mut Document, mode: Mode) -> Result<Stats, String> {
             collect_annotation_streams(doc, page_id, &mut children);
         }
         for child in children {
-            process_part(doc, child, mode, &kinds, &mut visited, &mut stats, 0)?;
+            process_part(doc, child, mode, &kinds, covers, &mut visited, &mut stats, 0)?;
         }
         // TextOnly: 画像 XObject をリソースから外す (Do を除いたので参照されない)
         if mode == Mode::TextOnly {
@@ -222,15 +253,21 @@ const MAX_DEPTH: usize = 32;
 
 /// Form XObject / パターン等のストリーム 1 つ分を加工し、その中のリソースも再帰的に辿る。
 /// `parent_kinds`: 親のリソースの XObject 表 (この部品が /Resources を持たないときに使う)。
+#[allow(clippy::too_many_arguments)]
 fn process_part(
     doc: &mut Document,
     id: ObjectId,
     mode: Mode,
     parent_kinds: &Kinds,
+    covers: &HashSet<ObjectId>,
     visited: &mut HashSet<ObjectId>,
     stats: &mut Stats,
     depth: usize,
 ) -> Result<(), String> {
+    // 覆いは加工しない (ベクターのまま残す / `Do` ごと取り除くので中身は使われない)
+    if covers.contains(&id) {
+        return Ok(());
+    }
     if depth > MAX_DEPTH || !visited.insert(id) {
         return Ok(());
     }
@@ -242,13 +279,13 @@ fn process_part(
         && let Some(res) = resolve_dict(doc, s.dict.get(b"Resources").ok())
     {
         has_own = true;
-        collect_kinds(doc, res, &mut kinds);
+        collect_kinds(doc, res, &mut kinds, covers);
         collect_children(doc, res, mode, &mut children);
     }
     let kinds = if has_own { kinds } else { parent_kinds.clone() };
     filter_stream(doc, id, mode, &kinds, stats)?;
     for child in children {
-        process_part(doc, child, mode, &kinds, visited, stats, depth + 1)?;
+        process_part(doc, child, mode, &kinds, covers, visited, stats, depth + 1)?;
     }
     if mode == Mode::TextOnly && has_own {
         let own = match doc.get_object(id) {
@@ -266,7 +303,7 @@ fn process_part(
 }
 
 /// リソース辞書の XObject から、名前 → 種類の表を作る
-fn collect_kinds(doc: &Document, res: &Dictionary, out: &mut Kinds) {
+fn collect_kinds(doc: &Document, res: &Dictionary, out: &mut Kinds, covers: &HashSet<ObjectId>) {
     let Some(xo) = resolve_dict(doc, res.get(b"XObject").ok()) else {
         return;
     };
@@ -276,6 +313,7 @@ fn collect_kinds(doc: &Document, res: &Dictionary, out: &mut Kinds) {
                 Ok(Object::Stream(s)) => {
                     match s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) {
                         Some(b"Image") => XKind::Image,
+                        Some(b"Form") if covers.contains(id) => XKind::Cover,
                         Some(b"Form") => XKind::Form,
                         _ => XKind::Other,
                     }
@@ -444,6 +482,7 @@ fn transform_content(
 ) -> Result<(Vec<u8>, Counts), String> {
     // 高速パス (RemoveText のみ): テキスト描画の演算子が 1 つも無ければ解析しない
     if mode == Mode::RemoveText
+        && !kinds.values().any(|k| *k == XKind::Cover)
         && !bytes.windows(2).any(|w| w == b"Tj" || w == b"TJ")
         && !contains_quote_op(bytes)
         && !contains_tr_op(bytes)
@@ -746,6 +785,16 @@ fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, 
                     }
                     ops.push(Operation::new("T*", vec![]));
                 }
+                // 覆い: 背景ラスタ (文字の下層) からは除く
+                "Do" if op
+                    .operands
+                    .first()
+                    .and_then(|o| o.as_name().ok())
+                    .and_then(|n| kinds.get(n))
+                    == Some(&XKind::Cover) =>
+                {
+                    c.images += 1;
+                }
                 _ => ops.push(op),
             },
             Mode::TextOnly => match op.operator.as_str() {
@@ -773,7 +822,7 @@ fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, 
                     let name = op.operands.first().and_then(|o| o.as_name().ok());
                     match name.and_then(|n| kinds.get(n)) {
                         Some(XKind::Image) => c.images += 1,
-                        Some(XKind::Form) => ops.push(op),
+                        Some(XKind::Form) | Some(XKind::Cover) => ops.push(op),
                         _ => return Err("Do of an unknown XObject".into()),
                     }
                 }
@@ -895,6 +944,180 @@ pub(crate) fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String
         }
     }
     Ok(spans)
+}
+
+
+// ── 覆い (文字の上に重なる半透明のベクター) の検出 ─────────────────────────────
+//
+// キープテキストの画像化は、非テキストを 1 枚の背景に焼き込み、文字をその上に重ねる。
+// 元の PDF が「文字 → 半透明の帯 (文字の上に薄く掛かる)」の順に描いていると、背景に帯が
+// 入った上に文字が最前面に来るので、見え方が変わる。ラスターのパッチで直すと、文字が
+// 背景の解像度で焼き込まれてにじむ。
+//
+// そこで、次の条件を満たす Form XObject (= 覆い) だけは、背景に焼かず、ベクターのまま
+// 文字層に残す。文字との描画順は元のままなので、文字はベクターのまま、元と同じ順に合成される。
+//   - 不透明度 (ExtGState の ca) が 1 未満の状態で、`Do` で描かれる
+//   - 描画順で、文字を描く命令より後
+//   - 中身がパスの塗り・線だけ (画像・シェーディング・パターン・文字・ソフトマスクを含まない)
+// 覆いの下に写真などがある領域は、覆いを外すと下が見えてしまうので、呼び出し側が
+// 画素で確かめて、層分割しない (cover_patch::underlay_is_flat)。
+
+/// 描画順で文字より後に、不透明度 1 未満で描かれるベクターだけの Form XObject を返す
+/// (重複なし、描画順)。解析できないページは空を返す。
+pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
+    let mut bytes: Vec<u8> = Vec::new();
+    for sid in doc.get_page_contents(page_id) {
+        if let Ok(Object::Stream(st)) = doc.get_object(sid) {
+            match crate::image_recompress::content_stream_bytes(st) {
+                Ok(b) => {
+                    bytes.extend_from_slice(&b);
+                    bytes.push(b'\n');
+                }
+                Err(_) => return Vec::new(),
+            }
+        }
+    }
+    let res = effective_resources(doc, page_id).unwrap_or_default();
+    let mut w = CoverWalk {
+        doc,
+        seen_text: false,
+        found: Vec::new(),
+    };
+    w.walk(&bytes, &res, 1.0, 0);
+    w.found
+}
+
+struct CoverWalk<'a> {
+    doc: &'a Document,
+    seen_text: bool,
+    found: Vec<ObjectId>,
+}
+
+impl CoverWalk<'_> {
+    /// 内容ストリームを描画順にたどる。`alpha0`: 呼び出し時点の塗りの不透明度 (ca)
+    fn walk(&mut self, bytes: &[u8], res: &Dictionary, alpha0: f32, depth: usize) {
+        if depth > 8 {
+            return;
+        }
+        let doc = self.doc;
+        let gs_tbl = resolve_dict(doc, res.get(b"ExtGState").ok());
+        let xo_tbl = resolve_dict(doc, res.get(b"XObject").ok());
+        let mut stack: Vec<f32> = Vec::new();
+        let mut cur = alpha0;
+        let _ = for_each_operation(bytes, |op| match op.operator.as_str() {
+            "q" => stack.push(cur),
+            "Q" => {
+                if let Some(a) = stack.pop() {
+                    cur = a;
+                }
+            }
+            "gs" => {
+                let d = op
+                    .operands
+                    .first()
+                    .and_then(|o| o.as_name().ok())
+                    .and_then(|n| gs_tbl.and_then(|t| t.get(n).ok()))
+                    .and_then(|o| resolve_dict(doc, Some(o)));
+                if let Some(ca) = d
+                    .and_then(|d| d.get(b"ca").ok())
+                    .and_then(|o| o.as_float().ok())
+                {
+                    cur = ca;
+                }
+            }
+            "Tj" | "TJ" | "'" | "\"" => self.seen_text = true,
+            "Do" => {
+                let id = op
+                    .operands
+                    .first()
+                    .and_then(|o| o.as_name().ok())
+                    .and_then(|n| xo_tbl.and_then(|t| t.get(n).ok()))
+                    .and_then(|o| o.as_reference().ok());
+                let Some(id) = id else { return };
+                let Ok(Object::Stream(st)) = doc.get_object(id) else {
+                    return;
+                };
+                if st.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) != Some(b"Form") {
+                    return;
+                }
+                if cur < 0.999 && self.seen_text && is_vector_form(doc, id, 0) {
+                    if !self.found.contains(&id) {
+                        self.found.push(id);
+                    }
+                    return;
+                }
+                // 覆いでない Form は、中の描画順をたどる (自身のリソースが無ければ親のもの)
+                let Ok(fbytes) = crate::image_recompress::content_stream_bytes(st) else {
+                    return;
+                };
+                let fres = resolve_dict(doc, st.dict.get(b"Resources").ok())
+                    .unwrap_or(res)
+                    .clone();
+                self.walk(&fbytes, &fres, cur, depth + 1);
+            }
+            _ => {}
+        });
+    }
+}
+
+/// Form XObject の中身が、パスの塗り・線だけか (画像・シェーディング・パターン・文字・
+/// ソフトマスク・インライン画像を含まない)。入れ子の Form も同じ条件で調べる。
+fn is_vector_form(doc: &Document, id: ObjectId, depth: usize) -> bool {
+    if depth > 4 {
+        return false;
+    }
+    let Ok(Object::Stream(st)) = doc.get_object(id) else {
+        return false;
+    };
+    let empty = Dictionary::new();
+    let res = resolve_dict(doc, st.dict.get(b"Resources").ok()).unwrap_or(&empty);
+    if res.has(b"Pattern") || res.has(b"Shading") {
+        return false;
+    }
+    if let Some(gs) = resolve_dict(doc, res.get(b"ExtGState").ok()) {
+        for (_, v) in gs.iter() {
+            let Some(d) = resolve_dict(doc, Some(v)) else {
+                continue;
+            };
+            if let Ok(sm) = d.get(b"SMask")
+                && !matches!(sm, Object::Name(n) if n == b"None")
+            {
+                return false;
+            }
+        }
+    }
+    if let Some(xo) = resolve_dict(doc, res.get(b"XObject").ok()) {
+        for (_, v) in xo.iter() {
+            let Object::Reference(child) = v else {
+                return false;
+            };
+            match doc.get_object(*child) {
+                Ok(Object::Stream(cs))
+                    if cs.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok())
+                        == Some(b"Form") =>
+                {
+                    if !is_vector_form(doc, *child, depth + 1) {
+                        return false;
+                    }
+                }
+                _ => return false,
+            }
+        }
+    }
+    let Ok(bytes) = crate::image_recompress::content_stream_bytes(st) else {
+        return false;
+    };
+    match find_inline_images(&bytes) {
+        Ok(v) if v.is_empty() => {}
+        _ => return false,
+    }
+    let mut ok = true;
+    let parsed = for_each_operation(&bytes, |op| {
+        if matches!(op.operator.as_str(), "Tj" | "TJ" | "'" | "\"" | "sh" | "BI") {
+            ok = false;
+        }
+    });
+    ok && parsed.is_ok()
 }
 
 
@@ -1162,7 +1385,7 @@ mod tests {
         let mut doc = Document::with_version("1.5");
         let pages_id = doc.new_object_id();
         let form = lopdf::Stream::new(
-            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),100.into(),100.into()]},
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(100),Object::Integer(100)]},
             b"BT /F1 10 Tf (in form) Tj ET 0 0 20 20 re f".to_vec(),
         );
         let form_id = doc.add_object(form);
@@ -1206,6 +1429,96 @@ mod tests {
             let src = format!("BT /F1 12 Tf {tr} Tr (x) Tj ET");
             assert!(strip_text_ops(src.as_bytes()).is_ok());
         }
+    }
+
+    fn cover_doc(form_body: &str, page_body: &str) -> (Document, ObjectId) {
+        use lopdf::dictionary;
+        let mut doc = Document::with_version("1.5");
+        let form = doc.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(100),Object::Integer(100)]},
+            form_body.as_bytes().to_vec(),
+        ));
+        let gs = doc.add_object(dictionary! {"Type"=>"ExtGState","ca"=>Object::Real(0.22)});
+        let content = doc.add_object(Stream::new(dictionary! {}, page_body.as_bytes().to_vec()));
+        let pages_id = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type"=>"Page","Parent"=>pages_id,"Contents"=>content,
+            "MediaBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(100),Object::Integer(100)],
+            "Resources"=>dictionary!{
+                "ExtGState"=>dictionary!{"G1"=>gs},
+                "XObject"=>dictionary!{"Fm1"=>form},
+            },
+        });
+        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
+            "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
+        }));
+        let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+        doc.trailer.set("Root", cat);
+        (doc, page)
+    }
+
+    #[test]
+    fn cover_form_after_text_is_found() {
+        let (doc, page) = cover_doc(
+            "1 0 0 rg 0 0 50 50 re f",
+            "BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q",
+        );
+        assert_eq!(find_cover_forms(&doc, page).len(), 1);
+    }
+
+    #[test]
+    fn cover_form_before_text_is_not_found() {
+        let (doc, page) = cover_doc(
+            "1 0 0 rg 0 0 50 50 re f",
+            "q /G1 gs /Fm1 Do Q BT /F1 12 Tf (a) Tj ET",
+        );
+        assert!(find_cover_forms(&doc, page).is_empty());
+    }
+
+    #[test]
+    fn opaque_form_after_text_is_not_a_cover() {
+        let (doc, page) = cover_doc(
+            "1 0 0 rg 0 0 50 50 re f",
+            "BT /F1 12 Tf (a) Tj ET /Fm1 Do",
+        );
+        assert!(find_cover_forms(&doc, page).is_empty());
+    }
+
+    #[test]
+    fn form_with_text_or_shading_is_not_a_cover() {
+        let (doc, page) = cover_doc(
+            "BT /F1 12 Tf (b) Tj ET",
+            "BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q",
+        );
+        assert!(find_cover_forms(&doc, page).is_empty());
+        let (doc, page) = cover_doc("/Sh1 sh", "BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q");
+        assert!(find_cover_forms(&doc, page).is_empty());
+    }
+
+    #[test]
+    fn cover_is_kept_in_text_only_and_dropped_in_remove_text() {
+        let (mut doc, page) = cover_doc(
+            "1 0 0 rg 0 0 50 50 re f",
+            "BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q",
+        );
+        let covers: HashSet<ObjectId> = find_cover_forms(&doc, page).into_iter().collect();
+        assert_eq!(covers.len(), 1);
+        let mut a = doc.clone();
+        transform_covers(&mut a, Mode::RemoveText, &covers).unwrap();
+        let sid = a.get_page_contents(page)[0];
+        let Ok(Object::Stream(st)) = a.get_object(sid) else { panic!() };
+        let txt = String::from_utf8_lossy(&st.content).to_string();
+        assert!(!txt.contains("Do"), "{txt}");
+        assert!(!txt.contains("Tj"), "{txt}");
+        transform_covers(&mut doc, Mode::TextOnly, &covers).unwrap();
+        let sid = doc.get_page_contents(page)[0];
+        let Ok(Object::Stream(st)) = doc.get_object(sid) else { panic!() };
+        let txt = String::from_utf8_lossy(&st.content).to_string();
+        assert!(txt.contains("Do") && txt.contains("Tj"), "{txt}");
+        // 覆いの中身は加工されない (塗りが残る)
+        let fid = *covers.iter().next().unwrap();
+        let Ok(Object::Stream(f)) = doc.get_object(fid) else { panic!() };
+        assert!(String::from_utf8_lossy(&f.content).contains(" f"));
     }
 
     fn kinds_for_test() -> Kinds {
@@ -1271,7 +1584,7 @@ mod tests {
             b"1 0 0 rg 0 0 5 5 re f".to_vec(),
         ));
         let form = doc.add_object(lopdf::Stream::new(
-            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),100.into(),100.into()],
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(100),Object::Integer(100)],
                 "Resources"=>dictionary!{"XObject"=>dictionary!{"Im1"=>img}}},
             b"0 0 20 20 re f /Im1 Do BT /F1 10 Tf (in form) Tj ET".to_vec(),
         ));
