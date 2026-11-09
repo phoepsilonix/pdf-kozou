@@ -50,6 +50,8 @@ pub(crate) struct CleanOutcome {
 /// (sanitize_ops)。MuPDF も、clean と sanitize のどちらでも内容ストリームを書き直し、
 /// sanitize のときだけ描画状態を整理するフィルタを通す。
 /// 解釈できない内容があれば Err (呼び出し側が MuPDF へフォールバックする)。
+/// 本体の呼び出しは `clean_contents_with` を直接使うので、これはテスト用の薄いラッパー。
+#[cfg(test)]
 pub(crate) fn clean_contents(doc: &mut Document, sanitize: bool) -> Result<CleanOutcome, String> {
     clean_contents_with(doc, sanitize, false)
 }

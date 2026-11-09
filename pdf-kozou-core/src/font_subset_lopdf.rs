@@ -129,6 +129,8 @@ fn rewrite_cid_set(doc: &mut Document, cid_font: ObjectId, cids: &BTreeSet<u16>)
 }
 
 /// `usages` のフォントを縮めて、文書に書き戻す。縮められないフォントがあれば Err。
+/// 本体の呼び出しは `subset_fonts_with` を直接使うので、これはテスト用の薄いラッパー。
+#[cfg(test)]
 pub(crate) fn subset_fonts(
     doc: &mut Document,
     usages: &[CidFontUsage],

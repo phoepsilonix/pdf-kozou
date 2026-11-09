@@ -499,8 +499,12 @@ pub async fn commit_saved_batch(
 /// (`list_folder_names` の結果を使った)事前の衝突解決が済んでいる前提
 /// ―― つまり `overwrite == false` の場合、`target_name` は選択フォルダ内で
 /// 一意であることをフロント側が保証していること。
+///
+/// フィールドを読むのは Android / iOS の書き込み処理だけなので、
+/// それ以外(デスクトップ)では dead_code 警告を抑止する。
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
 pub struct BatchFolderEntry {
     /// core が実際に書き出したローカルの一時ファイルパス
     pub source_path: String,
