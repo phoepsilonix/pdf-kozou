@@ -4,7 +4,8 @@
 
 // src-tauri/src/platform/mod.rs
 
-#[cfg(mobile)]
+// Manager を使うのは Android のみ (iOS の各関数は関数内で個別に import している)
+#[cfg(target_os = "android")]
 use tauri::Manager;
 
 pub mod screen_info;

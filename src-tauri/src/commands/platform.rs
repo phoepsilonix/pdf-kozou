@@ -512,6 +512,8 @@ pub struct BatchFolderEntry {
     pub target_name: String,
     /// true: 同名の既存ファイルを上書き / false: 新規作成
     pub overwrite: bool,
+    /// Android の SAF create_file でだけ使う (iOS/デスクトップでは読まない)
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub mime_type: Option<String>,
 }
 
