@@ -281,6 +281,8 @@ pub fn transform_covers(
     merge_page_contents(doc)?;
     let mut stats = Stats::default();
     let mut visited: HashSet<ObjectId> = HashSet::new();
+    // 覆いの中から呼ばれる部品 (入れ子の Form・画像)。覆いと同じく加工しない
+    let inner = cover_descendants(doc, covers);
     let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
     for page_id in pages {
         if mode == Mode::TextOnly && page_has_annotation_appearance(doc, page_id) {
@@ -304,7 +306,7 @@ pub fn transform_covers(
             collect_annotation_streams(doc, page_id, &mut children);
         }
         for child in children {
-            process_part(doc, child, mode, &kinds, covers, &mut visited, &mut stats, 0)?;
+            process_part(doc, child, mode, &kinds, covers, &inner, &mut visited, &mut stats, 0)?;
         }
         // TextOnly: 画像 XObject をリソースから外す (Do を除いたので参照されない)
         if mode == Mode::TextOnly {
@@ -347,6 +349,49 @@ fn without_images(doc: &Document, res: &Dictionary, kinds: &Kinds) -> Dictionary
 
 const MAX_DEPTH: usize = 32;
 
+/// 覆い (Form) の中から `Do` で呼ばれる部品 (入れ子の Form・画像) の集合 (入れ子の先まで)。
+/// 覆いは加工せずそのまま残すので、中の部品も加工してはいけない。Canva などの PDF は、入れ子の Form
+/// もページ側のリソース表にまとめて並べるため、別の部品として辿ると、覆いの中身だけが加工される
+/// (例: 半透明の帯の中の塗りが取り除かれ、帯が空になる)。
+fn cover_descendants(doc: &Document, covers: &Covers) -> HashSet<ObjectId> {
+    let mut seen: HashSet<ObjectId> = HashSet::new();
+    let mut stack: Vec<ObjectId> = covers.objs.iter().copied().collect();
+    while let Some(id) = stack.pop() {
+        let Ok(Object::Stream(s)) = doc.get_object(id) else {
+            continue;
+        };
+        if s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) != Some(b"Form") {
+            continue;
+        }
+        let Some(res) = resolve_dict(doc, s.dict.get(b"Resources").ok()) else {
+            continue;
+        };
+        let Some(xo) = resolve_dict(doc, res.get(b"XObject").ok()) else {
+            continue;
+        };
+        let Ok(bytes) = crate::image_recompress::content_stream_bytes(s) else {
+            continue;
+        };
+        let mut names: Vec<Vec<u8>> = Vec::new();
+        let _ = for_each_operation(&bytes, |op| {
+            if op.operator == "Do"
+                && let Some(Ok(n)) = op.operands.first().map(|o| o.as_name())
+            {
+                names.push(n.to_vec());
+            }
+        });
+        for n in names {
+            if let Ok(Object::Reference(c)) = xo.get(&n)
+                && seen.insert(*c)
+            {
+                stack.push(*c);
+            }
+        }
+    }
+    seen
+}
+
+
 /// Form XObject / パターン等のストリーム 1 つ分を加工し、その中のリソースも再帰的に辿る。
 /// `parent_kinds`: 親のリソースの XObject 表 (この部品が /Resources を持たないときに使う)。
 #[allow(clippy::too_many_arguments)]
@@ -356,12 +401,14 @@ fn process_part(
     mode: Mode,
     parent_kinds: &Kinds,
     covers: &Covers,
+    inner: &HashSet<ObjectId>,
     visited: &mut HashSet<ObjectId>,
     stats: &mut Stats,
     depth: usize,
 ) -> Result<(), String> {
-    // 覆いは加工しない (ベクターのまま残す / `Do` ごと取り除くので中身は使われない)
-    if covers.objs.contains(&id) {
+    // 覆いと、その中から呼ばれる部品は加工しない (ベクターのまま残す / `Do` ごと取り除くので
+    // 中身は使われない)
+    if covers.objs.contains(&id) || inner.contains(&id) {
         return Ok(());
     }
     if depth > MAX_DEPTH || !visited.insert(id) {
@@ -381,7 +428,7 @@ fn process_part(
     let kinds = if has_own { kinds } else { parent_kinds.clone() };
     filter_stream(doc, id, mode, &kinds, covers, StreamKey::Form(id), stats)?;
     for child in children {
-        process_part(doc, child, mode, &kinds, covers, visited, stats, depth + 1)?;
+        process_part(doc, child, mode, &kinds, covers, inner, visited, stats, depth + 1)?;
     }
     if mode == Mode::TextOnly && has_own {
         let own = match doc.get_object(id) {
@@ -2219,6 +2266,49 @@ mod tests {
         let fid = *covers.objs.iter().next().unwrap();
         let Ok(Object::Stream(f)) = doc.get_object(fid) else { panic!() };
         assert!(String::from_utf8_lossy(&f.content).contains(" f"));
+    }
+
+    #[test]
+    fn nested_form_inside_a_cover_is_not_neutralized_in_text_only() {
+        use lopdf::dictionary;
+        let bbox = || vec![Object::Integer(0), Object::Integer(0), Object::Integer(100), Object::Integer(100)];
+        let mut doc = Document::with_version("1.5");
+        // 覆い (外側の Form) は、塗りを入れ子の Form に任せている (Canva などの形)
+        let inner = doc.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>bbox()},
+            b"1 0 0 rg 0 0 50 50 re f".to_vec(),
+        ));
+        let outer = doc.add_object(Stream::new(
+            dictionary! {
+                "Type"=>"XObject","Subtype"=>"Form","BBox"=>bbox(),
+                "Resources"=>dictionary!{"XObject"=>dictionary!{"In"=>inner}},
+            },
+            b"/In Do".to_vec(),
+        ));
+        let gs = doc.add_object(dictionary! {"Type"=>"ExtGState","ca"=>Object::Real(0.22)});
+        let content = doc.add_object(Stream::new(
+            dictionary! {},
+            b"BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q".to_vec(),
+        ));
+        let pages_id = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type"=>"Page","Parent"=>pages_id,"Contents"=>content,"MediaBox"=>bbox(),
+            // ページ側のリソース表に、入れ子の Form も並べる
+            "Resources"=>dictionary!{
+                "ExtGState"=>dictionary!{"G1"=>gs},
+                "XObject"=>dictionary!{"Fm1"=>outer,"In"=>inner},
+            },
+        });
+        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
+            "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
+        }));
+        let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+        doc.trailer.set("Root", cat);
+        let covers = Covers::from_keys([CoverKey::Obj(outer)]);
+        transform_covers(&mut doc, Mode::TextOnly, &covers).unwrap();
+        let Ok(Object::Stream(f)) = doc.get_object(inner) else { panic!() };
+        let txt = String::from_utf8_lossy(&f.content).to_string();
+        assert!(txt.contains(" f"), "覆いの中の塗りが取り除かれた: {txt}");
     }
 
     fn kinds_for_test() -> Kinds {
