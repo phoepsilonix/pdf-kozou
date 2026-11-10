@@ -32,6 +32,12 @@
 //    → 描画後にパネルの実幅を測り、左端が画面外になる場合はアンカーの左端に
 //      揃えて(さらに右端も画面内に収めて)配置し直す。
 //
+// 6. 画面下端のアンカーで下へはみ出す問題:
+//    ビューワーの操作バーのように、アンカーが画面の下端近くにあると、下へ開くと
+//    最小高さ分でも画面外へはみ出して項目が見えなくなる。
+//    → アンカーの下の余白が足りず、上側のほうが広いときは、アンカーの上へ
+//      開く(下端基準で配置し、高さは上側の余白に収める)。
+//
 // 高さについても、固定の "70vh" のような割合ではなく、アンカーの下から
 // 画面下端までの「実際に使える領域」を都度計算して使うようにしている
 // （UI拡大率が高い場合でも、使える領域を最大限使う）。
@@ -101,9 +107,15 @@ const MIN_PANEL_HEIGHT = 120;
 // ソフトキーボード表示中(見える範囲が縮んでいるとき)の下限。横向きなどで
 // 見える範囲が狭くても、パネルがその外にはみ出さないよう小さめにする。
 const MIN_PANEL_HEIGHT_KEYBOARD = 80;
+// 下側の余白がこれより狭く、かつ上側のほうが広いときは、アンカーの上へ開く。
+const FLIP_BELOW_THRESHOLD = 320;
+
+type Pos =
+  | { placement: "below"; top: number; right: number; maxHeight: number }
+  | { placement: "above"; bottom: number; right: number; maxHeight: number };
 
 export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMenuProps) {
-  const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<Pos | null>(null);
   // #root 直下ではなく document.body 直下へ Portal するため、#root にかかる
   // 表示スケール（CSS zoom, lib/uiScale.ts）の対象外になり、UI拡大率を
   // 上げ下げしてもパネル自身の文字サイズ・余白だけ変わらず違和感があった。
@@ -135,23 +147,46 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
       const visibleBottom = useVv && vv ? vv.offsetTop + vv.height : window.innerHeight;
       const keyboardShown = useVv && !!vv && vv.height < window.innerHeight - 1;
       const minHeight = keyboardShown ? MIN_PANEL_HEIGHT_KEYBOARD : MIN_PANEL_HEIGHT;
-      // アンカー下端から画面下端までの実際に使える高さをそのまま使う
-      const available = Math.max(minHeight, visibleBottom - top - MARGIN);
-      const next = {
-        top,
-        right: Math.max(MARGIN, window.innerWidth - rect.right),
-        maxHeight: available,
-      };
+      // アンカー下端から画面下端までの実際に使える高さ
+      const spaceBelow = visibleBottom - top - MARGIN;
+      // アンカー上端から画面上端までの実際に使える高さ
+      const visibleTop = useVv && vv ? vv.offsetTop : 0;
+      const spaceAbove = rect.top - GAP - visibleTop - MARGIN;
+      const right = Math.max(MARGIN, window.innerWidth - rect.right);
+      // 下が狭く、上のほうが広いときは、アンカーの上へ開く。
+      const flip = spaceBelow < FLIP_BELOW_THRESHOLD && spaceAbove > spaceBelow;
+      const next: Pos = flip
+        ? {
+            placement: "above",
+            // position:fixed の bottom は(レイアウト)ビューポート下端からの距離
+            bottom: window.innerHeight - rect.top + GAP,
+            right,
+            maxHeight: Math.max(minHeight, spaceAbove),
+          }
+        : {
+            placement: "below",
+            top,
+            right,
+            maxHeight: Math.max(minHeight, spaceBelow),
+          };
       // visualViewport の scroll/resize やパネル内スクロールで頻繁に呼ばれるため、
       // 値が(1px未満の差で)変わらないときは state を更新せず再描画を避ける。
-      setPos((prev) =>
-        prev &&
-        Math.abs(prev.top - next.top) < 1 &&
-        Math.abs(prev.right - next.right) < 1 &&
-        Math.abs(prev.maxHeight - next.maxHeight) < 1
-          ? prev
-          : next,
-      );
+      setPos((prev) => {
+        if (
+          prev &&
+          prev.placement === next.placement &&
+          Math.abs(prev.right - next.right) < 1 &&
+          Math.abs(prev.maxHeight - next.maxHeight) < 1 &&
+          (prev.placement === "below" && next.placement === "below"
+            ? Math.abs(prev.top - next.top) < 1
+            : prev.placement === "above" &&
+              next.placement === "above" &&
+              Math.abs(prev.bottom - next.bottom) < 1)
+        ) {
+          return prev;
+        }
+        return next;
+      });
     };
     update();
     const vv = window.visualViewport;
@@ -171,7 +206,7 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
 
   // 描画後にパネルの実幅を測り、右揃えで左へはみ出すなら左端基準に切り替える。
   // pos(アンカー位置・スケール)が変わるたびに測り直す。
-  const posTop = pos?.top;
+  const posTop = pos ? (pos.placement === "below" ? pos.top : -pos.bottom) : undefined;
   const posRight = pos?.right;
   // biome-ignore lint/correctness/useExhaustiveDependencies: posTop/posRight/scale の変化を契機に測り直したい。
   useLayoutEffect(() => {
@@ -328,7 +363,9 @@ export function FloatingMenu({ open, onClose, anchorRef, children }: FloatingMen
           // 適用した要素自身に指定すると、その他の長さ(padding 等)と同様に
           // scale 倍されてレンダリングされてしまい、位置がズレる。
           // そのため先に scale で割っておき、zoom 適用後に実際の座標へ戻す。
-          top: pos.top / scale,
+          ...(pos.placement === "below"
+            ? { top: pos.top / scale }
+            : { bottom: pos.bottom / scale }),
           ...(leftOverride === null
             ? { right: pos.right / scale }
             : { left: leftOverride / scale }),
