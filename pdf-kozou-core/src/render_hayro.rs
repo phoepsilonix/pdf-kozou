@@ -976,7 +976,8 @@ pub fn keep_text_pdf(
         Some(p) if !p.is_empty() => p.iter().copied().filter(|&x| x >= 1 && x <= n_doc).collect(),
         _ => (1..=n_doc).collect(),
     };
-    let (cover_set, plain_nts) = plan_cover_layers(&doc, &data, &selected_pre, dpi_f, &settings);
+    let (cover_set, plain_nts, patch_pages) =
+        plan_cover_layers(&doc, &data, &selected_pre, dpi_f, &settings);
     let tstats = content_filter::transform_covers(&mut doc, Mode::TextOnly, &cover_set)?;
     // 2) 背景 (テキストと覆いを除いた複製を hayro で描く)
     let (no_text, _) = content_filter::remove_text_bytes_covers(&data, &cover_set)?;
@@ -1016,6 +1017,7 @@ pub fn keep_text_pdf(
         // 描画) は plan_cover_layers が等倍で描いてある
         let layered = plain_nts.get(&pno);
         let want_cover = layered.is_some()
+            || patch_pages.contains(&pno)
             || match cover_pages {
                 None => true,
                 Some(c) => c.contains(&pno),
@@ -1185,17 +1187,30 @@ fn check_cover_layering(
     crate::cover_patch::layering_errors(nt, &below, &cw, &cb, near, tw, th)
 }
 
-/// 覆い (文字に重なる、元の画像・Form・パスの塗り。content_filter::find_cover_candidates) を、
-/// 背景に焼かず元のまま文字層に残してよいページと覆いを決める。
+/// 1 ページで、覆いが文字を隠しているかを画素で確かめる候補の最大数 (描画回数の上限)
+const MAX_COVER_TESTS: usize = 48;
+
+/// 覆い (元の画像・Form・パスの塗り。content_filter::find_cover_candidates) のうち、背景に焼かず
+/// 元のまま文字層に残すものと、そのページを決める。
 ///
-/// 戻り値: (残す覆いの集合, 層分割するページ → そのページの「文字だけを除いた描画」(等倍 RGB8))。
+/// 戻り値: (残す覆いの集合, 層分割するページ → そのページの「文字だけを除いた描画」(等倍 RGB8),
+///          隠し直しパッチ (cover_patch) を試すページ)。
 ///
-/// 1. 候補の外接矩形の中に、文字の画素 (近傍を含む) が一定数以上ある候補だけを残す。
-///    文字に掛からない覆い (顔を隠す半透明・ぼかし・シールなど) は、従来どおり一枚画像に焼き込む。
-/// 2. 覆いを背景から抜くと、元の描画順で覆いより後に描かれる画像・図形が、覆いの下に回ってしまう
+/// 覆いは「文字より後に描かれる」だけでは、文字を隠しているとは限らない (吹き出し・シール・顔アイコン
+/// などは、自分の文字より奥にあることが多い)。そこで次の順に絞る。
+/// 1. 外接矩形の中に、文字の中身の画素がある候補だけを調べる。文字の画素は、文字だけを白地・黒地に
+///    描いた 2 枚から求める (白い文字も拾える。覆いに隠れた文字も含む)。
+/// 2. ラスター画像で不透明な覆い (ステッカー・顔アイコンなど) は、文字層に残さない。背景に焼き込み、
+///    文字を隠している部分だけを、隠し直しパッチ (マスク付きの小さな画像) で再現する。
+/// 3. 残りの覆い (ベクターの図形・縁取り・半透明の帯や画像) は、1 つずつ、文字と「その覆いだけ」を
+///    元の描画順で重ねた描画 (文字層と同じ構成) を、文字だけの描画と比べる。文字の中身の画素が変わる
+///    (= 覆いが文字より後に描かれ、実際に文字を隠す・染める) 覆いだけを残す。文字が覆いより上に
+///    描かれている覆いは、文字を隠していないので一枚画像に焼き込む。
+/// 4. 覆いを背景から抜くと、元の描画順で覆いより後に描かれる画像・図形が、覆いの下に回ってしまう
 ///    ことがある。そこで、覆いを抜いた背景に覆いの層 (白地・黒地の 2 回の描画から復元) を重ねた
 ///    予測が、元の「文字を除いた描画」と一致するかを画素で確かめる。食い違いがあれば、その画素を
 ///    外接矩形に含む覆いを外して再検証する (食い違いを含む覆いが無ければ、最も早く描かれた覆いを外す)。
+///    外した覆いが文字を隠していたページは、隠し直しパッチの対象にする。
 /// 判定できない (描画・変換に失敗した、回転ページなど) ページは対象にしない。
 fn plan_cover_layers(
     doc: &lopdf::Document,
@@ -1203,12 +1218,19 @@ fn plan_cover_layers(
     selected: &[i32],
     dpi: f32,
     settings: &InterpreterSettings,
-) -> (crate::content_filter::Covers, HashMap<i32, Vec<u8>>) {
+) -> (
+    crate::content_filter::Covers,
+    HashMap<i32, Vec<u8>>,
+    std::collections::HashSet<i32>,
+) {
     use crate::content_filter::{self, CoverKey, Covers};
-    use crate::cover_patch::{LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_in_rect, text_near_mask};
+    use crate::cover_patch::{
+        LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_hidden_text, count_in_rect, text_core_mask,
+        text_near_mask,
+    };
     use std::collections::HashSet;
 
-    let none = || (Covers::default(), HashMap::new());
+    let none = || (Covers::default(), HashMap::new(), HashSet::new());
     let lo_pages = doc.get_pages();
     let mut cands: Vec<(i32, [f64; 4], Vec<content_filter::CoverCandidate>)> = Vec::new();
     for &pno in selected {
@@ -1229,19 +1251,40 @@ fn plan_cover_layers(
     let Ok((plain, _)) = content_filter::remove_text_bytes(data) else {
         return none();
     };
-    let (Ok(plain_pdf), Ok(full_pdf)) = (Pdf::new(plain), Pdf::new(data.to_vec())) else {
+    // 文字だけの描画 (白地・黒地)。文字の中身の画素と、覆いの手前に文字があるかの比較の基準
+    let no_cover = Covers::default();
+    let (Ok(t0w_bytes), Ok(t0b_bytes)) = (
+        content_filter::text_only_bytes_covers(data, &no_cover, false),
+        content_filter::text_only_bytes_covers(data, &no_cover, true),
+    ) else {
+        return none();
+    };
+    let (Ok(plain_pdf), Ok(full_pdf), Ok(t0w_pdf), Ok(t0b_pdf)) = (
+        Pdf::new(plain),
+        Pdf::new(data.to_vec()),
+        Pdf::new(t0w_bytes),
+        Pdf::new(t0b_bytes),
+    ) else {
         return none();
     };
     let (plain_pages, full_pages) = (plain_pdf.pages(), full_pdf.pages());
+    let (t0w_pages, t0b_pages) = (t0w_pdf.pages(), t0b_pdf.pages());
     let (cache_p, cache_f) = (RenderCache::new(), RenderCache::new());
+    let (cache_w, cache_b) = (RenderCache::new(), RenderCache::new());
     let scale = dpi / 72.0;
 
     let mut keep: Vec<CoverKey> = Vec::new();
     let mut rejected: HashSet<CoverKey> = HashSet::new();
     let mut nts: HashMap<i32, Vec<u8>> = HashMap::new();
+    let mut patch_pages: HashSet<i32> = HashSet::new();
     for (pno, geom, found) in cands {
         let idx = (pno - 1) as usize;
-        let (Some(pp), Some(fp)) = (plain_pages.get(idx), full_pages.get(idx)) else {
+        let (Some(pp), Some(fp), Some(wp), Some(bp)) = (
+            plain_pages.get(idx),
+            full_pages.get(idx),
+            t0w_pages.get(idx),
+            t0b_pages.get(idx),
+        ) else {
             continue;
         };
         let (pw, ph) = pp.render_dimensions();
@@ -1251,13 +1294,13 @@ fn plan_cover_layers(
         }
         let (tw, th) = (tw as u32, th as u32);
         let pixels = (tw as usize) * (th as usize);
-        let (Ok(nt), Ok(full)) = (
-            raster_rgb(pp, &cache_p, settings, tw, th, dpi, 1),
-            raster_rgb(fp, &cache_f, settings, tw, th, dpi, 1),
+        let (Ok(t0w), Ok(t0b)) = (
+            raster_rgb(wp, &cache_w, settings, tw, th, dpi, 1),
+            raster_rgb(bp, &cache_b, settings, tw, th, dpi, 1),
         ) else {
             continue;
         };
-        let Some(near) = text_near_mask(&full, &nt, tw, th, LAYER_TEXT_DILATE) else {
+        let Some(core) = text_core_mask(&t0w, &t0b, tw, th) else {
             continue;
         };
         // ページ座標 → 画素座標 (左上原点)
@@ -1270,70 +1313,113 @@ fn plan_cover_layers(
                 (geom[3] - b[1]) * sy,
             ]
         };
-        // 文字に掛かる候補だけ (外接矩形つき)
-        let mut k: Vec<(CoverKey, [f64; 4])> = found
-            .iter()
-            .filter_map(|c| {
-                let r = to_px(c.bbox?);
-                (count_in_rect(&near, tw, th, r) >= LAYER_MIN_OVERLAP).then_some((c.key, r))
-            })
-            .collect();
-        let mut accepted = false;
-        let n_near = k.len();
-        let mut why = String::from("no candidate overlaps text");
-        for try_no in 1..=MAX_LAYER_TRIES {
-            if k.is_empty() {
-                break;
-            }
-            let set = Covers::from_keys(k.iter().map(|(key, _)| *key));
-            let Some((chk, err)) =
-                check_cover_layering(data, &set, idx, tw, th, dpi, settings, &nt, &near)
-            else {
-                why = format!("try {try_no}: render/convert failed");
-                break;
+        // 文字を隠している覆いだけ (外接矩形つき)
+        let mut k: Vec<(CoverKey, [f64; 4])> = Vec::new();
+        let (mut n_text, mut n_raster, mut n_tested) = (0usize, 0usize, 0usize);
+        let mut patch_page = false;
+        for c in &found {
+            let Some(bbox) = c.bbox else {
+                continue;
             };
-            if chk.order_ok(pixels) {
-                // 描画順は保てる。文字に掛かっていれば採用、掛かっていなければ一枚画像のまま
-                accepted = chk.text_overlap >= LAYER_MIN_OVERLAP;
-                why = format!(
-                    "try {try_no}: order ok (bad {}), text overlap {} px{}",
-                    chk.bad,
-                    chk.text_overlap,
-                    if accepted { "" } else { " (< min, kept in the single image)" }
-                );
-                break;
+            let r = to_px(bbox);
+            // 1. 外接矩形に文字が無ければ、文字を隠しようがない (一枚画像に焼き込む)
+            if count_in_rect(&core, tw, th, r) < LAYER_MIN_OVERLAP {
+                continue;
             }
-            why = format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad);
-            // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
-            let before = k.len();
-            k.retain(|(key, r)| {
-                let hit = count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER;
-                if hit {
-                    rejected.insert(*key);
-                }
-                !hit
-            });
-            if k.len() == before {
-                rejected.insert(k.remove(0).0);
+            n_text += 1;
+            // 2. 不透明なラスター画像は、背景に焼き込んで、隠した文字だけをパッチで再現する
+            if c.raster && !c.translucent {
+                n_raster += 1;
+                patch_page = true;
+                continue;
+            }
+            // 3. 文字 + その覆いだけを、元の順で重ねて、文字の中身の画素が変わるか確かめる
+            if n_tested >= MAX_COVER_TESTS {
+                continue;
+            }
+            n_tested += 1;
+            let one = Covers::from_keys([c.key]);
+            let Ok(tc_pdf) = content_filter::text_only_bytes_covers(data, &one, false) else {
+                continue;
+            };
+            let Ok(tcw) = render_page_1x(tc_pdf, idx, tw, th, dpi, settings) else {
+                continue;
+            };
+            if count_hidden_text(&core, &t0w, &tcw, tw, th, r) >= LAYER_MIN_OVERLAP {
+                k.push((c.key, r));
             }
         }
+        let n_confirmed = k.len();
+        let mut accepted = false;
+        let mut why = String::from("no cover hides text");
+        if !k.is_empty() {
+            let (Ok(nt), Ok(full)) = (
+                raster_rgb(pp, &cache_p, settings, tw, th, dpi, 1),
+                raster_rgb(fp, &cache_f, settings, tw, th, dpi, 1),
+            ) else {
+                continue;
+            };
+            let Some(near) = text_near_mask(&full, &nt, tw, th, LAYER_TEXT_DILATE) else {
+                continue;
+            };
+            for try_no in 1..=MAX_LAYER_TRIES {
+                if k.is_empty() {
+                    break;
+                }
+                let set = Covers::from_keys(k.iter().map(|(key, _)| *key));
+                let Some((chk, err)) =
+                    check_cover_layering(data, &set, idx, tw, th, dpi, settings, &nt, &near)
+                else {
+                    why = format!("try {try_no}: render/convert failed");
+                    break;
+                };
+                if chk.order_ok(pixels) {
+                    // 描画順を保てる。k はどれも文字を隠していると確かめ済み
+                    accepted = true;
+                    why = format!("try {try_no}: order ok (bad {})", chk.bad);
+                    break;
+                }
+                why = format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad);
+                // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
+                let before = k.len();
+                k.retain(|(key, r)| {
+                    let hit = count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER;
+                    if hit {
+                        rejected.insert(*key);
+                    }
+                    !hit
+                });
+                if k.len() == before {
+                    rejected.insert(k.remove(0).0);
+                }
+            }
+            if accepted {
+                nts.insert(pno, nt);
+            }
+        }
+        let n_kept = if accepted { k.len() } else { 0 };
+        // 文字を隠していたのに文字層へ残せなかった覆いがあるページは、隠し直しパッチで補う
+        if n_kept < n_confirmed {
+            patch_page = true;
+        }
+        if patch_page {
+            patch_pages.insert(pno);
+        }
         eprintln!(
-            "[render] cover layers p{pno}: {} candidate(s), {} on text, {} kept; {why}; {}",
+            "[render] cover layers p{pno}: {} candidate(s), {n_text} over text, {n_raster} opaque raster (baked + patches), {n_tested} tested, {n_confirmed} hide text, {n_kept} kept; {why}; {}{}",
             found.len(),
-            n_near,
-            if accepted { k.len() } else { 0 },
-            if accepted { "layered" } else { "single image + patches" }
+            if accepted { "layered" } else { "single image" },
+            if patch_page { " + patches" } else { "" }
         );
         if accepted {
             keep.extend(k.iter().map(|(key, _)| *key));
-            nts.insert(pno, nt);
         } else {
             rejected.extend(k.iter().map(|(key, _)| *key));
         }
     }
     // 別のページで条件を満たさなかった覆いは、共有されていても残さない
     let covers = Covers::from_keys(keep.into_iter().filter(|key| !rejected.contains(key)));
-    (covers, nts)
+    (covers, nts, patch_pages)
 }
 
 /// 元のページと出力ページ (背景 + ベクターのテキスト) を hayro で描き比べ、見え方が違う箇所に

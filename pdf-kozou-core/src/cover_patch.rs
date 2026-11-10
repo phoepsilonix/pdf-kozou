@@ -247,6 +247,74 @@ pub const LAYER_TEXT_DILATE: usize = 3;
 /// `text_near_mask` で、full と nt の差がこの値を超えた画素を文字とみなす (0-255)
 const TEXT_DIFF_THR: i32 = 10;
 
+/// 文字のアルファがこの値以上の画素を「文字の中身」とみなす (0-255。縁のにじみを除く)
+pub const TEXT_CORE_ALPHA: u8 = 243;
+/// 文字の中身の画素が、覆いを加えた描画で元からこの値を超えて変わったら、覆いに隠された (または
+/// 色が変わった) とみなす (0-255)
+pub const HIDE_DIFF_THR: i32 = 24;
+
+/// 文字だけを白地・黒地に描いた 2 枚 (`t0w` / `t0b`、RGB8 `w`×`h`) から、「文字の中身」の画素
+/// マスクを返す。文字の色によらない (白い文字も拾える)。
+///   白地 = (1−A)·255 + A·C,  黒地 = A·C   →   255·(1−A) = 白地 − 黒地
+/// 長さが合わなければ None。
+pub fn text_core_mask(t0w: &[u8], t0b: &[u8], w: u32, h: u32) -> Option<Vec<bool>> {
+    let n = (w as usize) * (h as usize);
+    if n == 0 || t0w.len() != n * 3 || t0b.len() != n * 3 {
+        return None;
+    }
+    let mut m = vec![false; n];
+    for i in 0..n {
+        let o = i * 3;
+        // チャンネルごとの (白地 − 黒地) の最小 = 最大のアルファ
+        let tr = (0..3)
+            .map(|c| (t0w[o + c] as i32 - t0b[o + c] as i32).clamp(0, 255))
+            .min()
+            .unwrap_or(255);
+        m[i] = (255 - tr) >= TEXT_CORE_ALPHA as i32;
+    }
+    Some(m)
+}
+
+/// 覆い 1 つが、その手前 (先) に描かれた文字を隠している画素数。
+/// - `core`: `text_core_mask` の結果
+/// - `t0w`: 文字だけの描画 (白地)
+/// - `tcw`: 文字 + その覆いを、元の描画順で重ねた描画 (白地)
+/// - `rect`: 覆いの外接矩形 (画素座標、左上原点)
+///
+/// 文字が覆いより後に描かれていれば、文字の中身の画素は覆いの有無で変わらない。覆いより前なら、
+/// 覆いが文字を隠す (半透明ならその色に染める) ので、画素が変わる。
+/// 長さが合わなければ 0。
+pub fn count_hidden_text(
+    core: &[bool],
+    t0w: &[u8],
+    tcw: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+) -> usize {
+    let (wu, hu) = (w as usize, h as usize);
+    if wu == 0 || hu == 0 || core.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+        return 0;
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    if x0 >= x1 || y0 >= y1 {
+        return 0;
+    }
+    let mut n = 0;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            if core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
 /// 層分割の検証結果
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LayerCheck {
@@ -638,5 +706,46 @@ mod tests {
         // 左上 (0,0)-(50,25) の画素 → 左上 4 分の 1 = x:[0,100], y:[50,100]
         let q = patch_matrix(m, 0, 0, 50, 25, 100, 50);
         assert_eq!(q, [100.0, 0.0, 0.0, 50.0, 0.0, 50.0]);
+    }
+
+    #[test]
+    fn text_core_mask_finds_white_and_black_text() {
+        let (w, h) = (4u32, 1u32);
+        // 画素 0: 文字なし, 1: 黒い文字, 2: 白い文字, 3: 縁 (アルファ 0.5)
+        let t0w = [255, 255, 255, 0, 0, 0, 255, 255, 255, 128, 128, 128];
+        let t0b = [0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 0];
+        let m = text_core_mask(&t0w, &t0b, w, h).unwrap();
+        assert_eq!(m, vec![false, true, true, false]);
+        assert!(text_core_mask(&t0w[..9], &t0b, w, h).is_none());
+    }
+
+    #[test]
+    fn hidden_text_counts_only_text_drawn_before_the_cover() {
+        let (w, h) = (6u32, 2u32);
+        let n = (w * h) as usize;
+        let mut core = vec![false; n];
+        // 上の行 0..3 = 覆いより前の文字、下の行 3..6 = 覆いより後の文字
+        for x in 0..3 {
+            core[x] = true;
+        }
+        for x in 3..6 {
+            core[w as usize + x] = true;
+        }
+        let t0w = solid(w, h, 0);
+        let mut tcw = solid(w, h, 0);
+        // 覆い (白い塗り) が全面に掛かり、前の文字だけが隠れる (後の文字は文字が上に来る)
+        for i in 0..n {
+            tcw[i * 3..i * 3 + 3].fill(255);
+        }
+        for x in 3..6 {
+            let i = w as usize + x;
+            tcw[i * 3..i * 3 + 3].fill(0);
+        }
+        let all = [0.0, 0.0, w as f64, h as f64];
+        assert_eq!(count_hidden_text(&core, &t0w, &tcw, w, h, all), 3);
+        // 外接矩形が文字に掛からなければ 0
+        assert_eq!(count_hidden_text(&core, &t0w, &tcw, w, h, [3.0, 0.0, 6.0, 1.0]), 0);
+        // 長さが合わなければ 0
+        assert_eq!(count_hidden_text(&core, &t0w[..6], &tcw, w, h, all), 0);
     }
 }

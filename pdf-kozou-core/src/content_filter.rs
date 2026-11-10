@@ -1105,6 +1105,10 @@ pub struct CoverCandidate {
     /// ページ座標 (ユーザー空間) の外接矩形 `[x0, y0, x1, y1]`。求められなければ None。
     /// 同じオブジェクトを複数回描いていれば、その和。
     pub bbox: Option<[f64; 4]>,
+    /// ラスター画像 (画像 XObject、または画像を含む Form) か。ベクターの図形・縁取りは false
+    pub raster: bool,
+    /// 半透明 (不透明度 ca が 1 未満で描かれる) か。同じオブジェクトを複数回描くなら、どれか 1 回でも
+    pub translucent: bool,
 }
 
 type Mat = [f64; 6];
@@ -1219,10 +1223,15 @@ pub fn find_cover_candidates(doc: &Document, page_id: ObjectId) -> Vec<CoverCand
     };
     for c in w.cands.iter().filter(|c| c.at > first) {
         match out.iter_mut().find(|o| o.key == c.key) {
-            Some(o) => o.bbox = bbox_union(o.bbox, c.bbox),
+            Some(o) => {
+                o.bbox = bbox_union(o.bbox, c.bbox);
+                o.translucent |= c.translucent;
+            }
             None => out.push(CoverCandidate {
                 key: c.key,
                 bbox: c.bbox,
+                raster: c.raster,
+                translucent: c.translucent,
             }),
         }
     }
@@ -1243,6 +1252,8 @@ pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
 struct RawCand {
     key: CoverKey,
     bbox: Option<[f64; 4]>,
+    raster: bool,
+    translucent: bool,
     /// 描画順の時刻 (文字の描画・覆いの描画ごとに進む)
     at: usize,
 }
@@ -1335,6 +1346,8 @@ impl CoverWalk<'_> {
                         key: CoverKey::Op(key, i),
                         // 線の太さ・アンチエイリアスの分だけ広げる
                         bbox: path.bbox().map(|b| [b[0] - 1.0, b[1] - 1.0, b[2] + 1.0, b[3] + 1.0]),
+                        raster: false,
+                        translucent: cur < 0.999,
                         at: self.clock,
                     });
                 }
@@ -1358,6 +1371,8 @@ impl CoverWalk<'_> {
                             self.cands.push(RawCand {
                                 key: CoverKey::Obj(id),
                                 bbox: Some(mat_bbox(&ctm, [0.0, 0.0, 1.0, 1.0])),
+                                raster: true,
+                                translucent: cur < 0.999,
                                 at: self.clock,
                             });
                         }
@@ -1376,6 +1391,9 @@ impl CoverWalk<'_> {
                             self.cands.push(RawCand {
                                 key: CoverKey::Obj(id),
                                 bbox,
+                                // 曲線・線を含む Form は、画像を含んでいてもベクターの飾りとして扱う
+                                raster: info.mask_image && !info.curves,
+                                translucent: cur < 0.999,
                                 at: self.clock,
                             });
                             return;
@@ -1564,6 +1582,46 @@ fn form_info(doc: &Document, id: ObjectId, depth: usize) -> FormInfo {
     info
 }
 
+/// すべてのページの先頭に、黒の全面塗りを置く (黒地に描くため)。
+fn put_black_backdrop(doc: &mut Document) -> Result<(), String> {
+    let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
+    for page_id in pages {
+        let Some(sid) = doc.get_page_contents(page_id).first().copied() else {
+            continue;
+        };
+        if let Ok(Object::Stream(st)) = doc.get_object_mut(sid) {
+            let old = crate::image_recompress::content_stream_bytes(st)
+                .map_err(|e| format!("stream {sid:?} decompress: {e}"))?;
+            let mut nb = b"q 0 g -100000 -100000 200000 200000 re f Q\n".to_vec();
+            nb.extend_from_slice(&old);
+            st.set_plain_content(nb);
+        }
+    }
+    Ok(())
+}
+
+/// 文字と覆い (`covers`) だけを元の描画順で残した複製 (キープテキストの文字層と同じ構成) を返す。
+/// 文字が覆いの手前か奥かを画素で確かめるために使う。
+/// `black_backdrop`: ページの先頭に黒の全面塗りを置く (白地・黒地の 2 回の描画から、文字の
+/// 色によらずに文字のアルファを復元するため)。
+pub fn text_only_bytes_covers(
+    input: &[u8],
+    covers: &Covers,
+    black_backdrop: bool,
+) -> Result<Vec<u8>, String> {
+    let mut doc = Document::load_mem(input).map_err(|e| format!("lopdf load: {e}"))?;
+    if doc.is_encrypted() {
+        return Err("encrypted".into());
+    }
+    transform_covers(&mut doc, Mode::TextOnly, covers)?;
+    if black_backdrop {
+        put_black_backdrop(&mut doc)?;
+    }
+    let mut out = Vec::with_capacity(input.len());
+    doc.save_to(&mut out).map_err(|e| format!("lopdf save: {e}"))?;
+    Ok(out)
+}
+
 /// 覆いだけを描く複製 (文字と、覆い以外の描画を取り除いたもの) を返す。
 /// 覆いの色とアルファを、白地と黒地の 2 回の描画から復元するために使う。
 /// `black_backdrop`: ページの先頭に黒の全面塗りを置く (黒地に描くため)。
@@ -1580,19 +1638,7 @@ pub fn covers_only_bytes(
     transform_covers(&mut doc, Mode::TextOnly, covers)?;
     transform_covers(&mut doc, Mode::RemoveText, &Covers::default())?;
     if black_backdrop {
-        let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
-        for page_id in pages {
-            let Some(sid) = doc.get_page_contents(page_id).first().copied() else {
-                continue;
-            };
-            if let Ok(Object::Stream(st)) = doc.get_object_mut(sid) {
-                let old = crate::image_recompress::content_stream_bytes(st)
-                    .map_err(|e| format!("stream {sid:?} decompress: {e}"))?;
-                let mut nb = b"q 0 g -100000 -100000 200000 200000 re f Q\n".to_vec();
-                nb.extend_from_slice(&old);
-                st.set_plain_content(nb);
-            }
-        }
+        put_black_backdrop(&mut doc)?;
     }
     let mut out = Vec::with_capacity(input.len());
     doc.save_to(&mut out).map_err(|e| format!("lopdf save: {e}"))?;
@@ -2079,6 +2125,8 @@ mod tests {
             assert_eq!(c.len(), expect, "with_mask={with_mask}");
             if expect == 1 {
                 assert_eq!(c[0].bbox, Some([5.0, 6.0, 15.0, 26.0]));
+                // 画像はラスター。不透明度 1 で描いているので半透明ではない
+                assert!(c[0].raster && !c[0].translucent);
             }
         }
     }
@@ -2117,6 +2165,8 @@ mod tests {
         assert_eq!(c.len(), 1);
         assert_eq!(c[0].key, CoverKey::Op(StreamKey::Page(page), 1));
         assert_eq!(c[0].bbox, Some([-1.0, -1.0, 11.0, 10.0]));
+        // パスはベクター (ラスターではない)。不透明度 1 なので半透明でもない
+        assert!(!c[0].raster && !c[0].translucent);
     }
 
     #[test]
