@@ -325,7 +325,7 @@ pub fn count_in_rect(mask: &[bool], w: u32, h: u32, r: [f64; 4]) -> usize {
     n
 }
 
-/// 層分割を検証する。
+/// 層分割を検証する (`layering_errors` で、食い違いの画素マスクも返す)。
 /// - `nt`: 元の、文字を除いた描画
 /// - `below`: そこから覆いも除いた描画 (覆いの下層)
 /// - `cw` / `cb`: 覆いだけの描画を、白地・黒地に描いたもの
@@ -335,7 +335,7 @@ pub fn count_in_rect(mask: &[bool], w: u32, h: u32, r: [f64; 4]) -> usize {
 ///   cw = A·C + (1−A)·255,  cb = A·C   →   (1−A) = (cw − cb) / 255
 /// で復元でき、背景の上に重ねた予測は `cb + (cw − cb)/255 · below` になる。
 /// 長さが合わなければ None。
-pub fn check_layering(
+pub fn layering_errors(
     nt: &[u8],
     below: &[u8],
     cw: &[u8],
@@ -343,7 +343,7 @@ pub fn check_layering(
     text_near: &[bool],
     w: u32,
     h: u32,
-) -> Option<LayerCheck> {
+) -> Option<(LayerCheck, Vec<bool>)> {
     let n = (w as usize) * (h as usize);
     if n == 0
         || [nt.len(), below.len(), cw.len(), cb.len()].iter().any(|&l| l != n * 3)
@@ -352,6 +352,7 @@ pub fn check_layering(
         return None;
     }
     let (mut bad, mut overlap) = (0usize, 0usize);
+    let mut err_mask = vec![false; n];
     for i in 0..n {
         let o = i * 3;
         let mut worst = 0i32;
@@ -368,16 +369,34 @@ pub fn check_layering(
         }
         if worst > LAYER_ERR_THR {
             bad += 1;
+            err_mask[i] = true;
         }
         if covered && text_near[i] {
             overlap += 1;
         }
     }
-    Some(LayerCheck {
-        bad,
-        text_overlap: overlap,
-    })
+    Some((
+        LayerCheck {
+            bad,
+            text_overlap: overlap,
+        },
+        err_mask,
+    ))
 }
+
+/// `layering_errors` の、食い違いの画素マスクを返さない版
+pub fn check_layering(
+    nt: &[u8],
+    below: &[u8],
+    cw: &[u8],
+    cb: &[u8],
+    text_near: &[bool],
+    w: u32,
+    h: u32,
+) -> Option<LayerCheck> {
+    layering_errors(nt, below, cw, cb, text_near, w, h).map(|(c, _)| c)
+}
+
 
 /// 行列の合成 (`a` を先に適用し、次に `b`)。PDF の [a b c d e f]
 pub fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
@@ -520,6 +539,30 @@ mod tests {
         let c = check_layering(&nt, &below, &cw, &cb, &near, w, h).unwrap();
         assert!(c.bad > 10_000);
         assert!(!c.accepted((w * h) as usize));
+    }
+
+    #[test]
+    fn layering_errors_mark_the_mismatching_pixels() {
+        let (w, h) = (30u32, 20u32);
+        let below = solid(w, h, 200);
+        let (mut cw, mut cb) = (solid(w, h, 255), solid(w, h, 0));
+        let mut nt = below.clone();
+        // 覆いが (5..15, 5..15) を塗るが、nt ではその右半分が後から別の図形で隠されている
+        for y in 5..15 {
+            for x in 5..15 {
+                let o = ((y * w + x) * 3) as usize;
+                cw[o..o + 3].copy_from_slice(&[255, 128, 128]);
+                cb[o..o + 3].copy_from_slice(&[128, 0, 0]);
+                let v: [u8; 3] = if x < 10 { [228, 100, 100] } else { [0, 0, 255] };
+                nt[o..o + 3].copy_from_slice(&v);
+            }
+        }
+        let near = vec![true; (w * h) as usize];
+        let (c, m) = layering_errors(&nt, &below, &cw, &cb, &near, w, h).unwrap();
+        assert_eq!(c.bad, 50);
+        assert!(m[(10 * w + 12) as usize]);
+        assert!(!m[(10 * w + 7) as usize]);
+        assert_eq!(m.iter().filter(|&&b| b).count(), 50);
     }
 
     #[test]

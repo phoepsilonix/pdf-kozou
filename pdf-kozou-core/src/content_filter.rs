@@ -129,15 +129,111 @@ pub fn text_only_bytes(input: &[u8]) -> Result<(Vec<u8>, Stats), String> {
     transform_bytes(input, Mode::TextOnly)
 }
 
+/// 内容ストリームの識別子。覆いの命令を、ストリーム内の塗り命令の通し番号で指すために使う。
+/// ページの内容ストリームは複数本に分かれていることがあるので、ページ単位で指す
+/// (加工前に 1 本にまとめるのと同じ順序で数える)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StreamKey {
+    Page(ObjectId),
+    Form(ObjectId),
+}
+
+/// 覆い 1 つの指定
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CoverKey {
+    /// 画像 XObject / Form XObject (描かれる場所すべて)
+    Obj(ObjectId),
+    /// ストリーム内の `ord` 番目 (0 始まり) の、パスの塗り・線の命令 (`S s f F f* B B* b b*`)
+    Op(StreamKey, usize),
+}
+
+/// 覆いの集合
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Covers {
+    pub objs: HashSet<ObjectId>,
+    pub ops: HashSet<(StreamKey, usize)>,
+}
+
+impl Covers {
+    pub fn is_empty(&self) -> bool {
+        self.objs.is_empty() && self.ops.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.objs.len() + self.ops.len()
+    }
+
+    pub fn insert(&mut self, k: CoverKey) {
+        match k {
+            CoverKey::Obj(id) => {
+                self.objs.insert(id);
+            }
+            CoverKey::Op(s, i) => {
+                self.ops.insert((s, i));
+            }
+        }
+    }
+
+    pub fn contains(&self, k: &CoverKey) -> bool {
+        match k {
+            CoverKey::Obj(id) => self.objs.contains(id),
+            CoverKey::Op(s, i) => self.ops.contains(&(*s, *i)),
+        }
+    }
+
+    pub fn from_keys<I: IntoIterator<Item = CoverKey>>(it: I) -> Covers {
+        let mut c = Covers::default();
+        for k in it {
+            c.insert(k);
+        }
+        c
+    }
+}
+
+/// 1 本のストリームを加工するときの、塗り命令の通し番号の数え方と、残す命令の指定
+struct OpCtx<'a> {
+    /// (残す命令の集合, このストリームの識別子)。None なら何も残さない
+    keep: Option<(&'a HashSet<(StreamKey, usize)>, StreamKey)>,
+    /// 次の塗り命令の通し番号
+    ord: usize,
+}
+
+impl<'a> OpCtx<'a> {
+    fn none() -> OpCtx<'a> {
+        OpCtx { keep: None, ord: 0 }
+    }
+
+    fn for_stream(covers: &'a Covers, key: StreamKey) -> OpCtx<'a> {
+        OpCtx {
+            keep: Some((&covers.ops, key)),
+            ord: 0,
+        }
+    }
+
+    /// このストリームに、残す命令があるか
+    fn active(&self) -> bool {
+        self.keep
+            .is_some_and(|(set, key)| set.iter().any(|(k, _)| *k == key))
+    }
+
+    /// 塗り命令を 1 つ数え、それが残す命令かを返す
+    fn next_paint_kept(&mut self) -> bool {
+        let i = self.ord;
+        self.ord += 1;
+        self.keep
+            .is_some_and(|(set, key)| set.contains(&(key, i)))
+    }
+}
+
 pub fn transform_bytes(input: &[u8], mode: Mode) -> Result<(Vec<u8>, Stats), String> {
-    transform_bytes_covers(input, mode, &HashSet::new())
+    transform_bytes_covers(input, mode, &Covers::default())
 }
 
 /// `remove_text_bytes` に、覆い (`find_cover_forms` が選んだ Form XObject) の `Do` を取り除く
 /// 指定を加えたもの。覆いを除いた「文字の下層」の背景を描くために使う。
 pub fn remove_text_bytes_covers(
     input: &[u8],
-    covers: &HashSet<ObjectId>,
+    covers: &Covers,
 ) -> Result<(Vec<u8>, Stats), String> {
     transform_bytes_covers(input, Mode::RemoveText, covers)
 }
@@ -145,7 +241,7 @@ pub fn remove_text_bytes_covers(
 fn transform_bytes_covers(
     input: &[u8],
     mode: Mode,
-    covers: &HashSet<ObjectId>,
+    covers: &Covers,
 ) -> Result<(Vec<u8>, Stats), String> {
     let mut doc = Document::load_mem(input).map_err(|e| format!("lopdf load: {e}"))?;
     if doc.is_encrypted() {
@@ -169,7 +265,7 @@ pub fn remove_text(doc: &mut Document) -> Result<Stats, String> {
 
 /// 文書内のすべてのページ (とそこから辿れる部品) を、モードに従って加工する。
 pub fn transform(doc: &mut Document, mode: Mode) -> Result<Stats, String> {
-    transform_covers(doc, mode, &HashSet::new())
+    transform_covers(doc, mode, &Covers::default())
 }
 
 /// `transform` に、覆い (`find_cover_forms` が選んだ Form XObject) の扱いを加えたもの。
@@ -178,7 +274,7 @@ pub fn transform(doc: &mut Document, mode: Mode) -> Result<Stats, String> {
 pub fn transform_covers(
     doc: &mut Document,
     mode: Mode,
-    covers: &HashSet<ObjectId>,
+    covers: &Covers,
 ) -> Result<Stats, String> {
     // /Contents が配列のページは、先に 1 本にまとめる。operand と演算子が別のストリームに
     // 分かれていることがあり (仕様上は合法)、ストリームごとに解析すると壊れるため。
@@ -200,7 +296,7 @@ pub fn transform_covers(
         // ページ自身の内容ストリーム
         for sid in doc.get_page_contents(page_id) {
             if visited.insert(sid) {
-                filter_stream(doc, sid, mode, &kinds, &mut stats)?;
+                filter_stream(doc, sid, mode, &kinds, covers, StreamKey::Page(page_id), &mut stats)?;
             }
         }
         // 注釈の外観ストリーム (RemoveText のみ。TextOnly は外観を持つ注釈を Err にしている)
@@ -259,13 +355,13 @@ fn process_part(
     id: ObjectId,
     mode: Mode,
     parent_kinds: &Kinds,
-    covers: &HashSet<ObjectId>,
+    covers: &Covers,
     visited: &mut HashSet<ObjectId>,
     stats: &mut Stats,
     depth: usize,
 ) -> Result<(), String> {
     // 覆いは加工しない (ベクターのまま残す / `Do` ごと取り除くので中身は使われない)
-    if covers.contains(&id) {
+    if covers.objs.contains(&id) {
         return Ok(());
     }
     if depth > MAX_DEPTH || !visited.insert(id) {
@@ -283,7 +379,7 @@ fn process_part(
         collect_children(doc, res, mode, &mut children);
     }
     let kinds = if has_own { kinds } else { parent_kinds.clone() };
-    filter_stream(doc, id, mode, &kinds, stats)?;
+    filter_stream(doc, id, mode, &kinds, covers, StreamKey::Form(id), stats)?;
     for child in children {
         process_part(doc, child, mode, &kinds, covers, visited, stats, depth + 1)?;
     }
@@ -303,7 +399,7 @@ fn process_part(
 }
 
 /// リソース辞書の XObject から、名前 → 種類の表を作る
-fn collect_kinds(doc: &Document, res: &Dictionary, out: &mut Kinds, covers: &HashSet<ObjectId>) {
+fn collect_kinds(doc: &Document, res: &Dictionary, out: &mut Kinds, covers: &Covers) {
     let Some(xo) = resolve_dict(doc, res.get(b"XObject").ok()) else {
         return;
     };
@@ -312,9 +408,9 @@ fn collect_kinds(doc: &Document, res: &Dictionary, out: &mut Kinds, covers: &Has
             Object::Reference(id) => match doc.get_object(*id) {
                 Ok(Object::Stream(s)) => {
                     match s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) {
-                        Some(b"Image") if covers.contains(id) => XKind::Cover,
+                        Some(b"Image") if covers.objs.contains(id) => XKind::Cover,
                         Some(b"Image") => XKind::Image,
-                        Some(b"Form") if covers.contains(id) => XKind::Cover,
+                        Some(b"Form") if covers.objs.contains(id) => XKind::Cover,
                         Some(b"Form") => XKind::Form,
                         _ => XKind::Other,
                     }
@@ -430,6 +526,8 @@ fn filter_stream(
     id: ObjectId,
     mode: Mode,
     kinds: &Kinds,
+    covers: &Covers,
+    key: StreamKey,
     stats: &mut Stats,
 ) -> Result<(), String> {
     let Ok(Object::Stream(stream)) = doc.get_object_mut(id) else {
@@ -439,8 +537,9 @@ fn filter_stream(
     // 内容が欠けるものは Err (欠けたまま書き戻すと、残りの描画が失われる)
     let bytes = crate::image_recompress::content_stream_bytes(stream)
         .map_err(|e| format!("stream {id:?} decompress: {e}"))?;
-    let (new_bytes, c) =
-        transform_content(&bytes, mode, kinds).map_err(|e| format!("stream {id:?}: {e}"))?;
+    let mut ctx = OpCtx::for_stream(covers, key);
+    let (new_bytes, c) = transform_content_ops(&bytes, mode, kinds, &mut ctx)
+        .map_err(|e| format!("stream {id:?}: {e}"))?;
     if c.changed() {
         stream.set_plain_content(new_bytes);
         stats.streams += 1;
@@ -481,8 +580,18 @@ fn transform_content(
     mode: Mode,
     kinds: &Kinds,
 ) -> Result<(Vec<u8>, Counts), String> {
+    transform_content_ops(bytes, mode, kinds, &mut OpCtx::none())
+}
+
+fn transform_content_ops(
+    bytes: &[u8],
+    mode: Mode,
+    kinds: &Kinds,
+    ctx: &mut OpCtx,
+) -> Result<(Vec<u8>, Counts), String> {
     // 高速パス (RemoveText のみ): テキスト描画の演算子が 1 つも無ければ解析しない
     if mode == Mode::RemoveText
+        && !ctx.active()
         && !kinds.values().any(|k| *k == XKind::Cover)
         && !bytes.windows(2).any(|w| w == b"Tj" || w == b"TJ")
         && !contains_quote_op(bytes)
@@ -500,7 +609,7 @@ fn transform_content(
         .chain(std::iter::once((bytes.len(), bytes.len())))
     {
         if start > pos {
-            let (chunk, c) = transform_chunk(&bytes[pos..start], mode, kinds)?;
+            let (chunk, c) = transform_chunk(&bytes[pos..start], mode, kinds, ctx)?;
             total.text_ops += c.text_ops;
             total.paints += c.paints;
             total.images += c.images;
@@ -753,7 +862,12 @@ fn is_clip_render_mode(op: &Operation) -> bool {
 }
 
 /// インライン画像を含まない部分を加工する
-fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, Counts), String> {
+fn transform_chunk(
+    chunk: &[u8],
+    mode: Mode,
+    kinds: &Kinds,
+    ctx: &mut OpCtx,
+) -> Result<(Vec<u8>, Counts), String> {
     // decode は、解析できない箇所から先を黙って捨てる (内容が欠ける) ので、
     // 全体を解析しきれたかを確かめる (末尾の空白・NUL だけは許容する)。解析できなければ Err (MuPDF へ)
     let content = decode_content(chunk).map_err(|e| format!("content decode: {e}"))?;
@@ -786,6 +900,15 @@ fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, 
                     }
                     ops.push(Operation::new("T*", vec![]));
                 }
+                // 覆いにしたパスの塗り・線: 背景ラスタ (文字の下層) からは除く (パスは `n` で捨てる)
+                "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" => {
+                    if ctx.next_paint_kept() {
+                        ops.push(Operation::new("n", vec![]));
+                        c.images += 1;
+                    } else {
+                        ops.push(op);
+                    }
+                }
                 // 覆い: 背景ラスタ (文字の下層) からは除く
                 "Do" if op
                     .operands
@@ -805,15 +928,24 @@ fn transform_chunk(chunk: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, 
                 "W" | "W*" => pending_clip = Some(op),
                 // パスの塗り・線・終端: 描かない。クリップに使うパスだけ「パス W n」で残す
                 "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" | "n" => {
-                    if op.operator != "n" {
-                        c.paints += 1;
-                    }
-                    if let Some(clip) = pending_clip.take() {
+                    // 覆いにしたパスの塗り・線は、そのまま残す (文字との描画順を保つ)
+                    if op.operator != "n" && ctx.next_paint_kept() {
                         ops.append(&mut path_buf);
-                        ops.push(clip);
-                        ops.push(Operation::new("n", vec![]));
+                        if let Some(clip) = pending_clip.take() {
+                            ops.push(clip);
+                        }
+                        ops.push(op);
                     } else {
-                        path_buf.clear();
+                        if op.operator != "n" {
+                            c.paints += 1;
+                        }
+                        if let Some(clip) = pending_clip.take() {
+                            ops.append(&mut path_buf);
+                            ops.push(clip);
+                            ops.push(Operation::new("n", vec![]));
+                        } else {
+                            path_buf.clear();
+                        }
                     }
                 }
                 // シェーディング: 除去 (背景ラスタに含まれる)
@@ -969,7 +1101,7 @@ pub(crate) fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String
 /// 覆いの候補
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoverCandidate {
-    pub id: ObjectId,
+    pub key: CoverKey,
     /// ページ座標 (ユーザー空間) の外接矩形 `[x0, y0, x1, y1]`。求められなければ None。
     /// 同じオブジェクトを複数回描いていれば、その和。
     pub bbox: Option<[f64; 4]>,
@@ -1080,16 +1212,16 @@ pub fn find_cover_candidates(doc: &Document, page_id: ObjectId) -> Vec<CoverCand
         first_text: None,
         cands: Vec::new(),
     };
-    w.walk(&bytes, &res, 1.0, IDENTITY, 0);
+    w.walk(&bytes, &res, 1.0, IDENTITY, StreamKey::Page(page_id), 0);
     let mut out: Vec<CoverCandidate> = Vec::new();
     let Some(first) = w.first_text else {
         return out;
     };
     for c in w.cands.iter().filter(|c| c.at > first) {
-        match out.iter_mut().find(|o| o.id == c.id) {
+        match out.iter_mut().find(|o| o.key == c.key) {
             Some(o) => o.bbox = bbox_union(o.bbox, c.bbox),
             None => out.push(CoverCandidate {
-                id: c.id,
+                key: c.key,
                 bbox: c.bbox,
             }),
         }
@@ -1097,16 +1229,19 @@ pub fn find_cover_candidates(doc: &Document, page_id: ObjectId) -> Vec<CoverCand
     out
 }
 
-/// `find_cover_candidates` の、オブジェクト ID だけ版
+/// `find_cover_candidates` の、画像・Form (オブジェクト) の候補の ID だけ版
 pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
     find_cover_candidates(doc, page_id)
         .into_iter()
-        .map(|c| c.id)
+        .filter_map(|c| match c.key {
+            CoverKey::Obj(id) => Some(id),
+            CoverKey::Op(..) => None,
+        })
         .collect()
 }
 
 struct RawCand {
-    id: ObjectId,
+    key: CoverKey,
     bbox: Option<[f64; 4]>,
     /// 描画順の時刻 (文字の描画・覆いの描画ごとに進む)
     at: usize,
@@ -1121,8 +1256,17 @@ struct CoverWalk<'a> {
 
 impl CoverWalk<'_> {
     /// 内容ストリームを描画順にたどる。`alpha0`: 呼び出し時点の塗りの不透明度 (ca)、
-    /// `ctm0`: 呼び出し時点の変換行列 (ページのユーザー空間への)
-    fn walk(&mut self, bytes: &[u8], res: &Dictionary, alpha0: f32, ctm0: Mat, depth: usize) {
+    /// `ctm0`: 呼び出し時点の変換行列 (ページのユーザー空間への)、
+    /// `key`: このストリームの識別子 (パスの塗り命令の通し番号を指すため)
+    fn walk(
+        &mut self,
+        bytes: &[u8],
+        res: &Dictionary,
+        alpha0: f32,
+        ctm0: Mat,
+        key: StreamKey,
+        depth: usize,
+    ) {
         if depth > 8 {
             return;
         }
@@ -1131,6 +1275,10 @@ impl CoverWalk<'_> {
         let xo_tbl = resolve_dict(doc, res.get(b"XObject").ok());
         let mut stack: Vec<(f32, Mat)> = Vec::new();
         let (mut cur, mut ctm) = (alpha0, ctm0);
+        // 組み立て中のパス: 頂点 (ページ座標)、曲線・折れ線 (m l c v y) の有無
+        let mut path = PathAcc::default();
+        // このストリームの、パスの塗り・線の命令の通し番号
+        let mut ord = 0usize;
         let _ = for_each_operation(bytes, |op| match op.operator.as_str() {
             "q" => stack.push((cur, ctm)),
             "Q" => {
@@ -1167,6 +1315,31 @@ impl CoverWalk<'_> {
                 self.clock += 1;
                 self.first_text.get_or_insert(self.clock);
             }
+            // パスの構築
+            "m" | "l" | "c" | "v" | "y" | "re" => {
+                let v: Vec<f64> = op
+                    .operands
+                    .iter()
+                    .filter_map(|o| o.as_float().ok().map(f64::from))
+                    .collect();
+                path.add(op.operator.as_str(), &v, &ctm);
+            }
+            "n" => path.clear(),
+            // パスの塗り・線: 文字より後なら、覆いの候補
+            "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" => {
+                let i = ord;
+                ord += 1;
+                if self.first_text.is_some() && path.eligible(cur) {
+                    self.clock += 1;
+                    self.cands.push(RawCand {
+                        key: CoverKey::Op(key, i),
+                        // 線の太さ・アンチエイリアスの分だけ広げる
+                        bbox: path.bbox().map(|b| [b[0] - 1.0, b[1] - 1.0, b[2] + 1.0, b[3] + 1.0]),
+                        at: self.clock,
+                    });
+                }
+                path.clear();
+            }
             "Do" => {
                 let id = op
                     .operands
@@ -1183,7 +1356,7 @@ impl CoverWalk<'_> {
                         if cur < 0.999 || image_has_mask(st) {
                             self.clock += 1;
                             self.cands.push(RawCand {
-                                id,
+                                key: CoverKey::Obj(id),
                                 bbox: Some(mat_bbox(&ctm, [0.0, 0.0, 1.0, 1.0])),
                                 at: self.clock,
                             });
@@ -1201,7 +1374,7 @@ impl CoverWalk<'_> {
                             let bbox = numbers(doc, st.dict.get(b"BBox").ok(), 4)
                                 .map(|v| mat_bbox(&fctm, [v[0], v[1], v[2], v[3]]));
                             self.cands.push(RawCand {
-                                id,
+                                key: CoverKey::Obj(id),
                                 bbox,
                                 at: self.clock,
                             });
@@ -1214,13 +1387,80 @@ impl CoverWalk<'_> {
                         let fres = resolve_dict(doc, st.dict.get(b"Resources").ok())
                             .unwrap_or(res)
                             .clone();
-                        self.walk(&fbytes, &fres, cur, fctm, depth + 1);
+                        self.walk(&fbytes, &fres, cur, fctm, StreamKey::Form(id), depth + 1);
                     }
                     _ => {}
                 }
             }
             _ => {}
         });
+    }
+}
+
+/// 組み立て中のパス (頂点と、種類)
+#[derive(Default)]
+struct PathAcc {
+    pts: Vec<(f64, f64)>,
+    /// 曲線 (c v y) を含む
+    curve: bool,
+    /// 折れ線 (m l) を含む。矩形 (re) だけのパスは含まない
+    poly: bool,
+}
+
+impl PathAcc {
+    fn clear(&mut self) {
+        self.pts.clear();
+        self.curve = false;
+        self.poly = false;
+    }
+
+    /// パス構築演算子 `op` (引数 `v`) を、変換行列 `m` のもとで加える
+    fn add(&mut self, op: &str, v: &[f64], m: &Mat) {
+        let tf = |x: f64, y: f64| (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
+        match (op, v.len()) {
+            ("m" | "l", 2) => {
+                self.poly = true;
+                self.pts.push(tf(v[0], v[1]));
+            }
+            ("c", 6) => {
+                self.curve = true;
+                for k in 0..3 {
+                    self.pts.push(tf(v[k * 2], v[k * 2 + 1]));
+                }
+            }
+            ("v" | "y", 4) => {
+                self.curve = true;
+                for k in 0..2 {
+                    self.pts.push(tf(v[k * 2], v[k * 2 + 1]));
+                }
+            }
+            ("re", 4) => {
+                let (x, y, w, h) = (v[0], v[1], v[2], v[3]);
+                for (px, py) in [(x, y), (x + w, y), (x, y + h), (x + w, y + h)] {
+                    self.pts.push(tf(px, py));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// 外接矩形 `[x0, y0, x1, y1]`
+    fn bbox(&self) -> Option<[f64; 4]> {
+        let first = *self.pts.first()?;
+        let mut b = [first.0, first.1, first.0, first.1];
+        for &(x, y) in &self.pts {
+            b[0] = b[0].min(x);
+            b[1] = b[1].min(y);
+            b[2] = b[2].max(x);
+            b[3] = b[3].max(y);
+        }
+        Some(b)
+    }
+
+    /// 覆いの候補にしてよいパスか: 半透明、または曲線・折れ線を含む
+    /// (矩形の塗りだけの不透明なパスは、背景・帯なので対象外)
+    fn eligible(&self, alpha: f32) -> bool {
+        !self.pts.is_empty() && (alpha < 0.999 || self.curve || self.poly)
     }
 }
 
@@ -1329,7 +1569,7 @@ fn form_info(doc: &Document, id: ObjectId, depth: usize) -> FormInfo {
 /// `black_backdrop`: ページの先頭に黒の全面塗りを置く (黒地に描くため)。
 pub fn covers_only_bytes(
     input: &[u8],
-    covers: &HashSet<ObjectId>,
+    covers: &Covers,
     black_backdrop: bool,
 ) -> Result<Vec<u8>, String> {
     let mut doc = Document::load_mem(input).map_err(|e| format!("lopdf load: {e}"))?;
@@ -1338,7 +1578,7 @@ pub fn covers_only_bytes(
     }
     // 覆い以外の描画を除き (文字は残る)、続けて文字を除く
     transform_covers(&mut doc, Mode::TextOnly, covers)?;
-    transform_covers(&mut doc, Mode::RemoveText, &HashSet::new())?;
+    transform_covers(&mut doc, Mode::RemoveText, &Covers::default())?;
     if black_backdrop {
         let pages: Vec<ObjectId> = doc.get_pages().values().copied().collect();
         for page_id in pages {
@@ -1767,7 +2007,10 @@ mod tests {
             "1 0 0 rg 0 0 50 50 re f",
             "0 0 1 rg 0 0 9 9 re f BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q",
         );
-        let covers: HashSet<ObjectId> = find_cover_forms(&doc, page).into_iter().collect();
+        let covers = Covers {
+            objs: find_cover_forms(&doc, page).into_iter().collect(),
+            ..Default::default()
+        };
         assert_eq!(covers.len(), 1);
         let mut buf = Vec::new();
         doc.clone().save_to(&mut buf).unwrap();
@@ -1791,6 +2034,7 @@ mod tests {
         );
         let c = find_cover_candidates(&doc, page);
         assert_eq!(c.len(), 1);
+        assert!(matches!(c[0].key, CoverKey::Obj(_)));
         // BBox [0 0 100 100] を 2 0 0 3 5 6 cm で変換
         assert_eq!(c[0].bbox, Some([5.0, 6.0, 205.0, 306.0]));
     }
@@ -1839,13 +2083,75 @@ mod tests {
         }
     }
 
+    fn path_doc(body: &str) -> (Document, ObjectId) {
+        use lopdf::dictionary;
+        let mut doc = Document::with_version("1.5");
+        let content = doc.add_object(Stream::new(dictionary! {}, body.as_bytes().to_vec()));
+        let pages_id = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type"=>"Page","Parent"=>pages_id,"Contents"=>content,
+            "MediaBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(100),Object::Integer(100)],
+            "Resources"=>dictionary!{},
+        });
+        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
+            "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
+        }));
+        let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+        doc.trailer.set("Root", cat);
+        (doc, page)
+    }
+
+    fn page_text(doc: &Document, page: ObjectId) -> String {
+        let sid = doc.get_page_contents(page)[0];
+        let Ok(Object::Stream(st)) = doc.get_object(sid) else { panic!() };
+        String::from_utf8_lossy(&st.content).to_string()
+    }
+
+    #[test]
+    fn path_fill_after_text_is_a_candidate_with_ordinal_and_bbox() {
+        let (doc, page) = path_doc(
+            "0 0 0 rg 0 0 5 5 re f BT /F1 12 Tf (a) Tj ET 1 0 0 rg 0 0 m 10 0 l 5 9 l h f 0 0 5 5 re f",
+        );
+        let c = find_cover_candidates(&doc, page);
+        // 文字より前の `re f` (通し番号 0) と、矩形だけの塗り (通し番号 2) は対象外。三角形 (通し番号 1) だけ
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].key, CoverKey::Op(StreamKey::Page(page), 1));
+        assert_eq!(c[0].bbox, Some([-1.0, -1.0, 11.0, 10.0]));
+    }
+
+    #[test]
+    fn path_cover_is_kept_in_text_only_and_dropped_in_remove_text() {
+        let body = "BT /F1 12 Tf (a) Tj ET 1 0 0 rg 0 0 m 10 0 l 5 9 l h f 0 1 0 rg 20 20 5 5 re f";
+        let (doc, page) = path_doc(body);
+        let covers = Covers::from_keys([CoverKey::Op(StreamKey::Page(page), 0)]);
+        // TextOnly: 文字と、覆いの塗りだけが残る (もう一方の `re f` は捨てる)
+        let mut a = doc.clone();
+        transform_covers(&mut a, Mode::TextOnly, &covers).unwrap();
+        let t = page_text(&a, page);
+        assert!(t.contains("Tj"), "{t}");
+        assert!(t.lines().any(|l| l.trim() == "f"), "{t}");
+        assert!(t.contains("5 9 l"), "{t}");
+        assert!(!t.contains("20 20"), "{t}");
+        // RemoveText: 文字と覆いの塗りが除かれ、覆いでない塗りは残る
+        let mut b = doc.clone();
+        transform_covers(&mut b, Mode::RemoveText, &covers).unwrap();
+        let t = page_text(&b, page);
+        assert!(!t.contains("Tj"), "{t}");
+        assert_eq!(t.lines().filter(|l| l.trim() == "f").count(), 1, "{t}");
+        assert!(t.lines().any(|l| l.trim() == "n"), "{t}");
+        assert!(t.contains("20"), "{t}");
+    }
+
     #[test]
     fn cover_is_kept_in_text_only_and_dropped_in_remove_text() {
         let (mut doc, page) = cover_doc(
             "1 0 0 rg 0 0 50 50 re f",
             "BT /F1 12 Tf (a) Tj ET q /G1 gs /Fm1 Do Q",
         );
-        let covers: HashSet<ObjectId> = find_cover_forms(&doc, page).into_iter().collect();
+        let covers = Covers {
+            objs: find_cover_forms(&doc, page).into_iter().collect(),
+            ..Default::default()
+        };
         assert_eq!(covers.len(), 1);
         let mut a = doc.clone();
         transform_covers(&mut a, Mode::RemoveText, &covers).unwrap();
@@ -1860,7 +2166,7 @@ mod tests {
         let txt = String::from_utf8_lossy(&st.content).to_string();
         assert!(txt.contains("Do") && txt.contains("Tj"), "{txt}");
         // 覆いの中身は加工されない (塗りが残る)
-        let fid = *covers.iter().next().unwrap();
+        let fid = *covers.objs.iter().next().unwrap();
         let Ok(Object::Stream(f)) = doc.get_object(fid) else { panic!() };
         assert!(String::from_utf8_lossy(&f.content).contains(" f"));
     }
