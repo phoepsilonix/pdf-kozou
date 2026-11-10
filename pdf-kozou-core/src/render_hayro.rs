@@ -1182,18 +1182,18 @@ fn check_cover_layering(
     crate::cover_patch::check_layering(nt, &below, &cw, &cb, near, tw, th)
 }
 
-/// 覆い (文字の前後に重なるベクターの Form XObject。content_filter::find_cover_forms) を、
-/// 背景に焼かずベクターのまま文字層に残してよいページと覆いを決める。
+/// 覆い (文字に重なる、元のオブジェクト。content_filter::find_cover_candidates) を、
+/// 背景に焼かず元のまま文字層に残してよいページと覆いを決める。
 ///
-/// 戻り値: (残す覆いの Form XObject, 層分割するページ → そのページの「文字だけを除いた描画」(等倍 RGB8))。
+/// 戻り値: (残す覆いのオブジェクト, 層分割するページ → そのページの「文字だけを除いた描画」(等倍 RGB8))。
 ///
-/// 覆いを背景から抜くと、元の描画順で覆いより後に描かれる画像・図形が、覆いの下に回ってしまう
-/// ことがある。そこで、覆いを抜いた背景に覆いの層 (白地・黒地の 2 回の描画から復元) を重ねた
-/// 予測が、元の「文字を除いた描画」と一致するかを画素で確かめる。食い違いが多ければ、最も早く
-/// 描かれた覆いから外して再検証する (後から描かれる図形に隠されやすいため)。
-/// また、覆いが文字に掛かっていない (近くに文字の画素が無い) ページは、層分割せず、従来どおり
-/// 一枚画像に焼き込む (目隠しの半透明・ぼかしなどを、外せる形にしないため)。
-/// 判定できない (描画・変換に失敗した) ページは対象にしない。
+/// 1. 候補の外接矩形の中に、文字の画素 (近傍を含む) が一定数以上ある候補だけを残す。
+///    文字に掛からない覆い (顔を隠す半透明・ぼかし・シールなど) は、従来どおり一枚画像に焼き込む。
+/// 2. 覆いを背景から抜くと、元の描画順で覆いより後に描かれる画像・図形が、覆いの下に回ってしまう
+///    ことがある。そこで、覆いを抜いた背景に覆いの層 (白地・黒地の 2 回の描画から復元) を重ねた
+///    予測が、元の「文字を除いた描画」と一致するかを画素で確かめる。食い違いが多ければ、最も早く
+///    描かれた覆いから外して再検証する (後から描かれる図形に隠されやすいため)。
+/// 判定できない (描画・変換に失敗した、回転ページなど) ページは対象にしない。
 fn plan_cover_layers(
     doc: &lopdf::Document,
     data: &[u8],
@@ -1205,19 +1205,22 @@ fn plan_cover_layers(
     HashMap<i32, Vec<u8>>,
 ) {
     use crate::content_filter;
-    use crate::cover_patch::{LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, text_near_mask};
+    use crate::cover_patch::{LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_in_rect, text_near_mask};
     use std::collections::HashSet;
 
     let none = || (HashSet::new(), HashMap::new());
     let lo_pages = doc.get_pages();
-    let mut cands: Vec<(i32, Vec<lopdf::ObjectId>)> = Vec::new();
+    let mut cands: Vec<(i32, [f64; 4], Vec<content_filter::CoverCandidate>)> = Vec::new();
     for &pno in selected {
         let Some(&pid) = lo_pages.get(&(pno as u32)) else {
             continue;
         };
-        let forms = content_filter::find_cover_forms(doc, pid);
-        if !forms.is_empty() {
-            cands.push((pno, forms));
+        let Some(geom) = content_filter::page_geom(doc, pid) else {
+            continue;
+        };
+        let found = content_filter::find_cover_candidates(doc, pid);
+        if !found.is_empty() {
+            cands.push((pno, geom, found));
         }
     }
     if cands.is_empty() {
@@ -1236,16 +1239,14 @@ fn plan_cover_layers(
     let mut keep: HashSet<lopdf::ObjectId> = HashSet::new();
     let mut rejected: HashSet<lopdf::ObjectId> = HashSet::new();
     let mut nts: HashMap<i32, Vec<u8>> = HashMap::new();
-    for (pno, forms) in cands {
+    for (pno, geom, found) in cands {
         let idx = (pno - 1) as usize;
         let (Some(pp), Some(fp)) = (plain_pages.get(idx), full_pages.get(idx)) else {
-            rejected.extend(forms);
             continue;
         };
         let (pw, ph) = pp.render_dimensions();
         let (tw, th) = ((pw * scale).ceil(), (ph * scale).ceil());
         if !(tw >= 1.0 && th >= 1.0 && tw <= u16::MAX as f32 && th <= u16::MAX as f32) {
-            rejected.extend(forms);
             continue;
         }
         let (tw, th) = (tw as u32, th as u32);
@@ -1254,14 +1255,28 @@ fn plan_cover_layers(
             raster_rgb(pp, &cache_p, settings, tw, th, dpi, 1),
             raster_rgb(fp, &cache_f, settings, tw, th, dpi, 1),
         ) else {
-            rejected.extend(forms);
             continue;
         };
         let Some(near) = text_near_mask(&full, &nt, tw, th, LAYER_TEXT_DILATE) else {
-            rejected.extend(forms);
             continue;
         };
-        let mut k = forms.clone();
+        // ページ座標 → 画素座標 (左上原点)
+        let (sx, sy) = (tw as f64 / (geom[2] - geom[0]), th as f64 / (geom[3] - geom[1]));
+        let mut k: Vec<lopdf::ObjectId> = found
+            .iter()
+            .filter(|c| {
+                c.bbox.is_some_and(|b| {
+                    let rect = [
+                        (b[0] - geom[0]) * sx,
+                        (geom[3] - b[3]) * sy,
+                        (b[2] - geom[0]) * sx,
+                        (geom[3] - b[1]) * sy,
+                    ];
+                    count_in_rect(&near, tw, th, rect) >= LAYER_MIN_OVERLAP
+                })
+            })
+            .map(|c| c.id)
+            .collect();
         let mut accepted = false;
         for _ in 0..MAX_LAYER_TRIES {
             if k.is_empty() {
@@ -1281,12 +1296,10 @@ fn plan_cover_layers(
             rejected.insert(k.remove(0));
         }
         if accepted {
-            let kept: HashSet<lopdf::ObjectId> = k.iter().copied().collect();
-            rejected.extend(forms.iter().copied().filter(|f| !kept.contains(f)));
-            keep.extend(kept);
+            keep.extend(k.iter().copied());
             nts.insert(pno, nt);
         } else {
-            rejected.extend(forms);
+            rejected.extend(k);
         }
     }
     // 別のページで条件を満たさなかった覆いは、共有されていても残さない

@@ -312,6 +312,7 @@ fn collect_kinds(doc: &Document, res: &Dictionary, out: &mut Kinds, covers: &Has
             Object::Reference(id) => match doc.get_object(*id) {
                 Ok(Object::Stream(s)) => {
                     match s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) {
+                        Some(b"Image") if covers.contains(id) => XKind::Cover,
                         Some(b"Image") => XKind::Image,
                         Some(b"Form") if covers.contains(id) => XKind::Cover,
                         Some(b"Form") => XKind::Form,
@@ -947,24 +948,119 @@ pub(crate) fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String
 }
 
 
-// ── 覆い (文字の前後に重なるベクターの Form XObject) の検出 ──────────────────────
+// ── 覆い (文字に重なる、元のオブジェクト) の検出 ───────────────────────────────
 //
 // キープテキストの画像化は、非テキストを 1 枚の背景に焼き込み、文字をその上に重ねる。
-// 元の PDF が「文字 → 半透明の帯 (文字の上に薄く掛かる)」「文字 → 縁取り → 文字」のように
-// 文字と図形を交互に描いていると、背景に図形が入った上に文字が最前面に来るので、見え方が
-// 変わる。ラスターのパッチで直すと、文字が背景の解像度で焼き込まれてジャギーになる。
+// 元の PDF が「文字 → 半透明の帯・縁取り・飾り (文字に重なる)」の順に描いていると、背景に図形が
+// 入った上に文字が最前面に来るので、見え方が変わる。ラスターのパッチで直すと、文字が
+// 背景の解像度で焼き込まれてジャギーになる。
 //
-// そこで、次の条件を満たす Form XObject (= 覆い) は、背景に焼かず、ベクターのまま文字層に
-// 残す。文字層では文字と覆いが元の描画順のままなので、文字はベクターのまま、元と同じ順に合成される。
-//   - 中身がパスの塗り・線だけ (画像・シェーディング・パターン・文字・ソフトマスクを含まない)
-//   - 不透明度 (ExtGState の ca) が 1 未満で、描画順で文字を描く命令より後、または
-//   - 不透明でも、曲線か線 (`c v y S s B b`) を含み (縁取り・影・文字の輪郭のような形)、
-//     描画順で文字の前にも後にも文字がある (矩形の塗りだけの不透明な帯は対象外)
-// 覆いを背景から外しても元と同じになるか (後から描かれる画像・図形が覆いの下に回らないか) は、
-// 呼び出し側が画素で検証する (cover_patch::check_layering)。
+// そこで、文字より後に描かれる、文字を含まない次のオブジェクト (= 覆い) は、背景に焼かず、
+// 元のオブジェクトのまま文字層に残す (合成しない)。文字層では文字と覆いが元の描画順のままなので、
+// 文字はベクターのまま、元と同じ順に、ビューアーが合成する。
+//   - ベクターの Form: 不透明度 (ca) が 1 未満、または曲線・線を含む (縁取り・影・輪郭・飾り)。
+//     矩形の塗りだけの不透明な帯は対象外
+//   - 画像 XObject / 画像を含む Form: ソフトマスク (透明マスク)・色抜きマスクを持つ、または
+//     不透明度が 1 未満。画像はそのまま (再ラスタライズせず) 重ねる
+//   - シェーディング・パターン・ソフトマスクの ExtGState・インライン画像を含む Form は対象外
+// 覆いを背景から外しても元と同じになるか (後から描かれる画像・図形が覆いの下に回らないか) と、
+// 覆いが文字に掛かっているかは、呼び出し側が画素で検証する (cover_patch::check_layering)。
 
-/// 覆いの候補の Form XObject を、描画順に返す (重複なし)。解析できないページは空を返す。
-pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
+/// 覆いの候補
+#[derive(Debug, Clone, PartialEq)]
+pub struct CoverCandidate {
+    pub id: ObjectId,
+    /// ページ座標 (ユーザー空間) の外接矩形 `[x0, y0, x1, y1]`。求められなければ None。
+    /// 同じオブジェクトを複数回描いていれば、その和。
+    pub bbox: Option<[f64; 4]>,
+}
+
+type Mat = [f64; 6];
+const IDENTITY: Mat = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+/// `m` のあとに `n` を適用する合成 (PDF の行ベクトル規約: p' = p · m · n)
+fn mat_mul(m: &Mat, n: &Mat) -> Mat {
+    [
+        m[0] * n[0] + m[1] * n[2],
+        m[0] * n[1] + m[1] * n[3],
+        m[2] * n[0] + m[3] * n[2],
+        m[2] * n[1] + m[3] * n[3],
+        m[4] * n[0] + m[5] * n[2] + n[4],
+        m[4] * n[1] + m[5] * n[3] + n[5],
+    ]
+}
+
+/// 矩形 `r = [x0, y0, x1, y1]` を `m` で変換した外接矩形
+fn mat_bbox(m: &Mat, r: [f64; 4]) -> [f64; 4] {
+    let pts = [(r[0], r[1]), (r[2], r[1]), (r[0], r[3]), (r[2], r[3])];
+    let mut out = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
+    for (x, y) in pts {
+        let (px, py) = (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
+        out[0] = out[0].min(px);
+        out[1] = out[1].min(py);
+        out[2] = out[2].max(px);
+        out[3] = out[3].max(py);
+    }
+    out
+}
+
+fn bbox_union(a: Option<[f64; 4]>, b: Option<[f64; 4]>) -> Option<[f64; 4]> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some([a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]),
+        _ => None,
+    }
+}
+
+fn numbers(doc: &Document, o: Option<&Object>, n: usize) -> Option<Vec<f64>> {
+    let o = match o? {
+        Object::Reference(id) => doc.get_object(*id).ok()?,
+        o => o,
+    };
+    let arr = o.as_array().ok()?;
+    if arr.len() != n {
+        return None;
+    }
+    arr.iter()
+        .map(|v| match v {
+            Object::Reference(id) => doc.get_object(*id).ok()?.as_float().ok().map(f64::from),
+            v => v.as_float().ok().map(f64::from),
+        })
+        .collect()
+}
+
+/// ページの描画領域 `[x0, y0, x1, y1]` (CropBox、無ければ MediaBox。親ノードの継承も見る)。
+/// 回転しているページは None (座標の対応づけを行わない)。
+pub fn page_geom(doc: &Document, page_id: ObjectId) -> Option<[f64; 4]> {
+    let mut node = page_id;
+    let (mut crop, mut media, mut rotate): (Option<[f64; 4]>, Option<[f64; 4]>, Option<i64>) =
+        (None, None, None);
+    for _ in 0..MAX_DEPTH {
+        let d = doc.get_dictionary(node).ok()?;
+        if crop.is_none() {
+            crop = numbers(doc, d.get(b"CropBox").ok(), 4).map(|v| [v[0], v[1], v[2], v[3]]);
+        }
+        if media.is_none() {
+            media = numbers(doc, d.get(b"MediaBox").ok(), 4).map(|v| [v[0], v[1], v[2], v[3]]);
+        }
+        if rotate.is_none() {
+            rotate = d.get(b"Rotate").ok().and_then(|o| o.as_i64().ok());
+        }
+        match d.get(b"Parent").ok().and_then(|o| o.as_reference().ok()) {
+            Some(p) => node = p,
+            None => break,
+        }
+    }
+    if rotate.unwrap_or(0).rem_euclid(360) != 0 {
+        return None;
+    }
+    let b = crop.or(media)?;
+    let (x0, x1) = (b[0].min(b[2]), b[0].max(b[2]));
+    let (y0, y1) = (b[1].min(b[3]), b[1].max(b[3]));
+    (x1 > x0 && y1 > y0).then_some([x0, y0, x1, y1])
+}
+
+/// 覆いの候補を、描画順に返す (重複なし)。解析できないページは空を返す。
+pub fn find_cover_candidates(doc: &Document, page_id: ObjectId) -> Vec<CoverCandidate> {
     let mut bytes: Vec<u8> = Vec::new();
     for sid in doc.get_page_contents(page_id) {
         if let Ok(Object::Stream(st)) = doc.get_object(sid) {
@@ -981,32 +1077,37 @@ pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
     let mut w = CoverWalk {
         doc,
         clock: 0,
-        last_text: 0,
         first_text: None,
         cands: Vec::new(),
     };
-    w.walk(&bytes, &res, 1.0, 0);
-    let mut out: Vec<ObjectId> = Vec::new();
-    for c in &w.cands {
-        let Some(first) = w.first_text else { continue };
-        let ok = if c.alpha < 0.999 {
-            // 半透明: 文字より後
-            c.at > first
-        } else {
-            // 不透明: 縁取り・影のように、文字の前にも後にも文字がある曲線・線の図形だけ
-            c.at > first && c.at < w.last_text && is_outline_like(doc, c.id)
-        };
-        if ok && !out.contains(&c.id) {
-            out.push(c.id);
+    w.walk(&bytes, &res, 1.0, IDENTITY, 0);
+    let mut out: Vec<CoverCandidate> = Vec::new();
+    let Some(first) = w.first_text else {
+        return out;
+    };
+    for c in w.cands.iter().filter(|c| c.at > first) {
+        match out.iter_mut().find(|o| o.id == c.id) {
+            Some(o) => o.bbox = bbox_union(o.bbox, c.bbox),
+            None => out.push(CoverCandidate {
+                id: c.id,
+                bbox: c.bbox,
+            }),
         }
     }
     out
 }
 
-struct CoverCand {
+/// `find_cover_candidates` の、オブジェクト ID だけ版
+pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
+    find_cover_candidates(doc, page_id)
+        .into_iter()
+        .map(|c| c.id)
+        .collect()
+}
+
+struct RawCand {
     id: ObjectId,
-    /// 描かれたときの不透明度 (ca)
-    alpha: f32,
+    bbox: Option<[f64; 4]>,
     /// 描画順の時刻 (文字の描画・覆いの描画ごとに進む)
     at: usize,
 }
@@ -1014,27 +1115,38 @@ struct CoverCand {
 struct CoverWalk<'a> {
     doc: &'a Document,
     clock: usize,
-    last_text: usize,
     first_text: Option<usize>,
-    cands: Vec<CoverCand>,
+    cands: Vec<RawCand>,
 }
 
 impl CoverWalk<'_> {
-    /// 内容ストリームを描画順にたどる。`alpha0`: 呼び出し時点の塗りの不透明度 (ca)
-    fn walk(&mut self, bytes: &[u8], res: &Dictionary, alpha0: f32, depth: usize) {
+    /// 内容ストリームを描画順にたどる。`alpha0`: 呼び出し時点の塗りの不透明度 (ca)、
+    /// `ctm0`: 呼び出し時点の変換行列 (ページのユーザー空間への)
+    fn walk(&mut self, bytes: &[u8], res: &Dictionary, alpha0: f32, ctm0: Mat, depth: usize) {
         if depth > 8 {
             return;
         }
         let doc = self.doc;
         let gs_tbl = resolve_dict(doc, res.get(b"ExtGState").ok());
         let xo_tbl = resolve_dict(doc, res.get(b"XObject").ok());
-        let mut stack: Vec<f32> = Vec::new();
-        let mut cur = alpha0;
+        let mut stack: Vec<(f32, Mat)> = Vec::new();
+        let (mut cur, mut ctm) = (alpha0, ctm0);
         let _ = for_each_operation(bytes, |op| match op.operator.as_str() {
-            "q" => stack.push(cur),
+            "q" => stack.push((cur, ctm)),
             "Q" => {
-                if let Some(a) = stack.pop() {
+                if let Some((a, m)) = stack.pop() {
                     cur = a;
+                    ctm = m;
+                }
+            }
+            "cm" => {
+                let v: Vec<f64> = op
+                    .operands
+                    .iter()
+                    .filter_map(|o| o.as_float().ok().map(f64::from))
+                    .collect();
+                if v.len() == 6 {
+                    ctm = mat_mul(&[v[0], v[1], v[2], v[3], v[4], v[5]], &ctm);
                 }
             }
             "gs" => {
@@ -1053,7 +1165,6 @@ impl CoverWalk<'_> {
             }
             "Tj" | "TJ" | "'" | "\"" => {
                 self.clock += 1;
-                self.last_text = self.clock;
                 self.first_text.get_or_insert(self.clock);
             }
             "Do" => {
@@ -1067,50 +1178,150 @@ impl CoverWalk<'_> {
                 let Ok(Object::Stream(st)) = doc.get_object(id) else {
                     return;
                 };
-                if st.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) != Some(b"Form") {
-                    return;
+                match st.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) {
+                    Some(b"Image") => {
+                        if cur < 0.999 || image_has_mask(st) {
+                            self.clock += 1;
+                            self.cands.push(RawCand {
+                                id,
+                                bbox: Some(mat_bbox(&ctm, [0.0, 0.0, 1.0, 1.0])),
+                                at: self.clock,
+                            });
+                        }
+                    }
+                    Some(b"Form") => {
+                        let fm = numbers(doc, st.dict.get(b"Matrix").ok(), 6)
+                            .map(|v| [v[0], v[1], v[2], v[3], v[4], v[5]])
+                            .unwrap_or(IDENTITY);
+                        let fctm = mat_mul(&fm, &ctm);
+                        let info = form_info(doc, id, 0);
+                        if !info.text && !info.unsupported && (cur < 0.999 || info.mask_image || info.curves)
+                        {
+                            self.clock += 1;
+                            let bbox = numbers(doc, st.dict.get(b"BBox").ok(), 4)
+                                .map(|v| mat_bbox(&fctm, [v[0], v[1], v[2], v[3]]));
+                            self.cands.push(RawCand {
+                                id,
+                                bbox,
+                                at: self.clock,
+                            });
+                            return;
+                        }
+                        // 覆いでない Form は、中の描画順をたどる (自身のリソースが無ければ親のもの)
+                        let Ok(fbytes) = crate::image_recompress::content_stream_bytes(st) else {
+                            return;
+                        };
+                        let fres = resolve_dict(doc, st.dict.get(b"Resources").ok())
+                            .unwrap_or(res)
+                            .clone();
+                        self.walk(&fbytes, &fres, cur, fctm, depth + 1);
+                    }
+                    _ => {}
                 }
-                if is_vector_form(doc, id, 0) {
-                    self.clock += 1;
-                    self.cands.push(CoverCand {
-                        id,
-                        alpha: cur,
-                        at: self.clock,
-                    });
-                    return;
-                }
-                // 覆いでない Form は、中の描画順をたどる (自身のリソースが無ければ親のもの)
-                let Ok(fbytes) = crate::image_recompress::content_stream_bytes(st) else {
-                    return;
-                };
-                let fres = resolve_dict(doc, st.dict.get(b"Resources").ok())
-                    .unwrap_or(res)
-                    .clone();
-                self.walk(&fbytes, &fres, cur, depth + 1);
             }
             _ => {}
         });
     }
 }
 
-/// Form XObject が、曲線か線を含むか (縁取り・影・輪郭のような形。矩形の塗りだけの帯は含まない)
-fn is_outline_like(doc: &Document, id: ObjectId) -> bool {
+/// 画像 XObject が、ソフトマスク・色抜きマスク・ステンシルマスクを持つか
+fn image_has_mask(st: &Stream) -> bool {
+    st.dict.has(b"SMask")
+        || st.dict.has(b"Mask")
+        || st
+            .dict
+            .get(b"ImageMask")
+            .ok()
+            .and_then(|o| o.as_bool().ok())
+            .unwrap_or(false)
+}
+
+/// Form XObject の中身の概要
+#[derive(Debug, Default, Clone, Copy)]
+struct FormInfo {
+    /// 文字を描く命令を含む
+    text: bool,
+    /// マスクを持つ画像を含む
+    mask_image: bool,
+    /// 曲線か線を含む (縁取り・影・輪郭・飾りのような形。矩形の塗りだけの帯は含まない)
+    curves: bool,
+    /// シェーディング・パターン・ソフトマスクの ExtGState・インライン画像を含む、または解析できない
+    unsupported: bool,
+}
+
+impl FormInfo {
+    fn merge(&mut self, o: FormInfo) {
+        self.text |= o.text;
+        self.mask_image |= o.mask_image;
+        self.curves |= o.curves;
+        self.unsupported |= o.unsupported;
+    }
+}
+
+/// Form XObject の中身 (入れ子の Form・画像も含む) の概要を調べる。
+fn form_info(doc: &Document, id: ObjectId, depth: usize) -> FormInfo {
+    let bad = FormInfo {
+        unsupported: true,
+        ..Default::default()
+    };
+    if depth > 4 {
+        return bad;
+    }
     let Ok(Object::Stream(st)) = doc.get_object(id) else {
-        return false;
+        return bad;
     };
-    let Ok(bytes) = crate::image_recompress::content_stream_bytes(st) else {
-        return false;
-    };
-    let mut found = false;
-    let _ = for_each_operation(&bytes, |op| {
-        if matches!(
-            op.operator.as_str(),
-            "c" | "v" | "y" | "S" | "s" | "B" | "B*" | "b" | "b*"
-        ) {
-            found = true;
+    let empty = Dictionary::new();
+    let res = resolve_dict(doc, st.dict.get(b"Resources").ok()).unwrap_or(&empty);
+    if res.has(b"Pattern") || res.has(b"Shading") {
+        return bad;
+    }
+    if let Some(gs) = resolve_dict(doc, res.get(b"ExtGState").ok()) {
+        for (_, v) in gs.iter() {
+            let Some(d) = resolve_dict(doc, Some(v)) else {
+                continue;
+            };
+            if let Ok(sm) = d.get(b"SMask")
+                && !matches!(sm, Object::Name(n) if n == b"None")
+            {
+                return bad;
+            }
         }
+    }
+    let mut info = FormInfo::default();
+    if let Some(xo) = resolve_dict(doc, res.get(b"XObject").ok()) {
+        for (_, v) in xo.iter() {
+            let Object::Reference(child) = v else {
+                return bad;
+            };
+            match doc.get_object(*child) {
+                Ok(Object::Stream(cs)) => {
+                    match cs.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) {
+                        Some(b"Form") => info.merge(form_info(doc, *child, depth + 1)),
+                        Some(b"Image") => info.mask_image |= image_has_mask(cs),
+                        _ => return bad,
+                    }
+                }
+                _ => return bad,
+            }
+        }
+    }
+    let Ok(bytes) = crate::image_recompress::content_stream_bytes(st) else {
+        return bad;
+    };
+    match find_inline_images(&bytes) {
+        Ok(v) if v.is_empty() => {}
+        _ => return bad,
+    }
+    let parsed = for_each_operation(&bytes, |op| match op.operator.as_str() {
+        "Tj" | "TJ" | "'" | "\"" => info.text = true,
+        "sh" | "BI" => info.unsupported = true,
+        "c" | "v" | "y" | "S" | "s" | "B" | "B*" | "b" | "b*" => info.curves = true,
+        _ => {}
     });
-    found
+    if parsed.is_err() {
+        return bad;
+    }
+    info
 }
 
 /// 覆いだけを描く複製 (文字と、覆い以外の描画を取り除いたもの) を返す。
@@ -1147,67 +1358,6 @@ pub fn covers_only_bytes(
     doc.save_to(&mut out).map_err(|e| format!("lopdf save: {e}"))?;
     Ok(out)
 }
-
-/// Form XObject の中身が、パスの塗り・線だけか (画像・シェーディング・パターン・文字・
-/// ソフトマスク・インライン画像を含まない)。入れ子の Form も同じ条件で調べる。
-fn is_vector_form(doc: &Document, id: ObjectId, depth: usize) -> bool {
-    if depth > 4 {
-        return false;
-    }
-    let Ok(Object::Stream(st)) = doc.get_object(id) else {
-        return false;
-    };
-    let empty = Dictionary::new();
-    let res = resolve_dict(doc, st.dict.get(b"Resources").ok()).unwrap_or(&empty);
-    if res.has(b"Pattern") || res.has(b"Shading") {
-        return false;
-    }
-    if let Some(gs) = resolve_dict(doc, res.get(b"ExtGState").ok()) {
-        for (_, v) in gs.iter() {
-            let Some(d) = resolve_dict(doc, Some(v)) else {
-                continue;
-            };
-            if let Ok(sm) = d.get(b"SMask")
-                && !matches!(sm, Object::Name(n) if n == b"None")
-            {
-                return false;
-            }
-        }
-    }
-    if let Some(xo) = resolve_dict(doc, res.get(b"XObject").ok()) {
-        for (_, v) in xo.iter() {
-            let Object::Reference(child) = v else {
-                return false;
-            };
-            match doc.get_object(*child) {
-                Ok(Object::Stream(cs))
-                    if cs.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok())
-                        == Some(b"Form") =>
-                {
-                    if !is_vector_form(doc, *child, depth + 1) {
-                        return false;
-                    }
-                }
-                _ => return false,
-            }
-        }
-    }
-    let Ok(bytes) = crate::image_recompress::content_stream_bytes(st) else {
-        return false;
-    };
-    match find_inline_images(&bytes) {
-        Ok(v) if v.is_empty() => {}
-        _ => return false,
-    }
-    let mut ok = true;
-    let parsed = for_each_operation(&bytes, |op| {
-        if matches!(op.operator.as_str(), "Tj" | "TJ" | "'" | "\"" | "sh" | "BI") {
-            ok = false;
-        }
-    });
-    ok && parsed.is_ok()
-}
-
 
 #[cfg(test)]
 mod tests {
@@ -1584,7 +1734,7 @@ mod tests {
     }
 
     #[test]
-    fn opaque_outline_between_texts_is_a_cover_but_plain_band_is_not() {
+    fn opaque_outline_after_text_is_a_cover_but_plain_band_is_not() {
         // 文字 → 縁取り (線) → 文字: 対象
         let (doc, page) = cover_doc(
             "1 0 0 RG 2 w 0 0 m 50 50 l S",
@@ -1597,10 +1747,16 @@ mod tests {
             "BT /F1 12 Tf (a) Tj ET /Fm1 Do BT /F1 12 Tf (b) Tj ET",
         );
         assert!(find_cover_forms(&doc, page).is_empty());
-        // 縁取りでも、後ろに文字が無ければ対象外 (不透明な図形は文字の前後にあるものだけ)
+        // 縁取りは、全文字の後 (影・輪郭を最後に描く) でも対象
         let (doc, page) = cover_doc(
             "1 0 0 RG 2 w 0 0 m 50 50 l S",
             "BT /F1 12 Tf (a) Tj ET /Fm1 Do",
+        );
+        assert_eq!(find_cover_forms(&doc, page).len(), 1);
+        // 文字より前に描かれる縁取りは対象外 (文字の下)
+        let (doc, page) = cover_doc(
+            "1 0 0 RG 2 w 0 0 m 50 50 l S",
+            "/Fm1 Do BT /F1 12 Tf (a) Tj ET",
         );
         assert!(find_cover_forms(&doc, page).is_empty());
     }
@@ -1625,6 +1781,62 @@ mod tests {
         assert!(txt.contains("Do"), "{txt}");
         assert!(!txt.contains("Tj"), "{txt}");
         assert!(!txt.contains("0 0 9 9 re f"), "{txt}");
+    }
+
+    #[test]
+    fn candidate_bbox_follows_ctm_and_form_matrix() {
+        let (doc, page) = cover_doc(
+            "1 0 0 rg 0 0 10 20 re f",
+            "BT /F1 12 Tf (a) Tj ET q 2 0 0 3 5 6 cm /G1 gs /Fm1 Do Q",
+        );
+        let c = find_cover_candidates(&doc, page);
+        assert_eq!(c.len(), 1);
+        // BBox [0 0 100 100] を 2 0 0 3 5 6 cm で変換
+        assert_eq!(c[0].bbox, Some([5.0, 6.0, 205.0, 306.0]));
+    }
+
+    #[test]
+    fn page_geom_uses_cropbox_or_mediabox_and_skips_rotated() {
+        let (doc, page) = cover_doc("1 0 0 rg 0 0 1 1 re f", "");
+        assert_eq!(page_geom(&doc, page), Some([0.0, 0.0, 100.0, 100.0]));
+        let mut d2 = doc.clone();
+        if let Ok(Object::Dictionary(d)) = d2.get_object_mut(page) {
+            d.set("Rotate", Object::Integer(90));
+        }
+        assert_eq!(page_geom(&d2, page), None);
+    }
+
+    #[test]
+    fn masked_image_after_text_is_a_candidate_but_opaque_one_is_not() {
+        use lopdf::dictionary;
+        for (with_mask, expect) in [(true, 1usize), (false, 0usize)] {
+            let (mut doc, page) = cover_doc("1 0 0 rg 0 0 1 1 re f", "");
+            let mut d = dictionary! {
+                "Type"=>"XObject","Subtype"=>"Image",
+                "Width"=>Object::Integer(1),"Height"=>Object::Integer(1),
+                "ColorSpace"=>"DeviceGray","BitsPerComponent"=>Object::Integer(8)
+            };
+            if with_mask {
+                d.set("SMask", Object::Reference((9999, 0)));
+            }
+            let img = doc.add_object(Stream::new(d, vec![0u8]));
+            let content = doc.add_object(Stream::new(
+                dictionary! {},
+                b"BT /F1 12 Tf (a) Tj ET q 10 0 0 20 5 6 cm /Im1 Do Q".to_vec(),
+            ));
+            if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
+                p.set("Contents", content);
+                p.set(
+                    "Resources",
+                    dictionary! {"XObject"=>dictionary!{"Im1"=>img}},
+                );
+            }
+            let c = find_cover_candidates(&doc, page);
+            assert_eq!(c.len(), expect, "with_mask={with_mask}");
+            if expect == 1 {
+                assert_eq!(c[0].bbox, Some([5.0, 6.0, 15.0, 26.0]));
+            }
+        }
     }
 
     #[test]

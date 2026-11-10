@@ -304,6 +304,27 @@ pub fn text_near_mask(full: &[u8], nt: &[u8], w: u32, h: u32, r: usize) -> Optio
     Some(out)
 }
 
+/// `mask` (w×h) の、矩形 `r = [x0, y0, x1, y1]` (画素座標、左上原点) の中の真の画素数。
+/// 矩形は画像の範囲に切り詰める。
+pub fn count_in_rect(mask: &[bool], w: u32, h: u32, r: [f64; 4]) -> usize {
+    let (w, h) = (w as usize, h as usize);
+    if mask.len() != w * h || w == 0 || h == 0 {
+        return 0;
+    }
+    let x0 = r[0].floor().max(0.0) as usize;
+    let y0 = r[1].floor().max(0.0) as usize;
+    let x1 = (r[2].ceil().max(0.0) as usize).min(w);
+    let y1 = (r[3].ceil().max(0.0) as usize).min(h);
+    if x0 >= x1 || y0 >= y1 {
+        return 0;
+    }
+    let mut n = 0;
+    for y in y0..y1 {
+        n += mask[y * w + x0..y * w + x1].iter().filter(|&&b| b).count();
+    }
+    n
+}
+
 /// 層分割を検証する。
 /// - `nt`: 元の、文字を除いた描画
 /// - `below`: そこから覆いも除いた描画 (覆いの下層)
@@ -523,6 +544,18 @@ mod tests {
         assert_eq!(c.bad, 0);
         assert!(c.text_overlap < LAYER_MIN_OVERLAP);
         assert!(!c.accepted((w * h) as usize));
+    }
+
+    #[test]
+    fn count_in_rect_clips_to_image() {
+        let (w, h) = (10u32, 8u32);
+        let mut m = vec![false; (w * h) as usize];
+        m[(2 * w + 3) as usize] = true;
+        m[(7 * w + 9) as usize] = true;
+        assert_eq!(count_in_rect(&m, w, h, [3.0, 2.0, 4.0, 3.0]), 1);
+        assert_eq!(count_in_rect(&m, w, h, [-5.0, -5.0, 100.0, 100.0]), 2);
+        assert_eq!(count_in_rect(&m, w, h, [4.0, 3.0, 9.0, 7.0]), 0);
+        assert_eq!(count_in_rect(&m, w, h, [50.0, 50.0, 60.0, 60.0]), 0);
     }
 
     #[test]
