@@ -1279,7 +1279,9 @@ fn plan_cover_layers(
             })
             .collect();
         let mut accepted = false;
-        for _ in 0..MAX_LAYER_TRIES {
+        let n_near = k.len();
+        let mut why = String::from("no candidate overlaps text");
+        for try_no in 1..=MAX_LAYER_TRIES {
             if k.is_empty() {
                 break;
             }
@@ -1287,13 +1289,21 @@ fn plan_cover_layers(
             let Some((chk, err)) =
                 check_cover_layering(data, &set, idx, tw, th, dpi, settings, &nt, &near)
             else {
+                why = format!("try {try_no}: render/convert failed");
                 break;
             };
             if chk.order_ok(pixels) {
                 // 描画順は保てる。文字に掛かっていれば採用、掛かっていなければ一枚画像のまま
                 accepted = chk.text_overlap >= LAYER_MIN_OVERLAP;
+                why = format!(
+                    "try {try_no}: order ok (bad {}), text overlap {} px{}",
+                    chk.bad,
+                    chk.text_overlap,
+                    if accepted { "" } else { " (< min, kept in the single image)" }
+                );
                 break;
             }
+            why = format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad);
             // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
             let before = k.len();
             k.retain(|(key, r)| {
@@ -1307,6 +1317,13 @@ fn plan_cover_layers(
                 rejected.insert(k.remove(0).0);
             }
         }
+        eprintln!(
+            "[render] cover layers p{pno}: {} candidate(s), {} on text, {} kept; {why}; {}",
+            found.len(),
+            n_near,
+            if accepted { k.len() } else { 0 },
+            if accepted { "layered" } else { "single image + patches" }
+        );
         if accepted {
             keep.extend(k.iter().map(|(key, _)| *key));
             nts.insert(pno, nt);
