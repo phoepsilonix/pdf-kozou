@@ -1200,12 +1200,13 @@ const MAX_COVER_TESTS: usize = 48;
 /// などは、自分の文字より奥にあることが多い)。そこで次の順に絞る。
 /// 1. 外接矩形の中に、文字の中身の画素がある候補だけを調べる。文字の画素は、文字だけを白地・黒地に
 ///    描いた 2 枚から求める (白い文字も拾える。覆いに隠れた文字も含む)。
-/// 2. ラスター画像で不透明な覆い (ステッカー・顔アイコンなど) は、文字層に残さない。背景に焼き込み、
-///    文字を隠している部分だけを、隠し直しパッチ (マスク付きの小さな画像) で再現する。
-/// 3. 残りの覆い (ベクターの図形・縁取り・半透明の帯や画像) は、1 つずつ、文字と「その覆いだけ」を
-///    元の描画順で重ねた描画 (文字層と同じ構成) を、文字だけの描画と比べる。文字の中身の画素が変わる
-///    (= 覆いが文字より後に描かれ、実際に文字を隠す・染める) 覆いだけを残す。文字が覆いより上に
-///    描かれている覆いは、文字を隠していないので一枚画像に焼き込む。
+/// 2. 1 つずつ、文字と「その覆いだけ」を元の描画順で重ねた描画 (文字層と同じ構成) を、文字だけの
+///    描画と比べる。文字の中身の画素が変わる (= 覆いが文字より後に描かれ、実際に文字を隠す・染める)
+///    覆いだけを調べる。文字が覆いより上に描かれている覆いは、文字を隠していないので一枚画像に焼き込む。
+/// 3. 文字を隠している部分が不透明な覆い (ベクター・ラスターを問わない) は、背景に焼き込み、隠した
+///    文字だけを隠し直しパッチ (背景と同じ画素の写し) で再現する。不透明かどうかは、覆いだけを白地・
+///    黒地に描いた画素で実測する (ソフトマスクの画像は ca = 1 でも半透明)。半透明な覆い (帯・影・
+///    ソフトマスクの画像) だけを、元のオブジェクトのまま文字層に残す。
 /// 4. 覆いを背景から抜くと、元の描画順で覆いより後に描かれる画像・図形が、覆いの下に回ってしまう
 ///    ことがある。そこで、覆いを抜いた背景に覆いの層 (白地・黒地の 2 回の描画から復元) を重ねた
 ///    予測が、元の「文字を除いた描画」と一致するかを画素で確かめる。食い違いがあれば、その画素を
@@ -1225,8 +1226,8 @@ fn plan_cover_layers(
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
-        LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_hidden_text, count_in_rect, text_core_mask,
-        text_near_mask,
+        LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_hidden_text, count_in_rect, hidden_opacity,
+        text_core_mask, text_near_mask,
     };
     use std::collections::HashSet;
 
@@ -1315,7 +1316,7 @@ fn plan_cover_layers(
         };
         // 文字を隠している覆いだけ (外接矩形つき)
         let mut k: Vec<(CoverKey, [f64; 4])> = Vec::new();
-        let (mut n_text, mut n_raster, mut n_tested) = (0usize, 0usize, 0usize);
+        let (mut n_text, mut n_opaque, mut n_tested) = (0usize, 0usize, 0usize);
         let mut patch_page = false;
         for c in &found {
             let Some(bbox) = c.bbox else {
@@ -1327,13 +1328,7 @@ fn plan_cover_layers(
                 continue;
             }
             n_text += 1;
-            // 2. 不透明なラスター画像は、背景に焼き込んで、隠した文字だけをパッチで再現する
-            if c.raster && !c.translucent {
-                n_raster += 1;
-                patch_page = true;
-                continue;
-            }
-            // 3. 文字 + その覆いだけを、元の順で重ねて、文字の中身の画素が変わるか確かめる
+            // 2. 文字 + その覆いだけを、元の順で重ねて、文字の中身の画素が変わるか確かめる
             if n_tested >= MAX_COVER_TESTS {
                 continue;
             }
@@ -1345,9 +1340,33 @@ fn plan_cover_layers(
             let Ok(tcw) = render_page_1x(tc_pdf, idx, tw, th, dpi, settings) else {
                 continue;
             };
-            if count_hidden_text(&core, &t0w, &tcw, tw, th, r) >= LAYER_MIN_OVERLAP {
-                k.push((c.key, r));
+            if count_hidden_text(&core, &t0w, &tcw, tw, th, r) < LAYER_MIN_OVERLAP {
+                continue;
             }
+            // 3. 文字を隠している部分が不透明な覆い (ベクターの図形・不透明な画像) は、背景に焼き込み、
+            //    隠した文字だけを隠し直しパッチ (背景と同じ画素の写し) で再現する。文字層に残すと、
+            //    覆いを外したときに、覆いの下の写真・顔が背景にそのまま残ってしまう。
+            //    半透明な覆い (ソフトマスクの帯・影) は、パッチにすると文字まで画素になってぼやけるので、
+            //    元のオブジェクトのまま文字層に残す。ca だけでなく、画素で実測する
+            //    (ソフトマスクの画像は ca = 1 でも半透明)。
+            if !c.translucent
+                && let (Ok(cw_pdf), Ok(cb_pdf)) = (
+                    content_filter::covers_only_bytes(data, &one, false),
+                    content_filter::covers_only_bytes(data, &one, true),
+                )
+                && let (Ok(cw), Ok(cb)) = (
+                    render_page_1x(cw_pdf, idx, tw, th, dpi, settings),
+                    render_page_1x(cb_pdf, idx, tw, th, dpi, settings),
+                )
+            {
+                let (hid, opq) = hidden_opacity(&core, &t0w, &tcw, &cw, &cb, tw, th, r);
+                if hid > 0 && opq * 10 >= hid * 9 {
+                    n_opaque += 1;
+                    patch_page = true;
+                    continue;
+                }
+            }
+            k.push((c.key, r));
         }
         let n_confirmed = k.len();
         let mut accepted = false;
@@ -1406,7 +1425,7 @@ fn plan_cover_layers(
             patch_pages.insert(pno);
         }
         eprintln!(
-            "[render] cover layers p{pno}: {} candidate(s), {n_text} over text, {n_raster} opaque raster (baked + patches), {n_tested} tested, {n_confirmed} hide text, {n_kept} kept; {why}; {}{}",
+            "[render] cover layers p{pno}: {} candidate(s), {n_text} over text, {n_tested} tested, {n_opaque} opaque (baked + patches), {n_confirmed} translucent hide text, {n_kept} kept; {why}; {}{}",
             found.len(),
             if accepted { "layered" } else { "single image" },
             if patch_page { " + patches" } else { "" }

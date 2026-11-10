@@ -315,6 +315,55 @@ pub fn count_hidden_text(
     n
 }
 
+/// 覆いの層が「不透明」とみなす、白地・黒地の描画の差の上限 (0-255。アルファ 1 なら 0)
+pub const OPAQUE_TRANS_MAX: i32 = 12;
+
+/// 覆い 1 つが文字を隠している画素 (`count_hidden_text` と同じ条件) のうち、覆い自身が不透明な画素数。
+/// 戻り値: (文字を隠している画素数, そのうち覆いが不透明な画素数)。
+/// - `cw` / `cb`: その覆いだけを白地・黒地に描いたもの (覆いが塗らない画素は 255 / 0)
+/// 不透明な覆いは、背景に焼いて隠し直しパッチ (背景と同じ画素の写し) で再現できる。半透明な覆い
+/// (ソフトマスクの帯・影など) は、パッチにすると文字まで画素になりぼやけるので、元のオブジェクトの
+/// まま重ねる必要がある。長さが合わなければ (0, 0)。
+#[allow(clippy::too_many_arguments)]
+pub fn hidden_opacity(
+    core: &[bool],
+    t0w: &[u8],
+    tcw: &[u8],
+    cw: &[u8],
+    cb: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+) -> (usize, usize) {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if wu == 0 || hu == 0 || core.len() != n || [t0w.len(), tcw.len(), cw.len(), cb.len()].iter().any(|&l| l != n * 3) {
+        return (0, 0);
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    if x0 >= x1 || y0 >= y1 {
+        return (0, 0);
+    }
+    let (mut hidden, mut opaque) = (0usize, 0usize);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            if !core[i] || max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) <= HIDE_DIFF_THR {
+                continue;
+            }
+            hidden += 1;
+            let o = i * 3;
+            if (0..3).all(|c| (cw[o + c] as i32 - cb[o + c] as i32) <= OPAQUE_TRANS_MAX) {
+                opaque += 1;
+            }
+        }
+    }
+    (hidden, opaque)
+}
+
 /// 層分割の検証結果
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LayerCheck {
@@ -747,5 +796,24 @@ mod tests {
         assert_eq!(count_hidden_text(&core, &t0w, &tcw, w, h, [3.0, 0.0, 6.0, 1.0]), 0);
         // 長さが合わなければ 0
         assert_eq!(count_hidden_text(&core, &t0w[..6], &tcw, w, h, all), 0);
+    }
+
+    #[test]
+    fn hidden_opacity_separates_opaque_from_translucent_covers() {
+        let (w, h) = (4u32, 1u32);
+        let core = vec![true; 4];
+        let t0w = solid(w, h, 0);
+        let tcw = solid(w, h, 200); // 全画素で文字が変わる (隠れる・染まる)
+        let all = [0.0, 0.0, 4.0, 1.0];
+        // 不透明な覆い: cw == cb
+        let cw = solid(w, h, 200);
+        let cb = solid(w, h, 200);
+        assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw, &cb, w, h, all), (4, 4));
+        // 半透明な覆い (アルファ約 0.5): cw − cb ≈ 128
+        let cw = solid(w, h, 228);
+        let cb = solid(w, h, 100);
+        assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw, &cb, w, h, all), (4, 0));
+        // 長さが合わなければ (0, 0)
+        assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw[..6], &cb, w, h, all), (0, 0));
     }
 }
