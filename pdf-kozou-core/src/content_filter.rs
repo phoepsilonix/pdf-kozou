@@ -145,6 +145,10 @@ pub enum CoverKey {
     Obj(ObjectId),
     /// ストリーム内の `ord` 番目 (0 始まり) の、パスの塗り・線の命令 (`S s f F f* B B* b b*`)
     Op(StreamKey, usize),
+    /// ストリーム内の `ord` 番目 (0 始まり) の `Do` 命令が描く、画像 XObject (その 1 回の描画だけ)。
+    /// 同じ画像を何度も描く PDF (顔を隠す光るアイコンなど) で、描画ごとに焼き込む・残すを決めるため。
+    /// 3 つ目は、描かれる画像の ID (リソースに残すかの判定に使う)。
+    Draw(StreamKey, usize, ObjectId),
 }
 
 /// 覆いの集合
@@ -152,15 +156,19 @@ pub enum CoverKey {
 pub struct Covers {
     pub objs: HashSet<ObjectId>,
     pub ops: HashSet<(StreamKey, usize)>,
+    /// 画像の 1 回の描画 (ストリーム内の `Do` の通し番号)
+    pub draws: HashSet<(StreamKey, usize)>,
+    /// `draws` が描く画像 (TextOnly でリソースに残す)
+    pub draw_imgs: HashSet<ObjectId>,
 }
 
 impl Covers {
     pub fn is_empty(&self) -> bool {
-        self.objs.is_empty() && self.ops.is_empty()
+        self.objs.is_empty() && self.ops.is_empty() && self.draws.is_empty()
     }
 
     pub fn len(&self) -> usize {
-        self.objs.len() + self.ops.len()
+        self.objs.len() + self.ops.len() + self.draws.len()
     }
 
     pub fn insert(&mut self, k: CoverKey) {
@@ -171,6 +179,10 @@ impl Covers {
             CoverKey::Op(s, i) => {
                 self.ops.insert((s, i));
             }
+            CoverKey::Draw(s, i, id) => {
+                self.draws.insert((s, i));
+                self.draw_imgs.insert(id);
+            }
         }
     }
 
@@ -178,6 +190,7 @@ impl Covers {
         match k {
             CoverKey::Obj(id) => self.objs.contains(id),
             CoverKey::Op(s, i) => self.ops.contains(&(*s, *i)),
+            CoverKey::Draw(s, i, _) => self.draws.contains(&(*s, *i)),
         }
     }
 
@@ -196,17 +209,28 @@ struct OpCtx<'a> {
     keep: Option<(&'a HashSet<(StreamKey, usize)>, StreamKey)>,
     /// 次の塗り命令の通し番号
     ord: usize,
+    /// (残す画像の描画の集合, このストリームの識別子)。None なら何も残さない
+    draws: Option<(&'a HashSet<(StreamKey, usize)>, StreamKey)>,
+    /// 次の `Do` 命令の通し番号
+    do_ord: usize,
 }
 
 impl<'a> OpCtx<'a> {
     fn none() -> OpCtx<'a> {
-        OpCtx { keep: None, ord: 0 }
+        OpCtx {
+            keep: None,
+            ord: 0,
+            draws: None,
+            do_ord: 0,
+        }
     }
 
     fn for_stream(covers: &'a Covers, key: StreamKey) -> OpCtx<'a> {
         OpCtx {
             keep: Some((&covers.ops, key)),
             ord: 0,
+            draws: Some((&covers.draws, key)),
+            do_ord: 0,
         }
     }
 
@@ -214,6 +238,17 @@ impl<'a> OpCtx<'a> {
     fn active(&self) -> bool {
         self.keep
             .is_some_and(|(set, key)| set.iter().any(|(k, _)| *k == key))
+            || self
+                .draws
+                .is_some_and(|(set, key)| set.iter().any(|(k, _)| *k == key))
+    }
+
+    /// `Do` 命令を 1 つ数え、それが残す画像の描画かを返す
+    fn next_do_kept(&mut self) -> bool {
+        let i = self.do_ord;
+        self.do_ord += 1;
+        self.draws
+            .is_some_and(|(set, key)| set.contains(&(key, i)))
     }
 
     /// 塗り命令を 1 つ数え、それが残す命令かを返す
@@ -310,7 +345,7 @@ pub fn transform_covers(
         }
         // TextOnly: 画像 XObject をリソースから外す (Do を除いたので参照されない)
         if mode == Mode::TextOnly {
-            let filtered = without_images(doc, &res, &kinds);
+            let filtered = without_images(doc, &res, &kinds, covers);
             if let Ok(Object::Dictionary(page)) = doc.get_object_mut(page_id) {
                 page.set("Resources", Object::Dictionary(filtered));
             }
@@ -333,12 +368,16 @@ fn effective_resources(doc: &Document, page_id: ObjectId) -> Option<Dictionary> 
 }
 
 /// リソース辞書の複製から、画像 XObject のエントリを除く
-fn without_images(doc: &Document, res: &Dictionary, kinds: &Kinds) -> Dictionary {
+fn without_images(doc: &Document, res: &Dictionary, kinds: &Kinds, covers: &Covers) -> Dictionary {
     let mut out = res.clone();
     if let Some(xo) = resolve_dict(doc, res.get(b"XObject").ok()) {
         let mut nx = Dictionary::new();
         for (name, v) in xo.iter() {
-            if kinds.get(name) != Some(&XKind::Image) {
+            // 覆いにした描画が使う画像は、リソースに残す
+            let kept_img = v
+                .as_reference()
+                .is_ok_and(|id| covers.draw_imgs.contains(&id));
+            if kinds.get(name) != Some(&XKind::Image) || kept_img {
                 nx.set(name.clone(), v.clone());
             }
         }
@@ -436,7 +475,7 @@ fn process_part(
             _ => None,
         };
         if let Some(own) = own {
-            let filtered = without_images(doc, &own, &kinds);
+            let filtered = without_images(doc, &own, &kinds, covers);
             if let Ok(Object::Stream(s)) = doc.get_object_mut(id) {
                 s.dict.set("Resources", Object::Dictionary(filtered));
             }
@@ -956,15 +995,21 @@ fn transform_chunk(
                         ops.push(op);
                     }
                 }
-                // 覆い: 背景ラスタ (文字の下層) からは除く
-                "Do" if op
-                    .operands
-                    .first()
-                    .and_then(|o| o.as_name().ok())
-                    .and_then(|n| kinds.get(n))
-                    == Some(&XKind::Cover) =>
-                {
-                    c.images += 1;
+                // 覆い (オブジェクト全体・画像の 1 回の描画): 背景ラスタ (文字の下層) からは除く。
+                // `Do` は種類によらず通し番号を数える
+                "Do" => {
+                    let kept = ctx.next_do_kept();
+                    let is_cover = op
+                        .operands
+                        .first()
+                        .and_then(|o| o.as_name().ok())
+                        .and_then(|n| kinds.get(n))
+                        == Some(&XKind::Cover);
+                    if is_cover || kept {
+                        c.images += 1;
+                    } else {
+                        ops.push(op);
+                    }
                 }
                 _ => ops.push(op),
             },
@@ -999,8 +1044,11 @@ fn transform_chunk(
                 "sh" => c.images += 1,
                 // XObject: 画像は除去、Form は残す (中身も別途加工する)。判別できなければ Err
                 "Do" => {
+                    let kept = ctx.next_do_kept();
                     let name = op.operands.first().and_then(|o| o.as_name().ok());
                     match name.and_then(|n| kinds.get(n)) {
+                        // 覆いにした画像の 1 回の描画は、そのまま残す (文字との描画順を保つ)
+                        Some(XKind::Image) if kept => ops.push(op),
                         Some(XKind::Image) => c.images += 1,
                         Some(XKind::Form) | Some(XKind::Cover) => ops.push(op),
                         _ => return Err("Do of an unknown XObject".into()),
@@ -1290,7 +1338,7 @@ pub fn find_cover_forms(doc: &Document, page_id: ObjectId) -> Vec<ObjectId> {
     find_cover_candidates(doc, page_id)
         .into_iter()
         .filter_map(|c| match c.key {
-            CoverKey::Obj(id) => Some(id),
+            CoverKey::Obj(id) | CoverKey::Draw(_, _, id) => Some(id),
             CoverKey::Op(..) => None,
         })
         .collect()
@@ -1337,6 +1385,8 @@ impl CoverWalk<'_> {
         let mut path = PathAcc::default();
         // このストリームの、パスの塗り・線の命令の通し番号
         let mut ord = 0usize;
+        // このストリームの、`Do` 命令の通し番号 (種類によらず数える。画像の 1 回の描画を指す)
+        let mut do_ord = 0usize;
         let _ = for_each_operation(bytes, |op| match op.operator.as_str() {
             "q" => stack.push((cur, ctm)),
             "Q" => {
@@ -1401,6 +1451,8 @@ impl CoverWalk<'_> {
                 path.clear();
             }
             "Do" => {
+                let do_i = do_ord;
+                do_ord += 1;
                 let id = op
                     .operands
                     .first()
@@ -1416,7 +1468,8 @@ impl CoverWalk<'_> {
                         if cur < 0.999 || image_has_mask(st) {
                             self.clock += 1;
                             self.cands.push(RawCand {
-                                key: CoverKey::Obj(id),
+                                // 同じ画像を何度も描く PDF でも、描画ごとに別の覆いとして扱う
+                                key: CoverKey::Draw(key, do_i, id),
                                 bbox: Some(mat_bbox(&ctm, [0.0, 0.0, 1.0, 1.0])),
                                 raster: true,
                                 translucent: cur < 0.999,
@@ -2171,6 +2224,8 @@ mod tests {
             let c = find_cover_candidates(&doc, page);
             assert_eq!(c.len(), expect, "with_mask={with_mask}");
             if expect == 1 {
+                // 画像は、その 1 回の描画 (ストリーム内の 0 番目の `Do`) として指す
+                assert!(matches!(c[0].key, CoverKey::Draw(StreamKey::Page(p), 0, _) if p == page));
                 assert_eq!(c[0].bbox, Some([5.0, 6.0, 15.0, 26.0]));
                 // 画像はラスター。不透明度 1 で描いているので半透明ではない
                 assert!(c[0].raster && !c[0].translucent);
@@ -2309,6 +2364,43 @@ mod tests {
         let Ok(Object::Stream(f)) = doc.get_object(inner) else { panic!() };
         let txt = String::from_utf8_lossy(&f.content).to_string();
         assert!(txt.contains(" f"), "覆いの中の塗りが取り除かれた: {txt}");
+    }
+
+    #[test]
+    fn only_the_chosen_draw_of_a_shared_image_is_kept() {
+        use lopdf::dictionary;
+        let (mut doc, page) = cover_doc("1 0 0 rg 0 0 1 1 re f", "");
+        let img = doc.add_object(Stream::new(
+            dictionary! {
+                "Type"=>"XObject","Subtype"=>"Image",
+                "Width"=>Object::Integer(1),"Height"=>Object::Integer(1),
+                "ColorSpace"=>"DeviceGray","BitsPerComponent"=>Object::Integer(8)
+            },
+            vec![0u8],
+        ));
+        // 同じ画像を 2 回描く。2 回目 (通し番号 1) だけを覆いにする
+        let content = doc.add_object(Stream::new(
+            dictionary! {},
+            b"BT /F1 12 Tf (a) Tj ET q 10 0 0 10 0 0 cm /Im1 Do Q q 10 0 0 10 20 0 cm /Im1 Do Q".to_vec(),
+        ));
+        if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
+            p.set("Contents", content);
+            p.set("Resources", dictionary! {"XObject"=>dictionary!{"Im1"=>img}});
+        }
+        let covers = Covers::from_keys([CoverKey::Draw(StreamKey::Page(page), 1, img)]);
+        assert_eq!(covers.len(), 1);
+        // 背景 (RemoveText): 覆いにした 2 回目だけが除かれ、1 回目は残る
+        let mut a = doc.clone();
+        transform_covers(&mut a, Mode::RemoveText, &covers).unwrap();
+        assert_eq!(page_text(&a, page).matches("Do").count(), 1);
+        // 文字層 (TextOnly): 覆いにした 2 回目だけが残り、画像もリソースに残る
+        transform_covers(&mut doc, Mode::TextOnly, &covers).unwrap();
+        let t = page_text(&doc, page);
+        assert_eq!(t.matches("Do").count(), 1, "{t}");
+        assert!(t.contains("20 0 cm"), "{t}");
+        let res = effective_resources(&doc, page).unwrap();
+        let xo = resolve_dict(&doc, res.get(b"XObject").ok()).unwrap();
+        assert!(xo.get(b"Im1").is_ok(), "覆いにした描画の画像がリソースから外れた");
     }
 
     fn kinds_for_test() -> Kinds {
