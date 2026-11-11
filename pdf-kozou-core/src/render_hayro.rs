@@ -1190,6 +1190,22 @@ fn check_cover_layering(
 /// 1 ページで、覆いが文字を隠しているかを画素で確かめる候補の最大数 (描画回数の上限)
 const MAX_COVER_TESTS: usize = 48;
 
+/// 覆いの描画を絞る範囲 (隠された文字の画素の外接矩形) の余白 (画素)
+const ZONE_PAD_PX: f64 = 6.0;
+
+/// 覆いの集合 (描画を絞る範囲つき)
+fn covers_with_clips(
+    k: &[(crate::content_filter::CoverKey, [f64; 4], Option<[f64; 8]>)],
+) -> crate::content_filter::Covers {
+    let mut set = crate::content_filter::Covers::from_keys(k.iter().map(|(key, _, _)| *key));
+    for (key, _, clip) in k {
+        if let Some(q) = clip {
+            set.set_clip(key, *q);
+        }
+    }
+    set
+}
+
 /// 覆い (元の画像・Form・パスの塗り。content_filter::find_cover_candidates) のうち、背景に焼かず
 /// 元のまま文字層に残すものと、そのページを決める。
 ///
@@ -1227,7 +1243,7 @@ fn plan_cover_layers(
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
         LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_hidden_text, count_in_rect, hidden_opacity,
-        text_core_mask, text_near_mask,
+        hidden_text_bbox, text_core_mask, text_near_mask,
     };
     use std::collections::HashSet;
 
@@ -1274,7 +1290,7 @@ fn plan_cover_layers(
     let (cache_w, cache_b) = (RenderCache::new(), RenderCache::new());
     let scale = dpi / 72.0;
 
-    let mut keep: Vec<CoverKey> = Vec::new();
+    let mut keep: Vec<(CoverKey, Option<[f64; 8]>)> = Vec::new();
     let mut rejected: HashSet<CoverKey> = HashSet::new();
     let mut nts: HashMap<i32, Vec<u8>> = HashMap::new();
     let mut patch_pages: HashSet<i32> = HashSet::new();
@@ -1315,7 +1331,8 @@ fn plan_cover_layers(
             ]
         };
         // 文字を隠している覆いだけ (外接矩形つき)
-        let mut k: Vec<(CoverKey, [f64; 4])> = Vec::new();
+        // (覆い, 外接矩形 (画素), 描画を絞る範囲 (ストリームのユーザー空間の四角形))
+        let mut k: Vec<(CoverKey, [f64; 4], Option<[f64; 8]>)> = Vec::new();
         let (mut n_text, mut n_opaque, mut n_tested) = (0usize, 0usize, 0usize);
         let mut patch_page = false;
         for c in &found {
@@ -1366,7 +1383,31 @@ fn plan_cover_layers(
                     continue;
                 }
             }
-            k.push((c.key, r));
+            // 4. 画像の 1 回の描画は、文字を隠している範囲 (隠された文字の画素の外接矩形 + 余白) に
+            //    絞って文字層に残す。範囲の外は背景に焼き込む (顔などを隠す覆いが、文字に掛かる
+            //    部分以外まで動かせる状態で残り、背景から抜けるのを防ぐ)。
+            let clip = if matches!(c.key, CoverKey::Draw(..)) {
+                c.to_local.and_then(|inv| {
+                    let hb = hidden_text_bbox(&core, &t0w, &tcw, tw, th, r)?;
+                    let px = [
+                        (hb[0] - ZONE_PAD_PX).max(0.0),
+                        (hb[1] - ZONE_PAD_PX).max(0.0),
+                        (hb[2] + ZONE_PAD_PX).min(tw as f64),
+                        (hb[3] + ZONE_PAD_PX).min(th as f64),
+                    ];
+                    // 画素座標 (左上原点) → ページ座標 (to_px の逆)
+                    let page = [
+                        geom[0] + px[0] / sx,
+                        geom[3] - px[3] / sy,
+                        geom[0] + px[2] / sx,
+                        geom[3] - px[1] / sy,
+                    ];
+                    Some(content_filter::local_quad(&inv, page))
+                })
+            } else {
+                None
+            };
+            k.push((c.key, r, clip));
         }
         let n_confirmed = k.len();
         let mut accepted = false;
@@ -1385,7 +1426,7 @@ fn plan_cover_layers(
                 if k.is_empty() {
                     break;
                 }
-                let set = Covers::from_keys(k.iter().map(|(key, _)| *key));
+                let set = covers_with_clips(&k);
                 let Some((chk, err)) =
                     check_cover_layering(data, &set, idx, tw, th, dpi, settings, &nt, &near)
                 else {
@@ -1401,7 +1442,7 @@ fn plan_cover_layers(
                 why = format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad);
                 // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
                 let before = k.len();
-                k.retain(|(key, r)| {
+                k.retain(|(key, r, _)| {
                     let hit = count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER;
                     if hit {
                         rejected.insert(*key);
@@ -1431,13 +1472,33 @@ fn plan_cover_layers(
             if patch_page { " + patches" } else { "" }
         );
         if accepted {
-            keep.extend(k.iter().map(|(key, _)| *key));
+            keep.extend(k.iter().map(|(key, _, clip)| (*key, *clip)));
         } else {
-            rejected.extend(k.iter().map(|(key, _)| *key));
+            rejected.extend(k.iter().map(|(key, _, _)| *key));
         }
     }
     // 別のページで条件を満たさなかった覆いは、共有されていても残さない
-    let covers = Covers::from_keys(keep.into_iter().filter(|key| !rejected.contains(key)));
+    // 同じ描画を指す覆いが複数のページから来て、絞る範囲が食い違うときは、絞らない (全体を残す)
+    let mut finals: Vec<(CoverKey, Option<[f64; 8]>)> = Vec::new();
+    for (key, clip) in keep {
+        if rejected.contains(&key) {
+            continue;
+        }
+        match finals.iter_mut().find(|(k, _)| *k == key) {
+            Some(e) => {
+                if e.1 != clip {
+                    e.1 = None;
+                }
+            }
+            None => finals.push((key, clip)),
+        }
+    }
+    let mut covers = Covers::from_keys(finals.iter().map(|(k, _)| *k));
+    for (key, clip) in &finals {
+        if let Some(q) = clip {
+            covers.set_clip(key, *q);
+        }
+    }
     (covers, nts, patch_pages)
 }
 

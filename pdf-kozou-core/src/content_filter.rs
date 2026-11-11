@@ -160,6 +160,9 @@ pub struct Covers {
     pub draws: HashSet<(StreamKey, usize)>,
     /// `draws` が描く画像 (TextOnly でリソースに残す)
     pub draw_imgs: HashSet<ObjectId>,
+    /// `draws` のうち、描画を範囲に絞るもの: 範囲 (ストリームのユーザー空間の四角形。`f64` のビット列)。
+    /// 文字層ではこの範囲の中だけ、背景ではこの範囲の外だけを描く (範囲の内外で二重に掛けない)
+    pub draw_clips: std::collections::HashMap<(StreamKey, usize), [u64; 8]>,
 }
 
 impl Covers {
@@ -183,6 +186,13 @@ impl Covers {
                 self.draws.insert((s, i));
                 self.draw_imgs.insert(id);
             }
+        }
+    }
+
+    /// 画像の 1 回の描画 (`Draw`) を、ストリームのユーザー空間の四角形 `quad` に絞る
+    pub fn set_clip(&mut self, k: &CoverKey, quad: [f64; 8]) {
+        if let CoverKey::Draw(s, i, _) = k {
+            self.draw_clips.insert((*s, *i), quad.map(f64::to_bits));
         }
     }
 
@@ -213,6 +223,8 @@ struct OpCtx<'a> {
     draws: Option<(&'a HashSet<(StreamKey, usize)>, StreamKey)>,
     /// 次の `Do` 命令の通し番号
     do_ord: usize,
+    /// 描画を範囲に絞る指定 (`Covers::draw_clips`)
+    clips: Option<&'a std::collections::HashMap<(StreamKey, usize), [u64; 8]>>,
 }
 
 impl<'a> OpCtx<'a> {
@@ -222,6 +234,7 @@ impl<'a> OpCtx<'a> {
             ord: 0,
             draws: None,
             do_ord: 0,
+            clips: None,
         }
     }
 
@@ -231,6 +244,7 @@ impl<'a> OpCtx<'a> {
             ord: 0,
             draws: Some((&covers.draws, key)),
             do_ord: 0,
+            clips: Some(&covers.draw_clips),
         }
     }
 
@@ -243,12 +257,21 @@ impl<'a> OpCtx<'a> {
                 .is_some_and(|(set, key)| set.iter().any(|(k, _)| *k == key))
     }
 
-    /// `Do` 命令を 1 つ数え、それが残す画像の描画かを返す
-    fn next_do_kept(&mut self) -> bool {
+    /// `Do` 命令を 1 つ数え、それが残す画像の描画か (と、絞る範囲) を返す
+    fn next_do(&mut self) -> (bool, Option<[f64; 8]>) {
         let i = self.do_ord;
         self.do_ord += 1;
-        self.draws
-            .is_some_and(|(set, key)| set.contains(&(key, i)))
+        let Some((set, key)) = self.draws else {
+            return (false, None);
+        };
+        if !set.contains(&(key, i)) {
+            return (false, None);
+        }
+        let clip = self
+            .clips
+            .and_then(|m| m.get(&(key, i)))
+            .map(|q| q.map(f64::from_bits));
+        (true, clip)
     }
 
     /// 塗り命令を 1 つ数え、それが残す命令かを返す
@@ -948,6 +971,18 @@ fn is_clip_render_mode(op: &Operation) -> bool {
 }
 
 /// インライン画像を含まない部分を加工する
+/// 四角形 (`[x, y; 4 点]`) のパス `m l l l h`
+fn quad_path_ops(q: &[f64; 8]) -> Vec<Operation> {
+    let n = |v: f64| Object::Real(v as f32);
+    vec![
+        Operation::new("m", vec![n(q[0]), n(q[1])]),
+        Operation::new("l", vec![n(q[2]), n(q[3])]),
+        Operation::new("l", vec![n(q[4]), n(q[5])]),
+        Operation::new("l", vec![n(q[6]), n(q[7])]),
+        Operation::new("h", vec![]),
+    ]
+}
+
 fn transform_chunk(
     chunk: &[u8],
     mode: Mode,
@@ -998,14 +1033,29 @@ fn transform_chunk(
                 // 覆い (オブジェクト全体・画像の 1 回の描画): 背景ラスタ (文字の下層) からは除く。
                 // `Do` は種類によらず通し番号を数える
                 "Do" => {
-                    let kept = ctx.next_do_kept();
+                    let (kept, clip) = ctx.next_do();
                     let is_cover = op
                         .operands
                         .first()
                         .and_then(|o| o.as_name().ok())
                         .and_then(|n| kinds.get(n))
                         == Some(&XKind::Cover);
-                    if is_cover || kept {
+                    if is_cover {
+                        c.images += 1;
+                    } else if kept && let Some(q) = clip {
+                        // 範囲に絞った覆い: 背景には、範囲の外だけを描く (範囲の中は文字層が描く)
+                        ops.push(Operation::new("q", vec![]));
+                        ops.push(Operation::new(
+                            "re",
+                            [-1e7, -1e7, 2e7, 2e7].map(|v| Object::Real(v as f32)).to_vec(),
+                        ));
+                        ops.extend(quad_path_ops(&q));
+                        ops.push(Operation::new("W*", vec![]));
+                        ops.push(Operation::new("n", vec![]));
+                        ops.push(op);
+                        ops.push(Operation::new("Q", vec![]));
+                        c.images += 1; // 内容が変わったことを知らせる
+                    } else if kept {
                         c.images += 1;
                     } else {
                         ops.push(op);
@@ -1044,11 +1094,24 @@ fn transform_chunk(
                 "sh" => c.images += 1,
                 // XObject: 画像は除去、Form は残す (中身も別途加工する)。判別できなければ Err
                 "Do" => {
-                    let kept = ctx.next_do_kept();
+                    let (kept, clip) = ctx.next_do();
                     let name = op.operands.first().and_then(|o| o.as_name().ok());
                     match name.and_then(|n| kinds.get(n)) {
-                        // 覆いにした画像の 1 回の描画は、そのまま残す (文字との描画順を保つ)
-                        Some(XKind::Image) if kept => ops.push(op),
+                        // 覆いにした画像の 1 回の描画は、そのまま残す (文字との描画順を保つ)。
+                        // 範囲に絞った覆いは、範囲の中だけを描く
+                        Some(XKind::Image) if kept => {
+                            if let Some(q) = clip {
+                                ops.push(Operation::new("q", vec![]));
+                                ops.extend(quad_path_ops(&q));
+                                ops.push(Operation::new("W", vec![]));
+                                ops.push(Operation::new("n", vec![]));
+                                ops.push(op);
+                                ops.push(Operation::new("Q", vec![]));
+                                c.paints += 1; // 内容が変わったことを知らせる
+                            } else {
+                                ops.push(op);
+                            }
+                        }
                         Some(XKind::Image) => c.images += 1,
                         Some(XKind::Form) | Some(XKind::Cover) => ops.push(op),
                         _ => return Err("Do of an unknown XObject".into()),
@@ -1204,6 +1267,10 @@ pub struct CoverCandidate {
     pub raster: bool,
     /// 半透明 (不透明度 ca が 1 未満で描かれる) か。同じオブジェクトを複数回描くなら、どれか 1 回でも
     pub translucent: bool,
+    /// 画像の 1 回の描画 (`CoverKey::Draw`) の、ページ座標 → ストリームのユーザー空間の変換。
+    /// 描画を範囲に絞る (`Covers::set_clip`) ために使う。求められない・そのストリームを複数回たどる
+    /// (範囲が他の描画に合わない) ときは None
+    pub to_local: Option<[f64; 6]>,
 }
 
 type Mat = [f64; 6];
@@ -1233,6 +1300,34 @@ fn mat_bbox(m: &Mat, r: [f64; 4]) -> [f64; 4] {
         out[3] = out[3].max(py);
     }
     out
+}
+
+/// 変換行列の逆行列 (特異なら None)
+fn mat_inv(m: &Mat) -> Option<Mat> {
+    let det = m[0] * m[3] - m[1] * m[2];
+    if !det.is_finite() || det.abs() < 1e-12 {
+        return None;
+    }
+    let (a, b, c, d) = (m[3] / det, -m[1] / det, -m[2] / det, m[0] / det);
+    Some([a, b, c, d, -(m[4] * a + m[5] * c), -(m[4] * b + m[5] * d)])
+}
+
+/// ページ座標の矩形 `rect` (`[x0, y0, x1, y1]`) の 4 隅を、`to_local` (ページ座標 → ストリームの
+/// ユーザー空間) で写した四角形 `[x, y; 4 点]` を返す。
+pub fn local_quad(to_local: &[f64; 6], rect: [f64; 4]) -> [f64; 8] {
+    let tf = |x: f64, y: f64| {
+        (
+            to_local[0] * x + to_local[2] * y + to_local[4],
+            to_local[1] * x + to_local[3] * y + to_local[5],
+        )
+    };
+    let p = [
+        tf(rect[0], rect[1]),
+        tf(rect[2], rect[1]),
+        tf(rect[2], rect[3]),
+        tf(rect[0], rect[3]),
+    ];
+    [p[0].0, p[0].1, p[1].0, p[1].1, p[2].0, p[2].1, p[3].0, p[3].1]
 }
 
 fn bbox_union(a: Option<[f64; 4]>, b: Option<[f64; 4]>) -> Option<[f64; 4]> {
@@ -1310,6 +1405,7 @@ pub fn find_cover_candidates(doc: &Document, page_id: ObjectId) -> Vec<CoverCand
         clock: 0,
         first_text: None,
         cands: Vec::new(),
+        visits: HashMap::new(),
     };
     w.walk(&bytes, &res, 1.0, IDENTITY, StreamKey::Page(page_id), 0);
     let mut out: Vec<CoverCandidate> = Vec::new();
@@ -1327,6 +1423,11 @@ pub fn find_cover_candidates(doc: &Document, page_id: ObjectId) -> Vec<CoverCand
                 bbox: c.bbox,
                 raster: c.raster,
                 translucent: c.translucent,
+                // 同じ Form を複数回たどった中の描画は、範囲が合わないので絞らない
+                to_local: match c.key {
+                    CoverKey::Draw(sk, _, _) if w.visits.get(&sk).copied().unwrap_or(0) > 1 => None,
+                    _ => c.to_local,
+                },
             }),
         }
     }
@@ -1349,6 +1450,7 @@ struct RawCand {
     bbox: Option<[f64; 4]>,
     raster: bool,
     translucent: bool,
+    to_local: Option<Mat>,
     /// 描画順の時刻 (文字の描画・覆いの描画ごとに進む)
     at: usize,
 }
@@ -1358,6 +1460,8 @@ struct CoverWalk<'a> {
     clock: usize,
     first_text: Option<usize>,
     cands: Vec<RawCand>,
+    /// ストリームごとの、たどった回数 (同じ Form を複数回描く場合の検出用)
+    visits: HashMap<StreamKey, usize>,
 }
 
 impl CoverWalk<'_> {
@@ -1376,6 +1480,7 @@ impl CoverWalk<'_> {
         if depth > 8 {
             return;
         }
+        *self.visits.entry(key).or_insert(0) += 1;
         let doc = self.doc;
         let gs_tbl = resolve_dict(doc, res.get(b"ExtGState").ok());
         let xo_tbl = resolve_dict(doc, res.get(b"XObject").ok());
@@ -1445,6 +1550,7 @@ impl CoverWalk<'_> {
                         bbox: path.bbox().map(|b| [b[0] - 1.0, b[1] - 1.0, b[2] + 1.0, b[3] + 1.0]),
                         raster: false,
                         translucent: cur < 0.999,
+                        to_local: None,
                         at: self.clock,
                     });
                 }
@@ -1473,6 +1579,7 @@ impl CoverWalk<'_> {
                                 bbox: Some(mat_bbox(&ctm, [0.0, 0.0, 1.0, 1.0])),
                                 raster: true,
                                 translucent: cur < 0.999,
+                                to_local: mat_inv(&ctm),
                                 at: self.clock,
                             });
                         }
@@ -1494,6 +1601,7 @@ impl CoverWalk<'_> {
                                 // 曲線・線を含む Form は、画像を含んでいてもベクターの飾りとして扱う
                                 raster: info.mask_image && !info.curves,
                                 translucent: cur < 0.999,
+                                to_local: None,
                                 at: self.clock,
                             });
                             return;
@@ -2401,6 +2509,52 @@ mod tests {
         let res = effective_resources(&doc, page).unwrap();
         let xo = resolve_dict(&doc, res.get(b"XObject").ok()).unwrap();
         assert!(xo.get(b"Im1").is_ok(), "覆いにした描画の画像がリソースから外れた");
+    }
+
+    #[test]
+    fn clipped_cover_draw_is_split_between_background_and_text_layer() {
+        use lopdf::dictionary;
+        let (mut doc, page) = cover_doc("1 0 0 rg 0 0 1 1 re f", "");
+        let img = doc.add_object(Stream::new(
+            dictionary! {
+                "Type"=>"XObject","Subtype"=>"Image",
+                "Width"=>Object::Integer(1),"Height"=>Object::Integer(1),
+                "ColorSpace"=>"DeviceGray","BitsPerComponent"=>Object::Integer(8)
+            },
+            vec![0u8],
+        ));
+        let content = doc.add_object(Stream::new(
+            dictionary! {},
+            b"BT /F1 12 Tf (a) Tj ET q 10 0 0 10 0 0 cm /Im1 Do Q".to_vec(),
+        ));
+        if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
+            p.set("Contents", content);
+            p.set("Resources", dictionary! {"XObject"=>dictionary!{"Im1"=>img}});
+        }
+        let key = CoverKey::Draw(StreamKey::Page(page), 0, img);
+        let mut covers = Covers::from_keys([key]);
+        covers.set_clip(&key, [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]);
+        // 背景: 範囲の外だけを描く (偶奇則のクリップ) ので、`Do` は残り、W* が付く
+        let mut a = doc.clone();
+        transform_covers(&mut a, Mode::RemoveText, &covers).unwrap();
+        let t = page_text(&a, page);
+        assert_eq!(t.matches("Do").count(), 1, "{t}");
+        assert!(t.contains("W*"), "{t}");
+        // 文字層: 範囲の中だけを描く (W)。偶奇則ではない
+        transform_covers(&mut doc, Mode::TextOnly, &covers).unwrap();
+        let t = page_text(&doc, page);
+        assert_eq!(t.matches("Do").count(), 1, "{t}");
+        assert!(t.contains(" W") && !t.contains("W*"), "{t}");
+    }
+
+    #[test]
+    fn mat_inv_and_local_quad_round_trip() {
+        let m: Mat = [2.0, 0.0, 0.0, 4.0, 10.0, 20.0];
+        let inv = mat_inv(&m).unwrap();
+        // ページ座標の矩形 (10, 20)-(14, 28) は、ユーザー空間の (0, 0)-(2, 2)
+        let q = local_quad(&inv, [10.0, 20.0, 14.0, 28.0]);
+        assert_eq!(q, [0.0, 0.0, 2.0, 0.0, 2.0, 2.0, 0.0, 2.0]);
+        assert!(mat_inv(&[0.0, 0.0, 0.0, 0.0, 1.0, 1.0]).is_none());
     }
 
     fn kinds_for_test() -> Kinds {

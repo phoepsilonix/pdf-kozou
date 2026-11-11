@@ -315,6 +315,39 @@ pub fn count_hidden_text(
     n
 }
 
+/// `count_hidden_text` と同じ条件の画素 (覆いに隠された・染められた文字の画素) の外接矩形
+/// `[x0, y0, x1, y1]` (画素座標、右下は含まない)。無ければ None。長さが合わなくても None。
+pub fn hidden_text_bbox(
+    core: &[bool],
+    t0w: &[u8],
+    tcw: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+) -> Option<[f64; 4]> {
+    let (wu, hu) = (w as usize, h as usize);
+    if wu == 0 || hu == 0 || core.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+        return None;
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    let mut out: Option<[usize; 4]> = None;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            if core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR {
+                out = Some(match out {
+                    None => [x, y, x + 1, y + 1],
+                    Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x + 1), b[3].max(y + 1)],
+                });
+            }
+        }
+    }
+    out.map(|b| [b[0] as f64, b[1] as f64, b[2] as f64, b[3] as f64])
+}
+
 /// 覆いの層が「不透明」とみなす、白地・黒地の描画の差の上限 (0-255。アルファ 1 なら 0)
 pub const OPAQUE_TRANS_MAX: i32 = 12;
 
@@ -815,5 +848,26 @@ mod tests {
         assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw, &cb, w, h, all), (4, 0));
         // 長さが合わなければ (0, 0)
         assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw[..6], &cb, w, h, all), (0, 0));
+    }
+
+    #[test]
+    fn hidden_text_bbox_wraps_only_the_hidden_pixels() {
+        let (w, h) = (6u32, 3u32);
+        let n = (w * h) as usize;
+        let mut core = vec![false; n];
+        for &(x, y) in &[(1usize, 0usize), (2, 1), (5, 2)] {
+            core[y * w as usize + x] = true;
+        }
+        let t0w = solid(w, h, 0);
+        let mut tcw = solid(w, h, 0);
+        // (1,0) と (2,1) だけが変わる (隠された)。(5,2) は変わらない (文字が上に描かれている)
+        for &(x, y) in &[(1usize, 0usize), (2, 1)] {
+            let i = y * w as usize + x;
+            tcw[i * 3..i * 3 + 3].fill(255);
+        }
+        let all = [0.0, 0.0, w as f64, h as f64];
+        assert_eq!(hidden_text_bbox(&core, &t0w, &tcw, w, h, all), Some([1.0, 0.0, 3.0, 2.0]));
+        assert_eq!(hidden_text_bbox(&core, &t0w, &tcw, w, h, [4.0, 0.0, 6.0, 3.0]), None);
+        assert_eq!(hidden_text_bbox(&core, &t0w[..6], &tcw, w, h, all), None);
     }
 }
