@@ -43,6 +43,11 @@ pub struct Params {
     pub text_thr: i32,
     /// comp と full の差がこの値を超えた画素を「見え方が違う」とみなす (0-255)
     pub diff_thr: i32,
+    /// full と nt の差がこの値以下の画素だけを、パッチの対象にする (0-255)。元でも文字が見えている
+    /// 画素 (full が nt と違う) は、文字の描き方の違い (縁取り・影・にじみ) であって、隠された文字では
+    /// ない。そこにパッチを置くと、文字そのものを画素として焼き込んでしまう (拡大でぼやける、
+    /// ビューアで濃さが変わる)。元で文字が隠れている画素 (full == nt) だけを、背景の画素で隠し直す。
+    pub hide_thr: i32,
     /// 差分マスクの膨張半径 (画素)。文字の縁のにじみまで覆う
     pub dilate: u32,
     /// 近接する領域をまとめるためのタイルの大きさ (画素)
@@ -54,6 +59,7 @@ impl Default for Params {
         Params {
             text_thr: 10,
             diff_thr: 28,
+            hide_thr: 12,
             dilate: 2,
             tile: 32,
         }
@@ -128,7 +134,9 @@ pub fn compute_patches(
         let o = i * 3;
         if max_abs_diff(&comp[o..o + 3], &bg[o..o + 3]) > p.text_thr {
             text[i] = true;
-            if max_abs_diff(&comp[o..o + 3], &full[o..o + 3]) > p.diff_thr {
+            if max_abs_diff(&comp[o..o + 3], &full[o..o + 3]) > p.diff_thr
+                && max_abs_diff(&full[o..o + 3], &nt[o..o + 3]) <= p.hide_thr
+            {
                 bad[i] = true;
                 any_bad = true;
             }
@@ -315,37 +323,104 @@ pub fn count_hidden_text(
     n
 }
 
-/// `count_hidden_text` と同じ条件の画素 (覆いに隠された・染められた文字の画素) の外接矩形
-/// `[x0, y0, x1, y1]` (画素座標、右下は含まない)。無ければ None。長さが合わなくても None。
-pub fn hidden_text_bbox(
+/// `count_hidden_text` と同じ条件の画素 (覆いに隠された・染められた文字の画素) を、近くにあるもの
+/// ごとにまとめた外接矩形 `[x0, y0, x1, y1]` (画素座標、右下は含まない) の一覧。互いに重ならない。
+/// 覆いを文字層に残す範囲として使う。文字の行ごとに狭い範囲になる (文字から離れた覆いの部分は
+/// 背景に焼き込む)。
+/// - `tile`: 近いとみなす距離 (画素)。この間隔のタイルが隣り合う画素どうしをまとめる
+/// - `pad`: 矩形を広げる余白 (画素。文字の縁のにじみ分)
+/// 長さが合わない・該当する画素が無いときは空。
+#[allow(clippy::too_many_arguments)]
+pub fn hidden_text_rects(
     core: &[bool],
     t0w: &[u8],
     tcw: &[u8],
     w: u32,
     h: u32,
     rect: [f64; 4],
-) -> Option<[f64; 4]> {
+    tile: u32,
+    pad: u32,
+) -> Vec<[f64; 4]> {
     let (wu, hu) = (w as usize, h as usize);
     if wu == 0 || hu == 0 || core.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
-        return None;
+        return Vec::new();
     }
     let x0 = rect[0].floor().max(0.0) as usize;
     let y0 = rect[1].floor().max(0.0) as usize;
     let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
     let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
-    let mut out: Option<[usize; 4]> = None;
+    let t = tile.max(1) as usize;
+    let (tx, ty) = (wu.div_ceil(t), hu.div_ceil(t));
+    // タイルごとの、該当画素の外接矩形
+    let mut cell: Vec<Option<[usize; 4]>> = vec![None; tx * ty];
     for y in y0..y1 {
         for x in x0..x1 {
             let i = y * wu + x;
             if core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR {
-                out = Some(match out {
+                let c = &mut cell[(y / t) * tx + x / t];
+                *c = Some(match *c {
                     None => [x, y, x + 1, y + 1],
                     Some(b) => [b[0].min(x), b[1].min(y), b[2].max(x + 1), b[3].max(y + 1)],
                 });
             }
         }
     }
-    out.map(|b| [b[0] as f64, b[1] as f64, b[2] as f64, b[3] as f64])
+    // 隣り合う (8 近傍) タイルをまとめる
+    let mut seen = vec![false; tx * ty];
+    let mut rects: Vec<[f64; 4]> = Vec::new();
+    for start in 0..tx * ty {
+        if cell[start].is_none() || seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut stack = vec![start];
+        let mut b = cell[start].unwrap();
+        while let Some(c) = stack.pop() {
+            let (cx, cy) = ((c % tx) as i64, (c / tx) as i64);
+            for dy in -1i64..=1 {
+                for dx in -1i64..=1 {
+                    let (nx, ny) = (cx + dx, cy + dy);
+                    if nx < 0 || ny < 0 || nx >= tx as i64 || ny >= ty as i64 {
+                        continue;
+                    }
+                    let ni = ny as usize * tx + nx as usize;
+                    if let Some(nb) = cell[ni]
+                        && !seen[ni]
+                    {
+                        seen[ni] = true;
+                        b = [b[0].min(nb[0]), b[1].min(nb[1]), b[2].max(nb[2]), b[3].max(nb[3])];
+                        stack.push(ni);
+                    }
+                }
+            }
+        }
+        let pd = pad as f64;
+        rects.push([
+            (b[0] as f64 - pd).max(0.0),
+            (b[1] as f64 - pd).max(0.0),
+            (b[2] as f64 + pd).min(w as f64),
+            (b[3] as f64 + pd).min(h as f64),
+        ]);
+    }
+    // 重なる矩形は 1 つにまとめる (偶奇則のクリップで内外が反転しないように、互いに重ならなくする)
+    loop {
+        let mut merged = false;
+        'outer: for i in 0..rects.len() {
+            for j in (i + 1)..rects.len() {
+                let (a, b) = (rects[i], rects[j]);
+                if a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3] {
+                    rects[i] = [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])];
+                    rects.remove(j);
+                    merged = true;
+                    break 'outer;
+                }
+            }
+        }
+        if !merged {
+            break;
+        }
+    }
+    rects
 }
 
 /// 覆いの層が「不透明」とみなす、白地・黒地の描画の差の上限 (0-255。アルファ 1 なら 0)
@@ -627,20 +702,18 @@ mod tests {
     }
 
     #[test]
-    fn translucent_cover_keeps_faint_text() {
+    fn text_that_is_visible_in_the_original_is_never_baked() {
         let (w, h) = (64, 48);
         let bg = solid(w, h, 255);
         let nt = bg.clone();
         let mut full = bg.clone();
-        fill(&mut full, w, 10, 10, 20, 14, 180); // 薄く見えていた
+        fill(&mut full, w, 10, 10, 20, 14, 180); // 薄く見えていた (半透明の覆いの下)
         let mut comp = bg.clone();
         fill(&mut comp, w, 10, 10, 20, 14, 0); // 出力では濃く見える
+        // 元でも文字が見えている画素は、パッチにしない (文字を画素として焼き込まない)。
+        // 半透明の覆いは、元のオブジェクトのまま文字層に重ねて再現する
         let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default());
-        assert_eq!(ps.len(), 1);
-        let p = &ps[0];
-        let (lx, ly) = (12 - p.x0, 11 - p.y0);
-        let o = ((ly * p.w + lx) * 3) as usize;
-        assert_eq!(&p.rgb[o..o + 3], &[180, 180, 180]);
+        assert!(ps.is_empty());
     }
 
     #[test]
@@ -851,23 +924,31 @@ mod tests {
     }
 
     #[test]
-    fn hidden_text_bbox_wraps_only_the_hidden_pixels() {
-        let (w, h) = (6u32, 3u32);
+    fn hidden_text_rects_split_far_lines_and_wrap_only_hidden_pixels() {
+        let (w, h) = (64u32, 64u32);
         let n = (w * h) as usize;
         let mut core = vec![false; n];
-        for &(x, y) in &[(1usize, 0usize), (2, 1), (5, 2)] {
-            core[y * w as usize + x] = true;
-        }
         let t0w = solid(w, h, 0);
         let mut tcw = solid(w, h, 0);
-        // (1,0) と (2,1) だけが変わる (隠された)。(5,2) は変わらない (文字が上に描かれている)
-        for &(x, y) in &[(1usize, 0usize), (2, 1)] {
-            let i = y * w as usize + x;
-            tcw[i * 3..i * 3 + 3].fill(255);
+        // 離れた 2 か所 (4,4)-(8,6) と (50,50)-(54,52) が隠される。(30,30) は文字が上に描かれ、変わらない
+        for &(x0, y0, x1, y1, hide) in &[(4usize, 4usize, 8usize, 6usize, true), (50, 50, 54, 52, true), (30, 30, 34, 32, false)] {
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    core[y * w as usize + x] = true;
+                    if hide {
+                        let i = y * w as usize + x;
+                        tcw[i * 3..i * 3 + 3].fill(255);
+                    }
+                }
+            }
         }
         let all = [0.0, 0.0, w as f64, h as f64];
-        assert_eq!(hidden_text_bbox(&core, &t0w, &tcw, w, h, all), Some([1.0, 0.0, 3.0, 2.0]));
-        assert_eq!(hidden_text_bbox(&core, &t0w, &tcw, w, h, [4.0, 0.0, 6.0, 3.0]), None);
-        assert_eq!(hidden_text_bbox(&core, &t0w[..6], &tcw, w, h, all), None);
+        let r = hidden_text_rects(&core, &t0w, &tcw, w, h, all, 8, 2);
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert!(r.contains(&[2.0, 2.0, 10.0, 8.0]), "{r:?}");
+        assert!(r.contains(&[48.0, 48.0, 56.0, 54.0]), "{r:?}");
+        // 外接矩形に掛からなければ空 / 長さが合わなければ空
+        assert!(hidden_text_rects(&core, &t0w, &tcw, w, h, [20.0, 20.0, 40.0, 40.0], 8, 2).is_empty());
+        assert!(hidden_text_rects(&core, &t0w[..6], &tcw, w, h, all, 8, 2).is_empty());
     }
 }

@@ -160,9 +160,10 @@ pub struct Covers {
     pub draws: HashSet<(StreamKey, usize)>,
     /// `draws` が描く画像 (TextOnly でリソースに残す)
     pub draw_imgs: HashSet<ObjectId>,
-    /// `draws` のうち、描画を範囲に絞るもの: 範囲 (ストリームのユーザー空間の四角形。`f64` のビット列)。
-    /// 文字層ではこの範囲の中だけ、背景ではこの範囲の外だけを描く (範囲の内外で二重に掛けない)
-    pub draw_clips: std::collections::HashMap<(StreamKey, usize), [u64; 8]>,
+    /// `draws` のうち、描画を範囲に絞るもの: 範囲 (ストリームのユーザー空間の四角形の一覧。互いに
+    /// 重ならない。`f64` のビット列)。文字層ではこの範囲の中だけ、背景ではこの範囲の外だけを描く
+    /// (範囲の内外で二重に掛けない)
+    pub draw_clips: std::collections::HashMap<(StreamKey, usize), Vec<[u64; 8]>>,
 }
 
 impl Covers {
@@ -190,9 +191,12 @@ impl Covers {
     }
 
     /// 画像の 1 回の描画 (`Draw`) を、ストリームのユーザー空間の四角形 `quad` に絞る
-    pub fn set_clip(&mut self, k: &CoverKey, quad: [f64; 8]) {
-        if let CoverKey::Draw(s, i, _) = k {
-            self.draw_clips.insert((*s, *i), quad.map(f64::to_bits));
+    pub fn set_clip(&mut self, k: &CoverKey, quads: &[[f64; 8]]) {
+        if let CoverKey::Draw(s, i, _) = k
+            && !quads.is_empty()
+        {
+            self.draw_clips
+                .insert((*s, *i), quads.iter().map(|q| q.map(f64::to_bits)).collect());
         }
     }
 
@@ -224,7 +228,7 @@ struct OpCtx<'a> {
     /// 次の `Do` 命令の通し番号
     do_ord: usize,
     /// 描画を範囲に絞る指定 (`Covers::draw_clips`)
-    clips: Option<&'a std::collections::HashMap<(StreamKey, usize), [u64; 8]>>,
+    clips: Option<&'a std::collections::HashMap<(StreamKey, usize), Vec<[u64; 8]>>>,
 }
 
 impl<'a> OpCtx<'a> {
@@ -258,19 +262,20 @@ impl<'a> OpCtx<'a> {
     }
 
     /// `Do` 命令を 1 つ数え、それが残す画像の描画か (と、絞る範囲) を返す
-    fn next_do(&mut self) -> (bool, Option<[f64; 8]>) {
+    fn next_do(&mut self) -> (bool, Vec<[f64; 8]>) {
         let i = self.do_ord;
         self.do_ord += 1;
         let Some((set, key)) = self.draws else {
-            return (false, None);
+            return (false, Vec::new());
         };
         if !set.contains(&(key, i)) {
-            return (false, None);
+            return (false, Vec::new());
         }
         let clip = self
             .clips
             .and_then(|m| m.get(&(key, i)))
-            .map(|q| q.map(f64::from_bits));
+            .map(|v| v.iter().map(|q| q.map(f64::from_bits)).collect())
+            .unwrap_or_default();
         (true, clip)
     }
 
@@ -971,16 +976,18 @@ fn is_clip_render_mode(op: &Operation) -> bool {
 }
 
 /// インライン画像を含まない部分を加工する
-/// 四角形 (`[x, y; 4 点]`) のパス `m l l l h`
-fn quad_path_ops(q: &[f64; 8]) -> Vec<Operation> {
+/// 四角形 (`[x, y; 4 点]`) の一覧のパス (`m l l l h` を四角形の数だけ)
+fn quads_path_ops(quads: &[[f64; 8]]) -> Vec<Operation> {
     let n = |v: f64| Object::Real(v as f32);
-    vec![
-        Operation::new("m", vec![n(q[0]), n(q[1])]),
-        Operation::new("l", vec![n(q[2]), n(q[3])]),
-        Operation::new("l", vec![n(q[4]), n(q[5])]),
-        Operation::new("l", vec![n(q[6]), n(q[7])]),
-        Operation::new("h", vec![]),
-    ]
+    let mut out = Vec::with_capacity(quads.len() * 5);
+    for q in quads {
+        out.push(Operation::new("m", vec![n(q[0]), n(q[1])]));
+        out.push(Operation::new("l", vec![n(q[2]), n(q[3])]));
+        out.push(Operation::new("l", vec![n(q[4]), n(q[5])]));
+        out.push(Operation::new("l", vec![n(q[6]), n(q[7])]));
+        out.push(Operation::new("h", vec![]));
+    }
+    out
 }
 
 fn transform_chunk(
@@ -1042,14 +1049,14 @@ fn transform_chunk(
                         == Some(&XKind::Cover);
                     if is_cover {
                         c.images += 1;
-                    } else if kept && let Some(q) = clip {
+                    } else if kept && !clip.is_empty() {
                         // 範囲に絞った覆い: 背景には、範囲の外だけを描く (範囲の中は文字層が描く)
                         ops.push(Operation::new("q", vec![]));
                         ops.push(Operation::new(
                             "re",
                             [-1e7, -1e7, 2e7, 2e7].map(|v| Object::Real(v as f32)).to_vec(),
                         ));
-                        ops.extend(quad_path_ops(&q));
+                        ops.extend(quads_path_ops(&clip));
                         ops.push(Operation::new("W*", vec![]));
                         ops.push(Operation::new("n", vec![]));
                         ops.push(op);
@@ -1100,9 +1107,9 @@ fn transform_chunk(
                         // 覆いにした画像の 1 回の描画は、そのまま残す (文字との描画順を保つ)。
                         // 範囲に絞った覆いは、範囲の中だけを描く
                         Some(XKind::Image) if kept => {
-                            if let Some(q) = clip {
+                            if !clip.is_empty() {
                                 ops.push(Operation::new("q", vec![]));
-                                ops.extend(quad_path_ops(&q));
+                                ops.extend(quads_path_ops(&clip));
                                 ops.push(Operation::new("W", vec![]));
                                 ops.push(Operation::new("n", vec![]));
                                 ops.push(op);
@@ -2533,7 +2540,7 @@ mod tests {
         }
         let key = CoverKey::Draw(StreamKey::Page(page), 0, img);
         let mut covers = Covers::from_keys([key]);
-        covers.set_clip(&key, [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]);
+        covers.set_clip(&key, &[[0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]]);
         // 背景: 範囲の外だけを描く (偶奇則のクリップ) ので、`Do` は残り、W* が付く
         let mut a = doc.clone();
         transform_covers(&mut a, Mode::RemoveText, &covers).unwrap();
