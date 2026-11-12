@@ -67,7 +67,7 @@ impl Default for Params {
 }
 
 #[inline]
-fn max_abs_diff(a: &[u8], b: &[u8]) -> i32 {
+pub fn max_abs_diff(a: &[u8], b: &[u8]) -> i32 {
     let mut m = 0;
     for c in 0..3 {
         let d = (a[c] as i32 - b[c] as i32).abs();
@@ -79,7 +79,7 @@ fn max_abs_diff(a: &[u8], b: &[u8]) -> i32 {
 }
 
 /// 正方形 (半径 r) の膨張。横→縦の 2 段階 (O(n*r))
-fn dilate(src: &[bool], w: usize, h: usize, r: usize) -> Vec<bool> {
+pub fn dilate(src: &[bool], w: usize, h: usize, r: usize) -> Vec<bool> {
     if r == 0 {
         return src.to_vec();
     }
