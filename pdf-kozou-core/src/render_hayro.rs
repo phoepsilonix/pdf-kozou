@@ -911,6 +911,8 @@ fn background_matrix(b: [f32; 4], rot: i32) -> [f32; 6] {
 
 /// 隠し直しパッチ (cover_patch) を作るために、ページごとに持っておく情報
 struct CoverJob {
+    /// パッチを置いてよい範囲 (画素座標の矩形)
+    zones: Vec<[f64; 4]>,
     pno: i32,
     page_id: lopdf::ObjectId,
     tw: u32,
@@ -976,7 +978,7 @@ pub fn keep_text_pdf(
         Some(p) if !p.is_empty() => p.iter().copied().filter(|&x| x >= 1 && x <= n_doc).collect(),
         _ => (1..=n_doc).collect(),
     };
-    let (cover_set, plain_nts, patch_pages) =
+    let (cover_set, plain_nts, patch_zones) =
         plan_cover_layers(&doc, &data, &selected_pre, dpi_f, &settings);
     let tstats = content_filter::transform_covers(&mut doc, Mode::TextOnly, &cover_set)?;
     // 2) 背景 (テキストと覆いを除いた複製を hayro で描く)
@@ -1016,12 +1018,13 @@ pub fn keep_text_pdf(
         // 覆いを層分割したページ (背景 rgb は覆いを除いた下層)。その元の見た目 (文字だけを除いた
         // 描画) は plan_cover_layers が等倍で描いてある
         let layered = plain_nts.get(&pno);
-        let want_cover = layered.is_some()
-            || patch_pages.contains(&pno)
-            || match cover_pages {
-                None => true,
-                Some(c) => c.contains(&pno),
-            };
+        // 隠し直しパッチは、覆いが文字を隠している範囲 (plan_cover_layers が画素で求めた範囲) が
+        // あるページだけに、その範囲の中だけ作る。「文字が部分的に隠れているかもしれないページ」
+        // (cover_pages) というだけでは作らない。元の描画と出力の描画の差は、文字の描き方の違い・
+        // 縁の画素のずれでも出るため、ページ全体で比べると、不要なパッチが大量にできる
+        let zones = patch_zones.get(&pno).cloned().unwrap_or_default();
+        let _ = cover_pages;
+        let want_cover = !zones.is_empty();
         // 隠し直しの比較 (nt / full / comp) は、超解像度を使わず等倍で行う。超解像度で描いた
         // 出力ページ (comp) は、背景画像を拡大→箱平均で戻すため埋め込んだ背景 (bg) と一致せず、
         // 背景の輪郭や細線がすべて「テキスト画素で見え方が違う」と判定され、巨大なパッチ
@@ -1074,6 +1077,7 @@ pub fn keep_text_pdf(
         let m = background_matrix(b, rot);
         if let Some((nt, bg)) = cover_src {
             covers.push(CoverJob {
+                zones,
                 pno,
                 page_id,
                 tw,
@@ -1196,10 +1200,10 @@ const ZONE_PAD_PX: u32 = 3;
 
 /// 覆いの集合 (描画を絞る範囲つき)
 fn covers_with_clips(
-    k: &[(crate::content_filter::CoverKey, [f64; 4], Vec<[f64; 8]>)],
+    k: &[(crate::content_filter::CoverKey, [f64; 4], Vec<[f64; 8]>, Vec<[f64; 4]>)],
 ) -> crate::content_filter::Covers {
-    let mut set = crate::content_filter::Covers::from_keys(k.iter().map(|(key, _, _)| *key));
-    for (key, _, clip) in k {
+    let mut set = crate::content_filter::Covers::from_keys(k.iter().map(|(key, _, _, _)| *key));
+    for (key, _, clip, _) in k {
         set.set_clip(key, clip);
     }
     set
@@ -1209,7 +1213,8 @@ fn covers_with_clips(
 /// 元のまま文字層に残すものと、そのページを決める。
 ///
 /// 戻り値: (残す覆いの集合, 層分割するページ → そのページの「文字だけを除いた描画」(等倍 RGB8),
-///          隠し直しパッチ (cover_patch) を試すページ)。
+///          ページ → 隠し直しパッチ (cover_patch) を置いてよい範囲 (画素座標の矩形。覆いが文字を
+///          隠している画素の近く)。範囲の無いページには、パッチを作らない)。
 ///
 /// 覆いは「文字より後に描かれる」だけでは、文字を隠しているとは限らない (吹き出し・シール・顔アイコン
 /// などは、自分の文字より奥にあることが多い)。そこで次の順に絞る。
@@ -1241,7 +1246,7 @@ fn plan_cover_layers(
 ) -> (
     crate::content_filter::Covers,
     HashMap<i32, Vec<u8>>,
-    std::collections::HashSet<i32>,
+    HashMap<i32, Vec<[f64; 4]>>,
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
@@ -1250,7 +1255,7 @@ fn plan_cover_layers(
     };
     use std::collections::HashSet;
 
-    let none = || (Covers::default(), HashMap::new(), HashSet::new());
+    let none = || (Covers::default(), HashMap::new(), HashMap::new());
     let lo_pages = doc.get_pages();
     let mut cands: Vec<(i32, [f64; 4], Vec<content_filter::CoverCandidate>)> = Vec::new();
     for &pno in selected {
@@ -1296,7 +1301,8 @@ fn plan_cover_layers(
     let mut keep: Vec<(CoverKey, Vec<[f64; 8]>)> = Vec::new();
     let mut rejected: HashSet<CoverKey> = HashSet::new();
     let mut nts: HashMap<i32, Vec<u8>> = HashMap::new();
-    let mut patch_pages: HashSet<i32> = HashSet::new();
+    // 隠し直しパッチを置いてよい範囲 (ページごと。画素座標の矩形)。覆いが文字を隠している画素の近くだけ
+    let mut patch_zones: HashMap<i32, Vec<[f64; 4]>> = HashMap::new();
     for (pno, geom, found) in cands {
         let idx = (pno - 1) as usize;
         let (Some(pp), Some(fp), Some(wp), Some(bp)) = (
@@ -1335,9 +1341,8 @@ fn plan_cover_layers(
         };
         // 文字を隠している覆いだけ (外接矩形つき)
         // (覆い, 外接矩形 (画素), 描画を絞る範囲 (ストリームのユーザー空間の四角形の一覧。空 = 絞らない))
-        let mut k: Vec<(CoverKey, [f64; 4], Vec<[f64; 8]>)> = Vec::new();
+        let mut k: Vec<(CoverKey, [f64; 4], Vec<[f64; 8]>, Vec<[f64; 4]>)> = Vec::new();
         let (mut n_text, mut n_opaque, mut n_tested) = (0usize, 0usize, 0usize);
-        let mut patch_page = false;
         for c in &found {
             let Some(bbox) = c.bbox else {
                 continue;
@@ -1363,6 +1368,8 @@ fn plan_cover_layers(
             if count_hidden_text(&core, &t0w, &tcw, tw, th, r) < LAYER_MIN_OVERLAP {
                 continue;
             }
+            // 文字を隠している画素を、近くのものごとにまとめた狭い矩形 (画素座標)
+            let zones = hidden_text_rects(&core, &t0w, &tcw, tw, th, r, ZONE_TILE_PX, ZONE_PAD_PX);
             // 3. 文字を隠している部分が不透明な覆い (ベクターの図形・不透明な画像) は、背景に焼き込み、
             //    隠した文字だけを隠し直しパッチ (背景と同じ画素の写し) で再現する。文字層に残すと、
             //    覆いを外したときに、覆いの下の写真・顔が背景にそのまま残ってしまう。
@@ -1385,7 +1392,7 @@ fn plan_cover_layers(
                 let (hid, opq) = hidden_opacity(&core, &t0w, &tcw, &cw, &cb, tw, th, r);
                 if hid > 0 && opq * 10 >= hid * 9 {
                     n_opaque += 1;
-                    patch_page = true;
+                    patch_zones.entry(pno).or_default().extend(zones.iter().copied());
                     continue;
                 }
             }
@@ -1395,8 +1402,8 @@ fn plan_cover_layers(
             let clip: Vec<[f64; 8]> = if matches!(c.key, CoverKey::Draw(..)) {
                 c.to_local
                     .map(|inv| {
-                        hidden_text_rects(&core, &t0w, &tcw, tw, th, r, ZONE_TILE_PX, ZONE_PAD_PX)
-                            .into_iter()
+                        zones
+                            .iter()
                             .map(|px| {
                                 // 画素座標 (左上原点) → ページ座標 (to_px の逆)
                                 let page = [
@@ -1413,7 +1420,13 @@ fn plan_cover_layers(
             } else {
                 Vec::new()
             };
-            k.push((c.key, r, clip));
+            eprintln!(
+                "[render] cover p{pno}: {:?} hides text ({} zone(s)), {}",
+                c.key,
+                zones.len(),
+                if c.translucent { "translucent" } else { "not translucent by ca" }
+            );
+            k.push((c.key, r, clip, zones));
         }
         let n_confirmed = k.len();
         let mut accepted = false;
@@ -1448,15 +1461,28 @@ fn plan_cover_layers(
                 why = format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad);
                 // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
                 let before = k.len();
-                k.retain(|(key, r, _)| {
+                let mut dropped_zones: Vec<[f64; 4]> = Vec::new();
+                k.retain(|(key, r, _, z)| {
                     let hit = count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER;
                     if hit {
+                        eprintln!("[render] cover p{pno}: {key:?} dropped (order mismatch inside its box)");
                         rejected.insert(*key);
+                        dropped_zones.extend(z.iter().copied());
                     }
                     !hit
                 });
+                if !dropped_zones.is_empty() {
+                    patch_zones.entry(pno).or_default().extend(dropped_zones);
+                }
                 if k.len() == before {
-                    rejected.insert(k.remove(0).0);
+                    // 食い違いが、どの覆いの外接矩形にも収まらない。覆いを外しても直らない
+                    // (覆いとは別の描画の差) ので、覆いは残す。早く描かれた覆いを巻き添えにしない
+                    accepted = true;
+                    why = format!(
+                        "try {try_no}: mismatch (bad {} px) is outside every cover box, kept",
+                        chk.bad
+                    );
+                    break;
                 }
             }
             if accepted {
@@ -1464,23 +1490,22 @@ fn plan_cover_layers(
             }
         }
         let n_kept = if accepted { k.len() } else { 0 };
-        // 文字を隠していたのに文字層へ残せなかった覆いがあるページは、隠し直しパッチで補う
-        if n_kept < n_confirmed {
-            patch_page = true;
+        // 文字を隠していたのに文字層へ残せなかった覆いは、隠し直しパッチで補う (その範囲だけ)
+        if !accepted {
+            for (_, _, _, z) in &k {
+                patch_zones.entry(pno).or_default().extend(z.iter().copied());
+            }
         }
-        if patch_page {
-            patch_pages.insert(pno);
-        }
+        let n_zones = patch_zones.get(&pno).map_or(0, Vec::len);
         eprintln!(
-            "[render] cover layers p{pno}: {} candidate(s), {n_text} over text, {n_tested} tested, {n_opaque} opaque (baked + patches), {n_confirmed} translucent hide text, {n_kept} kept; {why}; {}{}",
+            "[render] cover layers p{pno}: {} candidate(s), {n_text} over text, {n_tested} tested, {n_opaque} opaque (baked + patches), {n_confirmed} hide text, {n_kept} kept; {why}; {}; {n_zones} patch zone(s)",
             found.len(),
             if accepted { "layered" } else { "single image" },
-            if patch_page { " + patches" } else { "" }
         );
         if accepted {
-            keep.extend(k.iter().map(|(key, _, clip)| (*key, clip.clone())));
+            keep.extend(k.iter().map(|(key, _, clip, _)| (*key, clip.clone())));
         } else {
-            rejected.extend(k.iter().map(|(key, _, _)| *key));
+            rejected.extend(k.iter().map(|(key, _, _, _)| *key));
         }
     }
     // 別のページで条件を満たさなかった覆いは、共有されていても残さない
@@ -1503,7 +1528,7 @@ fn plan_cover_layers(
     for (key, clip) in &finals {
         covers.set_clip(key, clip);
     }
-    (covers, nts, patch_pages)
+    (covers, nts, patch_zones)
 }
 
 /// 元のページと出力ページ (背景 + ベクターのテキスト) を hayro で描き比べ、見え方が違う箇所に
@@ -1544,7 +1569,28 @@ fn add_cover_patches(
         // 等倍で描く (理由は keep_text_pdf の nt の説明を参照)
         let full = raster_rgb(fp, &cache_full, settings, job.tw, job.th, dpi, 1)?;
         let comp = raster_rgb(cp, &cache_comp, settings, job.tw, job.th, dpi, 1)?;
-        let patches = compute_patches(&full, &job.nt, &comp, &job.bg, job.tw, job.th, &params);
+        // パッチを置いてよい範囲の外は、差があっても無視する
+        let mut allowed = vec![false; (job.tw as usize) * (job.th as usize)];
+        for z in &job.zones {
+            let (x0, y0) = (z[0].floor().max(0.0) as usize, z[1].floor().max(0.0) as usize);
+            let (x1, y1) = (
+                (z[2].ceil().max(0.0) as usize).min(job.tw as usize),
+                (z[3].ceil().max(0.0) as usize).min(job.th as usize),
+            );
+            for y in y0..y1 {
+                allowed[y * job.tw as usize + x0..y * job.tw as usize + x1.max(x0)].fill(true);
+            }
+        }
+        let patches = compute_patches(
+            &full,
+            &job.nt,
+            &comp,
+            &job.bg,
+            job.tw,
+            job.th,
+            &params,
+            Some(&allowed),
+        );
         if patches.is_empty() {
             continue;
         }

@@ -111,6 +111,7 @@ fn dilate(src: &[bool], w: usize, h: usize, r: usize) -> Vec<bool> {
 
 /// 差分からパッチを求める。いずれの画素列も RGB8 で `w`×`h`。
 /// 長さが合わないとき・差分が無いときは空を返す。
+#[allow(clippy::too_many_arguments)]
 pub fn compute_patches(
     full: &[u8],
     nt: &[u8],
@@ -119,10 +120,15 @@ pub fn compute_patches(
     w: u32,
     h: u32,
     p: &Params,
+    allowed: Option<&[bool]>,
 ) -> Vec<Patch> {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     if n == 0 || [full, nt, comp, bg].iter().any(|s| s.len() != n * 3) {
+        return Vec::new();
+    }
+    // 置いてよい範囲の指定 (画素ごと)。長さが合わなければ何も置かない
+    if allowed.is_some_and(|a| a.len() != n) {
         return Vec::new();
     }
 
@@ -134,7 +140,8 @@ pub fn compute_patches(
         let o = i * 3;
         if max_abs_diff(&comp[o..o + 3], &bg[o..o + 3]) > p.text_thr {
             text[i] = true;
-            if max_abs_diff(&comp[o..o + 3], &full[o..o + 3]) > p.diff_thr
+            if allowed.is_none_or(|a| a[i])
+                && max_abs_diff(&comp[o..o + 3], &full[o..o + 3]) > p.diff_thr
                 && max_abs_diff(&full[o..o + 3], &nt[o..o + 3]) <= p.hide_thr
             {
                 bad[i] = true;
@@ -675,7 +682,7 @@ mod tests {
         fill(&mut comp, w, 10, 10, 20, 14, 0);
         let mut full = bg.clone();
         fill(&mut full, w, 10, 10, 20, 14, 0); // 元でも見えている文字
-        let p = compute_patches(&full, &bg, &comp, &bg, w, h, &Params::default());
+        let p = compute_patches(&full, &bg, &comp, &bg, w, h, &Params::default(), None);
         assert!(p.is_empty());
     }
 
@@ -688,7 +695,7 @@ mod tests {
         let full = bg.clone(); // 元では文字は見えない
         let mut comp = bg.clone();
         fill(&mut comp, w, 10, 10, 20, 14, 0); // 出力では文字が見える
-        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default());
+        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default(), None);
         assert_eq!(ps.len(), 1);
         let p = &ps[0];
         // 文字を含み、縁の膨張分 (2) だけ広い
@@ -712,7 +719,7 @@ mod tests {
         fill(&mut comp, w, 10, 10, 20, 14, 0); // 出力では濃く見える
         // 元でも文字が見えている画素は、パッチにしない (文字を画素として焼き込まない)。
         // 半透明の覆いは、元のオブジェクトのまま文字層に重ねて再現する
-        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default());
+        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default(), None);
         assert!(ps.is_empty());
     }
 
@@ -843,14 +850,14 @@ mod tests {
         let mut comp = bg.clone();
         fill(&mut comp, w, 10, 10, 20, 14, 0);
         fill(&mut comp, w, 200, 100, 210, 104, 0);
-        let ps = compute_patches(&bg, &bg, &comp, &bg, w, h, &Params::default());
+        let ps = compute_patches(&bg, &bg, &comp, &bg, w, h, &Params::default(), None);
         assert_eq!(ps.len(), 2);
     }
 
     #[test]
     fn size_mismatch_is_ignored() {
         let bg = solid(8, 8, 255);
-        let ps = compute_patches(&bg, &bg, &bg[..10], &bg, 8, 8, &Params::default());
+        let ps = compute_patches(&bg, &bg, &bg[..10], &bg, 8, 8, &Params::default(), None);
         assert!(ps.is_empty());
     }
 
@@ -950,5 +957,26 @@ mod tests {
         // 外接矩形に掛からなければ空 / 長さが合わなければ空
         assert!(hidden_text_rects(&core, &t0w, &tcw, w, h, [20.0, 20.0, 40.0, 40.0], 8, 2).is_empty());
         assert!(hidden_text_rects(&core, &t0w[..6], &tcw, w, h, all, 8, 2).is_empty());
+    }
+
+    #[test]
+    fn patches_stay_inside_the_allowed_zone() {
+        let (w, h) = (256, 128);
+        let bg = solid(w, h, 255);
+        let mut comp = bg.clone();
+        fill(&mut comp, w, 10, 10, 20, 14, 0);
+        fill(&mut comp, w, 200, 100, 210, 104, 0);
+        // 左上の範囲だけを許す: 右下の差は無視される
+        let mut allowed = vec![false; (w * h) as usize];
+        for y in 0..40usize {
+            for x in 0..60usize {
+                allowed[y * w as usize + x] = true;
+            }
+        }
+        let ps = compute_patches(&bg, &bg, &comp, &bg, w, h, &Params::default(), Some(&allowed));
+        assert_eq!(ps.len(), 1);
+        assert!(ps[0].x0 < 60);
+        // 範囲の長さが合わなければ何も置かない
+        assert!(compute_patches(&bg, &bg, &comp, &bg, w, h, &Params::default(), Some(&allowed[..10])).is_empty());
     }
 }
