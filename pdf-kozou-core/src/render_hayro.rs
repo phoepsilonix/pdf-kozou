@@ -1360,16 +1360,22 @@ fn plan_cover_layers(
             if let Ok(all_pdf) = content_filter::text_only_bytes_covers(data, &all, false)
                 && let Ok(tc_all) = render_page_1x(all_pdf, idx, tw, th, dpi, settings)
             {
+                // 半透明の覆いは、絞らずに残す (1 つずつ必ず調べる)
                 survivors.retain(|c| {
-                    c.bbox.is_some_and(|b| {
-                        count_hidden_text(&core, &t0w, &tc_all, tw, th, to_px(b)) >= LAYER_MIN_OVERLAP
-                    })
+                    c.translucent
+                        || c.bbox.is_some_and(|b| {
+                            count_hidden_text(&core, &t0w, &tc_all, tw, th, to_px(b))
+                                >= LAYER_MIN_OVERLAP
+                        })
                 });
             }
         }
         // (覆い, 外接矩形 (画素), 描画を絞る範囲 (ストリームのユーザー空間の四角形の一覧。空 = 絞らない))
         let mut k: Vec<(CoverKey, [f64; 4], Vec<[f64; 8]>, Vec<[f64; 4]>)> = Vec::new();
         let (mut n_text, mut n_opaque, mut n_tested) = (0usize, 0usize, 0usize);
+        // 半透明の覆い (帯・影) を先に調べる。文字層に元のオブジェクトのまま残すべきもので、
+        // 背景に焼くと、文字が覆いの下に回って原本より濃く見える。検証の上限 (下) で押し出さない
+        survivors.sort_by_key(|c| !c.translucent);
         let mut n_skipped = 0usize;
         for c in survivors {
             let Some(bbox) = c.bbox else {
@@ -1379,7 +1385,8 @@ fn plan_cover_layers(
             // 1. 外接矩形に文字が無ければ、文字を隠しようがない (一枚画像に焼き込む)。上で絞り済み
             n_text += 1;
             // 2. 文字 + その覆いだけを、元の順で重ねて、文字の中身の画素が変わるか確かめる
-            if n_tested >= MAX_COVER_TESTS {
+            // 検証の上限は、半透明でない覆いにだけ掛ける (半透明の覆いは、必ず調べる)
+            if n_tested >= MAX_COVER_TESTS && !c.translucent {
                 n_skipped += 1;
                 continue;
             }
@@ -1391,7 +1398,14 @@ fn plan_cover_layers(
             let Ok(tcw) = render_page_1x(tc_pdf, idx, tw, th, dpi, settings) else {
                 continue;
             };
-            if count_hidden_text(&core, &t0w, &tcw, tw, th, r) < LAYER_MIN_OVERLAP {
+            let n_hide = count_hidden_text(&core, &t0w, &tcw, tw, th, r);
+            if n_hide < LAYER_MIN_OVERLAP {
+                if c.translucent {
+                    eprintln!(
+                        "[render] cover p{pno}: {:?} translucent, over text but changes only {n_hide} text px (< {LAYER_MIN_OVERLAP}): baked",
+                        c.key
+                    );
+                }
                 continue;
             }
             // 文字を隠している画素を、近くのものごとにまとめた狭い矩形 (画素座標)
