@@ -430,6 +430,47 @@ pub fn hidden_text_rects(
     rects
 }
 
+/// 文字の縁取りとみなす、図形が文字の中身から離れてよい距離 (画素)
+pub const HUG_RADIUS_PX: usize = 6;
+/// 文字の縁取りとみなす図形の、最小の塗り画素数
+pub const HUG_MIN_PX: usize = 24;
+
+/// 図形 1 つ (覆いだけを白地・黒地に描いた `cw` / `cb`) の塗り画素 (アルファが半分以上) のうち、
+/// 文字の中身の近く (`core_near` は、文字の中身を `HUG_RADIUS_PX` だけ膨らませたもの) にある画素数。
+/// 戻り値: (外接矩形 `rect` の中の塗り画素数, そのうち文字の近くにある画素数)。長さが合わなければ (0, 0)。
+/// 文字の縁取り (文字の輪郭に沿った線・塗り) は、塗り画素のほとんどが文字の近くにある。文字の背景の
+/// 箱・大きな飾りは、塗り画素の多くが文字から離れている。
+pub fn hug_stats(core_near: &[bool], cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4]) -> (usize, usize) {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if wu == 0 || hu == 0 || core_near.len() != n || cw.len() != n * 3 || cb.len() != n * 3 {
+        return (0, 0);
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    let (mut total, mut near) = (0usize, 0usize);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            let o = i * 3;
+            // アルファ = 1 − (白地 − 黒地) / 255。チャンネルのうち最大
+            let a = (0..3)
+                .map(|c| 255 - (cw[o + c] as i32 - cb[o + c] as i32).clamp(0, 255))
+                .max()
+                .unwrap_or(0);
+            if a >= 128 {
+                total += 1;
+                if core_near[i] {
+                    near += 1;
+                }
+            }
+        }
+    }
+    (total, near)
+}
+
 /// 覆いの層が「不透明」とみなす、白地・黒地の描画の差の上限 (0-255。アルファ 1 なら 0)
 pub const OPAQUE_TRANS_MAX: i32 = 12;
 
@@ -978,5 +1019,25 @@ mod tests {
         assert!(ps[0].x0 < 60);
         // 範囲の長さが合わなければ何も置かない
         assert!(compute_patches(&bg, &bg, &comp, &bg, w, h, &Params::default(), Some(&allowed[..10])).is_empty());
+    }
+
+    #[test]
+    fn hug_stats_counts_painted_pixels_near_text() {
+        let (w, h) = (8u32, 1u32);
+        // 画素 0-3 を塗る (アルファ 1): 白地 = 黒地。画素 4-7 は塗らない: 白地 255、黒地 0
+        let mut cw = vec![255u8; 8 * 3];
+        let mut cb = vec![0u8; 8 * 3];
+        for i in 0..4 {
+            cw[i * 3..i * 3 + 3].fill(10);
+            cb[i * 3..i * 3 + 3].fill(10);
+        }
+        // 文字の近くは、画素 0-1 だけ
+        let mut near = vec![false; 8];
+        near[0] = true;
+        near[1] = true;
+        let all = [0.0, 0.0, 8.0, 1.0];
+        assert_eq!(hug_stats(&near, &cw, &cb, w, h, all), (4, 2));
+        // 長さが合わなければ (0, 0)
+        assert_eq!(hug_stats(&near[..4], &cw, &cb, w, h, all), (0, 0));
     }
 }

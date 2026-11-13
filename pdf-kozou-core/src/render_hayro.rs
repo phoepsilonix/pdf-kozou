@@ -1198,6 +1198,9 @@ fn check_cover_layering(
 /// 1 ページで、覆いが文字を隠しているかを画素で確かめる候補の最大数 (描画回数の上限)
 const MAX_COVER_TESTS: usize = 96;
 
+/// 文字の縁取りの図形 (文字の輪郭に沿った線・塗り) の候補を、1 ページで調べる最大数
+const MAX_DECOR_TESTS: usize = 48;
+
 /// 覆いの描画を絞る範囲 (隠された文字の画素を近くのものごとにまとめた矩形) の、まとめる距離と余白 (画素)
 const ZONE_TILE_PX: u32 = 8;
 const ZONE_PAD_PX: u32 = 3;
@@ -1254,8 +1257,9 @@ fn plan_cover_layers(
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
-        LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_hidden_text, count_in_rect, hidden_opacity,
-        hidden_text_rects, text_core_mask, text_near_mask,
+        HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_hidden_text,
+        count_in_rect, dilate, hidden_opacity, hidden_text_rects, hug_stats, text_core_mask,
+        text_near_mask,
     };
     use std::collections::HashSet;
 
@@ -1355,6 +1359,8 @@ fn plan_cover_layers(
                 survivors.push(c);
             }
         }
+        // 絞り込み前の候補 (外接矩形に文字がある候補)。文字の縁取りの図形を探すのに使う
+        let pre: Vec<&content_filter::CoverCandidate> = survivors.clone();
         if survivors.len() > 4 {
             let all = Covers::from_keys(survivors.iter().map(|c| c.key));
             if let Ok(all_pdf) = content_filter::text_only_bytes_covers(data, &all, false)
@@ -1468,6 +1474,59 @@ fn plan_cover_layers(
             );
             k.push((c.key, r, clip, zones));
         }
+        // 5. 文字の縁取りの図形 (文字の輪郭に沿った線・塗り。Canva の「縁取り」など)。文字を隠して
+        //    いないので 1.〜4. では候補にならず、背景の一枚画像に焼かれる。文字そのものの一部なのに、
+        //    画素になって粗くなる (文字は鮮明なベクターのまま、縁だけがぼやける)。そこで、塗り画素の
+        //    ほとんどが文字の中身の近くにある、パスの塗り・線は、元の命令のまま文字層に残す (文字より
+        //    前に描かれていれば、文字の下に残る)。背景の画像からは除く
+        let mut n_decor = 0usize;
+        if !pre.is_empty() {
+            let confirmed: HashSet<CoverKey> = k.iter().map(|(key, _, _, _)| *key).collect();
+            let core_near = dilate(&core, tw as usize, th as usize, HUG_RADIUS_PX);
+            let mut tests = 0usize;
+            for c in &pre {
+                if !matches!(c.key, CoverKey::Op(..)) || confirmed.contains(&c.key) {
+                    continue;
+                }
+                let Some(bbox) = c.bbox else { continue };
+                // 線の太さの分 (外接矩形はパスの点だけから求めている) 広げる
+                let r0 = to_px(bbox);
+                let pad = HUG_RADIUS_PX as f64;
+                let r = [r0[0] - pad, r0[1] - pad, r0[2] + pad, r0[3] + pad];
+                // ページの 4 割を超える図形は、文字の縁取りではない
+                if (r[2] - r[0]) * (r[3] - r[1]) > 0.4 * (tw as f64) * (th as f64) {
+                    continue;
+                }
+                if tests >= MAX_DECOR_TESTS {
+                    break;
+                }
+                tests += 1;
+                let one = Covers::from_keys([c.key]);
+                let (Ok(cw_pdf), Ok(cb_pdf)) = (
+                    content_filter::covers_only_bytes(data, &one, false),
+                    content_filter::covers_only_bytes(data, &one, true),
+                ) else {
+                    continue;
+                };
+                let (Ok(cw), Ok(cb)) = (
+                    render_page_1x(cw_pdf, idx, tw, th, dpi, settings),
+                    render_page_1x(cb_pdf, idx, tw, th, dpi, settings),
+                ) else {
+                    continue;
+                };
+                let (total, near) = hug_stats(&core_near, &cw, &cb, tw, th, r);
+                let text_px = count_in_rect(&core, tw, th, r);
+                // 塗り画素の 7 割以上が文字の近くにあり、文字の面積の 8 倍までの大きさ
+                if total >= HUG_MIN_PX && near * 10 >= total * 7 && total <= text_px * 8 {
+                    eprintln!(
+                        "[render] decor p{pno}: {:?} hugs text ({near}/{total} px near), kept as vector",
+                        c.key
+                    );
+                    k.push((c.key, r, Vec::new(), Vec::new()));
+                    n_decor += 1;
+                }
+            }
+        }
         let n_confirmed = k.len();
         let mut accepted = false;
         let mut why = String::from("no cover hides text");
@@ -1538,7 +1597,7 @@ fn plan_cover_layers(
         }
         let n_zones = patch_zones.get(&pno).map_or(0, Vec::len);
         eprintln!(
-            "[render] cover layers p{pno}: {} candidate(s), {n_text} over text, {n_tested} tested ({n_skipped} skipped: cap), {n_opaque} opaque (baked + patches), {n_confirmed} hide text, {n_kept} kept; {why}; {}; {n_zones} patch zone(s)",
+            "[render] cover layers p{pno}: {} candidate(s), {n_text} over text, {n_tested} tested ({n_skipped} skipped: cap), {n_opaque} opaque (baked + patches), {n_confirmed} hide text ({n_decor} text-outline decor), {n_kept} kept; {why}; {}; {n_zones} patch zone(s)",
             found.len(),
             if accepted { "layered" } else { "single image" },
         );
