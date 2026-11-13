@@ -1257,9 +1257,9 @@ fn plan_cover_layers(
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
-        HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, count_hidden_text,
-        count_in_rect, dilate, hidden_opacity, hidden_text_rects, hug_stats, text_core_mask,
-        text_near_mask,
+        HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, TEXT_PRE_MIN,
+        count_changed_text, count_in_rect, dilate, hidden_mask, hug_stats, opaque_in_mask,
+        rects_from_mask, text_alpha, text_core_mask, text_mask_from_alpha, text_near_mask,
     };
     use std::collections::HashSet;
 
@@ -1337,6 +1337,12 @@ fn plan_cover_layers(
         let Some(core) = text_core_mask(&t0w, &t0b, tw, th) else {
             continue;
         };
+        // 文字のアルファと、文字の画素 (縁のぼけた画素も含む)。小さい文字・細い画線では、文字の中身だけだと
+        // 画素が足りず、覆いが文字を隠していても、隠していないと誤判定される
+        let Some(alpha) = text_alpha(&t0w, &t0b, tw, th) else {
+            continue;
+        };
+        let tmask = text_mask_from_alpha(&alpha);
         // ページ座標 → 画素座標 (左上原点)
         let (sx, sy) = (tw as f64 / (geom[2] - geom[0]), th as f64 / (geom[3] - geom[1]));
         let to_px = |b: [f64; 4]| {
@@ -1355,7 +1361,7 @@ fn plan_cover_layers(
         let mut survivors: Vec<&content_filter::CoverCandidate> = Vec::new();
         for c in &found {
             let Some(bbox) = c.bbox else { continue };
-            if count_in_rect(&core, tw, th, to_px(bbox)) >= LAYER_MIN_OVERLAP {
+            if count_in_rect(&tmask, tw, th, to_px(bbox)) >= TEXT_PRE_MIN {
                 survivors.push(c);
             }
         }
@@ -1370,8 +1376,7 @@ fn plan_cover_layers(
                 survivors.retain(|c| {
                     c.translucent
                         || c.bbox.is_some_and(|b| {
-                            count_hidden_text(&core, &t0w, &tc_all, tw, th, to_px(b))
-                                >= LAYER_MIN_OVERLAP
+                            count_changed_text(&alpha, &t0w, &tc_all, tw, th, to_px(b)) >= TEXT_PRE_MIN
                         })
                 });
             }
@@ -1404,7 +1409,15 @@ fn plan_cover_layers(
             let Ok(tcw) = render_page_1x(tc_pdf, idx, tw, th, dpi, settings) else {
                 continue;
             };
-            let n_hide = count_hidden_text(&core, &t0w, &tcw, tw, th, r);
+            // その覆いだけの描画 (白地)。「文字が覆いより先か後か」を、縁のぼけた画素でも見分けるのに使う
+            let Ok(cw_pdf) = content_filter::covers_only_bytes(data, &one, false) else {
+                continue;
+            };
+            let Ok(cw) = render_page_1x(cw_pdf, idx, tw, th, dpi, settings) else {
+                continue;
+            };
+            let hid = hidden_mask(&alpha, &t0b, &tcw, &cw, tw, th, r);
+            let n_hide = count_in_rect(&hid, tw, th, r);
             if n_hide < LAYER_MIN_OVERLAP {
                 if c.translucent {
                     eprintln!(
@@ -1415,7 +1428,7 @@ fn plan_cover_layers(
                 continue;
             }
             // 文字を隠している画素を、近くのものごとにまとめた狭い矩形 (画素座標)
-            let zones = hidden_text_rects(&core, &t0w, &tcw, tw, th, r, ZONE_TILE_PX, ZONE_PAD_PX);
+            let zones = rects_from_mask(&hid, tw, th, r, ZONE_TILE_PX, ZONE_PAD_PX);
             // 3. 文字を隠している部分が不透明な覆い (ベクターの図形・不透明な画像) は、背景に焼き込み、
             //    隠した文字だけを隠し直しパッチ (背景と同じ画素の写し) で再現する。文字層に残すと、
             //    覆いを外したときに、覆いの下の写真・顔が背景にそのまま残ってしまう。
@@ -1426,17 +1439,11 @@ fn plan_cover_layers(
             //    (パッチにしない)。
             if !c.translucent
                 && !matches!(c.key, CoverKey::Draw(..))
-                && let (Ok(cw_pdf), Ok(cb_pdf)) = (
-                    content_filter::covers_only_bytes(data, &one, false),
-                    content_filter::covers_only_bytes(data, &one, true),
-                )
-                && let (Ok(cw), Ok(cb)) = (
-                    render_page_1x(cw_pdf, idx, tw, th, dpi, settings),
-                    render_page_1x(cb_pdf, idx, tw, th, dpi, settings),
-                )
+                && let Ok(cb_pdf) = content_filter::covers_only_bytes(data, &one, true)
+                && let Ok(cb) = render_page_1x(cb_pdf, idx, tw, th, dpi, settings)
             {
-                let (hid, opq) = hidden_opacity(&core, &t0w, &tcw, &cw, &cb, tw, th, r);
-                if hid > 0 && opq * 10 >= hid * 9 {
+                let (n_hidden, opq) = opaque_in_mask(&hid, &cw, &cb, tw, th, r);
+                if n_hidden > 0 && opq * 10 >= n_hidden * 9 {
                     n_opaque += 1;
                     patch_zones.entry(pno).or_default().extend(zones.iter().copied());
                     continue;

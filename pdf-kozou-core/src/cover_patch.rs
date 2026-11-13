@@ -330,7 +330,7 @@ pub fn count_hidden_text(
     n
 }
 
-/// `count_hidden_text` と同じ条件の画素 (覆いに隠された・染められた文字の画素) を、近くにあるもの
+/// 画素マスク `hid` (覆いに隠された・染められた文字の画素) を、近くにあるもの
 /// ごとにまとめた外接矩形 `[x0, y0, x1, y1]` (画素座標、右下は含まない) の一覧。互いに重ならない。
 /// 覆いを文字層に残す範囲として使う。文字の行ごとに狭い範囲になる (文字から離れた覆いの部分は
 /// 背景に焼き込む)。
@@ -338,10 +338,8 @@ pub fn count_hidden_text(
 /// - `pad`: 矩形を広げる余白 (画素。文字の縁のにじみ分)
 /// 長さが合わない・該当する画素が無いときは空。
 #[allow(clippy::too_many_arguments)]
-pub fn hidden_text_rects(
-    core: &[bool],
-    t0w: &[u8],
-    tcw: &[u8],
+pub fn rects_from_mask(
+    hid: &[bool],
     w: u32,
     h: u32,
     rect: [f64; 4],
@@ -349,7 +347,7 @@ pub fn hidden_text_rects(
     pad: u32,
 ) -> Vec<[f64; 4]> {
     let (wu, hu) = (w as usize, h as usize);
-    if wu == 0 || hu == 0 || core.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+    if wu == 0 || hu == 0 || hid.len() != wu * hu {
         return Vec::new();
     }
     let x0 = rect[0].floor().max(0.0) as usize;
@@ -363,7 +361,7 @@ pub fn hidden_text_rects(
     for y in y0..y1 {
         for x in x0..x1 {
             let i = y * wu + x;
-            if core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR {
+            if hid[i] {
                 let c = &mut cell[(y / t) * tx + x / t];
                 *c = Some(match *c {
                     None => [x, y, x + 1, y + 1],
@@ -469,6 +467,155 @@ pub fn hug_stats(core_near: &[bool], cw: &[u8], cb: &[u8], w: u32, h: u32, rect:
         }
     }
     (total, near)
+}
+
+/// `count_hidden_text` と同じ条件の画素 (文字の中身で、覆いを加えると変わる画素) を、近くにあるものごと
+/// にまとめた外接矩形の一覧。`rects_from_mask` に渡すマスクを、その条件で作る。
+#[allow(clippy::too_many_arguments)]
+pub fn hidden_text_rects(
+    core: &[bool],
+    t0w: &[u8],
+    tcw: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+    tile: u32,
+    pad: u32,
+) -> Vec<[f64; 4]> {
+    let (wu, hu) = (w as usize, h as usize);
+    if wu == 0 || hu == 0 || core.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+        return Vec::new();
+    }
+    let hid: Vec<bool> = (0..wu * hu)
+        .map(|i| core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR)
+        .collect();
+    rects_from_mask(&hid, w, h, rect, tile, pad)
+}
+
+/// 文字のアルファがこの値以上の画素を「文字の画素」とみなす (0-255。縁のぼけた画素も含む)。
+/// 文字の中身だけ (`TEXT_CORE_ALPHA`) だと、小さい文字・細い画線では、画素が足りなくなる
+pub const TEXT_ALPHA_MIN: u8 = 40;
+/// 覆いの外接矩形に必要な、文字の画素の数 (候補にする最小。これ未満は、文字に掛かっていないとみなす)
+pub const TEXT_PRE_MIN: usize = 12;
+
+/// 文字だけを白地・黒地に描いた 2 枚から、文字のアルファ (0-255) を画素ごとに返す。文字の色によらない。
+/// 長さが合わなければ None。
+pub fn text_alpha(t0w: &[u8], t0b: &[u8], w: u32, h: u32) -> Option<Vec<u8>> {
+    let n = (w as usize) * (h as usize);
+    if n == 0 || t0w.len() != n * 3 || t0b.len() != n * 3 {
+        return None;
+    }
+    let mut out = vec![0u8; n];
+    for i in 0..n {
+        let o = i * 3;
+        let tr = (0..3)
+            .map(|c| (t0w[o + c] as i32 - t0b[o + c] as i32).clamp(0, 255))
+            .min()
+            .unwrap_or(255);
+        out[i] = (255 - tr) as u8;
+    }
+    Some(out)
+}
+
+/// `text_alpha` の結果から、「文字の画素」(アルファが `TEXT_ALPHA_MIN` 以上) のマスクを返す。
+pub fn text_mask_from_alpha(alpha: &[u8]) -> Vec<bool> {
+    alpha.iter().map(|&a| a >= TEXT_ALPHA_MIN).collect()
+}
+
+/// 覆いを (すべての文字の後に) 重ねたとき、文字の画素が変わる数。覆いが文字より先か後かは見ない。
+/// 候補をまとめて絞り込むのに使う (見落としを避けるため、緩い条件)。長さが合わなければ 0。
+pub fn count_changed_text(alpha: &[u8], t0w: &[u8], tcw: &[u8], w: u32, h: u32, rect: [f64; 4]) -> usize {
+    let (wu, hu) = (w as usize, h as usize);
+    if wu == 0 || hu == 0 || alpha.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+        return 0;
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    let mut n = 0;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            if alpha[i] >= TEXT_ALPHA_MIN && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// 覆い 1 つが、その手前 (先) に描かれた文字を隠している (染めている) 画素のマスク (画素ごと、
+/// 外接矩形 `rect` の中だけ)。
+/// - `alpha`: `text_alpha` の結果 (文字のアルファ)
+/// - `t0b`: 文字だけの描画 (黒地)。文字の色 × アルファ
+/// - `tcw`: 文字 + その覆いを、元の描画順で重ねた描画 (白地)
+/// - `cw`: その覆いだけの描画 (白地)
+/// 文字が覆いより後に描かれていれば、`tcw` は、「覆いを先に描いて、その上に文字を描く」とした
+/// 画素 (`t0b + (1 − アルファ) × cw`) と一致する。違うのは、文字が覆いより先に描かれた画素だけ。
+/// 縁のぼけた画素でも、文字が覆いの後か先かを正しく見分ける (文字の中身だけでは、小さい文字で
+/// 画素が足りなくなる)。長さが合わなければ、すべて false。
+pub fn hidden_mask(alpha: &[u8], t0b: &[u8], tcw: &[u8], cw: &[u8], w: u32, h: u32, rect: [f64; 4]) -> Vec<bool> {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    let mut out = vec![false; n];
+    if wu == 0 || hu == 0 || alpha.len() != n || [t0b.len(), tcw.len(), cw.len()].iter().any(|&l| l != n * 3) {
+        return out;
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            let a = alpha[i] as i32;
+            if a < TEXT_ALPHA_MIN as i32 {
+                continue;
+            }
+            let o = i * 3;
+            let diff = (0..3)
+                .map(|c| {
+                    let expected = t0b[o + c] as i32 + ((255 - a) * cw[o + c] as i32) / 255;
+                    (tcw[o + c] as i32 - expected).abs()
+                })
+                .max()
+                .unwrap_or(0);
+            if diff > HIDE_DIFF_THR {
+                out[i] = true;
+            }
+        }
+    }
+    out
+}
+
+/// マスク `hid` の画素のうち、覆い自身が不透明な画素の数 (`hidden_opacity` のマスク版)。
+/// 戻り値: (マスクの画素数, そのうち覆いが不透明な画素数)。長さが合わなければ (0, 0)。
+pub fn opaque_in_mask(hid: &[bool], cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4]) -> (usize, usize) {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if wu == 0 || hu == 0 || hid.len() != n || cw.len() != n * 3 || cb.len() != n * 3 {
+        return (0, 0);
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    let (mut hidden, mut opaque) = (0usize, 0usize);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            if !hid[i] {
+                continue;
+            }
+            hidden += 1;
+            let o = i * 3;
+            if (0..3).all(|c| (cw[o + c] as i32 - cb[o + c] as i32) <= OPAQUE_TRANS_MAX) {
+                opaque += 1;
+            }
+        }
+    }
+    (hidden, opaque)
 }
 
 /// 覆いの層が「不透明」とみなす、白地・黒地の描画の差の上限 (0-255。アルファ 1 なら 0)
@@ -1039,5 +1186,39 @@ mod tests {
         assert_eq!(hug_stats(&near, &cw, &cb, w, h, all), (4, 2));
         // 長さが合わなければ (0, 0)
         assert_eq!(hug_stats(&near[..4], &cw, &cb, w, h, all), (0, 0));
+    }
+
+    #[test]
+    fn hidden_mask_tells_cover_after_text_from_cover_before_text() {
+        let (w, h) = (4u32, 1u32);
+        // 画素 0: 文字 (黒、アルファ 1)、1: 縁 (黒、アルファ 0.5)、2: 文字なし、3: 文字 (黒、アルファ 1)
+        let t0w = [0, 0, 0, 128, 128, 128, 255, 255, 255, 0, 0, 0];
+        let t0b = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let alpha = text_alpha(&t0w, &t0b, w, h).unwrap();
+        // 覆いは全面の白 50% (白地に重ねると白): cw = 255。文字の後に覆いを重ねる: 文字は薄まる
+        let cw = [255u8; 12];
+        // 実際の描画 (文字 → 覆い): 黒 → 0.5 白 = 128。縁 (0.5 黒) → 0.5×128 + 0.5×255 ≈ 191。文字なし → 255。
+        // ただし画素 3 は、覆いより後に文字が描かれるので、黒のまま
+        let tcw = [128, 128, 128, 191, 191, 191, 255, 255, 255, 0, 0, 0];
+        let all = [0.0, 0.0, 4.0, 1.0];
+        let m = hidden_mask(&alpha, &t0b, &tcw, &cw, w, h, all);
+        assert_eq!(m, vec![true, true, false, false]);
+        assert_eq!(count_changed_text(&alpha, &t0w, &tcw, w, h, all), 2);
+        // 長さが合わなければ、すべて false
+        assert_eq!(hidden_mask(&alpha, &t0b[..6], &tcw, &cw, w, h, all), vec![false; 4]);
+    }
+
+    #[test]
+    fn rects_from_mask_matches_hidden_text_rects() {
+        let (w, h) = (32u32, 16u32);
+        let mut hid = vec![false; (w * h) as usize];
+        for y in 4..6usize {
+            for x in 4..8usize {
+                hid[y * w as usize + x] = true;
+            }
+        }
+        let r = rects_from_mask(&hid, w, h, [0.0, 0.0, w as f64, h as f64], 8, 2);
+        assert_eq!(r, vec![[2.0, 2.0, 10.0, 8.0]]);
+        assert!(rects_from_mask(&hid[..10], w, h, [0.0, 0.0, 8.0, 8.0], 8, 2).is_empty());
     }
 }
