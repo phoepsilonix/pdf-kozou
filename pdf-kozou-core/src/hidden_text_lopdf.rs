@@ -21,7 +21,9 @@
 // 覆いと認めるもの (すべて満たすとき):
 //   ・単一の軸平行な矩形の塗り (re、または m l l l h の閉じた矩形)、または SMask / Mask の無い画像
 //   ・塗りの不透明度 (ca) が 1、ブレンドモードが Normal、ソフトマスク無し、塗りがパターンでない
-//   ・クリップが軸平行な矩形だけ (非矩形のクリップの下では、覆いの形が分からない)
+//   ・クリップが軸平行な矩形だけ。角丸の矩形のような、曲線を含む凸な 1 つのパスのクリップは、
+//     クリップの内側に確実に収まる矩形 (四隅を除いた上下いっぱい・左右いっぱいの 2 つの帯) と
+//     塗りの共通部分だけを覆いと認める。それ以外の非矩形のクリップの下では、覆いの形が分からない
 //   ・不透明度の指定された透明グループの中でない
 // 覆いと認めないもの (残す側に倒す): 曲線を含むパス、線 (S)、シェーディング、半透明のもの。
 // 後から描かれた文字による覆いは数えない (同じ文字を重ねて太く見せる表現を壊さないため)。
@@ -72,6 +74,20 @@ const PROBE_MIN_THICKNESS: f64 = 1.0;
 const PROBE_MIN_ALPHA: f64 = 0.02;
 /// 文字そのものの不透明度がこれ未満のものは「透明な文字」で、埋もれた文字とは別物 (残す)
 const MIN_TEXT_ALPHA: f64 = 0.5;
+/// 曲線 (ベジェ) を折れ線にするときの分割数
+const BEZ_STEPS: usize = 8;
+/// 曲線を含む凸なクリップの内側に取る矩形を探すときの、縮め幅の刻み (外接矩形の短辺に対する割合) と回数
+const INNER_STEP: f64 = 0.01;
+const INNER_TRIES: usize = 49;
+/// 非矩形のクリップの内側の矩形を覚える数の上限 (超えたら面積の大きいものを残す)
+const MAX_INNER: usize = 4;
+/// 制限なしを表す矩形
+const WHOLE: Rect = Rect {
+    x0: -1e12,
+    y0: -1e12,
+    x1: 1e12,
+    y1: 1e12,
+};
 
 // ── 結果 ──────────────────────────────────────────────────────────────────
 
@@ -355,6 +371,10 @@ struct St {
     clip: Option<Rect>,
     /// クリップが軸平行な矩形そのもの (外接矩形と一致する)
     clip_exact: bool,
+    /// クリップが矩形そのものでないとき (clip_exact が偽のとき) の、クリップの内側に確実に収まる
+    /// 矩形 (和集合がクリップの部分集合)。角丸の矩形のクリップなどで、四隅を除いた範囲を覆いと
+    /// 認めるため。空なら分からない (覆いと認めない)。clip_exact が真のときは使わない
+    clip_inner: Vec<Rect>,
     /// 不透明度の指定された透明グループの中でない (覆いを不透明と認められる)
     opaque_ok: bool,
     /// 塗りの色空間 (成分数が分かるものだけ)
@@ -455,21 +475,121 @@ impl St {
             fill_pattern: false,
             clip: None,
             clip_exact: true,
+            clip_inner: Vec::new(),
             opaque_ok: true,
             fill_cs: Cs::Gray,
             fill_rgb: Some([0, 0, 0]),
         }
     }
 
-    /// 新しい覆いを不透明と認められる状態か (形以外の条件)
-    fn can_cover_opaque(&self) -> bool {
-        self.ca >= 0.999
-            && !self.smask
-            && self.bm_normal
-            && !self.fill_pattern
-            && self.clip_exact
-            && self.opaque_ok
+    /// 新しい覆いを不透明と認められる状態か (形とクリップ以外の条件)
+    fn can_cover_opaque_shape(&self) -> bool {
+        self.ca >= 0.999 && !self.smask && self.bm_normal && !self.fill_pattern && self.opaque_ok
     }
+}
+
+/// クリップの内側に確実に収まる矩形の組。クリップが矩形そのもの (clip_exact) ならその矩形、
+/// そうでなければ記録している `clip_inner` (空 = 分からない)
+fn inner_base(st: &St) -> Vec<Rect> {
+    if st.clip_exact {
+        vec![st.clip.unwrap_or(WHOLE)]
+    } else {
+        st.clip_inner.clone()
+    }
+}
+
+/// 2 組の矩形 (それぞれ和集合を表す) の、共通部分の矩形の組。面積の大きい順に `MAX_INNER` 個まで
+fn intersect_all(a: &[Rect], b: &[Rect]) -> Vec<Rect> {
+    let mut v: Vec<Rect> = Vec::new();
+    for x in a {
+        for y in b {
+            if let Some(r) = intersect(x, y) {
+                v.push(r);
+            }
+        }
+    }
+    let area = |r: &Rect| (r.x1 - r.x0) * (r.y1 - r.y0);
+    v.sort_by(|p, q| area(q).total_cmp(&area(p)));
+    v.truncate(MAX_INNER);
+    v
+}
+
+/// 点列 (閉じた多角形) が凸か。同じ向きに曲がり続け、x・y の向きの反転がそれぞれ 2 回以下
+fn is_convex(p: &[(f64, f64)]) -> bool {
+    let n = p.len();
+    if n < 3 {
+        return false;
+    }
+    let mut sign = 0.0f64;
+    for i in 0..n {
+        let (a, b, c) = (p[i], p[(i + 1) % n], p[(i + 2) % n]);
+        let (ux, uy, vx, vy) = (b.0 - a.0, b.1 - a.1, c.0 - b.0, c.1 - b.1);
+        let cr = ux * vy - uy * vx;
+        // ほぼ一直線 (長さに対する相対誤差) は無視する
+        if cr.abs() <= 1e-6 * (ux.hypot(uy) * vx.hypot(vy)) {
+            continue;
+        }
+        if sign == 0.0 {
+            sign = cr.signum();
+        } else if cr.signum() != sign {
+            return false;
+        }
+    }
+    if sign == 0.0 {
+        return false;
+    }
+    let reversals = |d: &dyn Fn(usize) -> f64| -> usize {
+        let s: Vec<f64> = (0..n)
+            .map(d)
+            .filter(|v| v.abs() > 1e-9)
+            .map(f64::signum)
+            .collect();
+        (0..s.len())
+            .filter(|&i| s[i] != s[(i + 1) % s.len()])
+            .count()
+    };
+    reversals(&|i| p[(i + 1) % n].0 - p[i].0) <= 2 && reversals(&|i| p[(i + 1) % n].1 - p[i].1) <= 2
+}
+
+/// 点が、凸な多角形の内側 (辺の上を含む) か
+fn inside_convex(p: &[(f64, f64)], q: (f64, f64)) -> bool {
+    let n = p.len();
+    let area2: f64 = (0..n)
+        .map(|i| {
+            let (a, b) = (p[i], p[(i + 1) % n]);
+            a.0 * b.1 - b.0 * a.1
+        })
+        .sum();
+    let orient = if area2 >= 0.0 { 1.0 } else { -1.0 };
+    (0..n).all(|i| {
+        let (a, b) = (p[i], p[(i + 1) % n]);
+        let len = (b.0 - a.0).hypot(b.1 - a.1);
+        if len < 1e-12 {
+            return true;
+        }
+        orient * ((b.0 - a.0) * (q.1 - a.1) - (b.1 - a.1) * (q.0 - a.0)) / len >= -1e-4
+    })
+}
+
+/// 近接する連続した同じ点と、閉じる点 (先頭と同じ点) を落とす
+fn dedup_poly(p: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut v: Vec<(f64, f64)> = Vec::with_capacity(p.len());
+    for &q in p {
+        if v.last()
+            .is_none_or(|l| (l.0 - q.0).abs() > 1e-9 || (l.1 - q.1).abs() > 1e-9)
+        {
+            v.push(q);
+        }
+    }
+    while v.len() > 1 {
+        let (f, l) = (v[0], v[v.len() - 1]);
+        if (f.0 - l.0).abs() <= 1e-9 && (f.1 - l.1).abs() <= 1e-9 {
+            v.pop();
+        } else {
+            break;
+        }
+    }
+    v
 }
 
 /// 構築中のパス (デバイス空間)
@@ -481,10 +601,52 @@ struct PathAcc {
     bbox: Option<Rect>,
     clip: bool,
     started: bool,
+    /// 曲線を折れ線にした点列 (サブパスごと)。曲線の制御点は含まない
+    flat: Vec<Vec<(f64, f64)>>,
+    flat_cur: Vec<(f64, f64)>,
+    /// 折れ線にできない演算子があった (点の数が合わないなど)
+    flat_bad: bool,
 }
 
 impl PathAcc {
+    /// 通る点を足す (直線・矩形の頂点・曲線の終点以外の、m / l / re の点)
     fn add(&mut self, p: (f64, f64)) {
+        self.add_ctrl(p);
+        self.flat_cur.push(p);
+    }
+
+    /// 曲線を足す。制御点は外接矩形と制御点列に入れ、折れ線には、曲線の上の点を入れる
+    fn add_curve(&mut self, name: &str, pts: &[(f64, f64)]) {
+        self.curve = true;
+        let p0 = self.flat_cur.last().copied();
+        for &p in pts {
+            self.add_ctrl(p);
+        }
+        let Some(p0) = p0 else {
+            self.flat_bad = true;
+            return;
+        };
+        let (c1, c2, e) = match (name, pts) {
+            ("c", &[a, b, c]) => (a, b, c),
+            ("v", &[b, c]) => (p0, b, c),
+            ("y", &[a, c]) => (a, c, c),
+            _ => {
+                self.flat_bad = true;
+                return;
+            }
+        };
+        for i in 1..=BEZ_STEPS {
+            let t = i as f64 / BEZ_STEPS as f64;
+            let u = 1.0 - t;
+            let (w0, w1, w2, w3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+            self.flat_cur.push((
+                w0 * p0.0 + w1 * c1.0 + w2 * c2.0 + w3 * e.0,
+                w0 * p0.1 + w1 * c1.1 + w2 * c2.1 + w3 * e.1,
+            ));
+        }
+    }
+
+    fn add_ctrl(&mut self, p: (f64, f64)) {
         let b = self.bbox.get_or_insert(Rect {
             x0: p.0,
             y0: p.1,
@@ -503,6 +665,78 @@ impl PathAcc {
         if !self.cur.is_empty() {
             self.subpaths.push(std::mem::take(&mut self.cur));
         }
+        if !self.flat_cur.is_empty() {
+            self.flat.push(std::mem::take(&mut self.flat_cur));
+        }
+    }
+
+    /// 曲線を含む、凸な 1 つのパスの内側に確実に収まる矩形の組 (和集合が、パスの囲む領域の部分集合)。
+    /// 角丸の矩形なら、「四隅を除いて、上下いっぱいに広がる帯」と「四隅を除いて、左右いっぱいに
+    /// 広がる帯」の 2 つ。凸と確かめられないとき、内側の矩形を作れないときは空 (分からない)。
+    ///
+    /// 曲線は、制御点列が凸 (曲線が弧になる) ときだけ認める。弧の上の点を結んだ折れ線は、凸な領域の
+    /// 内側に収まるので、その折れ線の内側の矩形は、パスの領域の内側でもある。
+    fn inscribed_rects(&self) -> Vec<Rect> {
+        if self.flat_bad {
+            return Vec::new();
+        }
+        let mut flat: Vec<&Vec<(f64, f64)>> = self.flat.iter().collect();
+        if !self.flat_cur.is_empty() {
+            flat.push(&self.flat_cur);
+        }
+        let mut ctrl: Vec<&Vec<(f64, f64)>> = self.subpaths.iter().collect();
+        if !self.cur.is_empty() {
+            ctrl.push(&self.cur);
+        }
+        if flat.len() != 1 || ctrl.len() != 1 {
+            return Vec::new();
+        }
+        let poly = dedup_poly(flat[0]);
+        let cpoly = dedup_poly(ctrl[0]);
+        if !is_convex(&poly) || !is_convex(&cpoly) {
+            return Vec::new();
+        }
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for &(x, y) in &poly {
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x);
+            y1 = y1.max(y);
+        }
+        let (w, h) = (x1 - x0, y1 - y0);
+        if w <= 0.0 || h <= 0.0 {
+            return Vec::new();
+        }
+        let step = INNER_STEP * w.min(h);
+        for k in 0..=INNER_TRIES {
+            let m = k as f64 * step + EPS;
+            let bands = [
+                Rect {
+                    x0,
+                    y0: y0 + m,
+                    x1,
+                    y1: y1 - m,
+                },
+                Rect {
+                    x0: x0 + m,
+                    y0,
+                    x1: x1 - m,
+                    y1,
+                },
+            ];
+            if bands.iter().any(|r| r.x1 <= r.x0 || r.y1 <= r.y0) {
+                break;
+            }
+            let ok = bands.iter().all(|r| {
+                [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)]
+                    .iter()
+                    .all(|&q| inside_convex(&poly, q))
+            });
+            if ok {
+                return bands.to_vec();
+            }
+        }
+        Vec::new()
     }
 
     /// 軸平行な矩形 1 つだけのパスか
@@ -664,6 +898,36 @@ impl<'a> Walker<'a> {
         Ok(())
     }
 
+    /// 塗り・画像 1 つの覆いを記録する。`bb` は塗りの外接矩形、`r` は現在のクリップとの共通部分。
+    /// `shape_ok`: 形・色・不透明度が、不透明な覆いの条件を満たす (クリップは除く)。
+    /// クリップが矩形そのものなら、`r` を不透明な覆いにする。そうでないときは、クリップの内側に
+    /// 確実に収まる矩形 (`clip_inner`) と `bb` の共通部分だけを不透明な覆いにする (角丸の矩形の
+    /// クリップの下の矩形の塗りなど)。`r` 全体は、`probe_ok` なら不透明でない覆いとして記録する
+    fn push_fill_cover(
+        &mut self,
+        st: &St,
+        bb: Rect,
+        r: Rect,
+        shape_ok: bool,
+        probe_ok: bool,
+        rgb: Option<[u8; 3]>,
+    ) -> Result<(), Unwalkable> {
+        if shape_ok && st.clip_exact {
+            return self.push_cover(r, true, rgb);
+        }
+        if shape_ok {
+            for ri in &st.clip_inner {
+                if let Some(c) = intersect(&bb, ri) {
+                    self.push_cover(c, true, rgb)?;
+                }
+            }
+        }
+        if probe_ok {
+            self.push_cover(r, false, rgb)?;
+        }
+        Ok(())
+    }
+
     /// ストリーム 1 本 (ページまたは Form の内容) を描画順にたどる。
     fn walk(
         &mut self,
@@ -768,11 +1032,15 @@ impl<'a> Walker<'a> {
                     }
                 }
                 "c" | "v" | "y" => {
-                    path.curve = true;
                     if let Some(v) = operand_nums(op) {
-                        for p in v.chunks_exact(2) {
-                            path.add(apply(&st.ctm, p[0], p[1]));
-                        }
+                        let pts: Vec<(f64, f64)> = v
+                            .chunks_exact(2)
+                            .map(|p| apply(&st.ctm, p[0], p[1]))
+                            .collect();
+                        path.add_curve(name, &pts);
+                    } else {
+                        path.curve = true;
+                        path.flat_bad = true;
                     }
                 }
                 "re" => {
@@ -793,18 +1061,26 @@ impl<'a> Walker<'a> {
                         if fill {
                             if let Some(r) = st.clip.map_or(Some(bb), |c| intersect(&bb, &c)) {
                                 let thick = (r.x1 - r.x0).min(r.y1 - r.y0);
-                                let opaque = path.is_exact_rect() && st.can_cover_opaque();
+                                let shape_ok = path.is_exact_rect() && st.can_cover_opaque_shape();
+                                let probe_ok =
+                                    st.ca >= PROBE_MIN_ALPHA && thick >= PROBE_MIN_THICKNESS;
                                 let rgb = if st.fill_pattern { None } else { st.fill_rgb };
-                                if opaque {
-                                    self.push_cover(r, true, rgb)?;
-                                } else if st.ca >= PROBE_MIN_ALPHA && thick >= PROBE_MIN_THICKNESS {
-                                    self.push_cover(r, false, rgb)?;
-                                }
+                                self.push_fill_cover(&st, bb, r, shape_ok, probe_ok, rgb)?;
                             }
                         }
                         // クリップは、塗りのあとに効く
                         if path.clip {
                             let exact = path.is_exact_rect() && st.clip_exact;
+                            if !exact {
+                                // 新しいクリップの内側に確実に収まる矩形 = 今のクリップの内側の矩形と、
+                                // このパスの内側の矩形の共通部分
+                                let inner_p = if path.is_exact_rect() {
+                                    vec![bb]
+                                } else {
+                                    path.inscribed_rects()
+                                };
+                                st.clip_inner = intersect_all(&inner_base(&st), &inner_p);
+                            }
                             st.clip = match st.clip {
                                 Some(c) => Some(intersect(&bb, &c).unwrap_or(Rect {
                                     x0: 0.0,
@@ -825,6 +1101,7 @@ impl<'a> Walker<'a> {
                             y1: 0.0,
                         });
                         st.clip_exact = false;
+                        st.clip_inner.clear();
                     }
                     path = PathAcc::default();
                 }
@@ -854,15 +1131,12 @@ impl<'a> Walker<'a> {
                             });
                             let bb = transform_rect(&st.ctm, [0.0, 0.0, 1.0, 1.0]);
                             if let Some(r) = st.clip.map_or(Some(bb), |c| intersect(&bb, &c)) {
-                                let opaque = !has_mask
+                                let shape_ok = !has_mask
                                     && !is_stencil
                                     && is_axis_aligned(&st.ctm)
-                                    && st.can_cover_opaque();
-                                if opaque {
-                                    self.push_cover(r, true, None)?;
-                                } else if st.ca >= PROBE_MIN_ALPHA {
-                                    self.push_cover(r, false, None)?;
-                                }
+                                    && st.can_cover_opaque_shape();
+                                let probe_ok = st.ca >= PROBE_MIN_ALPHA;
+                                self.push_fill_cover(&st, bb, r, shape_ok, probe_ok, None)?;
                             }
                         }
                         XKind::Form { bbox, matrix } => {
@@ -962,6 +1236,7 @@ impl<'a> Walker<'a> {
                     if st.tr >= 4 {
                         // 文字でクリップする: 以降の覆いは形が分からない
                         st.clip_exact = false;
+                        st.clip_inner.clear();
                     }
                     let candidate = matches!(name, "Tj" | "TJ")
                         && (0..=2).contains(&st.tr)
@@ -1101,6 +1376,14 @@ impl<'a> Walker<'a> {
         // Form の BBox でクリップされる
         let bb = transform_rect(&init.ctm, *bbox);
         let exact = is_axis_aligned(&init.ctm);
+        if !(init.clip_exact && exact) {
+            // クリップが矩形そのものでなくなる: 内側の矩形は、今のクリップの内側の矩形と BBox の共通部分
+            init.clip_inner = if exact {
+                intersect_all(&inner_base(&init), &[bb])
+            } else {
+                Vec::new()
+            };
+        }
         init.clip = match init.clip {
             Some(c) => Some(intersect(&bb, &c).unwrap_or(Rect {
                 x0: 0.0,
@@ -1971,6 +2254,49 @@ pub(crate) mod tests {
         );
         let a = strip(&mut doc, 0.999);
         assert_eq!(a.removed_glyphs, 1);
+    }
+
+    /// 角丸の矩形 (x 0..100, y 80..150、半径 10) のクリップ
+    const ROUNDED_CLIP: &str = "10 80 m 90 80 l 100 80 100 80 100 90 c 100 140 l 100 150 100 150 \
+        90 150 c 10 150 l 0 150 0 150 0 140 c 0 90 l 0 80 0 80 10 80 c h W n";
+
+    #[test]
+    fn rounded_rect_clip_still_covers_away_from_the_corners() {
+        // 角丸のクリップの下の矩形の塗り。文字は四隅から離れているので、覆いと認めて除去する
+        // (Canva などが、角丸の枠で矩形の白地を切り抜く)
+        let content =
+            format!("BT /F1 20 Tf 10 100 Td (ABC) Tj ET\nq {ROUNDED_CLIP} 0 80 100 70 re f Q\n");
+        let mut doc = build(&content, &[], None);
+        assert_eq!(strip(&mut doc, 0.999).removed_glyphs, 3);
+    }
+
+    #[test]
+    fn glyph_in_a_rounded_corner_is_not_covered() {
+        // 四隅の丸みの部分は、クリップの外 (塗りが届かない) なので、そこにある文字は覆われない
+        let content =
+            format!("BT /F1 8 Tf 0.5 80.5 Td (A) Tj ET\nq {ROUNDED_CLIP} 0 80 100 70 re f Q\n");
+        let mut doc = build(&content, &[], None);
+        assert_eq!(strip(&mut doc, 0.999).removed_glyphs, 0);
+    }
+
+    #[test]
+    fn rounded_clip_with_a_curved_fill_is_not_a_cover() {
+        // 塗りが曲線を含むときは、クリップが角丸でも覆いにしない (従来どおり)
+        let content = format!(
+            "BT /F1 20 Tf 10 100 Td (ABC) Tj ET\nq {ROUNDED_CLIP} 0 90 m 100 90 l 100 130 100 130 50 130 c 0 130 l h f Q\n"
+        );
+        let mut doc = build(&content, &[], None);
+        assert_eq!(strip(&mut doc, 0.999).removed_glyphs, 0);
+    }
+
+    #[test]
+    fn nested_rect_and_rounded_clips_keep_the_inner_rectangles() {
+        // 矩形のクリップ (x 0..60) と角丸のクリップを重ねる。文字 (x 10..) がその共通部分に収まる
+        let content = format!(
+            "BT /F1 20 Tf 10 100 Td (A) Tj ET\nq 0 0 60 200 re W n {ROUNDED_CLIP} 0 80 100 70 re f Q\n"
+        );
+        let mut doc = build(&content, &[], None);
+        assert_eq!(strip(&mut doc, 0.999).removed_glyphs, 1);
     }
 
     #[test]
