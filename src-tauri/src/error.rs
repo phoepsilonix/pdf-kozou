@@ -3,12 +3,12 @@
 // -------------------------------------------------------------------------
 
 // src-tauri/src/error.rs
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Error, Serialize)]
+#[derive(Debug, Error)]
 pub enum Error {
     #[error("core: {0}")]
     Core(String),
@@ -16,6 +16,16 @@ pub enum Error {
     Io(String),
     //    #[error("platform: {0}")]
     //    Platform(String),
+}
+
+/// フロントエンドへは表示用の文字列として返す。
+///
+/// derive(Serialize) のままだと `{"Core":"..."}` というオブジェクトになり、
+/// フロント側の `String(e)` が "[object Object]" になって原因が読めなくなる。
+impl Serialize for Error {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
 }
 
 impl From<std::io::Error> for Error {

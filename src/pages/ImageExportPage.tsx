@@ -1594,6 +1594,18 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 <EngineFallbackNotes fallbacks={d.fallbacks} />
               </div>
             ))}
+            {/* 失敗したファイルも、結果画面を待たずに処理中のログへ出す */}
+            {batchProgress.errors.map((e, idx) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: 同名ファイルが並ぶ追記のみのログで、ファイル名だけでは一意にならない
+                key={`${e.file}:${idx}`}
+                style={{ ...s.bpRow, background: "var(--c-errBg)", borderColor: "var(--c-errBd)" }}
+              >
+                <span style={{ color: "var(--c-err)" }}>✕</span>
+                <span style={s.bpFile}>{e.file}</span>
+                <span style={{ ...s.bpMeta, color: "var(--c-err)" }}>{e.msg}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

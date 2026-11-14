@@ -17,20 +17,42 @@
 use crate::error::{Error, Result};
 use serde_json::Value;
 
+/// 通常の core 呼び出しの待ち時間の上限。
+const CORE_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// JSON モードで core を呼ぶ（旧: stdin 経由 → 現: 直接関数呼び出し）
 ///
 /// MuPDF 処理は CPU バウンドで時間がかかりうるため、tokio の非同期ランタイムを
 /// ブロックしないよう spawn_blocking の中で実行する。
-async fn call_core_json(cmd: &str, mut payload: Value) -> Result<Value> {
+/// 120 秒を超えるとタイムアウトとして Err を返す(軽い処理向け)。
+async fn call_core_json(cmd: &str, payload: Value) -> Result<Value> {
+    call_core_json_with_timeout(cmd, payload, Some(CORE_CALL_TIMEOUT)).await
+}
+
+/// 時間制限なしで core を呼ぶ。
+///
+/// 圧縮・画像PDF化・キープテキストなど、ページ数や画像の大きさに応じて数分かかる
+/// 処理向け。タイムアウトしても spawn_blocking 側の処理は止まらず、出力ファイルは
+/// 後から書き上がるのに画面上はエラー扱いになってしまうため、処理の終了まで待つ。
+async fn call_core_json_long(cmd: &str, payload: Value) -> Result<Value> {
+    call_core_json_with_timeout(cmd, payload, None).await
+}
+
+async fn call_core_json_with_timeout(
+    cmd: &str,
+    mut payload: Value,
+    timeout: Option<std::time::Duration>,
+) -> Result<Value> {
     payload["cmd"] = serde_json::Value::String(cmd.to_string());
     let json_line = serde_json::to_string(&payload).map_err(|e| Error::Core(e.to_string()))?;
 
-    let response = tokio::time::timeout(
-        std::time::Duration::from_secs(120),
-        tokio::task::spawn_blocking(move || pdf_kozou_core::api::dispatch_json(&json_line)),
-    )
-    .await
-    .map_err(|_| Error::Core("core call timed out (120s)".into()))?
+    let task = tokio::task::spawn_blocking(move || pdf_kozou_core::api::dispatch_json(&json_line));
+    let response = match timeout {
+        Some(limit) => tokio::time::timeout(limit, task)
+            .await
+            .map_err(|_| Error::Core(format!("core call timed out ({}s)", limit.as_secs())))?,
+        None => task.await,
+    }
     .map_err(|e| Error::Core(format!("core task join error: {e}")))?;
 
     if response.trim().is_empty() {
@@ -382,7 +404,7 @@ pub async fn compose_imposition_pdf(request: Value) -> Result<Value> {
     {
         std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
     }
-    call_core_json("compose_imposition_pdf", request).await
+    call_core_json_long("compose_imposition_pdf", request).await
 }
 
 /// compose_imposition_pdf のキープテキスト版。非テキスト要素はシート単位で
@@ -395,7 +417,7 @@ pub async fn compose_imposition_pdf_keep_text(request: Value) -> Result<Value> {
     {
         std::fs::create_dir_all(parent).map_err(|e| Error::Core(format!("mkdir: {e}")))?;
     }
-    call_core_json("compose_imposition_pdf_keep_text", request).await
+    call_core_json_long("compose_imposition_pdf_keep_text", request).await
 }
 
 /// 面付け解除した1セルを画像(JPEG/PNG/SVG)としてレンダリングし base64 で返す。
@@ -572,7 +594,7 @@ pub async fn get_page_links(path: String, page: i32, scale: f32) -> Result<Value
 
 #[tauri::command]
 pub async fn compress_pdf(request: Value) -> Result<Value> {
-    call_core_json("compress", request).await
+    call_core_json_long("compress", request).await
 }
 
 #[tauri::command]
@@ -719,7 +741,7 @@ pub async fn export_image_pdf(
         "supersample": supersample.unwrap_or(1),
     });
 
-    call_core_json("rasterize", request).await
+    call_core_json_long("rasterize", request).await
 }
 
 /// 画像PDF化(フォント保持版・実験的機能)。
@@ -767,7 +789,7 @@ pub async fn export_image_pdf_keep_text(
         "supersample": supersample.unwrap_or(1),
     });
 
-    call_core_json("compose_image_pdf_keep_text", request).await
+    call_core_json_long("compose_image_pdf_keep_text", request).await
 }
 
 #[tauri::command]
