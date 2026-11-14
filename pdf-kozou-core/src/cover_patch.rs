@@ -47,6 +47,7 @@ pub struct Params {
     /// 画素 (full が nt と違う) は、文字の描き方の違い (縁取り・影・にじみ) であって、隠された文字では
     /// ない。そこにパッチを置くと、文字そのものを画素として焼き込んでしまう (拡大でぼやける、
     /// ビューアで濃さが変わる)。元で文字が隠れている画素 (full == nt) だけを、背景の画素で隠し直す。
+    /// 差分マスクを膨張した後の画素にも、同じ条件を掛ける (隣の見えている文字を覆わない)。
     pub hide_thr: i32,
     /// 差分マスクの膨張半径 (画素)。文字の縁のにじみまで覆う
     pub dilate: u32,
@@ -159,6 +160,19 @@ pub fn compute_patches(
     let mut mask = dilate(&bad, wu, hu, r);
     for (m, t) in mask.iter_mut().zip(text_d.iter()) {
         *m = *m && *t;
+    }
+    // 元でも文字が見えている画素 (full が nt と違う) は、膨張で縁に掛かっても、パッチにしない。
+    // 隠れた文字 (後から別の文字の下に隠された古い文字など) の隣に、元で見えている別の文字が
+    // あると、膨張したマスクがその文字の画素まで覆い、パッチ (背景 + full − nt の等倍画素) が
+    // ベクターの文字の上に、その文字の写しを重ねてしまう (拡大でぼやける・位置がずれる)。
+    // 見えている文字はベクターのまま文字層に残っているので、覆わずにそのまま見せる。
+    for (i, m) in mask.iter_mut().enumerate() {
+        if *m {
+            let o = i * 3;
+            if max_abs_diff(&full[o..o + 3], &nt[o..o + 3]) > p.hide_thr {
+                *m = false;
+            }
+        }
     }
 
     // タイルの占有を 8 近傍でつなぎ、塊ごとに 1 枚のパッチにする
@@ -909,6 +923,34 @@ mod tests {
         // 半透明の覆いは、元のオブジェクトのまま文字層に重ねて再現する
         let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default(), None);
         assert!(ps.is_empty());
+    }
+
+    #[test]
+    fn visible_text_next_to_hidden_text_is_not_covered() {
+        let (w, h) = (64, 48);
+        let bg = solid(w, h, 255);
+        let nt = bg.clone();
+        // 元の描画: 左の文字 (x 10..22) だけが見える。右の文字 (x 22..30) は隠れている (full == nt)
+        let mut full = bg.clone();
+        fill(&mut full, w, 10, 10, 22, 14, 0);
+        // 出力の描画: 両方の文字がベクターで見える
+        let mut comp = bg.clone();
+        fill(&mut comp, w, 10, 10, 30, 14, 0);
+        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default(), None);
+        assert_eq!(ps.len(), 1);
+        let p = &ps[0];
+        // 隠れた文字は覆う
+        let o = ((11 - p.y0) * p.w + (25 - p.x0)) as usize;
+        assert_eq!(p.mask[o], 255);
+        // 元で見えている文字の画素は、膨張の範囲内 (隠れた文字から 2 画素以内) でも覆わない。
+        // 文字の上下の、文字が見えていない背景の画素は、覆ってよい (背景と同じ画素になる)
+        for x in [20u32, 21] {
+            for y in 10..14u32 {
+                assert!(x >= p.x0 && y >= p.y0, "patch must reach the neighbourhood");
+                let o = ((y - p.y0) * p.w + (x - p.x0)) as usize;
+                assert_eq!(p.mask[o], 0, "visible text pixel ({x}, {y}) must stay uncovered");
+            }
+        }
     }
 
     #[test]
