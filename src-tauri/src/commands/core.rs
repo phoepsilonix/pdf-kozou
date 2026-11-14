@@ -647,44 +647,42 @@ pub async fn export_images(
 
     std::fs::create_dir_all(&out_dir).map_err(|e| Error::Core(format!("mkdir {out_dir}: {e}")))?;
 
-    let response = tokio::time::timeout(
-        std::time::Duration::from_secs(120),
-        tokio::task::spawn_blocking(move || -> std::result::Result<Value, String> {
-            // ページ範囲指定が無い(または "all")場合は info から全ページ数を取得
-            let indices: Vec<i32> = match pages.as_deref() {
-                None => {
-                    let info = pdf_kozou_core::info::info(&path).map_err(|e| e.to_string())?;
-                    (0..info.page_count).collect()
-                }
-                Some(p) if p.is_empty() || p == "all" => {
-                    let info = pdf_kozou_core::info::info(&path).map_err(|e| e.to_string())?;
-                    (0..info.page_count).collect()
-                }
-                Some(p) => pdf_kozou_core::api::parse_string_pages(p).map_err(|e| e.to_string())?,
-            };
-            let total = indices.len() as u32;
+    // ページ数や dpi に応じて数分かかりうるので、時間制限は付けない
+    // (タイムアウトしても処理は止まらず、画像だけ書き上がってエラー表示になるため)。
+    let response = tokio::task::spawn_blocking(move || -> std::result::Result<Value, String> {
+        // ページ範囲指定が無い(または "all")場合は info から全ページ数を取得
+        let indices: Vec<i32> = match pages.as_deref() {
+            None => {
+                let info = pdf_kozou_core::info::info(&path).map_err(|e| e.to_string())?;
+                (0..info.page_count).collect()
+            }
+            Some(p) if p.is_empty() || p == "all" => {
+                let info = pdf_kozou_core::info::info(&path).map_err(|e| e.to_string())?;
+                (0..info.page_count).collect()
+            }
+            Some(p) => pdf_kozou_core::api::parse_string_pages(p).map_err(|e| e.to_string())?,
+        };
+        let total = indices.len() as u32;
 
-            pdf_kozou_core::api::render_to_dir(
-                &path,
-                &indices,
-                total,
-                None,
-                Some(&prefix),
-                &out_dir,
-                &fmt,
-                quality_val,
-                dpi_val,
-                ext,
-                layout_w,
-                layout_h,
-                layout_em,
-                supersample,
-            )
-            .map_err(|e| e.to_string())
-        }),
-    )
+        pdf_kozou_core::api::render_to_dir(
+            &path,
+            &indices,
+            total,
+            None,
+            Some(&prefix),
+            &out_dir,
+            &fmt,
+            quality_val,
+            dpi_val,
+            ext,
+            layout_w,
+            layout_h,
+            layout_em,
+            supersample,
+        )
+        .map_err(|e| e.to_string())
+    })
     .await
-    .map_err(|_| Error::Core("export_images timed out (120s)".into()))?
     .map_err(|e| Error::Core(format!("core task join error: {e}")))?
     .map_err(Error::Core)?;
 
