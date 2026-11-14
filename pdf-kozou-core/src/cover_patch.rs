@@ -656,6 +656,52 @@ pub fn count_changed_text(alpha: &[u8], t0w: &[u8], tcw: &[u8], w: u32, h: u32, 
     n
 }
 
+/// 覆いを文字層に残す範囲の縁を決める、弱い判定のしきい値 (0-255)。範囲の縁では、覆いが文字を
+/// 染める量をこの値以下にして、範囲の内外で文字の色が段差 (縦線) にならないようにする。
+pub const ZONE_FAINT_THR: i32 = 4;
+/// 弱い判定の画素が、強い判定の画素 (または、すでに加えた画素) から、この距離 (画素) 以内なら
+/// つながっているとみなす (文字の画線のすきま・字間をまたげるように)。
+pub const ZONE_GROW_PX: usize = 4;
+
+/// 覆いを文字層に残す範囲のマスクを作る。強い判定 `strict` の画素から、弱い判定 `faint` の画素へ、
+/// `ZONE_GROW_PX` 以内のつながりをたどって広げる (離れた弱い画素 = ノイズは加えない)。
+/// 範囲の縁で、覆いが文字を染める量が小さくなるまで広がるので、縁が段差に見えない。
+/// 長さが合わなければ `strict` を返す。
+pub fn grow_zone_mask(strict: &[bool], faint: &[bool], w: u32, h: u32) -> Vec<bool> {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if strict.len() != n || faint.len() != n || n == 0 {
+        return strict.to_vec();
+    }
+    // 弱い画素を膨らませてつなぎ、強い画素を含む連結成分だけを残す
+    let faint_d = dilate(faint, wu, hu, ZONE_GROW_PX / 2);
+    let mut keep = vec![false; n];
+    let mut stack: Vec<usize> = Vec::new();
+    for i in 0..n {
+        if strict[i] && !keep[i] {
+            keep[i] = true;
+            stack.push(i);
+            while let Some(c) = stack.pop() {
+                let (cx, cy) = ((c % wu) as i64, (c / wu) as i64);
+                for dy in -1i64..=1 {
+                    for dx in -1i64..=1 {
+                        let (nx, ny) = (cx + dx, cy + dy);
+                        if nx < 0 || ny < 0 || nx >= wu as i64 || ny >= hu as i64 {
+                            continue;
+                        }
+                        let ni = ny as usize * wu + nx as usize;
+                        if !keep[ni] && (faint_d[ni] || strict[ni]) {
+                            keep[ni] = true;
+                            stack.push(ni);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (0..n).map(|i| strict[i] || (faint[i] && keep[i])).collect()
+}
+
 /// 覆い 1 つが、その手前 (先) に描かれた文字を隠している (染めている) 画素のマスク (画素ごと、
 /// 外接矩形 `rect` の中だけ)。
 /// - `alpha`: `text_alpha` の結果 (文字のアルファ)
@@ -667,6 +713,22 @@ pub fn count_changed_text(alpha: &[u8], t0w: &[u8], tcw: &[u8], w: u32, h: u32, 
 /// 縁のぼけた画素でも、文字が覆いの後か先かを正しく見分ける (文字の中身だけでは、小さい文字で
 /// 画素が足りなくなる)。長さが合わなければ、すべて false。
 pub fn hidden_mask(alpha: &[u8], t0b: &[u8], tcw: &[u8], cw: &[u8], w: u32, h: u32, rect: [f64; 4]) -> Vec<bool> {
+    hidden_mask_thr(alpha, t0b, tcw, cw, w, h, rect, HIDE_DIFF_THR)
+}
+
+/// `hidden_mask` のしきい値 `thr` (0-255) を指定できる版。小さい値にすると、覆いが文字をわずかに
+/// 染めているだけの画素まで拾う (覆いを文字層に残す範囲の縁を決めるのに使う)。
+#[allow(clippy::too_many_arguments)]
+pub fn hidden_mask_thr(
+    alpha: &[u8],
+    t0b: &[u8],
+    tcw: &[u8],
+    cw: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+    thr: i32,
+) -> Vec<bool> {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     let mut out = vec![false; n];
@@ -692,7 +754,7 @@ pub fn hidden_mask(alpha: &[u8], t0b: &[u8], tcw: &[u8], cw: &[u8], w: u32, h: u
                 })
                 .max()
                 .unwrap_or(0);
-            if diff > HIDE_DIFF_THR {
+            if diff > thr {
                 out[i] = true;
             }
         }
@@ -1071,6 +1133,53 @@ mod tests {
         // 縁の画素のパッチ画素は背景と同じ (ぼかしても色は変わらない)
         let o = (((11 - p.y0) * p.w + (9 - p.x0)) * 3) as usize;
         assert_eq!(&p.rgb[o..o + 3], &[200, 200, 200]);
+    }
+
+    #[test]
+    fn grow_zone_follows_faint_tail_but_not_isolated_noise() {
+        let (w, h) = (40u32, 8u32);
+        let n = (w * h) as usize;
+        let mut strict = vec![false; n];
+        let mut faint = vec![false; n];
+        let set = |m: &mut Vec<bool>, x0: u32, x1: u32| {
+            for y in 3..5u32 {
+                for x in x0..x1 {
+                    m[(y * w + x) as usize] = true;
+                }
+            }
+        };
+        set(&mut strict, 5, 10); // 強い判定
+        set(&mut faint, 5, 10);
+        set(&mut faint, 10, 20); // 弱い判定の裾 (つながっている)
+        set(&mut faint, 33, 36); // 離れたノイズ
+        let z = grow_zone_mask(&strict, &faint, w, h);
+        let at = |x: u32, y: u32| z[(y * w + x) as usize];
+        assert!(at(7, 3), "strict stays");
+        assert!(at(15, 3), "faint tail connected to strict is added");
+        assert!(at(19, 4));
+        assert!(!at(20, 3), "beyond the faint tail is not added");
+        assert!(!at(34, 3), "isolated faint noise is not added");
+    }
+
+    #[test]
+    fn hidden_mask_thr_picks_fainter_changes() {
+        let (w, h) = (8u32, 1u32);
+        let n = (w * h) as usize;
+        let alpha = vec![255u8; n];
+        let t0b = vec![0u8; n * 3]; // 文字の色 (黒地)
+        let cw = vec![200u8; n * 3]; // 覆いだけ (白地)
+        // 期待値 = t0b + (255-a)*cw/255 = 0。 tcw が 0 から離れた分が差
+        let mut tcw = vec![0u8; n * 3];
+        for c in 0..3 {
+            tcw[2 * 3 + c] = 30; // 差 30 (強い)
+            tcw[4 * 3 + c] = 8; // 差 8 (弱い)
+            tcw[6 * 3 + c] = 2; // 差 2 (どちらでもない)
+        }
+        let rect = [0.0, 0.0, 8.0, 1.0];
+        let strict = hidden_mask(&alpha, &t0b, &tcw, &cw, w, h, rect);
+        let faint = hidden_mask_thr(&alpha, &t0b, &tcw, &cw, w, h, rect, ZONE_FAINT_THR);
+        assert_eq!(strict, vec![false, false, true, false, false, false, false, false]);
+        assert_eq!(faint, vec![false, false, true, false, true, false, false, false]);
     }
 
     #[test]

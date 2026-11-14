@@ -1258,8 +1258,9 @@ fn plan_cover_layers(
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
         HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, TEXT_PRE_MIN,
-        count_changed_text, count_in_rect, dilate, hidden_mask, hug_stats, opaque_in_mask,
-        rects_from_mask, text_alpha, text_core_mask, text_mask_from_alpha, text_near_mask,
+        ZONE_FAINT_THR, count_changed_text, count_in_rect, dilate, grow_zone_mask, hidden_mask,
+        hidden_mask_thr, hug_stats, opaque_in_mask, rects_from_mask, text_alpha, text_core_mask,
+        text_mask_from_alpha, text_near_mask,
     };
     use std::collections::HashSet;
 
@@ -1452,10 +1453,20 @@ fn plan_cover_layers(
             // 4. 画像の 1 回の描画は、文字を隠している範囲 (隠された文字の画素の外接矩形 + 余白) に
             //    絞って文字層に残す。範囲の外は背景に焼き込む (顔などを隠す覆いが、文字に掛かる
             //    部分以外まで動かせる状態で残り、背景から抜けるのを防ぐ)。
+            //    範囲の縁は、覆いが文字を染める量が小さくなる所までにする。強い判定 (zones) の縁のままだと、
+            //    縁で、覆いの掛かった文字 (範囲の中) と掛からない文字 (範囲の外) の色が段差になり、
+            //    拡大すると左右の縦線に見える。弱い判定の画素へ、つながりをたどって広げる。
+            let clip_zones: Vec<[f64; 4]> = if matches!(c.key, CoverKey::Draw(..)) {
+                let faint = hidden_mask_thr(&alpha, &t0b, &tcw, &cw, tw, th, r, ZONE_FAINT_THR);
+                let grown = grow_zone_mask(&hid, &faint, tw, th);
+                rects_from_mask(&grown, tw, th, r, ZONE_TILE_PX, ZONE_PAD_PX)
+            } else {
+                Vec::new()
+            };
             let clip: Vec<[f64; 8]> = if matches!(c.key, CoverKey::Draw(..)) {
                 c.to_local
                     .map(|inv| {
-                        zones
+                        clip_zones
                             .iter()
                             .map(|px| {
                                 // 画素座標 (左上原点) → ページ座標 (to_px の逆)
