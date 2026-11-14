@@ -19,6 +19,9 @@
 // を、マスク付きの小さな画像としてテキストの上に重ねる。
 // 不透明な物に隠れていた文字は full == nt なので、パッチは背景と同じ画素になり、文字が消える。
 // 半透明の物越しに薄く見えていた文字は、その薄い見え方で再現される。
+// マスクは二値ではなく画素ごとのアルファ。元でも文字が見えている画素 (出力と見え方が同じ画素) は 0 にして
+// ベクターの文字を残し、縁は文字でない画素へ向けて SOFT_FEATHER 画素かけて 0 へ落とす (拡大したときに、
+// パッチの縁が 1 画素幅の段差・縦線に見えないようにする)。
 //
 // hayro は full も comp も同じエンジンで描くため、本当に見え方が違う箇所だけが差分になる。
 // このモジュールは hayro / lopdf に依存しない (単体でテストできるようにするため)。
@@ -110,6 +113,87 @@ pub fn dilate(src: &[bool], w: usize, h: usize, r: usize) -> Vec<bool> {
     out
 }
 
+/// パッチ画素と出力 (`comp`) の差がこの値以下の画素は、パッチを重ねても見え方が変わらない (0-255)。
+/// そのような画素にはパッチを置かず、ベクターの文字をそのまま残す。
+pub const SOFT_MIN_DIFF: i32 = 4;
+/// 実測したアルファが、これ未満なら 0、`SOFT_ALPHA_HI` 以上なら 255 にそろえる (0-255)。
+/// 縁のかすかな残りと、ほぼ不透明なのに少し透ける画素を作らないため。
+pub const SOFT_ALPHA_LO: u8 = 16;
+pub const SOFT_ALPHA_HI: u8 = 239;
+/// パッチの縁を、見え方が変わらない画素へ向けて 0 まで落とす幅 (画素)。
+/// 背景 (JPEG の復号の違い) とパッチ画素の微小な差が、1 画素幅の線に見えるのを防ぐ。
+pub const SOFT_FEATHER: usize = 2;
+
+/// パッチ画素 = bg + (full − nt)。
+#[inline]
+fn patch_px(bg: &[u8], full: &[u8], nt: &[u8], c: usize) -> i32 {
+    (bg[c] as i32 + full[c] as i32 - nt[c] as i32).clamp(0, 255)
+}
+
+/// 1 画素について、「出力 `comp` にパッチ P を α で重ねた結果が、元 `full` に最も近くなる α」
+/// (最小二乗: α = (comp−full)·(comp−P) / |comp−P|²) と、comp と P の最大差を返す。
+/// comp と P の差が `SOFT_MIN_DIFF` 以下なら、重ねても同じなので α は 0。
+fn soft_alpha(comp: &[u8], full: &[u8], nt: &[u8], bg: &[u8]) -> (u8, i32) {
+    let (mut dd, mut ed, mut md) = (0i64, 0i64, 0i32);
+    for c in 0..3 {
+        let d = comp[c] as i32 - patch_px(bg, full, nt, c);
+        let e = comp[c] as i32 - full[c] as i32;
+        dd += (d * d) as i64;
+        ed += (e * d) as i64;
+        md = md.max(d.abs());
+    }
+    if md <= SOFT_MIN_DIFF || dd == 0 {
+        return (0, md);
+    }
+    let a = ((ed as f64 / dd as f64).clamp(0.0, 1.0) * 255.0).round() as u8;
+    let a = if a < SOFT_ALPHA_LO {
+        0
+    } else if a >= SOFT_ALPHA_HI {
+        255
+    } else {
+        a
+    };
+    (a, md)
+}
+
+/// アルファの縁を、`eligible` が真の画素 (文字ではなく、重ねても見え方が変わらない画素) へ向けて、
+/// `r` 画素かけて 0 まで落とす。eligible が偽の画素 (文字のある画素など) へは広げない。
+fn feather_alpha(alpha: &mut [u8], w: usize, h: usize, r: usize, eligible: &dyn Fn(usize) -> bool) {
+    if r == 0 {
+        return;
+    }
+    let core = alpha.to_vec();
+    let ri = r as i64;
+    for y in 0..h {
+        for x in 0..w {
+            let a = core[y * w + x];
+            if a == 0 {
+                continue;
+            }
+            for dy in -ri..=ri {
+                for dx in -ri..=ri {
+                    let k = dx.abs().max(dy.abs());
+                    if k == 0 {
+                        continue;
+                    }
+                    let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i64 || ny >= h as i64 {
+                        continue;
+                    }
+                    let ni = ny as usize * w + nx as usize;
+                    if core[ni] != 0 {
+                        continue;
+                    }
+                    let v = (a as i64 * (ri + 1 - k) / (ri + 1)) as u8;
+                    if v > alpha[ni] && eligible(ni) {
+                        alpha[ni] = v;
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// 差分からパッチを求める。いずれの画素列も RGB8 で `w`×`h`。
 /// 長さが合わないとき・差分が無いときは空を返す。
 #[allow(clippy::too_many_arguments)]
@@ -173,6 +257,34 @@ pub fn compute_patches(
                 *m = false;
             }
         }
+    }
+
+    // 二値のマスクを、画素ごとのアルファにする。
+    //  - 隠れていた画素 (bad) は 255。
+    //  - 膨張で加わった画素は、実測のアルファ (soft_alpha)。パッチを重ねても見え方が変わらない画素や、
+    //    元でも文字が見えている画素は 0 になり、ベクターの文字がそのまま残る
+    //    (二値のままだと、覆いの縁で見えているべき文字の角まで、画素に置き換わって欠ける)。
+    //  - 最後に、縁を見え方が変わらない画素へ向けてぼかし、パッチと背景の継ぎ目を目立たなくする。
+    let mut alpha = vec![0u8; n];
+    for i in 0..n {
+        if !mask[i] {
+            continue;
+        }
+        let o = i * 3;
+        alpha[i] = if bad[i] {
+            255
+        } else {
+            soft_alpha(&comp[o..o + 3], &full[o..o + 3], &nt[o..o + 3], &bg[o..o + 3]).0
+        };
+    }
+    feather_alpha(&mut alpha, wu, hu, SOFT_FEATHER, &|i| {
+        // 文字の画素には広げない (ベクターのまま残す)。文字でなく、重ねても変わらない画素だけ
+        let o = i * 3;
+        !text[i]
+            && soft_alpha(&comp[o..o + 3], &full[o..o + 3], &nt[o..o + 3], &bg[o..o + 3]).1 <= SOFT_MIN_DIFF
+    });
+    for (m, a) in mask.iter_mut().zip(alpha.iter()) {
+        *m = *a > 0;
     }
 
     // タイルの占有を 8 近傍でつなぎ、塊ごとに 1 枚のパッチにする
@@ -239,10 +351,9 @@ pub fn compute_patches(
                 let i = y * wu + x;
                 let o = i * 3;
                 for c in 0..3 {
-                    let v = bg[o + c] as i32 + (full[o + c] as i32 - nt[o + c] as i32);
-                    rgb.push(v.clamp(0, 255) as u8);
+                    rgb.push(patch_px(&bg[o..o + 3], &full[o..o + 3], &nt[o..o + 3], c) as u8);
                 }
-                m.push(if mask[i] { 255 } else { 0 });
+                m.push(alpha[i]);
             }
         }
         patches.push(Patch {
@@ -951,6 +1062,57 @@ mod tests {
                 assert_eq!(p.mask[o], 0, "visible text pixel ({x}, {y}) must stay uncovered");
             }
         }
+    }
+
+    #[test]
+    fn patch_does_not_spread_onto_text_that_is_visible_in_the_original() {
+        let (w, h) = (64, 48);
+        let mut bg = solid(w, h, 255);
+        fill(&mut bg, w, 0, 0, 64, 48, 200);
+        let nt = bg.clone();
+        let mut full = bg.clone();
+        fill(&mut full, w, 20, 10, 30, 14, 0); // x=20..30 は元でも文字が見える
+        let mut comp = bg.clone();
+        fill(&mut comp, w, 10, 10, 30, 14, 0); // 出力では x=10..30 に文字
+        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default(), None);
+        assert_eq!(ps.len(), 1);
+        let p = &ps[0];
+        let at = |x: u32, y: u32| -> u8 {
+            if x >= p.x0 && x < p.x0 + p.w && y >= p.y0 && y < p.y0 + p.h {
+                p.mask[((y - p.y0) * p.w + (x - p.x0)) as usize]
+            } else {
+                0
+            }
+        };
+        // 隠れていた x=10..20 はパッチ。膨張・ぼかしで、見えているべき文字 (x>=20) は置き換えない
+        assert_eq!(at(15, 11), 255);
+        assert_eq!(at(19, 11), 255);
+        assert_eq!(at(20, 11), 0);
+        assert_eq!(at(21, 11), 0);
+        assert_eq!(at(25, 12), 0);
+    }
+
+    #[test]
+    fn patch_edge_is_feathered_toward_background() {
+        let (w, h) = (64, 48);
+        let mut bg = solid(w, h, 255);
+        fill(&mut bg, w, 0, 0, 64, 48, 200);
+        let nt = bg.clone();
+        let full = bg.clone(); // 元では文字は見えない
+        let mut comp = bg.clone();
+        fill(&mut comp, w, 10, 10, 20, 14, 0);
+        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default(), None);
+        assert_eq!(ps.len(), 1);
+        let p = &ps[0];
+        let at = |x: u32, y: u32| p.mask[((y - p.y0) * p.w + (x - p.x0)) as usize];
+        // 文字の中は 255、外へ 2 画素かけて 0 へ落ちる (段差の線にならない)
+        assert_eq!(at(10, 11), 255);
+        assert!(at(9, 11) > 0 && at(9, 11) < 255);
+        assert!(at(8, 11) > 0 && at(8, 11) < at(9, 11));
+        assert!(p.x0 >= 8 && p.y0 >= 8);
+        // 縁の画素のパッチ画素は背景と同じ (ぼかしても色は変わらない)
+        let o = (((11 - p.y0) * p.w + (9 - p.x0)) * 3) as usize;
+        assert_eq!(&p.rgb[o..o + 3], &[200, 200, 200]);
     }
 
     #[test]
