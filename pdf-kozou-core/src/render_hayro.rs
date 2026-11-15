@@ -1270,8 +1270,8 @@ fn plan_cover_layers(
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
-        HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, TEXT_PRE_MIN,
-        ZONE_FAINT_THR, count_changed_text, count_in_rect, dilate, grow_zone_mask, hidden_mask,
+        HUG_DEEP_MAX_PCT, HUG_MAX_DEPTH_PX, HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, TEXT_PRE_MIN,
+        ZONE_FAINT_THR, count_changed_text, count_in_rect, deep_stats, dilate, grow_zone_mask, hidden_mask,
         hidden_mask_thr, hug_stats, opaque_cover_pixels, opaque_in_mask, rects_from_mask, text_alpha, text_core_mask,
         text_mask_from_alpha, text_near_mask,
     };
@@ -1581,8 +1581,15 @@ fn plan_cover_layers(
                 };
                 let (total, near) = hug_stats(&core_near, &cw, &cb, tw, th, r);
                 let text_px = count_in_rect(&core, tw, th, r);
-                // 塗り画素の 7 割以上が文字の近くにあり、文字の面積の 8 倍までの大きさ
-                if total >= HUG_MIN_PX && near * 10 >= total * 7 && total <= text_px * 8 {
+                // 塗り画素の 7 割以上が文字の近くにあり、文字の面積の 8 倍までの大きさ。さらに、縁から
+                // 深く入った画素がほとんどない (細い線・輪)。顔アイコンのような塊の図形は、文字の
+                // 近くにあっても縁取りではなく、ふつうの図形として背景へ焼く (顔を隠すため)
+                let (_, deep) = deep_stats(&cw, &cb, tw, th, r, HUG_MAX_DEPTH_PX);
+                if total >= HUG_MIN_PX
+                    && near * 10 >= total * 7
+                    && total <= text_px * 8
+                    && deep * 100 <= total * HUG_DEEP_MAX_PCT
+                {
                     eprintln!(
                         "[render] decor p{pno}: {:?} hugs text ({near}/{total} px near), kept as vector",
                         c.key

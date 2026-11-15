@@ -1077,6 +1077,89 @@ pub fn patch_matrix(bg_m: [f32; 6], x0: u32, y0: u32, x1: u32, y1: u32, tw: u32,
     mul(local, bg_m)
 }
 
+/// 文字の縁取りとみなす図形の、塗りの内側の深さ (縁から何画素入っているか) の上限 (画素)。
+/// 縁取り (文字の輪郭に沿った線・塗り) は細いので、深く入った画素がほとんどない。顔アイコンの
+/// ような塊の図形は、縁から 10 画素以上深く入った画素が多い。
+pub const HUG_MAX_DEPTH_PX: usize = 12;
+/// 縁取りとみなす図形で、深さが `HUG_MAX_DEPTH_PX` を超える画素の割合の上限 (パーセント)
+pub const HUG_DEEP_MAX_PCT: usize = 5;
+
+/// 図形 1 つ (覆いだけを白地・黒地に描いた `cw` / `cb`) の塗り画素 (アルファが半分以上) の数と、
+/// そのうち図形の縁から `min_depth` 画素より深く入った画素の数を返す。範囲は外接矩形 `rect`。
+/// 範囲の外は塗りが無いものとして、縁との距離を測る (チャンファー距離: 縦横 3・斜め 4)。
+/// 戻り値: (塗り画素数, 深い画素数)。長さが合わなければ (0, 0)。
+pub fn deep_stats(cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4], min_depth: usize) -> (usize, usize) {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if wu == 0 || hu == 0 || cw.len() != n * 3 || cb.len() != n * 3 {
+        return (0, 0);
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    if x1 <= x0 || y1 <= y0 {
+        return (0, 0);
+    }
+    let (rw, rh) = (x1 - x0, y1 - y0);
+    let mut fill = vec![false; rw * rh];
+    let mut total = 0usize;
+    for y in 0..rh {
+        for x in 0..rw {
+            let o = ((y0 + y) * wu + (x0 + x)) * 3;
+            let a = (0..3)
+                .map(|c| 255 - (cw[o + c] as i32 - cb[o + c] as i32).clamp(0, 255))
+                .max()
+                .unwrap_or(0);
+            if a >= 128 {
+                fill[y * rw + x] = true;
+                total += 1;
+            }
+        }
+    }
+    if total == 0 {
+        return (0, 0);
+    }
+    // チャンファー距離 (3-4)。範囲の外・塗りの無い画素は 0
+    let mut d = vec![0u32; rw * rh];
+    let at = |d: &Vec<u32>, x: isize, y: isize| -> u32 {
+        if x < 0 || y < 0 || x >= rw as isize || y >= rh as isize {
+            0
+        } else {
+            d[y as usize * rw + x as usize]
+        }
+    };
+    for y in 0..rh as isize {
+        for x in 0..rw as isize {
+            if !fill[y as usize * rw + x as usize] {
+                continue;
+            }
+            let v = (at(&d, x - 1, y) + 3)
+                .min(at(&d, x, y - 1) + 3)
+                .min(at(&d, x - 1, y - 1) + 4)
+                .min(at(&d, x + 1, y - 1) + 4);
+            d[y as usize * rw + x as usize] = v;
+        }
+    }
+    for y in (0..rh as isize).rev() {
+        for x in (0..rw as isize).rev() {
+            if !fill[y as usize * rw + x as usize] {
+                continue;
+            }
+            let cur = d[y as usize * rw + x as usize];
+            let v = cur
+                .min(at(&d, x + 1, y) + 3)
+                .min(at(&d, x, y + 1) + 3)
+                .min(at(&d, x + 1, y + 1) + 4)
+                .min(at(&d, x - 1, y + 1) + 4);
+            d[y as usize * rw + x as usize] = v;
+        }
+    }
+    let lim = 3 * min_depth as u32;
+    let deep = d.iter().filter(|&&v| v > lim).count();
+    (total, deep)
+}
+
 /// 覆いを背景へ焼き込むとき、覆いが不透明とみなせる画素の、白地と黒地の描画の差の上限 (0-255)。
 /// `OPAQUE_TRANS_MAX` より厳しくする。不透明な画素は、背景に焼いた上に同じ覆いを重ねても
 /// 見え方がほぼ変わらない (二重に掛けた誤差が 4% 未満)。
@@ -1702,5 +1785,30 @@ mod tests {
         let mut short = vec![10u8; 6];
         assert_eq!(bake_pixels(&mut short, &nt, &[0]), 0);
         assert_eq!(short, vec![10u8; 6]);
+    }
+
+    #[test]
+    fn deep_stats_separates_blob_from_thin_outline() {
+        let (w, h) = (80u32, 80u32);
+        // 塊 (50×50 の塗り): 縁から深く入った画素が多い
+        let mut cw = solid(w, h, 255);
+        let mut cb = solid(w, h, 0);
+        fill(&mut cw, w, 10, 10, 60, 60, 200);
+        fill(&mut cb, w, 10, 10, 60, 60, 200);
+        let (total, deep) = deep_stats(&cw, &cb, w, h, [0.0, 0.0, 80.0, 80.0], HUG_MAX_DEPTH_PX);
+        assert_eq!(total, 2500);
+        assert!(deep * 100 > total * HUG_DEEP_MAX_PCT);
+        // 細い枠 (幅 5 の輪): 深い画素はない
+        let mut cw = solid(w, h, 255);
+        let mut cb = solid(w, h, 0);
+        for (x0, y0, x1, y1) in [(10, 10, 60, 15), (10, 55, 60, 60), (10, 10, 15, 60), (55, 10, 60, 60)] {
+            fill(&mut cw, w, x0, y0, x1, y1, 200);
+            fill(&mut cb, w, x0, y0, x1, y1, 200);
+        }
+        let (total, deep) = deep_stats(&cw, &cb, w, h, [0.0, 0.0, 80.0, 80.0], HUG_MAX_DEPTH_PX);
+        assert!(total > 0);
+        assert_eq!(deep, 0);
+        // 長さが合わなければ (0, 0)
+        assert_eq!(deep_stats(&cw[..9], &cb, w, h, [0.0, 0.0, 8.0, 8.0], 12), (0, 0));
     }
 }
