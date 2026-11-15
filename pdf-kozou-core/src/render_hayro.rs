@@ -1524,10 +1524,11 @@ fn plan_cover_layers(
                 zones.len(),
                 if c.translucent { "translucent" } else { "not translucent by ca" }
             );
-            // 画像の覆いは、不透明な画素を背景にも焼く。文字層の覆いを外しても、覆いの下の顔が
-            // 見えないようにする (プライバシー保護を、文字の見え方より優先する)
-            if c.raster
-                && let Ok(cb_pdf) = content_filter::covers_only_bytes(data, &one, true)
+            // 文字層に残す覆いは、種類 (画像・ベクターの図形・Form) によらず、不透明な画素を背景にも
+            // 焼く。文字層の覆いを外しても、覆いの下の顔が見えないようにする (プライバシー保護を、
+            // 文字の見え方より優先する)。顔アイコンがベクターの図形 (絵文字) の PDF もあるため、
+            // 画像だけに限らない
+            if let Ok(cb_pdf) = content_filter::covers_only_bytes(data, &one, true)
                 && let Ok(cb_full) = render_page_1x(cb_pdf, idx, tw, th, dpi, settings)
             {
                 let mut px: Vec<u32> = Vec::new();
@@ -1586,6 +1587,12 @@ fn plan_cover_layers(
                         "[render] decor p{pno}: {:?} hugs text ({near}/{total} px near), kept as vector",
                         c.key
                     );
+                    // 縁取りも、下の写真 (顔) を隠す図形でありうる。不透明な画素は背景にも焼く
+                    let mut px: Vec<u32> = Vec::new();
+                    opaque_cover_pixels(&cw, &cb, tw, th, r, &mut px);
+                    if !px.is_empty() {
+                        bake_px.insert(c.key, px);
+                    }
                     k.push((c.key, r, Vec::new(), Vec::new()));
                     n_decor += 1;
                 }
