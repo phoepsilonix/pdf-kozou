@@ -913,6 +913,8 @@ fn background_matrix(b: [f32; 4], rot: i32) -> [f32; 6] {
 struct CoverJob {
     /// パッチを置いてよい範囲 (画素座標の矩形)
     zones: Vec<[f64; 4]>,
+    /// 覆いを文字層へ残した範囲 (画素座標の矩形)。縁の境目を隠す帯を、`nt` の画素で敷く
+    seams: Vec<[f64; 4]>,
     pno: i32,
     page_id: lopdf::ObjectId,
     tw: u32,
@@ -978,7 +980,7 @@ pub fn keep_text_pdf(
         Some(p) if !p.is_empty() => p.iter().copied().filter(|&x| x >= 1 && x <= n_doc).collect(),
         _ => (1..=n_doc).collect(),
     };
-    let (cover_set, plain_nts, patch_zones) =
+    let (cover_set, plain_nts, patch_zones, seam_zones) =
         plan_cover_layers(&doc, &data, &selected_pre, dpi_f, &settings);
     let tstats = content_filter::transform_covers(&mut doc, Mode::TextOnly, &cover_set)?;
     // 2) 背景 (テキストと覆いを除いた複製を hayro で描く)
@@ -1023,6 +1025,7 @@ pub fn keep_text_pdf(
         // 描画の差は、文字の描き方の違い・縁の画素のずれでも出るため、ページ全体で比べると、不要な
         // パッチが大量にできる。plan_cover_layers が求めた範囲 (zones) も、その範囲に加える
         let zones = patch_zones.get(&pno).cloned().unwrap_or_default();
+        let seams = seam_zones.get(&pno).cloned().unwrap_or_default();
         let want_cover = layered.is_some()
             || !zones.is_empty()
             || match cover_pages {
@@ -1082,6 +1085,7 @@ pub fn keep_text_pdf(
         if let Some((nt, bg)) = cover_src {
             covers.push(CoverJob {
                 zones,
+                seams,
                 pno,
                 page_id,
                 tw,
@@ -1254,6 +1258,7 @@ fn plan_cover_layers(
     crate::content_filter::Covers,
     HashMap<i32, Vec<u8>>,
     HashMap<i32, Vec<[f64; 4]>>,
+    HashMap<i32, Vec<[f64; 4]>>,
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
@@ -1264,7 +1269,7 @@ fn plan_cover_layers(
     };
     use std::collections::HashSet;
 
-    let none = || (Covers::default(), HashMap::new(), HashMap::new());
+    let none = || (Covers::default(), HashMap::new(), HashMap::new(), HashMap::new());
     let lo_pages = doc.get_pages();
     let mut cands: Vec<(i32, [f64; 4], Vec<content_filter::CoverCandidate>)> = Vec::new();
     for &pno in selected {
@@ -1312,6 +1317,8 @@ fn plan_cover_layers(
     let mut nts: HashMap<i32, Vec<u8>> = HashMap::new();
     // 隠し直しパッチを置いてよい範囲 (ページごと。画素座標の矩形)。覆いが文字を隠している画素の近くだけ
     let mut patch_zones: HashMap<i32, Vec<[f64; 4]>> = HashMap::new();
+    // 覆いを文字層へ残した範囲 (ページごと。画素座標の矩形)。背景との境目を隠す帯を敷くのに使う
+    let mut seam_zones: HashMap<i32, Vec<[f64; 4]>> = HashMap::new();
     for (pno, geom, found) in cands {
         let idx = (pno - 1) as usize;
         let (Some(pp), Some(fp), Some(wp), Some(bp)) = (
@@ -1384,6 +1391,8 @@ fn plan_cover_layers(
         }
         // (覆い, 外接矩形 (画素), 描画を絞る範囲 (ストリームのユーザー空間の四角形の一覧。空 = 絞らない))
         let mut k: Vec<(CoverKey, [f64; 4], Vec<[f64; 8]>, Vec<[f64; 4]>)> = Vec::new();
+        // 覆いごとの、文字層に残す範囲 (画素座標の矩形)。k と同じ覆いについて、境目を隠す帯に使う
+        let mut clip_px: HashMap<CoverKey, Vec<[f64; 4]>> = HashMap::new();
         let (mut n_text, mut n_opaque, mut n_tested) = (0usize, 0usize, 0usize);
         // 半透明の覆い (帯・影) を先に調べる。文字層に元のオブジェクトのまま残すべきもので、
         // 背景に焼くと、文字が覆いの下に回って原本より濃く見える。検証の上限 (下) で押し出さない
@@ -1463,6 +1472,9 @@ fn plan_cover_layers(
             } else {
                 Vec::new()
             };
+            if matches!(c.key, CoverKey::Draw(..)) && !clip_zones.is_empty() {
+                clip_px.insert(c.key, clip_zones.clone());
+            }
             let clip: Vec<[f64; 8]> = if matches!(c.key, CoverKey::Draw(..)) {
                 c.to_local
                     .map(|inv| {
@@ -1620,6 +1632,11 @@ fn plan_cover_layers(
             if accepted { "layered" } else { "single image" },
         );
         if accepted {
+            for (key, _, _, _) in &k {
+                if let Some(z) = clip_px.get(key) {
+                    seam_zones.entry(pno).or_default().extend(z.iter().copied());
+                }
+            }
             keep.extend(k.iter().map(|(key, _, clip, _)| (*key, clip.clone())));
         } else {
             rejected.extend(k.iter().map(|(key, _, _, _)| *key));
@@ -1645,7 +1662,7 @@ fn plan_cover_layers(
     for (key, clip) in &finals {
         covers.set_clip(key, clip);
     }
-    (covers, nts, patch_zones)
+    (covers, nts, patch_zones, seam_zones)
 }
 
 /// 元のページと出力ページ (背景 + ベクターのテキスト) を hayro で描き比べ、見え方が違う箇所に
@@ -1662,7 +1679,8 @@ fn add_cover_patches(
 ) -> Result<usize, String> {
     use crate::content_filter::{self, Covers};
     use crate::cover_patch::{
-        Params, compute_patches, dilate, max_abs_diff, patch_matrix, text_core_mask,
+        Params, compute_patches, dilate, max_abs_diff, patch_matrix, seam_patches, text_alpha,
+        text_core_mask, text_mask_from_alpha,
     };
     use lopdf::{Object, Stream, dictionary};
 
@@ -1713,6 +1731,8 @@ fn add_cover_patches(
                 allowed[y * job.tw as usize + x0..y * job.tw as usize + x1.max(x0)].fill(true);
             }
         }
+        // 文字の画素 (縁のにじみまで)。覆いの縁の境目を隠す帯から、文字を除くのに使う
+        let mut ink: Option<Vec<bool>> = None;
         // 元で文字が隠れている画素 (文字の中身の画素で、元の描画には文字が見えない) の近く。
         // 覆いの縁の画素のずれ・文字の描き方の違いで出る差は、文字の画素ではないので除く
         if let (Some(wp), Some(bp)) = (
@@ -1723,6 +1743,7 @@ fn add_cover_patches(
             raster_rgb(bp, &cache_t0b, settings, job.tw, job.th, dpi, 1),
         ) && let Some(core) = text_core_mask(&a, &b, job.tw, job.th)
         {
+            ink = text_alpha(&a, &b, job.tw, job.th).map(|al| text_mask_from_alpha(&al));
             let n = (job.tw as usize) * (job.th as usize);
             let hidden: Vec<bool> = (0..n)
                 .map(|i| {
@@ -1738,7 +1759,7 @@ fn add_cover_patches(
                 }
             }
         }
-        let patches = compute_patches(
+        let mut patches = compute_patches(
             &full,
             &job.nt,
             &comp,
@@ -1748,6 +1769,14 @@ fn add_cover_patches(
             &params,
             Some(&allowed),
         );
+        // 覆いを文字層へ残した範囲の縁の、背景との境目を隠す。背景のラスターは範囲の中だけ覆いが無く、
+        // ビューアが補間・縮小すると境目が滲んで、ベクターの覆いが掛からない外側に細線が出る。
+        // 縁に沿った帯を、覆いを含む文字なしの描画 (nt) の画素で、文字以外にだけ敷く
+        if !job.seams.is_empty()
+            && let Some(ink) = &ink
+        {
+            patches.extend(seam_patches(&job.nt, ink, &job.seams, job.tw, job.th, params.tile));
+        }
         if patches.is_empty() {
             continue;
         }

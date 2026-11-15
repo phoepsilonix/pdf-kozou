@@ -273,8 +273,21 @@ pub fn compute_patches(
         *m = *a > 0;
     }
 
-    // タイルの占有を 8 近傍でつなぎ、塊ごとに 1 枚のパッチにする
-    let tile = p.tile.max(4) as usize;
+    pack_patches(&alpha, wu, hu, p.tile, &|i| {
+        let o = i * 3;
+        [
+            patch_px(&bg[o..o + 3], &full[o..o + 3], &nt[o..o + 3], 0) as u8,
+            patch_px(&bg[o..o + 3], &full[o..o + 3], &nt[o..o + 3], 1) as u8,
+            patch_px(&bg[o..o + 3], &full[o..o + 3], &nt[o..o + 3], 2) as u8,
+        ]
+    })
+}
+
+/// アルファが 0 でない画素を、タイル `tile` (画素) の 8 近傍の塊ごとに、1 枚のパッチにする。
+/// パッチの画素は `rgb_of(画素の番号)`、マスクは `alpha`。
+fn pack_patches(alpha: &[u8], wu: usize, hu: usize, tile: u32, rgb_of: &dyn Fn(usize) -> [u8; 3]) -> Vec<Patch> {
+    let mask: Vec<bool> = alpha.iter().map(|&a| a > 0).collect();
+    let tile = tile.max(4) as usize;
     let (tx, ty) = (wu.div_ceil(tile), hu.div_ceil(tile));
     let mut occ = vec![false; tx * ty];
     for y in 0..hu {
@@ -335,10 +348,7 @@ pub fn compute_patches(
         for y in y0..y1 {
             for x in x0..x1 {
                 let i = y * wu + x;
-                let o = i * 3;
-                for c in 0..3 {
-                    rgb.push(patch_px(&bg[o..o + 3], &full[o..o + 3], &nt[o..o + 3], c) as u8);
-                }
+                rgb.extend_from_slice(&rgb_of(i));
                 m.push(alpha[i]);
             }
         }
@@ -352,6 +362,55 @@ pub fn compute_patches(
         });
     }
     patches
+}
+
+/// 覆いを文字層へ残した範囲の縁から内側へ、境目を隠す帯の幅 (画素)
+pub const SEAM_RING_IN: usize = 3;
+/// 同じく、縁から外側へ (画素)
+pub const SEAM_RING_OUT: usize = 3;
+/// 帯から、文字の画素を除くときの、文字の膨張 (画素)。文字そのもの (ベクター) には触らない
+pub const SEAM_INK_DILATE: usize = 2;
+
+/// 覆いを文字層へ残した範囲 (`zones`、画素座標の矩形) の縁に沿った帯に、「覆いを含む、文字だけを除いた
+/// 描画」`nt` の画素を、文字以外の画素にだけ敷くパッチを返す。
+/// 背景のラスターは、範囲の中だけ覆いが無く、外は焼き込んである。ビューアが背景を補間・縮小すると、
+/// その境目が滲み、覆いのベクターが掛からない範囲の外側に、暗い (または明るい) 細線が出る。
+/// 帯を本来の画素で覆うと、その滲みが隠れる。縁は `SOFT_FEATHER` 画素かけて薄くする (背景との継ぎ目を
+/// 作らない)。`ink` は文字の画素のマスク (長さ w*h)。長さが合わなければ空。
+pub fn seam_patches(nt: &[u8], ink: &[bool], zones: &[[f64; 4]], w: u32, h: u32, tile: u32) -> Vec<Patch> {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if n == 0 || nt.len() != n * 3 || ink.len() != n || zones.is_empty() {
+        return Vec::new();
+    }
+    let ink_d = dilate(ink, wu, hu, SEAM_INK_DILATE);
+    let mut alpha = vec![0u8; n];
+    for z in zones {
+        let x0 = z[0].floor().max(0.0) as i64;
+        let y0 = z[1].floor().max(0.0) as i64;
+        let x1 = (z[2].ceil().max(0.0) as i64).min(wu as i64);
+        let y1 = (z[3].ceil().max(0.0) as i64).min(hu as i64);
+        if x1 <= x0 || y1 <= y0 {
+            continue;
+        }
+        let (ro, ri) = (SEAM_RING_OUT as i64, SEAM_RING_IN as i64);
+        let (ex0, ey0) = ((x0 - ro).max(0), (y0 - ro).max(0));
+        let (ex1, ey1) = ((x1 + ro).min(wu as i64), (y1 + ro).min(hu as i64));
+        // 内側 (帯から除く) の矩形。幅・高さが足りなければ空 (範囲全体が帯)
+        let (ix0, iy0, ix1, iy1) = (x0 + ri, y0 + ri, x1 - ri, y1 - ri);
+        let inner_empty = ix1 <= ix0 || iy1 <= iy0;
+        for y in ey0..ey1 {
+            for x in ex0..ex1 {
+                let in_inner = !inner_empty && x >= ix0 && x < ix1 && y >= iy0 && y < iy1;
+                let i = y as usize * wu + x as usize;
+                if !in_inner && !ink_d[i] {
+                    alpha[i] = 255;
+                }
+            }
+        }
+    }
+    feather_alpha(&mut alpha, wu, hu, SOFT_FEATHER, &|i| !ink_d[i]);
+    pack_patches(&alpha, wu, hu, tile, &|i| [nt[i * 3], nt[i * 3 + 1], nt[i * 3 + 2]])
 }
 
 /// 層分割 (覆いをベクターのまま文字層に残す) の検証に使う値。
@@ -1180,6 +1239,67 @@ mod tests {
         let faint = hidden_mask_thr(&alpha, &t0b, &tcw, &cw, w, h, rect, ZONE_FAINT_THR);
         assert_eq!(strict, vec![false, false, true, false, false, false, false, false]);
         assert_eq!(faint, vec![false, false, true, false, true, false, false, false]);
+    }
+
+    #[test]
+    fn seam_patch_covers_the_zone_edge_but_never_text() {
+        let (w, h) = (60u32, 40u32);
+        let n = (w * h) as usize;
+        let mut nt = vec![0u8; n * 3];
+        for i in 0..n {
+            nt[i * 3] = 120;
+            nt[i * 3 + 1] = 80;
+            nt[i * 3 + 2] = 40;
+        }
+        let mut ink = vec![false; n];
+        // 範囲 (20,10)-(40,30) の右辺 (x=40 付近) を、文字が縦に横切る (x=39..42, y=18..22)
+        for y in 18..22u32 {
+            for x in 39..42u32 {
+                ink[(y * w + x) as usize] = true;
+            }
+        }
+        let zones = [[20.0, 10.0, 40.0, 30.0]];
+        let ps = seam_patches(&nt, &ink, &zones, w, h, 8);
+        assert!(!ps.is_empty());
+        let at = |x: u32, y: u32| -> u8 {
+            for p in &ps {
+                if x >= p.x0 && x < p.x0 + p.w && y >= p.y0 && y < p.y0 + p.h {
+                    let a = p.mask[((y - p.y0) * p.w + (x - p.x0)) as usize];
+                    if a > 0 {
+                        return a;
+                    }
+                }
+            }
+            0
+        };
+        // 右辺の外側 (x=41) の、文字から離れた画素: 帯の中なので 255
+        assert_eq!(at(41, 12), 255);
+        // 右辺の内側 (x=38): 帯の中
+        assert_eq!(at(38, 12), 255);
+        // 範囲の中心 (内側の矩形) は帯ではない
+        assert_eq!(at(30, 20), 0);
+        // 範囲から離れた画素は 0
+        assert_eq!(at(55, 5), 0);
+        // 文字の画素と、その近く (膨張 2 画素) には置かない
+        assert_eq!(at(40, 20), 0);
+        assert_eq!(at(40, 19), 0);
+        // 縁は薄くなって 0 へ落ちる (外側の帯の外)
+        let outer = at(44, 12);
+        assert!(outer > 0 && outer < 255, "feathered: {outer}");
+        // パッチの画素は nt のまま
+        let p = &ps[0];
+        let o = (((12 - p.y0) * p.w + (41 - p.x0)) * 3) as usize;
+        if 41 >= p.x0 && 41 < p.x0 + p.w && 12 >= p.y0 && 12 < p.y0 + p.h {
+            assert_eq!(&p.rgb[o..o + 3], &[120, 80, 40]);
+        }
+    }
+
+    #[test]
+    fn seam_patches_ignore_bad_input() {
+        let nt = vec![0u8; 10 * 10 * 3];
+        let ink = vec![false; 10 * 10];
+        assert!(seam_patches(&nt, &ink, &[], 10, 10, 8).is_empty());
+        assert!(seam_patches(&nt, &ink[..50], &[[1.0, 1.0, 5.0, 5.0]], 10, 10, 8).is_empty());
     }
 
     #[test]
