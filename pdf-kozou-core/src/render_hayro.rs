@@ -1587,12 +1587,8 @@ fn plan_cover_layers(
                         "[render] decor p{pno}: {:?} hugs text ({near}/{total} px near), kept as vector",
                         c.key
                     );
-                    // 縁取りも、下の写真 (顔) を隠す図形でありうる。不透明な画素は背景にも焼く
-                    let mut px: Vec<u32> = Vec::new();
-                    opaque_cover_pixels(&cw, &cb, tw, th, r, &mut px);
-                    if !px.is_empty() {
-                        bake_px.insert(c.key, px);
-                    }
+                    // 文字の縁取りは文字の一部として扱い、背景へは焼かない (焼くと、拡大したときに
+                    // 文字の縁が滲む)。ベクターのまま文字層に残す
                     k.push((c.key, r, Vec::new(), Vec::new()));
                     n_decor += 1;
                 }
