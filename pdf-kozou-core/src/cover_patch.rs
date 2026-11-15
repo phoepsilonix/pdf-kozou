@@ -1077,6 +1077,55 @@ pub fn patch_matrix(bg_m: [f32; 6], x0: u32, y0: u32, x1: u32, y1: u32, tw: u32,
     mul(local, bg_m)
 }
 
+/// 覆いを背景へ焼き込むとき、覆いが不透明とみなせる画素の、白地と黒地の描画の差の上限 (0-255)。
+/// `OPAQUE_TRANS_MAX` より厳しくする。不透明な画素は、背景に焼いた上に同じ覆いを重ねても
+/// 見え方がほぼ変わらない (二重に掛けた誤差が 4% 未満)。
+pub const BAKE_TRANS_MAX: i32 = 8;
+
+/// 文字層へ残す画像の覆い (顔隠しのアイコンなど) のうち、不透明な画素の位置を `out` に足す。
+/// 覆いを背景から外したままだと、覆いの下の写真 (顔) が背景一枚画像にそのまま残る。
+/// 覆いを外しても顔が見えないように、不透明な画素だけは背景へ焼き込む (`bake_pixels`)。
+/// `cw` / `cb` はその覆いだけを白地・黒地に描いた画素 (RGB8、`w`×`h`)。`rect` は調べる範囲 (画素座標)。
+/// 覆いが無い画素は、白地と黒地の差が 255 になるので数えない。長さが合わなければ何もしない。
+pub fn opaque_cover_pixels(cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4], out: &mut Vec<u32>) {
+    let (wu, hu) = (w as usize, h as usize);
+    let n = wu * hu;
+    if wu == 0 || hu == 0 || cw.len() != n * 3 || cb.len() != n * 3 || n > u32::MAX as usize {
+        return;
+    }
+    let x0 = rect[0].floor().max(0.0) as usize;
+    let y0 = rect[1].floor().max(0.0) as usize;
+    let x1 = (rect[2].ceil().max(0.0) as usize).min(wu);
+    let y1 = (rect[3].ceil().max(0.0) as usize).min(hu);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * wu + x;
+            let o = i * 3;
+            if (0..3).all(|c| (cw[o + c] as i32 - cb[o + c] as i32) <= BAKE_TRANS_MAX) {
+                out.push(i as u32);
+            }
+        }
+    }
+}
+
+/// `idx` の画素の背景 `bg` を、覆いを含む描画 `nt` の画素に置き換える。置き換えた画素数を返す。
+/// 長さが合わないときは何もしない (0)。
+pub fn bake_pixels(bg: &mut [u8], nt: &[u8], idx: &[u32]) -> usize {
+    if bg.len() != nt.len() || bg.len() % 3 != 0 {
+        return 0;
+    }
+    let n = bg.len() / 3;
+    let mut done = 0usize;
+    for &i in idx {
+        let i = i as usize;
+        if i < n {
+            bg[i * 3..i * 3 + 3].copy_from_slice(&nt[i * 3..i * 3 + 3]);
+            done += 1;
+        }
+    }
+    done
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1611,5 +1660,47 @@ mod tests {
         let r = rects_from_mask(&hid, w, h, [0.0, 0.0, w as f64, h as f64], 8, 2);
         assert_eq!(r, vec![[2.0, 2.0, 10.0, 8.0]]);
         assert!(rects_from_mask(&hid[..10], w, h, [0.0, 0.0, 8.0, 8.0], 8, 2).is_empty());
+    }
+
+    #[test]
+    fn opaque_cover_pixels_picks_only_opaque_pixels() {
+        let (w, h) = (8, 4);
+        let mut cw = solid(w, h, 255);
+        let mut cb = solid(w, h, 0);
+        // x 0..3: 不透明な覆い (白地でも黒地でも同じ色)
+        fill(&mut cw, w, 0, 0, 3, 4, 90);
+        fill(&mut cb, w, 0, 0, 3, 4, 90);
+        // x 3..5: 半透明な覆い (差が大きい)
+        fill(&mut cw, w, 3, 0, 5, 4, 200);
+        fill(&mut cb, w, 3, 0, 5, 4, 100);
+        // x 5..8: 覆いが無い (白 / 黒のまま)
+        let mut out = Vec::new();
+        opaque_cover_pixels(&cw, &cb, w, h, [0.0, 0.0, w as f64, h as f64], &mut out);
+        assert_eq!(out.len(), 12);
+        assert!(out.iter().all(|&i| (i % w) < 3));
+        // 範囲を絞ると、その中だけ
+        let mut part = Vec::new();
+        opaque_cover_pixels(&cw, &cb, w, h, [1.0, 1.0, 2.0, 3.0], &mut part);
+        assert_eq!(part, vec![9, 17]);
+        // 長さが合わなければ何もしない
+        let mut none = Vec::new();
+        opaque_cover_pixels(&cw[..10], &cb, w, h, [0.0, 0.0, 8.0, 4.0], &mut none);
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn bake_pixels_copies_only_listed_pixels() {
+        let (w, h) = (4, 2);
+        let mut bg = solid(w, h, 10);
+        let nt = solid(w, h, 200);
+        let n = bake_pixels(&mut bg, &nt, &[0, 5, 99]);
+        assert_eq!(n, 2);
+        assert_eq!(&bg[0..3], &[200, 200, 200]);
+        assert_eq!(&bg[3..6], &[10, 10, 10]);
+        assert_eq!(&bg[15..18], &[200, 200, 200]);
+        // 長さが合わなければ何もしない
+        let mut short = vec![10u8; 6];
+        assert_eq!(bake_pixels(&mut short, &nt, &[0]), 0);
+        assert_eq!(short, vec![10u8; 6]);
     }
 }

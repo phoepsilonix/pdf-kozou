@@ -980,7 +980,7 @@ pub fn keep_text_pdf(
         Some(p) if !p.is_empty() => p.iter().copied().filter(|&x| x >= 1 && x <= n_doc).collect(),
         _ => (1..=n_doc).collect(),
     };
-    let (cover_set, plain_nts, patch_zones, seam_zones) =
+    let (cover_set, plain_nts, patch_zones, seam_zones, bake_by_page) =
         plan_cover_layers(&doc, &data, &selected_pre, dpi_f, &settings);
     let tstats = content_filter::transform_covers(&mut doc, Mode::TextOnly, &cover_set)?;
     // 2) 背景 (テキストと覆いを除いた複製を hayro で描く)
@@ -1016,7 +1016,14 @@ pub fn keep_text_pdf(
             return Err(format!("page {pno}: unsupported pixmap size {tw}x{th}"));
         }
         let (tw, th) = (tw as u32, th as u32);
-        let rgb = raster_rgb(page, &cache, &settings, tw, th, dpi_f, supersample_max)?;
+        let mut rgb = raster_rgb(page, &cache, &settings, tw, th, dpi_f, supersample_max)?;
+        // 文字層へ残した画像の覆い (顔隠しのアイコンなど) の、不透明な画素を背景へ焼き込む。
+        // 背景は覆いを除いた下層なので、そのままだと覆いの下の写真 (顔) が背景に残り、
+        // 文字層の覆いを外すと見えてしまう。焼いても、同じ覆いを重ねる見え方は変わらない
+        if let (Some(nt), Some(idx)) = (plain_nts.get(&pno), bake_by_page.get(&pno)) {
+            let n = crate::cover_patch::bake_pixels(&mut rgb, nt, idx);
+            eprintln!("[render] cover p{pno}: {n} opaque px of kept image cover(s) baked into the background (privacy)");
+        }
         // 覆いを層分割したページ (背景 rgb は覆いを除いた下層)。その元の見た目 (文字だけを除いた
         // 描画) は plan_cover_layers が等倍で描いてある
         let layered = plain_nts.get(&pno);
@@ -1259,17 +1266,26 @@ fn plan_cover_layers(
     HashMap<i32, Vec<u8>>,
     HashMap<i32, Vec<[f64; 4]>>,
     HashMap<i32, Vec<[f64; 4]>>,
+    HashMap<i32, Vec<u32>>,
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
         HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, TEXT_PRE_MIN,
         ZONE_FAINT_THR, count_changed_text, count_in_rect, dilate, grow_zone_mask, hidden_mask,
-        hidden_mask_thr, hug_stats, opaque_in_mask, rects_from_mask, text_alpha, text_core_mask,
+        hidden_mask_thr, hug_stats, opaque_cover_pixels, opaque_in_mask, rects_from_mask, text_alpha, text_core_mask,
         text_mask_from_alpha, text_near_mask,
     };
     use std::collections::HashSet;
 
-    let none = || (Covers::default(), HashMap::new(), HashMap::new(), HashMap::new());
+    let none = || {
+        (
+            Covers::default(),
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+        )
+    };
     let lo_pages = doc.get_pages();
     let mut cands: Vec<(i32, [f64; 4], Vec<content_filter::CoverCandidate>)> = Vec::new();
     for &pno in selected {
@@ -1319,6 +1335,10 @@ fn plan_cover_layers(
     let mut patch_zones: HashMap<i32, Vec<[f64; 4]>> = HashMap::new();
     // 覆いを文字層へ残した範囲 (ページごと。画素座標の矩形)。背景との境目を隠す帯を敷くのに使う
     let mut seam_zones: HashMap<i32, Vec<[f64; 4]>> = HashMap::new();
+    // 文字層へ残した画像の覆い (顔隠しのアイコンなど) が不透明な画素 (ページごと。画素の通し番号)。
+    // 覆いを背景から外すと、覆いの下の写真 (顔) が背景一枚画像にそのまま残るので、この画素だけは
+    // 背景へ焼き込む (不透明な画素は、同じ覆いを重ねても見え方が変わらない)
+    let mut bake_pixels_by_page: HashMap<i32, Vec<u32>> = HashMap::new();
     for (pno, geom, found) in cands {
         let idx = (pno - 1) as usize;
         let (Some(pp), Some(fp), Some(wp), Some(bp)) = (
@@ -1393,6 +1413,8 @@ fn plan_cover_layers(
         let mut k: Vec<(CoverKey, [f64; 4], Vec<[f64; 8]>, Vec<[f64; 4]>)> = Vec::new();
         // 覆いごとの、文字層に残す範囲 (画素座標の矩形)。k と同じ覆いについて、境目を隠す帯に使う
         let mut clip_px: HashMap<CoverKey, Vec<[f64; 4]>> = HashMap::new();
+        // 覆いごとの、不透明な画素 (背景へ焼き込む候補。画像の覆いだけ)
+        let mut bake_px: HashMap<CoverKey, Vec<u32>> = HashMap::new();
         let (mut n_text, mut n_opaque, mut n_tested) = (0usize, 0usize, 0usize);
         // 半透明の覆い (帯・影) を先に調べる。文字層に元のオブジェクトのまま残すべきもので、
         // 背景に焼くと、文字が覆いの下に回って原本より濃く見える。検証の上限 (下) で押し出さない
@@ -1502,6 +1524,18 @@ fn plan_cover_layers(
                 zones.len(),
                 if c.translucent { "translucent" } else { "not translucent by ca" }
             );
+            // 画像の覆いは、不透明な画素を背景にも焼く。文字層の覆いを外しても、覆いの下の顔が
+            // 見えないようにする (プライバシー保護を、文字の見え方より優先する)
+            if c.raster
+                && let Ok(cb_pdf) = content_filter::covers_only_bytes(data, &one, true)
+                && let Ok(cb_full) = render_page_1x(cb_pdf, idx, tw, th, dpi, settings)
+            {
+                let mut px: Vec<u32> = Vec::new();
+                opaque_cover_pixels(&cw, &cb_full, tw, th, r, &mut px);
+                if !px.is_empty() {
+                    bake_px.insert(c.key, px);
+                }
+            }
             k.push((c.key, r, clip, zones));
         }
         // 5. 文字の縁取りの図形 (文字の輪郭に沿った線・塗り。Canva の「縁取り」など)。文字を隠して
@@ -1636,6 +1670,9 @@ fn plan_cover_layers(
                 if let Some(z) = clip_px.get(key) {
                     seam_zones.entry(pno).or_default().extend(z.iter().copied());
                 }
+                if let Some(px) = bake_px.get(key) {
+                    bake_pixels_by_page.entry(pno).or_default().extend(px.iter().copied());
+                }
             }
             keep.extend(k.iter().map(|(key, _, clip, _)| (*key, clip.clone())));
         } else {
@@ -1662,7 +1699,7 @@ fn plan_cover_layers(
     for (key, clip) in &finals {
         covers.set_clip(key, clip);
     }
-    (covers, nts, patch_zones, seam_zones)
+    (covers, nts, patch_zones, seam_zones, bake_pixels_by_page)
 }
 
 /// 元のページと出力ページ (背景 + ベクターのテキスト) を hayro で描き比べ、見え方が違う箇所に
