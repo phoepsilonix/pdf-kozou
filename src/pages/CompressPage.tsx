@@ -25,6 +25,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { appendName, buildName, stem } from "../lib/filename";
 import { useI18n } from "../lib/i18n";
 import {
@@ -394,7 +395,7 @@ export function CompressPage({
   // ----------------
 
   const pickDir = useCallback(async (): Promise<string | null> => {
-    const d = await invoke<string | null>("pick_output_dir").catch(() => null);
+    const d = await invokeDialog<string | null>("pick_output_dir").catch(() => null);
     if (d) setOutDir(d);
     return d;
   }, []);

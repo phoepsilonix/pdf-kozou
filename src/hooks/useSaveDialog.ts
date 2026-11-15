@@ -17,9 +17,9 @@
 // (useSaveNamePromptStore / SaveNamePromptModal)を挟み、デスクトップの
 // 「名前を付けて保存」ダイアログに相当する最後の確認機会を用意している。
 
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect } from "react";
 import { getValidPersistedAndroidFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { resolveSaveConflict } from "../lib/saveConflict";
 import {
   beginFolderSave,
@@ -79,10 +79,10 @@ export function useSaveDialog() {
       // ── デスクトップ・iOS: 従来通りネイティブの保存ダイアログを使う ──
       // (B方式は現状Android専用。iOSは引き続きACTION_CREATE_DOCUMENT相当を使う)
       // pick_save_file_in が使えればinitialDirを渡す、なければ通常版にfallback
-      const path = await invoke<string | null>("pick_save_file_in", {
+      const path = await invokeDialog<string | null>("pick_save_file_in", {
         defaultName,
         initialDir: lastSaveDir ?? null,
-      }).catch(() => invoke<string | null>("pick_save_file", { defaultName }));
+      }).catch(() => invokeDialog<string | null>("pick_save_file", { defaultName }));
 
       if (path) {
         // 保存したディレクトリを記憶

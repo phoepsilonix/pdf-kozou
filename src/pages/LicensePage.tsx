@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // -------------------------------------------------------------------------
 
-import { invoke } from "@tauri-apps/api/core";
 import { openUrl as openUrlPlugin } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { useI18n } from "../lib/i18n";
 import {
   findGsExecutable,
@@ -184,7 +184,7 @@ const LicensePage: React.FC = () => {
 
   const handlePickGsFolder = async () => {
     try {
-      const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+      const dir = await invokeDialog<string | null>("pick_output_dir").catch(() => null);
       if (!dir) return;
       setGsVerifying(true);
       setGsVerifyMsg(null);

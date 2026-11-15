@@ -36,6 +36,7 @@ import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
 import { announceValueChange } from "../lib/announce";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { useI18n } from "../lib/i18n";
 import {
   calcSheets,
@@ -630,7 +631,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   ]);
 
   const pickDir = useCallback(async (): Promise<string | null> => {
-    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+    const dir = await invokeDialog<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
     return dir;
   }, []);

@@ -5,7 +5,6 @@
 // src/pages/SplitPage.tsx  —  単体 & バッチ対応
 export default SplitPage;
 
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
 import {
@@ -30,6 +29,7 @@ import { usePreview } from "../hooks/usePreview";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
 import { announceValueChange } from "../lib/announce";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { useI18n } from "../lib/i18n";
 import {
   buildMobileOutputSubfolder,
@@ -289,7 +289,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   }, [isBatch, batchFiles, previewEnabled, convertLayoutEm, convertLayoutW, convertLayoutH]);
 
   const pickDir = useCallback(async (): Promise<string | null> => {
-    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+    const dir = await invokeDialog<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
     return dir;
   }, []);

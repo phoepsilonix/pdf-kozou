@@ -5,7 +5,6 @@
 // src/pages/RotatePage.tsx — 単体 & バッチ対応
 export default RotatePage;
 
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
 import {
@@ -29,6 +28,7 @@ import { usePreview } from "../hooks/usePreview";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
 import { getValidPersistedAndroidFolder, pickAndPersistSaveFolder } from "../lib/androidSaveFolder";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { hasImage } from "../lib/fileTypes";
 import { useI18n } from "../lib/i18n";
@@ -316,7 +316,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     .filter((p) => p.angle !== 0 && targetIndices.includes(p.page - 1));
 
   const pickDir = useCallback(async (): Promise<string | null> => {
-    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+    const dir = await invokeDialog<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
     return dir;
   }, []);
@@ -597,7 +597,7 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
           resolved.overwrite,
         );
       } else {
-        sp = await invoke<string | null>("pick_save_file", {
+        sp = await invokeDialog<string | null>("pick_save_file", {
           defaultName: buildName(filePath, ["rotated"]),
           initialDir: outDir || undefined,
         }).catch(() => null);

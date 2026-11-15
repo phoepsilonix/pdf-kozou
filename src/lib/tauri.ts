@@ -2,6 +2,7 @@
 // Tauri バックエンドコマンドの TypeScript ラッパー
 
 import { invoke } from "@tauri-apps/api/core";
+import { invokeDialog } from "./fileDialogGuard";
 
 // ── パスユーティリティ ────────────────────────────────────────────────────────
 
@@ -863,7 +864,7 @@ export async function isPdfFile(path: string): Promise<boolean> {
 // ── ファイルダイアログ ────────────────────────────────────────────────────────
 
 export async function pickOpenFile(): Promise<string | null> {
-  return invoke<string | null>("pick_open_file");
+  return invokeDialog<string | null>("pick_open_file");
 }
 
 let _isMobileCache: boolean | null = null;
@@ -930,7 +931,7 @@ export async function isIOS(): Promise<boolean> {
 }
 
 export async function pickSaveFile(defaultName: string): Promise<string | null> {
-  return invoke<string | null>("pick_save_file", { defaultName });
+  return invokeDialog<string | null>("pick_save_file", { defaultName });
 }
 
 /**
@@ -973,7 +974,7 @@ export interface PickedFolder {
  * (iOS では無視される)。
  */
 export async function pickSaveFolder(initialTreeUri?: string | null): Promise<PickedFolder | null> {
-  return await invoke<PickedFolder | null>("pick_save_folder", {
+  return await invokeDialog<PickedFolder | null>("pick_save_folder", {
     initialTreeUri: initialTreeUri ?? null,
   });
 }
@@ -1006,7 +1007,7 @@ export async function beginFolderSave(
 }
 
 export async function pickOutputDir(): Promise<string | null> {
-  return invoke<string | null>("pick_output_dir");
+  return invokeDialog<string | null>("pick_output_dir");
 }
 
 /**
@@ -1557,7 +1558,7 @@ export async function verifyGsPath(path: string): Promise<string> {
 
 /** ファイル選択ダイアログで GS 実行ファイルを選択する */
 export async function pickGsExecutable(): Promise<string | null> {
-  return invoke<string | null>("pick_gs_executable");
+  return invokeDialog<string | null>("pick_gs_executable");
 }
 
 /** カスタムパスを含めて GS を検索する */

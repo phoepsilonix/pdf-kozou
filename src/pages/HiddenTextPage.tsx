@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
 
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, Spinner, TapRevealText } from "../components/common";
 import { useA11y } from "../hooks/useA11y";
@@ -11,6 +10,7 @@ import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobile
 import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
+import { invokeDialog, withFileDialog } from "../lib/fileDialogGuard";
 import { buildName } from "../lib/filename";
 import { useI18n } from "../lib/i18n";
 import {
@@ -400,13 +400,15 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     // 実行後に finalizeMobileOutput で保存先(Android: SAFで選択した
     // フォルダ / iOS: ダウンロードフォルダ)へ移す。
     if (mobile) {
-      const dir = await invoke("pick_output_dir").catch(() => null);
+      const dir = await invokeDialog("pick_output_dir").catch(() => null);
       if (dir) setOutDir(String(dir));
       return dir ? String(dir) : null;
     }
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const dir = await open({ directory: true, title: t("hidden.output_dir_dialog") });
+      const dir = await withFileDialog(() =>
+        open({ directory: true, title: t("hidden.output_dir_dialog") }),
+      );
       const resolved = dir ? (typeof dir === "string" ? dir : dir[0]) : null;
       if (resolved) setOutDir(resolved);
       return resolved;

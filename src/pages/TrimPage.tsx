@@ -23,6 +23,7 @@ import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
 import { announceMargins } from "../lib/announce";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { hasImage } from "../lib/fileTypes";
 import { useI18n } from "../lib/i18n";
@@ -289,7 +290,7 @@ function TrimPageBatch({
   }, [files, previewIdx, previewPage, convertLayoutH, convertLayoutW, convertLayoutEm]);
 
   const pickDir = useCallback(async (): Promise<string | null> => {
-    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+    const dir = await invokeDialog<string | null>("pick_output_dir").catch(() => null);
     if (dir) {
       setOutDir(dir);
       usePdfStore.getState().setLastSaveDir(dir);

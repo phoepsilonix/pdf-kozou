@@ -45,6 +45,7 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "./hooks/usePlatform";
 import { useViewport } from "./hooks/useViewport";
 import { initEngineFallback } from "./lib/engineFallback";
+import { invokeDialog, isFileDialogOpen, useInertWhileFileDialog } from "./lib/fileDialogGuard";
 import { setFileListToolbarPosition, useFileListToolbarPosition } from "./lib/fileListToolbar";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
@@ -146,6 +147,10 @@ const TOOL_DEFS: { id: ToolId; icon: string; minFiles: number; maxFiles: number 
 ];
 
 export default function App() {
+  // ファイルダイアログを開いている間は、メニュー・ボタン・フォーカスを含め
+  // 画面全体の操作を止める(別メニューへの遷移などを防ぐ)。
+  useInertWhileFileDialog();
+
   const {
     fileList,
     addFiles,
@@ -403,7 +408,7 @@ export default function App() {
   const handlePickFiles = useCallback(async () => {
     let paths: string[];
     try {
-      paths = await invoke<string[]>("pick_open_files");
+      paths = await invokeDialog<string[]>("pick_open_files");
     } catch (e) {
       announceError(String(e));
       setError(String(e));
@@ -429,6 +434,7 @@ export default function App() {
 
   const handleLaunchTool = useCallback(
     async (toolId: ToolId) => {
+      if (isFileDialogOpen()) return;
       const sel = fileList.filter((f) => f.selected);
       if (sel.length === 0) return;
       if (toolId !== "merge" && toolId !== "viewer") {
@@ -452,12 +458,14 @@ export default function App() {
   );
 
   const handleHome = useCallback(() => {
+    if (isFileDialogOpen()) return;
     setActiveTool(null);
     setToolFiles([]);
   }, []);
 
   const handleToolChange = useCallback(
     async (t: ToolId) => {
+      if (isFileDialogOpen()) return;
       // about への切り替えはファイル不要
       if (t === "about") {
         setActiveTool("about");

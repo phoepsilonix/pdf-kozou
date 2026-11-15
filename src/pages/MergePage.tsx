@@ -25,6 +25,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { setMergeListToolbarPosition, useMergeListToolbarPosition } from "../lib/fileListToolbar";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { type SortDirection, type SortKey, sortFileEntries } from "../lib/fileSort";
@@ -227,7 +228,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   );
 
   const pickFiles = useCallback(async () => {
-    const paths = await invoke<string[]>("pick_open_files").catch(() => [] as string[]);
+    const paths = await invokeDialog<string[]>("pick_open_files").catch(() => [] as string[]);
     if (paths.length) await loadPaths(paths);
   }, [loadPaths]);
   /*

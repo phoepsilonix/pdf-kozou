@@ -6,7 +6,6 @@
 //   - 各元ページを出力ページ上に再生するためテキスト/ベクターを保持（ラスタ化しない）。
 //   - 例: A4×4 → A3×2(見開き製本)
 
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BtnBack,
@@ -25,6 +24,7 @@ import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
+import { invokeDialog } from "../lib/fileDialogGuard";
 import { useI18n } from "../lib/i18n";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
 import {
@@ -369,7 +369,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   );
 
   const pickDir = useCallback(async (): Promise<string | null> => {
-    const dir = await invoke<string | null>("pick_output_dir").catch(() => null);
+    const dir = await invokeDialog<string | null>("pick_output_dir").catch(() => null);
     if (dir) setOutDir(dir);
     return dir;
   }, []);
