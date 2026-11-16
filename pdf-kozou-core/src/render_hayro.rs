@@ -1629,13 +1629,23 @@ fn plan_cover_layers(
                     why = format!("try {try_no}: render/convert failed");
                     break;
                 };
-                if chk.order_ok(pixels) {
+                // ページ全体では食い違いが許容内でも、覆い 1 つの外接矩形にまとまった食い違いがあれば、
+                // その覆いより上に描かれる図形 (顔アイコンの円の上の目・口など) が、文字層の覆いの下に
+                // 隠れている。一部分でも見え方が変わるので、その覆いを外す (背景へ焼く)
+                let local_bad = k
+                    .iter()
+                    .any(|(_, r, _, _)| count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER);
+                if chk.order_ok(pixels) && !local_bad {
                     // 描画順を保てる。k はどれも文字を隠していると確かめ済み
                     accepted = true;
                     why = format!("try {try_no}: order ok (bad {})", chk.bad);
                     break;
                 }
-                why = format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad);
+                why = if chk.order_ok(pixels) {
+                    format!("try {try_no}: order ok overall but mismatch inside a cover box (bad {} px), dropping covers", chk.bad)
+                } else {
+                    format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad)
+                };
                 // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
                 let before = k.len();
                 let mut dropped_zones: Vec<[f64; 4]> = Vec::new();
