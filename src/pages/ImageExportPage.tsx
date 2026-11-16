@@ -8,6 +8,7 @@ export default ImageExportPage;
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
+import { BatchCancelButton } from "../components/BatchCancelButton";
 import {
   BtnBack,
   BtnPrimary,
@@ -36,7 +37,8 @@ import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
 import { announceValueChange } from "../lib/announce";
-import { invokeDialog } from "../lib/fileDialogGuard";
+import { isBatchCancelRequested, resetBatchCancel } from "../lib/batchCancel";
+import { invokeDialog, useProcessingGuard } from "../lib/fileDialogGuard";
 import { useI18n } from "../lib/i18n";
 import {
   calcSheets,
@@ -297,6 +299,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
   console.log("Image: total(pages)", total);
 
   const [phase, setPhase] = useState<Phase>("edit");
+  useProcessingGuard(phase === "processing");
   // 処理方向: "normal"=通常変換/面付け, "deimpose"=面付け解除/分割
   const [processDir, setProcessDir] = useState<"normal" | "deimpose">("normal");
   // 面付けモード（前回選択を記憶。無ければ既定の "1up"）
@@ -1213,8 +1216,14 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
     fallbackStore.clear();
     fallbackStore.setToastSuppressed(true);
 
+    resetBatchCancel();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
+      if (isBatchCancelRequested()) {
+        // キャンセル要求: 処理中だったファイルまでで止め、これ以降は処理しない
+        progress.errors.push({ file: f.filename, msg: t("batch_cancel.cancelled_by_user") });
+        break;
+      }
       // 上書き確認でキャンセル済みなら、残りのファイルは処理しない
       if (overwriteGuard.isCancelled()) break;
       progress.current = i + 1;
@@ -1561,6 +1570,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             style={s.bpCurrent}
           />
           <Spinner compact />
+          <BatchCancelButton />
           <div
             style={s.bpLogFlex}
             // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする

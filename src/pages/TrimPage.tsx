@@ -8,6 +8,7 @@ export default TrimPage;
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
+import { BatchCancelButton } from "../components/BatchCancelButton";
 import { BtnPrimary, Spinner } from "../components/common";
 import { FixedMobileNav } from "../components/FixedMobileNav";
 import { MetadataEditModal } from "../components/MetadataEditModal";
@@ -23,7 +24,8 @@ import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
 import { announceMargins } from "../lib/announce";
-import { invokeDialog } from "../lib/fileDialogGuard";
+import { isBatchCancelRequested, resetBatchCancel } from "../lib/batchCancel";
+import { invokeDialog, useProcessingGuard } from "../lib/fileDialogGuard";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { hasImage } from "../lib/fileTypes";
 import { useI18n } from "../lib/i18n";
@@ -139,6 +141,7 @@ function TrimPageBatch({
   const [mobileSaveError, setMobileSaveError] = useState<string | null>(null);
 
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
+  useProcessingGuard(phase === "processing");
   const [progress, setProgress] = useState<{
     current: number;
     done: { f: string; saved?: string }[];
@@ -343,8 +346,14 @@ function TrimPageBatch({
       // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
       const overwriteGuard = createOverwriteGuard();
 
+      resetBatchCancel();
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
+        if (isBatchCancelRequested()) {
+          // キャンセル要求: 処理中だったファイルまでで止め、これ以降は処理しない
+          prog.errors.push({ f: f.filename, msg: t("batch_cancel.cancelled_by_user") });
+          break;
+        }
         prog.current = i + 1;
         setProgress({ ...prog });
 
@@ -485,6 +494,7 @@ function TrimPageBatch({
           <div style={{ ...b.bar, width: `${pct}%` }} />
         </div>
         <Spinner compact />
+        <BatchCancelButton />
         <div
           style={{ ...b.log, flex: "0 1 auto", minHeight: 0 }}
           ref={(el) => {
@@ -1120,6 +1130,7 @@ export function TrimPageSingle({ filePath, pdfInfo }: { filePath: string; pdfInf
   const [previewPage, setPreviewPage] = useState(0);
   const [trimMargins, setTrimMargins] = useState<TrimMargins>(zero());
   const [phase, setPhase] = useState<Phase>("edit");
+  useProcessingGuard(phase === "processing");
   const [pageImage, setPageImage] = useState("");
   const [savedPath, setSavedPath] = useState("");
   const [errMsg, setErrMsg] = useState("");

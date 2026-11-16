@@ -18,7 +18,7 @@
 //   });
 
 import { useEffect } from "react";
-import { isFileDialogOpen } from "../lib/fileDialogGuard";
+import { isNavigationLocked } from "../lib/fileDialogGuard";
 
 export type ShortcutMap = Record<string, (() => void) | undefined>;
 
@@ -57,9 +57,9 @@ export function useKeyboardShortcuts(
 ) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // ファイルダイアログを開いている間は、画面遷移などを起こすショートカットを
-      // すべて無効にする(Ctrl+O の二重起動も防ぐ)。
-      if (isFileDialogOpen()) return;
+      // ファイルダイアログを開いている間と、出力処理の実行中は、画面遷移などを
+      // 起こすショートカットをすべて無効にする(Ctrl+O の二重起動も防ぐ)。
+      if (isNavigationLocked()) return;
 
       const key = normalizeKey(e);
 

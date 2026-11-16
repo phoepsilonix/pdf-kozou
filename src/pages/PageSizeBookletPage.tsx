@@ -7,6 +7,7 @@
 //   - 例: A4×4 → A3×2(見開き製本)
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BatchCancelButton } from "../components/BatchCancelButton";
 import {
   BtnBack,
   BtnPrimary,
@@ -24,7 +25,8 @@ import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
-import { invokeDialog } from "../lib/fileDialogGuard";
+import { isBatchCancelRequested, resetBatchCancel } from "../lib/batchCancel";
+import { invokeDialog, useProcessingGuard } from "../lib/fileDialogGuard";
 import { useI18n } from "../lib/i18n";
 import { calcComposeLayout, flattenComposeSheets, type ImpositionMode } from "../lib/imposition";
 import {
@@ -147,6 +149,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
   const [gutter, setGutter] = useState(0);
   const [margin, setMargin] = useState(0);
   const [phase, setPhase] = useState<Phase>("edit");
+  useProcessingGuard(phase === "processing");
   const [errMsg, setErrMsg] = useState("");
   const [outBytes, setOutBytes] = useState(0);
   const [outDir, setOutDir] = useState("");
@@ -487,8 +490,14 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     const outNames = uniqueFileNames(files.map((x) => x.filename));
     // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
     const overwriteGuard = createOverwriteGuard();
+    resetBatchCancel();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
+      if (isBatchCancelRequested()) {
+        // キャンセル要求: 処理中だったファイルまでで止め、これ以降は処理しない
+        progress.errors.push({ file: f.filename, msg: t("batch_cancel.cancelled_by_user") });
+        break;
+      }
       progress.current = i + 1;
       progress.currentFile = f.filename;
       progress.currentFilePath = f.path;
@@ -586,6 +595,7 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
             style={s.bpCurrent}
           />
           <Spinner compact />
+          <BatchCancelButton />
           <div
             style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}
             ref={(el) => {

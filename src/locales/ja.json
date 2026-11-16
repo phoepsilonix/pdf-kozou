@@ -1078,6 +1078,13 @@
     "save_done_summary_folder": "{{count}}件のファイルを保存しました",
     "save_cancelled": "保存はキャンセルされました。処理結果は保存されていません。"
   },
+  "batch_cancel": {
+    "button": "キャンセル",
+    "cancelling": "キャンセル中…",
+    "note": "処理中のファイルが終わった後、残りのファイルは処理せずに止まります。",
+    "cancelling_note": "処理中のファイルが終わるまでお待ちください。",
+    "cancelled_by_user": "キャンセルされたため、このファイル以降は処理していません。"
+  },
   "batch_save_conflict": {
     "title": "ファイル名の重複",
     "message": "「{{folder}}」フォルダに、同名のファイルが{{count}}件あります。",

@@ -45,7 +45,12 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "./hooks/usePlatform";
 import { useViewport } from "./hooks/useViewport";
 import { initEngineFallback } from "./lib/engineFallback";
-import { invokeDialog, isFileDialogOpen, useInertWhileFileDialog } from "./lib/fileDialogGuard";
+import {
+  invokeDialog,
+  isNavigationLocked,
+  useInertWhileFileDialog,
+  useNavigationLocked,
+} from "./lib/fileDialogGuard";
 import { setFileListToolbarPosition, useFileListToolbarPosition } from "./lib/fileListToolbar";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
@@ -434,7 +439,7 @@ export default function App() {
 
   const handleLaunchTool = useCallback(
     async (toolId: ToolId) => {
-      if (isFileDialogOpen()) return;
+      if (isNavigationLocked()) return;
       const sel = fileList.filter((f) => f.selected);
       if (sel.length === 0) return;
       if (toolId !== "merge" && toolId !== "viewer") {
@@ -458,14 +463,14 @@ export default function App() {
   );
 
   const handleHome = useCallback(() => {
-    if (isFileDialogOpen()) return;
+    if (isNavigationLocked()) return;
     setActiveTool(null);
     setToolFiles([]);
   }, []);
 
   const handleToolChange = useCallback(
     async (t: ToolId) => {
-      if (isFileDialogOpen()) return;
+      if (isNavigationLocked()) return;
       // about への切り替えはファイル不要
       if (t === "about") {
         setActiveTool("about");
@@ -1496,6 +1501,8 @@ function ToolShell({
     ],
     [t],
   );
+  // ファイルダイアログを開いている間・出力処理の実行中は、ホームや他ツールへ遷移させない
+  const navLocked = useNavigationLocked();
   const { isNarrow, useFloatingMenu } = useViewport();
   const mobilePlatform = useIsMobilePlatform();
   const filename = filePath.split(/[/\\]/).pop() ?? "";
@@ -1569,7 +1576,12 @@ function ToolShell({
         <button
           type="button"
           key={tool.id}
-          style={{ ...sh.tab, ...(activeTool === tool.id ? sh.tabOn : {}) }}
+          style={{
+            ...sh.tab,
+            ...(activeTool === tool.id ? sh.tabOn : {}),
+            ...(navLocked ? { opacity: 0.5, cursor: "not-allowed" } : {}),
+          }}
+          disabled={navLocked}
           onClick={(e) => {
             onToolChange(tool.id);
             (e.currentTarget as HTMLButtonElement).blur();
@@ -1609,7 +1621,12 @@ function ToolShell({
     <div style={sh.root}>
       <nav style={{ ...sh.nav, position: "relative" }}>
         <div style={sh.navTop}>
-          <button type="button" style={sh.homeBtn} onClick={onHome}>
+          <button
+            type="button"
+            style={{ ...sh.homeBtn, ...(navLocked ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}
+            disabled={navLocked}
+            onClick={onHome}
+          >
             PDF<span style={{ color: "var(--c-accent)" }}>小僧</span>
             {!isNarrow && (
               <span

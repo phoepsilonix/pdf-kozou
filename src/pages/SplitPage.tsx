@@ -7,6 +7,7 @@ export default SplitPage;
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
+import { BatchCancelButton } from "../components/BatchCancelButton";
 import {
   BtnBack,
   BtnPrimary,
@@ -29,7 +30,8 @@ import { usePreview } from "../hooks/usePreview";
 import { useSectionToggle } from "../hooks/useSectionToggle";
 import { useViewport } from "../hooks/useViewport";
 import { announceValueChange } from "../lib/announce";
-import { invokeDialog } from "../lib/fileDialogGuard";
+import { isBatchCancelRequested, resetBatchCancel } from "../lib/batchCancel";
+import { invokeDialog, useProcessingGuard } from "../lib/fileDialogGuard";
 import { useI18n } from "../lib/i18n";
 import {
   buildMobileOutputSubfolder,
@@ -113,6 +115,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
   const total = isBatch ? (previewFile?.pageCount ?? 1) : pdfInfo.page_count;
 
   const [phase, setPhase] = useState<Phase>("edit");
+  useProcessingGuard(phase === "processing");
   const [savedDir, setSavedDir] = useState("");
   const [modeId, setModeId] = useState<ModeId>("all");
   const [everyN, setEveryN] = useState(2);
@@ -462,8 +465,14 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
     const overwriteGuard = createOverwriteGuard();
 
+    resetBatchCancel();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
+      if (isBatchCancelRequested()) {
+        // キャンセル要求: 処理中だったファイルまでで止め、これ以降は処理しない
+        progress.errors.push({ file: f.filename, msg: t("batch_cancel.cancelled_by_user") });
+        break;
+      }
       progress.current = i + 1;
       progress.currentFile = f.filename;
       progress.currentFilePath = f.path;
@@ -591,6 +600,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
             style={s.bpCurrent}
           />
           <Spinner compact />
+          <BatchCancelButton />
           <div
             style={{ ...s.bpLog, flex: "0 1 auto", minHeight: 0 }}
             ref={(el) => {

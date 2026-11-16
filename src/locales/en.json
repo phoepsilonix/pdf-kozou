@@ -1078,6 +1078,13 @@
     "save_done_summary_folder": "Saved {{count}} file(s)",
     "save_cancelled": "Save was cancelled. The processed results were not saved."
   },
+  "batch_cancel": {
+    "button": "Cancel",
+    "cancelling": "Cancelling…",
+    "note": "The file being processed will finish; the remaining files will not be processed.",
+    "cancelling_note": "Please wait for the current file to finish.",
+    "cancelled_by_user": "Cancelled: this file and the rest were not processed."
+  },
   "batch_save_conflict": {
     "title": "Some file names already exist",
     "message": "{{count}} file(s) with the same name already exist in \"{{folder}}\".",

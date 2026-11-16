@@ -3,6 +3,7 @@
 // src/pages/HiddenTextPage.tsx — 隠しテキスト検出・無害化（試験的）
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BatchCancelButton } from "../components/BatchCancelButton";
 import { PageHeader, Spinner, TapRevealText } from "../components/common";
 import { useA11y } from "../hooks/useA11y";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -10,7 +11,8 @@ import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobile
 import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
-import { invokeDialog, withFileDialog } from "../lib/fileDialogGuard";
+import { isBatchCancelRequested, resetBatchCancel } from "../lib/batchCancel";
+import { invokeDialog, useProcessingGuard, withFileDialog } from "../lib/fileDialogGuard";
 import { buildName } from "../lib/filename";
 import { useI18n } from "../lib/i18n";
 import {
@@ -370,6 +372,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [phase, setPhase] = useState<"edit" | "processing" | "result">("edit");
+  useProcessingGuard(phase === "processing");
   const [skipType3, setSkipType3] = useState(false);
 
   // 狭い画面では左(設定/進捗/サマリー)と右(ファイル一覧/ログ)を
@@ -475,8 +478,14 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     const outNames = uniqueFileNames(batchFiles.map((x) => x.filename));
     // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
     const overwriteGuard = createOverwriteGuard();
+    resetBatchCancel();
     for (let i = 0; i < batchFiles.length; i++) {
       const f = batchFiles[i];
+      if (isBatchCancelRequested()) {
+        // キャンセル要求: 処理中だったファイルまでで止め、これ以降は処理しない
+        prog.errors.push({ file: f.filename, msg: t("batch_cancel.cancelled_by_user") });
+        break;
+      }
       prog.current = i + 1;
       prog.currentFile = f.filename;
       prog.currentFilePath = f.path;
@@ -593,6 +602,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
               style={s.currentFileBox}
             />
             <Spinner compact />
+            <BatchCancelButton />
           </div>
           {/* 右: ログ */}
           <div style={rightStyle}>
@@ -868,6 +878,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const [groups, setGroups] = useState<HitGroup[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sanitizing, setSanitizing] = useState(false);
+  useProcessingGuard(sanitizing);
   const [status, setStatus] = useState("");
   const [imgSrc, setImgSrc] = useState("");
   const [imgNatW, setImgNatW] = useState(1);

@@ -25,7 +25,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useIsMobilePlatform } from "../hooks/usePlatform";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
-import { invokeDialog } from "../lib/fileDialogGuard";
+import { invokeDialog, useProcessingGuard } from "../lib/fileDialogGuard";
 import { setMergeListToolbarPosition, useMergeListToolbarPosition } from "../lib/fileListToolbar";
 import { buildName, opSuffix, stem } from "../lib/filename";
 import { type SortDirection, type SortKey, sortFileEntries } from "../lib/fileSort";
@@ -123,6 +123,7 @@ export function MergePage({ initPaths = [] }: { initPaths?: string[] }) {
   const { pickSave, commitSave, discardSave } = useSaveDialog();
 
   const [phase, setPhase] = useState<Phase>("edit");
+  useProcessingGuard(phase === "processing");
   const [entries, setEntries] = useState<PdfEntry[]>([]);
   // initPathsがある場合は最初のロード完了まで「ロード中」を示すフラグ
   const [initLoading, setInitLoading] = useState(initPaths.length > 0);

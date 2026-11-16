@@ -11,6 +11,7 @@ export default CompressPage;
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LiveRegion } from "../components/A11yControls";
+import { BatchCancelButton } from "../components/BatchCancelButton";
 import { Spinner } from "../components/common";
 import {
   type BatchFallback,
@@ -25,7 +26,8 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { ANDROID_FOLDER_MISSING, useMobileBatchOutput } from "../hooks/useMobileBatchOutput";
 import { useSaveDialog } from "../hooks/useSaveDialog";
 import { useViewport } from "../hooks/useViewport";
-import { invokeDialog } from "../lib/fileDialogGuard";
+import { isBatchCancelRequested, resetBatchCancel } from "../lib/batchCancel";
+import { invokeDialog, useProcessingGuard } from "../lib/fileDialogGuard";
 import { appendName, buildName, stem } from "../lib/filename";
 import { useI18n } from "../lib/i18n";
 import {
@@ -355,6 +357,7 @@ export function CompressPage({
   const [preview, setPreview] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  useProcessingGuard(phase === "processing" || saving);
   const [outDir, setOutDir] = useState("");
   // バッチ処理中に画面を離れても、右下の通知が出なくなったままにならないようにする
   useEffect(() => () => useEngineFallbackStore.getState().setToastSuppressed(false), []);
@@ -748,10 +751,16 @@ export function CompressPage({
     fallbackStore.clear();
     fallbackStore.setToastSuppressed(true);
 
+    resetBatchCancel();
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
     for (let i = 0; i < batchFiles!.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: 直上のfor条件でbatchFiles!.lengthを使っているため、iは常に範囲内
       const f = batchFiles![i];
+      if (isBatchCancelRequested()) {
+        // キャンセル要求: 処理中だったファイルまでで止め、これ以降は処理しない
+        prog.errors.push({ file: f.filename, msg: t("batch_cancel.cancelled_by_user") });
+        break;
+      }
       prog.cur = i + 1;
       prog.curFile = f.filename;
       setBatchProg({ ...prog });
@@ -893,6 +902,7 @@ export function CompressPage({
         </div>
         <div style={c.bpCurFile}>{batchProg.curFile}</div>
         <Spinner compact />
+        <BatchCancelButton />
         <div
           style={c.bpLog}
           // 件数が多いときも常に最新の行が見えるよう、描画のたびに末尾へスクロールする
