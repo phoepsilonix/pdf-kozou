@@ -1646,6 +1646,26 @@ fn plan_cover_layers(
                 } else {
                     format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad)
                 };
+                // 範囲に絞った画像の描画 (Draw) が原因のときは、外す前に、絞り込みをやめて画像全体を文字層へ
+                // 残してみる。別の覆い (上に重なる小さなキラキラなど) の、背景に焼かれた部分が、絞った範囲の
+                // 中で覆いの下に隠れて食い違うことがある。全体を残せば、元の描画順のまま文字層に並ぶ。
+                // それでも食い違うときは、次の回で外す
+                if try_no < MAX_LAYER_TRIES {
+                    let mut widened = 0usize;
+                    for (key, r, clip, _) in k.iter_mut() {
+                        if !clip.is_empty() && count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER {
+                            clip.clear();
+                            clip_px.remove(key);
+                            widened += 1;
+                        }
+                    }
+                    if widened > 0 {
+                        eprintln!(
+                            "[render] cover p{pno}: {widened} clipped draw(s) widened to the whole image (order mismatch inside its box)"
+                        );
+                        continue;
+                    }
+                }
                 // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
                 let before = k.len();
                 let mut dropped_zones: Vec<[f64; 4]> = Vec::new();
