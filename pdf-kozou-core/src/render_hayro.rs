@@ -1217,8 +1217,8 @@ const ZONE_TILE_PX: u32 = 8;
 const ZONE_PAD_PX: u32 = 3;
 /// 画像の 1 回の描画 (顔や文字に掛かるキラキラなど) を文字層に残す範囲の余白 (画素)。
 /// 範囲の外は背景に焼くので、狭いほど、文字層に別部品として残る部分が小さくなる。縁は、弱い判定まで
-/// 広げた画素 (`grow_zone_mask`) で決まるので、余白は文字の縁のにじみ 1 画素分だけにする
-const CLIP_ZONE_PAD_PX: u32 = 1;
+/// 広げた画素 (`grow_zone_mask`) で決まるので、余白は文字の縁のにじみ 3 画素分だけにする
+const CLIP_ZONE_PAD_PX: u32 = 3;
 
 /// 覆いの集合 (描画を絞る範囲つき)
 fn covers_with_clips(
