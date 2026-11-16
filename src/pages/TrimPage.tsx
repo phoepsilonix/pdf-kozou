@@ -2265,6 +2265,8 @@ const b: Record<string, React.CSSProperties> = {
   },
   bar: { height: "100%", background: "var(--c-accent)", borderRadius: 4, transition: "width 0.3s" },
   log: {
+    // 進捗のファイル名との間を少し空け、ログの表示開始位置を下げる
+    marginTop: 8,
     width: "100%",
     maxWidth: 480,
     display: "flex",

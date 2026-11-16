@@ -3408,6 +3408,9 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    // 縦に余裕がないとき、overflow:hidden のこの要素が縮んで文字の下側が切れるのを防ぐ
+    flexShrink: 0,
+    lineHeight: 1.5,
   },
   bpLog: {
     width: "100%",
@@ -3420,6 +3423,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   // バッチの進捗/結果画面用: 残りの高さいっぱいまで伸び、はみ出す分はこの中でスクロールする
   bpLogFlex: {
+    // 進捗のファイル名との間を少し空け、ログの表示開始位置を下げる
+    marginTop: 8,
     width: "100%",
     maxWidth: 480,
     display: "flex",

@@ -1689,6 +1689,8 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   bpLog: {
+    // 進捗のファイル名との間を少し空け、ログの表示開始位置を下げる
+    marginTop: 8,
     width: "100%",
     maxWidth: 480,
     display: "flex",

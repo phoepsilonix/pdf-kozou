@@ -2220,6 +2220,8 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    // 縦に余裕がないとき、overflow:hidden のこの要素が縮んで文字の下側が切れるのを防ぐ
+    flexShrink: 0,
   },
   type3Note: {
     fontSize: FS.small,
