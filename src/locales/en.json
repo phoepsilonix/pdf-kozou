@@ -439,7 +439,7 @@
     "output_images_one": "Saved {{name}}",
     "output_images_many": "Saved {{name}} and {{count}} more",
     "rasterize_warning": "⚠ Text selection and search are not available in image(Flattened) PDFs",
-    "keep_text_checkbox_label": "Rasterize the background, keep text",
+    "keep_text_checkbox_label": "(β) Rasterize the background, keep text",
     "keep_text_benefit_title": "Benefit",
     "keep_text_benefit": "Font outline data is preserved, so text stays crisp when zoomed in or out, with less digital noise.",
     "keep_text_limitations_title": "Limitations",

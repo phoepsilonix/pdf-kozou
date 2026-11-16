@@ -439,7 +439,7 @@
     "output_images_one": "{{name}} を保存",
     "output_images_many": "{{name}} ほか{{count}}枚を保存",
     "rasterize_warning": "⚠ テキスト選択・検索不可の画像化PDFです",
-    "keep_text_checkbox_label": "背景を一枚画像化し、テキストは保持する",
+    "keep_text_checkbox_label": "(ベータ)背景を一枚画像化し、テキストは保持する",
     "keep_text_benefit_title": "利点",
     "keep_text_benefit": "フォントの輪郭情報が残るため、拡大縮小時に文字が見やすく、デジタルノイズが軽減されます。",
     "keep_text_limitations_title": "制限事項",
