@@ -1648,12 +1648,24 @@ fn plan_cover_layers(
                 };
                 // 範囲に絞った画像の描画 (Draw) が原因のときは、外す前に、絞り込みをやめて画像全体を文字層へ
                 // 残してみる。別の覆い (上に重なる小さなキラキラなど) の、背景に焼かれた部分が、絞った範囲の
-                // 中で覆いの下に隠れて食い違うことがある。全体を残せば、元の描画順のまま文字層に並ぶ。
+                // 中で覆いの下に隠れて食い違うことがある。食い違いの原因の相手 (外接矩形が重なる、範囲に
+                // 絞った別の描画) も、いっしょに全体を残す。全体を残せば、元の描画順のまま文字層に並ぶ。
                 // それでも食い違うときは、次の回で外す
                 if try_no < MAX_LAYER_TRIES {
+                    let hit_rects: Vec<[f64; 4]> = k
+                        .iter()
+                        .filter(|(_, r, _, _)| count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER)
+                        .map(|(_, r, _, _)| *r)
+                        .collect();
                     let mut widened = 0usize;
                     for (key, r, clip, _) in k.iter_mut() {
-                        if !clip.is_empty() && count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER {
+                        if clip.is_empty() {
+                            continue;
+                        }
+                        let touches = hit_rects
+                            .iter()
+                            .any(|h| !(r[2] < h[0] || r[0] > h[2] || r[3] < h[1] || r[1] > h[3]));
+                        if touches {
                             clip.clear();
                             clip_px.remove(key);
                             widened += 1;
@@ -1661,7 +1673,7 @@ fn plan_cover_layers(
                     }
                     if widened > 0 {
                         eprintln!(
-                            "[render] cover p{pno}: {widened} clipped draw(s) widened to the whole image (order mismatch inside its box)"
+                            "[render] cover p{pno}: {widened} clipped draw(s) widened to the whole image (order mismatch inside or near its box)"
                         );
                         continue;
                     }
