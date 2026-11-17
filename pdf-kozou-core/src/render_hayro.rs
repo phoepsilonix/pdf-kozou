@@ -1281,6 +1281,9 @@ fn plan_cover_layers(
     };
     use std::collections::HashSet;
 
+    // 層分割の検証で、食い違いの相手として文字層へ移す図形の、1 回あたりの数の上限
+    const MAX_PULLED_BLOCKERS: usize = 8;
+
     let none = || {
         (
             Covers::default(),
@@ -1652,11 +1655,12 @@ fn plan_cover_layers(
                 // 絞った別の描画) も、いっしょに全体を残す。全体を残せば、元の描画順のまま文字層に並ぶ。
                 // それでも食い違うときは、次の回で外す
                 if try_no < MAX_LAYER_TRIES {
-                    let hit_rects: Vec<[f64; 4]> = k
+                    let hits: Vec<(CoverKey, [f64; 4])> = k
                         .iter()
                         .filter(|(_, r, _, _)| count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER)
-                        .map(|(_, r, _, _)| *r)
+                        .map(|(key, r, _, _)| (*key, *r))
                         .collect();
+                    let hit_rects: Vec<[f64; 4]> = hits.iter().map(|(_, r)| *r).collect();
                     let mut widened = 0usize;
                     for (key, r, clip, _) in k.iter_mut() {
                         if clip.is_empty() {
@@ -1675,6 +1679,62 @@ fn plan_cover_layers(
                         eprintln!(
                             "[render] cover p{pno}: {widened} clipped draw(s) widened to the whole image (order mismatch inside or near its box)"
                         );
+                        continue;
+                    }
+                    // 広げるものが無いときは、食い違いの相手が、文字を隠さないので覆いになっておらず、背景に
+                    // 焼かれたままの図形 (覆いの上に重なる小さなキラキラなど) かもしれない。覆いより後に描かれ、
+                    // 外接矩形が重なる図形を、覆いとして文字層へ移して、元の描画順に並べる。背景から外れる
+                    // ので、不透明な画素は背景にも焼いておく (下の写真・顔が背景に残らないように)
+                    let in_k: HashSet<CoverKey> = k.iter().map(|(key, _, _, _)| *key).collect();
+                    let mut pulled: Vec<(CoverKey, [f64; 4], Vec<u32>)> = Vec::new();
+                    'hits: for (hk, hr) in &hits {
+                        let Some(hp) = found.iter().position(|c| c.key == *hk) else {
+                            continue;
+                        };
+                        for c in found.iter().skip(hp + 1) {
+                            if in_k.contains(&c.key)
+                                || rejected.contains(&c.key)
+                                || pulled.iter().any(|(pk, _, _)| *pk == c.key)
+                            {
+                                continue;
+                            }
+                            let Some(b) = c.bbox else { continue };
+                            let rb = to_px(b);
+                            if rb[2] < hr[0] || rb[0] > hr[2] || rb[3] < hr[1] || rb[1] > hr[3] {
+                                continue;
+                            }
+                            if pulled.len() >= MAX_PULLED_BLOCKERS {
+                                break 'hits;
+                            }
+                            let one = Covers::from_keys([c.key]);
+                            let (Ok(wp), Ok(bp)) = (
+                                content_filter::covers_only_bytes(data, &one, false),
+                                content_filter::covers_only_bytes(data, &one, true),
+                            ) else {
+                                continue;
+                            };
+                            let (Ok(cwp), Ok(cbp)) = (
+                                render_page_1x(wp, idx, tw, th, dpi, settings),
+                                render_page_1x(bp, idx, tw, th, dpi, settings),
+                            ) else {
+                                continue;
+                            };
+                            let mut px: Vec<u32> = Vec::new();
+                            opaque_cover_pixels(&cwp, &cbp, tw, th, rb, &mut px);
+                            pulled.push((c.key, rb, px));
+                        }
+                    }
+                    if !pulled.is_empty() {
+                        eprintln!(
+                            "[render] cover p{pno}: {} blocker(s) drawn above a cover moved to the text layer (order mismatch)",
+                            pulled.len()
+                        );
+                        for (key, rb, px) in pulled {
+                            if !px.is_empty() {
+                                bake_px.insert(key, px);
+                            }
+                            k.push((key, rb, Vec::new(), Vec::new()));
+                        }
                         continue;
                     }
                 }
