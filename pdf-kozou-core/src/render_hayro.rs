@@ -1281,8 +1281,11 @@ fn plan_cover_layers(
     };
     use std::collections::HashSet;
 
-    // 層分割の検証で、食い違いの相手として文字層へ移す図形の、1 回あたりの数の上限
-    const MAX_PULLED_BLOCKERS: usize = 8;
+    // 修復の試み: 回数の上限、1 回・全体で文字層へ移す図形の数の上限、移す図形の面積の上限 (ページに対する割合)
+    const MAX_REPAIR_ROUNDS: usize = 6;
+    const MAX_PULLED_PER_ROUND: usize = 24;
+    const MAX_PULLED_TOTAL: usize = 64;
+    const REPAIR_MAX_AREA: f64 = 0.02;
 
     let none = || {
         (
@@ -1621,8 +1624,133 @@ fn plan_cover_layers(
             let Some(near) = text_near_mask(&full, &nt, tw, th, LAYER_TEXT_DILATE) else {
                 continue;
             };
+            // --- 修復の試み (検証の回数とは別の予算) ---
+            // 層分割が崩れる原因が、描画順だけのときの修復。食い違いが覆い 1 つの外接矩形に出たら、
+            //  (a) 範囲に絞った画像の描画の絞り込みをやめて、全体を文字層へ残す
+            //  (b) 覆いより後に描かれ、外接矩形が重なる図形 (パスの塗り・画像の 1 回の描画。小さいものだけ)
+            //      を、覆いとして文字層へ移す (背景に焼かれたままだと、文字層の覆いの下に隠れる)
+            // 食い違いがなくなれば採用する。なくならなければ、修復を取り消して元の覆いに戻し、従来どおり
+            // 食い違う覆いを外す。修復が検証の回数を使い切って、ページ全体が一枚画像になることはない
+            let backup = (k.clone(), clip_px.clone(), bake_px.clone());
+            let mut changed_any = false;
+            let mut repaired_ok = false;
+            let mut pulled_total = 0usize;
+            let mut last_bad = 0usize;
+            for round in 1..=MAX_REPAIR_ROUNDS {
+                let set = covers_with_clips(&k);
+                let Some((chk, err)) =
+                    check_cover_layering(data, &set, idx, tw, th, dpi, settings, &nt, &near)
+                else {
+                    break;
+                };
+                let hits: Vec<(CoverKey, [f64; 4])> = k
+                    .iter()
+                    .filter(|(_, r, _, _)| count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER)
+                    .map(|(key, r, _, _)| (*key, *r))
+                    .collect();
+                if hits.is_empty() {
+                    // 覆いの矩形に食い違いがなく、ページ全体も許容内なら採用 (修復が不要だったときも同じ)
+                    repaired_ok = chk.order_ok(pixels);
+                    last_bad = chk.bad;
+                    break;
+                }
+                let hit_rects: Vec<[f64; 4]> = hits.iter().map(|(_, r)| *r).collect();
+                // (a) 範囲に絞った画像の描画のうち、食い違いの矩形と重なるものを、全体を残す
+                let mut widened = 0usize;
+                for (key, r, clip, _) in k.iter_mut() {
+                    if clip.is_empty() {
+                        continue;
+                    }
+                    let touches = hit_rects
+                        .iter()
+                        .any(|h| !(r[2] < h[0] || r[0] > h[2] || r[3] < h[1] || r[1] > h[3]));
+                    if touches {
+                        clip.clear();
+                        clip_px.remove(key);
+                        widened += 1;
+                    }
+                }
+                if widened > 0 {
+                    eprintln!("[render] cover p{pno}: repair {round}: {widened} clipped draw(s) widened to the whole image");
+                    changed_any = true;
+                    continue;
+                }
+                // (b) 食い違いの矩形と重なり、覆いより後に描かれる図形を、覆いとして文字層へ移す
+                let in_k: HashSet<CoverKey> = k.iter().map(|(key, _, _, _)| *key).collect();
+                let mut pulled: Vec<(CoverKey, [f64; 4], Vec<u32>)> = Vec::new();
+                'hits: for (hk, hr) in &hits {
+                    let Some(hp) = found.iter().position(|c| c.key == *hk) else {
+                        continue;
+                    };
+                    for c in found.iter().skip(hp + 1) {
+                        // パスの塗り・画像の 1 回の描画だけ。画像・Form (Obj) は、ページ中のすべての描画の
+                        // 和の外接矩形になり、無関係な描画まで巻き込む
+                        if !matches!(c.key, CoverKey::Op(..) | CoverKey::Draw(..))
+                            || in_k.contains(&c.key)
+                            || rejected.contains(&c.key)
+                            || pulled.iter().any(|(pk, _, _)| *pk == c.key)
+                        {
+                            continue;
+                        }
+                        let Some(b) = c.bbox else { continue };
+                        let rb = to_px(b);
+                        if rb[2] < hr[0] || rb[0] > hr[2] || rb[3] < hr[1] || rb[1] > hr[3] {
+                            continue;
+                        }
+                        // 大きな図形 (背景の模様など) は移さない
+                        if (rb[2] - rb[0]) * (rb[3] - rb[1]) > f64::from(tw) * f64::from(th) * REPAIR_MAX_AREA {
+                            continue;
+                        }
+                        if pulled.len() >= MAX_PULLED_PER_ROUND || pulled_total + pulled.len() >= MAX_PULLED_TOTAL {
+                            break 'hits;
+                        }
+                        let one = Covers::from_keys([c.key]);
+                        let (Ok(wp), Ok(bp)) = (
+                            content_filter::covers_only_bytes(data, &one, false),
+                            content_filter::covers_only_bytes(data, &one, true),
+                        ) else {
+                            continue;
+                        };
+                        let (Ok(cwp), Ok(cbp)) = (
+                            render_page_1x(wp, idx, tw, th, dpi, settings),
+                            render_page_1x(bp, idx, tw, th, dpi, settings),
+                        ) else {
+                            continue;
+                        };
+                        let mut px: Vec<u32> = Vec::new();
+                        opaque_cover_pixels(&cwp, &cbp, tw, th, rb, &mut px);
+                        pulled.push((c.key, rb, px));
+                    }
+                }
+                if pulled.is_empty() {
+                    break;
+                }
+                eprintln!(
+                    "[render] cover p{pno}: repair {round}: {} blocker(s) drawn above a cover moved to the text layer",
+                    pulled.len()
+                );
+                pulled_total += pulled.len();
+                changed_any = true;
+                for (key, rb, px) in pulled {
+                    if !px.is_empty() {
+                        bake_px.insert(key, px);
+                    }
+                    k.push((key, rb, Vec::new(), Vec::new()));
+                }
+            }
+            if repaired_ok {
+                accepted = true;
+                why = if changed_any {
+                    format!("repaired ({pulled_total} blocker(s) moved): order ok (bad {last_bad})")
+                } else {
+                    format!("try 1: order ok (bad {last_bad})")
+                };
+            } else if changed_any {
+                eprintln!("[render] cover p{pno}: repair did not fix the order mismatch, reverted");
+                (k, clip_px, bake_px) = backup;
+            }
             for try_no in 1..=MAX_LAYER_TRIES {
-                if k.is_empty() {
+                if accepted || k.is_empty() {
                     break;
                 }
                 let set = covers_with_clips(&k);
@@ -1649,95 +1777,6 @@ fn plan_cover_layers(
                 } else {
                     format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad)
                 };
-                // 範囲に絞った画像の描画 (Draw) が原因のときは、外す前に、絞り込みをやめて画像全体を文字層へ
-                // 残してみる。別の覆い (上に重なる小さなキラキラなど) の、背景に焼かれた部分が、絞った範囲の
-                // 中で覆いの下に隠れて食い違うことがある。食い違いの原因の相手 (外接矩形が重なる、範囲に
-                // 絞った別の描画) も、いっしょに全体を残す。全体を残せば、元の描画順のまま文字層に並ぶ。
-                // それでも食い違うときは、次の回で外す
-                if try_no < MAX_LAYER_TRIES {
-                    let hits: Vec<(CoverKey, [f64; 4])> = k
-                        .iter()
-                        .filter(|(_, r, _, _)| count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER)
-                        .map(|(key, r, _, _)| (*key, *r))
-                        .collect();
-                    let hit_rects: Vec<[f64; 4]> = hits.iter().map(|(_, r)| *r).collect();
-                    let mut widened = 0usize;
-                    for (key, r, clip, _) in k.iter_mut() {
-                        if clip.is_empty() {
-                            continue;
-                        }
-                        let touches = hit_rects
-                            .iter()
-                            .any(|h| !(r[2] < h[0] || r[0] > h[2] || r[3] < h[1] || r[1] > h[3]));
-                        if touches {
-                            clip.clear();
-                            clip_px.remove(key);
-                            widened += 1;
-                        }
-                    }
-                    if widened > 0 {
-                        eprintln!(
-                            "[render] cover p{pno}: {widened} clipped draw(s) widened to the whole image (order mismatch inside or near its box)"
-                        );
-                        continue;
-                    }
-                    // 広げるものが無いときは、食い違いの相手が、文字を隠さないので覆いになっておらず、背景に
-                    // 焼かれたままの図形 (覆いの上に重なる小さなキラキラなど) かもしれない。覆いより後に描かれ、
-                    // 外接矩形が重なる図形を、覆いとして文字層へ移して、元の描画順に並べる。背景から外れる
-                    // ので、不透明な画素は背景にも焼いておく (下の写真・顔が背景に残らないように)
-                    let in_k: HashSet<CoverKey> = k.iter().map(|(key, _, _, _)| *key).collect();
-                    let mut pulled: Vec<(CoverKey, [f64; 4], Vec<u32>)> = Vec::new();
-                    'hits: for (hk, hr) in &hits {
-                        let Some(hp) = found.iter().position(|c| c.key == *hk) else {
-                            continue;
-                        };
-                        for c in found.iter().skip(hp + 1) {
-                            if in_k.contains(&c.key)
-                                || rejected.contains(&c.key)
-                                || pulled.iter().any(|(pk, _, _)| *pk == c.key)
-                            {
-                                continue;
-                            }
-                            let Some(b) = c.bbox else { continue };
-                            let rb = to_px(b);
-                            if rb[2] < hr[0] || rb[0] > hr[2] || rb[3] < hr[1] || rb[1] > hr[3] {
-                                continue;
-                            }
-                            if pulled.len() >= MAX_PULLED_BLOCKERS {
-                                break 'hits;
-                            }
-                            let one = Covers::from_keys([c.key]);
-                            let (Ok(wp), Ok(bp)) = (
-                                content_filter::covers_only_bytes(data, &one, false),
-                                content_filter::covers_only_bytes(data, &one, true),
-                            ) else {
-                                continue;
-                            };
-                            let (Ok(cwp), Ok(cbp)) = (
-                                render_page_1x(wp, idx, tw, th, dpi, settings),
-                                render_page_1x(bp, idx, tw, th, dpi, settings),
-                            ) else {
-                                continue;
-                            };
-                            let mut px: Vec<u32> = Vec::new();
-                            opaque_cover_pixels(&cwp, &cbp, tw, th, rb, &mut px);
-                            pulled.push((c.key, rb, px));
-                        }
-                    }
-                    if !pulled.is_empty() {
-                        eprintln!(
-                            "[render] cover p{pno}: {} blocker(s) drawn above a cover moved to the text layer (order mismatch)",
-                            pulled.len()
-                        );
-                        for (key, rb, px) in pulled {
-                            if !px.is_empty() {
-                                bake_px.insert(key, px);
-                            }
-                            k.push((key, rb, Vec::new(), Vec::new()));
-                        }
-                        continue;
-                    }
-                }
                 // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
                 let before = k.len();
                 let mut dropped_zones: Vec<[f64; 4]> = Vec::new();
