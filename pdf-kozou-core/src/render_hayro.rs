@@ -1283,8 +1283,8 @@ fn plan_cover_layers(
 
     // 修復の試み: 回数の上限、1 回・全体で文字層へ移す図形の数の上限、移す図形の面積の上限 (ページに対する割合)
     const MAX_REPAIR_ROUNDS: usize = 6;
-    const MAX_PULLED_PER_ROUND: usize = 24;
-    const MAX_PULLED_TOTAL: usize = 64;
+    const MAX_PULLED_PER_ROUND: usize = 256;
+    const MAX_PULLED_TOTAL: usize = 512;
     const REPAIR_MAX_AREA: f64 = 0.02;
 
     let none = || {
@@ -1677,7 +1677,7 @@ fn plan_cover_layers(
                 }
                 // (b) 食い違いの矩形と重なり、覆いより後に描かれる図形を、覆いとして文字層へ移す
                 let in_k: HashSet<CoverKey> = k.iter().map(|(key, _, _, _)| *key).collect();
-                let mut pulled: Vec<(CoverKey, [f64; 4], Vec<u32>)> = Vec::new();
+                let mut pulled: Vec<(CoverKey, [f64; 4])> = Vec::new();
                 'hits: for (hk, hr) in &hits {
                     let Some(hp) = found.iter().position(|c| c.key == *hk) else {
                         continue;
@@ -1688,7 +1688,7 @@ fn plan_cover_layers(
                         if !matches!(c.key, CoverKey::Op(..) | CoverKey::Draw(..))
                             || in_k.contains(&c.key)
                             || rejected.contains(&c.key)
-                            || pulled.iter().any(|(pk, _, _)| *pk == c.key)
+                            || pulled.iter().any(|(pk, _)| *pk == c.key)
                         {
                             continue;
                         }
@@ -1704,22 +1704,7 @@ fn plan_cover_layers(
                         if pulled.len() >= MAX_PULLED_PER_ROUND || pulled_total + pulled.len() >= MAX_PULLED_TOTAL {
                             break 'hits;
                         }
-                        let one = Covers::from_keys([c.key]);
-                        let (Ok(wp), Ok(bp)) = (
-                            content_filter::covers_only_bytes(data, &one, false),
-                            content_filter::covers_only_bytes(data, &one, true),
-                        ) else {
-                            continue;
-                        };
-                        let (Ok(cwp), Ok(cbp)) = (
-                            render_page_1x(wp, idx, tw, th, dpi, settings),
-                            render_page_1x(bp, idx, tw, th, dpi, settings),
-                        ) else {
-                            continue;
-                        };
-                        let mut px: Vec<u32> = Vec::new();
-                        opaque_cover_pixels(&cwp, &cbp, tw, th, rb, &mut px);
-                        pulled.push((c.key, rb, px));
+                        pulled.push((c.key, rb));
                     }
                 }
                 if pulled.is_empty() {
@@ -1731,10 +1716,26 @@ fn plan_cover_layers(
                 );
                 pulled_total += pulled.len();
                 changed_any = true;
-                for (key, rb, px) in pulled {
+                // 移す図形の、不透明な画素を、まとめて 1 回の描画 (白地・黒地) で求め、背景にも焼く
+                // (背景から外れるので、下の写真・顔が背景に残らないように)。焼く画素は、先頭の図形に持たせる
+                let union = pulled.iter().fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |u, (_, r)| {
+                    [u[0].min(r[0]), u[1].min(r[1]), u[2].max(r[2]), u[3].max(r[3])]
+                });
+                let set_p = Covers::from_keys(pulled.iter().map(|(key, _)| *key));
+                if let (Ok(wp), Ok(bp)) = (
+                    content_filter::covers_only_bytes(data, &set_p, false),
+                    content_filter::covers_only_bytes(data, &set_p, true),
+                ) && let (Ok(cwp), Ok(cbp)) = (
+                    render_page_1x(wp, idx, tw, th, dpi, settings),
+                    render_page_1x(bp, idx, tw, th, dpi, settings),
+                ) {
+                    let mut px: Vec<u32> = Vec::new();
+                    opaque_cover_pixels(&cwp, &cbp, tw, th, union, &mut px);
                     if !px.is_empty() {
-                        bake_px.insert(key, px);
+                        bake_px.insert(pulled[0].0, px);
                     }
+                }
+                for (key, rb) in pulled {
                     k.push((key, rb, Vec::new(), Vec::new()));
                 }
             }
