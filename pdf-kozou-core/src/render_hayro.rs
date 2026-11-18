@@ -1678,23 +1678,28 @@ fn plan_cover_layers(
                 // (b) 食い違いの矩形と重なり、覆いより後に描かれる図形を、覆いとして文字層へ移す
                 let in_k: HashSet<CoverKey> = k.iter().map(|(key, _, _, _)| *key).collect();
                 let mut pulled: Vec<(CoverKey, [f64; 4])> = Vec::new();
-                'hits: for (hk, hr) in &hits {
-                    let Some(hp) = found.iter().position(|c| c.key == *hk) else {
-                        continue;
-                    };
-                    for c in found.iter().skip(hp + 1) {
+                let mut pulled_set: HashSet<CoverKey> = HashSet::new();
+                // 食い違いが出た覆いから始めて、移した図形の、さらに上に重なる図形も、位置の重なりで連鎖的に
+                // 辿る (小さな図形は、1 つずつの食い違いが少なく、食い違いの画素数では連鎖を辿れない)
+                // 作業リスト: (found の中での描画順の位置, 外接矩形)
+                let mut work: Vec<(usize, [f64; 4])> = hits
+                    .iter()
+                    .filter_map(|(hk, hr)| found.iter().position(|c| c.key == *hk).map(|hp| (hp, *hr)))
+                    .collect();
+                'work: while let Some((pos, rect)) = work.pop() {
+                    for (ci, c) in found.iter().enumerate().skip(pos + 1) {
                         // パスの塗り・画像の 1 回の描画だけ。画像・Form (Obj) は、ページ中のすべての描画の
                         // 和の外接矩形になり、無関係な描画まで巻き込む
                         if !matches!(c.key, CoverKey::Op(..) | CoverKey::Draw(..))
                             || in_k.contains(&c.key)
                             || rejected.contains(&c.key)
-                            || pulled.iter().any(|(pk, _)| *pk == c.key)
+                            || pulled_set.contains(&c.key)
                         {
                             continue;
                         }
                         let Some(b) = c.bbox else { continue };
                         let rb = to_px(b);
-                        if rb[2] < hr[0] || rb[0] > hr[2] || rb[3] < hr[1] || rb[1] > hr[3] {
+                        if rb[2] < rect[0] || rb[0] > rect[2] || rb[3] < rect[1] || rb[1] > rect[3] {
                             continue;
                         }
                         // 大きな図形 (背景の模様など) は移さない
@@ -1702,9 +1707,11 @@ fn plan_cover_layers(
                             continue;
                         }
                         if pulled.len() >= MAX_PULLED_PER_ROUND || pulled_total + pulled.len() >= MAX_PULLED_TOTAL {
-                            break 'hits;
+                            break 'work;
                         }
+                        pulled_set.insert(c.key);
                         pulled.push((c.key, rb));
+                        work.push((ci, rb));
                     }
                 }
                 if pulled.is_empty() {
