@@ -27,6 +27,3 @@ minimumReleaseAgeExclude:
   - '@tauri-apps/plugin-opener@2.7.0'
 allowBuilds:
   pnpm: true
-auditConfig:
-  ignoreGhsas:
-    - GHSA-fc5q-39xc-vjpf
