@@ -1286,6 +1286,8 @@ fn plan_cover_layers(
     const MAX_PULLED_PER_ROUND: usize = 256;
     const MAX_PULLED_TOTAL: usize = 512;
     const REPAIR_MAX_AREA: f64 = 0.02;
+    // 修復の後に残った食い違いが、覆い 1 つの外接矩形あたりこの画素数より少なければ、採用する
+    const REPAIR_ACCEPT_LOCAL_PX: usize = 48;
 
     let none = || {
         (
@@ -1655,6 +1657,23 @@ fn plan_cover_layers(
                     break;
                 }
                 let hit_rects: Vec<[f64; 4]> = hits.iter().map(|(_, r)| *r).collect();
+                let mut top: Vec<(usize, CoverKey)> = k
+                    .iter()
+                    .map(|(key, r, _, _)| (count_in_rect(&err, tw, th, *r), *key))
+                    .filter(|(n, _)| *n >= LAYER_ERR_PER_COVER)
+                    .collect();
+                top.sort_by(|a, b| b.0.cmp(&a.0));
+                let max_hit = top.first().map_or(0, |t| t.0);
+                {
+                    let list: Vec<String> = top.iter().take(6).map(|(n, key)| format!("{key:?}:{n}px")).collect();
+                    eprintln!(
+                        "[render] cover p{pno}: repair {round}: {} cover(s) with local mismatch (bad {} px, overall ok: {}); worst: {}",
+                        hits.len(),
+                        chk.bad,
+                        chk.order_ok(pixels),
+                        list.join(", ")
+                    );
+                }
                 // (a) 範囲に絞った画像の描画のうち、食い違いの矩形と重なるものを、全体を残す
                 let mut widened = 0usize;
                 for (key, r, clip, _) in k.iter_mut() {
@@ -1686,15 +1705,11 @@ fn plan_cover_layers(
                     .iter()
                     .filter_map(|(hk, hr)| found.iter().position(|c| c.key == *hk).map(|hp| (hp, *hr)))
                     .collect();
+                // 重なるのに移さなかった図形の数 (種類が Obj / 大きい / 却下済み)
+                let (mut skip_kind, mut skip_area, mut skip_rejected) = (0usize, 0usize, 0usize);
                 'work: while let Some((pos, rect)) = work.pop() {
                     for (ci, c) in found.iter().enumerate().skip(pos + 1) {
-                        // パスの塗り・画像の 1 回の描画だけ。画像・Form (Obj) は、ページ中のすべての描画の
-                        // 和の外接矩形になり、無関係な描画まで巻き込む
-                        if !matches!(c.key, CoverKey::Op(..) | CoverKey::Draw(..))
-                            || in_k.contains(&c.key)
-                            || rejected.contains(&c.key)
-                            || pulled_set.contains(&c.key)
-                        {
+                        if in_k.contains(&c.key) || pulled_set.contains(&c.key) {
                             continue;
                         }
                         let Some(b) = c.bbox else { continue };
@@ -1702,8 +1717,19 @@ fn plan_cover_layers(
                         if rb[2] < rect[0] || rb[0] > rect[2] || rb[3] < rect[1] || rb[1] > rect[3] {
                             continue;
                         }
+                        // パスの塗り・画像の 1 回の描画だけ。画像・Form (Obj) は、ページ中のすべての描画の
+                        // 和の外接矩形になり、無関係な描画まで巻き込む
+                        if !matches!(c.key, CoverKey::Op(..) | CoverKey::Draw(..)) {
+                            skip_kind += 1;
+                            continue;
+                        }
+                        if rejected.contains(&c.key) {
+                            skip_rejected += 1;
+                            continue;
+                        }
                         // 大きな図形 (背景の模様など) は移さない
                         if (rb[2] - rb[0]) * (rb[3] - rb[1]) > f64::from(tw) * f64::from(th) * REPAIR_MAX_AREA {
+                            skip_area += 1;
                             continue;
                         }
                         if pulled.len() >= MAX_PULLED_PER_ROUND || pulled_total + pulled.len() >= MAX_PULLED_TOTAL {
@@ -1714,7 +1740,16 @@ fn plan_cover_layers(
                         work.push((ci, rb));
                     }
                 }
+                eprintln!(
+                    "[render] cover p{pno}: repair {round}: overlapping later objects not moved: {skip_kind} other kind (Obj), {skip_area} too large, {skip_rejected} rejected"
+                );
                 if pulled.is_empty() {
+                    // 移す図形がもう無い。残った食い違いが、覆い 1 つあたり少なく (顔の目・口のような
+                    // 大きな食い違いではなく)、ページ全体も許容内なら、この状態を採用する
+                    if changed_any && max_hit < REPAIR_ACCEPT_LOCAL_PX && chk.order_ok(pixels) {
+                        repaired_ok = true;
+                        last_bad = chk.bad;
+                    }
                     break;
                 }
                 eprintln!(
