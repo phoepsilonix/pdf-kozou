@@ -1288,6 +1288,8 @@ fn plan_cover_layers(
     const REPAIR_MAX_AREA: f64 = 0.02;
     // 修復の後に残った食い違いが、覆い 1 つの外接矩形あたりこの画素数より少なければ、採用する
     const REPAIR_ACCEPT_LOCAL_PX: usize = 48;
+    // 画像の描画の外接矩形に対する、不透明な画素の割合がこれより小さければ、柔らかい光の画像とみなす
+    const SOFT_DRAW_OPAQUE_MAX: f64 = 0.15;
 
     let none = || {
         (
@@ -1823,9 +1825,20 @@ fn plan_cover_layers(
                 // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
                 let before = k.len();
                 let mut dropped_zones: Vec<[f64; 4]> = Vec::new();
-                k.retain(|(key, r, _, z)| {
+                // 柔らかい光 (キラキラ) の画像の描画は、描画順の食い違いがあっても外さず、文字に掛かる範囲に絞って
+                // 文字層へ残す。外すと、背景に焼かれた光の下に文字が来て、光が文字に掛からず、隠し直しパッチ
+                // (四角い不透明な欠け) になる。残すときの誤差は、範囲の中で、上に重なる小さな図形が光の下に
+                // なる程度。不透明な画素が多い画像 (顔アイコンなど) は、目・口が隠れるので、従来どおり外す
+                let mut kept_soft: Vec<CoverKey> = Vec::new();
+                k.retain(|(key, r, clip, z)| {
                     let hit = count_in_rect(&err, tw, th, *r) >= LAYER_ERR_PER_COVER;
                     if hit {
+                        let area = ((r[2] - r[0]) * (r[3] - r[1])).max(1.0);
+                        let opaque = bake_px.get(key).map_or(0, Vec::len) as f64;
+                        if matches!(key, CoverKey::Draw(..)) && !clip.is_empty() && opaque / area < SOFT_DRAW_OPAQUE_MAX {
+                            kept_soft.push(*key);
+                            return true;
+                        }
                         eprintln!("[render] cover p{pno}: {key:?} dropped (order mismatch inside its box)");
                         rejected.insert(*key);
                         dropped_zones.extend(z.iter().copied());
@@ -1836,13 +1849,19 @@ fn plan_cover_layers(
                     patch_zones.entry(pno).or_default().extend(dropped_zones);
                 }
                 if k.len() == before {
-                    // 食い違いが、どの覆いの外接矩形にも収まらない。覆いを外しても直らない
-                    // (覆いとは別の描画の差) ので、覆いは残す。早く描かれた覆いを巻き添えにしない
+                    // 外す覆いが無い。食い違いが、どの覆いの外接矩形にも収まらない (覆いを外しても直らない、
+                    // 覆いとは別の描画の差) か、柔らかい光の画像の描画だけの食い違いなので、覆いは残す
                     accepted = true;
-                    why = format!(
-                        "try {try_no}: mismatch (bad {} px) is outside every cover box, kept",
-                        chk.bad
-                    );
+                    why = if kept_soft.is_empty() {
+                        format!("try {try_no}: mismatch (bad {} px) is outside every cover box, kept", chk.bad)
+                    } else {
+                        format!(
+                            "try {try_no}: kept {} soft draw(s) despite order mismatch (bad {} px): {:?}",
+                            kept_soft.len(),
+                            chk.bad,
+                            kept_soft
+                        )
+                    };
                     break;
                 }
             }
