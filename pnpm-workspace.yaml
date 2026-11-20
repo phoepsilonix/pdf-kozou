@@ -1,5 +1,4 @@
 shamefullyHoist: true
 minimumReleaseAge: 10080
-minimumReleaseAgeExclude:
 allowBuilds:
   pnpm: true
