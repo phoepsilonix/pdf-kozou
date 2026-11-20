@@ -275,6 +275,11 @@ pub fn compute_patches(
 
     pack_patches(&alpha, wu, hu, p.tile, &|i| {
         let o = i * 3;
+        // アルファが 0 の画素 (パッチを重ねない画素。元でも文字が見えている画素など) は、`full` (文字を含む
+        // 描画) の画素にしない。文字の色の画素を、パッチの画像に入れない (文字はベクターのまま残す)
+        if alpha[i] == 0 {
+            return [nt[o], nt[o + 1], nt[o + 2]];
+        }
         [
             patch_px(&bg[o..o + 3], &full[o..o + 3], &nt[o..o + 3], 0) as u8,
             patch_px(&bg[o..o + 3], &full[o..o + 3], &nt[o..o + 3], 1) as u8,
@@ -1810,5 +1815,35 @@ mod tests {
         assert_eq!(deep, 0);
         // 長さが合わなければ (0, 0)
         assert_eq!(deep_stats(&cw[..9], &cb, w, h, [0.0, 0.0, 8.0, 8.0], 12), (0, 0));
+    }
+
+    #[test]
+    fn patch_rgb_has_no_text_color_where_the_patch_is_transparent() {
+        let (w, h) = (64u32, 48u32);
+        let mut bg = solid(w, h, 255);
+        fill(&mut bg, w, 0, 0, 64, 48, 200);
+        let nt = bg.clone();
+        let mut full = bg.clone();
+        fill(&mut full, w, 15, 12, 16, 13, 0); // 元で見えている文字の画素 (覆いの中に 1 つ)
+        let mut comp = bg.clone();
+        fill(&mut comp, w, 10, 10, 20, 14, 0); // 出力では範囲の全体に文字が見える
+        let ps = compute_patches(&full, &nt, &comp, &bg, w, h, &Params::default(), None);
+        assert_eq!(ps.len(), 1);
+        let p = &ps[0];
+        // 元でも文字が見えている画素は、パッチを重ねない (アルファ 0)。その画素の色も、文字の色にしない
+        let o = ((12 - p.y0) * p.w + (15 - p.x0)) as usize;
+        assert_eq!(p.mask[o], 0);
+        // アルファ 0 の画素は、どれも文字の色 (0) でなく、文字を含まない描画 (nt) の色
+        let mut n_zero = 0;
+        for (i, &m) in p.mask.iter().enumerate() {
+            if m == 0 {
+                n_zero += 1;
+                assert_eq!(&p.rgb[i * 3..i * 3 + 3], &[200, 200, 200]);
+            }
+        }
+        assert!(n_zero >= 1);
+        // 隠れていた画素のマスクは 255
+        let o2 = ((12 - p.y0) * p.w + (12 - p.x0)) as usize;
+        assert_eq!(p.mask[o2], 255);
     }
 }
