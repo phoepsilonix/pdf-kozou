@@ -394,6 +394,7 @@ pub const JPEG_TRELLIS_ENV: &str = "PDF_KOZOU_JPEG_TRELLIS";
 /// (quality 85 の輝度で、平均 17 → 27、最高周波 30 → 125)。写真向けにサイズを削る設計のため、
 /// 白地の文字・細線では輪郭が甘く (ぼやけて) 見える。MuPDF 版 (libjpeg の標準表) と
 /// 同じ見え方にするため、既定は標準表。ファイルは大きくなるので、サイズ優先なら "mozjpeg"。
+/// デフォルトはImageMagick(mozjpeg)と同じにする。annexkを指定すれば変更可能。
 pub const JPEG_QTABLE_ENV: &str = "PDF_KOZOU_JPEG_QTABLE";
 
 /// JPEG エンコードの設定
@@ -489,12 +490,14 @@ fn encode_jpeg_mozjpeg(
     // 出力はベースライン JPEG。必要ならこの後の optimize_or_keep がプログレッシブ化を試す。
     // 量子化表は標準 (Annex K) を既定にする。mozjpeg-rs 既定の Robidoux 表は高周波を粗く量子化し、
     // 文字や細線の輪郭が MuPDF 版より甘くなる (ぼやけて見える原因)。
+    // default はImageMagickにする。
     let qtable = match std::env::var(JPEG_QTABLE_ENV)
         .map(|v| v.trim().to_ascii_lowercase())
         .as_deref()
     {
         Ok("mozjpeg") | Ok("robidoux") | Ok("imagemagick") => QuantTableIdx::ImageMagick,
-        _ => QuantTableIdx::JpegAnnexK,
+        Ok("annexk") => QuantTableIdx::JpegAnnexK,
+        _ => QuantTableIdx::ImageMagick,
     };
     let mut enc = Encoder::baseline_optimized()
         .quality(quality.clamp(1, 100))
