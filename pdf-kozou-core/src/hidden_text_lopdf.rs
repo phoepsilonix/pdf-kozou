@@ -300,7 +300,9 @@ fn load_hfont(doc: &Document, font: &Dictionary) -> Option<HFont> {
             is_type3: true,
         });
     }
-    let info = load_font(doc, font)?;
+    let Some(info) = load_font(doc, font) else {
+        return load_std14_hfont(doc, font, subtype);
+    };
     let desc_dict = if subtype == b"Type0" {
         deref(doc, font.get(b"DescendantFonts").ok()?)
             .as_array()
@@ -321,6 +323,51 @@ fn load_hfont(doc: &Document, font: &Dictionary) -> Option<HFont> {
         asc,
         desc,
         code_len,
+        uni: crate::tounicode_lopdf::build(doc, font),
+        is_type3: false,
+    })
+}
+
+/// /Widths の無い非埋め込みの標準 14 フォント (Helvetica / Times / Courier / Symbol /
+/// ZapfDingbats と、Arial などの別名) の幅を、組み込みの幅表から求める
+fn load_std14_hfont(doc: &Document, font: &Dictionary, subtype: &[u8]) -> Option<HFont> {
+    if !matches!(subtype, b"Type1" | b"TrueType" | b"MMType1") || font.has(b"Widths") {
+        return None;
+    }
+    let desc_dict = sub_dict(doc, font, b"FontDescriptor");
+    // 埋め込みフォントで /Widths が無いものは、標準フォントではない
+    if desc_dict.is_some_and(|d| d.has(b"FontFile") || d.has(b"FontFile2") || d.has(b"FontFile3")) {
+        return None;
+    }
+    let base_font = font
+        .get(b"BaseFont")
+        .ok()
+        .and_then(|o| deref(doc, o).as_name().ok())
+        .map(|n| String::from_utf8_lossy(n).into_owned())?;
+    let (base_enc, diffs) = crate::tounicode_lopdf::encoding_parts(doc, font);
+    let f = crate::std14_widths::lookup(
+        &base_font,
+        base_enc.as_deref(),
+        subtype == b"TrueType",
+        &diffs,
+    )?;
+    let (asc, desc) = if desc_dict.is_some() {
+        descriptor_extent(doc, desc_dict)
+    } else {
+        (f.asc, f.desc)
+    };
+    Some(HFont {
+        info: FontInfo {
+            widths: Widths::Simple {
+                first: 0,
+                widths: f.widths,
+                missing: 0.0,
+            },
+            glyph_em: 1.0,
+        },
+        asc,
+        desc,
+        code_len: 1,
         uni: crate::tounicode_lopdf::build(doc, font),
         is_type3: false,
     })
@@ -2444,24 +2491,54 @@ pub(crate) mod tests {
         assert_eq!(a.unsupported.len(), 1);
     }
 
+    /// ページのフォント F9 を、/Widths の無い非埋め込みフォントにする
+    pub(crate) fn with_widthless_font(doc: &mut Document, base_font: &str) {
+        let page = *doc.get_pages().values().next().unwrap();
+        let f9 = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => base_font,
+        });
+        let pd = doc.get_object_mut(page).unwrap().as_dict_mut().unwrap();
+        let res = pd.get_mut(b"Resources").unwrap().as_dict_mut().unwrap();
+        let fonts = res.get_mut(b"Font").unwrap().as_dict_mut().unwrap();
+        fonts.set("F9", Object::Reference(f9));
+    }
+
     #[test]
-    fn unknown_font_width_means_no_removal() {
-        // /Widths の無いフォント (標準 14 など) は幅が分からないので、触らない
+    fn standard_font_without_widths_uses_the_afm() {
+        // Helvetica: A = 667, B = 667, C = 722 (x 10..23.34, 23.34..36.68, 36.68..51.12)
+        let mut doc = build(
+            "BT /F9 20 Tf 10 100 Td (ABC) Tj ET\n0 90 25 40 re f\n",
+            &[],
+            None,
+        );
+        with_widthless_font(&mut doc, "Helvetica");
+        // A (10..23.34) だけが x < 25 に完全に覆われない (23.34 < 25 なので A は覆われる)
+        let a = strip(&mut doc, 0.999);
+        assert_eq!(a.removed_glyphs, 1);
+        let s = shown(&page_ops(&doc));
+        assert_eq!(s[0].0, "BC");
+        assert!((s[0].1 - (-667.0)).abs() < 1e-3, "{s:?}");
+        // 別名 (Arial,Bold) は Helvetica-Bold の幅: A = 722
+        let mut doc = build(
+            "BT /F9 20 Tf 10 100 Td (A) Tj ET\n0 90 100 40 re f\n",
+            &[],
+            None,
+        );
+        with_widthless_font(&mut doc, "ABCDEF+Arial,Bold");
+        let a = strip(&mut doc, 0.999);
+        assert_eq!(a.removed_glyphs, 1);
+        assert!((shown(&page_ops(&doc))[0].1 - (-722.0)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn unknown_font_without_widths_means_no_removal() {
+        // 標準フォントではなく /Widths も無いフォントは、幅が分からないので触らない
         let mut doc = build(
             "BT /F9 20 Tf 10 100 Td (ABC) Tj ET\n0 90 100 40 re f\n",
             &[],
             None,
         );
-        let page = *doc.get_pages().values().next().unwrap();
-        let f9 = doc.add_object(dictionary! {
-            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica",
-        });
-        {
-            let pd = doc.get_object_mut(page).unwrap().as_dict_mut().unwrap();
-            let res = pd.get_mut(b"Resources").unwrap().as_dict_mut().unwrap();
-            let fonts = res.get_mut(b"Font").unwrap().as_dict_mut().unwrap();
-            fonts.set("F9", Object::Reference(f9));
-        }
+        with_widthless_font(&mut doc, "MyUnknownFont");
         assert_eq!(strip(&mut doc, 0.999).removed_glyphs, 0);
     }
 

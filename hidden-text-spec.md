@@ -462,6 +462,11 @@ MuPDF 実装との違い:
   文字は覆われない)。MuPDF 実装は、クリップを外接矩形で近似するので、四隅の部分も覆われると数える。
 - 低コントラストの背景は、画像・曲線・半透明の塗りの上では分からないため、検出しない。
   `ratio_threshold` は使わない。
-- `/Widths` の無いフォント (標準 14 フォントなど)、縦書き、1 バイト / 2 バイト以外の文字コードの
-  文字は、幅が分からないので検出・無害化の対象にしない。
+- `/Widths` の無い非埋め込みの標準 14 フォント (Helvetica / Times / Courier / Symbol /
+  ZapfDingbats と、Arial・TimesNewRoman・CourierNew などの別名) は、組み込みの AFM の幅表
+  (`std14_widths.rs`) で位置を求める (MuPDF と 0.004pt 以内で一致を確認)。`/Encoding` が無いとき
+  は、Type1 は StandardEncoding、TrueType は WinAnsiEncoding として扱い、`/Differences` も反映する。
+  Symbol / ZapfDingbats の文字は Unicode にしない (U+FFFD。MuPDF も同様)。
+- 上記以外で `/Widths` の無いフォント、縦書き、1 バイト / 2 バイト以外の文字コードの文字は、
+  幅が分からないので検出・無害化の対象にしない。
 - 通常の空白 (U+0020) は、隠された情報を運ばないので、どの検出にも含めない。

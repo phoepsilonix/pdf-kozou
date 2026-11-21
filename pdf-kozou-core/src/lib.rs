@@ -16,6 +16,7 @@ mod compress_lopdf;
 mod crop_redact_lopdf;
 mod hidden_scan_lopdf;
 mod hidden_text_lopdf;
+mod std14_widths;
 mod tounicode_lopdf;
 pub mod convert;
 pub mod crop_cleanup;

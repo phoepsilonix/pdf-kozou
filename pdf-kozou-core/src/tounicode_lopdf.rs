@@ -21,8 +21,10 @@ use std::collections::HashMap;
 #[derive(Debug, Default)]
 pub(crate) struct UniMap {
     map: HashMap<u32, String>,
-    /// 単純フォント (1 バイト文字コード) か
+    /// 単純フォント (1 バイト文字コード) で、ASCII の文字コードが ASCII の文字になる
     simple: bool,
+    /// 1 バイト文字コードのフォント (Symbol / ZapfDingbats を含む。コード 0x20 は空白)
+    single_byte: bool,
 }
 
 impl UniMap {
@@ -30,6 +32,9 @@ impl UniMap {
     pub(crate) fn get(&self, code: u32) -> String {
         if let Some(s) = self.map.get(&code) {
             return s.clone();
+        }
+        if self.single_byte && code == 0x20 {
+            return " ".to_string();
         }
         if self.simple && code < 0x80 && code >= 0x20 {
             return char::from_u32(code).map(String::from).unwrap_or_default();
@@ -47,10 +52,21 @@ pub(crate) fn build(doc: &Document, font: &Dictionary) -> UniMap {
         .ok()
         .and_then(|o| deref(doc, o).as_name().ok())
         .unwrap_or(b"");
-    let simple = subtype != b"Type0";
+    // Symbol / ZapfDingbats は、ASCII の文字コードが ASCII の文字ではない
+    let symbolic = font
+        .get(b"BaseFont")
+        .ok()
+        .and_then(|o| deref(doc, o).as_name().ok())
+        .map(|n| String::from_utf8_lossy(n).to_ascii_lowercase())
+        .is_some_and(|n| {
+            let n = n.split_once('+').map_or(n.as_str(), |(_, r)| r);
+            n.starts_with("symbol") || n.starts_with("zapfdingbats")
+        });
+    let simple = subtype != b"Type0" && !symbolic;
     let mut out = UniMap {
         map: HashMap::new(),
         simple,
+        single_byte: subtype != b"Type0",
     };
     if simple {
         simple_encoding(doc, font, &mut out.map);
@@ -246,21 +262,48 @@ const WIN_ANSI_80: [u32; 32] = [
     0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0xFFFD, 0x017E, 0x0178,
 ];
 
-fn simple_encoding(doc: &Document, font: &Dictionary, map: &mut HashMap<u32, String>) {
+/// フォントの /Encoding から、基本のエンコーディング名と /Differences ((文字コード, グリフ名)) を読む
+pub(crate) fn encoding_parts(
+    doc: &Document,
+    font: &Dictionary,
+) -> (Option<String>, Vec<(u32, String)>) {
     let enc = font.get(b"Encoding").ok().map(|o| deref(doc, o));
-    let (base, diffs): (Option<&[u8]>, Option<&Vec<Object>>) = match enc {
-        Some(Object::Name(n)) => (Some(n.as_slice()), None),
+    let (base, items): (Option<String>, Option<&Vec<Object>>) = match enc {
+        Some(Object::Name(n)) => (Some(String::from_utf8_lossy(n).into_owned()), None),
         Some(Object::Dictionary(d)) => (
             d.get(b"BaseEncoding")
                 .ok()
-                .and_then(|o| deref(doc, o).as_name().ok()),
+                .and_then(|o| deref(doc, o).as_name().ok())
+                .map(|n| String::from_utf8_lossy(n).into_owned()),
             d.get(b"Differences")
                 .ok()
                 .and_then(|o| deref(doc, o).as_array().ok()),
         ),
         _ => (None, None),
     };
-    if base == Some(b"WinAnsiEncoding") {
+    let mut diffs = Vec::new();
+    if let Some(items) = items {
+        let mut code = 0u32;
+        for it in items {
+            match deref(doc, it) {
+                Object::Name(n) => {
+                    diffs.push((code, String::from_utf8_lossy(n).into_owned()));
+                    code += 1;
+                }
+                other => {
+                    if let Some(v) = num_deref(doc, other) {
+                        code = v as u32;
+                    }
+                }
+            }
+        }
+    }
+    (base, diffs)
+}
+
+fn simple_encoding(doc: &Document, font: &Dictionary, map: &mut HashMap<u32, String>) {
+    let (base, diffs) = encoding_parts(doc, font);
+    if base.as_deref() == Some("WinAnsiEncoding") {
         for code in 0x80u32..=0xFF {
             let cp = if code < 0xA0 {
                 WIN_ANSI_80[(code - 0x80) as usize]
@@ -272,22 +315,9 @@ fn simple_encoding(doc: &Document, font: &Dictionary, map: &mut HashMap<u32, Str
             }
         }
     }
-    if let Some(items) = diffs {
-        let mut code = 0u32;
-        for it in items {
-            match deref(doc, it) {
-                Object::Name(n) => {
-                    if let Some(s) = glyph_name_to_unicode(&String::from_utf8_lossy(n)) {
-                        map.insert(code, s);
-                    }
-                    code += 1;
-                }
-                other => {
-                    if let Some(v) = num_deref(doc, other) {
-                        code = v as u32;
-                    }
-                }
-            }
+    for (code, name) in diffs {
+        if let Some(s) = glyph_name_to_unicode(&name) {
+            map.insert(code, s);
         }
     }
 }
@@ -399,6 +429,17 @@ mod tests {
         assert_eq!(m[&0x12], "C");
         assert_eq!(m[&0x20], "a");
         assert_eq!(m[&0x21], "b");
+    }
+
+    #[test]
+    fn space_is_a_space_even_in_symbolic_fonts() {
+        let m = UniMap {
+            map: HashMap::new(),
+            simple: false,
+            single_byte: true,
+        };
+        assert_eq!(m.get(0x20), " ");
+        assert_eq!(m.get(0x61), "\u{FFFD}");
     }
 
     #[test]
