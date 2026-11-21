@@ -80,7 +80,7 @@ mozjpeg-rs = { version = "0.9", optional = true, default-features = false }
 clap = { version = "4", features = ["derive"] }
 
 # ZIP ファイル読み込み（DOCX/XLSX/PPTX のメタデータ取得用）
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # bundled-fontsをフォールバックフォントとして組み込む。
 # 当面、Linuxのみ。
