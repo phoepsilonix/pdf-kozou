@@ -17,7 +17,7 @@ image      = { version = "0.25", features = ["jpeg", "png"] }
 uuid       = { version = "1", features = ["v4", "fast-rng"] }
 tempfile   = "3"
 tracing    = "0.1"
-lopdf      = "0.44"
+lopdf      = "0.47"
 flate2     = "1"
 # SVG 入力を正しい PDF（ソフトマスク・不透明度保持）に変換するため。
 # MuPDF の SVG リーダは画像 luminance マスクを解釈できず透明部分が黒くなる。
@@ -39,7 +39,8 @@ mupdf-sys = { git = "https://github.com/phoepsilonix/mupdf-rs.git", rev = "50343
 # が出る問題の修正)。upstream に取り込まれたら削除して crates.io 版に戻す。
 # hayro の workspace 依存 (hayro-interpret, hayro-syntax など) は fork 内の path 依存として
 # 解決されるので、hayro だけを差し替えれば足りる。安定したら rev で固定する。
-hayro = { git = "https://github.com/phoepsilonix/hayro.git", branch = "pdf-kozou" }
+#hayro = { git = "https://github.com/phoepsilonix/hayro.git", branch = "pdf-kozou" }
+hayro = { git = "https://github.com/phoepsilonix/hayro.git", branch = "pdf-kozou-v0.9.0" }
 
 [profile.release]
 strip = "symbols"

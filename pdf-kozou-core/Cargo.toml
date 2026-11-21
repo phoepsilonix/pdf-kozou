@@ -68,10 +68,10 @@ svg2pdf    = { workspace = true }
 pdf-writer = { workspace = true }
 
 # hayro 描画 + システムフォント探索 (feature "hayro" のときだけ)
-hayro  = { version = "0.8", optional = true }
+hayro  = { version = "0.9", optional = true }
 fontdb = { version = "0.24", optional = true }
 # JPEG の可逆最適化 (feature "jpeg-optimize")
-libjpeg-turbo-rs = { version = "0.8", optional = true }
+libjpeg-turbo-rs = { version = "0.9", optional = true }
 
 # JPEG エンコーダ (feature "mozjpeg")。fast-yuv / imgref は使わないので既定 feature は切る
 mozjpeg-rs = { version = "0.9", optional = true, default-features = false }
