@@ -68,7 +68,7 @@ svg2pdf    = { workspace = true }
 pdf-writer = { workspace = true }
 
 # hayro 描画 + システムフォント探索 (feature "hayro" のときだけ)
-hayro  = { version = "0.9", optional = true }
+hayro  = { version = "0.8", optional = true }
 fontdb = { version = "0.24", optional = true }
 # JPEG の可逆最適化 (feature "jpeg-optimize")
 libjpeg-turbo-rs = { version = "0.9", optional = true }
