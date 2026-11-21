@@ -39,9 +39,11 @@ import {
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
 import { createOverwriteGuard, withOverwriteGuard } from "../lib/overwriteGuard";
+import { splitOutputNames } from "../lib/plannedOutputs";
 import {
   getPdfInfo,
   hasFolderPicker,
+  joinPath,
   type OverrideMeta,
   type PdfInfo,
   type PickedFolder,
@@ -369,25 +371,32 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
       androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
+    const mode: SplitMode =
+      modeId === "all"
+        ? { type: "AllPages" }
+        : modeId === "every"
+          ? { type: "EveryN", n: everyN }
+          : { type: "Ranges", ranges };
+    const prefix = splitPrefix(srcStem, keepOriginalName);
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
+    const plannedOutputs = splitOutputNames(prefix, mode, total).map((n) =>
+      joinPath(resolvedDir, n),
+    );
+    if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     setPhase("processing");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => setTimeout(resolve, 0));
     try {
-      const mode: SplitMode =
-        modeId === "all"
-          ? { type: "AllPages" }
-          : modeId === "every"
-            ? { type: "EveryN", n: everyN }
-            : { type: "Ranges", ranges };
-      // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
-      const res = await withOverwriteGuard(createOverwriteGuard(), resolvedDir, (dir) =>
+      const res = await withOverwriteGuard(overwriteGuard, resolvedDir, (dir) =>
         splitPdf(
           filePath,
           dir,
           mode,
-          splitPrefix(srcStem, keepOriginalName),
+          prefix,
           convertLayoutW,
           convertLayoutH,
           convertLayoutEm,
@@ -421,6 +430,7 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     splitPrefix,
     srcStem,
     keepOriginalName,
+    total,
     pickDir,
     pickAndroidFolder,
     overrideMetadata,
@@ -445,6 +455,32 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     }
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
+    // ファイルのページ数に応じた分割モード(Ranges は各ファイルのページ数でクリップして適用)
+    const modeForPages = (pageCount: number): SplitMode =>
+      modeId === "all"
+        ? { type: "AllPages" }
+        : modeId === "every"
+          ? { type: "EveryN", n: everyN }
+          : {
+              type: "Ranges",
+              ranges: ranges
+                .map(([s, e]) => [s, Math.min(e, pageCount)] as [number, number])
+                .filter(([s, _e]) => s <= pageCount),
+            };
+    // バッチは全ファイルを1フォルダへ出すため、必ず元名を付けて衝突回避
+    //   例: 書類_分割_0001.pdf
+    const prefixFor = (i: number) => splitPrefix(outNames[i].replace(/\.[^/.]+$/, ""), true);
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)。出力名は分割モードとページ数から決まる。
+    const overwriteGuard = createOverwriteGuard();
+    const plannedOutputs = files.flatMap((f, i) =>
+      splitOutputNames(prefixFor(i), modeForPages(f.pageCount), f.pageCount).map((n) =>
+        joinPath(resolvedDir, n),
+      ),
+    );
+    if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     setPhase("processing");
@@ -460,11 +496,6 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
     };
     setBatchProgress({ ...progress });
     const producedPaths: string[] = [];
-    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
-    const outNames = uniqueFileNames(files.map((x) => x.filename));
-    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
-    const overwriteGuard = createOverwriteGuard();
-
     resetBatchCancel();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -483,21 +514,8 @@ export function SplitPage({ filePath, pdfInfo, batchFiles }: Props) {
           layoutH: convertLayoutH,
           layoutEm: convertLayoutEm,
         });
-        const mode: SplitMode =
-          modeId === "all"
-            ? { type: "AllPages" }
-            : modeId === "every"
-              ? { type: "EveryN", n: everyN }
-              : // Ranges: 各ファイルのページ数でクリップして適用
-                {
-                  type: "Ranges",
-                  ranges: ranges
-                    .map(([s, e]) => [s, Math.min(e, info.page_count)] as [number, number])
-                    .filter(([s, _e]) => s <= info.page_count),
-                };
-        // バッチは全ファイルを1フォルダへ出すため、必ず元名を付けて衝突回避
-        //   例: 書類_分割_0001.pdf
-        const filePrefix = splitPrefix(outNames[i].replace(/\.[^/.]+$/, ""), true);
+        const mode = modeForPages(info.page_count);
+        const filePrefix = prefixFor(i);
         const res = await withOverwriteGuard(overwriteGuard, resolvedDir, (dir) =>
           splitPdf(
             f.path,

@@ -54,6 +54,7 @@ import {
   mobileOutputPreviewLabel,
 } from "../lib/mobileOutput";
 import { createOverwriteGuard, withOverwriteGuard } from "../lib/overwriteGuard";
+import { renderOutputNames } from "../lib/plannedOutputs";
 import {
   checkPathConflict,
   composeImpositionPdfKeepText,
@@ -789,11 +790,17 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
         androidFolderForRun = await pickAndroidFolder();
         if (!androidFolderForRun) return; // フォルダ選択をキャンセル
       }
+      const ext = format === "png" ? "png" : format === "svg" ? "svg" : "jpg";
+      // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+      // (モバイルでは何もしない)
+      const plannedOutputs = cells.map((_, k) =>
+        joinPath(resolvedDir, imageName(srcStem, keepOriginalName, k + 1, ext)),
+      );
+      if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
       setPhase("processing");
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 0));
       try {
-        const ext = format === "png" ? "png" : format === "svg" ? "svg" : "jpg";
         const savedFiles: string[] = [];
         for (let k = 0; k < cells.length; k++) {
           const [pg, row, col] = cells[k];
@@ -857,6 +864,23 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (await hasFolderPicker()) {
         androidFolderForRun = await pickAndroidFolder();
         if (!androidFolderForRun) return; // フォルダ選択をキャンセル
+      }
+      // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+      // (モバイルでは何もしない)。出力枚数はページ指定と面付けモードから決まる。
+      {
+        const plannedPages = resolvePageSpec(pages || "", total).length || total;
+        const plannedCount = calcSheets(
+          impositionMode,
+          plannedPages,
+          t("common.imposition_blank_page"),
+          (n) => t("image.imposition_sheet_front", { n: String(n) }),
+          (n) => t("image.imposition_sheet_back", { n: String(n) }),
+        ).length;
+        const plannedExt = format === "png" ? "png" : "jpg";
+        const plannedOutputs = Array.from({ length: plannedCount }, (_, si) =>
+          joinPath(resolvedDir, imageName(srcStem, keepOriginalName, si + 1, plannedExt)),
+        );
+        if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル
       }
       setPhase("processing");
       setStatusMsg(t("image.imposition_rendering_init"));
@@ -981,6 +1005,18 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return; // 警告表示中は実行しない
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)。PDF出力は OS の保存ダイアログが確認するので対象外。
+    if (outputMode === "images") {
+      const plannedExt = format === "png" ? "png" : format === "svg" ? "svg" : "jpg";
+      const plannedCount = resolvePageSpec(pages || "", total).length || total;
+      const plannedOutputs = renderOutputNames(
+        imagePrefix(srcStem, keepOriginalName),
+        plannedCount,
+        plannedExt,
+      ).map((n) => joinPath(effectiveOutDir, n));
+      if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル
+    }
     // 進捗Spinnerは statusMsg が非空だとそれをラベルに使うため、前回実行の
     // 結果メッセージ(テキスト選択不可/テキスト保持版の案内)が残っていると
     // 設定を切り替えて再実行した際に逆の案内が進捗として出てしまう。
@@ -1191,11 +1227,53 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
     if (conflictPaths.length > 0) return;
-    setMobileSavedFiles(null);
-    setMobileSaveError(null);
 
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
+
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)。出力名は処理モード・ページ指定・各ファイルのページ数から
+    // 決まるので、書き出しの前に全ファイル分を計算できる(下の本処理と同じ規則)。
+    const plannedOutputs = files.flatMap((f, i) => {
+      const stem = outNames[i].replace(/\.[^/.]+$/, "");
+      const fileTotal = f.pageCount || 0;
+      const fileEffective = resolvePageSpec(pages || "", fileTotal).length || fileTotal;
+      const imgExt = format === "png" ? "png" : format === "svg" ? "svg" : "jpg";
+      const subDir = joinPath(batchDir, stem);
+      if (outputMode === "pdf") return [joinPath(batchDir, composePdfName(stem, true))];
+      if (processDir === "deimpose") {
+        // 面付け解除: シート数(対象ページ数)から切り出すセル数が決まる
+        const def = DE_IMPOSITION_MODE_DEFS[deimpIndex];
+        const sheetCount = resolvePageSpec(pages || "", total).length || total;
+        if (sheetCount === 0) return [];
+        const cellCount = calcSplitCells(sheetCount, def.cols, def.rows, def.id).length;
+        return Array.from({ length: cellCount }, (_, k) =>
+          joinPath(subDir, imageName(stem, false, k + 1, imgExt)),
+        );
+      }
+      if (impositionMode !== "1up") {
+        const sheetCount = calcSheets(
+          impositionMode,
+          fileEffective,
+          t("common.imposition_blank_page"),
+          (n) => t("image.imposition_sheet_front", { n: String(n) }),
+          (n) => t("image.imposition_sheet_back", { n: String(n) }),
+        ).length;
+        const sheetExt = format === "png" ? "png" : "jpg";
+        return Array.from({ length: sheetCount }, (_, k) =>
+          joinPath(subDir, imageName(stem, false, k + 1, sheetExt)),
+        );
+      }
+      return renderOutputNames(imagePrefix(stem, false), fileEffective, imgExt).map((n) =>
+        joinPath(subDir, n),
+      );
+    });
+    if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
+    setMobileSavedFiles(null);
+    setMobileSaveError(null);
+
     setPhase("processing");
     const progress: BatchProgress = {
       current: 0,
@@ -1206,9 +1284,6 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
       errors: [],
     };
     setBatchProgress({ ...progress });
-
-    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
-    const outNames = uniqueFileNames(files.map((x) => x.filename));
 
     // hayro から MuPDF へ切り替わった記録は、ファイルごとの進捗行に出す (右下の通知は止める)。
     // 処理は 1 ファイルずつ順に行うので、1 ファイルの間に溜まった記録がそのファイルの分になる。
