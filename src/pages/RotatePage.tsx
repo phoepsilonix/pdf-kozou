@@ -412,6 +412,14 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     }
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)。回転指定が無いファイルは出力されないが、ページ数は
+    // 事前には分からないので、全ファイル分の出力予定名で確認する。
+    const overwriteGuard = createOverwriteGuard();
+    const plannedOutputs = outNames.map((n) => joinPath(resolvedDir, buildName(n, ["rotated"])));
+    if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     setPhase("processing");
@@ -427,10 +435,6 @@ export function RotatePage({ filePath, pdfInfo, batchFiles }: Props) {
     };
     setBatchProgress({ ...prog });
     const producedPaths: string[] = [];
-    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
-    const outNames = uniqueFileNames(files.map((x) => x.filename));
-    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
-    const overwriteGuard = createOverwriteGuard();
     resetBatchCancel();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];

@@ -12,10 +12,12 @@
 // 各出力ファイルを書き出す直前に resolve(予定パス) を呼んで、戻り値のパスへ
 // 書き出す。null が返ったらユーザーがキャンセルしたので、残りの処理を中止する。
 //
-// 確認は、その回で最初に衝突したファイルについて1回だけ行い、選んだ方法
-// (上書き / 連番を付けて保存)をその回の残りの衝突にも適用する。出力が数十件
-// になり得るため、1件ずつは確認しない。事前に全件を列挙しないのは、出力名が
-// 処理してみないと決まらない機能(変換結果が空なら出力しない等)があるため。
+// 確認は1回だけ行い、選んだ方法(上書き / 連番を付けて保存)をその回の残りの
+// 衝突にも適用する。出力が数十件になり得るため、1件ずつは確認しない。
+// 出力名が事前に分かる処理は、進捗を始める前に precheck(予定パス一覧) で
+// まとめて確認する(進捗の途中でダイアログが出ないようにするため)。
+// 出力名が処理してみないと決まらない機能(PDF分割・画像書き出し等)は、
+// 従来どおり最初に衝突した時点で resolve() が1回だけ確認する。
 //
 // モバイルでは何もしない(出力先は共有の一時ディレクトリで、本当の保存先への
 // 衝突確認は commitGrouped() 側が行う)。
@@ -25,6 +27,15 @@ import { useBatchSaveConflictStore } from "../store/useBatchSaveConflictStore";
 import { isMobile, joinPath, pathExists } from "./tauri";
 
 export interface OverwriteGuard {
+  /**
+   * 進捗を始める前に、出力予定のパスをまとめて渡して重複を確認する。
+   * 既存ファイルと衝突するものがあれば、その件数を示して「すべて上書き /
+   * 重複分だけ自動連番 / キャンセル」を1回だけ尋ね、選択をこの回の
+   * 以降の resolve() にも適用する(書き出しの途中ではもう尋ねない)。
+   * キャンセルなら false を返す(呼び出し側は進捗を始めずに中止すること)。
+   * 衝突が無ければ何も尋ねず true。モバイルでは何もせず true。
+   */
+  precheck: (paths: string[]) => Promise<boolean>;
   /**
    * 書き出し先として使うパスを返す。キャンセル時は null。一度キャンセルされた
    * ガードは、以後のどの呼び出しにも(衝突の有無に関わらず) null を返す。
@@ -61,15 +72,21 @@ export function createOverwriteGuard(cancelledMessage = "Cancelled"): OverwriteG
   // この回で書き出し先に決めたパス。まだ書き出していない先行分と、
   // 連番の候補が重ならないようにする。
   const claimed = new Set<string>();
+  // precheck() で渡された出力予定パス。自動連番の候補が、まだ書き出していない
+  // 他の出力予定と重ならないようにするために使う。
+  const planned = new Set<string>();
 
+  // path 自身が衝突するか(ディスク上にある、またはこの回で既に書き出し先に決めた)
   const exists = async (p: string) => claimed.has(p) || (await pathExists(p));
+  // 自動連番の候補として使えないか(上に加え、他の出力予定とも重ならないこと)
+  const taken = async (p: string) => planned.has(p) || (await exists(p));
 
   async function nextFreeName(path: string): Promise<string> {
     const [dir, base, ext] = splitPath(path);
     const sep = dir.includes("\\") ? "\\" : "/";
     for (let n = 1; n <= 999; n++) {
       const candidate = `${dir}${sep}${base} (${n})${ext}`;
-      if (!(await exists(candidate))) return candidate;
+      if (!(await taken(candidate))) return candidate;
     }
     return `${dir}${sep}${base} (${Date.now()})${ext}`;
   }
@@ -101,8 +118,32 @@ export function createOverwriteGuard(cancelledMessage = "Cancelled"): OverwriteG
     return renamed;
   };
 
+  const precheck = async (paths: string[]): Promise<boolean> => {
+    if (await isMobile()) return true;
+    if (cancelled) return false;
+    for (const p of paths) planned.add(p);
+    // 既に選択済み(同じガードで2回目以降の呼び出し)なら尋ね直さない
+    if (decision !== null) return true;
+    const conflicts: string[] = [];
+    for (const p of new Set(paths)) {
+      if (await pathExists(p)) conflicts.push(p);
+    }
+    if (conflicts.length === 0) return true;
+    const [dir] = splitPath(conflicts[0]);
+    const choice = await useBatchSaveConflictStore
+      .getState()
+      .ask(conflicts.length, folderLabel(dir));
+    if (choice.action === "cancel") {
+      cancelled = true;
+      return false;
+    }
+    decision = choice.action;
+    return true;
+  };
+
   return {
     resolve,
+    precheck,
     isCancelled: () => cancelled,
     async resolveOrThrow(path) {
       const out = await resolve(path);

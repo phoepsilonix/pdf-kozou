@@ -472,6 +472,15 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
     }
     // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路(モバイル保存)でのみ呼ばれ、batchFilesは必ず存在
     const files = batchFiles!;
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(files.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
+    const plannedOutputs = outNames.map((n) =>
+      joinPath(dir, composePdfName(n.replace(/\.[^/.]+$/, ""), true)),
+    );
+    if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     setPhase("processing");
@@ -486,10 +495,6 @@ export default function PageSizeBookletPage({ filePath, pdfInfo, batchFiles }: P
       errors: [],
     };
     setBatchProgress({ ...progress });
-    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
-    const outNames = uniqueFileNames(files.map((x) => x.filename));
-    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
-    const overwriteGuard = createOverwriteGuard();
     resetBatchCancel();
     for (let i = 0; i < files.length; i++) {
       const f = files[i];

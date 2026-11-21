@@ -723,6 +723,14 @@ export function CompressPage({
       androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
+    const outNames = uniqueFileNames(batchFiles!.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)
+    const overwriteGuard = createOverwriteGuard();
+    const plannedOutputs = outNames.map((n) => joinPath(resolvedDir, buildName(n, ["compressed"])));
+    if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
     setMobileSavedFiles(null);
     setMobileSaveError(null);
 
@@ -739,12 +747,6 @@ export function CompressPage({
     };
     setBatchProg({ ...prog });
     const producedPaths: string[] = [];
-    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
-    // biome-ignore lint/style/noNonNullAssertion: この関数はisBatch経路でのみ呼ばれ、batchFilesは必ず存在
-    const outNames = uniqueFileNames(batchFiles!.map((x) => x.filename));
-    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
-    const overwriteGuard = createOverwriteGuard();
-
     // lopdf で処理できず MuPDF で圧縮した記録は、ファイルごとの進捗行に出す (右下の通知は止める)。
     // 処理は 1 ファイルずつ順に行うので、1 ファイルの間に溜まった記録がそのファイルの分になる。
     const fallbackStore = useEngineFallbackStore.getState();

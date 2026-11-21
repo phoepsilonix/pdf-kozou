@@ -330,6 +330,18 @@ function TrimPageBatch({
 
   const executeWithDir = useCallback(
     async (resolvedDir: string, androidFolderForRun?: PickedFolder | null) => {
+      // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+      const outNames = uniqueFileNames(files.map((x) => x.filename));
+      // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+      // (モバイルでは何もしない)
+      const overwriteGuard = createOverwriteGuard();
+      if (
+        !(await overwriteGuard.precheck(
+          outNames.map((n) => joinPath(resolvedDir, buildName(n, ["trimmed"]))),
+        ))
+      ) {
+        return; // 確認でキャンセル: 処理を始めない
+      }
       setPhase("processing");
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -341,10 +353,6 @@ function TrimPageBatch({
       };
       setProgress({ ...prog });
       const producedPaths: string[] = [];
-      // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
-      const outNames = uniqueFileNames(files.map((x) => x.filename));
-      // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
-      const overwriteGuard = createOverwriteGuard();
 
       resetBatchCancel();
       for (let i = 0; i < files.length; i++) {

@@ -456,6 +456,14 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
       androidFolderForRun = await pickAndroidFolder();
       if (!androidFolderForRun) return; // フォルダ選択をキャンセル
     }
+    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
+    const outNames = uniqueFileNames(batchFiles.map((x) => x.filename));
+    // デスクトップ: 出力フォルダに同名ファイルがあれば、進捗を始める前に上書き確認する
+    // (モバイルでは何もしない)。検出結果が0件のファイルは出力されないが、事前には
+    // 分からないので、全ファイル分の出力予定名で確認する。
+    const overwriteGuard = createOverwriteGuard();
+    const plannedOutputs = outNames.map((n) => joinPath(resolvedDir, buildName(n, ["sanitized"])));
+    if (!(await overwriteGuard.precheck(plannedOutputs))) return; // 確認でキャンセル: 処理を始めない
     setMobileSavedFiles(null);
     setMobileSaveError(null);
     setRunning(true);
@@ -474,10 +482,6 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     setProgress({ ...prog });
 
     const producedPaths: string[] = [];
-    // 別フォルダの同名ファイルで出力が上書きされないよう、重複は連番で一意にする
-    const outNames = uniqueFileNames(batchFiles.map((x) => x.filename));
-    // デスクトップ: 出力フォルダに同名ファイルがあれば上書き確認(モバイルでは何もしない)
-    const overwriteGuard = createOverwriteGuard();
     resetBatchCancel();
     for (let i = 0; i < batchFiles.length; i++) {
       const f = batchFiles[i];
