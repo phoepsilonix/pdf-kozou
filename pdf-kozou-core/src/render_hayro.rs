@@ -384,6 +384,13 @@ pub fn encode_rgb_with(
 pub const JPEG_SUBSAMPLING_ENV: &str = "PDF_KOZOU_JPEG_SUBSAMPLING";
 /// トレリス量子化の有無。"1" / "on" / "true" で有効、それ以外で無効 (未設定なら既定の有効)
 pub const JPEG_TRELLIS_ENV: &str = "PDF_KOZOU_JPEG_TRELLIS";
+/// 量子化表。"annexk" (既定。JPEG 標準 = libjpeg / MuPDF と同じ) / "mozjpeg" (mozjpeg-rs 既定の Robidoux 表)。
+///
+/// mozjpeg-rs の既定 (Robidoux 表) は、同じ quality でも標準表より高周波の刻みが大きい
+/// (quality 85 の輝度で、平均 17 → 27、最高周波 30 → 125)。写真向けにサイズを削る設計のため、
+/// 白地の文字・細線では輪郭が甘く (ぼやけて) 見える。MuPDF 版 (libjpeg の標準表) と
+/// 同じ見え方にするため、既定は標準表。ファイルは大きくなるので、サイズ優先なら "mozjpeg"。
+pub const JPEG_QTABLE_ENV: &str = "PDF_KOZOU_JPEG_QTABLE";
 
 /// JPEG エンコードの設定
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -467,7 +474,7 @@ fn encode_jpeg_mozjpeg(
     quality: u8,
     opts: JpegOptions,
 ) -> Result<Vec<u8>, String> {
-    use mozjpeg_rs::{Encoder, Subsampling, TrellisConfig};
+    use mozjpeg_rs::{Encoder, QuantTableIdx, Subsampling, TrellisConfig};
 
     let subsampling = match opts.subsampling {
         420 => Subsampling::S420,
@@ -476,8 +483,18 @@ fn encode_jpeg_mozjpeg(
     };
     // baseline_optimized: ハフマン最適化 + デリンギング (+ 既定ではトレリス)。
     // 出力はベースライン JPEG。必要ならこの後の optimize_or_keep がプログレッシブ化を試す。
+    // 量子化表は標準 (Annex K) を既定にする。mozjpeg-rs 既定の Robidoux 表は高周波を粗く量子化し、
+    // 文字や細線の輪郭が MuPDF 版より甘くなる (ぼやけて見える原因)。
+    let qtable = match std::env::var(JPEG_QTABLE_ENV)
+        .map(|v| v.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Ok("mozjpeg") | Ok("robidoux") | Ok("imagemagick") => QuantTableIdx::ImageMagick,
+        _ => QuantTableIdx::JpegAnnexK,
+    };
     let mut enc = Encoder::baseline_optimized()
         .quality(quality.clamp(1, 100))
+        .quant_tables(qtable)
         .subsampling(subsampling);
     if !opts.trellis {
         enc = enc.trellis(TrellisConfig::disabled());
