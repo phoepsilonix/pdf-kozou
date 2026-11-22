@@ -255,6 +255,10 @@ fn render_pixmap<'a>(
     let (min_stroke_width, min_text_stroke_width) = min_stroke_widths_for(mult);
     let render_settings = RenderSettings {
         force_image_interpolation: true,
+        // hayro 0.9 で増えた設定。縮小前提の描画なのでヒンティングは使わず、アンチエイリアスは有効のまま。
+        aliasing_threshold: None,
+        hinting: false,
+        glyph_caching: true,
         min_stroke_width,
         min_text_stroke_width,
     };
