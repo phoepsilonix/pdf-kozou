@@ -1168,6 +1168,12 @@ pub fn keep_text_pdf(
     if !drop.is_empty() {
         doc.delete_pages(&drop);
     }
+    // テキスト層が使う元のフォントのうち、文字コードが GID の CID キー付き CFF は、charset で引く
+    // ビューワでも表示できるように直す (直す前のフォントファイルは、次の prune で取り除かれる)
+    let gid_fixed = crate::font_gidfix_lopdf::fix_gid_coded_cid_fonts(&mut doc);
+    if gid_fixed > 0 {
+        eprintln!("[render] keep-text: fixed {gid_fixed} GID-coded CID font(s)");
+    }
     doc.prune_objects();
     doc.compress();
     doc.save(output).map_err(|e| format!("save: {e}"))?;

@@ -8,6 +8,7 @@
 pub mod api;
 pub mod compress;
 mod clean_lopdf;
+mod font_gidfix_lopdf;
 mod font_subset_lopdf;
 mod font_usage;
 mod resource_prune;

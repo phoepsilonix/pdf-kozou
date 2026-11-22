@@ -28,6 +28,11 @@ pub(crate) struct UniMap {
 }
 
 impl UniMap {
+    /// 分かっている、文字コードと Unicode の文字列の組
+    pub(crate) fn entries(&self) -> impl Iterator<Item = (u32, &str)> {
+        self.map.iter().map(|(k, v)| (*k, v.as_str()))
+    }
+
     /// `code` に対応する文字列。分からなければ U+FFFD
     pub(crate) fn get(&self, code: u32) -> String {
         if let Some(s) = self.map.get(&code) {

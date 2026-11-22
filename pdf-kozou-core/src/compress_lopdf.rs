@@ -432,6 +432,11 @@ pub(crate) fn compress_with_lopdf(input: &str, output: &str, p: &Params) -> Resu
         stats.subset_fonts = outcome.fonts;
         stats.subset_bytes_saved = outcome.bytes_saved;
     }
+    // 文字コードが GID の CID キー付き CFF フォントを、charset で引くビューワでも表示できるようにする
+    let gid_fixed = crate::font_gidfix_lopdf::fix_gid_coded_cid_fonts(&mut doc);
+    if gid_fixed > 0 {
+        eprintln!("[lopdf] fixed {gid_fixed} GID-coded CID font(s)");
+    }
     stats.compressed_streams = compress_streams(&mut doc, p);
     if gc >= 1 {
         // 圧縮で直接の /Length に置き換わった、間接オブジェクトの /Length などを取り除く
