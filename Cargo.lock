@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "ab_glyph_rasterizer"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1690,15 +1696,20 @@ dependencies = [
 
 [[package]]
 name = "fearless_simd"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4beca3cb2444e3304ac30843cc091f44ed58932353cd492ce740067bfce6b12"
-
-[[package]]
-name = "fearless_simd"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "629c9d6b6f30b5604089e0980f4d924a013aacb1654a6cdf5d3d852224f68651"
+
+[[package]]
+name = "fearless_simd_macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e91d94c6885390b81782d7ee60fd6583b33907333a8b340de25ccf468353315"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.10",
+]
 
 [[package]]
 name = "field-offset"
@@ -2210,9 +2221,9 @@ dependencies = [
 
 [[package]]
 name = "glifo"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f1218dedd5348c1b166ec3b8b3cbca49d2f527bd43b3fa072ea5123c523ed3f"
+checksum = "9ae2e3b09ea1cc45c994a405e4d4154901d4caa867d3e1be3a02be641f62fefa"
 dependencies = [
  "bytemuck",
  "foldhash 0.2.0",
@@ -2220,7 +2231,7 @@ dependencies = [
  "log",
  "peniko",
  "png 0.18.1",
- "skrifa 0.44.0",
+ "skrifa",
  "smallvec",
  "vello_common",
 ]
@@ -2340,11 +2351,12 @@ dependencies = [
 
 [[package]]
 name = "hayro"
-version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+version = "0.9.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 dependencies = [
+ "ab_glyph_rasterizer",
  "bytemuck",
- "fearless_simd 1.2.0",
+ "fearless_simd",
  "hayro-interpret",
  "image",
  "kurbo 0.13.1",
@@ -2355,70 +2367,85 @@ dependencies = [
 
 [[package]]
 name = "hayro-ccitt"
-version = "0.4.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+version = "0.5.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 
 [[package]]
 name = "hayro-cmap"
-version = "0.1.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+version = "0.1.1"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 dependencies = [
  "brotli 8.0.4",
  "hayro-postscript",
 ]
 
 [[package]]
-name = "hayro-interpret"
-version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+name = "hayro-font"
+version = "0.5.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 dependencies = [
  "bitflags 2.13.2",
  "hayro-cmap",
  "hayro-syntax",
  "kurbo 0.13.1",
- "moxcms",
  "phf 0.13.1",
  "rustc-hash",
  "siphasher",
- "skrifa 0.46.2",
+ "skrifa",
+]
+
+[[package]]
+name = "hayro-interpret"
+version = "0.9.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+dependencies = [
+ "bitflags 2.13.2",
+ "hayro-cmap",
+ "hayro-font",
+ "hayro-postscript",
+ "hayro-syntax",
+ "kurbo 0.13.1",
+ "moxcms",
+ "rustc-hash",
+ "siphasher",
  "smallvec",
- "yoke",
 ]
 
 [[package]]
 name = "hayro-jbig2"
-version = "0.3.1"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+version = "0.4.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 dependencies = [
- "fearless_simd 1.2.0",
+ "fearless_simd",
  "hayro-ccitt",
 ]
 
 [[package]]
 name = "hayro-jpeg2000"
-version = "0.4.1"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+version = "0.5.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 dependencies = [
- "fearless_simd 1.2.0",
+ "fearless_simd",
 ]
 
 [[package]]
 name = "hayro-postscript"
-version = "0.1.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+version = "0.2.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 
 [[package]]
 name = "hayro-syntax"
-version = "0.8.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou#f1f52afdfa7be760c63a90540e9bd67595a6ec6a"
+version = "0.9.0"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
 dependencies = [
- "flate2",
  "hayro-ccitt",
  "hayro-jbig2",
  "hayro-jpeg2000",
  "memchr",
+ "miniz_oxide 0.8.9",
  "rustc-hash",
  "smallvec",
+ "zlib-rs",
  "zune-jpeg",
 ]
 
@@ -4671,24 +4698,16 @@ dependencies = [
 
 [[package]]
 name = "read-fonts"
-version = "0.41.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "046a7d674daf459825b32f5062056d6882db0d2f5a479fbd76ccfc870ac18709"
+checksum = "bdaa4fffe9ff3ca2c353fa9729792805b9b3e324695ff5a081f860612e81b330"
 dependencies = [
  "bytemuck",
+ "foldhash 0.2.0",
  "font-types",
  "once_cell",
-]
-
-[[package]]
-name = "read-fonts"
-version = "0.43.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "005c8acf251756c478b0bf402885bfd88a1476020c4c7e6060edc1aa68da38ea"
-dependencies = [
- "bytemuck",
- "font-types",
- "once_cell",
+ "smallvec",
+ "yoke",
 ]
 
 [[package]]
@@ -5313,22 +5332,15 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skrifa"
-version = "0.44.0"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
+checksum = "a7459fb60888ad9a5f367dd293fa2fb9df142cb451aa6bfd6cd66a7d6a9b739d"
 dependencies = [
  "bytemuck",
- "read-fonts 0.41.0",
-]
-
-[[package]]
-name = "skrifa"
-version = "0.46.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4febebda507fb889c545a37a135517769d1391941013561292897961d1887d6"
-dependencies = [
- "bytemuck",
- "read-fonts 0.43.3",
+ "once_cell",
+ "read-fonts",
+ "smallvec",
+ "yoke",
 ]
 
 [[package]]
@@ -6661,12 +6673,13 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vello_common"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73c2fbe53548bcd25c8ff42f75a93770a8611a16b37bee56d7ef7b44e36027f1"
+checksum = "6d9447018538224861c1bd825471dcc67ffa973c97de666bf6296b72dbb2f166"
 dependencies = [
  "bytemuck",
- "fearless_simd 0.7.0",
+ "fearless_simd",
+ "fearless_simd_macros",
  "guillotiere",
  "log",
  "peniko",
@@ -6677,11 +6690,13 @@ dependencies = [
 
 [[package]]
 name = "vello_cpu"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed1fec424fbba6acf6cbc78bb526447eb77590d95f40419d598870fe37535212"
+checksum = "5d6b3db720c5d3aa8783cb1c042d8a77142df70bd0f742dc9005f6d6efe33ebf"
 dependencies = [
  "bytemuck",
+ "fearless_simd",
+ "fearless_simd_macros",
  "glifo",
  "hashbrown 0.17.1",
  "png 0.18.1",
