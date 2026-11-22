@@ -2227,7 +2227,7 @@ checksum = "9ae2e3b09ea1cc45c994a405e4d4154901d4caa867d3e1be3a02be641f62fefa"
 dependencies = [
  "bytemuck",
  "foldhash 0.2.0",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "log",
  "peniko",
  "png 0.18.1",
@@ -2342,9 +2342,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+checksum = "735eaa21a6a5ffb2e84362faaeb90c05ba8e19797ca30428478cb6ea3a4921bc"
 dependencies = [
  "foldhash 0.2.0",
 ]
@@ -2352,7 +2352,7 @@ dependencies = [
 [[package]]
 name = "hayro"
 version = "0.9.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 dependencies = [
  "ab_glyph_rasterizer",
  "bytemuck",
@@ -2368,12 +2368,12 @@ dependencies = [
 [[package]]
 name = "hayro-ccitt"
 version = "0.5.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 
 [[package]]
 name = "hayro-cmap"
 version = "0.1.1"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 dependencies = [
  "brotli 8.0.4",
  "hayro-postscript",
@@ -2382,7 +2382,7 @@ dependencies = [
 [[package]]
 name = "hayro-font"
 version = "0.5.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 dependencies = [
  "bitflags 2.13.2",
  "hayro-cmap",
@@ -2397,7 +2397,7 @@ dependencies = [
 [[package]]
 name = "hayro-interpret"
 version = "0.9.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 dependencies = [
  "bitflags 2.13.2",
  "hayro-cmap",
@@ -2414,7 +2414,7 @@ dependencies = [
 [[package]]
 name = "hayro-jbig2"
 version = "0.4.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 dependencies = [
  "fearless_simd",
  "hayro-ccitt",
@@ -2423,7 +2423,7 @@ dependencies = [
 [[package]]
 name = "hayro-jpeg2000"
 version = "0.5.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 dependencies = [
  "fearless_simd",
 ]
@@ -2431,12 +2431,12 @@ dependencies = [
 [[package]]
 name = "hayro-postscript"
 version = "0.2.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 
 [[package]]
 name = "hayro-syntax"
 version = "0.9.0"
-source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-v0.9.0#5becea84cb5c41d15687de50bd55fe712150ae15"
+source = "git+https://github.com/phoepsilonix/hayro.git?branch=pdf-kozou-hayro-0.9.0#f0397a1116723de622488d25df8214c1de76efaf"
 dependencies = [
  "hayro-ccitt",
  "hayro-jbig2",
@@ -2799,7 +2799,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "serde",
  "serde_core",
 ]
@@ -6698,7 +6698,7 @@ dependencies = [
  "fearless_simd",
  "fearless_simd_macros",
  "glifo",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "png 0.18.1",
  "vello_common",
 ]
