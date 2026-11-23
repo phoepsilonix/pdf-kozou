@@ -21,7 +21,9 @@ pub struct EngineFallback {
     /// どのエンジンから MuPDF へ切り替わったか: "hayro" (描画) / "lopdf" (PDF 操作)
     pub from: &'static str,
     /// 処理の種類: "render" / "rasterize" / "rasterize_no_text" / "keep-text" /
-    /// "imposition" / "rasterize_imposition" (from = "hayro")、
+    /// "imposition" / "rasterize_imposition" / "keep-text-imposition" / "split_imposition_pdf" /
+    /// "split_cell_render" (from = "hayro")、MuPDF でしか出せない出力 "render_svg" / "split_cell_svg"
+    /// (from = "hayro"。エンジンが hayro / auto のとき)、
     /// "compress" / "compress_clean" / "compress_sanitize" / "compress_subset" / "redact_crop" / "rewrite" (from = "lopdf")、
     /// 画像の最適化を適用できなかった "image_opt_partial" / "image_opt_failed" (from = "lopdf"。
     /// MuPDF への切り替えではない。`is_image_opt`)

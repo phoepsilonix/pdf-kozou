@@ -2427,7 +2427,12 @@ pub fn split_cell_render(req: &SplitCellRenderRequest) -> Result<SplitCellRender
 
     // hayro での描画 (JPEG / PNG)。SVG は MuPDF のみ。"auto" は失敗時に MuPDF 実装へフォールバック。
     if fmt_int == 2 {
-        crate::render::note_mupdf_only("split cell SVG output");
+        crate::render::report_mupdf_only(
+            "split_cell_svg",
+            Some(req.input.as_str()),
+            Some(req.page - 1),
+            "SVG output",
+        );
     } else {
         let engine = crate::render::Engine::resolve_default();
         if engine != crate::render::Engine::MuPdf {

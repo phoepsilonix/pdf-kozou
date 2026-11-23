@@ -275,6 +275,12 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
 
     // SVG は従来の DocumentWriter 方式（Windows では動作しない場合あり）
     if format == "svg" {
+        crate::render::report_mupdf_only(
+            "render_svg",
+            Some(req.path.as_str()),
+            Some(req.page_index),
+            "SVG output",
+        );
         // SVG の場合は Rust バインディングにフォールバック
         // TODO: SVG も C FFI 化する
         let mut doc =
@@ -2186,13 +2192,17 @@ pub(crate) fn optimize_output_pdf_jpegs(path: &str) {
     let _ = path;
 }
 
-/// hayro に未対応の出力 (キープテキスト合成など) で、hayro が要求されたときのログ
-pub(crate) fn note_mupdf_only(what: &str) {
-    let engine = Engine::resolve_default();
-    if engine != Engine::MuPdf {
-        eprintln!(
-            "[render] engine={} requested but {what} is MuPDF-only; using mupdf",
-            engine.name()
-        );
+/// hayro に未対応の出力 (SVG など) を MuPDF で処理するとき、エンジンが hayro / auto なら
+/// その旨を stderr と GUI (engine-fallback) へ通知する。mupdf 指定は明示的な選択なので通知しない。
+/// `page` は 0 始まり。GUI 側が (ファイル, op, 理由) で 1 件にまとめるので、1 ページずつ
+/// 呼ばれる処理 (面付け解除のセル出力など) でも通知は 1 件になる。
+pub(crate) fn report_mupdf_only(
+    op: &'static str,
+    file: Option<&str>,
+    page: Option<i32>,
+    what: &str,
+) {
+    if Engine::resolve_default() != Engine::MuPdf {
+        crate::engine_notice::report_fallback(op, file, page, &format!("{what} is MuPDF-only"));
     }
 }
