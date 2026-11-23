@@ -1,7 +1,7 @@
 {
   "name": "pdf-kozou",
   "private": true,
-  "version": "1.8.30",
+  "version": "1.8.31",
   "type": "module",
   "packageManager": "pnpm@11.28.12",
   "scripts": {
