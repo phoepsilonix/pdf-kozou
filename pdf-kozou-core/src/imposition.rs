@@ -134,11 +134,46 @@ pub(crate) fn compose_with_lopdf(req: &ComposeImpositionPdfRequest) -> Result<()
 
     let cols = req.cols.max(1);
     let rows = req.rows.max(1);
-    let (target_w, target_h) = (req.target_w, req.target_h);
+    let (mut target_w, mut target_h) = (req.target_w, req.target_h);
     let gutter = req.gutter.unwrap_or(0.0).max(0.0);
     let margin = req.margin.unwrap_or(0.0).max(0.0);
     let auto_orient = req.auto_orient.unwrap_or(false);
     let per = (cols * rows) as usize;
+
+    // target_w / target_h <= 1: 自動算出モード (キープテキスト版の面付けが使う)。MuPDF 実装
+    // (kozou_compose_imposition_pdf_keep_text) と同じく、実際に配置されるページの最大幅・最大高さ
+    // (/Rotate 反映後) をセルの大きさにして、シートの寸法を決める。
+    if target_w <= 1.0 || target_h <= 1.0 {
+        let (mut max_w, mut max_h) = (595.0f32, 842.0f32);
+        let mut valid = 0usize;
+        for i in 0..(req.n_sheets.max(0) as usize * per) {
+            let Some(&n) = req.sheet_pages.get(i) else { break };
+            let pno0 = n - 1;
+            if pno0 < 0 || pno0 >= page_count {
+                continue;
+            }
+            let pid = page_ids[pno0 as usize];
+            let mut pb = page_box(&doc, pid, b"CropBox").unwrap_or([0.0; 4]);
+            if rect_is_empty(&pb) {
+                pb = page_box(&doc, pid, b"MediaBox").unwrap_or([0.0; 4]);
+            }
+            let prot = page_rotate_raw(&doc, pid).rem_euclid(360);
+            let (pw, ph) = (pb[2] - pb[0], pb[3] - pb[1]);
+            let (vw, vh) = if prot == 90 || prot == 270 { (ph, pw) } else { (pw, ph) };
+            if valid == 0 {
+                (max_w, max_h) = (vw, vh);
+            } else {
+                max_w = max_w.max(vw);
+                max_h = max_h.max(vh);
+            }
+            valid += 1;
+        }
+        target_w = max_w * cols as f32 + gutter * (cols - 1) as f32 + margin * 2.0;
+        target_h = max_h * rows as f32 + gutter * (rows - 1) as f32 + margin * 2.0;
+    }
+    if target_w <= 1.0 || target_h <= 1.0 {
+        return Err(CoreError::InvalidArg("invalid target page size".into()));
+    }
 
     // 入力のメタデータ(/Info)は出力に継承する
     let metadata = crate::compress::metadata_from_doc(&doc);

@@ -2302,6 +2302,93 @@ fn strip_buried_text_mupdf(
     }
 }
 
+/// 面付け結合のキープテキスト版 (hayro 描画 + lopdf)。
+///
+/// 1) lopdf で、完全に隠れた文字を除去した入力から、ベクター保持の面付けシート (各元ページを
+///    Form XObject にして配置) を一時ファイルに作る (imposition::compose_with_lopdf)。
+/// 2) そのシート PDF を、1up と同じキープテキスト (render_hayro::keep_text_pdf) で処理する。
+///    シートごとに、非テキスト要素を 1 枚の背景ラスタに焼き込み、テキストは元のフォントのまま
+///    ベクターで重ねる。覆いの層分割・顔写真などの背景への焼き込み・隠し直しパッチも 1up と同じ。
+///
+/// 部分的に隠れたテキストは、元のページ単位で調べ、そのページを含むシートだけ隠し直しを試す。
+/// 描けない・変換できない入力は Err (呼び出し側が MuPDF 実装へフォールバックする)。
+#[cfg(feature = "hayro")]
+pub(crate) fn compose_imposition_keep_text_hayro(
+    req: &crate::stext::ComposeImpositionPdfKeepTextRequest,
+) -> std::result::Result<(), String> {
+    let tmp_dir = {
+        let base = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&base);
+        base
+    };
+    let (buried_stripped, _) =
+        strip_buried_for_keep_text(&req.input, &tmp_dir, Some(FULLY_HIDDEN_RATIO));
+    let compose_input: String = buried_stripped
+        .as_deref()
+        .and_then(|p| p.to_str())
+        .unwrap_or(req.input.as_str())
+        .to_string();
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let sheets_path = tmp_dir.join(format!(
+        "kozou_imposed_keeptext_{}_{unique:x}.pdf",
+        std::process::id()
+    ));
+    let sheets_str = sheets_path.to_string_lossy().to_string();
+
+    let result = (|| -> std::result::Result<(), String> {
+        let per = (req.cols * req.rows).max(1) as usize;
+        let compose_req = crate::stext::ComposeImpositionPdfRequest {
+            input: compose_input.clone(),
+            output: sheets_str.clone(),
+            target_w: req.target_w,
+            target_h: req.target_h,
+            cols: req.cols,
+            rows: req.rows,
+            sheet_pages: req.sheet_pages.clone(),
+            n_sheets: req.n_sheets,
+            gutter: req.gutter,
+            margin: req.margin,
+            auto_orient: req.auto_orient,
+            layout_w: None,
+            layout_h: None,
+            layout_em: None,
+        };
+        crate::imposition::compose_with_lopdf(&compose_req).map_err(|e| e.to_string())?;
+
+        // 隠し直しを試すシート (1 ベース): 部分的に隠れたテキストのある元ページを含むもの
+        let covered_src = partially_covered_pages(&compose_input, None)
+            .ok_or_else(|| "could not check for covered text".to_string())?;
+        let cover_sheets: Vec<i32> = (0..req.n_sheets.max(0) as usize)
+            .filter(|&s| {
+                req.sheet_pages[s * per..(s + 1) * per]
+                    .iter()
+                    .any(|p| covered_src.contains(p))
+            })
+            .map(|s| s as i32 + 1)
+            .collect();
+
+        crate::render_hayro::keep_text_pdf(
+            &sheets_str,
+            &req.output,
+            req.dpi.unwrap_or(150.0),
+            req.use_png.unwrap_or(false),
+            req.quality.unwrap_or(85).clamp(1, 100) as u8,
+            None,
+            req.supersample_max.unwrap_or(1),
+            Some(&cover_sheets),
+        )
+    })();
+
+    let _ = std::fs::remove_file(&sheets_path);
+    if let Some(p) = &buried_stripped {
+        let _ = std::fs::remove_file(p);
+    }
+    result
+}
+
 /// 前処理の除去しきい値。hayro 版は完全に隠れた文字だけ、MuPDF 版は既定 (None = 0.8)。
 fn keep_text_strip_ratio(hayro_first: bool) -> Option<f32> {
     #[cfg(feature = "hayro")]

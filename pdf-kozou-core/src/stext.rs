@@ -2104,7 +2104,6 @@ pub fn compose_imposition_pdf_keep_text(
     use crate::ffi::{FfiResult, kozou_compose_imposition_pdf_keep_text, kozou_new_context};
     use std::ffi::CString;
 
-    crate::render::note_mupdf_only("keep-text composition");
     let per = (req.cols * req.rows).max(1);
     let expected = (req.n_sheets * per) as usize;
     if req.sheet_pages.len() != expected {
@@ -2126,6 +2125,46 @@ pub fn compose_imposition_pdf_keep_text(
         && !parent.as_os_str().is_empty()
     {
         let _ = std::fs::create_dir_all(parent);
+    }
+
+    // hayro (描画) + lopdf (面付け・テキスト層・PDF 組み立て) での生成。
+    // "auto" は、失敗したとき (未対応の部品など) MuPDF 実装へフォールバックする。
+    let engine = crate::render::Engine::resolve_default();
+    if engine != crate::render::Engine::MuPdf {
+        #[cfg(feature = "hayro")]
+        {
+            let t0 = std::time::Instant::now();
+            match crate::compress::compose_imposition_keep_text_hayro(req) {
+                Ok(()) => {
+                    eprintln!(
+                        "[render] engine=hayro (requested={}) keep-text imposition {} sheets {:?}",
+                        engine.name(),
+                        req.n_sheets,
+                        t0.elapsed()
+                    );
+                    let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+                    return Ok(ComposeImpositionPdfKeepTextResponse {
+                        ok: true,
+                        output_bytes: ob,
+                    });
+                }
+                Err(e) if engine == crate::render::Engine::Hayro => {
+                    eprintln!("[render] engine=hayro keep-text imposition failed (no fallback): {e}");
+                    return Err(CoreError::Internal(format!("hayro keep-text imposition: {e}")));
+                }
+                Err(e) => crate::engine_notice::report_fallback(
+                    "keep-text-imposition",
+                    Some(req.input.as_str()),
+                    None,
+                    &e.to_string(),
+                ),
+            }
+        }
+        #[cfg(not(feature = "hayro"))]
+        eprintln!(
+            "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+            engine.name()
+        );
     }
 
     let tmp_dir_path = {
