@@ -1915,6 +1915,9 @@ pub struct SplitImpositionPdfRequest {
     pub layout_h: Option<f32>,
     #[serde(default)]
     pub layout_em: Option<f32>,
+    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1以下/省略=無効 (hayro のときだけ有効)。
+    #[serde(default)]
+    pub supersample_max: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1939,6 +1942,60 @@ pub fn split_imposition_pdf(req: &SplitImpositionPdfRequest) -> Result<SplitImpo
         && !parent.as_os_str().is_empty()
     {
         let _ = std::fs::create_dir_all(parent);
+    }
+
+    // hayro (描画) + lopdf (PDF 組み立て) での出力。"auto" は失敗時に MuPDF 実装へフォールバック。
+    let engine = crate::render::Engine::resolve_default();
+    if engine != crate::render::Engine::MuPdf {
+        #[cfg(feature = "hayro")]
+        {
+            let t0 = std::time::Instant::now();
+            match crate::render_hayro::split_cells_pdf(
+                &req.input,
+                &req.output,
+                &req.cells,
+                req.cols,
+                req.rows,
+                req.dpi,
+                req.use_png.unwrap_or(false),
+                req.quality.unwrap_or(85).clamp(1, 100) as u8,
+                req.supersample_max.unwrap_or(1),
+            ) {
+                Ok(()) => {
+                    eprintln!(
+                        "[render] engine=hayro (requested={}) split_imposition {} cells {:?}",
+                        engine.name(),
+                        req.cells.len(),
+                        t0.elapsed()
+                    );
+                    // 入力PDFのメタデータ（/Info）を出力に継承する
+                    let metadata = crate::compress::collect_metadata(&req.input);
+                    if !metadata.is_empty() {
+                        crate::compress::copy_metadata_after_write(&req.output, &metadata);
+                    }
+                    let ob = std::fs::metadata(&req.output).map(|m| m.len()).unwrap_or(0);
+                    return Ok(SplitImpositionPdfResponse {
+                        ok: true,
+                        output_bytes: ob,
+                    });
+                }
+                Err(e) if engine == crate::render::Engine::Hayro => {
+                    eprintln!("[render] engine=hayro split_imposition failed (no fallback): {e}");
+                    return Err(CoreError::Internal(format!("hayro split_imposition: {e}")));
+                }
+                Err(e) => crate::engine_notice::report_fallback(
+                    "split_imposition_pdf",
+                    Some(req.input.as_str()),
+                    None,
+                    &e.to_string(),
+                ),
+            }
+        }
+        #[cfg(not(feature = "hayro"))]
+        eprintln!(
+            "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+            engine.name()
+        );
     }
 
     let tmp_dir = {
@@ -2296,6 +2353,9 @@ pub struct SplitCellRenderRequest {
     pub layout_h: Option<f32>,
     #[serde(default)]
     pub layout_em: Option<f32>,
+    /// 高品質アンチエイリアス(スーパーサンプリング)倍率。1以下/省略=無効 (hayro のときだけ有効)。
+    #[serde(default)]
+    pub supersample_max: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2325,6 +2385,63 @@ pub fn split_cell_render(req: &SplitCellRenderRequest) -> Result<SplitCellRender
         _ => 0,
     };
     let quality = req.quality.unwrap_or(85);
+
+    // hayro での描画 (JPEG / PNG)。SVG は MuPDF のみ。"auto" は失敗時に MuPDF 実装へフォールバック。
+    if fmt_int == 2 {
+        crate::render::note_mupdf_only("split cell SVG output");
+    } else {
+        let engine = crate::render::Engine::resolve_default();
+        if engine != crate::render::Engine::MuPdf {
+            #[cfg(feature = "hayro")]
+            {
+                let t0 = std::time::Instant::now();
+                match crate::render_hayro::render_split_cell_encoded(
+                    &req.input,
+                    req.page,
+                    req.cols,
+                    req.rows,
+                    req.cell_row,
+                    req.cell_col,
+                    req.dpi,
+                    fmt_int == 1,
+                    quality.clamp(1, 100) as u8,
+                    req.supersample_max.unwrap_or(1),
+                ) {
+                    Ok(bytes) => {
+                        eprintln!(
+                            "[render] engine=hayro (requested={}) split_cell p{} ({},{}) {:?}",
+                            engine.name(),
+                            req.page,
+                            req.cell_row,
+                            req.cell_col,
+                            t0.elapsed()
+                        );
+                        use base64::Engine as _;
+                        return Ok(SplitCellRenderResponse {
+                            ok: true,
+                            data_b64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                            format: fmt_str.to_string(),
+                        });
+                    }
+                    Err(e) if engine == crate::render::Engine::Hayro => {
+                        eprintln!("[render] engine=hayro split_cell failed (no fallback): {e}");
+                        return Err(CoreError::Internal(format!("hayro split_cell: {e}")));
+                    }
+                    Err(e) => crate::engine_notice::report_fallback(
+                        "split_cell_render",
+                        Some(req.input.as_str()),
+                        Some(req.page),
+                        &e.to_string(),
+                    ),
+                }
+            }
+            #[cfg(not(feature = "hayro"))]
+            eprintln!(
+                "[render] engine={} requested but this build has no \"hayro\" feature; using mupdf",
+                engine.name()
+            );
+        }
+    }
 
     let data_b64 = unsafe {
         let ctx = kozou_new_context();

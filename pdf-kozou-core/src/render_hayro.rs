@@ -246,10 +246,28 @@ fn render_pixmap<'a>(
     mult: u32,
 ) -> Pixmap {
     let (pw, ph) = page.render_dimensions();
-    let sx = width as f64 / pw as f64;
-    let sy = height as f64 / ph as f64;
+    render_pixmap_region(page, cache, settings, width, height, mult, (0.0, 0.0, pw, ph))
+}
+
+/// ページ内の矩形 `region` = (x, y, 幅, 高さ) (pt、左上原点の描画座標) を、`width`×`height` の
+/// Pixmap に描く。面付け解除 (ページを cols×rows に分けた 1 セルだけを描く) で使う。
+/// ページ全体なら region = (0, 0, ページ幅, ページ高)。
+fn render_pixmap_region<'a>(
+    page: &'a Page<'a>,
+    cache: &RenderCache<'a>,
+    settings: &InterpreterSettings,
+    width: u16,
+    height: u16,
+    mult: u32,
+    region: (f32, f32, f32, f32),
+) -> Pixmap {
+    let (rx, ry, rw, rh) = region;
+    let sx = width as f64 / rw as f64;
+    let sy = height as f64 / rh as f64;
     let mut ctx = RenderContext::new(width, height);
-    let transform = Affine::scale_non_uniform(sx, sy) * page.initial_transform(true).to_kurbo();
+    let transform = Affine::scale_non_uniform(sx, sy)
+        * Affine::translate((-(rx as f64), -(ry as f64)))
+        * page.initial_transform(true).to_kurbo();
     // 画像は常にバイリニア補間で描く。hayro は /Interpolate の無い画像を最近傍補間 (拡大するとブロック状)
     // で描くが、MuPDF や poppler など一般のビューアは拡大時にも補間して滑らかに描く。
     let (min_stroke_width, min_text_stroke_width) = min_stroke_widths_for(mult);
@@ -286,11 +304,34 @@ fn raster_rgb<'a>(
     dpi: f32,
     supersample_max: i32,
 ) -> Result<Vec<u8>, String> {
+    let (pw, ph) = page.render_dimensions();
+    raster_rgb_region(page, cache, settings, tw, th, dpi, supersample_max, (0.0, 0.0, pw, ph))
+}
+
+/// `raster_rgb` の矩形指定版。`region` はページ内の描画範囲 (x, y, 幅, 高さ。pt)。
+fn raster_rgb_region<'a>(
+    page: &'a Page<'a>,
+    cache: &RenderCache<'a>,
+    settings: &InterpreterSettings,
+    tw: u32,
+    th: u32,
+    dpi: f32,
+    supersample_max: i32,
+    region: (f32, f32, f32, f32),
+) -> Result<Vec<u8>, String> {
     if tw < 1 || th < 1 || tw > u16::MAX as u32 || th > u16::MAX as u32 {
         return Err(format!("unsupported pixmap size {tw}x{th}"));
     }
     let m = supersample_mult(dpi, supersample_max, tw, th);
-    let pixmap = render_pixmap(page, cache, settings, (tw * m) as u16, (th * m) as u16, m);
+    let pixmap = render_pixmap_region(
+        page,
+        cache,
+        settings,
+        (tw * m) as u16,
+        (th * m) as u16,
+        m,
+        region,
+    );
     // 背景は不透明な白のため、premultiplied RGBA の RGB をそのまま使える
     let src = pixmap.data_as_u8_slice();
     let (tw, th, m) = (tw as usize, th as usize, m as usize);
@@ -810,6 +851,231 @@ pub fn rasterize_imposition_pdf(
 
     if kids.is_empty() {
         return Err("no sheets".into());
+    }
+    let count = kids.len() as i64;
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => kids,
+            "Count" => count,
+        }),
+    );
+    let catalog_id = doc.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages_id,
+    });
+    doc.trailer.set("Root", catalog_id);
+    doc.save(output).map_err(|e| format!("save: {e}"))?;
+    Ok(())
+}
+
+// ── 面付け解除 (ページを cols×rows のセルに分けて 1 セルずつ画像化) ─────────────
+//
+// MuPDF 実装 (mupdf_safe.c の kozou_render_cell / kozou_split_imposition_pdf) と同じ規則:
+//   ページ (回転後の表示寸法) を cols×rows に均等分割し、(cell_row, cell_col) の 1 セルだけを描く
+//   (行は上から、列は左から)。セルの画素数 = セル寸法 (pt) × dpi/72 の四捨五入
+//   ページ番号 0 (空白セル) は白紙ページ。寸法は最初の有効セルと同じ (無ければ A4 相当)
+//   範囲外のページ番号は読み飛ばす
+
+/// 描画した 1 セル (RGB8)
+struct CellImage {
+    rgb: Vec<u8>,
+    width_px: u32,
+    height_px: u32,
+    /// セルの大きさ (pt)。画像 PDF のページ寸法に使う
+    cell_w_pt: f32,
+    cell_h_pt: f32,
+}
+
+fn render_cell<'a>(
+    page: &'a Page<'a>,
+    cache: &RenderCache<'a>,
+    settings: &InterpreterSettings,
+    cols: i32,
+    rows: i32,
+    cell_row: i32,
+    cell_col: i32,
+    dpi: f32,
+    supersample_max: i32,
+) -> Result<CellImage, String> {
+    if cols < 1 || rows < 1 || !(dpi > 0.0) {
+        return Err("invalid split parameters".into());
+    }
+    if cell_row < 0 || cell_row >= rows || cell_col < 0 || cell_col >= cols {
+        return Err(format!(
+            "cell ({cell_row},{cell_col}) out of range ({rows}x{cols})"
+        ));
+    }
+    if let Some(feature) = unsupported_feature(page) {
+        return Err(format!("unsupported feature: {feature}"));
+    }
+    let (pw, ph) = page.render_dimensions();
+    if !(pw > 0.0 && ph > 0.0) {
+        return Err("empty page".into());
+    }
+    let cw = pw / cols as f32;
+    let ch = ph / rows as f32;
+    let scale = dpi / 72.0;
+    let px_w = ((cw * scale + 0.5) as i64).max(1);
+    let px_h = ((ch * scale + 0.5) as i64).max(1);
+    if px_w > u16::MAX as i64 || px_h > u16::MAX as i64 {
+        return Err(format!("unsupported cell size {px_w}x{px_h}"));
+    }
+    let total_bytes = (px_w as u128) * (px_h as u128) * 3;
+    if total_bytes > 1024 * 1024 * 1024 {
+        return Err(format!(
+            "split: output too large ({px_w}x{px_h} @ 3ch = {}MB > 1024MB)",
+            total_bytes / (1024 * 1024)
+        ));
+    }
+    let rgb = raster_rgb_region(
+        page,
+        cache,
+        settings,
+        px_w as u32,
+        px_h as u32,
+        dpi,
+        supersample_max,
+        (cell_col as f32 * cw, cell_row as f32 * ch, cw, ch),
+    )?;
+    Ok(CellImage {
+        rgb,
+        width_px: px_w as u32,
+        height_px: px_h as u32,
+        cell_w_pt: cw,
+        cell_h_pt: ch,
+    })
+}
+
+/// 面付け解除した 1 セルを PNG / JPEG にエンコードして返す (split_cell_render 用)。
+/// `page_no` は 1 始まり。
+pub fn render_split_cell_encoded(
+    path: &str,
+    page_no: i32,
+    cols: i32,
+    rows: i32,
+    cell_row: i32,
+    cell_col: i32,
+    dpi: f32,
+    png: bool,
+    quality: u8,
+    supersample_max: i32,
+) -> Result<Vec<u8>, String> {
+    let pdf = load_pdf(path)?;
+    let pages = pdf.pages();
+    let page = usize::try_from(page_no - 1)
+        .ok()
+        .and_then(|i| pages.get(i))
+        .ok_or_else(|| format!("page {page_no} out of range ({})", pages.len()))?;
+    let settings = interpreter_settings();
+    let cache = RenderCache::new();
+    let cell = render_cell(
+        page,
+        &cache,
+        &settings,
+        cols,
+        rows,
+        cell_row,
+        cell_col,
+        dpi,
+        supersample_max,
+    )?;
+    encode_rgb(&cell.rgb, cell.width_px, cell.height_px, png, quality)
+}
+
+/// 面付け解除して画像 PDF を書き出す (split_imposition_pdf 用)。
+/// `cells` は出力順の [ページ(1 始まり。0 = 白紙), 行, 列]。1 セルが 1 PDF ページ。
+/// PDF の組み立ては lopdf (JPEG は DCT のまま、PNG は Flate)。
+pub fn split_cells_pdf(
+    input: &str,
+    output: &str,
+    cells: &[[i32; 3]],
+    cols: i32,
+    rows: i32,
+    dpi: f32,
+    png: bool,
+    quality: u8,
+    supersample_max: i32,
+) -> Result<(), String> {
+    use lopdf::{Document, Object, Stream, dictionary};
+
+    if cols < 1 || rows < 1 || !(dpi > 0.0) {
+        return Err("invalid split parameters".into());
+    }
+    let pdf = load_pdf(input)?;
+    let pages = pdf.pages();
+    if pages.len() == 0 {
+        return Err("document has no pages".into());
+    }
+    let settings = interpreter_settings();
+    let cache = RenderCache::new();
+
+    // 白紙ページの寸法: 最初の有効セルの大きさ (無ければ A4 相当)
+    let mut blank = (595.0f32, 842.0f32);
+    for c in cells {
+        if let Some(p) = usize::try_from(c[0] - 1).ok().and_then(|i| pages.get(i)) {
+            let (w, h) = p.render_dimensions();
+            if w > 0.0 && h > 0.0 {
+                blank = (w / cols as f32, h / rows as f32);
+            }
+            break;
+        }
+    }
+
+    let mut doc = Document::with_version("1.5");
+    let pages_id = doc.new_object_id();
+    let mut kids: Vec<Object> = Vec::new();
+
+    for c in cells {
+        if c[0] < 1 {
+            // 空白セル
+            let content_id = doc.add_object(Stream::new(dictionary! {}, b" ".to_vec()));
+            let page_id = doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "MediaBox" => vec![0.into(), 0.into(), blank.0.into(), blank.1.into()],
+                "Resources" => dictionary! {},
+                "Contents" => content_id,
+            });
+            kids.push(page_id.into());
+            continue;
+        }
+        let Some(page) = usize::try_from(c[0] - 1).ok().and_then(|i| pages.get(i)) else {
+            continue; // 範囲外のページは読み飛ばす (MuPDF 実装と同じ)
+        };
+        let cell = render_cell(
+            page,
+            &cache,
+            &settings,
+            cols,
+            rows,
+            c[1],
+            c[2],
+            dpi,
+            supersample_max,
+        )?;
+        let img_stream = image_stream(cell.rgb, cell.width_px, cell.height_px, png, quality)?;
+        let img_id = doc.add_object(img_stream);
+        let content = format!(
+            "q\n{:.4} 0 0 {:.4} 0 0 cm\n/Im0 Do\nQ\n",
+            cell.cell_w_pt, cell.cell_h_pt
+        );
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), cell.cell_w_pt.into(), cell.cell_h_pt.into()],
+            "Resources" => dictionary! {
+                "XObject" => dictionary! { "Im0" => img_id },
+            },
+            "Contents" => content_id,
+        });
+        kids.push(page_id.into());
+    }
+
+    if kids.is_empty() {
+        return Err("no pages".into());
     }
     let count = kids.len() as i64;
     doc.objects.insert(

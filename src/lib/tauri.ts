@@ -578,6 +578,8 @@ export interface SplitImpositionPdfRequest {
   layoutW?: number;
   layoutH?: number;
   layoutEm?: number;
+  /** 高品質アンチエイリアスの倍率(hayro のときだけ有効)。省略=無効 */
+  supersampleMax?: number;
 }
 
 export interface SplitImpositionPdfResponse {
@@ -719,6 +721,7 @@ export async function splitImpositionPdf(
       layout_w: req.layoutW ?? null,
       layout_h: req.layoutH ?? null,
       layout_em: req.layoutEm ?? null,
+      supersample_max: req.supersampleMax ?? null,
     },
   });
 }
@@ -737,6 +740,8 @@ export interface SplitCellRenderRequest {
   layoutW?: number;
   layoutH?: number;
   layoutEm?: number;
+  /** 高品質アンチエイリアスの倍率(hayro のときだけ有効)。省略=無効 */
+  supersampleMax?: number;
 }
 
 export interface SplitCellRenderResponse {
@@ -767,6 +772,7 @@ export async function splitCellRender(
       layout_w: req.layoutW ?? null,
       layout_h: req.layoutH ?? null,
       layout_em: req.layoutEm ?? null,
+      supersample_max: req.supersampleMax ?? null,
     },
   });
 }

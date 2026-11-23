@@ -761,6 +761,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             layoutW: convertLayoutW,
             layoutH: convertLayoutH,
             layoutEm: convertLayoutEm,
+            supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
           });
           await commitSave(outPath);
           setPdfOutPath(outPath);
@@ -823,6 +824,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
             layoutW: convertLayoutW,
             layoutH: convertLayoutH,
             layoutEm: convertLayoutEm,
+            supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
           });
           const outName = imageName(srcStem, keepOriginalName, k + 1, ext);
           const outPath = await overwriteGuard.resolveOrThrow(joinPath(resolvedDir, outName));
@@ -1366,6 +1368,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
               layoutW: convertLayoutW,
               layoutH: convertLayoutH,
               layoutEm: convertLayoutEm,
+              supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
             });
             progress.done.push({ file: f.filename, count: cells.length, pdfPath: outPath });
           } else {
@@ -1389,6 +1392,7 @@ export function ImageExportPage({ filePath, pdfInfo, batchFiles }: Props) {
                 layoutW: convertLayoutW,
                 layoutH: convertLayoutH,
                 layoutEm: convertLayoutEm,
+                supersampleMax: supersample ? SUPERSAMPLE_MAX_MULT : undefined,
               });
 
               const outName = imageName(stem, false, k + 1, ext);
