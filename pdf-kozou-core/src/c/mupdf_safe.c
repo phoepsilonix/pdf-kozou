@@ -1543,6 +1543,104 @@ static fz_device *kozou_new_page_draw_device(fz_context *ctx, fz_matrix transfor
     return fz_new_draw_device_type3(ctx, transform, dest);
 }
 
+/* 文字を、グリフの画像 (ビットマップ) ではなく輪郭 (パス) で描く fill_text。
+ *
+ * MuPDF の通常のテキスト描画は、グリフのビットマップを画素格子に丸めた位置へ貼る
+ * (draw-glyph.c の fz_subpixel_adjust: 縦は常に整数画素、横も大きい文字 (48px 以上)
+ * では整数画素に丸める)。このため、文字の位置が最大 0.5 画素 (144dpi で 0.25pt) ずれる。
+ * 隠し直しパッチは、この描画結果 (元ページ全体 = full) の画素を焼き込むので、
+ * ビューアがベクターで描く文字より、パッチの中の文字が少しずれて見える
+ * (キラキラが重なった大きな文字で目立つ)。輪郭で描けば、丸めずに正確な位置に出る
+ * (MuPDF 自身も、ビットマップにできないグリフはこの方法で描いている)。
+ *
+ * Type3 フォントは輪郭を取れないので、従来の描画に任せる。
+ * 元の fill_text は、どの描画デバイスでも同じ関数なので、作成のたびに控える。 */
+typedef void (*KozouFillTextFn)(fz_context *, fz_device *, const fz_text *, fz_matrix,
+                                fz_colorspace *, const float *, float, fz_color_params);
+static KozouFillTextFn kozou_draw_fill_text_orig = NULL;
+
+static void kozou_exact_fill_text(
+    fz_context *ctx, fz_device *dev, const fz_text *text, fz_matrix ctm,
+    fz_colorspace *cs, const float *color, float alpha, fz_color_params cp)
+{
+    int use_orig = (dev->fill_path == NULL);
+    for (fz_text_span *span = text->head; span && !use_orig; span = span->next)
+        if (!span->font || fz_font_t3_procs(ctx, span->font)) use_orig = 1;
+    if (use_orig) {
+        if (kozou_draw_fill_text_orig)
+            kozou_draw_fill_text_orig(ctx, dev, text, ctm, cs, color, alpha, cp);
+        return;
+    }
+    for (fz_text_span *span = text->head; span; span = span->next) {
+        fz_matrix tm = span->trm;
+        for (int i = 0; i < span->len; i++) {
+            int gid = span->items[i].gid;
+            if (gid < 0) continue;
+            tm.e = span->items[i].x;
+            tm.f = span->items[i].y;
+            fz_path *path = fz_outline_glyph(ctx, span->font, gid, tm);
+            if (!path) continue;
+            fz_try(ctx)
+                dev->fill_path(ctx, dev, path, 0, ctm, cs, color, alpha, cp);
+            fz_always(ctx)
+                fz_drop_path(ctx, path);
+            fz_catch(ctx)
+                fz_rethrow(ctx);
+        }
+    }
+}
+
+/* 縁取り (文字の輪郭線) も同じ理由で丸められるので、同様に輪郭で描く。 */
+typedef void (*KozouStrokeTextFn)(fz_context *, fz_device *, const fz_text *, const fz_stroke_state *,
+                                  fz_matrix, fz_colorspace *, const float *, float, fz_color_params);
+static KozouStrokeTextFn kozou_draw_stroke_text_orig = NULL;
+
+static void kozou_exact_stroke_text(
+    fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke,
+    fz_matrix ctm, fz_colorspace *cs, const float *color, float alpha, fz_color_params cp)
+{
+    int use_orig = (dev->stroke_path == NULL);
+    for (fz_text_span *span = text->head; span && !use_orig; span = span->next)
+        if (!span->font || fz_font_t3_procs(ctx, span->font)) use_orig = 1;
+    if (use_orig) {
+        if (kozou_draw_stroke_text_orig)
+            kozou_draw_stroke_text_orig(ctx, dev, text, stroke, ctm, cs, color, alpha, cp);
+        return;
+    }
+    for (fz_text_span *span = text->head; span; span = span->next) {
+        fz_matrix tm = span->trm;
+        for (int i = 0; i < span->len; i++) {
+            int gid = span->items[i].gid;
+            if (gid < 0) continue;
+            tm.e = span->items[i].x;
+            tm.f = span->items[i].y;
+            fz_path *path = fz_outline_glyph(ctx, span->font, gid, tm);
+            if (!path) continue;
+            fz_try(ctx)
+                dev->stroke_path(ctx, dev, path, stroke, ctm, cs, color, alpha, cp);
+            fz_always(ctx)
+                fz_drop_path(ctx, path);
+            fz_catch(ctx)
+                fz_rethrow(ctx);
+        }
+    }
+}
+
+/* kozou_new_page_draw_device の、文字を輪郭で描く版 (上の説明を参照)。 */
+static fz_device *kozou_new_page_draw_device_exact(fz_context *ctx, fz_matrix transform, fz_pixmap *dest)
+{
+    fz_device *dev = fz_new_draw_device_type3(ctx, transform, dest);
+    if (dev->fill_text && dev->fill_text != kozou_exact_fill_text) {
+        kozou_draw_fill_text_orig = dev->fill_text;
+        dev->fill_text = kozou_exact_fill_text;
+    }
+    if (dev->stroke_text && dev->stroke_text != kozou_exact_stroke_text) {
+        kozou_draw_stroke_text_orig = dev->stroke_text;
+        dev->stroke_text = kozou_exact_stroke_text;
+    }
+    return dev;
+}
+
 /* 汎用の低レベルプリミティブ: 与えられた ctm・目標サイズでページを
  * pixmap にレンダリングする。mult<=1 なら直接描画(従来と同一)。
  * mult>1 なら ctm をさらに mult 倍したデバイス空間で一時的に描いてから
@@ -1550,9 +1648,9 @@ static fz_device *kozou_new_page_draw_device(fz_context *ctx, fz_matrix transfor
  * する。exclude_text はテキスト描画を無効化するかどうか。
  * page には fz_run_page で描画できるもの(fz_page* または面付けの
  * サブページ)を渡す。                                                */
-static fz_pixmap *kozou_render_ctm_to_pixmap(
+static fz_pixmap *kozou_render_ctm_to_pixmap_ex(
     fz_context *ctx, fz_page *page, fz_matrix ctm,
-    int target_w, int target_h, int mult, int exclude_text)
+    int target_w, int target_h, int mult, int exclude_text, int exact_text)
 {
     fz_colorspace *rgb = fz_device_rgb(ctx);
     fz_irect target_bbox = { 0, 0, target_w, target_h };
@@ -1561,7 +1659,8 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
     if (mult <= 1) {
         pixmap = fz_new_pixmap_with_bbox(ctx, rgb, target_bbox, NULL, 0);
         fz_clear_pixmap_with_value(ctx, pixmap, 0xff);
-        fz_device *draw_dev = kozou_new_page_draw_device(ctx, ctm, pixmap);
+        fz_device *draw_dev = (exact_text ? kozou_new_page_draw_device_exact(ctx, ctm, pixmap)
+                                       : kozou_new_page_draw_device(ctx, ctm, pixmap));
         if (exclude_text) {
             draw_dev->fill_text        = NULL;
             draw_dev->stroke_text      = NULL;
@@ -1589,7 +1688,8 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
         fz_clear_pixmap_with_value(ctx, big, 0xff);
 
         fz_try(ctx) {
-            fz_device *draw_dev = kozou_new_page_draw_device(ctx, big_ctm, big);
+            fz_device *draw_dev = (exact_text ? kozou_new_page_draw_device_exact(ctx, big_ctm, big)
+                                           : kozou_new_page_draw_device(ctx, big_ctm, big));
             if (exclude_text) {
                 draw_dev->fill_text        = NULL;
                 draw_dev->stroke_text      = NULL;
@@ -1620,6 +1720,13 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
     return pixmap;
 }
 
+static fz_pixmap *kozou_render_ctm_to_pixmap(
+    fz_context *ctx, fz_page *page, fz_matrix ctm,
+    int target_w, int target_h, int mult, int exclude_text)
+{
+    return kozou_render_ctm_to_pixmap_ex(ctx, page, ctm, target_w, target_h, mult, exclude_text, 0);
+}
+
 /* ページを pixmap にレンダリングする共通ヘルパー(bounds+dpiベース)。
  * supersample_max > 1 かつ dpi がしきい値未満の場合は、内部を高dpiで
  * レンダリングしてから目標サイズへ高品質ダウンサンプリングする。
@@ -1627,9 +1734,9 @@ static fz_pixmap *kozou_render_ctm_to_pixmap(
  * (kozou_compose_image_pdf_keep_text の背景画像生成用)。
  * *out_ctm / *out_bbox には「目標(最終)dpiでの」ctm/bbox を返す
  * (呼び出し側は従来通りこれを使って配置座標を計算できる)。         */
-static fz_pixmap *kozou_render_page_to_pixmap_fit(
+static fz_pixmap *kozou_render_page_to_pixmap_fit_ex(
     fz_context *ctx, fz_page *page, fz_rect bounds,
-    float dpi, int supersample_max, int exclude_text,
+    float dpi, int supersample_max, int exclude_text, int exact_text,
     KozouFit fit, fz_matrix *out_ctm, fz_irect *out_bbox)
 {
     fz_matrix ctm  = fz_scale(fit.s.x, fit.s.y);
@@ -1640,13 +1747,22 @@ static fz_pixmap *kozou_render_page_to_pixmap_fit(
     int mult = kozou_compute_supersample_mult(
         dpi, supersample_max, (float)target_w, (float)target_h);
 
-    fz_pixmap *pixmap = kozou_render_ctm_to_pixmap(
-        ctx, page, ctm, target_w, target_h, mult, exclude_text);
+    fz_pixmap *pixmap = kozou_render_ctm_to_pixmap_ex(
+        ctx, page, ctm, target_w, target_h, mult, exclude_text, exact_text);
     kozou_replicate_partial_edges(pixmap, &fit);
 
     if (out_ctm)  *out_ctm  = ctm;
     if (out_bbox) *out_bbox = bbox;
     return pixmap;
+}
+
+static fz_pixmap *kozou_render_page_to_pixmap_fit(
+    fz_context *ctx, fz_page *page, fz_rect bounds,
+    float dpi, int supersample_max, int exclude_text,
+    KozouFit fit, fz_matrix *out_ctm, fz_irect *out_bbox)
+{
+    return kozou_render_page_to_pixmap_fit_ex(ctx, page, bounds, dpi, supersample_max,
+                                              exclude_text, 0, fit, out_ctm, out_bbox);
 }
 
 /* 従来の呼び出し口 (kozou_fit_page = 縦横別倍率・画像=ページ寸法)。 */
@@ -8236,7 +8352,8 @@ static fz_pixmap *kozou_render_text_layer_rgba(
         big = fz_new_pixmap_with_bbox(ctx, rgb, big_bbox, NULL, 1);
         fz_clear_pixmap(ctx, big); /* 全透明 */
 
-        fz_device *dev = kozou_new_page_draw_device(ctx, big_ctm, big);
+        /* 元ページ全体 (full) と同じく、文字は輪郭で描く (位置を丸めない)。 */
+        fz_device *dev = kozou_new_page_draw_device_exact(ctx, big_ctm, big);
         dev->fill_image = NULL; /* 背景画像は描かない */
         fz_try(ctx) {
             fz_run_page(ctx, page, dev, fz_identity, NULL);
@@ -8819,10 +8936,12 @@ static int kozou_keeptext_add_partial_covers(
 
             /* 元ページの全描画 (テキスト込み)。背景と同じ ctm/サイズ/
              * スーパーサンプリング設定で描くので、同一の画素格子になる。 */
-            full = kozou_render_page_to_pixmap_fit(ctx, render_page, bounds, dpi,
-                                                   supersample_max, 0,
-                                                   kozou_fit_page_for_raster(bounds, dpi),
-                                                   NULL, NULL);
+            /* 文字は輪郭で描く (パッチに焼き込む文字の位置を、ビューアが描く
+             * ベクターの文字に合わせるため。kozou_exact_fill_text のコメント参照)。 */
+            full = kozou_render_page_to_pixmap_fit_ex(ctx, render_page, bounds, dpi,
+                                                      supersample_max, 0, 1,
+                                                      kozou_fit_page_for_raster(bounds, dpi),
+                                                      NULL, NULL);
             if (full->w != nt_pix->w || full->h != nt_pix->h || full->n < 3)
                 fz_throw(ctx, FZ_ERROR_GENERIC, "cover: render size mismatch");
 
