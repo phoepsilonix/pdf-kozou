@@ -9,7 +9,8 @@
 // - 埋め込みフォントを持たない PDF では、OS にインストールされているフォントを
 //   fontdb で探して代替に使う。見つからない場合のみ hayro 同梱の標準フォント
 //   (Liberation 互換) にフォールバックする。
-// - このモジュールは crate 内の他モジュールに依存しない (単体で検証できるようにするため)。
+// - このモジュールは crate 内の他モジュールにほとんど依存しない (単体で検証できるようにするため)。
+//   例外は、キープテキストの判定を MuPDF の描画でも動かすための crate::ffi::MuRaster だけ。
 //   エラーは文字列で返し、呼び出し側 (render.rs) が MuPDF 描画へフォールバックする。
 
 use std::collections::HashMap;
@@ -1238,7 +1239,10 @@ fn decode_jpeg_rgb(jpeg: &[u8], tw: u32, th: u32) -> Result<Vec<u8>, String> {
 /// 元の PDF で後から描いた物にテキストの一部が隠れていたページを渡す。そのページだけ、
 /// 元の描画と出力の描画を hayro で比べ、見え方が違う箇所を、背景の画素で作ったマスク付きパッチで
 /// テキストの上から隠し直す。
-pub fn keep_text_pdf(
+///
+/// `mupdf`: 描画 (背景・判定のための比較) を MuPDF で行う。覆いの判定とパッチの計算は hayro と共通。
+#[allow(clippy::too_many_arguments)]
+pub fn keep_text_pdf_with(
     input: &str,
     output: &str,
     dpi: f32,
@@ -1247,6 +1251,7 @@ pub fn keep_text_pdf(
     pages: Option<&[i32]>,
     supersample_max: i32,
     cover_pages: Option<&[i32]>,
+    mupdf: bool,
 ) -> Result<(), String> {
     use crate::content_filter::{self, Mode};
     use lopdf::{Document, Object, Stream, dictionary};
@@ -1263,7 +1268,8 @@ pub fn keep_text_pdf(
     }
     // 覆い (文字の上に半透明に重なるベクターの Form) は、写真などの上でなければ、背景に焼かず
     // ベクターのまま文字層に残す (文字との描画順が元のままになり、文字がにじまない)。
-    let settings = interpreter_settings();
+    // 描画 (背景・判定のための比較) を hayro で行うか、MuPDF で行うか。判定とパッチの計算は共通
+    let settings = if mupdf { Rast::mupdf()? } else { Rast::hayro() };
     let dpi_f = dpi.max(1.0);
     let n_doc = doc.get_pages().len() as i32;
     let selected_pre: Vec<i32> = match pages {
@@ -1275,10 +1281,11 @@ pub fn keep_text_pdf(
     let tstats = content_filter::transform_covers(&mut doc, Mode::TextOnly, &cover_set)?;
     // 2) 背景 (テキストと覆いを除いた複製を hayro で描く)
     let (no_text, _) = content_filter::remove_text_bytes_covers(&data, &cover_set)?;
-    let nt_pdf = Pdf::new(no_text).map_err(|e| format!("hayro load: {e:?}"))?;
-    let nt_pages = nt_pdf.pages();
+    let nt_doc = settings.open(no_text)?;
     let lo_pages = doc.get_pages();
-    if nt_pages.len() != lo_pages.len() {
+    if let Some(np) = nt_doc.hayro_page_count()
+        && np != lo_pages.len()
+    {
         return Err("page count mismatch".into());
     }
     let n = lo_pages.len() as i32;
@@ -1290,23 +1297,38 @@ pub fn keep_text_pdf(
         return Err("page list must be ascending, unique and within the document".into());
     }
 
-    let cache = RenderCache::new();
     let scale = dpi_f / 72.0;
     let mut covers: Vec<CoverJob> = Vec::new();
     for &pno in &selected {
-        let page = nt_pages
-            .get((pno - 1) as usize)
-            .ok_or_else(|| format!("page {pno} out of range"))?;
-        if let Some(feature) = unsupported_feature(page) {
-            return Err(format!("page {pno}: unsupported feature: {feature}"));
-        }
-        let (pw, ph) = page.render_dimensions();
+        let idx = (pno - 1) as usize;
+        let (pw, ph) = match &nt_doc {
+            RDoc::Hayro(pdf) => {
+                let pages = pdf.pages();
+                let page = pages
+                    .get(idx)
+                    .ok_or_else(|| format!("page {pno} out of range"))?;
+                if let Some(feature) = unsupported_feature(page) {
+                    return Err(format!("page {pno}: unsupported feature: {feature}"));
+                }
+                page.render_dimensions()
+            }
+            // MuPDF は、hayro で食い違うノックアウトグループなども描けるので、機能の検出は不要。
+            // ページ寸法は、ページ辞書 (回転を含む) から求める (背景の貼り付けと同じ求め方)
+            RDoc::Mu(_) => {
+                let page_id = lo_pages
+                    .get(&(pno as u32))
+                    .ok_or_else(|| format!("page {pno} out of range"))?;
+                let (b, rot) = page_geometry(&doc, *page_id)?;
+                let (w, h) = (b[2] - b[0], b[3] - b[1]);
+                if rot % 180 == 0 { (w, h) } else { (h, w) }
+            }
+        };
         let (tw, th) = ((pw * scale).ceil(), (ph * scale).ceil());
         if !(tw >= 1.0 && th >= 1.0 && tw <= u16::MAX as f32 && th <= u16::MAX as f32) {
             return Err(format!("page {pno}: unsupported pixmap size {tw}x{th}"));
         }
         let (tw, th) = (tw as u32, th as u32);
-        let mut rgb = raster_rgb(page, &cache, &settings, tw, th, dpi_f, supersample_max)?;
+        let mut rgb = settings.raster(&nt_doc, idx, tw, th, dpi_f, supersample_max)?;
         // 文字層へ残した画像の覆い (顔隠しのアイコンなど) の、不透明な画素を背景へ焼き込む。
         // 背景は覆いを除いた下層なので、そのままだと覆いの下の写真 (顔) が背景に残り、
         // 文字層の覆いを外すと見えてしまう。焼いても、同じ覆いを重ねる見え方は変わらない
@@ -1339,7 +1361,7 @@ pub fn keep_text_pdf(
             let nt = if let Some(p) = layered {
                 p.clone()
             } else if supersample_mult(dpi_f, supersample_max, tw, th) > 1 {
-                raster_rgb(page, &cache, &settings, tw, th, dpi_f, 1)?
+                settings.raster(&nt_doc, idx, tw, th, dpi_f, 1)?
             } else {
                 rgb.clone()
             };
@@ -1454,6 +1476,102 @@ pub fn keep_text_pdf(
     Ok(())
 }
 
+/// hayro で描くキープテキスト (従来の入口)。
+#[allow(clippy::too_many_arguments)]
+pub fn keep_text_pdf(
+    input: &str,
+    output: &str,
+    dpi: f32,
+    png: bool,
+    quality: u8,
+    pages: Option<&[i32]>,
+    supersample_max: i32,
+    cover_pages: Option<&[i32]>,
+) -> Result<(), String> {
+    keep_text_pdf_with(input, output, dpi, png, quality, pages, supersample_max, cover_pages, false)
+}
+
+/// キープテキストの判定・背景の描画に使う描画エンジン (hayro か MuPDF)。
+/// 覆いの判定・パッチの計算 (cover_patch・content_filter) は、どちらでも同じ。
+/// 描くのは、PDF のバイト列のページを `tw`×`th` の RGB8 にするところだけ。
+pub(crate) struct Rast {
+    settings: InterpreterSettings,
+    mu: Option<crate::ffi::MuRaster>,
+}
+
+/// `Rast::open` で開いた PDF。hayro は構文解析済みの文書、MuPDF は描くたびに開くのでバイト列。
+pub(crate) enum RDoc {
+    Hayro(Pdf),
+    Mu(Vec<u8>),
+}
+
+impl Rast {
+    pub(crate) fn hayro() -> Self {
+        Rast { settings: interpreter_settings(), mu: None }
+    }
+
+    pub(crate) fn mupdf() -> Result<Self, String> {
+        Ok(Rast { settings: interpreter_settings(), mu: Some(crate::ffi::MuRaster::new()?) })
+    }
+
+    pub(crate) fn open(&self, bytes: Vec<u8>) -> Result<RDoc, String> {
+        if self.mu.is_some() {
+            Ok(RDoc::Mu(bytes))
+        } else {
+            Pdf::new(bytes).map(RDoc::Hayro).map_err(|e| format!("hayro load: {e:?}"))
+        }
+    }
+
+    /// `doc` の `idx` ページ (0 始まり) を `tw`×`th` の RGB8 に描く。
+    /// MuPDF では、文字を輪郭で描く (元と出力を同じ設定で描き比べるため、常に同じにする)。
+    pub(crate) fn raster(
+        &self,
+        doc: &RDoc,
+        idx: usize,
+        tw: u32,
+        th: u32,
+        dpi: f32,
+        supersample_max: i32,
+    ) -> Result<Vec<u8>, String> {
+        match (doc, &self.mu) {
+            (RDoc::Hayro(pdf), _) => {
+                let pages = pdf.pages();
+                let page = pages.get(idx).ok_or_else(|| format!("page {idx} out of range"))?;
+                let cache = RenderCache::new();
+                raster_rgb(page, &cache, &self.settings, tw, th, dpi, supersample_max)
+            }
+            (RDoc::Mu(bytes), Some(mu)) => mu.render_rgb(bytes, idx, tw, th, dpi, supersample_max, true),
+            (RDoc::Mu(_), None) => Err("mupdf rasterizer is not available".into()),
+        }
+    }
+}
+
+impl RDoc {
+    /// ページがあるか。MuPDF は開くまで分からないので、描くときの失敗で判る (ここでは真)
+    pub(crate) fn has_page(&self, idx: usize) -> bool {
+        match self {
+            RDoc::Hayro(pdf) => pdf.pages().get(idx).is_some(),
+            RDoc::Mu(_) => true,
+        }
+    }
+
+    /// ページ数。hayro だけ分かる (MuPDF は None)
+    pub(crate) fn hayro_page_count(&self) -> Option<usize> {
+        match self {
+            RDoc::Hayro(pdf) => Some(pdf.pages().len()),
+            RDoc::Mu(_) => None,
+        }
+    }
+
+    /// hayro の描画寸法 (pt)。MuPDF は None (呼び出し側がページ辞書から求める)
+    pub(crate) fn hayro_page_dims(&self, idx: usize) -> Option<(f32, f32)> {
+        match self {
+            RDoc::Hayro(pdf) => pdf.pages().get(idx).map(|p| p.render_dimensions()),
+            RDoc::Mu(_) => None,
+        }
+    }
+}
+
 /// 覆いの層分割を検証する最大回数 (食い違いが多いとき、覆いを 1 つずつ外して再検証する)
 const MAX_LAYER_TRIES: usize = 6;
 
@@ -1467,15 +1585,10 @@ fn render_page_1x(
     tw: u32,
     th: u32,
     dpi: f32,
-    settings: &InterpreterSettings,
+    settings: &Rast,
 ) -> Result<Vec<u8>, String> {
-    let pdf = Pdf::new(bytes).map_err(|e| format!("hayro load: {e:?}"))?;
-    let pages = pdf.pages();
-    let page = pages
-        .get(idx)
-        .ok_or_else(|| format!("page {idx} out of range"))?;
-    let cache = RenderCache::new();
-    raster_rgb(page, &cache, settings, tw, th, dpi, 1)
+    let doc = settings.open(bytes)?;
+    settings.raster(&doc, idx, tw, th, dpi, 1)
 }
 
 /// 覆い `set` を背景から抜いて文字層へ移したときの、見え方の検証 (cover_patch::layering_errors)。
@@ -1488,7 +1601,7 @@ fn check_cover_layering(
     tw: u32,
     th: u32,
     dpi: f32,
-    settings: &InterpreterSettings,
+    settings: &Rast,
     nt: &[u8],
     near: &[bool],
 ) -> Option<(crate::cover_patch::LayerCheck, Vec<bool>)> {
@@ -1560,7 +1673,7 @@ fn plan_cover_layers(
     data: &[u8],
     selected: &[i32],
     dpi: f32,
-    settings: &InterpreterSettings,
+    settings: &Rast,
 ) -> (
     crate::content_filter::Covers,
     HashMap<i32, Vec<u8>>,
@@ -1625,17 +1738,13 @@ fn plan_cover_layers(
         return none();
     };
     let (Ok(plain_pdf), Ok(full_pdf), Ok(t0w_pdf), Ok(t0b_pdf)) = (
-        Pdf::new(plain),
-        Pdf::new(data.to_vec()),
-        Pdf::new(t0w_bytes),
-        Pdf::new(t0b_bytes),
+        settings.open(plain),
+        settings.open(data.to_vec()),
+        settings.open(t0w_bytes),
+        settings.open(t0b_bytes),
     ) else {
         return none();
     };
-    let (plain_pages, full_pages) = (plain_pdf.pages(), full_pdf.pages());
-    let (t0w_pages, t0b_pages) = (t0w_pdf.pages(), t0b_pdf.pages());
-    let (cache_p, cache_f) = (RenderCache::new(), RenderCache::new());
-    let (cache_w, cache_b) = (RenderCache::new(), RenderCache::new());
     let scale = dpi / 72.0;
 
     let mut keep: Vec<(CoverKey, Vec<[f64; 8]>)> = Vec::new();
@@ -1651,15 +1760,17 @@ fn plan_cover_layers(
     let mut bake_pixels_by_page: HashMap<i32, Vec<u32>> = HashMap::new();
     for (pno, geom, found) in cands {
         let idx = (pno - 1) as usize;
-        let (Some(pp), Some(fp), Some(wp), Some(bp)) = (
-            plain_pages.get(idx),
-            full_pages.get(idx),
-            t0w_pages.get(idx),
-            t0b_pages.get(idx),
-        ) else {
+        if !(plain_pdf.has_page(idx)
+            && full_pdf.has_page(idx)
+            && t0w_pdf.has_page(idx)
+            && t0b_pdf.has_page(idx))
+        {
             continue;
-        };
-        let (pw, ph) = pp.render_dimensions();
+        }
+        // MuPDF の描画では、ページ寸法をページ辞書 (page_geom) から求める
+        let (pw, ph) = plain_pdf
+            .hayro_page_dims(idx)
+            .unwrap_or(((geom[2] - geom[0]) as f32, (geom[3] - geom[1]) as f32));
         let (tw, th) = ((pw * scale).ceil(), (ph * scale).ceil());
         if !(tw >= 1.0 && th >= 1.0 && tw <= u16::MAX as f32 && th <= u16::MAX as f32) {
             continue;
@@ -1667,8 +1778,8 @@ fn plan_cover_layers(
         let (tw, th) = (tw as u32, th as u32);
         let pixels = (tw as usize) * (th as usize);
         let (Ok(t0w), Ok(t0b)) = (
-            raster_rgb(wp, &cache_w, settings, tw, th, dpi, 1),
-            raster_rgb(bp, &cache_b, settings, tw, th, dpi, 1),
+            settings.raster(&t0w_pdf, idx, tw, th, dpi, 1),
+            settings.raster(&t0b_pdf, idx, tw, th, dpi, 1),
         ) else {
             continue;
         };
@@ -1916,8 +2027,8 @@ fn plan_cover_layers(
         let mut why = String::from("no cover hides text");
         if !k.is_empty() {
             let (Ok(nt), Ok(full)) = (
-                raster_rgb(pp, &cache_p, settings, tw, th, dpi, 1),
-                raster_rgb(fp, &cache_f, settings, tw, th, dpi, 1),
+                settings.raster(&plain_pdf, idx, tw, th, dpi, 1),
+                settings.raster(&full_pdf, idx, tw, th, dpi, 1),
             ) else {
                 continue;
             };
@@ -2225,7 +2336,7 @@ fn add_cover_patches(
     orig: &[u8],
     jobs: &[CoverJob],
     dpi: f32,
-    settings: &InterpreterSettings,
+    settings: &Rast,
 ) -> Result<usize, String> {
     use crate::content_filter::{self, Covers};
     use crate::cover_patch::{
@@ -2237,38 +2348,31 @@ fn add_cover_patches(
     // 出力ページの描画用に、現時点の文書をメモリ上へ書き出す
     let mut buf = Vec::new();
     doc.save_to(&mut buf).map_err(|e| format!("cover: save: {e}"))?;
-    let full_pdf = Pdf::new(orig.to_vec()).map_err(|e| format!("cover: hayro load (orig): {e:?}"))?;
-    let comp_pdf = Pdf::new(buf).map_err(|e| format!("cover: hayro load (output): {e:?}"))?;
-    let full_pages = full_pdf.pages();
-    let comp_pages = comp_pdf.pages();
-    let cache_full = RenderCache::new();
-    let cache_comp = RenderCache::new();
+    let full_pdf = settings.open(orig.to_vec()).map_err(|e| format!("cover: load (orig): {e}"))?;
+    let comp_pdf = settings.open(buf).map_err(|e| format!("cover: load (output): {e}"))?;
     let params = Params::default();
     // 文字だけを白地・黒地に描いた元の複製 (文字の中身の画素を、色によらず求める)。
     // 作れなければ、plan_cover_layers が求めた範囲だけを使う
     let no_cover = Covers::default();
     let t0w_pdf = content_filter::text_only_bytes_covers(orig, &no_cover, false)
         .ok()
-        .and_then(|b| Pdf::new(b).ok());
+        .and_then(|b| settings.open(b).ok());
     let t0b_pdf = content_filter::text_only_bytes_covers(orig, &no_cover, true)
         .ok()
-        .and_then(|b| Pdf::new(b).ok());
-    let t0w_pages = t0w_pdf.as_ref().map(|p| p.pages());
-    let t0b_pages = t0b_pdf.as_ref().map(|p| p.pages());
-    let (cache_t0w, cache_t0b) = (RenderCache::new(), RenderCache::new());
+        .and_then(|b| settings.open(b).ok());
 
     let mut total = 0usize;
     for job in jobs {
         let idx = (job.pno - 1) as usize;
-        let fp = full_pages
-            .get(idx)
-            .ok_or_else(|| format!("cover: page {} missing in the original", job.pno))?;
-        let cp = comp_pages
-            .get(idx)
-            .ok_or_else(|| format!("cover: page {} missing in the output", job.pno))?;
+        if !full_pdf.has_page(idx) {
+            return Err(format!("cover: page {} missing in the original", job.pno));
+        }
+        if !comp_pdf.has_page(idx) {
+            return Err(format!("cover: page {} missing in the output", job.pno));
+        }
         // 等倍で描く (理由は keep_text_pdf の nt の説明を参照)
-        let full = raster_rgb(fp, &cache_full, settings, job.tw, job.th, dpi, 1)?;
-        let comp = raster_rgb(cp, &cache_comp, settings, job.tw, job.th, dpi, 1)?;
+        let full = settings.raster(&full_pdf, idx, job.tw, job.th, dpi, 1)?;
+        let comp = settings.raster(&comp_pdf, idx, job.tw, job.th, dpi, 1)?;
         // パッチを置いてよい範囲の外は、差があっても無視する
         let mut allowed = vec![false; (job.tw as usize) * (job.th as usize)];
         for z in &job.zones {
@@ -2285,13 +2389,12 @@ fn add_cover_patches(
         let mut ink: Option<Vec<bool>> = None;
         // 元で文字が隠れている画素 (文字の中身の画素で、元の描画には文字が見えない) の近く。
         // 覆いの縁の画素のずれ・文字の描き方の違いで出る差は、文字の画素ではないので除く
-        if let (Some(wp), Some(bp)) = (
-            t0w_pages.as_ref().and_then(|p| p.get(idx)),
-            t0b_pages.as_ref().and_then(|p| p.get(idx)),
-        ) && let (Ok(a), Ok(b)) = (
-            raster_rgb(wp, &cache_t0w, settings, job.tw, job.th, dpi, 1),
-            raster_rgb(bp, &cache_t0b, settings, job.tw, job.th, dpi, 1),
-        ) && let Some(core) = text_core_mask(&a, &b, job.tw, job.th)
+        if let (Some(wd), Some(bd)) = (t0w_pdf.as_ref(), t0b_pdf.as_ref())
+            && let (Ok(a), Ok(b)) = (
+                settings.raster(wd, idx, job.tw, job.th, dpi, 1),
+                settings.raster(bd, idx, job.tw, job.th, dpi, 1),
+            )
+            && let Some(core) = text_core_mask(&a, &b, job.tw, job.th)
         {
             ink = text_alpha(&a, &b, job.tw, job.th).map(|al| text_mask_from_alpha(&al));
             let n = (job.tw as usize) * (job.th as usize);
