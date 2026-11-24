@@ -513,3 +513,86 @@ pub fn kozou_new_context() -> *mut fz_context {
 pub fn kozou_fz_new_context() -> *mut fz_context {
     unsafe { mupdf::new_context() }
 }
+
+unsafe extern "C" {
+    /// メモリ上の PDF の `page_index` ページ (0 始まり) を、`tw`×`th` の RGB8 へ MuPDF で描く
+    /// (キープテキストの隠し直しの判定で、hayro の代わりに使う。mupdf_safe.c の同名の関数)。
+    /// `out_rgb` は呼び出し側が `tw * th * 3` バイト確保する。
+    pub fn kozou_render_pdf_bytes_rgb(
+        ctx: *mut fz_context,
+        data: *const u8,
+        len: usize,
+        page_index: c_int,
+        tw: c_int,
+        th: c_int,
+        dpi: f32,
+        supersample_max: c_int,
+        exact_text: c_int,
+        out_rgb: *mut u8,
+        result: *mut FfiResult,
+    );
+}
+
+/// MuPDF でメモリ上の PDF のページを RGB8 に描く入れ物。`fz_context` を 1 つ持ち回し、
+/// 描画のたびに作り直さない (フォント・グリフのキャッシュを使い回すため)。
+pub struct MuRaster {
+    ctx: *mut fz_context,
+}
+
+impl MuRaster {
+    pub fn new() -> Result<Self, String> {
+        let ctx = kozou_new_context();
+        if ctx.is_null() {
+            return Err("mupdf: kozou_new_context failed".into());
+        }
+        Ok(MuRaster { ctx })
+    }
+
+    /// `data` の PDF の `page_index` ページ (0 始まり) を `tw`×`th` の RGB8 に描く。
+    /// 倍率はページ寸法に対して軸ごとに `tw/幅`・`th/高さ` (hayro と同じく、画素数ちょうどで
+    /// ページ全体を埋める)。`supersample_max` の意味は kozou_rasterize と同じ。
+    /// `exact_text` は、文字を輪郭で描く (グリフの位置を画素に丸めない)。
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_rgb(
+        &self,
+        data: &[u8],
+        page_index: usize,
+        tw: u32,
+        th: u32,
+        dpi: f32,
+        supersample_max: i32,
+        exact_text: bool,
+    ) -> Result<Vec<u8>, String> {
+        if tw < 1 || th < 1 || tw > i32::MAX as u32 || th > i32::MAX as u32 {
+            return Err(format!("mupdf: unsupported pixmap size {tw}x{th}"));
+        }
+        let mut rgb = vec![0u8; tw as usize * th as usize * 3];
+        let mut res = FfiResult::default();
+        unsafe {
+            kozou_render_pdf_bytes_rgb(
+                self.ctx,
+                data.as_ptr(),
+                data.len(),
+                page_index as c_int,
+                tw as c_int,
+                th as c_int,
+                dpi,
+                supersample_max as c_int,
+                exact_text as c_int,
+                rgb.as_mut_ptr(),
+                &mut res,
+            );
+        }
+        if res.ok == 1 {
+            Ok(rgb)
+        } else {
+            Err(format!("mupdf render: {res}"))
+        }
+    }
+}
+
+impl Drop for MuRaster {
+    fn drop(&mut self) {
+        unsafe { mupdf_sys::fz_drop_context(self.ctx) };
+    }
+}

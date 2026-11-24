@@ -1777,6 +1777,78 @@ static fz_pixmap *kozou_render_page_to_pixmap(
 }
 
 /* ------------------------------------------------------------------ */
+/* kozou_render_pdf_bytes_rgb                                          */
+/*                                                                     */
+/* メモリ上の PDF の page_index ページ (0 始まり) を、tw×th の RGB8 へ    */
+/* 描く。Rust 側のキープテキスト (render_hayro::keep_text_pdf 系の         */
+/* 隠し直しの判定) が、hayro の代わりに MuPDF で描くための入口。          */
+/*                                                                     */
+/* hayro の描画と同じ約束にそろえてある:                                  */
+/*   - 倍率はページ寸法に対して軸ごとに tw/pw, th/ph (画素数ちょうどで     */
+/*     ページ全体を埋める。端の半端な画素は出ない)                       */
+/*   - supersample_max > 1 で dpi < 300 のときだけ、内部を高解像度で描き   */
+/*     箱平均で戻す (kozou_compute_supersample_mult)                    */
+/* exact_text が真なら、文字を輪郭で描く (kozou_exact_fill_text の説明)。  */
+/* 1 回の描画の結果どうしを比べる用途では、元と出力を同じ設定で描くこと。  */
+/*                                                                     */
+/* out_rgb は呼び出し側が tw*th*3 バイト確保する。data は呼び出し中だけ    */
+/* 参照される (内部でコピーはしない。文書は関数内で閉じる)。              */
+/* ------------------------------------------------------------------ */
+void kozou_render_pdf_bytes_rgb(
+    fz_context *ctx, const unsigned char *data, size_t len, int page_index,
+    int tw, int th, float dpi, int supersample_max, int exact_text,
+    unsigned char *out_rgb, FfiResult *result)
+{
+    fz_stream   *stm  = NULL;
+    fz_document *doc  = NULL;
+    fz_page     *page = NULL;
+    fz_pixmap   *pix  = NULL;
+    fz_var(stm); fz_var(doc); fz_var(page); fz_var(pix);
+
+    if (!data || len == 0 || !out_rgb || tw < 1 || th < 1 || page_index < 0) {
+        set_err(result, "kozou_render_pdf_bytes_rgb: bad argument");
+        return;
+    }
+
+    fz_try(ctx) {
+        stm = fz_open_memory(ctx, data, len);
+        doc = fz_open_document_with_stream(ctx, "application/pdf", stm);
+        if (fz_needs_password(ctx, doc))
+            fz_throw(ctx, FZ_ERROR_GENERIC, "encrypted document");
+        if (page_index >= fz_count_pages(ctx, doc))
+            fz_throw(ctx, FZ_ERROR_GENERIC, "page index out of range");
+        page = fz_load_page(ctx, doc, page_index);
+
+        fz_rect bounds = fz_bound_page(ctx, page);
+        float pw = bounds.x1 - bounds.x0;
+        float ph = bounds.y1 - bounds.y0;
+        if (!(pw > 0.0f) || !(ph > 0.0f))
+            fz_throw(ctx, FZ_ERROR_GENERIC, "empty page bounds");
+
+        fz_matrix ctm = fz_scale((float)tw / pw, (float)th / ph);
+        int mult = kozou_compute_supersample_mult(dpi, supersample_max, (float)tw, (float)th);
+        pix = kozou_render_ctm_to_pixmap_ex(ctx, page, ctm, tw, th, mult, 0, exact_text);
+
+        if (pix->n != 3 || pix->w != tw || pix->h != th)
+            fz_throw(ctx, FZ_ERROR_GENERIC, "unexpected pixmap format");
+        for (int y = 0; y < th; y++)
+            memcpy(out_rgb + (size_t)y * (size_t)tw * 3u,
+                   pix->samples + (size_t)y * (size_t)pix->stride,
+                   (size_t)tw * 3u);
+        set_ok(result);
+    }
+    fz_always(ctx) {
+        fz_drop_pixmap(ctx, pix);
+        fz_drop_page(ctx, page);
+        fz_drop_document(ctx, doc);
+        fz_drop_stream(ctx, stm);
+    }
+    fz_catch(ctx) {
+        set_err(result, fz_caught_message(ctx));
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* kozou_rasterize                                                     */
 /*                                                                     */
 /* 各ページを DPI 指定でラスタライズして画像ページの PDF を生成する。   */
