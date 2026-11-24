@@ -2435,8 +2435,19 @@ pub fn compose_image_pdf_keep_text_with_quality(
     // 完全に隠れた文字だけを除去する (MuPDF の 0.8 には合わせない)。MuPDF 実装の前処理は、
     // hayro 版なら完全に隠れた文字だけ、MuPDF 版 (既定) は 80% 以上で除去する。
     let engine = crate::render::Engine::resolve_default();
+    // MuPDF の描画のまま、hayro と同じ判定 (覆いの層分割・隠し直しパッチ。render_hayro::keep_text_pdf_with)
+    // でキープテキストを作る (試験的)。KOZOU_KEEPTEXT_MUPDF_LOPDF=1 で有効。既定は従来の MuPDF 実装。
+    // hayro 機能つきのビルドでだけ使える。失敗したときは、従来の MuPDF 実装へフォールバックする。
     #[cfg(feature = "hayro")]
-    let hayro_first = engine != crate::render::Engine::MuPdf;
+    let mu_lopdf = engine == crate::render::Engine::MuPdf
+        && matches!(
+            std::env::var("KOZOU_KEEPTEXT_MUPDF_LOPDF").as_deref(),
+            Ok("1") | Ok("on") | Ok("true")
+        );
+    #[cfg(not(feature = "hayro"))]
+    let mu_lopdf = false;
+    #[cfg(feature = "hayro")]
+    let hayro_first = engine != crate::render::Engine::MuPdf || mu_lopdf;
     #[cfg(not(feature = "hayro"))]
     let hayro_first = false;
     // lopdf 実装の前処理は、エンジンに関わらず、完全に隠れた文字だけを除去する
@@ -2505,7 +2516,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
     #[allow(unused_mut)]
     let mut done = false;
     {
-        if engine != crate::render::Engine::MuPdf {
+        if engine != crate::render::Engine::MuPdf || mu_lopdf {
             #[cfg(feature = "hayro")]
             {
                 let t0 = std::time::Instant::now();
@@ -2522,7 +2533,7 @@ pub fn compose_image_pdf_keep_text_with_quality(
                     Some(cov) if cover_env == "0" && !cov.is_empty() => {
                         Err("partially covered text (cover patches disabled)".into())
                     }
-                    Some(cov) => crate::render_hayro::keep_text_pdf(
+                    Some(cov) => crate::render_hayro::keep_text_pdf_with(
                         &compose_input,
                         &precompress_str,
                         dpi,
@@ -2531,13 +2542,15 @@ pub fn compose_image_pdf_keep_text_with_quality(
                         pages,
                         supersample_max,
                         if cover_env == "all" { None } else { Some(&cov) },
+                        mu_lopdf,
                     ),
                     None => Err("could not check for covered text".into()),
                 };
                 match attempt {
                     Ok(()) => {
                         eprintln!(
-                            "[render] engine=hayro (requested={}) keep-text {:?}",
+                            "[render] engine={} (requested={}) keep-text {:?}",
+                            if mu_lopdf { "mupdf+lopdf" } else { "hayro" },
                             engine.name(),
                             t0.elapsed()
                         );
