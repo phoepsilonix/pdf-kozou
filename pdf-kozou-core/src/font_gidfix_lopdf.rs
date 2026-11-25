@@ -36,6 +36,63 @@ use std::io::Write;
 
 const FONT_LIMIT: usize = 64 * 1024 * 1024;
 
+/// `fixed_copy_file` が作った一時ファイル。捨てるとき (早期の return を含む) に消える。
+pub(crate) struct FixedCopy {
+    path: std::path::PathBuf,
+}
+
+impl FixedCopy {
+    pub(crate) fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for FixedCopy {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// MuPDF で描く前に、`input` の、文字コードが GID の CID キー付き CFF フォントを直した一時コピーを
+/// `tmp_dir` に作る。
+///
+/// MuPDF は、CID を CFF の charset で引くので、文字コードが GID のフォントでは ◀ (U+25C0) のような
+/// 字が .notdef になり、描けない (画像化で背景に焼き込む文字も、キープテキストで残す文字も欠ける)。
+/// 直したコピーを MuPDF に渡せば、描画も、出力のテキスト層のフォントも直ったものになる。
+///
+/// 直すフォントが無い・読めない・暗号化・書き出しの失敗のときは None (呼び出し側は `input` をそのまま
+/// 使う)。backend=mupdf (lopdf を使わない指定) のときも None。
+pub(crate) fn fixed_copy_file(input: &str, tmp_dir: &std::path::Path) -> Option<FixedCopy> {
+    if !crate::backend::try_lopdf("gid-fix") {
+        return None;
+    }
+    let (mut doc, _bytes) = crate::safe_load::load_checked(input).ok()?;
+    if doc.is_encrypted() || doc.was_encrypted() {
+        return None;
+    }
+    let n = fix_gid_coded_cid_fonts(&mut doc);
+    if n == 0 {
+        return None;
+    }
+    // 直す前のフォントファイルは、ここで取り除く
+    doc.prune_objects();
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path = tmp_dir.join(format!(
+        "kozou_gidfixed_{}_{unique:x}.pdf",
+        std::process::id()
+    ));
+    if let Err(e) = doc.save(&path) {
+        eprintln!("[gid-fix] could not write a fixed copy: {e}");
+        let _ = std::fs::remove_file(&path);
+        return None;
+    }
+    eprintln!("[gid-fix] fixed {n} GID-coded CID font(s) before rendering with MuPDF");
+    Some(FixedCopy { path })
+}
+
 /// 直したフォントの数を返す。直せないものは黙って残す。
 pub(crate) fn fix_gid_coded_cid_fonts(doc: &mut Document) -> usize {
     // 直すフォント (Type0 の番号と、元のフォントファイルの番号) と、フォントファイルごとの直した中身

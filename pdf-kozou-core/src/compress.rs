@@ -2600,6 +2600,18 @@ pub fn compose_image_pdf_keep_text_with_quality(
     }
 
     let mut compose_err: Option<CoreError> = None;
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (描画も、出力のテキスト層のフォントも直ったものになる)。直すものが無ければ
+    // 元のまま。hayro / lopdf の実装は、自分で同じ修正をするので対象外。
+    let gid_fixed_input = if done {
+        None
+    } else {
+        crate::font_gidfix_lopdf::fixed_copy_file(&compose_input, &tmp_dir)
+    };
+    if let Some(copy) = &gid_fixed_input {
+        c_input = CString::new(copy.path().to_string_lossy().as_ref())
+            .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
+    }
     if !done {
         unsafe {
             let ctx = kozou_new_context();

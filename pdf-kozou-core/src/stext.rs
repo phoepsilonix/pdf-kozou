@@ -2184,8 +2184,16 @@ pub fn compose_imposition_pdf_keep_text(
         .as_deref()
         .and_then(|p| p.to_str())
         .unwrap_or(req.input.as_str());
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (1up のキープテキストと同じ。直すものが無ければ元のまま)。
+    let gid_fixed_input = crate::font_gidfix_lopdf::fixed_copy_file(compose_input, &tmp_dir_path);
+    let compose_input: String = gid_fixed_input
+        .as_ref()
+        .and_then(|c| c.path().to_str())
+        .unwrap_or(compose_input)
+        .to_string();
 
-    let c_input = CString::new(compose_input)
+    let c_input = CString::new(compose_input.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
