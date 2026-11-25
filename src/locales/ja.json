@@ -927,6 +927,14 @@
     "lopdf": "lopdfのみ",
     "lopdf_desc": "lopdfだけを使う（MuPDFに切り替えず、失敗はエラーにする）。検証用"
   },
+  "gid_fix": {
+    "title": "フォント補正（GID）",
+    "short": "補正",
+    "on": "オン",
+    "on_desc": "文字コードがGIDのCIDフォント（Canvaの◀★など）の charset を直し、MuPDF・Firefox・モバイルのブラウザでも表示できるようにする（既定）。字形は変わらない",
+    "off": "オフ",
+    "off_desc": "補正しない。元のフォントのまま処理する（意図しない不具合の切り分け用）"
+  },
   "theme": {
     "moss": "モスグリーン",
     "ocean": "オーシャン",

@@ -28,6 +28,7 @@ import { FileSortSelect } from "./components/FileSortSelect";
 import { FloatingMenu } from "./components/FloatingMenu";
 import { FolderChooserModal } from "./components/FolderChooserModal";
 import { FontScaleControl } from "./components/FontScaleControl";
+import { GidFixControl } from "./components/GidFixControl";
 import { HayroJpegControl } from "./components/HayroJpegControl";
 import { HayroStrokeControl } from "./components/HayroStrokeControl";
 import { JumpButton } from "./components/JumpNav";
@@ -54,6 +55,7 @@ import {
 import { setFileListToolbarPosition, useFileListToolbarPosition } from "./lib/fileListToolbar";
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
+import { initGidFix } from "./lib/gidFix";
 import { initHayroJpeg } from "./lib/hayroJpeg";
 import { initHayroStroke } from "./lib/hayroStroke";
 import { useI18n } from "./lib/i18n";
@@ -245,6 +247,7 @@ export default function App() {
     void initHayroStroke();
     void initHayroJpeg();
     void initPdfBackend();
+    void initGidFix();
   }, []);
 
   // hayro → MuPDF の自動フォールバック (コアが送る engine-fallback イベント) を購読し、
@@ -813,6 +816,7 @@ export default function App() {
                   <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
                   <PdfBackendControl />
                   <RenderEngineControl />
+                  <GidFixControl />
                   <HayroStrokeControl />
                   <HayroJpegControl />
                   <LayoutModeControl
@@ -845,6 +849,7 @@ export default function App() {
               <ThemeSwitcher currentId={themeId} onChange={handleThemeChange} />
               <PdfBackendControl />
               <RenderEngineControl />
+              <GidFixControl />
               <HayroStrokeControl />
               <HayroJpegControl />
               <LayoutModeControl
@@ -1604,6 +1609,7 @@ function ToolShell({
       <ThemeSwitcher currentId={themeId} onChange={onThemeChange} />
       <PdfBackendControl />
       <RenderEngineControl />
+      <GidFixControl />
       <HayroStrokeControl />
       <HayroJpegControl />
       <LayoutModeControl

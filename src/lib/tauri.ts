@@ -1687,3 +1687,19 @@ export async function getBackendInfo(): Promise<BackendInfo> {
 export async function setPdfBackendCore(backend: string): Promise<void> {
   await invoke<void>("set_pdf_backend", { backend });
 }
+
+// ── GID 補正 (文字コードが GID の CID キー付き CFF フォントの charset を直す) ─────────
+
+export interface GidFixInfo {
+  /** "on" | "off" */
+  current: string;
+}
+
+export async function getGidFixInfo(): Promise<GidFixInfo> {
+  return invoke<GidFixInfo>("get_gid_fix_info");
+}
+
+/** GID 補正のオン・オフを設定する ("on" | "off") */
+export async function setGidFixCore(mode: string): Promise<void> {
+  await invoke<void>("set_gid_fix", { mode });
+}

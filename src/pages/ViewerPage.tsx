@@ -20,6 +20,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { usePageAnnouncer } from "../hooks/usePageAnnouncer";
 import { useMobilePlatformState } from "../hooks/usePlatform";
 import { useViewport } from "../hooks/useViewport";
+import { useGidFix } from "../lib/gidFix";
 import { useHayroJpeg } from "../lib/hayroJpeg";
 import { useHayroStroke } from "../lib/hayroStroke";
 import { useI18n } from "../lib/i18n";
@@ -1339,7 +1340,9 @@ export function ViewerPage({ filePath, pdfInfo, fileList = [] }: Props) {
   const { mode: strokeMode, customPath, customText } = useHayroStroke();
   // JPEG の色差サブサンプリングは表示画像の画素に効く (トレリスは表示用には使わないので含めない)
   const { subsampling: jpegSubsampling } = useHayroJpeg();
-  const renderEngine = `${baseEngine}:${strokeMode}:${strokeMode === "custom" ? `${customPath},${customText}` : ""}:${jpegSubsampling}`;
+  // GID 補正のオン・オフも表示画像 (◀ など) に効く
+  const { mode: gidFixMode } = useGidFix();
+  const renderEngine = `${baseEngine}:${strokeMode}:${strokeMode === "custom" ? `${customPath},${customText}` : ""}:${jpegSubsampling}:${gidFixMode}`;
   const lastRenderEngine = useRef(renderEngine);
   useEffect(() => {
     if (renderEngine === lastRenderEngine.current) return;
