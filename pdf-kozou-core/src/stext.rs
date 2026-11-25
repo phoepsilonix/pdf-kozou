@@ -1627,7 +1627,8 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
         );
     }
 
-    let c_path = CString::new(req.path.as_str())
+    let mu_input = crate::font_gidfix_lopdf::mupdf_input(req.path.as_str());
+    let c_path = CString::new(mu_input.path())
         .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
     let fmt_str = req.format.as_deref().unwrap_or("jpeg");
@@ -1766,8 +1767,6 @@ pub fn rasterize_imposition(
         )));
     }
 
-    let c_input = CString::new(req.input.as_str())
-        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
@@ -1833,6 +1832,12 @@ pub fn rasterize_imposition(
             engine.name()
         );
     }
+
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (直すものが無ければ元のまま)。
+    let mu_input = crate::font_gidfix_lopdf::mupdf_input(req.input.as_str());
+    let c_input = CString::new(mu_input.path())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
 
     let tmp_dir = {
         let base = std::env::temp_dir().join("pdf-kozou");
@@ -2328,7 +2333,10 @@ pub fn compose_imposition_pdf(
         }
     }
 
-    let c_input = CString::new(req.input.as_str())
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (直すものが無ければ元のまま)。
+    let mu_input = crate::font_gidfix_lopdf::mupdf_input(req.input.as_str());
+    let c_input = CString::new(mu_input.path())
         .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output = CString::new(req.output.as_str())
         .map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
@@ -2422,8 +2430,6 @@ pub fn split_cell_render(req: &SplitCellRenderRequest) -> Result<SplitCellRender
     };
     use std::ffi::CString;
 
-    let c_input = CString::new(req.input.as_str())
-        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
 
     let fmt_str = req.format.as_deref().unwrap_or("jpeg");
     let fmt_int: i32 = match fmt_str {
@@ -2494,6 +2500,12 @@ pub fn split_cell_render(req: &SplitCellRenderRequest) -> Result<SplitCellRender
             );
         }
     }
+
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (直すものが無ければ元のまま)。
+    let mu_input = crate::font_gidfix_lopdf::mupdf_input(req.input.as_str());
+    let c_input = CString::new(mu_input.path())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
 
     let data_b64 = unsafe {
         let ctx = kozou_new_context();

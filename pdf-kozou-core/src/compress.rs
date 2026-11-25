@@ -1750,8 +1750,6 @@ pub fn rasterize_with_quality(
 
     let metadata = collect_metadata(input);
 
-    let c_input =
-        CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output =
         CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
@@ -1823,6 +1821,11 @@ pub fn rasterize_with_quality(
         }
     }
 
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (直すものが無ければ元のまま。hayro で済んだときは何もしない)。
+    let mu_input = crate::font_gidfix_lopdf::mupdf_input_if(!done, input);
+    let c_input = CString::new(mu_input.path())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     if !done {
         unsafe {
             let ctx = kozou_new_context();
@@ -1916,8 +1919,6 @@ pub fn rasterize_no_text_with_quality(
 
     let metadata = collect_metadata(input);
 
-    let c_input =
-        CString::new(input).map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     let c_output =
         CString::new(output).map_err(|_| CoreError::InvalidArg("invalid output path".into()))?;
 
@@ -1988,6 +1989,11 @@ pub fn rasterize_no_text_with_quality(
         }
     }
 
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (直すものが無ければ元のまま。hayro で済んだときは何もしない)。
+    let mu_input = crate::font_gidfix_lopdf::mupdf_input_if(!done, input);
+    let c_input = CString::new(mu_input.path())
+        .map_err(|_| CoreError::InvalidArg("invalid input path".into()))?;
     if !done {
         unsafe {
             let ctx = kozou_new_context();

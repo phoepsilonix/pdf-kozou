@@ -362,7 +362,10 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
         }
     }
 
-    let c_path = CString::new(req.path.as_str())
+    // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
+    // 一時コピーを渡す (直すものが無ければ元のまま。結果はファイルごとにキャッシュする)。
+    let mu_input = crate::font_gidfix_lopdf::mupdf_input(req.path.as_str());
+    let c_path = CString::new(mu_input.path())
         .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
     let fmt_code: c_int = if format == "png" { 1 } else { 0 };

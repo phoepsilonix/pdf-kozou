@@ -93,6 +93,121 @@ pub(crate) fn fixed_copy_file(input: &str, tmp_dir: &std::path::Path) -> Option<
     Some(FixedCopy { path })
 }
 
+/// MuPDF に渡す入力 (元のパス、または直した一時コピー)。持っている間は、一時コピーが消えない。
+pub(crate) struct MuInput {
+    path: String,
+    _keep: Option<std::sync::Arc<FixedCopy>>,
+}
+
+impl MuInput {
+    pub(crate) fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+struct CacheEntry {
+    key: (String, u64, Option<std::time::SystemTime>),
+    copy: Option<std::sync::Arc<FixedCopy>>,
+}
+
+/// 直したコピーのキャッシュ (パス・サイズ・更新時刻ごと。直すものが無いファイルも覚える)。
+/// ビューワーは 1 ページごとに描画を呼ぶので、同じファイルを何度も lopdf で読み直さないため。
+static CACHE: std::sync::OnceLock<std::sync::Mutex<Vec<CacheEntry>>> = std::sync::OnceLock::new();
+const CACHE_MAX: usize = 4;
+
+/// 前回までに残った一時コピー (異常終了などで消えなかったもの) を、1 日たったら取り除く。
+fn purge_stale(dir: &std::path::Path) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let limit = std::time::Duration::from_secs(24 * 60 * 60);
+        for e in rd.flatten() {
+            let name = e.file_name();
+            if !name.to_string_lossy().starts_with("kozou_gidfixed_") {
+                continue;
+            }
+            let old = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age > limit);
+            if old {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    });
+}
+
+/// 先頭に PDF のヘッダがあるか (EPUB・XPS・画像など、PDF 以外を lopdf で読まないため)
+fn looks_like_pdf(path: &str) -> bool {
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut head = [0u8; 1024];
+    let n = f.read(&mut head).unwrap_or(0);
+    head[..n].windows(5).any(|w| w == b"%PDF-")
+}
+
+/// `cond` が真のときだけ `mupdf_input` する (偽なら、元のパスをそのまま返す)。
+pub(crate) fn mupdf_input_if(cond: bool, input: &str) -> MuInput {
+    if cond {
+        mupdf_input(input)
+    } else {
+        MuInput { path: input.to_string(), _keep: None }
+    }
+}
+
+/// MuPDF で描く (画像化・ビューワー・面付けなど) ときに渡すパス。文字コードが GID の CID キー付き CFF
+/// フォント (◀ など) があるファイルは、直した一時コピー、それ以外は元のパス。
+///
+/// MuPDF は、CID を CFF の charset で引くので、そのようなフォントの字が .notdef になり描けない。
+/// 直したコピーを渡せば、MuPDF の描画 (ビューワーも、通常の画像化も) で字が出る。
+/// 結果は、パス・サイズ・更新時刻ごとにキャッシュする (最大 4 件。追い出されたコピーは、使っている
+/// 描画が終われば消える)。
+pub(crate) fn mupdf_input(input: &str) -> MuInput {
+    let orig = || MuInput { path: input.to_string(), _keep: None };
+    let Ok(meta) = std::fs::metadata(input) else {
+        return orig();
+    };
+    let key = (input.to_string(), meta.len(), meta.modified().ok());
+    let wrap = |copy: Option<std::sync::Arc<FixedCopy>>| match copy {
+        Some(c) => MuInput { path: c.path().to_string_lossy().into_owned(), _keep: Some(c) },
+        None => orig(),
+    };
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(mut g) = cache.lock()
+        && let Some(pos) = g.iter().position(|e| e.key == key)
+    {
+        let e = g.remove(pos);
+        let copy = e.copy.clone();
+        g.push(e); // 最近使ったものを末尾へ
+        return wrap(copy);
+    }
+
+    // 作成は、ロックの外で行う (lopdf で読むので重い)
+    let copy = if looks_like_pdf(input) {
+        let dir = std::env::temp_dir().join("pdf-kozou");
+        let _ = std::fs::create_dir_all(&dir);
+        purge_stale(&dir);
+        fixed_copy_file(input, &dir).map(std::sync::Arc::new)
+    } else {
+        None
+    };
+    if let Ok(mut g) = cache.lock()
+        && !g.iter().any(|e| e.key == key)
+    {
+        g.push(CacheEntry { key, copy: copy.clone() });
+        while g.len() > CACHE_MAX {
+            g.remove(0);
+        }
+    }
+    wrap(copy)
+}
+
 /// 直したフォントの数を返す。直せないものは黙って残す。
 pub(crate) fn fix_gid_coded_cid_fonts(doc: &mut Document) -> usize {
     // 直すフォント (Type0 の番号と、元のフォントファイルの番号) と、フォントファイルごとの直した中身
