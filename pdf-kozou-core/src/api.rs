@@ -24,7 +24,13 @@ pub fn auto_convert_if_needed(
     use crate::convert::{ConvertRequest, convert_to_pdf, is_mupdf_supported, is_pdf};
 
     if is_pdf(input) {
-        return Ok(None); // PDF はそのまま
+        // PDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) があれば、直した一時コピーを
+        // 入力にする (lopdf・MuPDF のどちらの実装でも、読み込みの時点で直った状態になる)。
+        // 直すものが無い・補正がオフのときは、そのまま。
+        return Ok(crate::font_gidfix_lopdf::fixed_tempfile(input).map(|t| {
+            let p = t.path().to_string_lossy().to_string();
+            (t, p)
+        }));
     }
     if !is_mupdf_supported(input) {
         anyhow::bail!("unsupported file format: {input}");
@@ -75,6 +81,35 @@ pub fn auto_convert_if_needed(
     convert_to_pdf(&req).map_err(|e| anyhow::anyhow!("convert failed: {e}"))?;
 
     Ok(Some((tmp, tmp_path)))
+}
+
+/// 直した一時コピーを入力にしたときの、レスポンスの `input_bytes` (と `ratio`) を、元のファイルのサイズに
+/// 戻す。`replaced` が偽 (コピーを使っていない) なら、何もしない。
+fn restore_input_size(json: String, original: &str, replaced: bool) -> String {
+    if !replaced {
+        return json;
+    }
+    let Ok(orig_bytes) = std::fs::metadata(original).map(|m| m.len()) else {
+        return json;
+    };
+    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return json;
+    };
+    let Some(obj) = v.as_object_mut() else {
+        return json;
+    };
+    if !obj.contains_key("input_bytes") {
+        return json;
+    }
+    obj.insert("input_bytes".into(), orig_bytes.into());
+    if let (Some(out), true) = (
+        obj.get("output_bytes").and_then(|x| x.as_u64()),
+        obj.contains_key("ratio"),
+    ) {
+        let ratio = if orig_bytes > 0 { out as f64 / orig_bytes as f64 } else { 1.0 };
+        obj.insert("ratio".into(), serde_json::json!(ratio));
+    }
+    serde_json::to_string(&v).unwrap_or(json)
 }
 
 /// JSON リクエストをディスパッチして JSON レスポンスを返す
@@ -153,16 +188,27 @@ pub fn dispatch_json(line: &str) -> String {
                 /* トリムは自然サイズで変換してから行う。ページサイズへのフィットは
                  * トリム後にフロント側で compose_imposition_pdf(1-up) で行う
                  * （マージンを自然サイズ基準のまま使えるようにするため）。 */
-                let _tmp =
-                    auto_convert_if_needed(&req.input.clone(), lw, lh, lem, None, None, None)?;
+                let orig_in = req.input.clone();
+                let _tmp = auto_convert_if_needed(&orig_in, lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     req.input = tmp_path.clone();
                 }
-                Ok(serde_json::to_string(&crate::trim::trim(&req)?)?)
+                let json = serde_json::to_string(&crate::trim::trim(&req)?)?;
+                Ok(restore_input_size(
+                    json,
+                    &orig_in,
+                    _tmp.is_some() && crate::convert::is_pdf(&orig_in),
+                ))
             }
             "crop_to_page" => {
-                let req: crate::trim::CropToPageRequest = serde_json::from_str(line)?;
-                Ok(serde_json::to_string(&crate::trim::crop_to_page(&req)?)?)
+                let mut req: crate::trim::CropToPageRequest = serde_json::from_str(line)?;
+                let orig_in = req.input.clone();
+                let fixed = crate::font_gidfix_lopdf::fixed_tempfile(&orig_in);
+                if let Some(t) = &fixed {
+                    req.input = t.path().to_string_lossy().to_string();
+                }
+                let json = serde_json::to_string(&crate::trim::crop_to_page(&req)?)?;
+                Ok(restore_input_size(json, &orig_in, fixed.is_some()))
             }
             "compress" => {
                 #[derive(serde::Deserialize)]
@@ -191,8 +237,8 @@ pub fn dispatch_json(line: &str) -> String {
                     inner: crate::compress::CompressRequest,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp =
-                    auto_convert_if_needed(&r.inner.input.clone(), lw, lh, lem, None, None, None)?;
+                let orig_in = r.inner.input.clone();
+                let _tmp = auto_convert_if_needed(&orig_in, lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.inner.input = tmp_path.clone();
                 }
@@ -234,7 +280,11 @@ pub fn dispatch_json(line: &str) -> String {
                 } else {
                     crate::compress::compress(&r.inner)?
                 };
-                Ok(serde_json::to_string(&resp)?)
+                Ok(restore_input_size(
+                    serde_json::to_string(&resp)?,
+                    &orig_in,
+                    _tmp.is_some() && crate::convert::is_pdf(&orig_in),
+                ))
             }
             "split" => {
                 let mut req: crate::split::SplitRequest = serde_json::from_str(line)?;
@@ -278,7 +328,13 @@ pub fn dispatch_json(line: &str) -> String {
                 Ok(serde_json::to_string(&crate::rotate::rotate(&req)?)?)
             }
             "sanitize_hidden" => {
-                let req: crate::stext::SanitizeRequest = serde_json::from_str(line)?;
+                let mut req: crate::stext::SanitizeRequest = serde_json::from_str(line)?;
+                // 文字コードが GID の CID フォントがあれば、直した一時コピーを入力にする
+                // (スレッドの終了まで、一時ファイルを持つ)
+                let fixed = crate::font_gidfix_lopdf::fixed_tempfile(&req.input);
+                if let Some(t) = &fixed {
+                    req.input = t.path().to_string_lossy().to_string();
+                }
                 // スタックサイズを 32MB に増やして実行（Windows デフォルト 1MB では不足）
                 let result = std::thread::Builder::new()
                     .stack_size(32 * 1024 * 1024)
@@ -286,6 +342,7 @@ pub fn dispatch_json(line: &str) -> String {
                     .map_err(|e| anyhow::anyhow!("thread spawn: {e}"))?
                     .join()
                     .map_err(|_| anyhow::anyhow!("thread panicked"))??;
+                drop(fixed);
                 Ok(serde_json::to_string(&result)?)
             }
 
@@ -432,22 +489,26 @@ pub fn dispatch_json(line: &str) -> String {
                     supersample: Option<i32>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None, None)?;
+                let orig_in = r.input.clone();
+                let _tmp = auto_convert_if_needed(&orig_in, lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.input = tmp_path.clone();
                 }
                 let pages = r.pages.as_deref().map(parse_page_list).transpose()?;
-                Ok(serde_json::to_string(
-                    &crate::compress::rasterize_with_quality(
-                        &r.input,
-                        &r.output,
-                        r.dpi.unwrap_or(150.0),
-                        r.quality.unwrap_or(85),
-                        r.use_png.unwrap_or(false),
-                        pages.as_deref(),
-                        r.supersample.unwrap_or(1),
-                    )?,
-                )?)
+                let json = serde_json::to_string(&crate::compress::rasterize_with_quality(
+                    &r.input,
+                    &r.output,
+                    r.dpi.unwrap_or(150.0),
+                    r.quality.unwrap_or(85),
+                    r.use_png.unwrap_or(false),
+                    pages.as_deref(),
+                    r.supersample.unwrap_or(1),
+                )?)?;
+                Ok(restore_input_size(
+                    json,
+                    &orig_in,
+                    _tmp.is_some() && crate::convert::is_pdf(&orig_in),
+                ))
             }
             "rasterize_no_text" => {
                 // 画像PDF化(フォント保持版) Stage 1 検証用コマンド。
@@ -468,21 +529,25 @@ pub fn dispatch_json(line: &str) -> String {
                     pages: Option<String>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None, None)?;
+                let orig_in = r.input.clone();
+                let _tmp = auto_convert_if_needed(&orig_in, lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.input = tmp_path.clone();
                 }
                 let pages = r.pages.as_deref().map(parse_page_list).transpose()?;
-                Ok(serde_json::to_string(
-                    &crate::compress::rasterize_no_text_with_quality(
-                        &r.input,
-                        &r.output,
-                        r.dpi.unwrap_or(150.0),
-                        r.quality.unwrap_or(85),
-                        r.use_png.unwrap_or(false),
-                        pages.as_deref(),
-                    )?,
-                )?)
+                let json = serde_json::to_string(&crate::compress::rasterize_no_text_with_quality(
+                    &r.input,
+                    &r.output,
+                    r.dpi.unwrap_or(150.0),
+                    r.quality.unwrap_or(85),
+                    r.use_png.unwrap_or(false),
+                    pages.as_deref(),
+                )?)?;
+                Ok(restore_input_size(
+                    json,
+                    &orig_in,
+                    _tmp.is_some() && crate::convert::is_pdf(&orig_in),
+                ))
             }
             "compose_image_pdf_keep_text" => {
                 // 画像PDF化(フォント保持版) Stage 2。
@@ -506,12 +571,13 @@ pub fn dispatch_json(line: &str) -> String {
                     supersample: Option<i32>,
                 }
                 let mut r: Req = serde_json::from_str(line)?;
-                let _tmp = auto_convert_if_needed(&r.input.clone(), lw, lh, lem, None, None, None)?;
+                let orig_in = r.input.clone();
+                let _tmp = auto_convert_if_needed(&orig_in, lw, lh, lem, None, None, None)?;
                 if let Some((_, ref tmp_path)) = _tmp {
                     r.input = tmp_path.clone();
                 }
                 let pages = r.pages.as_deref().map(parse_page_list).transpose()?;
-                Ok(serde_json::to_string(
+                let json = serde_json::to_string(
                     &crate::compress::compose_image_pdf_keep_text_with_quality(
                         &r.input,
                         &r.output,
@@ -521,7 +587,12 @@ pub fn dispatch_json(line: &str) -> String {
                         pages.as_deref(),
                         r.supersample.unwrap_or(1),
                     )?,
-                )?)
+                )?;
+                Ok(restore_input_size(
+                    json,
+                    &orig_in,
+                    _tmp.is_some() && crate::convert::is_pdf(&orig_in),
+                ))
             }
             "is_pdf" => {
                 #[derive(serde::Deserialize)]

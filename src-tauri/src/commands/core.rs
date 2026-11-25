@@ -128,6 +128,23 @@ pub fn set_pdf_backend(backend: String) -> Result<()> {
     pdf_kozou_core::backend::set_backend(&backend).map_err(Error::Core)
 }
 
+/// GID 補正 (文字コードが GID の CID キー付き CFF フォント — Canva の PDF の ◀ ★ など — の charset を
+/// 直し、MuPDF・Firefox・モバイルのブラウザなど、charset で CID を引くビューワでも表示できるようにする)
+/// のオン・オフの状態。lopdf・MuPDF のどちらのモードでも、同じ設定で動く。
+/// `current`: "on" | "off"。
+#[tauri::command]
+pub fn get_gid_fix_info() -> Value {
+    serde_json::json!({
+        "current": pdf_kozou_core::gid_fix::current_name(),
+    })
+}
+
+/// GID 補正のオン・オフを設定する ("on" | "off")。以降の読み込み・描画から反映される。
+#[tauri::command]
+pub fn set_gid_fix(mode: String) -> Result<()> {
+    pdf_kozou_core::gid_fix::set_enabled(&mode).map_err(Error::Core)
+}
+
 /// プロセス全体の既定の描画エンジンを設定する ("mupdf" | "auto" | "hayro")。
 /// 以降の render_page / export_images など render::render を通る描画に反映される。
 #[tauri::command]

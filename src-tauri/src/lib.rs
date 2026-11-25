@@ -163,6 +163,8 @@ pub fn run() {
             core::set_hayro_jpeg,
             core::get_backend_info,
             core::set_pdf_backend,
+            core::get_gid_fix_info,
+            core::set_gid_fix,
             core::get_tmp_path,
             core::get_file_stat,
             core::path_exists,

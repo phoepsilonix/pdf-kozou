@@ -61,13 +61,11 @@ impl Drop for FixedCopy {
 /// 直したコピーを MuPDF に渡せば、描画も、出力のテキスト層のフォントも直ったものになる。
 ///
 /// 直すフォントが無い・読めない・暗号化・書き出しの失敗のときは None (呼び出し側は `input` をそのまま
-/// 使う)。backend=mupdf (lopdf を使わない指定) のときも None。
+/// 使う)。GID 補正がオフ (gid_fix) のときも None。lopdf を使う設定 (backend) とは関係なく動く。
 pub(crate) fn fixed_copy_file(input: &str, tmp_dir: &std::path::Path) -> Option<FixedCopy> {
-    /*
-    if !crate::backend::try_lopdf("gid-fix") {
+    if !crate::gid_fix::enabled() || is_fixed_copy_name(input) || !quick_may_need_fix(input) {
         return None;
     }
-    */
     let (mut doc, _bytes) = crate::safe_load::load_checked(input).ok()?;
     if doc.is_encrypted() || doc.was_encrypted() {
         return None;
@@ -143,6 +141,65 @@ fn purge_stale(dir: &std::path::Path) {
     });
 }
 
+/// すでに直したコピー (この module か api::auto_convert_if_needed が作ったもの) か。もう一度は読まない。
+fn is_fixed_copy_name(path: &str) -> bool {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("gid_fixed_") || n.starts_with("kozou_gidfixed_"))
+}
+
+/// 直す必要のあるフォントがありうるか、ファイルの生のバイト列だけで先読みする。
+/// `/CIDFontType0` が無く、オブジェクトストリーム (`/ObjStm`: フォントの辞書が圧縮されて隠れうる) も
+/// 無い PDF は、直すものが無いので、lopdf で読まない (大きな PDF の操作が遅くならないように)。
+/// 読めないときは、後段の判断に任せて true。
+fn quick_may_need_fix(path: &str) -> bool {
+    use std::io::Read;
+    const PATTERNS: [&[u8]; 2] = [b"/CIDFontType0", b"/ObjStm"];
+    const CHUNK: usize = 4 * 1024 * 1024;
+    const KEEP: usize = 12; // 最長のパターン (13 バイト) より 1 短い
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return true;
+    };
+    let mut buf = vec![0u8; CHUNK + KEEP];
+    let mut carry = 0usize;
+    loop {
+        let n = match f.read(&mut buf[carry..carry + CHUNK]) {
+            Ok(0) => return false,
+            Ok(n) => n,
+            Err(_) => return true,
+        };
+        let end = carry + n;
+        if PATTERNS
+            .iter()
+            .any(|p| buf[..end].windows(p.len()).any(|w| w == *p))
+        {
+            return true;
+        }
+        // 次の読み出しで、チャンクの境目をまたぐパターンを見落とさないよう、末尾を先頭へ残す
+        let keep = KEEP.min(end);
+        buf.copy_within(end - keep..end, 0);
+        carry = keep;
+    }
+}
+
+/// 直したフォントのある PDF の、直した一時コピー (api::auto_convert_if_needed が入力として返す)。
+/// 直すものが無い・補正がオフ・PDF でないときは None。MuPDF の描画と同じキャッシュを使う。
+pub(crate) fn fixed_tempfile(input: &str) -> Option<tempfile::NamedTempFile> {
+    let m = mupdf_input(input);
+    m._keep.as_ref()?;
+    let dir = std::env::temp_dir().join("pdf-kozou");
+    let _ = std::fs::create_dir_all(&dir);
+    let mut tmp = tempfile::Builder::new()
+        .prefix("gid_fixed_")
+        .suffix(".pdf")
+        .tempfile_in(&dir)
+        .ok()?;
+    let mut src = std::fs::File::open(m.path()).ok()?;
+    std::io::copy(&mut src, tmp.as_file_mut()).ok()?;
+    Some(tmp)
+}
+
 /// 先頭に PDF のヘッダがあるか (EPUB・XPS・画像など、PDF 以外を lopdf で読まないため)
 fn looks_like_pdf(path: &str) -> bool {
     use std::io::Read;
@@ -156,7 +213,7 @@ fn looks_like_pdf(path: &str) -> bool {
 
 /// `cond` が真のときだけ `mupdf_input` する (偽なら、元のパスをそのまま返す)。
 pub(crate) fn mupdf_input_if(cond: bool, input: &str) -> MuInput {
-    if cond {
+    if cond && crate::gid_fix::enabled() {
         mupdf_input(input)
     } else {
         MuInput { path: input.to_string(), _keep: None }
@@ -172,6 +229,9 @@ pub(crate) fn mupdf_input_if(cond: bool, input: &str) -> MuInput {
 /// 描画が終われば消える)。
 pub(crate) fn mupdf_input(input: &str) -> MuInput {
     let orig = || MuInput { path: input.to_string(), _keep: None };
+    if !crate::gid_fix::enabled() || is_fixed_copy_name(input) {
+        return orig();
+    }
     let Ok(meta) = std::fs::metadata(input) else {
         return orig();
     };
@@ -212,6 +272,9 @@ pub(crate) fn mupdf_input(input: &str) -> MuInput {
 
 /// 直したフォントの数を返す。直せないものは黙って残す。
 pub(crate) fn fix_gid_coded_cid_fonts(doc: &mut Document) -> usize {
+    if !crate::gid_fix::enabled() {
+        return 0;
+    }
     // 直すフォント (Type0 の番号と、元のフォントファイルの番号) と、フォントファイルごとの直した中身
     let mut targets: Vec<(ObjectId, ObjectId)> = Vec::new();
     let mut fixed_files: HashMap<ObjectId, Vec<u8>> = HashMap::new();

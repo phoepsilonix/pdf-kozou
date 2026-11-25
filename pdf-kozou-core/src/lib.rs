@@ -25,6 +25,7 @@ pub mod crop_cleanup;
 pub mod error;
 pub mod ffi;
 pub mod font_subset;
+pub mod gid_fix;
 pub mod image_recompress;
 pub mod imposition;
 pub mod info;
