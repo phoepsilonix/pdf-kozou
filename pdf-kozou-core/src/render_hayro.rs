@@ -1462,6 +1462,12 @@ pub fn keep_text_pdf_with(
     if gid_fixed > 0 {
         eprintln!("[render] keep-text: fixed {gid_fixed} GID-coded CID font(s)");
     }
+    // ToUnicode が、グリフを康熙部首・CJK 互換漢字に対応づけているものは、通常の漢字に直す
+    // (コピーや検索で、部首文字のままにならないようにする。見た目は変わらない)
+    let tu_fixed = crate::tounicode_fix_lopdf::fix_tounicode_radicals(&mut doc);
+    if tu_fixed > 0 {
+        eprintln!("[render] keep-text: fixed {tu_fixed} ToUnicode CMap(s) (radicals / compatibility ideographs)");
+    }
     doc.prune_objects();
     doc.compress();
     doc.save(output).map_err(|e| format!("save: {e}"))?;
