@@ -63,9 +63,11 @@ impl Drop for FixedCopy {
 /// 直すフォントが無い・読めない・暗号化・書き出しの失敗のときは None (呼び出し側は `input` をそのまま
 /// 使う)。backend=mupdf (lopdf を使わない指定) のときも None。
 pub(crate) fn fixed_copy_file(input: &str, tmp_dir: &std::path::Path) -> Option<FixedCopy> {
+    /*
     if !crate::backend::try_lopdf("gid-fix") {
         return None;
     }
+    */
     let (mut doc, _bytes) = crate::safe_load::load_checked(input).ok()?;
     if doc.is_encrypted() || doc.was_encrypted() {
         return None;
