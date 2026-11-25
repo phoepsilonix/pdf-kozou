@@ -931,7 +931,7 @@
     "title": "Font fix (GID-coded CID fonts)",
     "short": "Fix",
     "on": "On",
-    "on_desc": "Repair the charset of GID-coded CID fonts (e.g. ◀ ★ in Canva PDFs) so they also display in MuPDF, Firefox and mobile browsers (default). Glyph shapes do not change",
+    "on_desc": "Repair the charset of GID-coded CID fonts (e.g. ◀ ★) so they also display in MuPDF, Firefox and mobile browsers (default). Glyph shapes do not change.",
     "off": "Off",
     "off_desc": "Do not repair; process the original fonts as they are (for isolating unexpected problems)"
   },
