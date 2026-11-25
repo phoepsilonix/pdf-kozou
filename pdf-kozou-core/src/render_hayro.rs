@@ -236,20 +236,6 @@ pub(crate) fn supersample_mult(dpi: f32, supersample_max: i32, tw: u32, th: u32)
     (supersample_max as i64).min(by_dpi).min(by_mem).min(by_u16).max(1) as u32
 }
 
-/// ページを `width`×`height` の Pixmap に描く。倍率は軸ごとに「画素数 / ページ寸法」。
-/// `mult` は最終出力に対する内部解像度の倍率 (超解像度なしなら 1)。細線の最小幅の換算に使う。
-fn render_pixmap<'a>(
-    page: &'a Page<'a>,
-    cache: &RenderCache<'a>,
-    settings: &InterpreterSettings,
-    width: u16,
-    height: u16,
-    mult: u32,
-) -> Pixmap {
-    let (pw, ph) = page.render_dimensions();
-    render_pixmap_region(page, cache, settings, width, height, mult, (0.0, 0.0, pw, ph))
-}
-
 /// ページ内の矩形 `region` = (x, y, 幅, 高さ) (pt、左上原点の描画座標) を、`width`×`height` の
 /// Pixmap に描く。面付け解除 (ページを cols×rows に分けた 1 セルだけを描く) で使う。
 /// ページ全体なら region = (0, 0, ページ幅, ページ高)。
