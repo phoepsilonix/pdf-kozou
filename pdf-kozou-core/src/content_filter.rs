@@ -195,8 +195,10 @@ impl Covers {
         if let CoverKey::Draw(s, i, _) = k
             && !quads.is_empty()
         {
-            self.draw_clips
-                .insert((*s, *i), quads.iter().map(|q| q.map(f64::to_bits)).collect());
+            self.draw_clips.insert(
+                (*s, *i),
+                quads.iter().map(|q| q.map(f64::to_bits)).collect(),
+            );
         }
     }
 
@@ -283,8 +285,7 @@ impl<'a> OpCtx<'a> {
     fn next_paint_kept(&mut self) -> bool {
         let i = self.ord;
         self.ord += 1;
-        self.keep
-            .is_some_and(|(set, key)| set.contains(&(key, i)))
+        self.keep.is_some_and(|(set, key)| set.contains(&(key, i)))
     }
 }
 
@@ -294,10 +295,7 @@ pub fn transform_bytes(input: &[u8], mode: Mode) -> Result<(Vec<u8>, Stats), Str
 
 /// `remove_text_bytes` に、覆い (`find_cover_forms` が選んだ Form XObject) の `Do` を取り除く
 /// 指定を加えたもの。覆いを除いた「文字の下層」の背景を描くために使う。
-pub fn remove_text_bytes_covers(
-    input: &[u8],
-    covers: &Covers,
-) -> Result<(Vec<u8>, Stats), String> {
+pub fn remove_text_bytes_covers(input: &[u8], covers: &Covers) -> Result<(Vec<u8>, Stats), String> {
     transform_bytes_covers(input, Mode::RemoveText, covers)
 }
 
@@ -317,7 +315,8 @@ fn transform_bytes_covers(
         doc.compress();
     }
     let mut out = Vec::with_capacity(input.len());
-    doc.save_to(&mut out).map_err(|e| format!("lopdf save: {e}"))?;
+    doc.save_to(&mut out)
+        .map_err(|e| format!("lopdf save: {e}"))?;
     Ok((out, stats))
 }
 
@@ -334,11 +333,7 @@ pub fn transform(doc: &mut Document, mode: Mode) -> Result<Stats, String> {
 /// `transform` に、覆い (`find_cover_forms` が選んだ Form XObject) の扱いを加えたもの。
 /// - TextOnly: 覆いは加工せず、`Do` も残す (文字との描画順を保ったまま、ベクターで重ねる)。
 /// - RemoveText: 覆いの `Do` を取り除く (背景ラスタは、覆いを除いた文字の下層になる)。
-pub fn transform_covers(
-    doc: &mut Document,
-    mode: Mode,
-    covers: &Covers,
-) -> Result<Stats, String> {
+pub fn transform_covers(doc: &mut Document, mode: Mode, covers: &Covers) -> Result<Stats, String> {
     // /Contents が配列のページは、先に 1 本にまとめる。operand と演算子が別のストリームに
     // 分かれていることがあり (仕様上は合法)、ストリームごとに解析すると壊れるため。
     merge_page_contents(doc)?;
@@ -361,7 +356,15 @@ pub fn transform_covers(
         // ページ自身の内容ストリーム
         for sid in doc.get_page_contents(page_id) {
             if visited.insert(sid) {
-                filter_stream(doc, sid, mode, &kinds, covers, StreamKey::Page(page_id), &mut stats)?;
+                filter_stream(
+                    doc,
+                    sid,
+                    mode,
+                    &kinds,
+                    covers,
+                    StreamKey::Page(page_id),
+                    &mut stats,
+                )?;
             }
         }
         // 注釈の外観ストリーム (RemoveText のみ。TextOnly は外観を持つ注釈を Err にしている)
@@ -369,7 +372,17 @@ pub fn transform_covers(
             collect_annotation_streams(doc, page_id, &mut children);
         }
         for child in children {
-            process_part(doc, child, mode, &kinds, covers, &inner, &mut visited, &mut stats, 0)?;
+            process_part(
+                doc,
+                child,
+                mode,
+                &kinds,
+                covers,
+                &inner,
+                &mut visited,
+                &mut stats,
+                0,
+            )?;
         }
         // TextOnly: 画像 XObject をリソースから外す (Do を除いたので参照されない)
         if mode == Mode::TextOnly {
@@ -458,7 +471,6 @@ fn cover_descendants(doc: &Document, covers: &Covers) -> HashSet<ObjectId> {
     seen
 }
 
-
 /// Form XObject / パターン等のストリーム 1 つ分を加工し、その中のリソースも再帰的に辿る。
 /// `parent_kinds`: 親のリソースの XObject 表 (この部品が /Resources を持たないときに使う)。
 #[allow(clippy::too_many_arguments)]
@@ -495,7 +507,17 @@ fn process_part(
     let kinds = if has_own { kinds } else { parent_kinds.clone() };
     filter_stream(doc, id, mode, &kinds, covers, StreamKey::Form(id), stats)?;
     for child in children {
-        process_part(doc, child, mode, &kinds, covers, inner, visited, stats, depth + 1)?;
+        process_part(
+            doc,
+            child,
+            mode,
+            &kinds,
+            covers,
+            inner,
+            visited,
+            stats,
+            depth + 1,
+        )?;
     }
     if mode == Mode::TextOnly && has_own {
         let own = match doc.get_object(id) {
@@ -689,11 +711,7 @@ pub fn strip_text_ops(bytes: &[u8]) -> Result<(Vec<u8>, usize), String> {
 /// lopdf の解析器はインライン画像 (BI ... ID ... EI) を扱えないため、画像部分を先に切り出し、
 /// それ以外の部分だけを解析して、画像部分は (RemoveText ではそのまま、TextOnly では除いて)
 /// 連結し直す。
-fn transform_content(
-    bytes: &[u8],
-    mode: Mode,
-    kinds: &Kinds,
-) -> Result<(Vec<u8>, Counts), String> {
+fn transform_content(bytes: &[u8], mode: Mode, kinds: &Kinds) -> Result<(Vec<u8>, Counts), String> {
     transform_content_ops(bytes, mode, kinds, &mut OpCtx::none())
 }
 
@@ -935,8 +953,8 @@ pub(crate) fn reencode_with(bytes: &[u8], sanitize: bool) -> Result<(Vec<u8>, us
                 content.operations = ops;
                 removed += n;
             }
-            let chunk = encode_content_eol_safe(&content)
-                .map_err(|e| format!("content encode: {e}"))?;
+            let chunk =
+                encode_content_eol_safe(&content).map_err(|e| format!("content encode: {e}"))?;
             if !chunk.is_empty() {
                 out.extend_from_slice(&chunk);
                 out.push(b'\n');
@@ -1054,7 +1072,9 @@ fn transform_chunk(
                         ops.push(Operation::new("q", vec![]));
                         ops.push(Operation::new(
                             "re",
-                            [-1e7, -1e7, 2e7, 2e7].map(|v| Object::Real(v as f32)).to_vec(),
+                            [-1e7, -1e7, 2e7, 2e7]
+                                .map(|v| Object::Real(v as f32))
+                                .to_vec(),
                         ));
                         ops.extend(quads_path_ops(&clip));
                         ops.push(Operation::new("W*", vec![]));
@@ -1148,7 +1168,10 @@ fn is_ws(c: u8) -> bool {
 }
 
 fn is_delim(c: u8) -> bool {
-    matches!(c, b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%')
+    matches!(
+        c,
+        b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%'
+    )
 }
 
 /// 内容ストリーム中のインライン画像 (BI ... EI) の範囲 [開始, 終了) を列挙する。
@@ -1244,7 +1267,6 @@ pub(crate) fn find_inline_images(b: &[u8]) -> Result<Vec<(usize, usize)>, String
     Ok(spans)
 }
 
-
 // ── 覆い (文字に重なる、元のオブジェクト) の検出 ───────────────────────────────
 //
 // キープテキストの画像化は、非テキストを 1 枚の背景に焼き込み、文字をその上に重ねる。
@@ -1334,12 +1356,19 @@ pub fn local_quad(to_local: &[f64; 6], rect: [f64; 4]) -> [f64; 8] {
         tf(rect[2], rect[3]),
         tf(rect[0], rect[3]),
     ];
-    [p[0].0, p[0].1, p[1].0, p[1].1, p[2].0, p[2].1, p[3].0, p[3].1]
+    [
+        p[0].0, p[0].1, p[1].0, p[1].1, p[2].0, p[2].1, p[3].0, p[3].1,
+    ]
 }
 
 fn bbox_union(a: Option<[f64; 4]>, b: Option<[f64; 4]>) -> Option<[f64; 4]> {
     match (a, b) {
-        (Some(a), Some(b)) => Some([a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]),
+        (Some(a), Some(b)) => Some([
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            a[2].max(b[2]),
+            a[3].max(b[3]),
+        ]),
         _ => None,
     }
 }
@@ -1554,7 +1583,9 @@ impl CoverWalk<'_> {
                     self.cands.push(RawCand {
                         key: CoverKey::Op(key, i),
                         // 線の太さ・アンチエイリアスの分だけ広げる
-                        bbox: path.bbox().map(|b| [b[0] - 1.0, b[1] - 1.0, b[2] + 1.0, b[3] + 1.0]),
+                        bbox: path
+                            .bbox()
+                            .map(|b| [b[0] - 1.0, b[1] - 1.0, b[2] + 1.0, b[3] + 1.0]),
                         raster: false,
                         translucent: cur < 0.999,
                         to_local: None,
@@ -1597,7 +1628,9 @@ impl CoverWalk<'_> {
                             .unwrap_or(IDENTITY);
                         let fctm = mat_mul(&fm, &ctm);
                         let info = form_info(doc, id, 0);
-                        if !info.text && !info.unsupported && (cur < 0.999 || info.mask_image || info.curves)
+                        if !info.text
+                            && !info.unsupported
+                            && (cur < 0.999 || info.mask_image || info.curves)
                         {
                             self.clock += 1;
                             let bbox = numbers(doc, st.dict.get(b"BBox").ok(), 4)
@@ -1833,7 +1866,8 @@ pub fn text_only_bytes_covers(
         put_black_backdrop(&mut doc)?;
     }
     let mut out = Vec::with_capacity(input.len());
-    doc.save_to(&mut out).map_err(|e| format!("lopdf save: {e}"))?;
+    doc.save_to(&mut out)
+        .map_err(|e| format!("lopdf save: {e}"))?;
     Ok(out)
 }
 
@@ -1856,7 +1890,8 @@ pub fn covers_only_bytes(
         put_black_backdrop(&mut doc)?;
     }
     let mut out = Vec::with_capacity(input.len());
-    doc.save_to(&mut out).map_err(|e| format!("lopdf save: {e}"))?;
+    doc.save_to(&mut out)
+        .map_err(|e| format!("lopdf save: {e}"))?;
     Ok(out)
 }
 
@@ -2088,7 +2123,12 @@ mod tests {
         assert_eq!(n, 4);
         let ops = Content::decode_strict(&out).unwrap().operations;
         let names: Vec<&str> = ops.iter().map(|o| o.operator.as_str()).collect();
-        assert!(!names.contains(&"Tj") && !names.contains(&"TJ") && !names.contains(&"'") && !names.contains(&"\""));
+        assert!(
+            !names.contains(&"Tj")
+                && !names.contains(&"TJ")
+                && !names.contains(&"'")
+                && !names.contains(&"\"")
+        );
         // 状態演算子と図形はそのまま
         for keep in ["q", "Q", "rg", "re", "f", "BT", "Tf", "Td", "TL", "ET"] {
             assert!(names.contains(&keep), "{keep} missing: {names:?}");
@@ -2108,7 +2148,8 @@ mod tests {
 
     #[test]
     fn inline_image_survives() {
-        let src = b"q 10 0 0 10 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\x80\xff\x40 EI Q BT (t) Tj ET";
+        let src =
+            b"q 10 0 0 10 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\x80\xff\x40 EI Q BT (t) Tj ET";
         let (out, n) = strip_text_ops(src).unwrap();
         assert_eq!(n, 1);
         // 画像のバイト列 (BI ... EI) がそのまま残っている
@@ -2138,9 +2179,12 @@ mod tests {
             "Resources"=>dictionary!{"XObject"=>dictionary!{"Fm1"=>form_id}},
             "Contents"=>content_id,
         });
-        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
-            "Type"=>"Pages","Kids"=>vec![page_id.into()],"Count"=>1,
-        }));
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type"=>"Pages","Kids"=>vec![page_id.into()],"Count"=>1,
+            }),
+        );
         let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
         doc.trailer.set("Root", cat);
         let mut buf = Vec::new();
@@ -2151,7 +2195,9 @@ mod tests {
         let d2 = Document::load_mem(&out).unwrap();
         for (_, o) in d2.objects.iter() {
             if let Object::Stream(s) = o {
-                let c = s.decompressed_content().unwrap_or_else(|_| s.content.clone());
+                let c = s
+                    .decompressed_content()
+                    .unwrap_or_else(|_| s.content.clone());
                 let t = String::from_utf8_lossy(&c);
                 assert!(!t.contains("Tj"), "Tj remains: {t}");
             }
@@ -2161,7 +2207,10 @@ mod tests {
     fn clip_render_mode_is_an_error() {
         for tr in ["4", "5", "6", "7"] {
             let src = format!("BT /F1 12 Tf {tr} Tr (x) Tj ET");
-            assert!(strip_text_ops(src.as_bytes()).is_err(), "Tr {tr} should fail");
+            assert!(
+                strip_text_ops(src.as_bytes()).is_err(),
+                "Tr {tr} should fail"
+            );
         }
         // 通常の描画モード (0〜3) は問題ない
         for tr in ["0", "1", "2", "3"] {
@@ -2188,9 +2237,12 @@ mod tests {
                 "XObject"=>dictionary!{"Fm1"=>form},
             },
         });
-        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
-            "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
-        }));
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
+            }),
+        );
         let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
         doc.trailer.set("Root", cat);
         (doc, page)
@@ -2216,10 +2268,7 @@ mod tests {
 
     #[test]
     fn opaque_form_after_text_is_not_a_cover() {
-        let (doc, page) = cover_doc(
-            "1 0 0 rg 0 0 50 50 re f",
-            "BT /F1 12 Tf (a) Tj ET /Fm1 Do",
-        );
+        let (doc, page) = cover_doc("1 0 0 rg 0 0 50 50 re f", "BT /F1 12 Tf (a) Tj ET /Fm1 Do");
         assert!(find_cover_forms(&doc, page).is_empty());
     }
 
@@ -2279,8 +2328,11 @@ mod tests {
         let d2 = Document::load_mem(&out).unwrap();
         let pid = *d2.get_pages().values().next().unwrap();
         let sid = d2.get_page_contents(pid)[0];
-        let Ok(Object::Stream(st)) = d2.get_object(sid) else { panic!() };
-        let txt = String::from_utf8_lossy(&st.decompressed_content().unwrap_or(st.content.clone())).to_string();
+        let Ok(Object::Stream(st)) = d2.get_object(sid) else {
+            panic!()
+        };
+        let txt = String::from_utf8_lossy(&st.decompressed_content().unwrap_or(st.content.clone()))
+            .to_string();
         assert!(txt.contains("-100000"), "{txt}");
         assert!(txt.contains("Do"), "{txt}");
         assert!(!txt.contains("Tj"), "{txt}");
@@ -2358,9 +2410,12 @@ mod tests {
             "MediaBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(100),Object::Integer(100)],
             "Resources"=>dictionary!{},
         });
-        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
-            "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
-        }));
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
+            }),
+        );
         let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
         doc.trailer.set("Root", cat);
         (doc, page)
@@ -2368,7 +2423,9 @@ mod tests {
 
     fn page_text(doc: &Document, page: ObjectId) -> String {
         let sid = doc.get_page_contents(page)[0];
-        let Ok(Object::Stream(st)) = doc.get_object(sid) else { panic!() };
+        let Ok(Object::Stream(st)) = doc.get_object(sid) else {
+            panic!()
+        };
         String::from_utf8_lossy(&st.content).to_string()
     }
 
@@ -2423,25 +2480,38 @@ mod tests {
         let mut a = doc.clone();
         transform_covers(&mut a, Mode::RemoveText, &covers).unwrap();
         let sid = a.get_page_contents(page)[0];
-        let Ok(Object::Stream(st)) = a.get_object(sid) else { panic!() };
+        let Ok(Object::Stream(st)) = a.get_object(sid) else {
+            panic!()
+        };
         let txt = String::from_utf8_lossy(&st.content).to_string();
         assert!(!txt.contains("Do"), "{txt}");
         assert!(!txt.contains("Tj"), "{txt}");
         transform_covers(&mut doc, Mode::TextOnly, &covers).unwrap();
         let sid = doc.get_page_contents(page)[0];
-        let Ok(Object::Stream(st)) = doc.get_object(sid) else { panic!() };
+        let Ok(Object::Stream(st)) = doc.get_object(sid) else {
+            panic!()
+        };
         let txt = String::from_utf8_lossy(&st.content).to_string();
         assert!(txt.contains("Do") && txt.contains("Tj"), "{txt}");
         // 覆いの中身は加工されない (塗りが残る)
         let fid = *covers.objs.iter().next().unwrap();
-        let Ok(Object::Stream(f)) = doc.get_object(fid) else { panic!() };
+        let Ok(Object::Stream(f)) = doc.get_object(fid) else {
+            panic!()
+        };
         assert!(String::from_utf8_lossy(&f.content).contains(" f"));
     }
 
     #[test]
     fn nested_form_inside_a_cover_is_not_neutralized_in_text_only() {
         use lopdf::dictionary;
-        let bbox = || vec![Object::Integer(0), Object::Integer(0), Object::Integer(100), Object::Integer(100)];
+        let bbox = || {
+            vec![
+                Object::Integer(0),
+                Object::Integer(0),
+                Object::Integer(100),
+                Object::Integer(100),
+            ]
+        };
         let mut doc = Document::with_version("1.5");
         // 覆い (外側の Form) は、塗りを入れ子の Form に任せている (Canva などの形)
         let inner = doc.add_object(Stream::new(
@@ -2469,14 +2539,19 @@ mod tests {
                 "XObject"=>dictionary!{"Fm1"=>outer,"In"=>inner},
             },
         });
-        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
-            "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
-        }));
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>Object::Integer(1),
+            }),
+        );
         let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
         doc.trailer.set("Root", cat);
         let covers = Covers::from_keys([CoverKey::Obj(outer)]);
         transform_covers(&mut doc, Mode::TextOnly, &covers).unwrap();
-        let Ok(Object::Stream(f)) = doc.get_object(inner) else { panic!() };
+        let Ok(Object::Stream(f)) = doc.get_object(inner) else {
+            panic!()
+        };
         let txt = String::from_utf8_lossy(&f.content).to_string();
         assert!(txt.contains(" f"), "覆いの中の塗りが取り除かれた: {txt}");
     }
@@ -2496,11 +2571,15 @@ mod tests {
         // 同じ画像を 2 回描く。2 回目 (通し番号 1) だけを覆いにする
         let content = doc.add_object(Stream::new(
             dictionary! {},
-            b"BT /F1 12 Tf (a) Tj ET q 10 0 0 10 0 0 cm /Im1 Do Q q 10 0 0 10 20 0 cm /Im1 Do Q".to_vec(),
+            b"BT /F1 12 Tf (a) Tj ET q 10 0 0 10 0 0 cm /Im1 Do Q q 10 0 0 10 20 0 cm /Im1 Do Q"
+                .to_vec(),
         ));
         if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
             p.set("Contents", content);
-            p.set("Resources", dictionary! {"XObject"=>dictionary!{"Im1"=>img}});
+            p.set(
+                "Resources",
+                dictionary! {"XObject"=>dictionary!{"Im1"=>img}},
+            );
         }
         let covers = Covers::from_keys([CoverKey::Draw(StreamKey::Page(page), 1, img)]);
         assert_eq!(covers.len(), 1);
@@ -2515,7 +2594,10 @@ mod tests {
         assert!(t.contains("20 0 cm"), "{t}");
         let res = effective_resources(&doc, page).unwrap();
         let xo = resolve_dict(&doc, res.get(b"XObject").ok()).unwrap();
-        assert!(xo.get(b"Im1").is_ok(), "覆いにした描画の画像がリソースから外れた");
+        assert!(
+            xo.get(b"Im1").is_ok(),
+            "覆いにした描画の画像がリソースから外れた"
+        );
     }
 
     #[test]
@@ -2536,7 +2618,10 @@ mod tests {
         ));
         if let Ok(Object::Dictionary(p)) = doc.get_object_mut(page) {
             p.set("Contents", content);
-            p.set("Resources", dictionary! {"XObject"=>dictionary!{"Im1"=>img}});
+            p.set(
+                "Resources",
+                dictionary! {"XObject"=>dictionary!{"Im1"=>img}},
+            );
         }
         let key = CoverKey::Draw(StreamKey::Page(page), 0, img);
         let mut covers = Covers::from_keys([key]);
@@ -2584,7 +2669,9 @@ mod tests {
             assert!(!names.contains(&gone), "{gone} remains: {names:?}");
         }
         // クリップ (re W n)・状態・テキスト・Form の Do は残る
-        for keep in ["q", "Q", "W", "n", "rg", "RG", "w", "BT", "ET", "Tf", "Tj", "Do"] {
+        for keep in [
+            "q", "Q", "W", "n", "rg", "RG", "w", "BT", "ET", "Tf", "Tj", "Do",
+        ] {
             assert!(names.contains(&keep), "{keep} missing: {names:?}");
         }
         assert_eq!(names.iter().filter(|n| **n == "Do").count(), 1); // Fm1 だけ
@@ -2604,7 +2691,8 @@ mod tests {
 
     #[test]
     fn text_only_drops_inline_images() {
-        let src = b"q 10 0 0 10 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\x80\xff\x40 EI Q BT (t) Tj ET";
+        let src =
+            b"q 10 0 0 10 0 0 cm BI /W 2 /H 2 /CS /G /BPC 8 ID \x00\x80\xff\x40 EI Q BT (t) Tj ET";
         let (out, c) = transform_content(src, Mode::TextOnly, &kinds_for_test()).unwrap();
         assert_eq!(c.images, 1);
         assert!(!out.windows(2).any(|w| w == b"BI"));
@@ -2622,8 +2710,8 @@ mod tests {
         ));
         let pattern = doc.add_object(lopdf::Stream::new(
             dictionary! {"Type"=>"Pattern","PatternType"=>1,"PaintType"=>1,"TilingType"=>1,
-                "BBox"=>vec![0.into(),0.into(),5.into(),5.into()],"XStep"=>5,"YStep"=>5,
-                "Resources"=>dictionary!{}},
+            "BBox"=>vec![0.into(),0.into(),5.into(),5.into()],"XStep"=>5,"YStep"=>5,
+            "Resources"=>dictionary!{}},
             b"1 0 0 rg 0 0 5 5 re f".to_vec(),
         ));
         let form = doc.add_object(lopdf::Stream::new(
@@ -2641,9 +2729,12 @@ mod tests {
             "Resources"=>dictionary!{"XObject"=>dictionary!{"Fm1"=>form},"Pattern"=>dictionary!{"P1"=>pattern}},
             "Contents"=>content_id,
         });
-        doc.objects.insert(pages_id, Object::Dictionary(dictionary! {
-            "Type"=>"Pages","Kids"=>vec![page_id.into()],"Count"=>1,
-        }));
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type"=>"Pages","Kids"=>vec![page_id.into()],"Count"=>1,
+            }),
+        );
         let cat = doc.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
         doc.trailer.set("Root", cat);
         let mut buf = Vec::new();
@@ -2656,14 +2747,19 @@ mod tests {
         let mut saw_pattern = false;
         for (_, o) in d2.objects.iter() {
             if let Object::Stream(st) = o {
-                let c = st.decompressed_content().unwrap_or_else(|_| st.content.clone());
+                let c = st
+                    .decompressed_content()
+                    .unwrap_or_else(|_| st.content.clone());
                 let t = String::from_utf8_lossy(&c).to_string();
                 if t.contains("1 0 0 rg") {
                     saw_pattern = t.contains(" f"); // パターンの塗りは残る
                 } else if t.contains("Tj") {
                     // 塗りも、そのパスの座標 (re) も消えている (クリップに使われていないため)
                     assert!(!t.contains(" re"), "path remains: {t}");
-                    assert!(!t.contains(" f\n") && !t.ends_with(" f"), "fill remains: {t}");
+                    assert!(
+                        !t.contains(" f\n") && !t.ends_with(" f"),
+                        "fill remains: {t}"
+                    );
                 }
             }
         }
@@ -2676,7 +2772,10 @@ mod tests {
         let ops = vec![
             Operation::new(
                 "Tj",
-                vec![Object::String(vec![0x0a, 0x24], lopdf::StringFormat::Literal)],
+                vec![Object::String(
+                    vec![0x0a, 0x24],
+                    lopdf::StringFormat::Literal,
+                )],
             ),
             Operation::new(
                 "TJ",
@@ -2688,7 +2787,10 @@ mod tests {
             ),
             Operation::new(
                 "Tj",
-                vec![Object::String(b"plain (ok)".to_vec(), lopdf::StringFormat::Literal)],
+                vec![Object::String(
+                    b"plain (ok)".to_vec(),
+                    lopdf::StringFormat::Literal,
+                )],
             ),
         ];
         let out = encode_content_eol_safe(&Content { operations: ops }).unwrap();
@@ -2701,10 +2803,7 @@ mod tests {
         }
         let back = Content::decode_strict(&out).unwrap().operations;
         assert_eq!(back.len(), 3);
-        assert_eq!(
-            back[0].operands[0].as_str().unwrap(),
-            &[0x0a, 0x24][..]
-        );
+        assert_eq!(back[0].operands[0].as_str().unwrap(), &[0x0a, 0x24][..]);
         match &back[1].operands[0] {
             Object::Array(a) => {
                 assert_eq!(a[2].as_str().unwrap(), &[0x0d, 0x41][..]);

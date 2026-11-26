@@ -216,7 +216,10 @@ pub(crate) fn mupdf_input_if(cond: bool, input: &str) -> MuInput {
     if cond && crate::gid_fix::enabled() {
         mupdf_input(input)
     } else {
-        MuInput { path: input.to_string(), _keep: None }
+        MuInput {
+            path: input.to_string(),
+            _keep: None,
+        }
     }
 }
 
@@ -228,7 +231,10 @@ pub(crate) fn mupdf_input_if(cond: bool, input: &str) -> MuInput {
 /// 結果は、パス・サイズ・更新時刻ごとにキャッシュする (最大 4 件。追い出されたコピーは、使っている
 /// 描画が終われば消える)。
 pub(crate) fn mupdf_input(input: &str) -> MuInput {
-    let orig = || MuInput { path: input.to_string(), _keep: None };
+    let orig = || MuInput {
+        path: input.to_string(),
+        _keep: None,
+    };
     if !crate::gid_fix::enabled() || is_fixed_copy_name(input) {
         return orig();
     }
@@ -237,7 +243,10 @@ pub(crate) fn mupdf_input(input: &str) -> MuInput {
     };
     let key = (input.to_string(), meta.len(), meta.modified().ok());
     let wrap = |copy: Option<std::sync::Arc<FixedCopy>>| match copy {
-        Some(c) => MuInput { path: c.path().to_string_lossy().into_owned(), _keep: Some(c) },
+        Some(c) => MuInput {
+            path: c.path().to_string_lossy().into_owned(),
+            _keep: Some(c),
+        },
         None => orig(),
     };
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(Vec::new()));
@@ -262,7 +271,10 @@ pub(crate) fn mupdf_input(input: &str) -> MuInput {
     if let Ok(mut g) = cache.lock()
         && !g.iter().any(|e| e.key == key)
     {
-        g.push(CacheEntry { key, copy: copy.clone() });
+        g.push(CacheEntry {
+            key,
+            copy: copy.clone(),
+        });
         while g.len() > CACHE_MAX {
             g.remove(0);
         }

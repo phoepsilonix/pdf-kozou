@@ -16,16 +16,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use hayro::hayro_interpret::TransformExt;
 use hayro::hayro_interpret::font::{FallbackFontQuery, FontData, FontQuery};
 use hayro::hayro_interpret::hayro_cmap::CidFamily;
 use hayro::hayro_interpret::hayro_syntax::object::{Dict, Stream};
 use hayro::hayro_interpret::hayro_syntax::page::{Page, Resources};
 use hayro::hayro_interpret::{InterpreterSettings, hayro_syntax::Pdf};
-use hayro::vello_cpu::{self, Pixmap, RenderContext};
-use hayro::hayro_interpret::TransformExt;
 use hayro::kurbo::Affine;
-use hayro::{RenderCache, RenderSettings, render_into};
 use hayro::vello_cpu::color::palette::css::WHITE;
+use hayro::vello_cpu::{self, Pixmap, RenderContext};
+use hayro::{RenderCache, RenderSettings, render_into};
 
 /// hayro での描画結果 (エンコード済み画像)
 pub struct HayroImage {
@@ -75,7 +75,15 @@ pub fn render_page(
     let settings = interpreter_settings();
     let cache = RenderCache::new();
     let (width_px, height_px) = (w as u32, h as u32);
-    let rgb = raster_rgb(page, &cache, &settings, width_px, height_px, dpi_f, supersample_max)?;
+    let rgb = raster_rgb(
+        page,
+        &cache,
+        &settings,
+        width_px,
+        height_px,
+        dpi_f,
+        supersample_max,
+    )?;
     // ビューワー用 (preview) はトレリスを使わない (ページ送りを遅くしないため)
     let mut jpeg_opts = current_jpeg_options();
     if preview {
@@ -233,7 +241,11 @@ pub(crate) fn supersample_mult(dpi: f32, supersample_max: i32, tw: u32, th: u32)
     };
     // hayro の Pixmap は u16 サイズ
     let by_u16 = (u16::MAX as i64 / tw.max(th).max(1) as i64).max(1);
-    (supersample_max as i64).min(by_dpi).min(by_mem).min(by_u16).max(1) as u32
+    (supersample_max as i64)
+        .min(by_dpi)
+        .min(by_mem)
+        .min(by_u16)
+        .max(1) as u32
 }
 
 /// ページ内の矩形 `region` = (x, y, 幅, 高さ) (pt、左上原点の描画座標) を、`width`×`height` の
@@ -292,7 +304,16 @@ fn raster_rgb<'a>(
     supersample_max: i32,
 ) -> Result<Vec<u8>, String> {
     let (pw, ph) = page.render_dimensions();
-    raster_rgb_region(page, cache, settings, tw, th, dpi, supersample_max, (0.0, 0.0, pw, ph))
+    raster_rgb_region(
+        page,
+        cache,
+        settings,
+        tw,
+        th,
+        dpi,
+        supersample_max,
+        (0.0, 0.0, pw, ph),
+    )
 }
 
 /// `raster_rgb` の矩形指定版。`region` はページ内の描画範囲 (x, y, 幅, 高さ。pt)。
@@ -368,7 +389,14 @@ pub fn encode_rgb(
     png: bool,
     quality: u8,
 ) -> Result<Vec<u8>, String> {
-    encode_rgb_with(rgb, width_px, height_px, png, quality, current_jpeg_options())
+    encode_rgb_with(
+        rgb,
+        width_px,
+        height_px,
+        png,
+        quality,
+        current_jpeg_options(),
+    )
 }
 
 /// `encode_rgb` の JPEG 設定指定版
@@ -436,7 +464,10 @@ pub struct JpegOptions {
 
 impl Default for JpegOptions {
     fn default() -> Self {
-        Self { subsampling: 444, trellis: true }
+        Self {
+            subsampling: 444,
+            trellis: true,
+        }
     }
 }
 
@@ -467,7 +498,10 @@ pub fn parse_jpeg_options(spec: &str) -> Result<Option<JpegOptions>, String> {
             other => return Err(format!("invalid jpeg option {other:?} (trellis)")),
         }
     }
-    Ok(Some(JpegOptions { subsampling, trellis }))
+    Ok(Some(JpegOptions {
+        subsampling,
+        trellis,
+    }))
 }
 
 /// GUI 等から設定するプロセス全体の値 (None = 未設定)
@@ -591,7 +625,16 @@ pub fn compose_sheets(
             .iter()
             .map(|&n| usize::try_from(n - 1).ok().and_then(|i| pages.get(i)))
             .collect();
-        let sheet = compose_one(&valid, &cache, &settings, cols, rows, dpi, gap_px, supersample_max)?;
+        let sheet = compose_one(
+            &valid,
+            &cache,
+            &settings,
+            cols,
+            rows,
+            dpi,
+            gap_px,
+            supersample_max,
+        )?;
         on_sheet(si, sheet)?;
     }
     Ok(())
@@ -657,7 +700,15 @@ fn compose_one<'a>(
         // セル内の目標画素数 (四捨五入)。倍率は軸ごとに画素数/ページ寸法で合わせる
         let rw = ((pw * fit + 0.5) as i64).clamp(1, cell_w);
         let rh = ((ph * fit + 0.5) as i64).clamp(1, cell_h);
-        let cell_rgb = raster_rgb(page, cache, settings, rw as u32, rh as u32, dpi, supersample_max)?;
+        let cell_rgb = raster_rgb(
+            page,
+            cache,
+            settings,
+            rw as u32,
+            rh as u32,
+            dpi,
+            supersample_max,
+        )?;
         let cell_x = g + col * (cell_w + g);
         let cell_y = g + row * (cell_h + g);
         let off_x = cell_x + (cell_w - rw) / 2;
@@ -697,10 +748,25 @@ pub fn render_sheet_encoded(
     supersample_max: i32,
 ) -> Result<Vec<u8>, String> {
     let mut out = None;
-    compose_sheets(path, &[page_nums], cols, rows, dpi, gap_px, supersample_max, |_, sheet| {
-        out = Some(encode_rgb(&sheet.rgb, sheet.width_px, sheet.height_px, png, quality)?);
-        Ok(())
-    })?;
+    compose_sheets(
+        path,
+        &[page_nums],
+        cols,
+        rows,
+        dpi,
+        gap_px,
+        supersample_max,
+        |_, sheet| {
+            out = Some(encode_rgb(
+                &sheet.rgb,
+                sheet.width_px,
+                sheet.height_px,
+                png,
+                quality,
+            )?);
+            Ok(())
+        },
+    )?;
     out.ok_or_else(|| "no sheet".to_string())
 }
 
@@ -755,7 +821,19 @@ pub fn rasterize_pdf(
             (1..=n as i32).collect()
         }
     };
-    rasterize_imposition_pdf(input, output, &list, 1, 1, 1, dpi, 0, png, quality, supersample_max)
+    rasterize_imposition_pdf(
+        input,
+        output,
+        &list,
+        1,
+        1,
+        1,
+        dpi,
+        0,
+        png,
+        quality,
+        supersample_max,
+    )
 }
 
 /// テキストを描かない 1 ページ 1 枚の画像化 PDF を書き出す (compress::rasterize_no_text 用)。
@@ -813,28 +891,42 @@ pub fn rasterize_imposition_pdf(
     let mut doc = Document::with_version("1.5");
     let pages_id = doc.new_object_id();
     let mut kids: Vec<Object> = Vec::new();
-    let g_pt = if gap_px > 0 { gap_px as f32 * 72.0 / dpi } else { 0.0 };
+    let g_pt = if gap_px > 0 {
+        gap_px as f32 * 72.0 / dpi
+    } else {
+        0.0
+    };
 
-    compose_sheets(input, &sheets, cols, rows, dpi, gap_px, supersample_max, |_, sheet| {
-        let img_stream = image_stream(sheet.rgb, sheet.width_px, sheet.height_px, png, quality)?;
-        let img_id = doc.add_object(img_stream);
+    compose_sheets(
+        input,
+        &sheets,
+        cols,
+        rows,
+        dpi,
+        gap_px,
+        supersample_max,
+        |_, sheet| {
+            let img_stream =
+                image_stream(sheet.rgb, sheet.width_px, sheet.height_px, png, quality)?;
+            let img_id = doc.add_object(img_stream);
 
-        let page_w = cols as f32 * sheet.cell_w_pt + (cols + 1) as f32 * g_pt;
-        let page_h = rows as f32 * sheet.cell_h_pt + (rows + 1) as f32 * g_pt;
-        let content = format!("q\n{page_w:.4} 0 0 {page_h:.4} 0 0 cm\n/Im0 Do\nQ\n");
-        let content_id = doc.add_object(Stream::new(dictionary! {}, content.into_bytes()));
-        let page_id = doc.add_object(dictionary! {
-            "Type" => "Page",
-            "Parent" => pages_id,
-            "MediaBox" => vec![0.into(), 0.into(), page_w.into(), page_h.into()],
-            "Resources" => dictionary! {
-                "XObject" => dictionary! { "Im0" => img_id },
-            },
-            "Contents" => content_id,
-        });
-        kids.push(page_id.into());
-        Ok(())
-    })?;
+            let page_w = cols as f32 * sheet.cell_w_pt + (cols + 1) as f32 * g_pt;
+            let page_h = rows as f32 * sheet.cell_h_pt + (rows + 1) as f32 * g_pt;
+            let content = format!("q\n{page_w:.4} 0 0 {page_h:.4} 0 0 cm\n/Im0 Do\nQ\n");
+            let content_id = doc.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+            let page_id = doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "MediaBox" => vec![0.into(), 0.into(), page_w.into(), page_h.into()],
+                "Resources" => dictionary! {
+                    "XObject" => dictionary! { "Im0" => img_id },
+                },
+                "Contents" => content_id,
+            });
+            kids.push(page_id.into());
+            Ok(())
+        },
+    )?;
 
     if kids.is_empty() {
         return Err("no sheets".into());
@@ -1138,7 +1230,12 @@ fn box_of(doc: &lopdf::Document, page_id: lopdf::ObjectId, key: &[u8]) -> Option
     if v.len() != 4 {
         return None;
     }
-    Some([v[0].min(v[2]), v[1].min(v[3]), v[0].max(v[2]), v[1].max(v[3])])
+    Some([
+        v[0].min(v[2]),
+        v[1].min(v[3]),
+        v[0].max(v[2]),
+        v[1].max(v[3]),
+    ])
 }
 
 /// 表示領域 (CropBox ∩ MediaBox) と、正規化した /Rotate (0/90/180/270)
@@ -1243,7 +1340,10 @@ pub fn keep_text_pdf_with(
     use lopdf::{Document, Object, Stream, dictionary};
 
     let data = std::fs::read(input).map_err(|e| format!("read: {e}"))?;
-    if !data[..data.len().min(1024)].windows(5).any(|w| w == b"%PDF-") {
+    if !data[..data.len().min(1024)]
+        .windows(5)
+        .any(|w| w == b"%PDF-")
+    {
         return Err("not a PDF".into());
     }
 
@@ -1259,7 +1359,11 @@ pub fn keep_text_pdf_with(
     let dpi_f = dpi.max(1.0);
     let n_doc = doc.get_pages().len() as i32;
     let selected_pre: Vec<i32> = match pages {
-        Some(p) if !p.is_empty() => p.iter().copied().filter(|&x| x >= 1 && x <= n_doc).collect(),
+        Some(p) if !p.is_empty() => p
+            .iter()
+            .copied()
+            .filter(|&x| x >= 1 && x <= n_doc)
+            .collect(),
         _ => (1..=n_doc).collect(),
     };
     let (cover_set, plain_nts, patch_zones, seam_zones, bake_by_page) =
@@ -1320,7 +1424,9 @@ pub fn keep_text_pdf_with(
         // 文字層の覆いを外すと見えてしまう。焼いても、同じ覆いを重ねる見え方は変わらない
         if let (Some(nt), Some(idx)) = (plain_nts.get(&pno), bake_by_page.get(&pno)) {
             let n = crate::cover_patch::bake_pixels(&mut rgb, nt, idx);
-            eprintln!("[render] cover p{pno}: {n} opaque px of kept image cover(s) baked into the background (privacy)");
+            eprintln!(
+                "[render] cover p{pno}: {n} opaque px of kept image cover(s) baked into the background (privacy)"
+            );
         }
         // 覆いを層分割したページ (背景 rgb は覆いを除いた下層)。その元の見た目 (文字だけを除いた
         // 描画) は plan_cover_layers が等倍で描いてある
@@ -1353,7 +1459,11 @@ pub fn keep_text_pdf_with(
             };
             (
                 Some(nt),
-                if png && layered.is_none() { Some(rgb.clone()) } else { None },
+                if png && layered.is_none() {
+                    Some(rgb.clone())
+                } else {
+                    None
+                },
             )
         } else {
             (None, None)
@@ -1384,7 +1494,9 @@ pub fn keep_text_pdf_with(
         let (w, h) = (b[2] - b[0], b[3] - b[1]);
         let (ew, eh) = if rot % 180 == 0 { (w, h) } else { (h, w) };
         if (ew - pw).abs() > 1.0 || (eh - ph).abs() > 1.0 {
-            return Err(format!("page {pno}: page box mismatch ({ew}x{eh} vs {pw}x{ph})"));
+            return Err(format!(
+                "page {pno}: page box mismatch ({ew}x{eh} vs {pw}x{ph})"
+            ));
         }
         let m = background_matrix(b, rot);
         if let Some((nt, bg)) = cover_src {
@@ -1452,7 +1564,9 @@ pub fn keep_text_pdf_with(
     // (コピーや検索で、部首文字のままにならないようにする。見た目は変わらない)
     let tu_fixed = crate::tounicode_fix_lopdf::fix_tounicode_radicals(&mut doc);
     if tu_fixed > 0 {
-        eprintln!("[render] keep-text: fixed {tu_fixed} ToUnicode CMap(s) (radicals / compatibility ideographs)");
+        eprintln!(
+            "[render] keep-text: fixed {tu_fixed} ToUnicode CMap(s) (radicals / compatibility ideographs)"
+        );
     }
     doc.prune_objects();
     doc.compress();
@@ -1480,7 +1594,17 @@ pub fn keep_text_pdf(
     supersample_max: i32,
     cover_pages: Option<&[i32]>,
 ) -> Result<(), String> {
-    keep_text_pdf_with(input, output, dpi, png, quality, pages, supersample_max, cover_pages, false)
+    keep_text_pdf_with(
+        input,
+        output,
+        dpi,
+        png,
+        quality,
+        pages,
+        supersample_max,
+        cover_pages,
+        false,
+    )
 }
 
 /// キープテキストの判定・背景の描画に使う描画エンジン (hayro か MuPDF)。
@@ -1499,18 +1623,26 @@ pub(crate) enum RDoc {
 
 impl Rast {
     pub(crate) fn hayro() -> Self {
-        Rast { settings: interpreter_settings(), mu: None }
+        Rast {
+            settings: interpreter_settings(),
+            mu: None,
+        }
     }
 
     pub(crate) fn mupdf() -> Result<Self, String> {
-        Ok(Rast { settings: interpreter_settings(), mu: Some(crate::ffi::MuRaster::new()?) })
+        Ok(Rast {
+            settings: interpreter_settings(),
+            mu: Some(crate::ffi::MuRaster::new()?),
+        })
     }
 
     pub(crate) fn open(&self, bytes: Vec<u8>) -> Result<RDoc, String> {
         if self.mu.is_some() {
             Ok(RDoc::Mu(bytes))
         } else {
-            Pdf::new(bytes).map(RDoc::Hayro).map_err(|e| format!("hayro load: {e:?}"))
+            Pdf::new(bytes)
+                .map(RDoc::Hayro)
+                .map_err(|e| format!("hayro load: {e:?}"))
         }
     }
 
@@ -1528,11 +1660,15 @@ impl Rast {
         match (doc, &self.mu) {
             (RDoc::Hayro(pdf), _) => {
                 let pages = pdf.pages();
-                let page = pages.get(idx).ok_or_else(|| format!("page {idx} out of range"))?;
+                let page = pages
+                    .get(idx)
+                    .ok_or_else(|| format!("page {idx} out of range"))?;
                 let cache = RenderCache::new();
                 raster_rgb(page, &cache, &self.settings, tw, th, dpi, supersample_max)
             }
-            (RDoc::Mu(bytes), Some(mu)) => mu.render_rgb(bytes, idx, tw, th, dpi, supersample_max, true),
+            (RDoc::Mu(bytes), Some(mu)) => {
+                mu.render_rgb(bytes, idx, tw, th, dpi, supersample_max, true)
+            }
             (RDoc::Mu(_), None) => Err("mupdf rasterizer is not available".into()),
         }
     }
@@ -1623,7 +1759,12 @@ const CLIP_ZONE_PAD_PX: u32 = 3;
 
 /// 覆いの集合 (描画を絞る範囲つき)
 fn covers_with_clips(
-    k: &[(crate::content_filter::CoverKey, [f64; 4], Vec<[f64; 8]>, Vec<[f64; 4]>)],
+    k: &[(
+        crate::content_filter::CoverKey,
+        [f64; 4],
+        Vec<[f64; 8]>,
+        Vec<[f64; 4]>,
+    )],
 ) -> crate::content_filter::Covers {
     let mut set = crate::content_filter::Covers::from_keys(k.iter().map(|(key, _, _, _)| *key));
     for (key, _, clip, _) in k {
@@ -1675,9 +1816,10 @@ fn plan_cover_layers(
 ) {
     use crate::content_filter::{self, CoverKey, Covers};
     use crate::cover_patch::{
-        HUG_DEEP_MAX_PCT, HUG_MAX_DEPTH_PX, HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP, LAYER_TEXT_DILATE, TEXT_PRE_MIN,
-        ZONE_FAINT_THR, count_changed_text, count_in_rect, deep_stats, dilate, grow_zone_mask, hidden_mask,
-        hidden_mask_thr, hug_stats, opaque_cover_pixels, opaque_in_mask, rects_from_mask, text_alpha, text_core_mask,
+        HUG_DEEP_MAX_PCT, HUG_MAX_DEPTH_PX, HUG_MIN_PX, HUG_RADIUS_PX, LAYER_MIN_OVERLAP,
+        LAYER_TEXT_DILATE, TEXT_PRE_MIN, ZONE_FAINT_THR, count_changed_text, count_in_rect,
+        deep_stats, dilate, grow_zone_mask, hidden_mask, hidden_mask_thr, hug_stats,
+        opaque_cover_pixels, opaque_in_mask, rects_from_mask, text_alpha, text_core_mask,
         text_mask_from_alpha, text_near_mask,
     };
     use std::collections::HashSet;
@@ -1785,7 +1927,10 @@ fn plan_cover_layers(
         };
         let tmask = text_mask_from_alpha(&alpha);
         // ページ座標 → 画素座標 (左上原点)
-        let (sx, sy) = (tw as f64 / (geom[2] - geom[0]), th as f64 / (geom[3] - geom[1]));
+        let (sx, sy) = (
+            tw as f64 / (geom[2] - geom[0]),
+            th as f64 / (geom[3] - geom[1]),
+        );
         let to_px = |b: [f64; 4]| {
             [
                 (b[0] - geom[0]) * sx,
@@ -1817,7 +1962,8 @@ fn plan_cover_layers(
                 survivors.retain(|c| {
                     c.translucent
                         || c.bbox.is_some_and(|b| {
-                            count_changed_text(&alpha, &t0w, &tc_all, tw, th, to_px(b)) >= TEXT_PRE_MIN
+                            count_changed_text(&alpha, &t0w, &tc_all, tw, th, to_px(b))
+                                >= TEXT_PRE_MIN
                         })
                 });
             }
@@ -1890,7 +2036,10 @@ fn plan_cover_layers(
                 let (n_hidden, opq) = opaque_in_mask(&hid, &cw, &cb, tw, th, r);
                 if n_hidden > 0 && opq * 10 >= n_hidden * 9 {
                     n_opaque += 1;
-                    patch_zones.entry(pno).or_default().extend(zones.iter().copied());
+                    patch_zones
+                        .entry(pno)
+                        .or_default()
+                        .extend(zones.iter().copied());
                     continue;
                 }
             }
@@ -1935,7 +2084,11 @@ fn plan_cover_layers(
                 "[render] cover p{pno}: {:?} hides text ({} zone(s)), {}",
                 c.key,
                 zones.len(),
-                if c.translucent { "translucent" } else { "not translucent by ca" }
+                if c.translucent {
+                    "translucent"
+                } else {
+                    "not translucent by ca"
+                }
             );
             // 文字層に残す覆いは、種類 (画像・ベクターの図形・Form) によらず、不透明な画素を背景にも
             // 焼く。文字層の覆いを外しても、覆いの下の顔が見えないようにする (プライバシー保護を、
@@ -2066,7 +2219,11 @@ fn plan_cover_layers(
                 top.sort_by(|a, b| b.0.cmp(&a.0));
                 let max_hit = top.first().map_or(0, |t| t.0);
                 {
-                    let list: Vec<String> = top.iter().take(6).map(|(n, key)| format!("{key:?}:{n}px")).collect();
+                    let list: Vec<String> = top
+                        .iter()
+                        .take(6)
+                        .map(|(n, key)| format!("{key:?}:{n}px"))
+                        .collect();
                     eprintln!(
                         "[render] cover p{pno}: repair {round}: {} cover(s) with local mismatch (bad {} px, overall ok: {}); worst: {}",
                         hits.len(),
@@ -2091,7 +2248,9 @@ fn plan_cover_layers(
                     }
                 }
                 if widened > 0 {
-                    eprintln!("[render] cover p{pno}: repair {round}: {widened} clipped draw(s) widened to the whole image");
+                    eprintln!(
+                        "[render] cover p{pno}: repair {round}: {widened} clipped draw(s) widened to the whole image"
+                    );
                     changed_any = true;
                     continue;
                 }
@@ -2104,7 +2263,9 @@ fn plan_cover_layers(
                 // 作業リスト: (found の中での描画順の位置, 外接矩形)
                 let mut work: Vec<(usize, [f64; 4])> = hits
                     .iter()
-                    .filter_map(|(hk, hr)| found.iter().position(|c| c.key == *hk).map(|hp| (hp, *hr)))
+                    .filter_map(|(hk, hr)| {
+                        found.iter().position(|c| c.key == *hk).map(|hp| (hp, *hr))
+                    })
                     .collect();
                 // 重なるのに移さなかった図形の数 (種類が Obj / 大きい / 却下済み)
                 let (mut skip_kind, mut skip_area, mut skip_rejected) = (0usize, 0usize, 0usize);
@@ -2115,7 +2276,8 @@ fn plan_cover_layers(
                         }
                         let Some(b) = c.bbox else { continue };
                         let rb = to_px(b);
-                        if rb[2] < rect[0] || rb[0] > rect[2] || rb[3] < rect[1] || rb[1] > rect[3] {
+                        if rb[2] < rect[0] || rb[0] > rect[2] || rb[3] < rect[1] || rb[1] > rect[3]
+                        {
                             continue;
                         }
                         // パスの塗り・画像の 1 回の描画だけ。画像・Form (Obj) は、ページ中のすべての描画の
@@ -2129,11 +2291,15 @@ fn plan_cover_layers(
                             continue;
                         }
                         // 大きな図形 (背景の模様など) は移さない
-                        if (rb[2] - rb[0]) * (rb[3] - rb[1]) > f64::from(tw) * f64::from(th) * REPAIR_MAX_AREA {
+                        if (rb[2] - rb[0]) * (rb[3] - rb[1])
+                            > f64::from(tw) * f64::from(th) * REPAIR_MAX_AREA
+                        {
                             skip_area += 1;
                             continue;
                         }
-                        if pulled.len() >= MAX_PULLED_PER_ROUND || pulled_total + pulled.len() >= MAX_PULLED_TOTAL {
+                        if pulled.len() >= MAX_PULLED_PER_ROUND
+                            || pulled_total + pulled.len() >= MAX_PULLED_TOTAL
+                        {
                             break 'work;
                         }
                         pulled_set.insert(c.key);
@@ -2161,9 +2327,17 @@ fn plan_cover_layers(
                 changed_any = true;
                 // 移す図形の、不透明な画素を、まとめて 1 回の描画 (白地・黒地) で求め、背景にも焼く
                 // (背景から外れるので、下の写真・顔が背景に残らないように)。焼く画素は、先頭の図形に持たせる
-                let union = pulled.iter().fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |u, (_, r)| {
-                    [u[0].min(r[0]), u[1].min(r[1]), u[2].max(r[2]), u[3].max(r[3])]
-                });
+                let union =
+                    pulled
+                        .iter()
+                        .fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |u, (_, r)| {
+                            [
+                                u[0].min(r[0]),
+                                u[1].min(r[1]),
+                                u[2].max(r[2]),
+                                u[3].max(r[3]),
+                            ]
+                        });
                 let set_p = Covers::from_keys(pulled.iter().map(|(key, _)| *key));
                 if let (Ok(wp), Ok(bp)) = (
                     content_filter::covers_only_bytes(data, &set_p, false),
@@ -2217,9 +2391,15 @@ fn plan_cover_layers(
                     break;
                 }
                 why = if chk.order_ok(pixels) {
-                    format!("try {try_no}: order ok overall but mismatch inside a cover box (bad {} px), dropping covers", chk.bad)
+                    format!(
+                        "try {try_no}: order ok overall but mismatch inside a cover box (bad {} px), dropping covers",
+                        chk.bad
+                    )
                 } else {
-                    format!("try {try_no}: order mismatch (bad {} px), dropping covers", chk.bad)
+                    format!(
+                        "try {try_no}: order mismatch (bad {} px), dropping covers",
+                        chk.bad
+                    )
                 };
                 // 食い違いの画素を外接矩形に含む覆いを外す。無ければ、最も早く描かれた覆いを外す
                 let before = k.len();
@@ -2234,11 +2414,16 @@ fn plan_cover_layers(
                     if hit {
                         let area = ((r[2] - r[0]) * (r[3] - r[1])).max(1.0);
                         let opaque = bake_px.get(key).map_or(0, Vec::len) as f64;
-                        if matches!(key, CoverKey::Draw(..)) && !clip.is_empty() && opaque / area < SOFT_DRAW_OPAQUE_MAX {
+                        if matches!(key, CoverKey::Draw(..))
+                            && !clip.is_empty()
+                            && opaque / area < SOFT_DRAW_OPAQUE_MAX
+                        {
                             kept_soft.push(*key);
                             return true;
                         }
-                        eprintln!("[render] cover p{pno}: {key:?} dropped (order mismatch inside its box)");
+                        eprintln!(
+                            "[render] cover p{pno}: {key:?} dropped (order mismatch inside its box)"
+                        );
                         rejected.insert(*key);
                         dropped_zones.extend(z.iter().copied());
                     }
@@ -2252,7 +2437,10 @@ fn plan_cover_layers(
                     // 覆いとは別の描画の差) か、柔らかい光の画像の描画だけの食い違いなので、覆いは残す
                     accepted = true;
                     why = if kept_soft.is_empty() {
-                        format!("try {try_no}: mismatch (bad {} px) is outside every cover box, kept", chk.bad)
+                        format!(
+                            "try {try_no}: mismatch (bad {} px) is outside every cover box, kept",
+                            chk.bad
+                        )
                     } else {
                         format!(
                             "try {try_no}: kept {} soft draw(s) despite order mismatch (bad {} px): {:?}",
@@ -2272,7 +2460,10 @@ fn plan_cover_layers(
         // 文字を隠していたのに文字層へ残せなかった覆いは、隠し直しパッチで補う (その範囲だけ)
         if !accepted {
             for (_, _, _, z) in &k {
-                patch_zones.entry(pno).or_default().extend(z.iter().copied());
+                patch_zones
+                    .entry(pno)
+                    .or_default()
+                    .extend(z.iter().copied());
             }
         }
         let n_zones = patch_zones.get(&pno).map_or(0, Vec::len);
@@ -2287,7 +2478,10 @@ fn plan_cover_layers(
                     seam_zones.entry(pno).or_default().extend(z.iter().copied());
                 }
                 if let Some(px) = bake_px.get(key) {
-                    bake_pixels_by_page.entry(pno).or_default().extend(px.iter().copied());
+                    bake_pixels_by_page
+                        .entry(pno)
+                        .or_default()
+                        .extend(px.iter().copied());
                 }
             }
             keep.extend(k.iter().map(|(key, _, clip, _)| (*key, clip.clone())));
@@ -2339,9 +2533,14 @@ fn add_cover_patches(
 
     // 出力ページの描画用に、現時点の文書をメモリ上へ書き出す
     let mut buf = Vec::new();
-    doc.save_to(&mut buf).map_err(|e| format!("cover: save: {e}"))?;
-    let full_pdf = settings.open(orig.to_vec()).map_err(|e| format!("cover: load (orig): {e}"))?;
-    let comp_pdf = settings.open(buf).map_err(|e| format!("cover: load (output): {e}"))?;
+    doc.save_to(&mut buf)
+        .map_err(|e| format!("cover: save: {e}"))?;
+    let full_pdf = settings
+        .open(orig.to_vec())
+        .map_err(|e| format!("cover: load (orig): {e}"))?;
+    let comp_pdf = settings
+        .open(buf)
+        .map_err(|e| format!("cover: load (output): {e}"))?;
     let params = Params::default();
     // 文字だけを白地・黒地に描いた元の複製 (文字の中身の画素を、色によらず求める)。
     // 作れなければ、plan_cover_layers が求めた範囲だけを使う
@@ -2368,7 +2567,10 @@ fn add_cover_patches(
         // パッチを置いてよい範囲の外は、差があっても無視する
         let mut allowed = vec![false; (job.tw as usize) * (job.th as usize)];
         for z in &job.zones {
-            let (x0, y0) = (z[0].floor().max(0.0) as usize, z[1].floor().max(0.0) as usize);
+            let (x0, y0) = (
+                z[0].floor().max(0.0) as usize,
+                z[1].floor().max(0.0) as usize,
+            );
             let (x1, y1) = (
                 (z[2].ceil().max(0.0) as usize).min(job.tw as usize),
                 (z[3].ceil().max(0.0) as usize).min(job.th as usize),
@@ -2420,7 +2622,14 @@ fn add_cover_patches(
         if !job.seams.is_empty()
             && let Some(ink) = &ink
         {
-            patches.extend(seam_patches(&job.nt, ink, &job.seams, job.tw, job.th, params.tile));
+            patches.extend(seam_patches(
+                &job.nt,
+                ink,
+                &job.seams,
+                job.tw,
+                job.th,
+                params.tile,
+            ));
         }
         if patches.is_empty() {
             continue;
@@ -2577,7 +2786,9 @@ fn scan_form(
 fn resolve_font(query: &FontQuery) -> Option<(FontData, u32)> {
     match query {
         FontQuery::Standard(s) => Some(s.get_font_data()),
-        FontQuery::Fallback(f) => system_fallback(f).or_else(|| Some(f.pick_standard_font().get_font_data())),
+        FontQuery::Fallback(f) => {
+            system_fallback(f).or_else(|| Some(f.pick_standard_font().get_font_data()))
+        }
     }
 }
 
@@ -2630,8 +2841,21 @@ fn norm(s: &str) -> String {
 /// ("MS-Gothic" のようにハイフンがファミリ名の一部のものは壊さない)
 fn family_stem(name: &str) -> String {
     const STYLES: &[&str] = &[
-        "bold", "italic", "oblique", "regular", "roman", "light", "medium", "semibold",
-        "bolditalic", "boldoblique", "boldmt", "italicmt", "bolditalicmt", "bt", "mt",
+        "bold",
+        "italic",
+        "oblique",
+        "regular",
+        "roman",
+        "light",
+        "medium",
+        "semibold",
+        "bolditalic",
+        "boldoblique",
+        "boldmt",
+        "italicmt",
+        "bolditalicmt",
+        "bt",
+        "mt",
     ];
     let base = name.split(',').next().unwrap_or(name).trim();
     if let Some((head, tail)) = base.rsplit_once('-')
@@ -2662,8 +2886,10 @@ fn system_fallback(q: &FallbackFontQuery) -> Option<(FontData, u32)> {
             CidFamily::AdobeCNS1 => ZH_HANT_FAMILIES,
             CidFamily::AdobeKorea1 => KO_FAMILIES,
             // Identity / Custom は言語不明。日本語→中国語→韓国語の順で広く持つものを試す。
-            _ => return find_by_families(&sf.db, q, &[JA_FAMILIES, ZH_HANS_FAMILIES, KO_FAMILIES])
-                .and_then(|id| sf.data(id)),
+            _ => {
+                return find_by_families(&sf.db, q, &[JA_FAMILIES, ZH_HANS_FAMILIES, KO_FAMILIES])
+                    .and_then(|id| sf.data(id));
+            }
         };
         return find_by_families(&sf.db, q, &[candidates]).and_then(|id| sf.data(id));
     }
@@ -2775,41 +3001,109 @@ fn find_by_families(
 // 系統ごとの代替候補 (優先順)。OS 標準のものを先に、次に Noto/Source Han 等の汎用フォント。
 const JA_FAMILIES: &[&str] = &[
     // Windows
-    "Yu Gothic UI", "Yu Gothic", "Meiryo UI", "Meiryo", "MS PGothic", "MS Gothic",
+    "Yu Gothic UI",
+    "Yu Gothic",
+    "Meiryo UI",
+    "Meiryo",
+    "MS PGothic",
+    "MS Gothic",
     // macOS / iOS
-    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Hiragino Kaku Gothic Pro", "Osaka",
+    "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN",
+    "Hiragino Kaku Gothic Pro",
+    "Osaka",
     // Linux / Android / 汎用
-    "Noto Sans CJK JP", "Noto Sans JP", "Source Han Sans JP", "Source Han Sans",
-    "IPAexGothic", "IPAGothic", "IPAPGothic", "TakaoPGothic", "Takao Gothic",
-    "VL Gothic", "VL PGothic", "Droid Sans Japanese", "Droid Sans Fallback",
-    "Noto Serif CJK JP", "Noto Sans CJK SC", "WenQuanYi Micro Hei",
+    "Noto Sans CJK JP",
+    "Noto Sans JP",
+    "Source Han Sans JP",
+    "Source Han Sans",
+    "IPAexGothic",
+    "IPAGothic",
+    "IPAPGothic",
+    "TakaoPGothic",
+    "Takao Gothic",
+    "VL Gothic",
+    "VL PGothic",
+    "Droid Sans Japanese",
+    "Droid Sans Fallback",
+    "Noto Serif CJK JP",
+    "Noto Sans CJK SC",
+    "WenQuanYi Micro Hei",
 ];
 const ZH_HANS_FAMILIES: &[&str] = &[
-    "Microsoft YaHei UI", "Microsoft YaHei", "SimSun", "SimHei", "PingFang SC",
-    "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN",
-    "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback", "Noto Sans CJK JP",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "SimSun",
+    "SimHei",
+    "PingFang SC",
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    "Source Han Sans SC",
+    "Source Han Sans CN",
+    "WenQuanYi Micro Hei",
+    "WenQuanYi Zen Hei",
+    "Droid Sans Fallback",
+    "Noto Sans CJK JP",
 ];
 const ZH_HANT_FAMILIES: &[&str] = &[
-    "Microsoft JhengHei UI", "Microsoft JhengHei", "MingLiU", "PMingLiU", "PingFang TC",
-    "Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "Source Han Sans TW",
-    "WenQuanYi Zen Hei", "Droid Sans Fallback", "Noto Sans CJK JP",
+    "Microsoft JhengHei UI",
+    "Microsoft JhengHei",
+    "MingLiU",
+    "PMingLiU",
+    "PingFang TC",
+    "Noto Sans CJK TC",
+    "Noto Sans TC",
+    "Source Han Sans TC",
+    "Source Han Sans TW",
+    "WenQuanYi Zen Hei",
+    "Droid Sans Fallback",
+    "Noto Sans CJK JP",
 ];
 const KO_FAMILIES: &[&str] = &[
-    "Malgun Gothic", "Gulim", "Batang", "Apple SD Gothic Neo", "AppleGothic",
-    "Noto Sans CJK KR", "Noto Sans KR", "Source Han Sans K", "Source Han Sans KR",
-    "NanumGothic", "Droid Sans Fallback", "Noto Sans CJK JP",
+    "Malgun Gothic",
+    "Gulim",
+    "Batang",
+    "Apple SD Gothic Neo",
+    "AppleGothic",
+    "Noto Sans CJK KR",
+    "Noto Sans KR",
+    "Source Han Sans K",
+    "Source Han Sans KR",
+    "NanumGothic",
+    "Droid Sans Fallback",
+    "Noto Sans CJK JP",
 ];
 const SANS_FAMILIES: &[&str] = &[
-    "Arial", "Helvetica", "Helvetica Neue", "Segoe UI", "Liberation Sans", "Arimo",
-    "DejaVu Sans", "Noto Sans", "Roboto", "Droid Sans",
+    "Arial",
+    "Helvetica",
+    "Helvetica Neue",
+    "Segoe UI",
+    "Liberation Sans",
+    "Arimo",
+    "DejaVu Sans",
+    "Noto Sans",
+    "Roboto",
+    "Droid Sans",
 ];
 const SERIF_FAMILIES: &[&str] = &[
-    "Times New Roman", "Times", "Liberation Serif", "Tinos", "DejaVu Serif",
-    "Noto Serif", "Droid Serif",
+    "Times New Roman",
+    "Times",
+    "Liberation Serif",
+    "Tinos",
+    "DejaVu Serif",
+    "Noto Serif",
+    "Droid Serif",
 ];
 const MONO_FAMILIES: &[&str] = &[
-    "Courier New", "Courier", "Menlo", "Consolas", "Liberation Mono", "Cousine",
-    "DejaVu Sans Mono", "Noto Sans Mono", "Droid Sans Mono",
+    "Courier New",
+    "Courier",
+    "Menlo",
+    "Consolas",
+    "Liberation Mono",
+    "Cousine",
+    "DejaVu Sans Mono",
+    "Noto Sans Mono",
+    "Droid Sans Mono",
 ];
 
 #[cfg(test)]
@@ -2842,17 +3136,26 @@ mod tests {
         assert_eq!(parse_min_stroke("off").unwrap(), Some(MinStroke::Off));
         assert_eq!(
             parse_min_stroke("0.15, 0.1").unwrap(),
-            Some(MinStroke::Custom { path: 0.15, text: 0.1 })
+            Some(MinStroke::Custom {
+                path: 0.15,
+                text: 0.1
+            })
         );
         // 数値 1 つは両方に使う
         assert_eq!(
             parse_min_stroke("0").unwrap(),
-            Some(MinStroke::Custom { path: 0.0, text: 0.0 })
+            Some(MinStroke::Custom {
+                path: 0.0,
+                text: 0.0
+            })
         );
         // 上限で丸める
         assert_eq!(
             parse_min_stroke("99,0.2").unwrap(),
-            Some(MinStroke::Custom { path: HAYRO_MIN_STROKE_WIDTH_MAX, text: 0.2 })
+            Some(MinStroke::Custom {
+                path: HAYRO_MIN_STROKE_WIDTH_MAX,
+                text: 0.2
+            })
         );
         assert!(parse_min_stroke("-1").is_err());
         assert!(parse_min_stroke("nan").is_err());
@@ -2865,7 +3168,14 @@ mod tests {
     fn min_stroke_widths_values() {
         assert_eq!(MinStroke::On.widths(), (0.3, 0.25));
         assert_eq!(MinStroke::Off.widths(), (0.0, 0.0));
-        assert_eq!(MinStroke::Custom { path: 0.2, text: 0.1 }.widths(), (0.2, 0.1));
+        assert_eq!(
+            MinStroke::Custom {
+                path: 0.2,
+                text: 0.1
+            }
+            .widths(),
+            (0.2, 0.1)
+        );
     }
 
     #[test]
@@ -2874,18 +3184,33 @@ mod tests {
         assert_eq!(parse_jpeg_options("default"), Ok(None));
         assert_eq!(
             parse_jpeg_options("444"),
-            Ok(Some(JpegOptions { subsampling: 444, trellis: false }))
+            Ok(Some(JpegOptions {
+                subsampling: 444,
+                trellis: false
+            }))
         );
         assert_eq!(
             parse_jpeg_options("420,trellis"),
-            Ok(Some(JpegOptions { subsampling: 420, trellis: true }))
+            Ok(Some(JpegOptions {
+                subsampling: 420,
+                trellis: true
+            }))
         );
         assert_eq!(
             parse_jpeg_options("4:2:2, Trellis"),
-            Ok(Some(JpegOptions { subsampling: 422, trellis: true }))
+            Ok(Some(JpegOptions {
+                subsampling: 422,
+                trellis: true
+            }))
         );
         assert!(parse_jpeg_options("411").is_err());
         assert!(parse_jpeg_options("444,fast").is_err());
-        assert_eq!(JpegOptions::default(), JpegOptions { subsampling: 444, trellis: true });
+        assert_eq!(
+            JpegOptions::default(),
+            JpegOptions {
+                subsampling: 444,
+                trellis: true
+            }
+        );
     }
 }

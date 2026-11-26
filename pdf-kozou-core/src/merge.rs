@@ -41,7 +41,11 @@ pub fn merge(req: &MergeRequest) -> Result<MergeResponse> {
 }
 
 /// ページツリーの親をたどって継承属性 (Resources / MediaBox / CropBox / Rotate) を探す。
-pub(crate) fn inherited_attr(doc: &lopdf::Document, page_id: lopdf::ObjectId, key: &[u8]) -> Option<lopdf::Object> {
+pub(crate) fn inherited_attr(
+    doc: &lopdf::Document,
+    page_id: lopdf::ObjectId,
+    key: &[u8],
+) -> Option<lopdf::Object> {
     let mut cur = page_id;
     // 循環参照対策で深さを制限する
     for _ in 0..64 {
@@ -164,7 +168,6 @@ fn merge_with_lopdf(req: &MergeRequest) -> Result<MergeResponse> {
         output_bytes,
     })
 }
-
 
 /// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。
 fn merge_with_mupdf(req: &MergeRequest) -> Result<MergeResponse> {

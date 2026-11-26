@@ -147,7 +147,9 @@ pub(crate) fn compose_with_lopdf(req: &ComposeImpositionPdfRequest) -> Result<()
         let (mut max_w, mut max_h) = (595.0f32, 842.0f32);
         let mut valid = 0usize;
         for i in 0..(req.n_sheets.max(0) as usize * per) {
-            let Some(&n) = req.sheet_pages.get(i) else { break };
+            let Some(&n) = req.sheet_pages.get(i) else {
+                break;
+            };
             let pno0 = n - 1;
             if pno0 < 0 || pno0 >= page_count {
                 continue;
@@ -159,7 +161,11 @@ pub(crate) fn compose_with_lopdf(req: &ComposeImpositionPdfRequest) -> Result<()
             }
             let prot = page_rotate_raw(&doc, pid).rem_euclid(360);
             let (pw, ph) = (pb[2] - pb[0], pb[3] - pb[1]);
-            let (vw, vh) = if prot == 90 || prot == 270 { (ph, pw) } else { (pw, ph) };
+            let (vw, vh) = if prot == 90 || prot == 270 {
+                (ph, pw)
+            } else {
+                (pw, ph)
+            };
             if valid == 0 {
                 (max_w, max_h) = (vw, vh);
             } else {
@@ -197,7 +203,11 @@ pub(crate) fn compose_with_lopdf(req: &ComposeImpositionPdfRequest) -> Result<()
                 }
                 let prot = page_rotate_raw(&doc, pid).rem_euclid(360);
                 let (pw, ph) = (pcb[2] - pcb[0], pcb[3] - pcb[1]);
-                let page_landscape = if prot == 90 || prot == 270 { ph > pw } else { pw > ph };
+                let page_landscape = if prot == 90 || prot == 270 {
+                    ph > pw
+                } else {
+                    pw > ph
+                };
                 let (big, small) = if tw > th { (tw, th) } else { (th, tw) };
                 if page_landscape {
                     (tw, th) = (big, small);
@@ -245,7 +255,11 @@ pub(crate) fn compose_with_lopdf(req: &ComposeImpositionPdfRequest) -> Result<()
                 rot = 0;
             }
             // 表示上(回転後)の寸法。90/270 は縦横入れ替え。
-            let (vw, vh) = if rot == 90 || rot == 270 { (bh, bw) } else { (bw, bh) };
+            let (vw, vh) = if rot == 90 || rot == 270 {
+                (bh, bw)
+            } else {
+                (bw, bh)
+            };
 
             let (col, row) = ((c as i32 % cols) as f32, (c as i32 / cols) as f32);
             let cell_x = margin + col * (cell_w + gutter);

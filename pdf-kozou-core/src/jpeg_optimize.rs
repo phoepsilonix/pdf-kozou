@@ -16,7 +16,9 @@
 // 実装は純 Rust の libjpeg-turbo-rs (係数領域の transform)。
 // 画素を一切触らないため、再圧縮による画質劣化は無い。
 
-use libjpeg_turbo_rs::{MarkerCopyMode, TransformOp, TransformOptions, transform_jpeg_with_options};
+use libjpeg_turbo_rs::{
+    MarkerCopyMode, TransformOp, TransformOptions, transform_jpeg_with_options,
+};
 
 /// 最適化結果
 pub struct Optimized {
@@ -189,7 +191,12 @@ fn strip_markers(data: &[u8]) -> Option<Vec<u8>> {
 /// 環境変数 PDF_KOZOU_JPEG_OPTIMIZE=0 / off / false で無効化できる (既定は有効)
 pub fn enabled() -> bool {
     !std::env::var("PDF_KOZOU_JPEG_OPTIMIZE")
-        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "off" | "false" | "no"))
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "0" | "off" | "false" | "no"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -204,7 +211,11 @@ pub fn optimize_or_keep(data: Vec<u8>) -> Vec<u8> {
                 "[jpeg] optimized: {} -> {} bytes ({})",
                 data.len(),
                 o.bytes.len(),
-                if o.progressive { "progressive" } else { "baseline" }
+                if o.progressive {
+                    "progressive"
+                } else {
+                    "baseline"
+                }
             );
             o.bytes
         }
@@ -254,7 +265,9 @@ pub fn optimize_pdf_images(path: &str) -> Result<(usize, u64), String> {
     }
     let mut count = 0usize;
     for (_, obj) in doc.objects.iter_mut() {
-        let Object::Stream(stream) = obj else { continue };
+        let Object::Stream(stream) = obj else {
+            continue;
+        };
         if !is_dct_image(&stream.dict) || is_progressive(&stream.content) {
             continue;
         }
@@ -284,9 +297,7 @@ pub fn optimize_pdf_images(path: &str) -> Result<(usize, u64), String> {
             let _ = std::fs::remove_file(&tmp);
             e.to_string()
         })?;
-        eprintln!(
-            "[jpeg] optimized {count} image(s) in {path}: {orig_len} -> {new_len} bytes"
-        );
+        eprintln!("[jpeg] optimized {count} image(s) in {path}: {orig_len} -> {new_len} bytes");
         Ok((count, orig_len - new_len))
     } else {
         let _ = std::fs::remove_file(&tmp);

@@ -94,7 +94,13 @@ fn decode_pdf_text(bytes: &[u8]) -> String {
     let utf16 = |body: &[u8], be: bool| -> String {
         let units: Vec<u16> = body
             .chunks_exact(2)
-            .map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) })
+            .map(|c| {
+                if be {
+                    u16::from_be_bytes([c[0], c[1]])
+                } else {
+                    u16::from_le_bytes([c[0], c[1]])
+                }
+            })
             .collect();
         String::from_utf16_lossy(&units)
     };
@@ -230,7 +236,9 @@ fn write_info_lopdf(
     }
     match info_id {
         Some(id) => {
-            doc.new_document.objects.insert(id, Object::Dictionary(dict));
+            doc.new_document
+                .objects
+                .insert(id, Object::Dictionary(dict));
         }
         None => {
             let id = doc.new_document.add_object(Object::Dictionary(dict));
@@ -243,7 +251,9 @@ fn write_info_lopdf(
     doc.save(&tmp).map_err(|e| format!("save failed: {e}"))?;
     if std::fs::rename(&tmp, path).is_err() {
         // 置き換えできない環境(他プロセスがロック中など)では上書きコピーに切り替える
-        let r = std::fs::copy(&tmp, path).map(|_| ()).map_err(|e| format!("replace failed: {e}"));
+        let r = std::fs::copy(&tmp, path)
+            .map(|_| ())
+            .map_err(|e| format!("replace failed: {e}"));
         let _ = std::fs::remove_file(&tmp);
         r?;
     }
@@ -1851,7 +1861,6 @@ pub fn rasterize_with_quality(
                 return Err(CoreError::MuPdf(format!("{res}")));
             }
         }
-
     }
 
     // MuPDF が埋め込んだ JPEG を、jpegtran 方式で可逆最適化する (hayro 経路は生成時に済み)
@@ -1970,7 +1979,9 @@ pub fn rasterize_no_text_with_quality(
                         done = true;
                     }
                     Err(e) if engine == crate::render::Engine::Hayro => {
-                        eprintln!("[render] engine=hayro rasterize_no_text failed (no fallback): {e}");
+                        eprintln!(
+                            "[render] engine=hayro rasterize_no_text failed (no fallback): {e}"
+                        );
                         return Err(CoreError::Internal(format!("hayro rasterize_no_text: {e}")));
                     }
                     Err(e) => crate::engine_notice::report_fallback(
@@ -2018,7 +2029,6 @@ pub fn rasterize_no_text_with_quality(
                 return Err(CoreError::MuPdf(format!("{res}")));
             }
         }
-
     }
 
     // 背景ラスタ (JPEG) を jpegtran 方式で可逆最適化する (hayro 経路は生成時に済み)
@@ -2084,7 +2094,10 @@ fn partially_covered_pages(path: &str, pages: Option<&[i32]>) -> Option<Vec<i32>
             }
         }
     }
-    let count = mupdf::pdf::PdfDocument::open(path).ok()?.page_count().ok()?;
+    let count = mupdf::pdf::PdfDocument::open(path)
+        .ok()?
+        .page_count()
+        .ok()?;
     if count <= 0 {
         return None;
     }
@@ -2459,11 +2472,8 @@ pub fn compose_image_pdf_keep_text_with_quality(
     // lopdf 実装の前処理は、エンジンに関わらず、完全に隠れた文字だけを除去する
     // (部分的に隠れた文字は重ね合わせで再現する)。
     #[allow(unused_variables)]
-    let (first_strip, stripped_by_lopdf) = strip_buried_for_keep_text(
-        input,
-        &tmp_dir,
-        keep_text_strip_ratio(hayro_first),
-    );
+    let (first_strip, stripped_by_lopdf) =
+        strip_buried_for_keep_text(input, &tmp_dir, keep_text_strip_ratio(hayro_first));
     #[allow(unused_mut)]
     let mut buried_stripped = first_strip;
     #[allow(unused_mut)]
@@ -2643,7 +2653,6 @@ pub fn compose_image_pdf_keep_text_with_quality(
                 compose_err = Some(CoreError::MuPdf(format!("{res}")));
             }
         }
-
     }
 
     // 前処理で作った一時ファイルは compose の成否に関わらず必ず削除する。
@@ -3152,7 +3161,10 @@ pub fn set_metadata(path: &str, metadata: &[(String, String)]) -> std::result::R
     if crate::backend::try_lopdf("metadata") {
         match write_info_lopdf(path, &updates) {
             Ok(()) => {
-                eprintln!("[metadata] set_metadata wrote {} keys to {path}", metadata.len());
+                eprintln!(
+                    "[metadata] set_metadata wrote {} keys to {path}",
+                    metadata.len()
+                );
                 return Ok(());
             }
             Err(e) => {
@@ -3166,7 +3178,10 @@ pub fn set_metadata(path: &str, metadata: &[(String, String)]) -> std::result::R
 }
 
 /// 従来の MuPDF 実装（lopdf 実装が失敗したときのフォールバック）。
-fn set_metadata_mupdf(path: &str, metadata: &[(String, String)]) -> std::result::Result<(), String> {
+fn set_metadata_mupdf(
+    path: &str,
+    metadata: &[(String, String)],
+) -> std::result::Result<(), String> {
     // 空でない項目だけ書き込む、空は削除扱い（削除は write_pdf_info_clear で対応）
     let to_write: Vec<(String, String)> = metadata
         .iter()

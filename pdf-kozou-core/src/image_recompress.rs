@@ -697,7 +697,14 @@ fn recompress_one(
             .get(b"ColorSpace")
             .ok()
             .and_then(|cs| colorspace_components(doc, cs).map(|n| (cs.clone(), n)));
-        (kind, raw_bytes, native_w, native_h, decode_inverted, orig_cs)
+        (
+            kind,
+            raw_bytes,
+            native_w,
+            native_h,
+            decode_inverted,
+            orig_cs,
+        )
     };
 
     let (decoded, grayscale) = match kind {
@@ -838,8 +845,8 @@ fn recompress_one(
 /// stream_bytes()/decompressed_content() 呼び出し経路によっては扱いが
 /// 分かれてしまう。ここでは常に Filter=FlateDecode を設定して統一する。
 pub(crate) fn set_flate_content(stream: &mut lopdf::Stream, bytes: Vec<u8>) {
-    use flate2::write::ZlibEncoder;
     use flate2::Compression;
+    use flate2::write::ZlibEncoder;
     use std::io::Write;
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
     let compressed = match encoder.write_all(&bytes).and_then(|_| encoder.finish()) {
@@ -1258,7 +1265,7 @@ pub fn recompress_raw_images_native(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lopdf::{dictionary, Stream};
+    use lopdf::{Stream, dictionary};
 
     /// 100x100pt に表示される 400x400 の生 RGB 画像と、それに付く 400x400 の
     /// 無圧縮グレーマスクを持つ 1 ページの文書を保存する。
@@ -1594,18 +1601,15 @@ mod tests {
     }
 
     /// 指定の /ColorSpace を持つ `w`x`h` の生ビットマップ画像を文書に追加する。
-    fn add_raw_image(
-        doc: &mut Document,
-        cs: Object,
-        comps: usize,
-        (w, h): (i64, i64),
-    ) -> ObjectId {
+    fn add_raw_image(doc: &mut Document, cs: Object, comps: usize, (w, h): (i64, i64)) -> ObjectId {
         doc.add_object(Stream::new(
             dictionary! {
                 "Type" => "XObject", "Subtype" => "Image", "Width" => w, "Height" => h,
                 "ColorSpace" => cs, "BitsPerComponent" => 8,
             },
-            (0..(w * h) as usize * comps).map(|i| (i % 251) as u8).collect(),
+            (0..(w * h) as usize * comps)
+                .map(|i| (i % 251) as u8)
+                .collect(),
         ))
     }
 
@@ -1664,7 +1668,11 @@ mod tests {
         let id = add_raw_image(&mut doc, Object::Name(b"DeviceCMYK".to_vec()), 4, (64, 64));
         recompress_one(&mut doc, id, 32, 32, 80).unwrap();
         assert_eq!(
-            dict_of(&doc, id).get(b"ColorSpace").unwrap().as_name().unwrap(),
+            dict_of(&doc, id)
+                .get(b"ColorSpace")
+                .unwrap()
+                .as_name()
+                .unwrap(),
             b"DeviceRGB"
         );
     }

@@ -122,7 +122,8 @@ fn rotate_with_lopdf(req: &RotateRequest) -> Result<RotateResponse> {
 
     let mut doc = IncrementalDocument::load(&req.input)
         .map_err(|e| CoreError::Parse(format!("{}: {e}", req.input)))?;
-    let page_ids: Vec<lopdf::ObjectId> = doc.get_prev_documents().get_pages().into_values().collect();
+    let page_ids: Vec<lopdf::ObjectId> =
+        doc.get_prev_documents().get_pages().into_values().collect();
     if page_ids.is_empty() {
         return Err(CoreError::Parse(format!("{}: no pages", req.input)));
     }

@@ -193,7 +193,13 @@ pub fn hayro_min_stroke_state() -> HayroStrokeState {
         };
         let (path, text) = m.widths();
         let (recommended_path, recommended_text) = recommended_min_stroke();
-        HayroStrokeState { mode, path, text, recommended_path, recommended_text }
+        HayroStrokeState {
+            mode,
+            path,
+            text,
+            recommended_path,
+            recommended_text,
+        }
     }
     #[cfg(not(feature = "hayro"))]
     {
@@ -237,11 +243,17 @@ pub fn hayro_jpeg_options_state() -> HayroJpegState {
     #[cfg(feature = "hayro")]
     {
         let o = crate::render_hayro::current_jpeg_options();
-        HayroJpegState { subsampling: o.subsampling, trellis: o.trellis }
+        HayroJpegState {
+            subsampling: o.subsampling,
+            trellis: o.trellis,
+        }
     }
     #[cfg(not(feature = "hayro"))]
     {
-        HayroJpegState { subsampling: 444, trellis: true }
+        HayroJpegState {
+            subsampling: 444,
+            trellis: true,
+        }
     }
 }
 
@@ -365,8 +377,8 @@ pub fn render(req: &RenderRequest) -> Result<RenderResponse> {
     // MuPDF は、文字コードが GID の CID キー付き CFF フォント (◀ など) を描けないので、直した
     // 一時コピーを渡す (直すものが無ければ元のまま。結果はファイルごとにキャッシュする)。
     let mu_input = crate::font_gidfix_lopdf::mupdf_input(req.path.as_str());
-    let c_path = CString::new(mu_input.path())
-        .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
+    let c_path =
+        CString::new(mu_input.path()).map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
     let fmt_code: c_int = if format == "png" { 1 } else { 0 };
     let quality = req.quality.unwrap_or(85) as c_int;

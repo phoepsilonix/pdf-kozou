@@ -299,7 +299,11 @@ const MAX_EXPANDED: usize = 4096;
 /// ToUnicode CMap を変換する。変換対象が無い、または想定外の構造なら None
 fn fix_cmap(d: &[u8]) -> Option<Vec<u8>> {
     let mut out: Vec<u8> = Vec::with_capacity(d.len() + 256);
-    let mut sc = Sec { chunk: Vec::new(), cnt: 0, is_range: false };
+    let mut sc = Sec {
+        chunk: Vec::new(),
+        cnt: 0,
+        is_range: false,
+    };
     let mut changed = false;
     let mut expanded = 0usize;
     let mut pos = 0usize;
@@ -328,7 +332,11 @@ fn fix_cmap(d: &[u8]) -> Option<Vec<u8>> {
         sc.is_range = is_range;
         sc.cnt = 0;
         sc.chunk.clear();
-        let end_word: &[u8] = if is_range { b"endbfrange" } else { b"endbfchar" };
+        let end_word: &[u8] = if is_range {
+            b"endbfrange"
+        } else {
+            b"endbfchar"
+        };
 
         loop {
             let (as_, an) = match next_tok(d, &mut p) {

@@ -58,11 +58,19 @@ pub const OP_IMAGE_OPT_FAILED: &str = "image_opt_failed";
 /// stderr に出すログ行 (従来の書式を維持する)
 pub fn log_line(f: &EngineFallback) -> String {
     if is_image_opt(f.op) {
-        let file = f.file.as_deref().map(|p| format!(" ({p})")).unwrap_or_default();
+        let file = f
+            .file
+            .as_deref()
+            .map(|p| format!(" ({p})"))
+            .unwrap_or_default();
         return format!("[image-opt] {}: {}{}", f.op, f.reason, file);
     }
     if f.from == "lopdf" {
-        let file = f.file.as_deref().map(|p| format!(" ({p})")).unwrap_or_default();
+        let file = f
+            .file
+            .as_deref()
+            .map(|p| format!(" ({p})"))
+            .unwrap_or_default();
         return format!(
             "[backend] {}: lopdf cannot handle this, using mupdf: {}{}",
             f.op, f.reason, file
@@ -139,7 +147,11 @@ mod tests {
             "[render] engine=hayro rasterize failed, falling back to mupdf: \
              unsupported feature: knockout group"
         );
-        let f = EngineFallback { op: "render", page: Some(3), ..f };
+        let f = EngineFallback {
+            op: "render",
+            page: Some(3),
+            ..f
+        };
         assert!(log_line(&f).ends_with(": unsupported feature: knockout group (page=3)"));
     }
 

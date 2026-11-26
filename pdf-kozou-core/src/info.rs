@@ -284,7 +284,12 @@ pub(crate) fn lp_rect(doc: &Document, obj: &Object) -> Option<[f64; 4]> {
     let v: Vec<f64> = (0..4)
         .map(|i| a.get(i).and_then(|o| lp_num(doc, o)).unwrap_or(0.0))
         .collect();
-    Some([v[0].min(v[2]), v[1].min(v[3]), v[0].max(v[2]), v[1].max(v[3])])
+    Some([
+        v[0].min(v[2]),
+        v[1].min(v[3]),
+        v[0].max(v[2]),
+        v[1].max(v[3]),
+    ])
 }
 
 fn rect_is_empty(r: &[f64; 4]) -> bool {
@@ -318,7 +323,11 @@ fn lp_page_bounds(doc: &Document, page_id: ObjectId) -> PageBounds {
     let rotate = lp_page_rotate(doc, page_id);
     let Ok(page) = doc.get_dictionary(page_id) else {
         // 読めないページは従来どおり A4 とみなす
-        return PageBounds { w: 595.0, h: 842.0, rotate: 0 };
+        return PageBounds {
+            w: 595.0,
+            h: 842.0,
+            rotate: 0,
+        };
     };
     let inh = |key: &[u8]| crate::merge::inherited_attr(doc, page_id, key);
 
@@ -353,18 +362,25 @@ fn lp_page_bounds(doc: &Document, page_id: ObjectId) -> PageBounds {
     if rotate == 90 || rotate == 270 {
         std::mem::swap(&mut w, &mut h);
     }
-    PageBounds { w: w as f32, h: h as f32, rotate: lp_rotate_field(doc, page) }
+    PageBounds {
+        w: w as f32,
+        h: h as f32,
+        rotate: lp_rotate_field(doc, page),
+    }
 }
 
 /// 出力の rotate フィールド。従来どおり「ページ自身の /Rotate の値」を 360 で正規化して返す
 /// （継承は見ず、90 の倍数への丸めもしない）。w/h は継承・丸めを反映した値で、
 /// 両者の意味が異なる点は従来のまま。
 fn lp_rotate_field(doc: &Document, page: &Dictionary) -> i32 {
-    let v = page.get(b"Rotate").ok().and_then(|o| match lp_resolve(doc, o)? {
-        Object::Integer(n) => Some(*n as i32),
-        Object::Real(f) => Some(f.round() as i32),
-        _ => None,
-    });
+    let v = page
+        .get(b"Rotate")
+        .ok()
+        .and_then(|o| match lp_resolve(doc, o)? {
+            Object::Integer(n) => Some(*n as i32),
+            Object::Real(f) => Some(f.round() as i32),
+            _ => None,
+        });
     v.unwrap_or(0).rem_euclid(360)
 }
 
@@ -381,7 +397,10 @@ fn info_pdf_lopdf(
     if page_ids.is_empty() {
         return Err("no pages".into());
     }
-    let pages: Vec<PageBounds> = page_ids.iter().map(|&id| lp_page_bounds(&doc, id)).collect();
+    let pages: Vec<PageBounds> = page_ids
+        .iter()
+        .map(|&id| lp_page_bounds(&doc, id))
+        .collect();
     let metadata = pdf_metadata_from_pairs(crate::compress::metadata_from_doc(&doc));
     let fonts = include_fonts.then(|| lp_collect_fonts(&doc, &page_ids));
     Ok(InfoResponse {
@@ -405,19 +424,32 @@ fn lp_name_str(doc: &Document, d: &Dictionary, key: &str) -> Option<String> {
 }
 
 fn lp_check_embedded(doc: &Document, font: &Dictionary) -> bool {
-    let Some(desc) = font.get(b"FontDescriptor").ok().and_then(|o| lp_dict(doc, o)) else {
+    let Some(desc) = font
+        .get(b"FontDescriptor")
+        .ok()
+        .and_then(|o| lp_dict(doc, o))
+    else {
         return false;
     };
-    ["FontFile", "FontFile2", "FontFile3"].iter().any(|k| desc.has(k.as_bytes()))
+    ["FontFile", "FontFile2", "FontFile3"]
+        .iter()
+        .any(|k| desc.has(k.as_bytes()))
 }
 
 /// Type0 の最初の子孫フォント（辞書と、その間接参照の番号）。
-fn lp_cid_first<'a>(doc: &'a Document, font: &'a Dictionary) -> Option<(&'a Dictionary, Option<i32>)> {
+fn lp_cid_first<'a>(
+    doc: &'a Document,
+    font: &'a Dictionary,
+) -> Option<(&'a Dictionary, Option<i32>)> {
     let Object::Array(a) = lp_resolve(doc, font.get(b"DescendantFonts").ok()?)? else {
         return None;
     };
     let first = a.first()?;
-    let oid = if let Object::Reference(id) = first { Some(id.0 as i32) } else { None };
+    let oid = if let Object::Reference(id) = first {
+        Some(id.0 as i32)
+    } else {
+        None
+    };
     Some((lp_dict(doc, first)?, oid))
 }
 
@@ -432,7 +464,11 @@ fn lp_collect_fonts(doc: &Document, page_ids: &[ObjectId]) -> Vec<FontInfo> {
         lp_fonts_from_resources(doc, &res, i as i32 + 1, &mut font_map, &mut visited);
     }
     let mut fonts: Vec<FontInfo> = font_map.into_values().collect();
-    fonts.sort_by(|a, b| a.object_id.cmp(&b.object_id).then_with(|| a.name.cmp(&b.name)));
+    fonts.sort_by(|a, b| {
+        a.object_id
+            .cmp(&b.object_id)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     fonts
 }
 
@@ -480,7 +516,11 @@ fn lp_add_font(
     font_map: &mut std::collections::HashMap<String, FontInfo>,
 ) {
     // 直書きのフォント辞書は番号を持たないので 0（従来の出力に合わせる）
-    let oid = if let Object::Reference(id) = font_ref { id.0 as i32 } else { 0 };
+    let oid = if let Object::Reference(id) = font_ref {
+        id.0 as i32
+    } else {
+        0
+    };
     let Some(font) = lp_dict(doc, font_ref) else {
         return;
     };
@@ -518,7 +558,11 @@ fn lp_add_font(
         (n, embedded, font_type, oid)
     } else {
         (
-            if base_font.is_empty() { "(unknown)".into() } else { base_font },
+            if base_font.is_empty() {
+                "(unknown)".into()
+            } else {
+                base_font
+            },
             embedded,
             font_type,
             oid,
@@ -526,7 +570,11 @@ fn lp_add_font(
     };
     // 番号を持つフォントは番号で、直書きのものは種類と名前で同一視する
     // （従来は直書きのフォントがすべて 1 件にまとまっていた）
-    let key = if id > 0 { format!("o{id}") } else { format!("d:{ft}:{name}") };
+    let key = if id > 0 {
+        format!("o{id}")
+    } else {
+        format!("d:{ft}:{name}")
+    };
     let e = font_map.entry(key).or_insert(FontInfo {
         name,
         font_type: ft,

@@ -353,7 +353,9 @@ impl<'a> BitReader<'a> {
         while self.pos < self.d.len() && self.d[self.pos] != 0xFF {
             self.pos += 1; // 区間末尾の端数ビットのバイトは捨てる (通常は存在しない)
         }
-        while self.pos + 1 < self.d.len() && self.d[self.pos] == 0xFF && self.d[self.pos + 1] == 0xFF
+        while self.pos + 1 < self.d.len()
+            && self.d[self.pos] == 0xFF
+            && self.d[self.pos + 1] == 0xFF
         {
             self.pos += 1;
         }
@@ -375,7 +377,11 @@ fn decode_sym(br: &mut BitReader, t: &DecTable) -> Result<u8, String> {
         code = (code << 1) | br.get_bit()? as i32;
         if t.maxcode[l] >= 0 && code <= t.maxcode[l] && code >= t.mincode[l] {
             let idx = (t.valptr[l] + code - t.mincode[l]) as usize;
-            return t.vals.get(idx).copied().ok_or_else(|| "bad huffman code".into());
+            return t
+                .vals
+                .get(idx)
+                .copied()
+                .ok_or_else(|| "bad huffman code".into());
         }
     }
     Err("bad huffman code".into())
@@ -563,7 +569,9 @@ fn size_of(v: i32) -> u32 {
 pub fn crop_jpeg_lossless(data: &[u8], x: u32, y: u32, w: u32, h: u32) -> Result<Vec<u8>, String> {
     let p = parse(data)?;
     let g = geometry_of(&p);
-    if w == 0 || h == 0 || x.checked_add(w).is_none_or(|e| e > g.width)
+    if w == 0
+        || h == 0
+        || x.checked_add(w).is_none_or(|e| e > g.width)
         || y.checked_add(h).is_none_or(|e| e > g.height)
     {
         return Err("crop rect out of range".into());

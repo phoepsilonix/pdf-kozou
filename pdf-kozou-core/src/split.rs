@@ -256,7 +256,9 @@ fn split_with_lopdf(req: &SplitRequest) -> Result<SplitResponse> {
             .collect(),
         SplitMode::EveryN { n } => {
             if *n <= 0 {
-                return Err(CoreError::InvalidArg(format!("every must be >= 1 (got {n})")));
+                return Err(CoreError::InvalidArg(format!(
+                    "every must be >= 1 (got {n})"
+                )));
             }
             (0..page_count)
                 .step_by(*n as usize)

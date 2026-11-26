@@ -818,7 +818,13 @@ fn lossless_align_and_crop(
     }
     let (mw, mh) = (g.mcu_w as i64, g.mcu_h as i64);
     let down = |v: i64, m: i64| v / m * m;
-    let up = |v: i64, m: i64, max: i64| if v >= max { max } else { ((v + m - 1) / m * m).min(max) };
+    let up = |v: i64, m: i64, max: i64| {
+        if v >= max {
+            max
+        } else {
+            ((v + m - 1) / m * m).min(max)
+        }
+    };
     let apx = PixRect {
         col0: down(px.col0, mw),
         row0: down(px.row0, mh),
@@ -889,9 +895,17 @@ fn plan_crop(
     let min_y = MIN_EDGE_TRIM_PX.max((nh * MIN_EDGE_TRIM_RATIO).ceil() as i64);
     let px = PixRect {
         col0: if px.col0 < min_x { 0 } else { px.col0 },
-        col1: if native_w - px.col1 < min_x { native_w } else { px.col1 },
+        col1: if native_w - px.col1 < min_x {
+            native_w
+        } else {
+            px.col1
+        },
         row0: if px.row0 < min_y { 0 } else { px.row0 },
-        row1: if native_h - px.row1 < min_y { native_h } else { px.row1 },
+        row1: if native_h - px.row1 < min_y {
+            native_h
+        } else {
+            px.row1
+        },
     };
     let new_w = (px.col1 - px.col0).max(1);
     let new_h = (px.row1 - px.row0).max(1);
@@ -1671,7 +1685,7 @@ pub fn crop_to_visible_area(doc: &mut Document, jpeg_quality: u8) -> VisibleCrop
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lopdf::{dictionary, Stream};
+    use lopdf::{Stream, dictionary};
 
     fn raw_rgb(w: usize, h: usize) -> Vec<u8> {
         (0..w * h * 3).map(|i| (i % 251) as u8).collect()
@@ -2069,8 +2083,17 @@ mod tests {
             .unwrap()
             .to_rgb8();
         assert_eq!((after.width() as i64, after.height() as i64), (w, h));
-        for (x, y) in [(0u32, 0u32), (7, 9), (w as u32 - 1, h as u32 - 1), (w as u32 / 2, h as u32 / 2)] {
-            assert_eq!(after.get_pixel(x, y), before.get_pixel(x + col0, y + row0), "px {x},{y}");
+        for (x, y) in [
+            (0u32, 0u32),
+            (7, 9),
+            (w as u32 - 1, h as u32 - 1),
+            (w as u32 / 2, h as u32 / 2),
+        ] {
+            assert_eq!(
+                after.get_pixel(x, y),
+                before.get_pixel(x + col0, y + row0),
+                "px {x},{y}"
+            );
         }
     }
 
@@ -2082,7 +2105,12 @@ mod tests {
         let (iw, ih) = (605usize, 807usize);
         let mut jpeg = Vec::new();
         JpegEncoder::new_with_quality(&mut jpeg, 98)
-            .write_image(&raw_rgb(iw, ih), iw as u32, ih as u32, ColorType::Rgb8.into())
+            .write_image(
+                &raw_rgb(iw, ih),
+                iw as u32,
+                ih as u32,
+                ColorType::Rgb8.into(),
+            )
             .unwrap();
         let geo = crate::jpeg_lossless::jpeg_geometry(&jpeg).unwrap();
         let mut b = build(CLIPPED, (iw as i64, ih as i64), None, vec![], false);
@@ -2110,7 +2138,11 @@ mod tests {
     #[test]
     fn default_is_lossless_even_when_reencode_is_smaller() {
         let (col0, mcu_w) = crop_hq_jpeg_with_low_target();
-        assert_eq!(col0 % mcu_w, 0, "lossless start column is on the MCU grid: {col0}");
+        assert_eq!(
+            col0 % mcu_w,
+            0,
+            "lossless start column is on the MCU grid: {col0}"
+        );
     }
 
     /// "auto" では、再エンコードのほうが小さければそちらを選ぶ (切り出し位置は
@@ -2119,7 +2151,11 @@ mod tests {
     fn auto_prefers_reencode_when_it_is_smaller() {
         MODE_OVERRIDE.with(|c| c.set(Some(LosslessMode::Auto)));
         let (col0, mcu_w) = crop_hq_jpeg_with_low_target();
-        assert_ne!(col0 % mcu_w, 0, "re-encode keeps the plain pixel rect: {col0}");
+        assert_ne!(
+            col0 % mcu_w,
+            0,
+            "re-encode keeps the plain pixel rect: {col0}"
+        );
     }
 
     /// "0" では、無劣化にできる JPEG でも常に再エンコードする。
@@ -2127,7 +2163,11 @@ mod tests {
     fn never_always_reencodes() {
         MODE_OVERRIDE.with(|c| c.set(Some(LosslessMode::Never)));
         let (col0, mcu_w) = crop_hq_jpeg_with_low_target();
-        assert_ne!(col0 % mcu_w, 0, "re-encode keeps the plain pixel rect: {col0}");
+        assert_ne!(
+            col0 % mcu_w,
+            0,
+            "re-encode keeps the plain pixel rect: {col0}"
+        );
     }
 
     /// 注釈の外観など、解析が辿らない場所からも使われる画像は切り詰めない。
@@ -2159,7 +2199,10 @@ mod tests {
         let c = "q 0 0 600 800 re W* n q 1185 0 0 1185 -1160 100 cm /Im0 Do Q Q";
         let mut b = build(c, (800, 800), Some((800, 800)), vec![], false);
         let st = crop_to_visible_area(&mut b.doc, 90);
-        assert_eq!(st.images_stubbed, 0, "visible strip must not become a 1x1 stub");
+        assert_eq!(
+            st.images_stubbed, 0,
+            "visible strip must not become a 1x1 stub"
+        );
         assert_eq!(st.images_cropped, 1);
         let (w, h) = image_wh(&b.doc, b.image);
         assert!(w >= 17 && w < 800, "strip width kept: {w}");

@@ -260,14 +260,26 @@ pub fn compute_patches(
         alpha[i] = if bad[i] {
             255
         } else {
-            soft_alpha(&comp[o..o + 3], &full[o..o + 3], &nt[o..o + 3], &bg[o..o + 3]).0
+            soft_alpha(
+                &comp[o..o + 3],
+                &full[o..o + 3],
+                &nt[o..o + 3],
+                &bg[o..o + 3],
+            )
+            .0
         };
     }
     feather_alpha(&mut alpha, wu, hu, SOFT_FEATHER, &|i| {
         // 文字の画素には広げない (ベクターのまま残す)。文字でなく、重ねても変わらない画素だけ
         let o = i * 3;
         !text[i]
-            && soft_alpha(&comp[o..o + 3], &full[o..o + 3], &nt[o..o + 3], &bg[o..o + 3]).1 <= SOFT_MIN_DIFF
+            && soft_alpha(
+                &comp[o..o + 3],
+                &full[o..o + 3],
+                &nt[o..o + 3],
+                &bg[o..o + 3],
+            )
+            .1 <= SOFT_MIN_DIFF
     });
     for (m, a) in mask.iter_mut().zip(alpha.iter()) {
         *m = *a > 0;
@@ -290,7 +302,13 @@ pub fn compute_patches(
 
 /// アルファが 0 でない画素を、タイル `tile` (画素) の 8 近傍の塊ごとに、1 枚のパッチにする。
 /// パッチの画素は `rgb_of(画素の番号)`、マスクは `alpha`。
-fn pack_patches(alpha: &[u8], wu: usize, hu: usize, tile: u32, rgb_of: &dyn Fn(usize) -> [u8; 3]) -> Vec<Patch> {
+fn pack_patches(
+    alpha: &[u8],
+    wu: usize,
+    hu: usize,
+    tile: u32,
+    rgb_of: &dyn Fn(usize) -> [u8; 3],
+) -> Vec<Patch> {
     let mask: Vec<bool> = alpha.iter().map(|&a| a > 0).collect();
     let tile = tile.max(4) as usize;
     let (tx, ty) = (wu.div_ceil(tile), hu.div_ceil(tile));
@@ -382,7 +400,14 @@ pub const SEAM_INK_DILATE: usize = 2;
 /// その境目が滲み、覆いのベクターが掛からない範囲の外側に、暗い (または明るい) 細線が出る。
 /// 帯を本来の画素で覆うと、その滲みが隠れる。縁は `SOFT_FEATHER` 画素かけて薄くする (背景との継ぎ目を
 /// 作らない)。`ink` は文字の画素のマスク (長さ w*h)。長さが合わなければ空。
-pub fn seam_patches(nt: &[u8], ink: &[bool], zones: &[[f64; 4]], w: u32, h: u32, tile: u32) -> Vec<Patch> {
+pub fn seam_patches(
+    nt: &[u8],
+    ink: &[bool],
+    zones: &[[f64; 4]],
+    w: u32,
+    h: u32,
+    tile: u32,
+) -> Vec<Patch> {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     if n == 0 || nt.len() != n * 3 || ink.len() != n || zones.is_empty() {
@@ -415,7 +440,9 @@ pub fn seam_patches(nt: &[u8], ink: &[bool], zones: &[[f64; 4]], w: u32, h: u32,
         }
     }
     feather_alpha(&mut alpha, wu, hu, SOFT_FEATHER, &|i| !ink_d[i]);
-    pack_patches(&alpha, wu, hu, tile, &|i| [nt[i * 3], nt[i * 3 + 1], nt[i * 3 + 2]])
+    pack_patches(&alpha, wu, hu, tile, &|i| {
+        [nt[i * 3], nt[i * 3 + 1], nt[i * 3 + 2]]
+    })
 }
 
 /// 層分割 (覆いをベクターのまま文字層に残す) の検証に使う値。
@@ -483,7 +510,12 @@ pub fn count_hidden_text(
     rect: [f64; 4],
 ) -> usize {
     let (wu, hu) = (w as usize, h as usize);
-    if wu == 0 || hu == 0 || core.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+    if wu == 0
+        || hu == 0
+        || core.len() != wu * hu
+        || t0w.len() != wu * hu * 3
+        || tcw.len() != wu * hu * 3
+    {
         return 0;
     }
     let x0 = rect[0].floor().max(0.0) as usize;
@@ -497,7 +529,9 @@ pub fn count_hidden_text(
     for y in y0..y1 {
         for x in x0..x1 {
             let i = y * wu + x;
-            if core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR {
+            if core[i]
+                && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR
+            {
                 n += 1;
             }
         }
@@ -568,7 +602,12 @@ pub fn rects_from_mask(
                         && !seen[ni]
                     {
                         seen[ni] = true;
-                        b = [b[0].min(nb[0]), b[1].min(nb[1]), b[2].max(nb[2]), b[3].max(nb[3])];
+                        b = [
+                            b[0].min(nb[0]),
+                            b[1].min(nb[1]),
+                            b[2].max(nb[2]),
+                            b[3].max(nb[3]),
+                        ];
                         stack.push(ni);
                     }
                 }
@@ -589,7 +628,12 @@ pub fn rects_from_mask(
             for j in (i + 1)..rects.len() {
                 let (a, b) = (rects[i], rects[j]);
                 if a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3] {
-                    rects[i] = [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])];
+                    rects[i] = [
+                        a[0].min(b[0]),
+                        a[1].min(b[1]),
+                        a[2].max(b[2]),
+                        a[3].max(b[3]),
+                    ];
                     rects.remove(j);
                     merged = true;
                     break 'outer;
@@ -613,7 +657,14 @@ pub const HUG_MIN_PX: usize = 24;
 /// 戻り値: (外接矩形 `rect` の中の塗り画素数, そのうち文字の近くにある画素数)。長さが合わなければ (0, 0)。
 /// 文字の縁取り (文字の輪郭に沿った線・塗り) は、塗り画素のほとんどが文字の近くにある。文字の背景の
 /// 箱・大きな飾りは、塗り画素の多くが文字から離れている。
-pub fn hug_stats(core_near: &[bool], cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4]) -> (usize, usize) {
+pub fn hug_stats(
+    core_near: &[bool],
+    cw: &[u8],
+    cb: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+) -> (usize, usize) {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     if wu == 0 || hu == 0 || core_near.len() != n || cw.len() != n * 3 || cb.len() != n * 3 {
@@ -658,11 +709,18 @@ pub fn hidden_text_rects(
     pad: u32,
 ) -> Vec<[f64; 4]> {
     let (wu, hu) = (w as usize, h as usize);
-    if wu == 0 || hu == 0 || core.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+    if wu == 0
+        || hu == 0
+        || core.len() != wu * hu
+        || t0w.len() != wu * hu * 3
+        || tcw.len() != wu * hu * 3
+    {
         return Vec::new();
     }
     let hid: Vec<bool> = (0..wu * hu)
-        .map(|i| core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR)
+        .map(|i| {
+            core[i] && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR
+        })
         .collect();
     rects_from_mask(&hid, w, h, rect, tile, pad)
 }
@@ -699,9 +757,21 @@ pub fn text_mask_from_alpha(alpha: &[u8]) -> Vec<bool> {
 
 /// 覆いを (すべての文字の後に) 重ねたとき、文字の画素が変わる数。覆いが文字より先か後かは見ない。
 /// 候補をまとめて絞り込むのに使う (見落としを避けるため、緩い条件)。長さが合わなければ 0。
-pub fn count_changed_text(alpha: &[u8], t0w: &[u8], tcw: &[u8], w: u32, h: u32, rect: [f64; 4]) -> usize {
+pub fn count_changed_text(
+    alpha: &[u8],
+    t0w: &[u8],
+    tcw: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+) -> usize {
     let (wu, hu) = (w as usize, h as usize);
-    if wu == 0 || hu == 0 || alpha.len() != wu * hu || t0w.len() != wu * hu * 3 || tcw.len() != wu * hu * 3 {
+    if wu == 0
+        || hu == 0
+        || alpha.len() != wu * hu
+        || t0w.len() != wu * hu * 3
+        || tcw.len() != wu * hu * 3
+    {
         return 0;
     }
     let x0 = rect[0].floor().max(0.0) as usize;
@@ -712,7 +782,9 @@ pub fn count_changed_text(alpha: &[u8], t0w: &[u8], tcw: &[u8], w: u32, h: u32, 
     for y in y0..y1 {
         for x in x0..x1 {
             let i = y * wu + x;
-            if alpha[i] >= TEXT_ALPHA_MIN && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR {
+            if alpha[i] >= TEXT_ALPHA_MIN
+                && max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) > HIDE_DIFF_THR
+            {
                 n += 1;
             }
         }
@@ -776,7 +848,15 @@ pub fn grow_zone_mask(strict: &[bool], faint: &[bool], w: u32, h: u32) -> Vec<bo
 /// 画素 (`t0b + (1 − アルファ) × cw`) と一致する。違うのは、文字が覆いより先に描かれた画素だけ。
 /// 縁のぼけた画素でも、文字が覆いの後か先かを正しく見分ける (文字の中身だけでは、小さい文字で
 /// 画素が足りなくなる)。長さが合わなければ、すべて false。
-pub fn hidden_mask(alpha: &[u8], t0b: &[u8], tcw: &[u8], cw: &[u8], w: u32, h: u32, rect: [f64; 4]) -> Vec<bool> {
+pub fn hidden_mask(
+    alpha: &[u8],
+    t0b: &[u8],
+    tcw: &[u8],
+    cw: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+) -> Vec<bool> {
     hidden_mask_thr(alpha, t0b, tcw, cw, w, h, rect, HIDE_DIFF_THR)
 }
 
@@ -796,7 +876,11 @@ pub fn hidden_mask_thr(
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     let mut out = vec![false; n];
-    if wu == 0 || hu == 0 || alpha.len() != n || [t0b.len(), tcw.len(), cw.len()].iter().any(|&l| l != n * 3) {
+    if wu == 0
+        || hu == 0
+        || alpha.len() != n
+        || [t0b.len(), tcw.len(), cw.len()].iter().any(|&l| l != n * 3)
+    {
         return out;
     }
     let x0 = rect[0].floor().max(0.0) as usize;
@@ -828,7 +912,14 @@ pub fn hidden_mask_thr(
 
 /// マスク `hid` の画素のうち、覆い自身が不透明な画素の数 (`hidden_opacity` のマスク版)。
 /// 戻り値: (マスクの画素数, そのうち覆いが不透明な画素数)。長さが合わなければ (0, 0)。
-pub fn opaque_in_mask(hid: &[bool], cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4]) -> (usize, usize) {
+pub fn opaque_in_mask(
+    hid: &[bool],
+    cw: &[u8],
+    cb: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+) -> (usize, usize) {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     if wu == 0 || hu == 0 || hid.len() != n || cw.len() != n * 3 || cb.len() != n * 3 {
@@ -877,7 +968,13 @@ pub fn hidden_opacity(
 ) -> (usize, usize) {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
-    if wu == 0 || hu == 0 || core.len() != n || [t0w.len(), tcw.len(), cw.len(), cb.len()].iter().any(|&l| l != n * 3) {
+    if wu == 0
+        || hu == 0
+        || core.len() != n
+        || [t0w.len(), tcw.len(), cw.len(), cb.len()]
+            .iter()
+            .any(|&l| l != n * 3)
+    {
         return (0, 0);
     }
     let x0 = rect[0].floor().max(0.0) as usize;
@@ -891,7 +988,9 @@ pub fn hidden_opacity(
     for y in y0..y1 {
         for x in x0..x1 {
             let i = y * wu + x;
-            if !core[i] || max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) <= HIDE_DIFF_THR {
+            if !core[i]
+                || max_abs_diff(&t0w[i * 3..i * 3 + 3], &tcw[i * 3..i * 3 + 3]) <= HIDE_DIFF_THR
+            {
                 continue;
             }
             hidden += 1;
@@ -1003,7 +1102,9 @@ pub fn layering_errors(
 ) -> Option<(LayerCheck, Vec<bool>)> {
     let n = (w as usize) * (h as usize);
     if n == 0
-        || [nt.len(), below.len(), cw.len(), cb.len()].iter().any(|&l| l != n * 3)
+        || [nt.len(), below.len(), cw.len(), cb.len()]
+            .iter()
+            .any(|&l| l != n * 3)
         || text_near.len() != n
     {
         return None;
@@ -1054,7 +1155,6 @@ pub fn check_layering(
     layering_errors(nt, below, cw, cb, text_near, w, h).map(|(c, _)| c)
 }
 
-
 /// 行列の合成 (`a` を先に適用し、次に `b`)。PDF の [a b c d e f]
 pub fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
     [
@@ -1069,7 +1169,15 @@ pub fn mul(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
 
 /// 背景画像 (単位正方形に置く行列 `bg_m`、`tw`×`th` 画素) の部分矩形
 /// (左上原点・画素単位 [x0,x1) × [y0,y1)) を、同じ位置に置く行列。
-pub fn patch_matrix(bg_m: [f32; 6], x0: u32, y0: u32, x1: u32, y1: u32, tw: u32, th: u32) -> [f32; 6] {
+pub fn patch_matrix(
+    bg_m: [f32; 6],
+    x0: u32,
+    y0: u32,
+    x1: u32,
+    y1: u32,
+    tw: u32,
+    th: u32,
+) -> [f32; 6] {
     let (tw, th) = (tw as f32, th as f32);
     let local = [
         (x1 - x0) as f32 / tw,
@@ -1093,7 +1201,14 @@ pub const HUG_DEEP_MAX_PCT: usize = 5;
 /// そのうち図形の縁から `min_depth` 画素より深く入った画素の数を返す。範囲は外接矩形 `rect`。
 /// 範囲の外は塗りが無いものとして、縁との距離を測る (チャンファー距離: 縦横 3・斜め 4)。
 /// 戻り値: (塗り画素数, 深い画素数)。長さが合わなければ (0, 0)。
-pub fn deep_stats(cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4], min_depth: usize) -> (usize, usize) {
+pub fn deep_stats(
+    cw: &[u8],
+    cb: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+    min_depth: usize,
+) -> (usize, usize) {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     if wu == 0 || hu == 0 || cw.len() != n * 3 || cb.len() != n * 3 {
@@ -1175,7 +1290,14 @@ pub const BAKE_TRANS_MAX: i32 = 8;
 /// 覆いを外しても顔が見えないように、不透明な画素だけは背景へ焼き込む (`bake_pixels`)。
 /// `cw` / `cb` はその覆いだけを白地・黒地に描いた画素 (RGB8、`w`×`h`)。`rect` は調べる範囲 (画素座標)。
 /// 覆いが無い画素は、白地と黒地の差が 255 になるので数えない。長さが合わなければ何もしない。
-pub fn opaque_cover_pixels(cw: &[u8], cb: &[u8], w: u32, h: u32, rect: [f64; 4], out: &mut Vec<u32>) {
+pub fn opaque_cover_pixels(
+    cw: &[u8],
+    cb: &[u8],
+    w: u32,
+    h: u32,
+    rect: [f64; 4],
+    out: &mut Vec<u32>,
+) {
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
     if wu == 0 || hu == 0 || cw.len() != n * 3 || cb.len() != n * 3 || n > u32::MAX as usize {
@@ -1374,8 +1496,14 @@ mod tests {
         let rect = [0.0, 0.0, 8.0, 1.0];
         let strict = hidden_mask(&alpha, &t0b, &tcw, &cw, w, h, rect);
         let faint = hidden_mask_thr(&alpha, &t0b, &tcw, &cw, w, h, rect, ZONE_FAINT_THR);
-        assert_eq!(strict, vec![false, false, true, false, false, false, false, false]);
-        assert_eq!(faint, vec![false, false, true, false, true, false, false, false]);
+        assert_eq!(
+            strict,
+            vec![false, false, true, false, false, false, false, false]
+        );
+        assert_eq!(
+            faint,
+            vec![false, false, true, false, true, false, false, false]
+        );
     }
 
     #[test]
@@ -1622,7 +1750,10 @@ mod tests {
         let all = [0.0, 0.0, w as f64, h as f64];
         assert_eq!(count_hidden_text(&core, &t0w, &tcw, w, h, all), 3);
         // 外接矩形が文字に掛からなければ 0
-        assert_eq!(count_hidden_text(&core, &t0w, &tcw, w, h, [3.0, 0.0, 6.0, 1.0]), 0);
+        assert_eq!(
+            count_hidden_text(&core, &t0w, &tcw, w, h, [3.0, 0.0, 6.0, 1.0]),
+            0
+        );
         // 長さが合わなければ 0
         assert_eq!(count_hidden_text(&core, &t0w[..6], &tcw, w, h, all), 0);
     }
@@ -1637,13 +1768,22 @@ mod tests {
         // 不透明な覆い: cw == cb
         let cw = solid(w, h, 200);
         let cb = solid(w, h, 200);
-        assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw, &cb, w, h, all), (4, 4));
+        assert_eq!(
+            hidden_opacity(&core, &t0w, &tcw, &cw, &cb, w, h, all),
+            (4, 4)
+        );
         // 半透明な覆い (アルファ約 0.5): cw − cb ≈ 128
         let cw = solid(w, h, 228);
         let cb = solid(w, h, 100);
-        assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw, &cb, w, h, all), (4, 0));
+        assert_eq!(
+            hidden_opacity(&core, &t0w, &tcw, &cw, &cb, w, h, all),
+            (4, 0)
+        );
         // 長さが合わなければ (0, 0)
-        assert_eq!(hidden_opacity(&core, &t0w, &tcw, &cw[..6], &cb, w, h, all), (0, 0));
+        assert_eq!(
+            hidden_opacity(&core, &t0w, &tcw, &cw[..6], &cb, w, h, all),
+            (0, 0)
+        );
     }
 
     #[test]
@@ -1654,7 +1794,11 @@ mod tests {
         let t0w = solid(w, h, 0);
         let mut tcw = solid(w, h, 0);
         // 離れた 2 か所 (4,4)-(8,6) と (50,50)-(54,52) が隠される。(30,30) は文字が上に描かれ、変わらない
-        for &(x0, y0, x1, y1, hide) in &[(4usize, 4usize, 8usize, 6usize, true), (50, 50, 54, 52, true), (30, 30, 34, 32, false)] {
+        for &(x0, y0, x1, y1, hide) in &[
+            (4usize, 4usize, 8usize, 6usize, true),
+            (50, 50, 54, 52, true),
+            (30, 30, 34, 32, false),
+        ] {
             for y in y0..y1 {
                 for x in x0..x1 {
                     core[y * w as usize + x] = true;
@@ -1671,7 +1815,9 @@ mod tests {
         assert!(r.contains(&[2.0, 2.0, 10.0, 8.0]), "{r:?}");
         assert!(r.contains(&[48.0, 48.0, 56.0, 54.0]), "{r:?}");
         // 外接矩形に掛からなければ空 / 長さが合わなければ空
-        assert!(hidden_text_rects(&core, &t0w, &tcw, w, h, [20.0, 20.0, 40.0, 40.0], 8, 2).is_empty());
+        assert!(
+            hidden_text_rects(&core, &t0w, &tcw, w, h, [20.0, 20.0, 40.0, 40.0], 8, 2).is_empty()
+        );
         assert!(hidden_text_rects(&core, &t0w[..6], &tcw, w, h, all, 8, 2).is_empty());
     }
 
@@ -1689,11 +1835,32 @@ mod tests {
                 allowed[y * w as usize + x] = true;
             }
         }
-        let ps = compute_patches(&bg, &bg, &comp, &bg, w, h, &Params::default(), Some(&allowed));
+        let ps = compute_patches(
+            &bg,
+            &bg,
+            &comp,
+            &bg,
+            w,
+            h,
+            &Params::default(),
+            Some(&allowed),
+        );
         assert_eq!(ps.len(), 1);
         assert!(ps[0].x0 < 60);
         // 範囲の長さが合わなければ何も置かない
-        assert!(compute_patches(&bg, &bg, &comp, &bg, w, h, &Params::default(), Some(&allowed[..10])).is_empty());
+        assert!(
+            compute_patches(
+                &bg,
+                &bg,
+                &comp,
+                &bg,
+                w,
+                h,
+                &Params::default(),
+                Some(&allowed[..10])
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -1733,7 +1900,10 @@ mod tests {
         assert_eq!(m, vec![true, true, false, false]);
         assert_eq!(count_changed_text(&alpha, &t0w, &tcw, w, h, all), 2);
         // 長さが合わなければ、すべて false
-        assert_eq!(hidden_mask(&alpha, &t0b[..6], &tcw, &cw, w, h, all), vec![false; 4]);
+        assert_eq!(
+            hidden_mask(&alpha, &t0b[..6], &tcw, &cw, w, h, all),
+            vec![false; 4]
+        );
     }
 
     #[test]
@@ -1806,7 +1976,12 @@ mod tests {
         // 細い枠 (幅 5 の輪): 深い画素はない
         let mut cw = solid(w, h, 255);
         let mut cb = solid(w, h, 0);
-        for (x0, y0, x1, y1) in [(10, 10, 60, 15), (10, 55, 60, 60), (10, 10, 15, 60), (55, 10, 60, 60)] {
+        for (x0, y0, x1, y1) in [
+            (10, 10, 60, 15),
+            (10, 55, 60, 60),
+            (10, 10, 15, 60),
+            (55, 10, 60, 60),
+        ] {
             fill(&mut cw, w, x0, y0, x1, y1, 200);
             fill(&mut cb, w, x0, y0, x1, y1, 200);
         }
@@ -1814,7 +1989,10 @@ mod tests {
         assert!(total > 0);
         assert_eq!(deep, 0);
         // 長さが合わなければ (0, 0)
-        assert_eq!(deep_stats(&cw[..9], &cb, w, h, [0.0, 0.0, 8.0, 8.0], 12), (0, 0));
+        assert_eq!(
+            deep_stats(&cw[..9], &cb, w, h, [0.0, 0.0, 8.0, 8.0], 12),
+            (0, 0)
+        );
     }
 
     #[test]

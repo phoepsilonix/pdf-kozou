@@ -63,7 +63,11 @@ pub fn set_enabled(spec: &str) -> Result<(), String> {
     match parse(&v) {
         Some(true) => OVERRIDE.store(1, Ordering::Relaxed),
         Some(false) => OVERRIDE.store(2, Ordering::Relaxed),
-        None => return Err(format!("unknown gid-fix setting {spec:?} (use on|off|default)")),
+        None => {
+            return Err(format!(
+                "unknown gid-fix setting {spec:?} (use on|off|default)"
+            ));
+        }
     }
     Ok(())
 }

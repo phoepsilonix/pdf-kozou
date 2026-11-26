@@ -151,12 +151,20 @@ pub(crate) fn dict_of<'a>(doc: &'a Document, o: &'a Object) -> Option<&'a Dictio
     }
 }
 
-pub(crate) fn sub_dict<'a>(doc: &'a Document, d: &'a Dictionary, key: &[u8]) -> Option<&'a Dictionary> {
+pub(crate) fn sub_dict<'a>(
+    doc: &'a Document,
+    d: &'a Dictionary,
+    key: &[u8],
+) -> Option<&'a Dictionary> {
     d.get(key).ok().and_then(|o| dict_of(doc, o))
 }
 
 /// ページ → 親の順で、属性を探す (MediaBox / CropBox / Resources の継承)
-pub(crate) fn inherited<'a>(doc: &'a Document, page_id: ObjectId, key: &[u8]) -> Option<&'a Object> {
+pub(crate) fn inherited<'a>(
+    doc: &'a Document,
+    page_id: ObjectId,
+    key: &[u8],
+) -> Option<&'a Object> {
     let mut id = page_id;
     for _ in 0..32 {
         let d = doc.get_dictionary(id).ok()?;
@@ -1733,7 +1741,11 @@ q 1 0 0 1 500 500 cm /Fm1 Do Q";
             let doc = Document::load(&dst).unwrap();
             let (fid1, ops1, _) = form_of_page(&doc, 1);
             assert_ne!(fid1, orig_form, "damage_checksum={damage_checksum}");
-            assert_eq!(count(&ops1, "re"), REPEAT, "damage_checksum={damage_checksum}");
+            assert_eq!(
+                count(&ops1, "re"),
+                REPEAT,
+                "damage_checksum={damage_checksum}"
+            );
         }
     }
 

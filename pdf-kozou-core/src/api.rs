@@ -106,7 +106,11 @@ fn restore_input_size(json: String, original: &str, replaced: bool) -> String {
         obj.get("output_bytes").and_then(|x| x.as_u64()),
         obj.contains_key("ratio"),
     ) {
-        let ratio = if orig_bytes > 0 { out as f64 / orig_bytes as f64 } else { 1.0 };
+        let ratio = if orig_bytes > 0 {
+            out as f64 / orig_bytes as f64
+        } else {
+            1.0
+        };
         obj.insert("ratio".into(), serde_json::json!(ratio));
     }
     serde_json::to_string(&v).unwrap_or(json)
@@ -535,14 +539,15 @@ pub fn dispatch_json(line: &str) -> String {
                     r.input = tmp_path.clone();
                 }
                 let pages = r.pages.as_deref().map(parse_page_list).transpose()?;
-                let json = serde_json::to_string(&crate::compress::rasterize_no_text_with_quality(
-                    &r.input,
-                    &r.output,
-                    r.dpi.unwrap_or(150.0),
-                    r.quality.unwrap_or(85),
-                    r.use_png.unwrap_or(false),
-                    pages.as_deref(),
-                )?)?;
+                let json =
+                    serde_json::to_string(&crate::compress::rasterize_no_text_with_quality(
+                        &r.input,
+                        &r.output,
+                        r.dpi.unwrap_or(150.0),
+                        r.quality.unwrap_or(85),
+                        r.use_png.unwrap_or(false),
+                        pages.as_deref(),
+                    )?)?;
                 Ok(restore_input_size(
                     json,
                     &orig_in,

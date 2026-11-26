@@ -359,7 +359,12 @@ fn lp_box(doc: &lopdf::Document, page_id: lopdf::ObjectId, key: &[u8]) -> Option
     for (i, slot) in v.iter_mut().enumerate() {
         *slot = crate::info::lp_num(doc, &a[i])? as f32;
     }
-    Some((v[0].min(v[2]), v[1].min(v[3]), v[0].max(v[2]), v[1].max(v[3])))
+    Some((
+        v[0].min(v[2]),
+        v[1].min(v[3]),
+        v[0].max(v[2]),
+        v[1].max(v[3]),
+    ))
 }
 
 /// ページの Rotate（継承あり。0〜359 に正規化するだけで、90 の倍数への丸めはしない）。
@@ -417,8 +422,8 @@ fn trim_with_lopdf(req: &TrimRequest) -> Result<TrimResponse> {
     };
 
     let bytes = std::fs::read(&req.input).map_err(CoreError::Io)?;
-    let mut doc = Document::load_mem(&bytes)
-        .map_err(|e| CoreError::Parse(format!("{}: {e}", req.input)))?;
+    let mut doc =
+        Document::load_mem(&bytes).map_err(|e| CoreError::Parse(format!("{}: {e}", req.input)))?;
     if doc.is_encrypted() {
         return Err(CoreError::Parse(format!("{}: encrypted PDF", req.input)));
     }
@@ -838,8 +843,8 @@ fn crop_to_page_with_lopdf(req: &CropToPageRequest) -> Result<CropToPageResponse
     use lopdf::{Document, IncrementalDocument, Object, ObjectId};
 
     let bytes = std::fs::read(&req.input).map_err(CoreError::Io)?;
-    let doc = Document::load_mem(&bytes)
-        .map_err(|e| CoreError::Parse(format!("{}: {e}", req.input)))?;
+    let doc =
+        Document::load_mem(&bytes).map_err(|e| CoreError::Parse(format!("{}: {e}", req.input)))?;
     if doc.is_encrypted() {
         return Err(CoreError::Parse(format!("{}: encrypted PDF", req.input)));
     }
@@ -853,7 +858,8 @@ fn crop_to_page_with_lopdf(req: &CropToPageRequest) -> Result<CropToPageResponse
         let Some((cx0, cy0, cx1, cy1)) = lp_box(&doc, pid, b"CropBox") else {
             continue;
         };
-        let (mx0, my0, mx1, my1) = lp_box(&doc, pid, b"MediaBox").unwrap_or((0.0, 0.0, 595.0, 842.0));
+        let (mx0, my0, mx1, my1) =
+            lp_box(&doc, pid, b"MediaBox").unwrap_or((0.0, 0.0, 595.0, 842.0));
         // CropBox は仕様上 MediaBox との交差で解釈される。範囲外にはみ出した
         // CropBox でページが広がらないよう、交差を新しいページ枠にする。
         let (nx0, ny0, nx1, ny1) = (cx0.max(mx0), cy0.max(my0), cx1.min(mx1), cy1.min(my1));

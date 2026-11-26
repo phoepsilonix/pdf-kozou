@@ -1628,8 +1628,8 @@ pub fn render_imposition(req: &RenderImpositionRequest) -> Result<RenderImpositi
     }
 
     let mu_input = crate::font_gidfix_lopdf::mupdf_input(req.path.as_str());
-    let c_path = CString::new(mu_input.path())
-        .map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
+    let c_path =
+        CString::new(mu_input.path()).map_err(|_| CoreError::InvalidArg("invalid path".into()))?;
 
     let fmt_str = req.format.as_deref().unwrap_or("jpeg");
     let fmt_int: i32 = if fmt_str == "png" { 1 } else { 0 };
@@ -1815,8 +1815,12 @@ pub fn rasterize_imposition(
                     });
                 }
                 Err(e) if engine == crate::render::Engine::Hayro => {
-                    eprintln!("[render] engine=hayro rasterize_imposition failed (no fallback): {e}");
-                    return Err(CoreError::Internal(format!("hayro rasterize_imposition: {e}")));
+                    eprintln!(
+                        "[render] engine=hayro rasterize_imposition failed (no fallback): {e}"
+                    );
+                    return Err(CoreError::Internal(format!(
+                        "hayro rasterize_imposition: {e}"
+                    )));
                 }
                 Err(e) => crate::engine_notice::report_fallback(
                     "rasterize_imposition",
@@ -2154,8 +2158,12 @@ pub fn compose_imposition_pdf_keep_text(
                     });
                 }
                 Err(e) if engine == crate::render::Engine::Hayro => {
-                    eprintln!("[render] engine=hayro keep-text imposition failed (no fallback): {e}");
-                    return Err(CoreError::Internal(format!("hayro keep-text imposition: {e}")));
+                    eprintln!(
+                        "[render] engine=hayro keep-text imposition failed (no fallback): {e}"
+                    );
+                    return Err(CoreError::Internal(format!(
+                        "hayro keep-text imposition: {e}"
+                    )));
                 }
                 Err(e) => crate::engine_notice::report_fallback(
                     "keep-text-imposition",
@@ -2429,7 +2437,6 @@ pub fn split_cell_render(req: &SplitCellRenderRequest) -> Result<SplitCellRender
         kozou_split_cell_render,
     };
     use std::ffi::CString;
-
 
     let fmt_str = req.format.as_deref().unwrap_or("jpeg");
     let fmt_int: i32 = match fmt_str {
