@@ -249,6 +249,7 @@ export interface SanitizeRequest {
  * ⚠ 試験的機能。使用による損害について開発者は責任を負いません。
  */
 export async function sanitizeHiddenText(req: SanitizeRequest): Promise<SanitizeResponse> {
+  await guardOutput("pdf", req.input);
   return invoke<SanitizeResponse>("sanitize_hidden_text", {
     request: {
       input: req.input,
@@ -543,6 +544,7 @@ export interface RasterizeImpositionResponse {
 export async function rasterizeImposition(
   req: RasterizeImpositionRequest,
 ): Promise<RasterizeImpositionResponse> {
+  await guardOutput("image", req.input);
   return invoke<RasterizeImpositionResponse>("rasterize_imposition", {
     request: {
       input: req.input,
@@ -620,6 +622,7 @@ export interface ComposeImpositionPdfResponse {
 export async function composeImpositionPdf(
   req: ComposeImpositionPdfRequest,
 ): Promise<ComposeImpositionPdfResponse> {
+  await guardOutput("pdf", req.input);
   return invoke<ComposeImpositionPdfResponse>("compose_imposition_pdf", {
     request: {
       input: req.input,
@@ -677,6 +680,7 @@ export interface ComposeImpositionPdfKeepTextResponse {
 export async function composeImpositionPdfKeepText(
   req: ComposeImpositionPdfKeepTextRequest,
 ): Promise<ComposeImpositionPdfKeepTextResponse> {
+  await guardOutput("pdf", req.input);
   return invoke<ComposeImpositionPdfKeepTextResponse>("compose_imposition_pdf_keep_text", {
     request: {
       input: req.input,
@@ -708,6 +712,7 @@ export async function composeImpositionPdfKeepText(
 export async function splitImpositionPdf(
   req: SplitImpositionPdfRequest,
 ): Promise<SplitImpositionPdfResponse> {
+  await guardOutput("pdf", req.input);
   return invoke<SplitImpositionPdfResponse>("split_imposition_pdf", {
     request: {
       input: req.input,
@@ -1067,12 +1072,14 @@ export async function commitBatchToFolder(
 // ── PDF 情報取得 ──────────────────────────────────────────────────────────────
 
 export async function getPdfInfo(path: string, options?: ConvertOptions): Promise<PdfInfo> {
-  return invoke<PdfInfo>("get_pdf_info", {
+  const info = await invoke<PdfInfo>("get_pdf_info", {
     path,
     layoutW: options?.layoutW ?? null,
     layoutH: options?.layoutH ?? null,
     layoutEm: options?.layoutEm ?? null,
   });
+  infoHook?.(path);
+  return info;
 }
 
 // ── ページレンダリング ────────────────────────────────────────────────────────
@@ -1119,6 +1126,7 @@ export async function trimPdf(
   pageHPt?: number,
   autoOrient?: boolean,
 ): Promise<void> {
+  await guardOutput("pdf", inputPath);
   await invoke("trim_pdf", {
     request: {
       input: inputPath,
@@ -1152,6 +1160,7 @@ export async function trimPdf(
  * 動くので、この処理の後では効かない。
  */
 export async function cropToPage(inputPath: string, outputPath: string): Promise<void> {
+  await guardOutput("pdf", inputPath);
   await invoke("crop_to_page_pdf", {
     request: { input: inputPath, output: outputPath },
   });
@@ -1202,6 +1211,7 @@ export async function rotatePdf(
   pageHPt?: number,
   autoOrient?: boolean,
 ): Promise<void> {
+  await guardOutput("pdf", inputPath);
   await invoke("rotate_pdf", {
     request: {
       input: inputPath,
@@ -1288,6 +1298,7 @@ export async function compressPdf(
   outputPath: string,
   opts: CompressRequest,
 ): Promise<CompressResponse> {
+  await guardOutput("pdf", inputPath);
   console.log("compressPdf", inputPath, outputPath, opts);
   return invoke<CompressResponse>("compress_pdf", {
     request: {
@@ -1336,6 +1347,7 @@ export async function splitPdf(
   layoutEm?: number,
   overrideMetadata?: OverrideMeta[],
 ): Promise<SplitResponse> {
+  await guardOutput("pdf", inputPath);
   return invoke<SplitResponse>("split_pdf", {
     request: {
       input: inputPath,
@@ -1368,6 +1380,7 @@ export async function mergePdf(
   pageHPt?: number,
   autoOrient?: boolean,
 ): Promise<MergeResponse> {
+  await guardOutput("pdf", ...inputs);
   return invoke<MergeResponse>("merge_pdf", {
     request: {
       inputs,
@@ -1404,6 +1417,7 @@ export async function exportImages(
   // (既定・従来と同一挙動)。2〜6を指定するとdpi<300のときのみ有効化される。
   supersample?: number,
 ): Promise<ExportImagesResponse> {
+  await guardOutput("image", path);
   console.log("ExportImages", path, outDir, format, dpi, quality, namePrefix, pages);
   try {
     const res = invoke<ExportImagesResponse>("export_images", {
@@ -1452,6 +1466,7 @@ export async function exportImagePdf(
   // 細い罫線/ヘアラインの消失・フェードを緩和する(生成時間はやや増える)。
   supersample?: number,
 ): Promise<ExportImagePdfResponse> {
+  await guardOutput("image", path);
   return invoke<ExportImagePdfResponse>("export_image_pdf", {
     path,
     outPath,
@@ -1482,6 +1497,7 @@ export async function exportImagePdfKeepText(
   // exportImagePdf と同じ意味(未指定/1以下は無効・既定)。
   supersample?: number,
 ): Promise<ExportImagePdfResponse> {
+  await guardOutput("pdf", path);
   return invoke<ExportImagePdfResponse>("export_image_pdf_keep_text", {
     path,
     outPath,
@@ -1689,6 +1705,41 @@ export async function setPdfBackendCore(backend: string): Promise<void> {
 }
 
 // ── GID 補正 (文字コードが GID の CID キー付き CFF フォントの charset を直す) ─────────
+
+/** 出力の種類: "pdf" = フォントを持ち込む PDF の出力、"image" = 画像 (画像 PDF を含む) の出力 */
+export type OutputGuardKind = "pdf" | "image";
+
+let outputGuard: ((kind: OutputGuardKind, paths: string[]) => Promise<void>) | null = null;
+let infoHook: ((path: string) => void) | null = null;
+
+/**
+ * 出力を作る前に呼ばれる確認 (lib/gidFixGuard.ts が登録する)。補正がオフで、補正が必要なファイルを
+ * 出力するときに、ユーザーに確認する。キャンセルされたら、例外を投げて出力を止める。
+ */
+export function setOutputGuard(
+  fn: ((kind: OutputGuardKind, paths: string[]) => Promise<void>) | null,
+): void {
+  outputGuard = fn;
+}
+
+/** ファイル情報を読んだときに呼ばれる (補正がオフのとき、補正が必要なファイルを通知する) */
+export function setInfoHook(fn: ((path: string) => void) | null): void {
+  infoHook = fn;
+}
+
+async function guardOutput(kind: OutputGuardKind, ...paths: string[]): Promise<void> {
+  if (outputGuard) await outputGuard(kind, paths);
+}
+
+/** 補正が必要なフォントの数 (補正のオン・オフにかかわらず数える)。PDF でない・読めないときは 0 */
+export async function getGidFixNeed(path: string): Promise<number> {
+  try {
+    const r = await invoke<{ count?: number }>("get_gid_fix_need", { path });
+    return r.count ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 export interface GidFixInfo {
   /** "on" | "off" */

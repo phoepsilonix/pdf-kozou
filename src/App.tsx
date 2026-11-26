@@ -28,7 +28,9 @@ import { FileSortSelect } from "./components/FileSortSelect";
 import { FloatingMenu } from "./components/FloatingMenu";
 import { FolderChooserModal } from "./components/FolderChooserModal";
 import { FontScaleControl } from "./components/FontScaleControl";
+import { GidFixConfirmModal } from "./components/GidFixConfirmModal";
 import { GidFixControl } from "./components/GidFixControl";
+import { GidFixNotice } from "./components/GidFixNotice";
 import { HayroJpegControl } from "./components/HayroJpegControl";
 import { HayroStrokeControl } from "./components/HayroStrokeControl";
 import { JumpButton } from "./components/JumpNav";
@@ -56,6 +58,7 @@ import { setFileListToolbarPosition, useFileListToolbarPosition } from "./lib/fi
 import { hasImage, hasReflowable, isMupdfExtension } from "./lib/fileTypes";
 import { formatModified } from "./lib/formatDate";
 import { initGidFix } from "./lib/gidFix";
+import { installGidFixGuard } from "./lib/gidFixGuard";
 import { initHayroJpeg } from "./lib/hayroJpeg";
 import { initHayroStroke } from "./lib/hayroStroke";
 import { useI18n } from "./lib/i18n";
@@ -248,6 +251,7 @@ export default function App() {
     void initHayroJpeg();
     void initPdfBackend();
     void initGidFix();
+    return installGidFixGuard();
   }, []);
 
   // hayro → MuPDF の自動フォールバック (コアが送る engine-fallback イベント) を購読し、
@@ -1759,6 +1763,8 @@ function ToolShell({
         </LazyBoundary>
       </div>
       <SaveConflictModal />
+      <GidFixConfirmModal />
+      <GidFixNotice />
       <SaveNamePromptModal />
       <FolderChooserModal />
       <BatchSaveConflictModal />

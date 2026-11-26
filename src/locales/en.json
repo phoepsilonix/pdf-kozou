@@ -933,7 +933,18 @@
     "on": "On",
     "on_desc": "Repair the charset of GID-coded CID fonts (e.g. ◀ ★) so they also display in MuPDF, Firefox and mobile browsers (default). Glyph shapes do not change.",
     "off": "Off",
-    "off_desc": "Do not repair; process the original fonts as they are (for isolating unexpected problems)"
+    "off_desc": "Do not repair; process the original fonts as they are (for isolating unexpected problems)",
+    "confirm_title": "Confirm font fix",
+    "confirm_message_pdf": "The font fix is still off. The files below have {count} font(s) that need fixing (GID-coded CID fonts). A PDF written as is may be missing some characters (e.g. ◀ ★) in MuPDF, Firefox and mobile browsers.",
+    "confirm_message_image": "The font fix is still off. The files below have {count} font(s) that need fixing. Rendering them to images with MuPDF will drop some characters (e.g. ◀ ★).",
+    "confirm_more": "and {n} more",
+    "confirm_on": "Turn the fix on and continue (recommended)",
+    "confirm_continue": "Continue as is (do not ask again until the fix is turned on)",
+    "confirm_cancel": "Cancel",
+    "confirm_cancelled": "Cancelled at the font fix confirmation",
+    "notice_message": "{files} file(s) have fonts that need fixing. The font fix is off, so some characters may be missing in the output.",
+    "notice_turn_on": "Turn the fix on",
+    "notice_close": "Close"
   },
   "theme": {
     "moss": "Moss Green",

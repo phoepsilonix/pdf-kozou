@@ -80,6 +80,11 @@ function subscribe(l: () => void) {
   };
 }
 
+/** 現在の選択 (フック外から読む用) */
+export function getRenderEngine(): RenderEngine {
+  return state.engine;
+}
+
 export function useRenderEngine(): State {
   return useSyncExternalStore(subscribe, () => state);
 }

@@ -78,6 +78,16 @@ function subscribe(l: () => void) {
   };
 }
 
+/** 現在の選択 (フック外から読む用) */
+export function getGidFixMode(): GidFixMode {
+  return state.mode;
+}
+
+/** 選択の変更を購読する (戻り値で解除) */
+export function subscribeGidFix(l: () => void): () => void {
+  return subscribe(l);
+}
+
 export function useGidFix(): State {
   return useSyncExternalStore(subscribe, () => state);
 }
