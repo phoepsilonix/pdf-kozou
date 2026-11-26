@@ -8,7 +8,7 @@
 // ThemeSwitcher / A11yControls の隣に配置することを想定。
 //
 // クリックでポップオーバーを開き、スライダー・[−]/[＋]・リセットで
-// 80%〜150% を 5% 刻みで調整する。値は localStorage に永続化され、
+// 80%〜200% を 5% 刻みで調整する。値は localStorage に永続化され、
 // #root 要素の zoom として即時反映される（レイアウト比率は維持）。
 
 import { useCallback, useRef, useState } from "react";

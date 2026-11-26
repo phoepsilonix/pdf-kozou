@@ -38,6 +38,7 @@ import {
 import { F } from "../lib/theme";
 import { tts } from "../lib/tts";
 import { FS } from "../lib/typography";
+import { scaledVh } from "../lib/uiScale";
 import { uniqueFileNames } from "../lib/uniqueName";
 import type { FileEntry } from "../store/usePdfStore";
 
@@ -386,7 +387,7 @@ function BatchView({ batchFiles }: { batchFiles: FileEntry[] }) {
     ? {
         ...s.left,
         width: "100%",
-        maxHeight: "42vh",
+        maxHeight: scaledVh(42),
         borderRight: "none",
         borderBottom: "1px solid var(--c-border)",
       }
@@ -985,7 +986,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
     ? {
         ...s.left,
         width: "100%",
-        maxHeight: "42vh",
+        maxHeight: scaledVh(42),
         borderRight: "none",
         borderBottom: "1px solid var(--c-border)",
       }
@@ -1031,7 +1032,9 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
         // それでも全体が収まらない場合は、外側のラッパー(overflow:auto)側で
         // 縦スクロールさせる。
         ...s.previewCol,
-        minHeight: 220,
+        // 表示スケール(zoom)が大きいと実効ビューポート高が縮むため、
+        // 220px 固定だけでは一部しか見えない。vh 基準の下限も併用する。
+        minHeight: `max(220px, ${scaledVh(35)})`,
       }
     : previewFlexBasis === null
       ? s.previewCol
@@ -1041,7 +1044,7 @@ function SingleView({ filePath, pdfInfo }: { filePath: string; pdfInfo: PdfInfo 
   const groupListBaseWidth = GROUP_LIST_BASE_WIDTH + (settingsCollapsed ? SETTINGS_FREED_WIDTH : 0);
 
   const groupListStyle: React.CSSProperties = isNarrow
-    ? { ...s.groupList, height: 160 }
+    ? { ...s.groupList, height: `min(160px, ${scaledVh(22)})`, flexShrink: 0 }
     : previewFlexBasis === null
       ? {
           // "fit" 表示中: 従来通り幅固定(設定タブ折りたたみ分のみ加算)。

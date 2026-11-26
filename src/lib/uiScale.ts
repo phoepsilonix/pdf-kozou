@@ -10,7 +10,7 @@
 // レイアウトを維持したまま見やすさ・扱いやすさを調整できる。
 
 export const UI_SCALE_MIN = 80; // %
-export const UI_SCALE_MAX = 150; // %
+export const UI_SCALE_MAX = 200; // %
 export const UI_SCALE_STEP = 5; // %
 export const UI_SCALE_DEFAULT = 100; // %
 
@@ -21,6 +21,20 @@ export function clampUiScale(pct: number): number {
   if (!Number.isFinite(pct)) return UI_SCALE_DEFAULT;
   const snapped = Math.round(pct / UI_SCALE_STEP) * UI_SCALE_STEP;
   return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, snapped));
+}
+
+/** CSS から現在の表示倍率を参照するためのカスタムプロパティ名（数値、1.0 = 100%） */
+export const UI_SCALE_CSS_VAR = "--kozou-ui-scale";
+
+/**
+ * `vh` ベースの高さを、#root の zoom 補正込みで返す CSS 文字列。
+ *
+ * #root に `zoom: S` がかかっていると、内部の `vh` はズーム前の CSS px として
+ * 解決されるため、そのまま使うと見た目上 S 倍の高さになりビューポートから
+ * はみ出す（S=150% で 42vh が見た目 63vh になる）。S で割って打ち消す。
+ */
+export function scaledVh(n: number): string {
+  return `calc(${n}vh / var(${UI_SCALE_CSS_VAR}, 1))`;
 }
 
 export function loadUiScale(): number {
@@ -104,6 +118,8 @@ function applyToRoot() {
   style.width = "";
   style.height = "";
   style.zoom = String(_scale);
+  // CSS 側（scaledVh など）から倍率を参照できるようにする。
+  style.setProperty(UI_SCALE_CSS_VAR, String(_scale));
 
   // 縦横ともスクロールバーを出さない。
   // ホーム画面ではコンテンツをビューポートに収める設計とし、

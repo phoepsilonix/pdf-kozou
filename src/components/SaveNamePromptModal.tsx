@@ -172,8 +172,10 @@ const s: Record<string, React.CSSProperties> = {
     left: "50%",
     transform: "translate(-50%, -50%)",
     zIndex: 301,
-    width: "min(420px, 92vw)",
-    maxHeight: "90vh",
+    // vw は #root の zoom の影響を受けず、拡大時に見た目上はみ出すため、
+    // position:fixed の包含ブロック（=ズーム補正済みビューポート）基準の % を使う。
+    width: "min(420px, 92%)",
+    maxHeight: "90%",
     display: "flex",
     flexDirection: "column",
     background: "var(--c-bgCard)",
