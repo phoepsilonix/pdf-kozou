@@ -139,6 +139,18 @@ pub fn get_gid_fix_info() -> Value {
     })
 }
 
+/// GID 補正が必要なフォントの数 (補正のオン・オフにかかわらず数える)。PDF でない・読めないときは 0。
+/// 補正がオフのときに、必要なファイルを知らせ、出力前に確認するために使う。
+/// 初めて数えるときは PDF を読むので、別スレッドで実行する。
+#[tauri::command]
+pub async fn get_gid_fix_need(path: String) -> Result<Value> {
+    let count =
+        tokio::task::spawn_blocking(move || pdf_kozou_core::gid_fix::fixable_font_count(&path))
+            .await
+            .map_err(|e| Error::Core(format!("core task join error: {e}")))?;
+    Ok(serde_json::json!({ "count": count }))
+}
+
 /// GID 補正のオン・オフを設定する ("on" | "off")。以降の読み込み・描画から反映される。
 #[tauri::command]
 pub fn set_gid_fix(mode: String) -> Result<()> {

@@ -72,6 +72,14 @@ pub fn set_enabled(spec: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 補正が必要なフォント (文字コードが GID の CID キー付き CFF フォント) の数。オン・オフにかかわらず
+/// 数える。PDF でない・読めない・暗号化のときは 0。補正がオフのときに、必要なファイルをユーザーに
+/// 知らせるために使う。初めて数えるときは、PDF を lopdf で読むので、時間がかかることがある
+/// (結果はキャッシュする)。
+pub fn fixable_font_count(path: &str) -> usize {
+    crate::font_gidfix_lopdf::fixable_font_count(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

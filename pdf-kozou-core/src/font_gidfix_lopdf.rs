@@ -282,11 +282,59 @@ pub(crate) fn mupdf_input(input: &str) -> MuInput {
     wrap(copy)
 }
 
-/// 直したフォントの数を返す。直せないものは黙って残す。
+/// 直したフォントの数を返す。直せないものは黙って残す。GID 補正がオフ (gid_fix) のときは何もしない。
 pub(crate) fn fix_gid_coded_cid_fonts(doc: &mut Document) -> usize {
     if !crate::gid_fix::enabled() {
         return 0;
     }
+    fix_gid_coded_cid_fonts_always(doc)
+}
+
+/// 直す必要のあるフォントの数のキャッシュ (パス・サイズ・更新時刻ごと)
+type NeedKey = (String, u64, Option<std::time::SystemTime>);
+static NEED_CACHE: std::sync::OnceLock<std::sync::Mutex<Vec<(NeedKey, usize)>>> =
+    std::sync::OnceLock::new();
+const NEED_CACHE_MAX: usize = 32;
+
+/// 直す必要のあるフォントの数を数える。GID 補正のオン・オフにかかわらず数える (オフのときに、補正が
+/// 必要なファイルをユーザーに知らせ、確認するため)。PDF でない・読めない・暗号化のときは 0。
+/// 一時的に読んだ文書を直してみて数えるだけで、ファイルには書かない。結果はキャッシュする。
+pub(crate) fn fixable_font_count(input: &str) -> usize {
+    if is_fixed_copy_name(input) {
+        return 0;
+    }
+    let Ok(meta) = std::fs::metadata(input) else {
+        return 0;
+    };
+    let key: NeedKey = (input.to_string(), meta.len(), meta.modified().ok());
+    let cache = NEED_CACHE.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(g) = cache.lock()
+        && let Some((_, n)) = g.iter().find(|(k, _)| *k == key)
+    {
+        return *n;
+    }
+    let n = if looks_like_pdf(input) && quick_may_need_fix(input) {
+        crate::safe_load::load_checked(input)
+            .ok()
+            .filter(|(d, _)| !d.is_encrypted() && !d.was_encrypted())
+            .map(|(mut d, _)| fix_gid_coded_cid_fonts_always(&mut d))
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    if let Ok(mut g) = cache.lock()
+        && !g.iter().any(|(k, _)| *k == key)
+    {
+        g.push((key, n));
+        while g.len() > NEED_CACHE_MAX {
+            g.remove(0);
+        }
+    }
+    n
+}
+
+/// オン・オフにかかわらず直す (fix_gid_coded_cid_fonts の本体。数えるだけの用途にも使う)
+fn fix_gid_coded_cid_fonts_always(doc: &mut Document) -> usize {
     // 直すフォント (Type0 の番号と、元のフォントファイルの番号) と、フォントファイルごとの直した中身
     let mut targets: Vec<(ObjectId, ObjectId)> = Vec::new();
     let mut fixed_files: HashMap<ObjectId, Vec<u8>> = HashMap::new();
